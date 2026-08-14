@@ -1,0 +1,2112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GREEN BUTTON GO SCHEDULER (GBG) - HTS_24m</title>
+<style>
+/* ============ 基础 ============ */
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{height:100%;}
+body{
+  font-family:"Segoe UI","Microsoft YaHei UI","Microsoft YaHei",system-ui,-apple-system,Arial,sans-serif;
+  font-size:12px;color:#333;background:#fff;overflow:hidden;
+}
+::-webkit-scrollbar{width:14px;height:14px;background:#f0f0f0;}
+::-webkit-scrollbar-thumb{background:#cdcdcd;border:3px solid #f0f0f0;border-radius:8px;}
+::-webkit-scrollbar-thumb:hover{background:#a6a6a6;}
+
+.app{display:flex;flex-direction:column;height:100vh;min-width:1280px;}
+
+/* ============ 窗口标题栏 ============ */
+.titlebar{
+  height:30px;background:linear-gradient(#3c2d63,#2f2350);color:#fff;
+  display:flex;align-items:center;padding:0 8px;gap:10px;flex-shrink:0;font-size:12px;
+}
+.tb-icons{display:flex;align-items:center;gap:8px;}
+.tb-btn{width:22px;height:22px;display:grid;place-items:center;border-radius:3px;cursor:pointer;}
+.tb-btn:hover{background:rgba(255,255,255,.15);}
+.tb-tab{padding:2px 8px;border-radius:3px;cursor:pointer;color:#cfc6e6;}
+.tb-tab.active{color:#fff;background:rgba(255,255,255,.14);}
+.tb-title{font-weight:400;letter-spacing:.2px;}
+.tb-spacer{flex:1;}
+.tb-link{display:flex;align-items:center;gap:4px;color:#e6e0f5;cursor:pointer;padding:2px 6px;border-radius:3px;}
+.tb-link:hover{background:rgba(255,255,255,.14);}
+.tb-win{display:flex;gap:2px;margin-left:10px;}
+.tb-win div{width:30px;height:24px;display:grid;place-items:center;cursor:pointer;}
+.tb-win div:hover{background:rgba(255,255,255,.18);}
+.tb-win .close:hover{background:#e81123;}
+
+/* ============ 主菜单栏 ============ */
+.menubar{
+  height:52px;background:#fff;display:flex;align-items:center;
+  padding-left:14px;flex-shrink:0;position:relative;border-bottom:1px solid #e3e3e3;
+}
+.menu-item{
+  font-size:25px;font-weight:300;color:#3b3b3b;padding:0 11px;cursor:pointer;
+  letter-spacing:.2px;line-height:1;user-select:none;
+}
+.menu-item:hover{color:#0a84c8;}
+.menu-item.active{color:#1a91d6;}
+
+.simbar{
+  position:absolute;right:150px;top:2px;height:48px;background:#151515;border-radius:8px;
+  display:flex;align-items:center;padding:0 10px 0 22px;gap:9px;
+}
+.simbar .label{color:#fff;font-size:22px;font-weight:400;letter-spacing:.3px;margin-right:8px;}
+.rbtn{
+  width:36px;height:36px;border-radius:50%;display:grid;place-items:center;
+  background:#4d4d4d;cursor:pointer;flex-shrink:0;transition:filter .15s;
+}
+.rbtn:hover{filter:brightness(1.25);}
+.rbtn.play{background:#28b44a;}
+.rbtn svg{display:block;}
+
+.userzone{
+  position:absolute;right:12px;top:4px;display:flex;align-items:center;gap:14px;height:44px;
+}
+.userzone .robot{width:42px;height:38px;display:grid;place-items:center;}
+.user{display:flex;flex-direction:column;align-items:center;cursor:pointer;}
+.user .name{font-size:10px;color:#555;margin-top:-2px;}
+.caret{position:absolute;right:0;top:2px;font-size:9px;color:#666;}
+
+/* ============ 视图容器 ============ */
+.viewport{flex:1;min-height:0;position:relative;}
+.view{position:absolute;inset:0;display:none;}
+.view.active{display:flex;}
+
+/* ============ PROCESS 视图 ============ */
+/* 左侧仪器列表 */
+.devlist{width:312px;flex-shrink:0;padding:2px 4px 0 0;overflow-y:auto;background:#fff;}
+.dev{
+  height:96px;background:#efefef;border-radius:2px;margin-bottom:2px;
+  display:flex;align-items:center;position:relative;cursor:pointer;
+}
+.dev:hover{background:#e6e6e6;}
+.dev .bar{width:14px;height:100%;border-radius:2px 0 0 2px;flex-shrink:0;}
+.dev .exp{
+  width:22px;height:22px;border:1.6px solid #6b6b6b;border-radius:50%;
+  display:grid;place-items:center;margin:0 16px 0 14px;flex-shrink:0;
+}
+.dev .nm{font-size:23px;font-weight:300;color:#3d3d3d;letter-spacing:.2px;}
+.dev .help{
+  width:20px;height:20px;border:1.5px solid #7a7a7a;border-radius:50%;
+  display:grid;place-items:center;font-size:12px;color:#555;margin-left:10px;
+}
+/* 设备色条 */
+.c-storage{background:#8a5a3b;} .c-incubator{background:#dba32c;}
+.c-liquid{background:#c53a9d;}  .c-cwash{background:#5b46bd;}
+.c-xpeel{background:#39b54a;}   .c-sealer{background:#f7941e;}
+.c-multidrop{background:#f4b6c4;} .c-reader{background:#ec5a24;}
+.c-misc{background:#9aa4ab;}
+
+/* 中部流程区 */
+.procwrap{flex:1;min-width:0;display:flex;flex-direction:column;border-left:1px solid #dcdcdc;}
+.proctool{
+  height:58px;background:#ededed;display:flex;align-items:center;gap:8px;
+  padding:0 14px;flex-shrink:0;
+}
+.proctool .lbl{font-size:12px;color:#444;}
+.sel{
+  height:26px;border:1px solid #a8a8a8;background:#fff;font-size:12px;padding:0 22px 0 6px;
+  color:#333;border-radius:2px;appearance:none;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10'><path d='M1 3l4 4 4-4' fill='none' stroke='%23444' stroke-width='1.4'/></svg>");
+  background-repeat:no-repeat;background-position:right 6px center;
+}
+.tbtn{
+  width:34px;height:34px;border-radius:50%;border:2px solid #4a4a4a;background:#fff;
+  display:grid;place-items:center;cursor:pointer;flex-shrink:0;
+}
+.tbtn:hover{background:#e8f4fb;border-color:#1a91d6;}
+
+.canvasrow{flex:1;min-height:0;display:flex;overflow:hidden;}
+/* 竖排三栏 */
+.vcol{
+  width:64px;flex-shrink:0;border-right:1px solid #d9d9d9;background:#fafafa;
+  display:flex;flex-direction:column;align-items:center;padding-top:12px;gap:12px;
+}
+.vcol .exp2{width:22px;height:22px;border:1.6px solid #6b6b6b;border-radius:50%;display:grid;place-items:center;}
+.vcol .vtxt{
+  writing-mode:vertical-rl;font-size:20px;font-weight:300;color:#3d3d3d;letter-spacing:.5px;
+}
+.vcol:first-child{background:#f2f2f2;}
+
+/* 流程列 */
+.lanes{flex:1;min-width:0;overflow:auto;padding:14px 0 40px 8px;display:flex;gap:14px;align-items:flex-start;position:relative;}
+.lane{width:200px;flex-shrink:0;}
+.lane-head{background:#b5c4d4;padding:8px 8px 10px;border-radius:2px;}
+.lane-head .r1{display:flex;align-items:center;gap:6px;margin-bottom:8px;}
+.lane-head .r2{display:flex;align-items:center;gap:6px;}
+.lane-head .k{font-size:12.5px;color:#2b2b2b;}
+.lane-head .v{font-size:12.5px;color:#111;font-weight:600;flex:1;}
+.hbtn{
+  width:26px;height:26px;border-radius:50%;border:1.6px solid #3a3a3a;background:#c5d2df;
+  display:grid;place-items:center;cursor:pointer;flex-shrink:0;
+}
+.hbtn.sq{border-radius:3px;}
+.hsel{
+  height:22px;flex:1;border:1px solid #8f9ba6;background:#fff;font-size:11.5px;padding:0 18px 0 5px;
+  appearance:none;border-radius:2px;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10'><path d='M1 3l4 4 4-4' fill='none' stroke='%23444' stroke-width='1.4'/></svg>");
+  background-repeat:no-repeat;background-position:right 4px center;
+}
+
+.lane-body{margin-top:10px;display:flex;flex-direction:column;align-items:center;}
+.link{width:1px;height:14px;background:#7a7a7a;}
+.step{
+  width:200px;height:118px;background:#6ed3f0;border-radius:2px;display:flex;
+  position:relative;cursor:pointer;
+}
+.step:hover{background:#82daf3;}
+.step .sbar{width:11px;flex-shrink:0;border-radius:2px 0 0 2px;}
+.step .sname{
+  writing-mode:vertical-rl;font-size:11.5px;color:#2b2b2b;padding:6px 2px 0 3px;
+  letter-spacing:.2px;white-space:nowrap;
+}
+.step .sbody{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6px 24px 6px 0;min-width:0;}
+.step .slabel{font-size:10.5px;color:#1f1f1f;text-align:center;line-height:1.25;margin-top:3px;}
+.step .sicons{
+  position:absolute;right:5px;top:8px;display:flex;flex-direction:column;gap:5px;align-items:center;
+}
+.ico{width:15px;height:15px;border-radius:50%;background:#fff;display:grid;place-items:center;}
+.step .trash{position:absolute;right:5px;bottom:6px;cursor:pointer;}
+.step .rmark{position:absolute;right:6px;top:-2px;font-size:12px;font-weight:700;color:#1b1b1b;}
+.addlane{
+  width:34px;height:34px;border-radius:50%;border:2px solid #4a4a4a;background:#fff;
+  display:grid;place-items:center;cursor:pointer;align-self:flex-end;margin:0 0 8px 6px;
+}
+
+/* 右侧脚本面板 */
+.scriptpanel{
+  width:352px;flex-shrink:0;background:#ececec;border-left:1px solid #d2d2d2;
+  padding:14px 20px;display:flex;flex-direction:column;align-items:center;gap:14px;
+}
+.scriptpanel h3{font-size:22px;font-weight:300;color:#333;}
+.scriptpanel .row{display:flex;align-items:center;gap:8px;width:100%;}
+.scriptpanel .row span{font-size:12px;color:#444;white-space:nowrap;}
+.dbtn{
+  width:44px;height:44px;border-radius:50%;border:2.4px solid #3d3d3d;background:#ececec;
+  display:grid;place-items:center;cursor:pointer;
+}
+.dbtn:hover{background:#fdecec;border-color:#c0392b;}
+
+/* ============ RUN 视图 ============ */
+.runwrap{flex:1;display:flex;flex-direction:column;min-width:0;}
+.runtop{height:44px;display:flex;align-items:center;gap:8px;padding:0 14px;flex-shrink:0;}
+.runbody{flex:1;min-height:0;display:flex;padding:0 8px 8px;gap:6px;}
+
+.pane{border:1px solid #b9b9b9;background:#fff;display:flex;min-width:0;}
+.pane-tab{
+  width:28px;flex-shrink:0;background:#f4f4f4;border-right:1px solid #dcdcdc;
+  display:flex;flex-direction:column;align-items:center;padding-top:8px;gap:10px;
+}
+.pane-tab .vtxt{writing-mode:vertical-rl;font-size:15px;font-weight:300;color:#3d3d3d;}
+.collapse{
+  width:20px;height:20px;border:1.5px solid #6b6b6b;border-radius:50%;display:grid;place-items:center;flex-shrink:0;cursor:pointer;
+}
+.pane-content{flex:1;min-width:0;position:relative;display:flex;flex-direction:column;}
+
+.pane-instruments{width:640px;flex-shrink:0;}
+.deck{flex:1;position:relative;background:#f7f7f7;min-height:0;}
+.statusrow{height:104px;display:flex;flex-shrink:0;border-top:1px solid #dcdcdc;}
+.stat{width:210px;background:#fff;border-right:1px solid #dcdcdc;display:flex;position:relative;}
+.stat .sb{width:12px;flex-shrink:0;}
+.stat .sn{writing-mode:vertical-rl;font-size:14px;color:#333;font-weight:300;padding:8px 3px;}
+.stat .sc{flex:1;padding:10px 6px;display:flex;flex-direction:column;gap:8px;min-width:0;}
+.stat .line{display:flex;align-items:center;gap:6px;font-size:12px;color:#333;}
+.stat .line b{font-weight:400;}
+.ssel{
+  height:20px;flex:1;border:1px solid #a8a8a8;font-size:11.5px;appearance:none;padding:0 16px 0 4px;background:#fff;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10'><path d='M1 3l4 4 4-4' fill='none' stroke='%23444' stroke-width='1.4'/></svg>");
+  background-repeat:no-repeat;background-position:right 3px center;
+}
+.stat .dot{position:absolute;left:12px;bottom:-6px;width:14px;height:14px;border-radius:50%;background:#e02020;}
+.stat .cbtn{position:absolute;right:8px;bottom:6px;}
+
+/* Workflow */
+.pane-workflow{width:520px;flex-shrink:0;}
+.wf-title{
+  text-align:center;font-size:23px;font-weight:300;color:#3b3b3b;padding:10px 0 8px;flex-shrink:0;
+}
+.wf-title .cx{font-size:11px;color:#555;margin-left:4px;}
+.wf-canvas{
+  flex:1;margin:0 10px 10px;border:1px solid #c8c8c8;background:#fff;position:relative;overflow:auto;
+}
+.wf-inner{position:relative;width:100%;height:840px;}
+.wf-inner svg.wires{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;}
+.node{position:absolute;}
+.n-circle{
+  width:72px;height:72px;border-radius:50%;display:grid;place-items:center;
+  color:#fff;font-size:19px;font-weight:400;
+}
+.n-begin{background:#2eaa4e;} .n-end{background:#e02020;}
+.n-diamond{
+  width:62px;height:62px;background:#f5c518;transform:rotate(45deg);
+  border:1.5px solid #c9a012;display:grid;place-items:center;border-radius:4px;
+}
+.n-diamond span{transform:rotate(-45deg);font-size:30px;font-weight:700;color:#fff;
+  text-shadow:0 1px 1px rgba(0,0,0,.25);}
+.n-drop{
+  width:74px;height:74px;background:#fff;border:1.5px solid #9a9a9a;display:grid;place-items:center;
+  text-align:center;font-size:11px;color:#333;line-height:1.3;padding:4px;
+}
+.n-cmd{
+  width:78px;height:74px;background:#c99a76;border:2px solid #8a5a3b;display:grid;place-items:center;
+  border-radius:2px;overflow:hidden;
+}
+.n-cmd.plain{background:#fff;border-color:#9a9a9a;}
+.n-cmd.sel{box-shadow:-5px 0 0 #4ad46a;}
+.n-label{
+  position:absolute;font-size:12px;color:#222;line-height:1.35;width:150px;
+}
+.n-marker{position:absolute;left:-16px;top:-4px;width:0;height:0;
+  border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:9px solid #555;}
+
+/* Gantt */
+.pane-gantt{flex:1;min-width:0;}
+.g-tool{display:flex;align-items:center;gap:10px;padding:8px 10px;flex-shrink:0;flex-wrap:wrap;}
+.g-tool .spacer{flex:1;}
+.chk{display:flex;align-items:center;gap:5px;font-size:12px;color:#333;}
+.chk input{width:14px;height:14px;}
+.iconbtn{
+  width:26px;height:26px;border-radius:50%;border:1.6px solid #3d3d3d;background:#fff;
+  display:grid;place-items:center;cursor:pointer;flex-shrink:0;
+}
+.g-body{flex:1;min-height:0;overflow:auto;display:flex;}
+.g-left{width:290px;flex-shrink:0;}
+.g-right{flex:1;min-width:0;position:relative;}
+.g-headrow{height:22px;display:flex;align-items:flex-end;font-size:11px;color:#333;padding-left:2px;}
+.g-scale{height:44px;border-bottom:1px solid #d0d0d0;position:relative;}
+.g-scale .maj{position:absolute;top:2px;font-size:12px;color:#333;}
+.g-scale .min{position:absolute;top:22px;font-size:11px;color:#333;}
+.g-scale .tick{position:absolute;top:20px;bottom:0;width:1px;background:#d0d0d0;}
+.g-rowlabel{
+  height:28px;display:flex;align-items:center;font-size:12px;color:#2b2b2b;
+  border-bottom:1px solid #ececec;
+}
+.g-rowlabel.grp{font-weight:400;padding-left:8px;}
+.g-rowlabel.chld{padding-left:34px;}
+.g-rowlabel.barcode{background:#d9d9d9;color:#c9c9c9;padding-left:8px;}
+.g-tw{position:relative;height:28px;border-bottom:1px solid #ececec;}
+.g-tw .cell{position:absolute;top:0;bottom:0;width:1px;background:#ececec;}
+.bar{
+  position:absolute;top:5px;height:18px;border-radius:2px;font-size:9.5px;color:#fff;
+  display:flex;align-items:center;padding:0 3px;overflow:hidden;white-space:nowrap;line-height:1;
+}
+.sumbar{position:absolute;top:9px;height:7px;background:#8ec63f;border-radius:1px;}
+.sumbar::before,.sumbar::after{
+  content:'';position:absolute;top:0;width:6px;height:7px;background:#8ec63f;
+}
+.b-storage{background:#8a5a3b;} .b-liquid{background:#a02f8c;}
+.b-incub{background:#e8a33d;}   .b-cwash{background:#4a3fc9;}
+.b-multi{background:#f4b6c4;}   .b-reader{background:#f26a4b;}
+.b-xpeel{background:#39b54a;}   .b-seal{background:#f7941e;}
+
+/* ============ LAYOUT 视图 ============ */
+.lib{
+  width:104px;flex-shrink:0;background:#f4f4f4;border-right:1px solid #dcdcdc;
+  overflow-y:auto;padding:6px 0 40px;
+}
+.lib-item{
+  width:88px;margin:0 auto 10px;cursor:grab;text-align:center;user-select:none;
+}
+.lib-item .thumb{
+  width:88px;height:52px;background:#fff;border:1px solid #cfcfcf;border-radius:3px;
+  display:grid;place-items:center;overflow:hidden;
+}
+.lib-item:hover .thumb{border-color:#28b44a;box-shadow:0 0 0 2px rgba(40,180,74,.22);}
+.lib-item .cap{font-size:9.5px;color:#4a4a4a;line-height:1.25;margin-top:3px;}
+.lib-item.sel .thumb{border-color:#28b44a;background:#f2fbf4;}
+
+.stage{flex:1;min-width:0;position:relative;background:#fff;overflow:auto;}
+.stage svg{display:block;width:100%;height:100%;min-height:560px;}
+.stage-tools{
+  position:absolute;left:12px;bottom:12px;display:flex;gap:8px;
+}
+.stage-tools .tbtn{width:30px;height:30px;border-width:1.6px;}
+
+/* 右侧属性面板 */
+.props{
+  width:342px;flex-shrink:0;background:#ececec;border-left:1px solid #d2d2d2;
+  display:flex;flex-direction:column;
+}
+.props-scroll{flex:1;min-height:0;overflow-y:auto;padding:14px 18px 12px;}
+.props h2{font-size:24px;font-weight:300;color:#333;text-align:center;margin-bottom:8px;}
+.props .intro{font-size:11.5px;color:#5a5a5a;line-height:1.55;text-align:center;margin-bottom:14px;}
+.acc{
+  display:flex;align-items:center;gap:8px;font-size:11.5px;color:#3d3d3d;
+  letter-spacing:.6px;cursor:pointer;padding:6px 0;
+}
+.acc .exp3{width:20px;height:20px;border:1.5px solid #6b6b6b;border-radius:50%;display:grid;place-items:center;flex-shrink:0;}
+.divider{height:1px;background:#d5d5d5;margin:10px 0 14px;}
+
+.prop-head{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:12px;}
+.prop-head .t{font-size:21px;font-weight:300;color:#333;}
+.pill{
+  display:block;margin:0 auto 16px;height:26px;padding:0 16px;border:1px solid #8b8b8b;
+  background:#f7f7f7;border-radius:3px;font-size:12px;cursor:pointer;color:#333;
+}
+.pill:hover{background:#e3f0f9;border-color:#1a91d6;}
+
+.frow{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+.frow label{font-size:11.5px;color:#3d3d3d;width:118px;flex-shrink:0;}
+.finput{
+  flex:1;height:23px;border:1px solid #a8a8a8;background:#fff;font-size:11.5px;
+  padding:0 6px;border-radius:2px;color:#222;min-width:0;
+}
+.frow.chk2{gap:7px;margin-bottom:6px;}
+.frow.chk2 input{width:14px;height:14px;flex-shrink:0;}
+.frow.chk2 span{font-size:11.5px;color:#3d3d3d;}
+.swatch{
+  width:44px;height:24px;border:1px solid #8b8b8b;border-radius:2px;
+  background:linear-gradient(135deg,#5b8ede,#2f5fb8);cursor:pointer;
+}
+.props-foot{
+  flex-shrink:0;border-top:1px solid #d5d5d5;padding:12px 18px 14px;
+  display:flex;justify-content:center;gap:12px;
+}
+.props-foot .tbtn{width:32px;height:32px;background:#ececec;}
+
+/* ============ ADVANCED 视图 ============ */
+.toolbox{
+  width:308px;flex-shrink:0;border-right:1px solid #dcdcdc;background:#fff;
+  display:flex;flex-direction:column;min-height:0;
+}
+.tb-section{display:flex;flex-direction:column;min-height:0;}
+.tb-section.grow{flex:1;}
+.cmdgrid{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:2px;padding:6px 6px 10px;
+  overflow-y:auto;align-content:start;
+}
+.cmd{
+  height:84px;border-radius:3px;display:flex;flex-direction:column;align-items:center;
+  justify-content:flex-start;padding:8px 3px 4px;cursor:grab;background:#fff;
+}
+.cmd:hover{background:#e8f4fb;outline:1px solid #9ed3f0;}
+.cmd .ci{height:34px;display:grid;place-items:center;}
+.cmd .cn{font-size:10px;color:#3a3a3a;text-align:center;line-height:1.2;margin-top:4px;}
+.grpbar{
+  display:flex;align-items:center;gap:9px;padding:8px 10px;background:#f2f2f2;
+  border-top:1px solid #dcdcdc;border-bottom:1px solid #dcdcdc;cursor:pointer;flex-shrink:0;
+}
+.grpbar .exp3{width:20px;height:20px;border:1.5px solid #6b6b6b;border-radius:50%;display:grid;place-items:center;flex-shrink:0;}
+.grpbar .gn{font-size:14px;font-weight:300;color:#3d3d3d;}
+
+/* 中间画布 */
+.advmid{flex:1;min-width:0;display:flex;flex-direction:column;}
+.advbar{
+  height:40px;display:flex;align-items:center;justify-content:flex-end;gap:8px;
+  padding:0 12px;border-bottom:1px solid #e3e3e3;flex-shrink:0;
+}
+.tabstrip{display:flex;padding:8px 0 0 14px;flex-shrink:0;}
+.ptab{
+  min-width:184px;height:44px;background:#f4f4f4;border:1px solid #d5d5d5;border-bottom:none;
+  border-radius:4px 4px 0 0;display:flex;align-items:center;justify-content:center;
+  position:relative;font-size:20px;font-weight:300;color:#3b3b3b;
+}
+.ptab.active{background:#fff;}
+.ptab .x{position:absolute;right:8px;top:5px;cursor:pointer;}
+.ptab .dots{position:absolute;left:8px;top:8px;display:flex;gap:2px;}
+.ptab .dots i{width:3px;height:3px;background:#c2c2c2;border-radius:50%;}
+.advcanvas{
+  flex:1;min-height:0;border-top:1px solid #d5d5d5;background:#fff;overflow:auto;position:relative;
+}
+.advcanvas .wf-inner{height:600px;}
+.n-loop{
+  width:64px;height:64px;display:grid;place-items:center;
+}
+
+/* 右侧 Program Explorer */
+.explorer{
+  width:344px;flex-shrink:0;background:#ececec;border-left:1px solid #d2d2d2;
+  display:flex;flex-direction:column;min-height:0;
+}
+.ex-head{
+  padding:10px 16px 8px;border-bottom:2px solid #3fbf5f;flex-shrink:0;background:#fff;
+}
+.ex-head h3{font-size:22px;font-weight:300;color:#2f8f49;letter-spacing:.2px;}
+.ex-tools{display:flex;gap:8px;padding:8px 14px;background:#fff;border-bottom:1px solid #dcdcdc;flex-shrink:0;}
+.ex-tools .tbtn{width:30px;height:30px;border-width:1.6px;}
+.ex-scroll{flex:1;min-height:0;overflow-y:auto;padding:10px 12px 14px;}
+.ex-group{background:#fff;border:1px solid #dcdcdc;border-radius:3px;margin-bottom:10px;}
+.ex-gbar{display:flex;align-items:center;gap:9px;padding:9px 10px;cursor:pointer;}
+.ex-gbar .exp3{width:20px;height:20px;border:1.5px solid #6b6b6b;border-radius:50%;display:grid;place-items:center;flex-shrink:0;}
+.ex-gbar .gn{font-size:13px;color:#3d3d3d;}
+.ex-list{border-top:1px solid #e6e6e6;padding:3px 0;}
+.ex-li{
+  padding:5px 12px;font-size:12px;color:#2b2b2b;cursor:pointer;
+  display:flex;align-items:center;gap:7px;
+}
+.ex-li:hover{background:#eaf6fd;}
+.ex-li.sel{background:#cfe6b8;}
+.ex-li .led{width:9px;height:9px;border-radius:50%;background:#bdbdbd;border:1px solid #9a9a9a;flex-shrink:0;}
+.ex-li .led.on{background:#3fbf5f;border-color:#2f8f49;}
+.ex-actions{display:flex;justify-content:center;gap:14px;padding:10px 0 12px;}
+.ex-actions .tbtn{width:34px;height:34px;background:#fff;}
+
+.propcard{background:#fff;border:1px solid #dcdcdc;border-radius:3px;}
+.propcard .hd{
+  padding:9px 12px;font-size:16px;font-weight:300;color:#2f8f49;border-bottom:2px solid #3fbf5f;
+  display:flex;align-items:center;gap:7px;
+}
+.propcard .bd{padding:10px 12px 14px;}
+.propcard .kv{font-size:12px;color:#333;margin-bottom:9px;}
+.colbox{border:1px solid #cfcfcf;border-radius:2px;margin-top:6px;}
+.colbox div{padding:4px 9px;font-size:12px;color:#2b2b2b;border-bottom:1px solid #eee;}
+.colbox div:last-child{border-bottom:none;}
+
+/* ============ SCHEDULE 视图 ============ */
+.rail{
+  width:62px;flex-shrink:0;border-right:1px solid #dcdcdc;background:#fff;
+  padding:10px 0;display:flex;flex-direction:column;align-items:center;gap:10px;
+}
+.rail-btn{
+  width:42px;height:42px;border-radius:5px;border:2px solid #2f8f49;background:#fff;
+  display:grid;place-items:center;font-size:14px;font-weight:600;color:#2f8f49;cursor:pointer;
+}
+.rail-btn.bp{border-color:#c0399f;color:#c0399f;}
+.rail-btn:hover{background:#f2fbf4;}
+.rail-btn.bp:hover{background:#fdf2fa;}
+
+.schmain{flex:1;min-width:0;display:flex;flex-direction:column;background:#fff;}
+.sch-title{font-size:26px;font-weight:300;color:#3b3b3b;padding:12px 22px 4px;flex-shrink:0;}
+.sch-tabs{display:flex;gap:20px;padding:2px 22px 10px;flex-shrink:0;}
+.sch-tabs span{font-size:22px;font-weight:300;color:#8d8d8d;cursor:pointer;}
+.sch-tabs span.active{color:#2f8f49;}
+
+.calwrap{flex:1;min-height:0;display:flex;flex-direction:column;margin:0 12px 0 16px;border:1px solid #c8c8c8;}
+.cal-toolbar{
+  height:34px;display:flex;align-items:center;gap:0;padding:0 8px;border-bottom:1px solid #dcdcdc;
+  flex-shrink:0;position:relative;background:#fafafa;
+}
+.seg{display:flex;border:1px solid #c2c2c2;border-radius:3px;overflow:hidden;margin-right:8px;}
+.seg button{
+  min-width:30px;height:22px;border:none;border-right:1px solid #d5d5d5;background:#fff;
+  font-size:12px;color:#333;cursor:pointer;padding:0 8px;
+}
+.seg button:last-child{border-right:none;}
+.seg button.on{background:#e3f0f9;color:#1a91d6;}
+.seg button:hover{background:#eaf6fd;}
+.cal-toolbar .ct{
+  position:absolute;left:0;right:0;text-align:center;font-size:12.5px;color:#333;pointer-events:none;
+}
+.cal-toolbar .rt{margin-left:auto;display:flex;align-items:center;gap:8px;z-index:1;}
+.navbtn{
+  width:24px;height:22px;border:1px solid #c2c2c2;background:#fff;border-radius:3px;
+  display:grid;place-items:center;cursor:pointer;
+}
+.navbtn:hover{background:#eaf6fd;border-color:#1a91d6;}
+
+.cal-head{display:grid;grid-template-columns:58px repeat(7,1fr);flex-shrink:0;border-bottom:1px solid #d5d5d5;}
+.cal-head div{
+  font-size:11.5px;color:#3a3a3a;padding:6px 8px;border-right:1px solid #e6e6e6;
+}
+.cal-head div:last-child{border-right:none;}
+.cal-scroll{flex:1;min-height:0;overflow-y:auto;}
+.cal-grid{display:grid;grid-template-columns:58px repeat(7,1fr);min-height:100%;}
+.timecol div{
+  height:46px;font-size:11.5px;color:#3a3a3a;padding:2px 8px 0 0;text-align:right;
+  border-bottom:1px solid #ececec;
+}
+.daycol{border-right:1px solid #e6e6e6;position:relative;}
+.daycol:last-child{border-right:none;}
+.daycol .slot{height:46px;border-bottom:1px solid #ececec;}
+.daycol.today{box-shadow:inset 3px 0 0 #2f8f49;}
+.job{
+  position:absolute;left:4px;right:6px;background:#eaf7ec;border:1px solid #9dc9a6;
+  border-radius:2px;padding:5px 6px;cursor:pointer;overflow:hidden;
+}
+.job:hover{background:#dff2e3;border-color:#2f8f49;}
+.job .jt{font-size:10.5px;color:#2b2b2b;}
+.job .jr{font-size:10.5px;color:#4a4a4a;margin-top:2px;}
+.nowline{position:absolute;left:0;right:0;height:2px;background:#e02020;z-index:3;}
+.nowline::before{content:'';position:absolute;left:-4px;top:-3px;width:8px;height:8px;border-radius:50%;background:#e02020;}
+
+.runtable{flex-shrink:0;margin:8px 12px 10px 16px;border:1px solid #c8c8c8;}
+.runtable .th{
+  display:grid;grid-template-columns:90px 130px 110px 90px 80px 140px 90px 100px 1fr;
+  border-bottom:1px solid #d5d5d5;background:#fafafa;
+}
+.runtable .th span{
+  font-size:11px;color:#3a3a3a;letter-spacing:.4px;padding:7px 8px;border-right:1px solid #e6e6e6;
+}
+.runtable .empty{height:56px;display:grid;place-items:center;font-size:11.5px;color:#a2a2a2;}
+
+/* 右侧 Schedule New Job */
+.jobpanel{
+  width:344px;flex-shrink:0;background:#ececec;border-left:1px solid #d2d2d2;
+  display:flex;flex-direction:column;
+}
+.jp-head{padding:10px 16px 8px;background:#fff;border-bottom:2px solid #3fbf5f;flex-shrink:0;}
+.jp-head h3{font-size:22px;font-weight:300;color:#2f8f49;}
+.jp-body{padding:14px 16px;overflow-y:auto;}
+.jp-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+.jp-row label{font-size:11.5px;color:#3d3d3d;flex-shrink:0;}
+.btn-ghost{
+  height:26px;padding:0 14px;border:1px solid #b5b5b5;background:#f2f2f2;color:#9a9a9a;
+  font-size:12px;border-radius:3px;cursor:not-allowed;flex:1;
+}
+.btn-ghost.on{color:#2f8f49;border-color:#2f8f49;background:#fff;cursor:pointer;}
+.btn-ghost.on:hover{background:#f2fbf4;}
+.dtinput{position:relative;flex:1;display:flex;}
+.dtinput .finput{flex:1;padding-right:26px;}
+.dtinput .cal-ic{position:absolute;right:5px;top:4px;pointer-events:none;}
+.jp-circles{display:flex;justify-content:center;gap:16px;margin:6px 0 14px;}
+.jp-circles .tbtn{width:30px;height:30px;background:#ececec;border-width:1.6px;}
+.jp-actions{display:flex;justify-content:center;gap:12px;margin-top:16px;}
+.jp-actions .btn{min-width:110px;height:28px;}
+.jp-actions .btn.primary{border-color:#2f8f49;color:#2f8f49;background:#fff;}
+.jp-actions .btn.primary:hover{background:#f2fbf4;}
+
+/* ============ START 视图 ============ */
+.startnav{
+  width:268px;flex-shrink:0;border-right:1px solid #dcdcdc;background:#fafafa;
+  padding:18px 0;overflow-y:auto;
+}
+.snav{
+  display:flex;align-items:center;gap:14px;padding:11px 22px;cursor:pointer;
+  font-size:16px;font-weight:300;color:#3d3d3d;border-left:3px solid transparent;
+}
+.snav:hover{background:#eef7fc;color:#0a84c8;}
+.snav.on{border-left-color:#2f8f49;color:#2f8f49;background:#f2fbf4;}
+.snav .si{width:22px;display:grid;place-items:center;flex-shrink:0;}
+.snav-sep{height:1px;background:#e2e2e2;margin:10px 22px;}
+
+.startmain{flex:1;min-width:0;overflow-y:auto;padding:22px 30px 40px;}
+.hero{display:flex;align-items:flex-end;gap:16px;margin-bottom:6px;}
+.hero .mark{
+  width:56px;height:56px;border-radius:50%;background:#2f8f49;display:grid;place-items:center;flex-shrink:0;
+}
+.hero h1{font-size:36px;font-weight:200;color:#2b2b2b;letter-spacing:.4px;line-height:1;}
+.hero .sub{font-size:13px;color:#7a7a7a;margin-top:6px;}
+.section-h{
+  font-size:19px;font-weight:300;color:#3b3b3b;margin:26px 0 10px;
+  display:flex;align-items:center;gap:10px;
+}
+.section-h .rule{flex:1;height:1px;background:#e2e2e2;}
+
+.recgrid{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(292px,1fr));gap:14px;max-width:1040px;
+}
+.rcard{
+  border:1px solid #e2e4e6;border-radius:5px;background:#fff;overflow:hidden;cursor:pointer;
+  transition:box-shadow .15s,border-color .15s;
+}
+.rcard:hover{border-color:#c6d8cb;box-shadow:0 3px 14px rgba(0,0,0,.07);}
+.rcard.on{border-color:#2f8f49;box-shadow:0 0 0 1px #2f8f49;}
+.rthumb{
+  height:150px;background:#f7f8f9;border-bottom:1px solid #edeef0;position:relative;overflow:hidden;
+}
+.rcard.on .rthumb{background:#f5fbf7;border-bottom-color:#dcecdf;}
+.rthumb svg{width:100%;height:100%;display:block;}
+.rtag{
+  position:absolute;left:10px;top:10px;font-size:10px;padding:2px 9px;border-radius:9px;
+  background:rgba(255,255,255,.94);color:#7a7a7a;border:1px solid #dcdcdc;letter-spacing:.2px;
+}
+.rtag.live{background:#2f8f49;color:#fff;border-color:#2f8f49;}
+.rtag.draft{background:rgba(255,255,255,.9);color:#b0b0b0;border-style:dashed;}
+.rpin{
+  position:absolute;right:8px;top:8px;width:24px;height:24px;border-radius:50%;
+  display:grid;place-items:center;color:#8d8d8d;opacity:0;transition:opacity .12s;
+}
+.rcard:hover .rpin{opacity:.55;}
+.rpin:hover{opacity:1 !important;background:rgba(255,255,255,.9);}
+.rpin.pinned{opacity:1;color:#2f8f49;background:rgba(255,255,255,.9);}
+.rbody{padding:12px 14px 13px;}
+.rname{font-size:15px;color:#2b2b2b;line-height:1.25;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.rpath{
+  font-size:11px;color:#a2a2a2;margin-top:3px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.rnote{font-size:11.5px;color:#6f6f6f;margin-top:9px;line-height:1.5;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:34px;}
+.rmeta2{
+  display:flex;align-items:center;font-size:10.5px;color:#9a9a9a;
+  margin-top:10px;padding-top:9px;border-top:1px solid #f2f2f2;
+}
+.rmeta2 .dot{width:3px;height:3px;border-radius:50%;background:#cfcfcf;margin:0 7px;flex-shrink:0;}
+
+.quick{display:flex;gap:12px;flex-wrap:wrap;max-width:760px;}
+.qcard{
+  width:238px;border:1px solid #dcdcdc;border-radius:3px;background:#fff;padding:14px;cursor:pointer;
+}
+.qcard:hover{border-color:#2f8f49;background:#f8fdf9;}
+.qcard .qt{font-size:14px;color:#2b2b2b;margin:8px 0 4px;}
+.qcard .qd{font-size:11.5px;color:#7a7a7a;line-height:1.5;}
+
+.startside{
+  width:344px;flex-shrink:0;background:#ececec;border-left:1px solid #d2d2d2;
+  padding:16px 16px 20px;overflow-y:auto;
+}
+.statecard{background:#fff;border:1px solid #dcdcdc;border-radius:3px;margin-bottom:12px;}
+.statecard .hd{
+  padding:9px 12px;font-size:15px;font-weight:300;color:#2f8f49;border-bottom:2px solid #3fbf5f;
+}
+.statecard .bd{padding:10px 12px 12px;}
+.kvrow{display:flex;justify-content:space-between;font-size:12px;color:#333;padding:4px 0;}
+.kvrow span:last-child{color:#5a5a5a;}
+.badge{
+  display:inline-block;padding:2px 9px;border-radius:10px;font-size:11px;
+  background:#151515;color:#fff;
+}
+.badge.sim{background:#151515;}
+.instrow{display:flex;align-items:center;gap:8px;font-size:12px;color:#2b2b2b;padding:5px 0;}
+.instrow .led{width:9px;height:9px;border-radius:50%;background:#3fbf5f;border:1px solid #2f8f49;flex-shrink:0;}
+.instrow .led.idle{background:#dba32c;border-color:#b5851f;}
+.instrow .led.off{background:#c8c8c8;border-color:#a5a5a5;}
+.instrow .st{margin-left:auto;color:#7a7a7a;font-size:11px;}
+
+/* ============ 弹窗 ============ */
+.overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.15);display:none;z-index:50;
+  align-items:flex-start;justify-content:center;padding-top:150px;
+}
+.overlay.show{display:flex;}
+.dialog{
+  width:960px;background:#fff;border:1px solid #6f6f6f;box-shadow:0 8px 30px rgba(0,0,0,.35);
+  display:flex;flex-direction:column;max-height:78vh;
+}
+.dlg-title{
+  height:30px;background:#3c2d63;color:#fff;display:flex;align-items:center;
+  padding:0 4px 0 10px;font-size:12.5px;letter-spacing:.6px;flex-shrink:0;
+}
+.dlg-title .t{flex:1;}
+.dlg-title .w{width:34px;height:26px;display:grid;place-items:center;cursor:pointer;}
+.dlg-title .w:hover{background:rgba(255,255,255,.18);}
+.dlg-title .w.close:hover{background:#e81123;}
+.dlg-tabs{display:flex;gap:16px;padding:12px 20px 4px;}
+.dlg-tabs span{font-size:20px;font-weight:300;color:#3b3b3b;cursor:pointer;}
+.dlg-tabs span.active{color:#1a91d6;}
+.dlg-body{flex:1;min-height:0;overflow:auto;display:flex;justify-content:center;padding:8px 20px 0;position:relative;}
+.hotelcols{display:flex;gap:56px;}
+.hotel{display:flex;flex-direction:column-reverse;gap:3px;}
+.slot{
+  width:150px;height:15px;background:#d5d5d5;border-radius:2px;font-size:10.5px;color:#333;
+  display:flex;align-items:center;padding-left:5px;cursor:pointer;
+}
+.slot.filled{background:#2e6d8e;color:#fff;border-bottom:2px solid #9b3e5e;}
+.slot:hover{outline:1px solid #1a91d6;}
+.hotel .cap{
+  display:flex;align-items:center;justify-content:space-between;margin-top:6px;font-size:15px;color:#333;order:-1;
+}
+.hotel .cap label{display:flex;align-items:center;gap:6px;}
+.zonestab{
+  position:absolute;right:12px;top:8px;display:flex;flex-direction:column;align-items:center;gap:8px;
+}
+.zonestab .vtxt{writing-mode:vertical-rl;font-size:16px;font-weight:300;color:#3b3b3b;}
+.dlg-foot{flex-shrink:0;border-top:1px solid #d0d0d0;padding:12px 20px 14px;}
+.dlg-foot .r{display:flex;align-items:center;justify-content:center;gap:12px;font-size:14px;color:#333;}
+.btn{
+  min-width:66px;height:26px;border:1px solid #8b8b8b;background:#f2f2f2;font-size:12px;cursor:pointer;border-radius:2px;
+}
+.btn:hover{background:#e3f0f9;border-color:#1a91d6;}
+.btn.ok{min-width:56px;margin:12px auto 0;display:block;}
+
+.hint{
+  position:fixed;left:10px;bottom:8px;font-size:11px;color:#9a9a9a;z-index:60;user-select:none;
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ===== 窗口标题栏 ===== -->
+  <div class="titlebar">
+    <div class="tb-icons">
+      <svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="#8ec63f"/><path d="M6 4.5l5 3.5-5 3.5z" fill="#fff"/></svg>
+      <svg width="15" height="15" viewBox="0 0 16 16"><path d="M2 2h9l3 3v9H2z" fill="#cfc6e6"/><rect x="5" y="2" width="5" height="4" fill="#3c2d63"/><rect x="4" y="9" width="8" height="5" fill="#3c2d63"/></svg>
+    </div>
+    <span class="tb-tab active">Basic</span>
+    <span class="tb-title">GREEN BUTTON GO SCHEDULER (GBG) - HTS_24m</span>
+    <div class="tb-spacer"></div>
+    <div class="tb-link"><svg width="13" height="13" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="none" stroke="#e6e0f5" stroke-width="1.4"/><rect x="7.2" y="6.5" width="1.6" height="5" fill="#e6e0f5"/><rect x="7.2" y="4" width="1.6" height="1.6" fill="#e6e0f5"/></svg>About</div>
+    <div class="tb-link"><svg width="13" height="13" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.6" fill="none" stroke="#e6e0f5" stroke-width="1.4"/><circle cx="8" cy="8" r="6" fill="none" stroke="#e6e0f5" stroke-width="1.4" stroke-dasharray="2.4 1.8"/></svg>Settings</div>
+    <div class="tb-link"><svg width="13" height="13" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="none" stroke="#e6e0f5" stroke-width="1.4"/><text x="8" y="11.6" font-size="9" fill="#e6e0f5" text-anchor="middle" font-family="Segoe UI">?</text></svg>Help</div>
+    <div class="tb-link"><svg width="13" height="13" viewBox="0 0 16 16"><path d="M10.5 2a3.6 3.6 0 00-3.2 5.2L2 12.5 3.5 14l5.3-5.3A3.6 3.6 0 1010.5 2z" fill="none" stroke="#e6e0f5" stroke-width="1.3"/></svg>Tools</div>
+    <div class="tb-win">
+      <div><svg width="11" height="11" viewBox="0 0 11 11"><rect x="1" y="5" width="9" height="1.2" fill="#fff"/></svg></div>
+      <div><svg width="11" height="11" viewBox="0 0 11 11"><rect x="1.5" y="1.5" width="8" height="8" fill="none" stroke="#fff" stroke-width="1.2"/></svg></div>
+      <div class="close"><svg width="11" height="11" viewBox="0 0 11 11"><path d="M1.5 1.5l8 8M9.5 1.5l-8 8" stroke="#fff" stroke-width="1.2"/></svg></div>
+    </div>
+  </div>
+
+  <!-- ===== 主菜单栏 ===== -->
+  <div class="menubar">
+    <div class="menu-item active" data-view="start">Start</div>
+    <div class="menu-item" data-view="layout">Layout</div>
+    <div class="menu-item" data-view="process">Process</div>
+    <div class="menu-item" data-view="schedule">Schedule</div>
+    <div class="menu-item" data-view="run">Run</div>
+    <div class="menu-item" data-view="advanced">Advanced</div>
+
+    <div class="simbar">
+      <span class="label">Simulation Mode</span>
+      <div class="rbtn play" title="Run">
+        <svg width="16" height="16" viewBox="0 0 16 16"><path d="M4 2.5l10 5.5-10 5.5z" fill="#fff"/></svg>
+      </div>
+      <div class="rbtn" title="Stop">
+        <svg width="14" height="14" viewBox="0 0 14 14"><rect x="2" y="2" width="10" height="10" rx="1.5" fill="#fff"/></svg>
+      </div>
+      <div class="rbtn" title="Pause">
+        <svg width="14" height="14" viewBox="0 0 14 14"><rect x="2.5" y="2" width="3.2" height="10" fill="#fff"/><rect x="8.3" y="2" width="3.2" height="10" fill="#fff"/></svg>
+      </div>
+      <div class="rbtn" title="Step In">
+        <svg width="17" height="15" viewBox="0 0 18 15"><path d="M2 2v11M4 7.5h9" stroke="#fff" stroke-width="1.6" fill="none"/><path d="M11 4l4 3.5-4 3.5z" fill="#fff"/></svg>
+      </div>
+      <div class="rbtn" title="Step Out">
+        <svg width="17" height="15" viewBox="0 0 18 15"><path d="M16 2v11M4 7.5h9" stroke="#fff" stroke-width="1.6" fill="none"/><path d="M7 4L3 7.5 7 11z" fill="#fff"/></svg>
+      </div>
+    </div>
+
+    <div class="userzone">
+      <div class="robot">
+        <svg width="40" height="34" viewBox="0 0 44 36">
+          <path d="M6 30h30" stroke="#3b3b3b" stroke-width="2.2" fill="none"/>
+          <path d="M9 30V17l9-9 6 6" stroke="#3b3b3b" stroke-width="2.2" fill="none" stroke-linejoin="round"/>
+          <rect x="22" y="10" width="12" height="8" rx="1.5" fill="none" stroke="#3b3b3b" stroke-width="2.2"/>
+          <circle cx="18" cy="8" r="3" fill="#3b3b3b"/>
+        </svg>
+      </div>
+      <div class="user" style="position:relative;padding-right:8px;">
+        <svg width="26" height="26" viewBox="0 0 26 26">
+          <circle cx="13" cy="8" r="5" fill="#4a4a4a"/>
+          <path d="M3 25c0-6 4.5-9 10-9s10 3 10 9z" fill="#4a4a4a"/>
+        </svg>
+        <span class="name">Administrator</span>
+        <span class="caret">▾</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 视图容器 ===== -->
+  <div class="viewport">
+
+    <!-- ========== PROCESS 视图 ========== -->
+    <div class="view" id="view-process">
+
+      <!-- 左侧设备列表 -->
+      <div class="devlist" id="devlist"></div>
+
+      <!-- 中部 -->
+      <div class="procwrap">
+        <div class="proctool">
+          <span class="lbl">Process:</span>
+          <select class="sel" style="width:246px;">
+            <option>Workcell Process 1</option>
+            <option>Workcell Process 2</option>
+          </select>
+          <div class="tbtn" title="New"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 2v12M2 8h12" stroke="#333" stroke-width="2.1"/></svg></div>
+          <div class="tbtn" title="Edit"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M11.2 1.6l3.2 3.2-8.6 8.6-4 .8.8-4z" fill="none" stroke="#333" stroke-width="1.5" stroke-linejoin="round"/></svg></div>
+          <div class="tbtn" title="Import"><svg width="15" height="15" viewBox="0 0 16 16"><circle cx="8" cy="5" r="3.2" fill="#333"/><path d="M2 15c0-3.6 2.7-5.6 6-5.6s6 2 6 5.6z" fill="#333"/></svg></div>
+          <div class="tbtn" title="Delete"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M3 4h10M6.5 4V2.5h3V4M4.2 4l.8 10h6l.8-10" fill="none" stroke="#333" stroke-width="1.4" stroke-linejoin="round"/></svg></div>
+          <div class="tbtn" title="Settings"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.4" fill="none" stroke="#333" stroke-width="1.5"/><circle cx="8" cy="8" r="5.6" fill="none" stroke="#333" stroke-width="2.4" stroke-dasharray="2.2 1.8"/></svg></div>
+          <div class="tbtn" title="Timing"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.4" fill="none" stroke="#333" stroke-width="1.5"/><path d="M8 4v4.4l3 1.8" fill="none" stroke="#333" stroke-width="1.5"/></svg></div>
+          <div class="tbtn" title="Calculator"><svg width="15" height="15" viewBox="0 0 16 16"><rect x="2.5" y="1.5" width="11" height="13" rx="1" fill="none" stroke="#333" stroke-width="1.4"/><rect x="4.4" y="3.4" width="7.2" height="2.6" fill="#333"/><circle cx="5.4" cy="8.6" r="1" fill="#333"/><circle cx="8" cy="8.6" r="1" fill="#333"/><circle cx="10.6" cy="8.6" r="1" fill="#333"/><circle cx="5.4" cy="11.6" r="1" fill="#333"/><circle cx="8" cy="11.6" r="1" fill="#333"/><circle cx="10.6" cy="11.6" r="1" fill="#333"/></svg></div>
+          <div class="tbtn" title="Find"><svg width="15" height="15" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.6" fill="none" stroke="#333" stroke-width="1.5"/><path d="M10.4 10.4L14.5 14.5" stroke="#333" stroke-width="1.8"/></svg></div>
+          <div class="tbtn" title="More"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="3.4" cy="8" r="1.4" fill="#333"/><circle cx="8" cy="8" r="1.4" fill="#333"/><circle cx="12.6" cy="8" r="1.4" fill="#333"/></svg></div>
+        </div>
+
+        <div class="canvasrow">
+          <div class="vcol"><div class="exp2"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M3.6 2l3.2 3-3.2 3" fill="none" stroke="#555" stroke-width="1.5"/></svg></div><div class="vtxt">Variables</div></div>
+          <div class="vcol"><div class="exp2"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M3.6 2l3.2 3-3.2 3" fill="none" stroke="#555" stroke-width="1.5"/></svg></div><div class="vtxt">Startup Process</div></div>
+          <div class="vcol"><div class="exp2"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M3.6 2l3.2 3-3.2 3" fill="none" stroke="#555" stroke-width="1.5"/></svg></div><div class="vtxt">Shutdown Process</div></div>
+
+          <div class="lanes" id="lanes"></div>
+        </div>
+      </div>
+
+      <!-- 右侧脚本面板 -->
+      <div class="scriptpanel">
+        <h3>Run Script Done.cs</h3>
+        <div class="row">
+          <span>Script Name</span>
+          <select class="sel" style="flex:1;">
+            <option>Script Done.cs</option>
+            <option>Script Start.cs</option>
+          </select>
+        </div>
+        <div class="dbtn" title="Delete">
+          <svg width="20" height="20" viewBox="0 0 16 16"><path d="M3 4h10M6.5 4V2.5h3V4M4.2 4l.8 10h6l.8-10" fill="none" stroke="#333" stroke-width="1.4" stroke-linejoin="round"/></svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== START 视图 ========== -->
+    <div class="view active" id="view-start">
+
+      <!-- 左侧命令导航 -->
+      <div class="startnav">
+        <div class="snav on">
+          <span class="si"><svg width="18" height="18" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.4" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M6 4.6l5 3.4-5 3.4z" fill="currentColor"/></svg></span>
+          Open Program
+        </div>
+        <div class="snav">
+          <span class="si"><svg width="18" height="18" viewBox="0 0 16 16"><path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="1.8"/></svg></span>
+          New Program
+        </div>
+        <div class="snav">
+          <span class="si"><svg width="17" height="17" viewBox="0 0 16 16"><path d="M2 2h9l3 3v9H2z" fill="none" stroke="currentColor" stroke-width="1.4"/><rect x="5" y="2" width="5" height="4" fill="currentColor"/><rect x="4" y="9" width="8" height="5" fill="none" stroke="currentColor" stroke-width="1.2"/></svg></span>
+          Save
+        </div>
+        <div class="snav">
+          <span class="si"><svg width="17" height="17" viewBox="0 0 16 16"><path d="M2 2h8l3 3v8H2z" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M10 9.5l2.4 2.4 2.6-4.2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></span>
+          Save As
+        </div>
+
+        <div class="snav-sep"></div>
+
+        <div class="snav">
+          <span class="si"><svg width="17" height="17" viewBox="0 0 16 16"><path d="M2 4h5l1.6 2H14v8H2z" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 12V7.5M5.8 9.6L8 7.4l2.2 2.2" fill="none" stroke="currentColor" stroke-width="1.4"/></svg></span>
+          Import Workcell
+        </div>
+        <div class="snav">
+          <span class="si"><svg width="17" height="17" viewBox="0 0 16 16"><path d="M2 4h5l1.6 2H14v8H2z" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 7.4V12M5.8 9.8L8 12l2.2-2.2" fill="none" stroke="currentColor" stroke-width="1.4"/></svg></span>
+          Export Workcell
+        </div>
+        <div class="snav">
+          <span class="si"><svg width="17" height="17" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.4" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="5.6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-dasharray="2.2 1.8"/></svg></span>
+          Settings
+        </div>
+
+        <div class="snav-sep"></div>
+
+        <div class="snav">
+          <span class="si"><svg width="17" height="17" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.4" fill="none" stroke="currentColor" stroke-width="1.4"/><rect x="7.2" y="6.6" width="1.6" height="5" fill="currentColor"/><rect x="7.2" y="4" width="1.6" height="1.6" fill="currentColor"/></svg></span>
+          About
+        </div>
+        <div class="snav">
+          <span class="si"><svg width="17" height="17" viewBox="0 0 16 16"><path d="M10 2H3v12h7" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 8h7M12 5l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></span>
+          Exit
+        </div>
+      </div>
+
+      <!-- 中间主区 -->
+      <div class="startmain">
+        <div class="hero">
+          <div class="mark">
+            <svg width="26" height="26" viewBox="0 0 26 26"><path d="M8 5l13 8-13 8z" fill="#fff"/></svg>
+          </div>
+          <div>
+            <h1>Green Button Go</h1>
+            <div class="sub">Scheduler 4.2 · Workcell HTS_24m · 3 processes, 9 instruments</div>
+          </div>
+        </div>
+
+        <div class="section-h">Recent programs<span class="rule"></span></div>
+        <div class="recgrid" id="recentList"></div>
+
+        <div class="section-h">Start something<span class="rule"></span></div>
+        <div class="quick">
+          <div class="qcard" data-go="layout">
+            <svg width="26" height="26" viewBox="0 0 26 26" fill="none" stroke="#2f8f49" stroke-width="1.6"><rect x="2" y="2" width="9" height="9" rx="1.5"/><rect x="15" y="2" width="9" height="9" rx="1.5"/><rect x="2" y="15" width="9" height="9" rx="1.5"/><circle cx="19.5" cy="19.5" r="4.5"/></svg>
+            <div class="qt">Build the workcell</div>
+            <div class="qd">Drag instruments onto the deck and set up the robot's reach.</div>
+          </div>
+          <div class="qcard" data-go="process">
+            <svg width="26" height="26" viewBox="0 0 26 26" fill="none" stroke="#2f8f49" stroke-width="1.6"><rect x="3" y="2" width="20" height="6" rx="1.5"/><rect x="3" y="10" width="20" height="6" rx="1.5"/><rect x="3" y="18" width="20" height="6" rx="1.5"/></svg>
+            <div class="qt">Define a process</div>
+            <div class="qd">Chain labware steps into a workcell process the scheduler can run.</div>
+          </div>
+          <div class="qcard" data-go="schedule">
+            <svg width="26" height="26" viewBox="0 0 26 26" fill="none" stroke="#2f8f49" stroke-width="1.6"><rect x="2.5" y="4" width="21" height="19" rx="2"/><path d="M2.5 10h21M8 2v4M18 2v4"/></svg>
+            <div class="qt">Schedule a job</div>
+            <div class="qd">Pick a start time and let the scheduler place the run on the calendar.</div>
+          </div>
+          <div class="qcard" data-go="run">
+            <svg width="26" height="26" viewBox="0 0 26 26" fill="none" stroke="#2f8f49" stroke-width="1.6"><path d="M2 22h22"/><rect x="4" y="14" width="4" height="6"/><rect x="11" y="9" width="4" height="11"/><rect x="18" y="4" width="4" height="16"/></svg>
+            <div class="qt">Run and watch</div>
+            <div class="qd">Follow the Gantt chart and instrument states while the run executes.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 右侧状态栏 -->
+      <div class="startside">
+        <div class="statecard">
+          <div class="hd">Workcell status</div>
+          <div class="bd">
+            <div class="kvrow"><span>Mode</span><span class="badge sim">Simulation Mode</span></div>
+            <div class="kvrow"><span>Workcell</span><span>HTS_24m</span></div>
+            <div class="kvrow"><span>Signed in</span><span>Administrator</span></div>
+            <div class="kvrow"><span>Last run</span><span>4/30 10:40 – 16:40</span></div>
+            <div class="kvrow"><span>Next job</span><span>PS210430104033.000</span></div>
+          </div>
+        </div>
+
+        <div class="statecard">
+          <div class="hd">Instruments</div>
+          <div class="bd" id="startInst"></div>
+        </div>
+
+        <div class="statecard">
+          <div class="hd">About</div>
+          <div class="bd">
+            <div class="kvrow"><span>Version</span><span>4.2.1830</span></div>
+            <div class="kvrow"><span>License</span><span>Site · 24 seats</span></div>
+            <div class="kvrow"><span>Database</span><span>Connected</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== LAYOUT 视图 ========== -->
+    <div class="view" id="view-layout">
+
+      <!-- 左侧仪器库 -->
+      <div class="lib" id="lib"></div>
+
+      <!-- 中间布局台面 -->
+      <div class="stage">
+        <svg viewBox="0 0 900 620" preserveAspectRatio="xMidYMid meet">
+          <!-- 连接路径（工作单元走位） -->
+          <g fill="none" stroke="#3fbf5f" stroke-width="1.6">
+            <path d="M210 128 C 330 100, 430 96, 520 118"/>
+            <path d="M520 118 C 600 130, 636 180, 636 236"/>
+            <path d="M636 236 C 636 300, 566 336, 500 350"/>
+            <path d="M500 350 C 430 366, 380 420, 356 470"/>
+            <path d="M356 470 C 320 520, 258 520, 214 480"/>
+            <path d="M214 480 C 176 440, 168 300, 210 128"/>
+          </g>
+
+          <!-- 左上：多工位转盘 Storage Carousel -->
+          <g>
+            <polygon points="196,52 268,74 300,140 268,206 196,228 124,206 92,140 124,74"
+                     fill="#a9adb2" stroke="#8b9095" stroke-width="2"/>
+            <polygon points="196,66 258,84 286,140 258,196 196,214 134,196 106,140 134,84"
+                     fill="#bcc0c4" stroke="#9aa0a5"/>
+            <circle cx="196" cy="140" r="30" fill="#8f9499"/>
+            <circle cx="196" cy="140" r="12" fill="#c8ccd0"/>
+            <g fill="#8a8f94" stroke="#7a7f84">
+              <circle cx="196" cy="84" r="9"/><circle cx="240" cy="102" r="9"/>
+              <circle cx="258" cy="140" r="9"/><circle cx="240" cy="178" r="9"/>
+              <circle cx="196" cy="196" r="9"/><circle cx="152" cy="178" r="9"/>
+              <circle cx="134" cy="140" r="9"/><circle cx="152" cy="102" r="9"/>
+            </g>
+          </g>
+
+          <!-- 中央机械臂 PF-400（选中态） -->
+          <g>
+            <circle cx="356" cy="212" r="76" fill="none" stroke="#c2c2c2" stroke-width="1.4" stroke-dasharray="5 4"/>
+            <rect x="316" y="176" width="80" height="66" rx="3" fill="#fff" stroke="#3a3a3a" stroke-width="1.6"/>
+            <rect x="326" y="186" width="26" height="46" rx="2" fill="#f2f2f2" stroke="#6a6a6a"/>
+            <rect x="356" y="196" width="32" height="26" rx="2" fill="#e8e8e8" stroke="#6a6a6a"/>
+            <path d="M340 232 v16" stroke="#3a3a3a" stroke-width="2"/>
+            <!-- 立柱 -->
+            <rect x="342" y="248" width="30" height="112" rx="4" fill="#eeeeee" stroke="#9a9a9a" stroke-width="1.4"/>
+            <rect x="349" y="256" width="16" height="96" rx="3" fill="#dcdcdc"/>
+            <rect x="326" y="360" width="62" height="20" rx="5" fill="#e6e6e6" stroke="#9a9a9a" stroke-width="1.4"/>
+            <circle cx="357" cy="392" r="12" fill="none" stroke="#3fbf5f" stroke-width="2.4"/>
+            <path d="M352 386a5 5 0 019 3" fill="none" stroke="#3fbf5f" stroke-width="2"/>
+            <!-- 选中绿框 -->
+            <rect x="308" y="168" width="96" height="82" rx="3" fill="none" stroke="#3fbf5f" stroke-width="1.6" stroke-dasharray="4 3"/>
+          </g>
+
+          <!-- 右上：读板机 / 液体工作站 -->
+          <g>
+            <rect x="470" y="66" width="126" height="130" rx="3" fill="#f4f4f4" stroke="#8f8f8f" stroke-width="1.6"/>
+            <rect x="470" y="66" width="126" height="42" fill="#5a5f63"/>
+            <rect x="482" y="76" width="46" height="24" rx="2" fill="#3d4144"/>
+            <rect x="540" y="76" width="46" height="24" rx="2" fill="#3d4144"/>
+            <rect x="482" y="120" width="48" height="60" rx="2" fill="#fff" stroke="#a5a5a5"/>
+            <rect x="490" y="130" width="32" height="40" rx="1" fill="#e9eef3" stroke="#bcc4cc"/>
+            <rect x="540" y="120" width="48" height="60" rx="2" fill="#5a5f63"/>
+            <g fill="#9aa0a5">
+              <rect x="546" y="126" width="36" height="8"/><rect x="546" y="138" width="36" height="8"/>
+              <rect x="546" y="150" width="36" height="8"/><rect x="546" y="162" width="36" height="8"/>
+            </g>
+            <path d="M470 196 l-24 30 h30 l24 -30z" fill="#e6e6e6" stroke="#a5a5a5"/>
+          </g>
+
+          <!-- 右中：XPeel（蓝色高亮） -->
+          <g>
+            <rect x="470" y="248" width="140" height="86" rx="10" fill="#5b9bd5" opacity=".85"/>
+            <rect x="482" y="222" width="42" height="42" rx="3" fill="#fff" stroke="#8f8f8f" stroke-width="1.4"/>
+            <path d="M524 224 l52 22 -52 22z" fill="#eef4fa" stroke="#a8bfd4"/>
+            <path d="M524 268 l52 22 -52 22z" fill="#dce8f4" stroke="#a8bfd4"/>
+            <rect x="486" y="276" width="34" height="34" rx="2" fill="#4a86c0" stroke="#3f76ab"/>
+            <path d="M492 282 l22 12 -22 12z" fill="#e8f1f8"/>
+          </g>
+
+          <!-- 左下：离心机 Centrifuge -->
+          <g>
+            <g transform="rotate(-26 190 400)">
+              <rect x="90" y="352" width="200" height="112" rx="16" fill="#d8dadd" stroke="#9a9ea2" stroke-width="1.8"/>
+              <rect x="102" y="362" width="176" height="92" rx="12" fill="#eceef0"/>
+              <rect x="112" y="376" width="120" height="64" rx="8" fill="#c9ccd0" stroke="#a5a9ad"/>
+              <circle cx="252" cy="408" r="16" fill="#b4b8bc" stroke="#9a9ea2"/>
+              <rect x="120" y="386" width="98" height="44" rx="4" fill="#e2e4e7"/>
+            </g>
+          </g>
+
+          <!-- 右下：夹爪 / Sealer -->
+          <g>
+            <g transform="rotate(18 420 480)">
+              <rect x="366" y="432" width="100" height="96" rx="6" fill="#e4e6e8" stroke="#8f9296" stroke-width="1.6"/>
+              <rect x="378" y="444" width="76" height="34" rx="3" fill="#5a5f63"/>
+              <circle cx="398" cy="461" r="9" fill="#c6c9cc"/>
+              <circle cx="434" cy="461" r="9" fill="#c6c9cc"/>
+              <rect x="378" y="488" width="76" height="28" rx="3" fill="#f2f2f2" stroke="#a5a5a5"/>
+              <rect x="392" y="494" width="48" height="16" rx="2" fill="#d5d8db"/>
+              <rect x="356" y="470" width="14" height="20" rx="2" fill="#9a9ea2"/>
+            </g>
+          </g>
+        </svg>
+
+        <div class="stage-tools">
+          <div class="tbtn" title="Zoom In"><svg width="14" height="14" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.6" fill="none" stroke="#333" stroke-width="1.5"/><path d="M4.8 7h4.4M7 4.8v4.4" stroke="#333" stroke-width="1.4"/><path d="M10.4 10.4L14.5 14.5" stroke="#333" stroke-width="1.8"/></svg></div>
+          <div class="tbtn" title="Zoom Out"><svg width="14" height="14" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.6" fill="none" stroke="#333" stroke-width="1.5"/><path d="M4.8 7h4.4" stroke="#333" stroke-width="1.4"/><path d="M10.4 10.4L14.5 14.5" stroke="#333" stroke-width="1.8"/></svg></div>
+          <div class="tbtn" title="Fit"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4" fill="none" stroke="#333" stroke-width="1.6"/></svg></div>
+          <div class="tbtn" title="Grid"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M2 2h12v12H2zM6 2v12M10 2v12M2 6h12M2 10h12" fill="none" stroke="#333" stroke-width="1.3"/></svg></div>
+        </div>
+      </div>
+
+      <!-- 右侧属性面板 -->
+      <div class="props">
+        <div class="props-scroll">
+          <h2>Welcome</h2>
+          <p class="intro">To get started setting up your workcell, drag instruments from the left tool bar onto the surface.</p>
+
+          <div class="acc">
+            <div class="exp3"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 3.6l3 3.2 3-3.2" fill="none" stroke="#555" stroke-width="1.6"/></svg></div>
+            ADVANCED SETTINGS
+          </div>
+          <div class="divider"></div>
+
+          <div class="prop-head">
+            <span class="t">PF-400</span>
+            <div class="hbtn" style="background:#e2e2e2;"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M11.2 1.6l3.2 3.2-8.6 8.6-4 .8.8-4z" fill="none" stroke="#1f1f1f" stroke-width="1.5" stroke-linejoin="round"/></svg></div>
+          </div>
+          <button class="pill">teach pendant</button>
+
+          <div class="frow"><label>IP Address</label><input class="finput" value="192.168.0.1"></div>
+          <div class="frow"><label>Port</label><input class="finput" value="10100"></div>
+          <div class="frow"><label>Number of Axes</label><input class="finput" value="5"></div>
+
+          <div style="height:8px;"></div>
+          <div class="frow chk2"><input type="checkbox"><span>On Rail</span></div>
+          <div class="frow chk2"><input type="checkbox"><span>Rail is Separate</span></div>
+          <div class="frow chk2"><input type="checkbox"><span>Barcode Scanner</span></div>
+          <div class="frow chk2"><input type="checkbox"><span>Robot is Human</span></div>
+
+          <div style="height:10px;"></div>
+          <div class="frow">
+            <label>Configuration</label>
+            <select class="sel" style="flex:1;height:23px;"><option>Extended Reach</option><option>Standard Reach</option></select>
+          </div>
+          <div class="frow"><label>Background</label><div class="swatch"></div></div>
+          <div class="frow chk2" style="padding-left:128px;"><input type="checkbox"><span>Simulate</span></div>
+
+          <div class="divider"></div>
+          <div class="acc">
+            <div class="exp3"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 3.6l3 3.2 3-3.2" fill="none" stroke="#555" stroke-width="1.6"/></svg></div>
+            ADVANCED
+          </div>
+          <button class="pill" style="margin-top:8px;">Execute Commands</button>
+        </div>
+
+        <div class="props-foot">
+          <div class="tbtn" title="Save"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M2 2h9l3 3v9H2z" fill="none" stroke="#333" stroke-width="1.4"/><rect x="5" y="2" width="5" height="4" fill="#333"/><rect x="4" y="9" width="8" height="5" fill="none" stroke="#333" stroke-width="1.2"/></svg></div>
+          <div class="tbtn" title="Save As"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M2 2h8l3 3v8H2z" fill="none" stroke="#333" stroke-width="1.4"/><path d="M10.5 9.5l2.5 2.5 2.5-4" fill="none" stroke="#333" stroke-width="1.6"/></svg></div>
+          <div class="tbtn" title="Connect"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M6 10l-2 2a2.5 2.5 0 003.6 3.6l2-2M10 6l2-2a2.5 2.5 0 00-3.6-3.6l-2 2" fill="none" stroke="#333" stroke-width="1.5"/><path d="M5.6 10.4l4.8-4.8" stroke="#333" stroke-width="1.5"/></svg></div>
+          <div class="tbtn" title="Initialize"><svg width="15" height="15" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.6" fill="none" stroke="#333" stroke-width="1.5" stroke-dasharray="14 5"/><path d="M8 1.4v3.2" stroke="#333" stroke-width="1.6"/></svg></div>
+          <div class="tbtn" title="Delete"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M3 4h10M6.5 4V2.5h3V4M4.2 4l.8 10h6l.8-10" fill="none" stroke="#333" stroke-width="1.4" stroke-linejoin="round"/></svg></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== ADVANCED 视图 ========== -->
+    <div class="view" id="view-advanced">
+
+      <!-- 左侧命令工具箱 -->
+      <div class="toolbox">
+        <div class="tb-section grow">
+          <div class="cmdgrid" id="cmdGeneral"></div>
+        </div>
+        <div class="grpbar" onclick="toggleGroup(this)">
+          <div class="exp3"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 6.4l3-3.2 3 3.2" fill="none" stroke="#555" stroke-width="1.6"/></svg></div>
+          <svg width="15" height="15" viewBox="0 0 16 16"><rect x="6" y="1.5" width="4" height="9" rx="1" fill="#5b7fbf"/><rect x="3.5" y="10.5" width="9" height="3" rx="1" fill="#5b7fbf"/></svg>
+          <span class="gn">PF-400</span>
+        </div>
+        <div class="tb-section grow">
+          <div class="cmdgrid" id="cmdPf400"></div>
+        </div>
+      </div>
+
+      <!-- 中间流程画布 -->
+      <div class="advmid">
+        <div class="advbar">
+          <div class="tbtn" title="Undo"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 8a5 5 0 119 3" fill="none" stroke="#333" stroke-width="1.6"/><path d="M3 4v4h4" fill="none" stroke="#333" stroke-width="1.6"/></svg></div>
+          <div class="tbtn" title="Redo"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M13 8a5 5 0 10-9 3" fill="none" stroke="#333" stroke-width="1.6"/><path d="M13 4v4H9" fill="none" stroke="#333" stroke-width="1.6"/></svg></div>
+          <div class="tbtn" title="Locate"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.4" fill="none" stroke="#333" stroke-width="1.5"/><circle cx="8" cy="8" r="1.8" fill="#333"/><path d="M8 .8v2.4M8 12.8v2.4M.8 8h2.4M12.8 8h2.4" stroke="#333" stroke-width="1.5"/></svg></div>
+          <div class="tbtn" title="More"><svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 4l4 4 4-4" fill="none" stroke="#333" stroke-width="1.8"/></svg></div>
+        </div>
+
+        <div class="tabstrip">
+          <div class="ptab active">
+            <div class="dots"><i></i><i></i><i></i><i></i><i></i></div>
+            Start
+            <span class="x"><svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 2l8 8M10 2l-8 8" stroke="#444" stroke-width="1.5"/></svg></span>
+          </div>
+        </div>
+
+        <div class="advcanvas">
+          <div class="wf-inner" style="width:640px;">
+            <svg class="wires" viewBox="0 0 640 600" preserveAspectRatio="none">
+              <path d="M110 152 V184" stroke="#333" stroke-width="1.6" fill="none"/>
+              <path d="M142 214 H226 V282" stroke="#333" stroke-width="1.6" fill="none"/>
+              <path d="M226 348 V384 H110" stroke="#333" stroke-width="1.6" fill="none"/>
+              <path d="M110 246 V400" stroke="#333" stroke-width="1.6" fill="none"/>
+            </svg>
+
+            <div class="node" style="left:74px;top:80px;"><div class="n-circle n-begin">begin</div></div>
+
+            <div class="node" style="left:78px;top:182px;">
+              <div class="n-loop">
+                <svg width="60" height="60" viewBox="0 0 60 60">
+                  <path d="M30 10a20 20 0 11-14.1 5.9" fill="none" stroke="#3fbf5f" stroke-width="11" stroke-linecap="round"/>
+                  <path d="M13 4l6 16-17-2z" fill="#3fbf5f"/>
+                </svg>
+              </div>
+              <div class="n-marker"></div>
+              <div class="n-label" style="left:70px;top:2px;">Loop while All Workcell<br>Processes Complete =<br>False</div>
+            </div>
+
+            <div class="node" style="left:193px;top:282px;">
+              <div class="n-cmd plain" style="width:66px;height:66px;border:2px solid #555;">
+                <svg width="44" height="44" viewBox="0 0 44 44">
+                  <rect x="4" y="7" width="36" height="32" rx="3" fill="#fff" stroke="#4a4a4a" stroke-width="1.6"/>
+                  <rect x="4" y="7" width="36" height="9" fill="#5b7fbf"/>
+                  <text x="22" y="33" font-size="17" font-family="Segoe UI" text-anchor="middle" fill="#2b2b2b">12</text>
+                </svg>
+              </div>
+              <div class="n-label" style="left:78px;top:24px;">Run Scheduler</div>
+            </div>
+
+            <div class="node" style="left:74px;top:400px;"><div class="n-circle n-end">end</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 右侧 Program Explorer -->
+      <div class="explorer">
+        <div class="ex-head"><h3>Program Explorer</h3></div>
+        <div class="ex-tools">
+          <div class="tbtn" title="New Screen"><svg width="15" height="15" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="10" rx="1" fill="none" stroke="#333" stroke-width="1.4"/><path d="M5 14.5h6" stroke="#333" stroke-width="1.4"/></svg></div>
+          <div class="tbtn" title="New Script"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M3 1.5h7l3 3v10H3z" fill="none" stroke="#333" stroke-width="1.4"/><path d="M5.5 7h5M5.5 9.5h5M5.5 12h3" stroke="#333" stroke-width="1.2"/></svg></div>
+          <div class="tbtn" title="New Data Table"><svg width="15" height="15" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1" fill="none" stroke="#333" stroke-width="1.4"/><path d="M1.5 6h13M6 6v7.5M10.5 6v7.5" stroke="#333" stroke-width="1.2"/></svg></div>
+          <div class="tbtn" title="New Variable"><svg width="15" height="15" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="1.5" fill="none" stroke="#333" stroke-width="1.4"/><text x="8" y="11.4" font-size="8" text-anchor="middle" fill="#333" font-family="Segoe UI">x</text></svg></div>
+          <div class="tbtn" title="Instruments"><svg width="15" height="15" viewBox="0 0 16 16"><circle cx="5" cy="5" r="2.6" fill="none" stroke="#333" stroke-width="1.3"/><circle cx="11" cy="11" r="2.6" fill="none" stroke="#333" stroke-width="1.3"/><path d="M6.8 6.8l2.4 2.4" stroke="#333" stroke-width="1.3"/></svg></div>
+          <div class="tbtn" title="Help"><span style="font-size:14px;color:#333;">?</span></div>
+        </div>
+
+        <div class="ex-scroll">
+          <div class="ex-group">
+            <div class="ex-gbar" onclick="toggleGroup(this)">
+              <div class="exp3"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 3.6l3 3.2 3-3.2" fill="none" stroke="#555" stroke-width="1.6"/></svg></div>
+              <svg width="14" height="14" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="10" rx="1" fill="none" stroke="#5b7fbf" stroke-width="1.4"/><path d="M5 14.5h6" stroke="#5b7fbf" stroke-width="1.4"/></svg>
+              <span class="gn">Screens</span>
+            </div>
+          </div>
+
+          <div class="ex-group">
+            <div class="ex-gbar" onclick="toggleGroup(this)">
+              <div class="exp3"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 3.6l3 3.2 3-3.2" fill="none" stroke="#555" stroke-width="1.6"/></svg></div>
+              <svg width="14" height="14" viewBox="0 0 16 16"><path d="M3 1.5h7l3 3v10H3z" fill="none" stroke="#5b7fbf" stroke-width="1.4"/><path d="M5.5 7h5M5.5 9.5h5" stroke="#5b7fbf" stroke-width="1.2"/></svg>
+              <span class="gn">Scripts</span>
+            </div>
+          </div>
+
+          <div class="ex-group">
+            <div class="ex-gbar" onclick="toggleGroup(this)">
+              <div class="exp3"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 6.4l3-3.2 3 3.2" fill="none" stroke="#555" stroke-width="1.6"/></svg></div>
+              <svg width="14" height="14" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1" fill="none" stroke="#5b7fbf" stroke-width="1.4"/><path d="M1.5 6h13M6 6v7.5" stroke="#5b7fbf" stroke-width="1.2"/></svg>
+              <span class="gn">Data Tables</span>
+            </div>
+            <div class="ex-list" id="dtList"></div>
+            <div class="ex-actions">
+              <div class="tbtn" title="Edit"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M11.2 1.6l3.2 3.2-8.6 8.6-4 .8.8-4z" fill="none" stroke="#333" stroke-width="1.5" stroke-linejoin="round"/></svg></div>
+              <div class="tbtn" title="Refresh"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M13 8a5 5 0 11-1.5-3.6" fill="none" stroke="#333" stroke-width="1.6"/><path d="M13 1.5V5H9.5" fill="none" stroke="#333" stroke-width="1.6"/></svg></div>
+              <div class="tbtn" title="Delete"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M3 4h10M6.5 4V2.5h3V4M4.2 4l.8 10h6l.8-10" fill="none" stroke="#333" stroke-width="1.4" stroke-linejoin="round"/></svg></div>
+            </div>
+          </div>
+
+          <div class="ex-group">
+            <div class="ex-gbar" onclick="toggleGroup(this)">
+              <div class="exp3"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 6.4l3-3.2 3 3.2" fill="none" stroke="#555" stroke-width="1.6"/></svg></div>
+              <svg width="14" height="14" viewBox="0 0 16 16"><circle cx="5" cy="5" r="2.6" fill="none" stroke="#5b7fbf" stroke-width="1.3"/><circle cx="11" cy="11" r="2.6" fill="none" stroke="#5b7fbf" stroke-width="1.3"/><path d="M6.8 6.8l2.4 2.4" stroke="#5b7fbf" stroke-width="1.3"/></svg>
+              <span class="gn">Instruments</span>
+            </div>
+            <div class="ex-list" id="instList"></div>
+          </div>
+
+          <div class="propcard">
+            <div class="hd">
+              <svg width="14" height="14" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1" fill="none" stroke="#2f8f49" stroke-width="1.4"/><path d="M1.5 6h13M6 6v7.5" stroke="#2f8f49" stroke-width="1.2"/></svg>
+              Properties: Instrument_Utilization
+            </div>
+            <div class="bd">
+              <div class="kv">Data Table: Instrument_Utilization</div>
+              <label class="chk" style="margin-bottom:10px;"><input type="checkbox" checked> Clear at start of run</label>
+              <div class="kv" style="margin-bottom:2px;">Columns</div>
+              <div class="colbox">
+                <div>Instrument</div><div>Start</div><div>End</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== SCHEDULE 视图 ========== -->
+    <div class="view" id="view-schedule">
+
+      <!-- 左侧模式条 -->
+      <div class="rail">
+        <div class="rail-btn" title="Preschedule">Pre</div>
+        <div class="rail-btn bp" title="Batch Process">BP</div>
+      </div>
+
+      <div class="schmain">
+        <div class="sch-title">Preschedule</div>
+        <div class="sch-tabs">
+          <span class="active">Calendar</span>
+          <span>Tasks</span>
+        </div>
+
+        <div class="calwrap">
+          <div class="cal-toolbar">
+            <div class="seg">
+              <button>D</button><button>W</button><button class="on">M</button>
+            </div>
+            <div class="seg"><button>Today</button></div>
+            <span class="ct">Schedule Calendar</span>
+            <div class="rt">
+              <label class="chk"><input type="checkbox" checked> Show Makespans</label>
+              <div class="navbtn"><svg width="9" height="9" viewBox="0 0 10 10"><path d="M6.6 1L3.4 5l3.2 4" fill="none" stroke="#444" stroke-width="1.6"/></svg></div>
+              <div class="navbtn"><svg width="9" height="9" viewBox="0 0 10 10"><path d="M3.4 1L6.6 5l-3.2 4" fill="none" stroke="#444" stroke-width="1.6"/></svg></div>
+            </div>
+          </div>
+
+          <div class="cal-head" id="calHead"></div>
+
+          <div class="cal-scroll">
+            <div class="cal-grid">
+              <div class="timecol" id="timeCol"></div>
+              <div class="daycol today" id="d0"></div>
+              <div class="daycol" id="d1"></div>
+              <div class="daycol" id="d2"></div>
+              <div class="daycol" id="d3"></div>
+              <div class="daycol" id="d4"></div>
+              <div class="daycol" id="d5"></div>
+              <div class="daycol" id="d6"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="runtable">
+          <div class="th">
+            <span>RUN ID</span><span>WCP NAME</span><span>PROGRESS TYPE</span><span>MODULE</span>
+            <span>USER</span><span>INFO</span><span>PARENT F</span><span>WHEN</span><span>EXCEPTION</span>
+          </div>
+          <div class="empty">No runs yet. Scheduled jobs appear here once they start.</div>
+        </div>
+      </div>
+
+      <!-- 右侧 Schedule New Job -->
+      <div class="jobpanel">
+        <div class="jp-head"><h3>Schedule New Job</h3></div>
+        <div class="jp-body">
+          <div class="jp-row">
+            <select class="sel" style="flex:1;height:26px;"><option>Workcell Process 1</option><option>Workcell Process 2</option></select>
+            <button class="btn-ghost" id="startSched">start scheduling</button>
+          </div>
+
+          <div class="jp-row">
+            <label style="width:132px;">Estimated Duration (min):</label>
+            <input class="finput" value="360">
+          </div>
+
+          <div class="jp-row">
+            <label style="width:64px;">Start Time:</label>
+            <div class="dtinput">
+              <input class="finput" value="4/30/2021 10:40 AM">
+              <span class="cal-ic"><svg width="14" height="14" viewBox="0 0 16 16"><rect x="1.5" y="3" width="13" height="11" rx="1.5" fill="none" stroke="#555" stroke-width="1.3"/><path d="M1.5 6.5h13M5 1.6v2.6M11 1.6v2.6" stroke="#555" stroke-width="1.3"/></svg></span>
+            </div>
+          </div>
+
+          <div class="jp-circles">
+            <div class="tbtn" title="As soon as possible"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M3 2v12" stroke="#333" stroke-width="1.8"/><path d="M14 3L6 8l8 5z" fill="#333"/></svg></div>
+            <div class="tbtn" title="Optimal"><svg width="15" height="15" viewBox="0 0 16 16"><circle cx="8" cy="8" r="3" fill="none" stroke="#333" stroke-width="1.5"/><path d="M8 .8v2.2M8 13v2.2M.8 8h2.2M13 8h2.2M3 3l1.6 1.6M11.4 11.4L13 13M13 3l-1.6 1.6M4.6 11.4L3 13" stroke="#333" stroke-width="1.4"/></svg></div>
+            <div class="tbtn" title="As late as possible"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M13 2v12" stroke="#333" stroke-width="1.8"/><path d="M2 3l8 5-8 5z" fill="#333"/></svg></div>
+          </div>
+
+          <div class="jp-row">
+            <label style="width:64px;">Run After:</label>
+            <select class="sel" style="flex:1;height:24px;"><option></option><option>PS210430104033.000</option></select>
+          </div>
+
+          <div class="acc" style="margin-top:6px;">
+            <div class="exp3"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 3.6l3 3.2 3-3.2" fill="none" stroke="#555" stroke-width="1.6"/></svg></div>
+            ADVANCED
+          </div>
+
+          <div class="jp-actions">
+            <button class="btn primary" onclick="addJob()">add to schedule</button>
+            <button class="btn">cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== RUN 视图 ========== -->
+    <div class="view" id="view-run">
+      <div class="runwrap">
+        <div class="runtop">
+          <span style="font-size:12px;color:#444;">Workcell Process:</span>
+          <select class="sel" style="width:280px;"><option>Workcell Process 1</option></select>
+        </div>
+
+        <div class="runbody">
+
+          <!-- Instruments -->
+          <div class="pane pane-instruments">
+            <div class="pane-tab">
+              <div class="collapse"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M6.4 2l-3.2 3 3.2 3" fill="none" stroke="#555" stroke-width="1.5"/></svg></div>
+              <div class="vtxt">Instruments</div>
+            </div>
+            <div class="pane-content">
+              <div class="deck">
+                <svg viewBox="0 0 600 470" style="width:100%;height:100%;">
+                  <!-- 轨道圆弧 -->
+                  <ellipse cx="300" cy="300" rx="175" ry="118" fill="none" stroke="#dcdcdc" stroke-width="1.6"/>
+                  <!-- 上方 XPeel -->
+                  <rect x="248" y="42" width="122" height="98" rx="4" fill="#e9e9e9" stroke="#cfcfcf"/>
+                  <rect x="264" y="112" width="90" height="22" rx="2" fill="#f7f7f7" stroke="#cfcfcf"/>
+                  <rect x="285" y="128" width="48" height="6" fill="#dbe6ef"/>
+                  <!-- 左上 Reader -->
+                  <rect x="42" y="192" width="66" height="52" rx="3" fill="#dcdcdc" stroke="#c6c6c6"/>
+                  <rect x="102" y="204" width="16" height="26" rx="2" fill="#c9c9c9"/>
+                  <!-- 蓝色 Multidrop -->
+                  <path d="M126 188h84v58h-84z" fill="#2f6fc4"/>
+                  <path d="M126 188h84l-30 58h-54z" fill="#4b8ada"/>
+                  <rect x="206" y="206" width="18" height="26" rx="2" fill="#4a4a4a"/>
+                  <!-- 左中 Sealer -->
+                  <rect x="58" y="262" width="56" height="46" rx="3" fill="#efefef" stroke="#cfcfcf"/>
+                  <rect x="76" y="272" width="30" height="20" fill="#2f6fc4"/>
+                  <rect x="72" y="298" width="38" height="8" fill="#d8d8d8"/>
+                  <!-- 左下 CWash -->
+                  <rect x="20" y="336" width="80" height="30" rx="3" fill="#e6e2de" stroke="#cfcfcf"/>
+                  <rect x="88" y="336" width="10" height="30" fill="#9b2b45"/>
+                  <!-- 中部 Incubator -->
+                  <rect x="106" y="286" width="96" height="72" rx="5" fill="#eaeaea" stroke="#d5d5d5"/>
+                  <rect x="198" y="308" width="14" height="26" rx="2" fill="#c8c8c8"/>
+                  <!-- 机械臂 PF-400 -->
+                  <rect x="238" y="140" width="52" height="200" rx="4" fill="#f0f0f0" stroke="#dcdcdc"/>
+                  <rect x="246" y="300" width="90" height="26" rx="4" fill="#e2e2e2" stroke="#cfcfcf"/>
+                  <rect x="286" y="270" width="60" height="22" rx="4" fill="#ececec" stroke="#d5d5d5"/>
+                  <path d="M272 318h44v34h-44z" fill="#f4f4f4" stroke="#dcdcdc"/>
+                  <path d="M280 330a12 12 0 0124 0v14h-6v-14a6 6 0 00-12 0v14h-6z" fill="#4a4ac9"/>
+                  <rect x="230" y="352" width="90" height="16" rx="3" fill="#e8e8e8" stroke="#d5d5d5"/>
+                  <!-- 右上 转盘 Storage -->
+                  <g id="carousel">
+                    <rect x="420" y="196" width="132" height="98" rx="4" fill="#5f6a6f"/>
+                    <circle cx="486" cy="245" r="40" fill="#4d585d"/>
+                    <circle cx="486" cy="245" r="14" fill="#6c777c"/>
+                    <g fill="#3c464a">
+                      <circle cx="486" cy="214" r="9"/><circle cx="508" cy="224" r="9"/>
+                      <circle cx="516" cy="245" r="9"/><circle cx="508" cy="266" r="9"/>
+                      <circle cx="486" cy="276" r="9"/><circle cx="464" cy="266" r="9"/>
+                      <circle cx="456" cy="245" r="9"/><circle cx="464" cy="224" r="9"/>
+                    </g>
+                  </g>
+                  <!-- 右下 Hotel 架 -->
+                  <rect x="410" y="306" width="112" height="122" rx="3" fill="#dcdcdc" stroke="#c6c6c6"/>
+                  <g fill="#eaeaea" stroke="#c6c6c6">
+                    <rect x="420" y="316" width="42" height="32"/><rect x="470" y="316" width="42" height="32"/>
+                    <rect x="420" y="354" width="42" height="32"/><rect x="470" y="354" width="42" height="32"/>
+                    <rect x="420" y="392" width="42" height="32"/><rect x="470" y="392" width="42" height="32"/>
+                  </g>
+                </svg>
+              </div>
+              <div class="statusrow">
+                <div class="stat">
+                  <div class="sb" style="background:#3f6fd8;"></div>
+                  <div class="sn">PF-400</div>
+                  <div class="sc">
+                    <div class="line"><b>Status:</b><select class="ssel"><option>Ready</option></select></div>
+                    <div class="line"><b>Gripper:</b> Empty</div>
+                  </div>
+                  <div class="dot"></div>
+                </div>
+                <div class="stat">
+                  <div class="sb" style="background:#8a5a3b;"></div>
+                  <div class="sn">Storage</div>
+                  <div class="sc">
+                    <div class="line"><b>Status:</b><select class="ssel" id="storageStatus"><option>Ready</option><option>Busy</option></select></div>
+                    <div class="line"><b>Nest:</b> 384 mtp</div>
+                    <button class="btn" style="width:82px;height:22px;margin-top:2px;" onclick="openDialog()">Content</button>
+                  </div>
+                  <div class="cbtn"><svg width="14" height="14" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.4" fill="none" stroke="#666" stroke-width="1.4"/><circle cx="8" cy="8" r="5.6" fill="none" stroke="#666" stroke-width="2.2" stroke-dasharray="2.2 1.8"/></svg></div>
+                </div>
+                <div class="stat" style="width:70px;">
+                  <div class="sb" style="background:#dba32c;"></div>
+                  <div class="sn">Incubator</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Workflow -->
+          <div class="pane pane-workflow">
+            <div class="pane-tab">
+              <div class="collapse"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M6.4 2l-3.2 3 3.2 3" fill="none" stroke="#555" stroke-width="1.5"/></svg></div>
+              <div class="vtxt">Workflow View</div>
+            </div>
+            <div class="pane-content">
+              <div class="wf-title">
+                <span id="wfName">Storage.Edit Hotels</span>
+                <span class="cx" onclick="toggleWorkflow()" style="cursor:pointer;">▾</span>
+              </div>
+              <div class="wf-canvas">
+                <!-- Workflow A -->
+                <div class="wf-inner" id="wfA">
+                  <svg class="wires" viewBox="0 0 480 840" preserveAspectRatio="none">
+                    <path d="M120 118 V152" stroke="#333" stroke-width="1.6" fill="none"/>
+                    <path d="M120 216 V254" stroke="#333" stroke-width="1.6" fill="none"/>
+                    <path d="M151 184 H300 V254" stroke="#333" stroke-width="1.6" fill="none"/>
+                    <path d="M120 328 V390" stroke="#333" stroke-width="1.6" fill="none"/>
+                    <path d="M300 328 V360 H120" stroke="#333" stroke-width="1.6" fill="none"/>
+                    <path d="M120 454 V492" stroke="#333" stroke-width="1.6" fill="none"/>
+                    <path d="M151 422 H300 V492" stroke="#333" stroke-width="1.6" fill="none"/>
+                    <path d="M120 566 V640" stroke="#333" stroke-width="1.6" fill="none"/>
+                    <path d="M300 566 V604 H120" stroke="#333" stroke-width="1.6" fill="none"/>
+                  </svg>
+                  <div class="node" style="left:84px;top:46px;"><div class="n-circle n-begin">begin</div></div>
+                  <div class="node" style="left:89px;top:153px;">
+                    <div class="n-diamond"><span>?</span></div>
+                    <div class="n-marker"></div>
+                    <div class="n-label" style="left:74px;top:12px;">Branch if<br>Strategy = Launch<br>Content Editor</div>
+                  </div>
+                  <div class="node" style="left:83px;top:254px;"><div class="n-drop">drag<br>command<br>here</div></div>
+                  <div class="node" style="left:261px;top:254px;">
+                    <div class="n-cmd">
+                      <svg width="42" height="46" viewBox="0 0 42 46"><rect x="6" y="6" width="30" height="30" rx="3" fill="#f2f2f2" stroke="#8a5a3b" stroke-width="1.4"/><path d="M12 36h18l4 6H8z" fill="#dedede" stroke="#8a5a3b" stroke-width="1.2"/><rect x="13" y="12" width="16" height="12" rx="1.5" fill="#fff" stroke="#8a5a3b"/></svg>
+                    </div>
+                    <div class="n-label" style="left:86px;top:22px;">Storage - Edit Content</div>
+                  </div>
+                  <div class="node" style="left:89px;top:391px;">
+                    <div class="n-diamond"><span>?</span></div>
+                    <div class="n-marker"></div>
+                    <div class="n-label" style="left:74px;top:12px;">Branch if<br>Strategy = Load From<br>File</div>
+                  </div>
+                  <div class="node" style="left:83px;top:492px;"><div class="n-drop">drag<br>command<br>here</div></div>
+                  <div class="node" style="left:261px;top:492px;">
+                    <div class="n-cmd">
+                      <svg width="42" height="46" viewBox="0 0 42 46"><rect x="6" y="6" width="30" height="30" rx="3" fill="#f2f2f2" stroke="#8a5a3b" stroke-width="1.4"/><path d="M12 36h18l4 6H8z" fill="#dedede" stroke="#8a5a3b" stroke-width="1.2"/><rect x="13" y="12" width="16" height="12" rx="1.5" fill="#fff" stroke="#8a5a3b"/></svg>
+                    </div>
+                    <div class="n-label" style="left:86px;top:16px;">Storage - Import Contents From File</div>
+                  </div>
+                  <div class="node" style="left:84px;top:640px;"><div class="n-circle n-end">end</div></div>
+                </div>
+
+                <!-- Workflow B -->
+                <div class="wf-inner" id="wfB" style="display:none;">
+                  <svg class="wires" viewBox="0 0 480 840" preserveAspectRatio="none">
+                    <path d="M120 110 V140" stroke="#333" stroke-width="1.6" fill="none"/>
+                    <path d="M120 204 V232" stroke="#333" stroke-width="1.6" fill="none"/>
+                    <path d="M151 172 H300 V232" stroke="#333" stroke-width="1.6" fill="none"/>
+                    <path d="M120 306 V334" stroke="#333" stroke-width="1.6" fill="none"/>
+                    <path d="M120 408 V436" stroke="#333" stroke-width="1.6" fill="none"/>
+                    <path d="M120 510 V560 H300 V306" stroke="#333" stroke-width="1.6" fill="none"/>
+                    <path d="M120 510 V596" stroke="#333" stroke-width="1.6" fill="none"/>
+                    <path d="M120 670 V700" stroke="#333" stroke-width="1.6" fill="none"/>
+                  </svg>
+                  <div class="node" style="left:84px;top:38px;"><div class="n-circle n-begin">begin</div></div>
+                  <div class="node" style="left:89px;top:141px;">
+                    <div class="n-diamond"><span>?</span></div>
+                    <div class="n-marker"></div>
+                    <div class="n-label" style="left:74px;top:10px;">Branch if<br>Strategy = From<br>Worklist</div>
+                  </div>
+                  <div class="node" style="left:81px;top:232px;">
+                    <div class="n-cmd">
+                      <svg width="42" height="46" viewBox="0 0 42 46"><rect x="6" y="6" width="30" height="30" rx="3" fill="#f2f2f2" stroke="#8a5a3b" stroke-width="1.4"/><path d="M12 36h18l4 6H8z" fill="#dedede" stroke="#8a5a3b" stroke-width="1.2"/><rect x="13" y="12" width="16" height="12" rx="1.5" fill="#fff" stroke="#8a5a3b"/></svg>
+                    </div>
+                    <div class="n-label" style="left:86px;top:8px;">Storage - Dequeue Barcode from Table {Table Name}</div>
+                  </div>
+                  <div class="node" style="left:261px;top:232px;">
+                    <div class="n-cmd">
+                      <svg width="42" height="46" viewBox="0 0 42 46"><rect x="6" y="6" width="30" height="30" rx="3" fill="#f2f2f2" stroke="#8a5a3b" stroke-width="1.4"/><path d="M12 36h18l4 6H8z" fill="#dedede" stroke="#8a5a3b" stroke-width="1.2"/><rect x="13" y="12" width="16" height="12" rx="1.5" fill="#fff" stroke="#8a5a3b"/></svg>
+                    </div>
+                    <div class="n-label" style="left:86px;top:16px;">Storage - Find In Hotel By Barcode Or Zone</div>
+                  </div>
+                  <div class="node" style="left:81px;top:334px;">
+                    <div class="n-cmd">
+                      <svg width="42" height="46" viewBox="0 0 42 46"><rect x="6" y="6" width="30" height="30" rx="3" fill="#f2f2f2" stroke="#8a5a3b" stroke-width="1.4"/><path d="M12 36h18l4 6H8z" fill="#dedede" stroke="#8a5a3b" stroke-width="1.2"/><rect x="13" y="12" width="16" height="12" rx="1.5" fill="#fff" stroke="#8a5a3b"/></svg>
+                    </div>
+                    <div class="n-label" style="left:86px;top:16px;">Storage - Find In Hotel By Barcode Or Zone</div>
+                  </div>
+                  <div class="node" style="left:81px;top:436px;">
+                    <div class="n-cmd plain">
+                      <svg width="46" height="36" viewBox="0 0 46 36">
+                        <rect x="3" y="3" width="40" height="30" rx="3" fill="#f4f4f4" stroke="#b5b5b5"/>
+                        <g fill="#fff" stroke="#c2c2c2">
+                          <circle cx="11" cy="11" r="3"/><circle cx="19" cy="11" r="3"/><circle cx="27" cy="11" r="3"/><circle cx="35" cy="11" r="3"/>
+                          <circle cx="11" cy="19" r="3"/><circle cx="19" cy="19" r="3"/><circle cx="27" cy="19" r="3"/><circle cx="35" cy="19" r="3"/>
+                          <circle cx="11" cy="27" r="3"/><circle cx="19" cy="27" r="3"/><circle cx="27" cy="27" r="3"/><circle cx="35" cy="27" r="3"/>
+                        </g>
+                      </svg>
+                    </div>
+                    <div class="n-label" style="left:86px;top:28px;">Labware Data</div>
+                  </div>
+                  <div class="node" style="left:81px;top:596px;">
+                    <div class="n-cmd sel">
+                      <svg width="34" height="46" viewBox="0 0 34 46"><rect x="4" y="4" width="26" height="38" rx="2" fill="#e2e2e2" stroke="#8a5a3b" stroke-width="1.4"/><rect x="8" y="9" width="18" height="12" fill="#f6f6f6" stroke="#b09080"/><rect x="8" y="25" width="18" height="12" fill="#f6f6f6" stroke="#b09080"/><rect x="27" y="18" width="4" height="10" rx="1" fill="#b0b0b0"/></svg>
+                    </div>
+                    <div class="n-label" style="left:86px;top:16px;">Storage - Get Plate {Hotel Name}, {Shelf}</div>
+                  </div>
+                  <div class="node" style="left:84px;top:700px;"><div class="n-circle n-end">end</div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Gantt -->
+          <div class="pane pane-gantt">
+            <div class="pane-tab">
+              <div class="collapse"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M6.4 2l-3.2 3 3.2 3" fill="none" stroke="#555" stroke-width="1.5"/></svg></div>
+              <div class="vtxt">Gantt Chart/Data View</div>
+            </div>
+            <div class="pane-content">
+              <div class="g-tool">
+                <label class="chk"><input type="checkbox"> Disable</label>
+                <select class="sel" style="width:180px;"><option>Gantt Chart (All Labware)</option><option>Data View</option></select>
+                <div class="spacer"></div>
+                <select class="sel" style="width:250px;"><option>Workcell Process 1 Drug Plate Runtime</option></select>
+                <div class="iconbtn"><svg width="13" height="13" viewBox="0 0 16 16"><path d="M11.2 1.6l3.2 3.2-8.6 8.6-4 .8.8-4z" fill="none" stroke="#333" stroke-width="1.5" stroke-linejoin="round"/></svg></div>
+                <div class="iconbtn"><span style="font-size:13px;color:#333;">?</span></div>
+              </div>
+              <div class="g-tool" style="padding-top:0;">
+                <label class="chk"><input type="checkbox"> Show Times</label>
+              </div>
+              <div class="g-body">
+                <div class="g-left" id="gLeft"></div>
+                <div class="g-right" id="gRight"></div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ===== Storage Content 弹窗 ===== -->
+<div class="overlay" id="overlay">
+  <div class="dialog">
+    <div class="dlg-title">
+      <span class="t">STORAGE CONTENT - STORAGE</span>
+      <div class="w"><svg width="10" height="10" viewBox="0 0 11 11"><rect x="1" y="5" width="9" height="1.2" fill="#fff"/></svg></div>
+      <div class="w"><svg width="10" height="10" viewBox="0 0 11 11"><rect x="1.5" y="1.5" width="8" height="8" fill="none" stroke="#fff" stroke-width="1.2"/></svg></div>
+      <div class="w close" onclick="closeDialog()"><svg width="10" height="10" viewBox="0 0 11 11"><path d="M1.5 1.5l8 8M9.5 1.5l-8 8" stroke="#fff" stroke-width="1.3"/></svg></div>
+    </div>
+    <div class="dlg-tabs"><span class="active">Basic</span><span>Advanced</span></div>
+    <div class="dlg-body">
+      <div class="hotelcols">
+        <div class="hotel" id="hotel1"></div>
+        <div class="hotel" id="hotel2"></div>
+      </div>
+      <div class="zonestab">
+        <div class="collapse"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M6.4 2l-3.2 3 3.2 3" fill="none" stroke="#555" stroke-width="1.5"/></svg></div>
+        <div class="vtxt">Zones and Labware</div>
+      </div>
+    </div>
+    <div class="dlg-foot">
+      <div class="r">
+        <span>Selection</span><button class="btn">clear</button>
+        <span>Barcode</span>
+        <select class="sel" style="width:104px;height:24px;"><option>Plate</option><option>None</option></select>
+        <button class="btn">fill</button>
+      </div>
+      <button class="btn ok" onclick="closeDialog()">OK</button>
+    </div>
+  </div>
+</div>
+
+<div class="hint">菜单可切换 Start / Layout / Process / Schedule / Run / Advanced · Run 视图点 Storage 的 Content 打开弹窗 · 点 Workflow 标题旁 ▾ 切换流程</div>
+
+<script>
+/* ============ 左侧设备列表 ============ */
+const DEVICES = [
+  ['Storage','c-storage'],['Incubator','c-incubator'],['LiquidHandler','c-liquid'],
+  ['CWash','c-cwash'],['XPeel','c-xpeel'],['a4S Sealer','c-sealer'],
+  ['Multidrop Combi','c-multidrop'],['Reader','c-reader'],['Misc','c-misc']
+];
+document.getElementById('devlist').innerHTML = DEVICES.map(([n,c])=>`
+  <div class="dev">
+    <div class="bar ${c}"></div>
+    <div class="exp"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 3.6l3 3.2 3-3.2" fill="none" stroke="#555" stroke-width="1.6"/></svg></div>
+    <div class="nm">${n}</div>
+    ${n==='Misc'?'<div class="help">?</div>':''}
+  </div>`).join('');
+
+/* ============ 设备图标 ============ */
+const ICON = {
+  cabinet:`<svg width="52" height="52" viewBox="0 0 52 52"><rect x="12" y="6" width="30" height="40" rx="2" fill="#e6e6e6" stroke="#9a9a9a"/><path d="M12 6l-6 5v40l6-5z" fill="#cfcfcf" stroke="#9a9a9a"/><rect x="17" y="12" width="20" height="13" fill="#f7f7f7" stroke="#b5b5b5"/><rect x="17" y="28" width="20" height="13" fill="#f7f7f7" stroke="#b5b5b5"/><rect x="39" y="22" width="4" height="9" rx="1" fill="#a8a8a8"/></svg>`,
+  liquid:`<svg width="56" height="50" viewBox="0 0 56 50"><rect x="8" y="6" width="40" height="14" rx="2" fill="#e2e2e2" stroke="#9a9a9a"/><rect x="14" y="18" width="10" height="16" fill="#d0d0d0" stroke="#9a9a9a"/><rect x="6" y="34" width="44" height="10" rx="2" fill="#efefef" stroke="#9a9a9a"/><rect x="28" y="24" width="18" height="12" rx="1" fill="#f7f7f7" stroke="#b5b5b5"/><rect x="10" y="42" width="36" height="4" fill="#c8c8c8"/></svg>`,
+  incub:`<svg width="46" height="52" viewBox="0 0 46 52"><rect x="8" y="4" width="30" height="44" rx="2" fill="#ededed" stroke="#9a9a9a"/><rect x="13" y="10" width="20" height="16" fill="#f8f8f8" stroke="#bbb"/><rect x="13" y="30" width="20" height="12" fill="#f8f8f8" stroke="#bbb"/><rect x="35" y="20" width="4" height="12" rx="1" fill="#adadad"/></svg>`,
+  xpeel:`<svg width="56" height="48" viewBox="0 0 56 48"><path d="M10 10h34v22H10z" fill="#3d6fc4"/><path d="M10 10h34l-12 22H10z" fill="#5d8ada"/><rect x="6" y="32" width="42" height="8" rx="2" fill="#3a3a3a"/><rect x="14" y="34" width="22" height="4" fill="#dcdcdc"/></svg>`,
+  seal:`<svg width="46" height="52" viewBox="0 0 46 52"><rect x="8" y="4" width="30" height="34" rx="3" fill="#efe9e0" stroke="#b8ada0"/><rect x="14" y="12" width="18" height="16" rx="2" fill="#8f2b3b"/><rect x="6" y="38" width="34" height="8" rx="2" fill="#d8d0c6" stroke="#b8ada0"/><rect x="16" y="40" width="14" height="4" fill="#f2f2f2"/></svg>`,
+  cwash:`<svg width="60" height="40" viewBox="0 0 60 40"><rect x="4" y="12" width="50" height="18" rx="3" fill="#efefef" stroke="#b5b5b5"/><rect x="8" y="6" width="26" height="8" rx="2" fill="#e2e2e2" stroke="#b5b5b5"/><rect x="38" y="16" width="12" height="10" rx="1" fill="#d8d8d8"/><rect x="8" y="30" width="44" height="5" rx="1" fill="#c8c8c8"/></svg>`,
+  proc:`<svg width="46" height="34" viewBox="0 0 46 34"><rect x="17" y="0" width="12" height="9" fill="#1a1a1a"/><rect x="2" y="24" width="12" height="9" fill="#1a1a1a"/><rect x="17" y="24" width="12" height="9" fill="#1a1a1a"/><rect x="32" y="24" width="12" height="9" fill="#1a1a1a"/><path d="M23 9v8M8 24v-7h30v7" stroke="#1a1a1a" stroke-width="2" fill="none"/></svg>`
+};
+
+/* ============ 流程列数据 ============ */
+const LANES = [
+  {name:'384 MTP', steps:[
+    {dev:'Storage',c:'c-storage',t:'Get From Hotel',i:'cabinet'},
+    {dev:'LiquidHandler',c:'c-liquid',t:'Run Sequence',i:'liquid'},
+    {dev:'Incubator',c:'c-incubator',t:'Incubate',i:'incub'},
+    {dev:null,t:'Run Procedure Release Hold For Drug Replating',i:'proc'},
+    {dev:'Storage',c:'c-storage',t:'Hold',i:'incub'},
+    {dev:'CWash',c:'c-cwash',t:'Run Protocol',i:'cwash',r:true}
+  ]},
+  {name:'Drug Plate', steps:[
+    {dev:'Storage',c:'c-storage',t:'Get From Hotel',i:'cabinet',r:true},
+    {dev:'XPeel',c:'c-xpeel',t:'Peel',i:'xpeel'},
+    {dev:'LiquidHandler',c:'c-liquid',t:'Run Sequence',i:'liquid'},
+    {dev:'a4S Sealer',c:'c-sealer',t:'Seal',i:'seal'},
+    {dev:'Storage',c:'c-storage',t:'Put In Hotel',i:'incub'}
+  ]},
+  {name:'IDOT Source', steps:[
+    {dev:'Storage',c:'c-storage',t:'Get From Hotel',i:'cabinet',r:true},
+    {dev:'LiquidHandler',c:'c-liquid',t:'Run Sequence',i:'liquid'},
+    {dev:null,t:'Run Procedure Release Hold For Drug Treatment',i:'proc'},
+    {dev:'Storage',c:'c-storage',t:'Put In Hotel',i:'incub'}
+  ]}
+];
+
+const ICONS_COL = `
+  <div class="ico"><svg width="11" height="11" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5" fill="none" stroke="#333" stroke-width="1.2"/><path d="M6 3v3.4l2.2 1.3" stroke="#333" stroke-width="1.2" fill="none"/></svg></div>
+  <div class="ico"><svg width="11" height="11" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5" fill="none" stroke="#333" stroke-width="1.2"/><rect x="5.4" y="5" width="1.3" height="4" fill="#333"/><rect x="5.4" y="2.8" width="1.3" height="1.4" fill="#333"/></svg></div>
+  <div class="ico"><svg width="12" height="11" viewBox="0 0 13 12"><path d="M6.5 1L12 4 6.5 7 1 4z" fill="none" stroke="#333" stroke-width="1.1"/><path d="M1 7l5.5 3L12 7" fill="none" stroke="#333" stroke-width="1.1"/><path d="M1 9.6l5.5 3 5.5-3" fill="none" stroke="#333" stroke-width="1.1"/></svg></div>`;
+const TRASH = `<svg class="trash" width="13" height="13" viewBox="0 0 16 16"><path d="M3 4h10M6.5 4V2.5h3V4M4.2 4l.8 10h6l.8-10" fill="none" stroke="#1f1f1f" stroke-width="1.4" stroke-linejoin="round"/></svg>`;
+const PEN = `<svg width="14" height="14" viewBox="0 0 16 16"><path d="M11.2 1.6l3.2 3.2-8.6 8.6-4 .8.8-4z" fill="none" stroke="#1f1f1f" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
+const PEN_SQ = `<svg width="14" height="14" viewBox="0 0 16 16"><path d="M2 2h7M2 2v12h12V7" fill="none" stroke="#1f1f1f" stroke-width="1.4"/><path d="M11.4 1.4l3.2 3.2-6.4 6.4-4 .8.8-4z" fill="none" stroke="#1f1f1f" stroke-width="1.4" stroke-linejoin="round"/></svg>`;
+
+document.getElementById('lanes').innerHTML = LANES.map(l=>`
+  <div class="lane">
+    <div class="lane-head">
+      <div class="r1"><span class="k">Name:</span><span class="v">${l.name}</span><div class="hbtn">${PEN}</div></div>
+      <div class="r2"><span class="k">Labware:</span><select class="hsel"><option>Default</option></select><div class="hbtn sq">${PEN_SQ}</div></div>
+    </div>
+    <div class="lane-body">
+      ${l.steps.map((s,idx)=>`
+        ${idx?'<div class="link"></div>':''}
+        <div class="step">
+          ${s.dev?`<div class="sbar ${s.c}"></div><div class="sname">${s.dev}</div>`:''}
+          <div class="sbody" style="${s.dev?'':'padding-left:14px;'}">
+            ${ICON[s.i]}
+            <div class="slabel">${s.t}</div>
+          </div>
+          ${s.r?'<span class="rmark">R</span>':''}
+          <div class="sicons">${ICONS_COL}</div>
+          ${TRASH}
+        </div>`).join('')}
+    </div>
+  </div>`).join('') + `
+  <div class="addlane" style="margin-top:420px;"><svg width="18" height="18" viewBox="0 0 16 16"><path d="M8 2v12M2 8h12" stroke="#333" stroke-width="2.1"/></svg></div>`;
+
+/* ============ Layout 仪器库 ============ */
+const LIB = [
+  {n:'Biomek<br>i5/i7', s:`<svg width="76" height="44" viewBox="0 0 76 44"><rect x="4" y="6" width="68" height="30" rx="2" fill="#e6e6e6" stroke="#9a9a9a"/><rect x="9" y="11" width="26" height="20" fill="#f7f7f7" stroke="#b5b5b5"/><rect x="39" y="11" width="12" height="20" fill="#4a4a4a"/><rect x="55" y="11" width="13" height="20" fill="#cfcfcf" stroke="#a5a5a5"/><rect x="4" y="36" width="68" height="4" fill="#c2c2c2"/></svg>`},
+  {n:'SPE<br>ATS-100', s:`<svg width="76" height="44" viewBox="0 0 76 44"><rect x="6" y="8" width="64" height="28" rx="2" fill="#ededed" stroke="#9a9a9a"/><rect x="12" y="14" width="30" height="16" fill="#dcdcdc" stroke="#b5b5b5"/><rect x="46" y="14" width="18" height="16" rx="1" fill="#5a5f63"/><circle cx="55" cy="22" r="4" fill="#c6c9cc"/></svg>`},
+  {n:'Alleyoop<br>Wasp', s:`<svg width="76" height="44" viewBox="0 0 76 44"><rect x="6" y="12" width="58" height="20" rx="3" fill="#e2e2e2" stroke="#9a9a9a"/><rect x="14" y="6" width="16" height="10" rx="2" fill="#5b9bd5"/><rect x="34" y="16" width="24" height="12" fill="#f7f7f7" stroke="#b5b5b5"/><rect x="62" y="16" width="8" height="12" rx="2" fill="#bcbcbc"/></svg>`},
+  {n:'Brooks<br>XPeel', s:`<svg width="76" height="44" viewBox="0 0 76 44"><path d="M14 10h44v20H14z" fill="#3d6fc4"/><path d="M14 10h44L44 30H14z" fill="#5d8ada"/><rect x="10" y="30" width="52" height="7" rx="2" fill="#3a3a3a"/><rect x="24" y="32" width="24" height="3" fill="#dcdcdc"/></svg>`},
+  {n:'Peak Robotics<br>Centrifuge', s:`<svg width="76" height="44" viewBox="0 0 76 44"><circle cx="38" cy="22" r="17" fill="#a9adb2" stroke="#8b9095"/><circle cx="38" cy="22" r="7" fill="#cfd3d7"/><g fill="#8a8f94"><circle cx="38" cy="9" r="4"/><circle cx="49" cy="16" r="4"/><circle cx="49" cy="28" r="4"/><circle cx="38" cy="35" r="4"/><circle cx="27" cy="28" r="4"/><circle cx="27" cy="16" r="4"/></g></svg>`},
+  {n:'Vertex Automation<br>PF-400', s:`<svg width="76" height="44" viewBox="0 0 76 44"><rect x="32" y="4" width="12" height="26" rx="2" fill="#ededed" stroke="#9a9a9a"/><rect x="26" y="30" width="24" height="8" rx="2" fill="#dcdcdc" stroke="#9a9a9a"/><rect x="20" y="8" width="12" height="6" rx="2" fill="#e6e6e6" stroke="#a5a5a5"/><rect x="44" y="8" width="12" height="6" rx="2" fill="#e6e6e6" stroke="#a5a5a5"/></svg>`},
+  {n:'Multidrop<br>Combi', s:`<svg width="76" height="44" viewBox="0 0 76 44"><rect x="10" y="10" width="40" height="24" rx="3" fill="#2f6fc4"/><path d="M10 10h40L36 34H10z" fill="#4b8ada"/><rect x="50" y="16" width="12" height="12" rx="2" fill="#4a4a4a"/></svg>`},
+  {n:'a4S<br>Sealer', s:`<svg width="76" height="44" viewBox="0 0 76 44"><rect x="16" y="6" width="42" height="26" rx="3" fill="#efe9e0" stroke="#b8ada0"/><rect x="26" y="12" width="22" height="14" rx="2" fill="#8f2b3b"/><rect x="12" y="32" width="50" height="6" rx="2" fill="#d8d0c6" stroke="#b8ada0"/></svg>`}
+];
+document.getElementById('lib').innerHTML = LIB.map((d,i)=>`
+  <div class="lib-item ${i===5?'sel':''}" draggable="true">
+    <div class="thumb">${d.s}</div>
+    <div class="cap">${d.n}</div>
+  </div>`).join('');
+document.querySelectorAll('.lib-item').forEach(el=>el.addEventListener('click',()=>{
+  document.querySelectorAll('.lib-item').forEach(x=>x.classList.remove('sel'));
+  el.classList.add('sel');
+}));
+
+/* ============ Start 视图 ============ */
+const PIN = `<svg width="13" height="13" viewBox="0 0 16 16"><path d="M6 1.5h4l-.6 4 2.6 2.6H4l2.6-2.6z" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 8.1v6" stroke="currentColor" stroke-width="1.4"/></svg>`;
+
+/* 工作台缩略图 */
+const THUMB = {
+  hts:`<svg viewBox="0 0 292 150" xmlns="http://www.w3.org/2000/svg">
+    <g fill="none" stroke="#c3ddca" stroke-width="1.3">
+      <path d="M80 50 C120 39 172 39 206 52"/><path d="M206 52 C228 61 234 84 224 101"/>
+      <path d="M224 101 C208 118 152 120 124 110"/><path d="M124 110 C98 101 76 82 80 50"/>
+    </g>
+    <polygon points="64,26 87,33 97,55 87,77 64,84 41,77 31,55 41,33" fill="#c4c9cd" stroke="#a5abb0"/>
+    <circle cx="64" cy="55" r="14" fill="#9aa0a5"/><circle cx="64" cy="55" r="5" fill="#d8dcdf"/>
+    <circle cx="148" cy="68" r="32" fill="none" stroke="#dcdcdc" stroke-dasharray="3 3"/>
+    <rect x="133" y="47" width="31" height="25" rx="2" fill="#fff" stroke="#7a7a7a" stroke-width="1.3"/>
+    <rect x="141" y="72" width="14" height="33" rx="2" fill="#f0f0f0" stroke="#b0b0b0"/>
+    <rect x="135" y="105" width="26" height="9" rx="2" fill="#e6e6e6" stroke="#b0b0b0"/>
+    <rect x="200" y="24" width="48" height="44" rx="3" fill="#f4f4f4" stroke="#adadad"/>
+    <rect x="200" y="24" width="48" height="14" fill="#6b7175"/>
+    <rect x="206" y="43" width="17" height="20" fill="#eaf0f5" stroke="#c8ced4"/>
+    <rect x="227" y="43" width="16" height="20" fill="#6b7175"/>
+    <rect x="196" y="83" width="54" height="31" rx="7" fill="#8dbde4"/>
+    <rect x="203" y="90" width="18" height="18" rx="2" fill="#eaf2f9"/>
+    <rect x="36" y="99" width="60" height="27" rx="5" fill="#dcdee1" stroke="#a5abb0"/>
+    <rect x="45" y="105" width="35" height="15" rx="3" fill="#eff0f2"/>
+  </svg>`,
+
+  flow:`<svg viewBox="0 0 292 150" xmlns="http://www.w3.org/2000/svg">
+    <rect x="20" y="32" width="36" height="27" rx="3" fill="#eeeeee" stroke="#a5a5a5"/>
+    <circle cx="38" cy="45" r="8" fill="#cfcfcf" stroke="#a5a5a5"/><circle cx="38" cy="45" r="3" fill="#9a9a9a"/>
+    <rect x="20" y="82" width="36" height="27" rx="3" fill="#eeeeee" stroke="#a5a5a5"/>
+    <circle cx="38" cy="95" r="8" fill="#cfcfcf" stroke="#a5a5a5"/><circle cx="38" cy="95" r="3" fill="#9a9a9a"/>
+    <path d="M56 45h26v22h-26" fill="none" stroke="#a7bfd8" stroke-width="1.8"/>
+    <path d="M56 95h26V73" fill="none" stroke="#d8a9a2" stroke-width="1.8"/>
+    <circle cx="86" cy="70" r="7" fill="#fff" stroke="#8d8d8d" stroke-width="1.3"/>
+    <path d="M82 70h8M86 66v8" stroke="#8d8d8d" stroke-width="1.2"/>
+    <rect x="104" y="30" width="88" height="80" rx="5" fill="#fff" stroke="#b5b5b5"/>
+    <path d="M114 38c0 0 0 66 0 66M114 38h64c9 0 9 14 0 14h-54c-9 0-9 14 0 14h54c9 0 9 14 0 14h-54c-9 0-9 14 0 14h64"
+      fill="none" stroke="#e08a63" stroke-width="2.6" stroke-linejoin="round"/>
+    <path d="M192 70h14" stroke="#e08a63" stroke-width="2.2"/>
+    <rect x="206" y="40" width="32" height="50" rx="3" fill="#f0f0f0" stroke="#a5a5a5"/>
+    <rect x="212" y="47" width="20" height="15" fill="#dde9f4" stroke="#b5c6d6"/>
+    <path d="M222 90v16" stroke="#9a9a9a" stroke-width="1.6"/>
+    <path d="M210 106h24l-4 22h-16z" fill="#eef4f9" stroke="#a8bccd"/>
+    <rect x="250" y="50" width="28" height="60" rx="3" fill="#f4f4f4" stroke="#a5a5a5"/>
+    <rect x="255" y="57" width="18" height="11" rx="1" fill="#7bbd8e"/>
+    <path d="M255 76h18M255 85h18M255 94h12" stroke="#cfcfcf" stroke-width="1.5"/>
+  </svg>`,
+
+  pr8:`<svg viewBox="0 0 292 150" xmlns="http://www.w3.org/2000/svg">
+    <rect x="26" y="24" width="200" height="106" rx="7" fill="#eff0f2" stroke="#adb2b7"/>
+    <rect x="35" y="33" width="182" height="88" rx="5" fill="#f9fafa" stroke="#d2d6d9"/>
+    <g fill="#dcdee1" stroke="#a5abb0">
+      <circle cx="64" cy="57" r="16"/><circle cx="102" cy="57" r="16"/><circle cx="150" cy="57" r="16"/><circle cx="188" cy="57" r="16"/>
+      <circle cx="64" cy="97" r="16"/><circle cx="102" cy="97" r="16"/><circle cx="150" cy="97" r="16"/><circle cx="188" cy="97" r="16"/>
+    </g>
+    <g fill="#b5606c">
+      <circle cx="64" cy="57" r="7"/><circle cx="102" cy="57" r="7"/><circle cx="150" cy="57" r="7"/><circle cx="188" cy="57" r="7"/>
+      <circle cx="64" cy="97" r="7"/><circle cx="102" cy="97" r="7"/><circle cx="150" cy="97" r="7"/><circle cx="188" cy="97" r="7"/>
+    </g>
+    <rect x="236" y="33" width="36" height="88" rx="4" fill="#e6e8ea" stroke="#adb2b7"/>
+    <rect x="243" y="40" width="22" height="17" rx="2" fill="#2b3840"/>
+    <path d="M246 48h16" stroke="#7bbd8e" stroke-width="1.8"/>
+    <g fill="#cfd3d6"><rect x="243" y="66" width="22" height="7" rx="2"/><rect x="243" y="78" width="22" height="7" rx="2"/><rect x="243" y="90" width="22" height="7" rx="2"/></g>
+  </svg>`,
+
+  adme:`<svg viewBox="0 0 292 150" xmlns="http://www.w3.org/2000/svg">
+    <rect x="18" y="30" width="152" height="94" rx="4" fill="#f4f4f4" stroke="#adadad"/>
+    <rect x="18" y="30" width="152" height="15" fill="#e0e0e0"/>
+    <rect x="28" y="54" width="42" height="28" rx="2" fill="#fff" stroke="#c8c8c8"/>
+    <rect x="78" y="54" width="42" height="28" rx="2" fill="#fff" stroke="#c8c8c8"/>
+    <rect x="128" y="54" width="34" height="28" rx="2" fill="#eaf0f5" stroke="#bfcad4"/>
+    <g fill="#edf1f5" stroke="#ccd5dd" stroke-width=".8">
+      <circle cx="37" cy="63" r="2.8"/><circle cx="46" cy="63" r="2.8"/><circle cx="55" cy="63" r="2.8"/><circle cx="64" cy="63" r="2.8"/>
+      <circle cx="37" cy="74" r="2.8"/><circle cx="46" cy="74" r="2.8"/><circle cx="55" cy="74" r="2.8"/><circle cx="64" cy="74" r="2.8"/>
+      <circle cx="87" cy="63" r="2.8"/><circle cx="96" cy="63" r="2.8"/><circle cx="105" cy="63" r="2.8"/><circle cx="114" cy="63" r="2.8"/>
+      <circle cx="87" cy="74" r="2.8"/><circle cx="96" cy="74" r="2.8"/><circle cx="105" cy="74" r="2.8"/><circle cx="114" cy="74" r="2.8"/>
+    </g>
+    <rect x="28" y="92" width="134" height="22" rx="2" fill="#e6e6e6" stroke="#c8c8c8"/>
+    <rect x="62" y="22" width="66" height="11" rx="2" fill="#c2c7cc"/>
+    <g stroke="#969ca2" stroke-width="1.5"><path d="M71 33v15M82 33v15M93 33v15M104 33v15M115 33v15"/></g>
+    <rect x="184" y="26" width="48" height="54" rx="3" fill="#f0f0f0" stroke="#a5a5a5"/>
+    <rect x="191" y="35" width="34" height="22" fill="#2b3840"/>
+    <path d="M195 46h26" stroke="#8dbde4" stroke-width="1.8"/>
+    <rect x="191" y="63" width="34" height="9" rx="2" fill="#cfcfcf"/>
+    <rect x="184" y="88" width="48" height="36" rx="3" fill="#f2e6c8" stroke="#cdbc8e"/>
+    <rect x="192" y="96" width="32" height="20" rx="2" fill="#fff" stroke="#d4c69e"/>
+    <rect x="244" y="42" width="34" height="76" rx="3" fill="#f4f4f4" stroke="#a5a5a5"/>
+    <g fill="#eaeaea" stroke="#cccccc"><rect x="249" y="49" width="24" height="14"/><rect x="249" y="67" width="24" height="14"/><rect x="249" y="85" width="24" height="14"/><rect x="249" y="103" width="24" height="10"/></g>
+  </svg>`,
+
+  empty:`<svg viewBox="0 0 292 150" xmlns="http://www.w3.org/2000/svg">
+    <rect x="40" y="26" width="212" height="98" rx="6" fill="none" stroke="#d5d5d5" stroke-width="1.6" stroke-dasharray="6 5"/>
+    <path d="M146 60v30M131 75h30" stroke="#c8c8c8" stroke-width="2.4" stroke-linecap="round"/>
+    <text x="146" y="108" font-size="10.5" fill="#bcbcbc" text-anchor="middle" font-family="Segoe UI">empty deck</text>
+  </svg>`
+};
+
+const RECENTS = [
+  {n:'HTS_24m', p:'C:\\GBG\\Workcells\\HTS_24m.gbg', th:'hts', tag:'Open now', tagc:'live',
+   when:'Today 09:12', size:'2.4 MB', pinned:true, on:true,
+   note:'Last run 4/30 10:40 – 16:40. Three labware streams: 384 MTP, Drug Plate, IDOT Source.'},
+  {n:'Nitration_Flow_Pilot', p:'C:\\GBG\\Workcells\\Nitration_Flow_Pilot.gbg', th:'flow', tag:'Flow chemistry', tagc:'',
+   when:'Yesterday 17:40', size:'1.1 MB', pinned:false, on:false,
+   note:'Two-pump continuous nitration with inline IR and a quench loop.'},
+  {n:'PR8_Parallel_Reactor', p:'C:\\GBG\\Workcells\\PR8_Parallel_Reactor.gbg', th:'pr8', tag:'8 channels', tagc:'',
+   when:'Apr 28 14:03', size:'860 KB', pinned:false, on:false,
+   note:'Independent temperature and stirring per channel, shared feed manifold.'},
+  {n:'ADME_Screen_v3', p:'D:\\Projects\\ADME\\ADME_Screen_v3.gbg', th:'adme', tag:'Screening', tagc:'',
+   when:'Apr 26 08:55', size:'3.7 MB', pinned:true, on:false,
+   note:'Incubate, dispense and read across four plate batches.'},
+  {n:'New Program', p:'(unsaved)', th:'empty', tag:'Draft', tagc:'draft',
+   when:'Apr 25 11:20', size:'—', pinned:false, on:false,
+   note:'Nothing placed on the deck yet.'}
+];
+
+const dot = '<span class="dot"></span>';
+document.getElementById('recentList').innerHTML = RECENTS.map(r=>`
+  <div class="rcard ${r.on?'on':''}">
+    <div class="rthumb">
+      ${THUMB[r.th]}
+      <span class="rtag ${r.tagc}">${r.tag}</span>
+      <span class="rpin ${r.pinned?'pinned':''}">${PIN}</span>
+    </div>
+    <div class="rbody">
+      <div class="rname">${r.n}</div>
+      <div class="rpath" title="${r.p}">${r.p}</div>
+      <div class="rnote">${r.note}</div>
+      <div class="rmeta2">${r.when}${dot}${r.size}</div>
+    </div>
+  </div>`).join('');
+
+document.querySelectorAll('.rcard').forEach(r=>r.addEventListener('click',()=>{
+  document.querySelectorAll('.rcard').forEach(x=>x.classList.remove('on'));
+  r.classList.add('on');
+}));
+document.querySelectorAll('.rpin').forEach(p=>p.addEventListener('click',e=>{
+  e.stopPropagation(); p.classList.toggle('pinned');
+}));
+document.querySelectorAll('.startnav .snav').forEach(s=>s.addEventListener('click',()=>{
+  document.querySelectorAll('.startnav .snav').forEach(x=>x.classList.remove('on'));
+  s.classList.add('on');
+}));
+
+const START_INST = [
+  ['PF-400','Ready','on'],['Plate Storage','Ready','on'],['LiquidHandler','Ready','on'],
+  ['Incubator','Idle','idle'],['CWash','Ready','on'],['XPeel','Ready','on'],
+  ['a4S Sealer','Idle','idle'],['Multidrop Combi','Ready','on'],['Reader','Offline','off']
+];
+document.getElementById('startInst').innerHTML = START_INST.map(([n,s,c])=>`
+  <div class="instrow"><span class="led ${c}"></span>${n}<span class="st">${s}</span></div>`).join('');
+
+document.querySelectorAll('.qcard').forEach(c=>c.addEventListener('click',()=>{
+  goView(c.dataset.go);
+}));
+
+/* ============ Schedule 日历 ============ */
+const DAYS = ['Monday 04/26','Tuesday 04/27','Wednesday 04/28','Thursday 04/29',
+              'Friday 04/30','Saturday 05/01','Sunday 05/02'];
+const HOUR_H = 46, START_H = 9, END_H = 22;
+
+document.getElementById('calHead').innerHTML =
+  '<div></div>' + DAYS.map(d=>`<div>${d}</div>`).join('');
+
+let tc = '';
+for(let h=START_H; h<=END_H; h++) tc += `<div>${String(h).padStart(2,'0')}:00</div>`;
+document.getElementById('timeCol').innerHTML = tc;
+
+const slots = Array.from({length:END_H-START_H+1},()=>'<div class="slot"></div>').join('');
+for(let i=0;i<7;i++) document.getElementById('d'+i).innerHTML = slots;
+
+function toY(h,m){return ((h-START_H)*60+m)/60*HOUR_H;}
+
+function placeJob(colIdx, id, sh, sm, eh, em){
+  const col = document.getElementById('d'+colIdx);
+  const top = toY(sh,sm), h = toY(eh,em)-top;
+  const el = document.createElement('div');
+  el.className = 'job';
+  el.style.top = top+'px';
+  el.style.height = h+'px';
+  el.innerHTML = `<div class="jt">${id}</div><div class="jr">${String(sh).padStart(2,'0')}:${String(sm).padStart(2,'0')} – ${String(eh).padStart(2,'0')}:${String(em).padStart(2,'0')}</div>`;
+  col.appendChild(el);
+}
+placeJob(4,'PS210430104033.000',10,40,16,40);
+
+/* 当前时间线（周一 19:20） */
+(function(){
+  const line = document.createElement('div');
+  line.className = 'nowline';
+  line.style.top = toY(19,20)+'px';
+  document.getElementById('d0').appendChild(line);
+})();
+
+let jobSeq = 1;
+function addJob(){
+  const d = 4 + (jobSeq % 3);
+  const sh = 9 + jobSeq;
+  if(sh + 3 > END_H) return;
+  placeJob(d, 'PS2104301040'+(33+jobSeq)+'.000', sh, 0, sh+3, 0);
+  jobSeq++;
+  document.getElementById('startSched').classList.add('on');
+}
+document.querySelectorAll('.sch-tabs span').forEach(t=>t.addEventListener('click',()=>{
+  document.querySelectorAll('.sch-tabs span').forEach(x=>x.classList.remove('active'));
+  t.classList.add('active');
+}));
+document.querySelectorAll('.seg button').forEach(b=>b.addEventListener('click',()=>{
+  const g=b.parentElement; if(g.children.length<2) return;
+  g.querySelectorAll('button').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');
+}));
+
+/* ============ Advanced 命令库 ============ */
+const S = (p)=>`<svg width="30" height="30" viewBox="0 0 32 32" fill="none" stroke="#3a3a3a" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round">${p}</svg>`;
+const DOC = `<path d="M8 3h11l6 6v20H8z"/><path d="M19 3v6h6"/>`;
+const ROBOT = `<svg width="30" height="30" viewBox="0 0 32 32"><rect x="12" y="3" width="8" height="17" rx="2" fill="#5b7fbf"/><rect x="8" y="20" width="16" height="4" rx="1.5" fill="#5b7fbf"/><rect x="10" y="24" width="4" height="5" rx="1" fill="#8aa6d6"/><rect x="18" y="24" width="4" height="5" rx="1" fill="#8aa6d6"/><rect x="14" y="6" width="4" height="4" rx="1" fill="#dbe6f6"/></svg>`;
+
+const GENERAL = [
+  ['Message Box', S(`<rect x="3" y="6" width="26" height="17" rx="2"/><path d="M10 23l-2 5 7-5"/><path d="M9 12h14M9 17h9"/>`)],
+  ['User Input', S(`<rect x="3" y="9" width="26" height="13" rx="2"/><path d="M8 13v5"/><path d="M12 22h10"/>`)],
+  ['Data File Loop', S(`${DOC}<path d="M13 17a5 5 0 118 4" stroke="#2f8f49"/><path d="M20 24l1-5 4 3z" fill="#2f8f49" stroke="#2f8f49"/>`)],
+  ['Folder Loop', S(`<path d="M3 8h9l3 4h14v15H3z"/><path d="M12 18a5 5 0 118 4" stroke="#2f8f49"/><path d="M19 25l1-5 4 3z" fill="#2f8f49" stroke="#2f8f49"/>`)],
+  ['Write To File', S(`${DOC}<path d="M22 16l4 4-8 8-5 1 1-5z"/>`)],
+  ['Copy File', S(`<path d="M4 2h9l5 5v16H4z"/><path d="M11 9h10l5 5v15H11z" fill="#fff"/><path d="M21 9v5h5"/>`)],
+  ['Delete File', S(`${DOC}<path d="M12 16l9 9M21 16l-9 9" stroke="#d43b2f" stroke-width="2.4"/>`)],
+  ['Play Sound', S(`<path d="M4 12h5l7-6v20l-7-6H4z" fill="#e9eef6"/><path d="M20 11a7 7 0 010 10M24 8a12 12 0 010 16"/>`)],
+  ['Launch Program', S(`${DOC}<path d="M11 20h10M17 16l4 4-4 4" stroke="#2f8f49" stroke-width="2"/>`)],
+  ['Note', S(`<path d="M5 4h18l6 6v18H5z" fill="#f7e79a" stroke="#c9b45e"/><path d="M23 4v6h6" stroke="#c9b45e"/>`)],
+  ['Send Email', S(`<rect x="3" y="7" width="26" height="18" rx="2" fill="#3f74c4" stroke="#2f5aa0"/><path d="M4 9l12 9 12-9" stroke="#fff" stroke-width="1.8"/>`)],
+  ['End Loop', S(`<path d="M27 17a10 10 0 11-4-8" stroke="#d43b2f" stroke-width="3"/><path d="M22 3l2 8-8-1z" fill="#d43b2f" stroke="#d43b2f"/>`)],
+  ['Plate Data', S(`<rect x="3" y="7" width="26" height="18" rx="2"/><g stroke-width="1.2"><circle cx="9" cy="12" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="23" cy="12" r="2"/><circle cx="9" cy="20" r="2"/><circle cx="16" cy="20" r="2"/><circle cx="23" cy="20" r="2"/></g>`)],
+  ['Run Scheduler', `<svg width="30" height="30" viewBox="0 0 32 32"><rect x="3" y="6" width="26" height="22" rx="2" fill="#fff" stroke="#3a3a3a" stroke-width="1.5"/><rect x="3" y="6" width="26" height="6" fill="#5b7fbf"/><text x="16" y="24" font-size="12" font-family="Segoe UI" text-anchor="middle" fill="#2b2b2b">12</text></svg>`],
+  ['Run Data Export', S(`<path d="M5 24V8h12l4 4v12z"/><path d="M17 8v4h4"/><path d="M24 16v10M20 22l4 4 4-4" stroke="#2f8f49" stroke-width="2"/>`)],
+  ['Set BP Cycle Data', S(`<rect x="3" y="6" width="26" height="20" rx="2"/><path d="M3 12h26M11 12v14M20 12v14M3 19h26" stroke-width="1.2"/>`)],
+  ['Exit Procedure', S(`<path d="M28 16H6" stroke="#d43b2f" stroke-width="3"/><path d="M13 8l-8 8 8 8z" fill="#d43b2f" stroke="#d43b2f"/>`)],
+  ['End Program', S(`<circle cx="16" cy="16" r="12" fill="#d43b2f" stroke="#b02b21"/><path d="M11 11l10 10M21 11L11 21" stroke="#fff" stroke-width="2.6"/>`)],
+  ['Raise Error', S(`<path d="M16 4l13 24H3z" fill="#f2c94c" stroke="#c9a12f"/><path d="M16 13v7" stroke="#8a2f22" stroke-width="2.4"/><circle cx="16" cy="24" r="1.4" fill="#8a2f22" stroke="none"/>`)]
+];
+
+const PF400 = ['Send Command','Home','Open Gripper','Close Gripper','Move To Teach Point',
+  'Pick Plate','Place Plate','Execute Sequence','Get From Hotel','Put In Hotel',
+  'Count Plates In Stack','Get From Stack','Put In Stack','Move To Safe','Teach Plate','Initialize'];
+
+document.getElementById('cmdGeneral').innerHTML = GENERAL.map(([n,ic])=>`
+  <div class="cmd" draggable="true"><div class="ci">${ic}</div><div class="cn">${n}</div></div>`).join('');
+document.getElementById('cmdPf400').innerHTML = PF400.map(n=>`
+  <div class="cmd" draggable="true"><div class="ci">${ROBOT}</div><div class="cn">${n}</div></div>`).join('');
+
+/* Program Explorer 列表 */
+const DTABLES = ['Instrument Utilization','Job Schedule','Plate Storage Hotels','Plate Storage Stacks',
+  'Sync Variables','Workcell Process 1 Plate Runtime','Workcell Process 1 Variables'];
+document.getElementById('dtList').innerHTML = DTABLES.map((n,i)=>
+  `<div class="ex-li ${i===0?'sel':''}">${n}</div>`).join('');
+
+const INSTS = [['PF-400','#5b7fbf'],['Plate Storage','#8a5a3b'],['Multidrop Combi','#f4b6c4'],
+  ['Wasp','#dba32c'],['XPeel','#39b54a']];
+document.getElementById('instList').innerHTML = INSTS.map(([n,c])=>`
+  <div class="ex-li"><span class="led on"></span>
+  <span style="width:11px;height:11px;background:${c};border-radius:2px;display:inline-block;"></span>${n}</div>`).join('');
+
+document.querySelectorAll('#dtList .ex-li, #instList .ex-li').forEach(li=>{
+  li.addEventListener('click',()=>{
+    li.parentElement.querySelectorAll('.ex-li').forEach(x=>x.classList.remove('sel'));
+    li.classList.add('sel');
+  });
+});
+
+function toggleGroup(bar){
+  const body = bar.nextElementSibling;
+  const arrow = bar.querySelector('.exp3 svg path');
+  if(!body) return;
+  const hidden = body.style.display === 'none';
+  body.style.display = hidden ? '' : 'none';
+  const next2 = body.nextElementSibling;
+  if(next2 && next2.classList.contains('ex-actions')) next2.style.display = hidden?'':'none';
+  arrow.setAttribute('d', hidden ? 'M2 6.4l3-3.2 3 3.2' : 'M2 3.6l3 3.2 3-3.2');
+}
+
+/* ============ 甘特图 ============ */
+const GANTT = [
+  {type:'barcode', name:'Barcode'},
+  {type:'grp', name:'384 mtp', sum:[0,540]},
+  {type:'chld', name:'Storage_Get_From_Hotel', bar:{x:0,w:14,c:'b-storage',t:'S'}},
+  {type:'chld', name:'LiquidHandler_Run_Sequence', bar:{x:22,w:9,c:'b-liquid',t:''}},
+  {type:'chld', name:'Incubator_Incubate', bar:{x:48,w:68,c:'b-incub',t:'Incubator_I'}},
+  {type:'chld', name:'Storage_Hold', bar:{x:128,w:80,c:'b-storage',t:'Storage_Hold'}},
+  {type:'chld', name:'CWash_Run_Protocol_DrugTre', bar:{x:222,w:98,c:'b-cwash',t:'CWash_Run_Proto'}},
+  {type:'chld', name:'Incubator_Incubate_2', bar:{x:334,w:68,c:'b-incub',t:'Incubator_I'}},
+  {type:'chld', name:'Multidrop_Combi_Dispense', bar:{x:424,w:11,c:'b-multi',t:'M'}},
+  {type:'chld', name:'Reader_Read', bar:{x:474,w:92,c:'b-reader',t:'Reader_Read'}},
+  {type:'chld', name:'Storage_Put_In_Hotel', bar:{x:576,w:14,c:'b-storage',t:'S'}},
+  {type:'grp', name:'drug plate', sum:[110,300]},
+  {type:'chld', name:'Storage_Get_From_Hotel', bar:{x:112,w:14,c:'b-storage',t:'S'}},
+  {type:'chld', name:'XPeel_Peel', bar:{x:132,w:14,c:'b-xpeel',t:'X'}},
+  {type:'chld', name:'LiquidHandler_Run_Sequence', bar:{x:154,w:28,c:'b-liquid',t:'Liq'}},
+  {type:'chld', name:'a4S_Sealer_Seal', bar:{x:188,w:96,c:'b-seal',t:'a4S_Sealer_Seal'}},
+  {type:'chld', name:'Storage_Put_In_Hotel', bar:{x:284,w:14,c:'b-storage',t:'S'}},
+  {type:'grp', name:'IDOT source', sum:[140,188]},
+  {type:'chld', name:'Storage_Get_From_Hotel', bar:{x:142,w:14,c:'b-storage',t:'S'}},
+  {type:'chld', name:'LiquidHandler_Run_Sequence', bar:{x:162,w:9,c:'b-liquid',t:''}},
+  {type:'chld', name:'Storage_Put_In_Hotel', bar:{x:178,w:14,c:'b-storage',t:'S'}}
+];
+
+let left = `<div class="g-headrow"></div><div class="g-scale"></div>`;
+let right = `<div class="g-headrow"></div><div class="g-scale">
+  <span class="maj" style="left:6px;">06</span>
+  <span class="min" style="left:6px;">30</span>
+  <span class="min" style="left:52px;">40</span>
+  ${Array.from({length:14},(_,i)=>`<div class="tick" style="left:${i*72}px;"></div>`).join('')}
+</div>`;
+
+GANTT.forEach(r=>{
+  if(r.type==='barcode'){
+    left += `<div class="g-rowlabel barcode">Barcode</div>`;
+    right += `<div class="g-tw" style="background:#d9d9d9;"></div>`;
+  } else if(r.type==='grp'){
+    left += `<div class="g-rowlabel grp"><span style="color:#666;margin-right:5px;">−</span>${r.name}</div>`;
+    right += `<div class="g-tw">${grid()}<div class="sumbar" style="left:${r.sum[0]}px;width:${r.sum[1]}px;"></div></div>`;
+  } else {
+    left += `<div class="g-rowlabel chld">${r.name}</div>`;
+    right += `<div class="g-tw">${grid()}<div class="bar ${r.bar.c}" style="left:${r.bar.x}px;width:${r.bar.w}px;">${r.bar.t}</div></div>`;
+  }
+});
+function grid(){return Array.from({length:14},(_,i)=>`<div class="cell" style="left:${i*72}px;"></div>`).join('');}
+document.getElementById('gLeft').innerHTML = left;
+document.getElementById('gRight').innerHTML = right;
+
+/* ============ Storage 弹窗货位 ============ */
+const CONTENT = {1:'384 mtp', 2:'drug plate', 3:'IDOT source'};
+function buildHotel(id, filled){
+  let h = `<div class="cap"><label><input type="checkbox" checked> Hotel ${id}</label><input type="checkbox"></div>`;
+  for(let i=1;i<=22;i++){
+    const v = filled && CONTENT[i] ? `${i}: ${CONTENT[i]}` : `${i}:`;
+    h += `<div class="slot ${filled&&CONTENT[i]?'filled':''}">${v}</div>`;
+  }
+  return h;
+}
+document.getElementById('hotel1').innerHTML = buildHotel(1, true);
+document.getElementById('hotel2').innerHTML = buildHotel(2, false);
+
+/* ============ 交互 ============ */
+function goView(v){
+  document.querySelectorAll('.menu-item').forEach(x=>x.classList.toggle('active', x.dataset.view===v));
+  document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
+  const el = document.getElementById('view-'+v);
+  if(el) el.classList.add('active');
+}
+document.querySelectorAll('.menu-item').forEach(m=>{
+  m.addEventListener('click',()=>goView(m.dataset.view));
+});
+
+let wfFlag = true;
+function toggleWorkflow(){
+  wfFlag = !wfFlag;
+  document.getElementById('wfA').style.display = wfFlag?'block':'none';
+  document.getElementById('wfB').style.display = wfFlag?'none':'block';
+  document.getElementById('wfName').textContent = wfFlag?'Storage.Edit Hotels':'Storage.Find Plate In Hotel';
+  document.getElementById('storageStatus').value = wfFlag?'Ready':'Busy';
+}
+function openDialog(){document.getElementById('overlay').classList.add('show');}
+function closeDialog(){document.getElementById('overlay').classList.remove('show');}
+document.getElementById('overlay').addEventListener('click',e=>{if(e.target.id==='overlay')closeDialog();});
+
+document.querySelectorAll('.slot').forEach(s=>s.addEventListener('click',()=>s.classList.toggle('filled')));
+document.querySelectorAll('.dlg-tabs span').forEach(t=>t.addEventListener('click',()=>{
+  document.querySelectorAll('.dlg-tabs span').forEach(x=>x.classList.remove('active'));
+  t.classList.add('active');
+}));
+</script>
+</body>
+</html>

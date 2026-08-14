@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>TecControl.App</RootNamespace>
+    <AssemblyName>TecStudio</AssemblyName>
+    <!-- 允许在非 Windows 环境编译（运行仍需 Windows） -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
+    <PackageReference Include="ScottPlot.WPF" Version="5.0.55" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TecControl.Core\TecControl.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 出厂增益表：首次运行（%AppData% 下还没有表）时作为初值导入 -->
+    <Content Include="..\..\config\gain-schedule.csv" Link="config\gain-schedule.csv"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
