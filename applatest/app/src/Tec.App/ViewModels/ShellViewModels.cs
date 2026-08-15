@@ -78,11 +78,13 @@ public sealed class StartViewModel : ViewModelBase
             if (e is not null) { e.Pinned = card.Pinned; _store.SaveRecent(); }
         });
 
-        // 双击最近实验卡片就打开它
+        // 点最近实验卡片就打开它，并且直接跳到台面——打开一份实验就是要接着干活，
+        // 停在开始页还得再点一下菜单。打不开时留在原地，好让错误提示看得见。
         OpenRecent = new RelayCommand(p => Async(async () =>
         {
-            if (p is RecentCardViewModel card)
-                await GuardedAsync(() => _store.OpenAsync(card.Path), $"已打开 {card.Name}");
+            if (p is not RecentCardViewModel card) return;
+            if (await GuardedAsync(() => _store.OpenAsync(card.Path), $"已打开 {card.Name}"))
+                shell.Tab = MainViewModel.TabBench;
         }));
 
         NewExperiment = new RelayCommand(() => Async(async () =>
@@ -94,8 +96,9 @@ public sealed class StartViewModel : ViewModelBase
         OpenExperiment = new RelayCommand(() => Async(async () =>
         {
             if (await FileDialogs.OpenExperiment() is not { } path) return;
-            await GuardedAsync(() => _store.OpenAsync(path),
-                               $"已打开 {Path.GetFileNameWithoutExtension(path)}");
+            if (await GuardedAsync(() => _store.OpenAsync(path),
+                                   $"已打开 {Path.GetFileNameWithoutExtension(path)}"))
+                shell.Tab = MainViewModel.TabBench;
         }));
 
         SaveExperiment = new RelayCommand(() => Async(async () =>
@@ -155,11 +158,13 @@ public sealed class StartViewModel : ViewModelBase
     /// 早先这里是阻塞等的，台面上已经有设备时会把界面线程和驱动的收尾
     /// 互相锁住，点「打开」就整个卡死。
     /// </summary>
-    private async Task GuardedAsync(Func<Task> act, string okText)
+    /// <summary>返回 true 表示这一步真的成了。失败时不该继续往下跳视图。</summary>
+    private async Task<bool> GuardedAsync(Func<Task> act, string okText)
     {
-        try { await act(); Status = okText; }
+        try { await act(); Status = okText; return true; }
         catch (TecFileException ex) { Status = ex.Message; }
         catch (Exception ex) { Status = "出错了：" + ex.Message; }
+        return false;
     }
 
     private static async void Async(Func<Task> work)
