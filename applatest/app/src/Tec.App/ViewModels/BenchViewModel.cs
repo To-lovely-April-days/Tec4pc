@@ -138,8 +138,10 @@ public sealed class BenchViewModel : ViewModelBase
     public string ProbeResult
     {
         get => _probeResult;
-        private set => Set(ref _probeResult, value);
+        private set { if (Set(ref _probeResult, value)) Raise(nameof(HasProbeResult)); }
     }
+
+    public bool HasProbeResult => _probeResult.Length > 0;
 
     public bool HasSelection => _selected is not null;
     public string SelectedTitle => _selected?.Title ?? "未选中设备";
