@@ -422,18 +422,18 @@ public sealed class BenchViewModel : ViewModelBase
         var dev = _dragNode?.Device ?? CreateDevice();
         if (dev is null) { CancelDrag(); return; }
 
+        // 落点就是用户放的位置，设备不被吸走；变的是连线（用户明确要求）
+        dev.Position = new BPoint(DragX, DragY);
+
         if (anchor is not null && host is not null)
         {
             var side = anchor.Side ?? (DragX + DragWidth / 2 < host.X + host.Width / 2 ? "L" : "R");
-            var at2 = BenchDock.Place(new Point(host.X, host.Y), host.Width, anchor,
-                                      DragArtKey, DragWidth, DragHeight);
             dev.DockHostId = host.Id;
             dev.DockAnchor = anchor.Id;
             dev.DockSideTag = side;
             dev.Dock = anchor.Kind == PortKind.Top ? DockSide.Top
                      : side == "L" ? DockSide.Left : DockSide.Right;
             dev.DockSlot = anchor.Slot;
-            dev.Position = new BPoint(at2.X, at2.Y);
 
             var ch = host.Channels.ElementAtOrDefault(anchor.Slot);
             Rebind(dev.InstanceId, ch > 0 ? new[] { ch } : Array.Empty<int>(),
@@ -444,11 +444,8 @@ public sealed class BenchViewModel : ViewModelBase
             dev.DockHostId = null;
             dev.DockAnchor = null;
             dev.Dock = DockSide.None;
-            dev.Position = new BPoint(DragX, DragY);
             _ws.Bench.Bindings.RemoveAll(b => b.DeviceId == dev.InstanceId);
         }
-
-        if (_dragNode is not null && BenchDock.IsHost(_dragNode.ArtKey)) Follow(dev);
 
         CancelDrag();
         _ = _ws.RebuildChannelsAsync();
@@ -502,23 +499,6 @@ public sealed class BenchViewModel : ViewModelBase
                 Channel = host.Channels.ElementAtOrDefault(a.Slot),
                 Label = a.Label
             });
-        }
-    }
-
-    /// <summary>反应器移动后，插在它上面的设备重新按口摆放。</summary>
-    private void Follow(DeviceInstance host)
-    {
-        var hostNode = Devices.FirstOrDefault(d => d.Id == host.InstanceId);
-        if (hostNode is null) return;
-        var hp = new Point(host.Position.X, host.Position.Y);
-        foreach (var child in _ws.Bench.Devices.Where(d => d.DockHostId == host.InstanceId))
-        {
-            var a = BenchDock.Anchors.FirstOrDefault(x => x.Id == child.DockAnchor);
-            if (a is null) continue;
-            var node = Devices.FirstOrDefault(d => d.Id == child.InstanceId);
-            var cp = BenchDock.Place(hp, hostNode.Width, a, node?.ArtKey ?? "ph",
-                                     node?.Width ?? 120, node?.Height ?? 96);
-            child.Position = new BPoint(cp.X, cp.Y);
         }
     }
 

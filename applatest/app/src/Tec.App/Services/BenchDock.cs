@@ -45,9 +45,6 @@ public static class BenchDock
 {
     public const double NodePad = 7;
     private const double ArtVw = 176, ArtVh = 140;
-    private const double GapTop = 62, GapSide = 152, GapEdge = 40;
-
-    public const double SnapRadius = 120;
 
     /// <summary>反应器的 11 个接口：每通道 3 个上方管口，左右各 2 个侧口，1 个总线口。</summary>
     public static readonly IReadOnlyList<Anchor> Anchors = new[]
@@ -114,46 +111,13 @@ public static class BenchDock
     public static bool Accepts(string artKey, Anchor a) => AttachOf(artKey) == a.Kind;
 
     /// <summary>
-    /// 插上以后设备摆在哪儿（原型 placeNode）：让设备的插头正对接口，
-    /// 上方留 GAP_TOP、侧面留 GAP_SIDE；插头朝下的侧接设备（取样）贴着外沿放。
-    /// </summary>
-    public static Point Place(Point hostPos, double hostWidth, Anchor a,
-                              string artKey, double devWidth, double devHeight)
-    {
-        var w = AnchorWorld(hostPos, hostWidth, a);
-        var art = Controls.DeviceArtCache.Get(artKey);
-        var s = art is null ? 1 : devWidth / art.ViewWidth;
-        var side = a.Side;
-        var pl = PlugOf(artKey, side);
-
-        double x, y;
-        if (a.Kind == PortKind.Top)
-        {
-            x = w.X - pl.X * s;
-            y = w.Y - GapTop - pl.Y * s;
-        }
-        else if (a.Kind == PortKind.Bus)
-        {
-            x = w.X - pl.X * s;
-            y = w.Y + 72;
-        }
-        else if (pl.Dir == "down")
-        {
-            x = side == "L" ? w.X - GapEdge - devWidth : w.X + GapEdge;
-            y = w.Y - 40 - pl.Y * s;
-        }
-        else
-        {
-            x = side == "L" ? w.X - GapSide - pl.X * s : w.X + GapSide - pl.X * s;
-            y = w.Y - pl.Y * s;
-        }
-        return new Point(x - NodePad, y - NodePad);
-    }
-
-    /// <summary>
     /// 选接口（原型 pickAnchor）：探头只比上方管口的横向距离；侧接设备先按落点
     /// 判左右，再在该侧取最近的；该侧占满就退到另一侧。已被占用的口不参与。
     /// </summary>
+    /// <remarks>
+    /// 不设距离门限：放在画布哪儿都连得上，管路自己拉过去（原型 pickAnchor 同样
+    /// 不看距离）。接口全被占了才连不上。
+    /// </remarks>
     public static Anchor? Pick(string artKey, Point hostPos, double hostWidth, Point drop,
                                ISet<string> taken, string? keep = null)
     {
@@ -179,7 +143,7 @@ public static class BenchDock
                 : Math.Abs(w.Y - drop.Y) * 1.4 + Math.Abs(w.X - drop.X) * 0.2;
             if (dist < bd) { bd = dist; best = a; }
         }
-        return bd <= SnapRadius ? best : null;
+        return best;
     }
 
     // ── 正交折线 + 圆角（原型 orth / roundPath）─────────────────────
