@@ -375,12 +375,19 @@ public sealed class BenchViewModel : ViewModelBase
         }
     }
 
-    /// <summary>台面上的宿主（反应器）。原型一台反应器为中心，这里取第一台。</summary>
-    private DeviceNodeViewModel? Host => Devices.FirstOrDefault(d => BenchDock.IsHost(d.ArtKey));
+    /// <summary>台面上所有能当宿主的设备（反应器）。放几台就是几台。</summary>
+    private List<DeviceNodeViewModel> Hosts
+        => Devices.Where(d => BenchDock.IsHost(d.ArtKey)).ToList();
 
-    private ISet<string> TakenAnchors(string? exceptDevice = null)
+    /// <summary>
+    /// 某台宿主身上已被占用的接口。必须按宿主分开数——接口号（T1a / R2…）
+    /// 是每台反应器各有一套，混在一起的话，一台反应器的 T1a 被占了，
+    /// 另一台的 T1a 也跟着连不上。
+    /// </summary>
+    private ISet<string> TakenAnchors(string hostId, string? exceptDevice = null)
         => _ws.Bench.Devices
-              .Where(d => d.DockAnchor is not null && d.InstanceId != exceptDevice)
+              .Where(d => d.DockAnchor is not null && d.DockHostId == hostId
+                          && d.InstanceId != exceptDevice)
               .Select(d => d.DockAnchor!)
               .ToHashSet(StringComparer.Ordinal);
 
@@ -408,7 +415,7 @@ public sealed class BenchViewModel : ViewModelBase
 
     private void StartDrag(Point at)
     {
-        _host = Host;
+        _host = null;                       // 拖到哪台反应器附近就接哪台，每次移动重算
         DragTo(at);
         RaiseAll(nameof(Dragging), nameof(ShowGhost), nameof(DragArtKey), nameof(DragWidth));
     }
@@ -423,23 +430,49 @@ public sealed class BenchViewModel : ViewModelBase
         // 看着就像拖不动——设备本来就在画布上，让它自己动才对
         _dragNode?.MoveTo(new Point(DragX, DragY));
 
-        Anchor? pick = null;
-        if (_host is { } h && !BenchDock.IsHost(DragArtKey))
-            pick = BenchDock.Pick(DragArtKey, new Point(h.X, h.Y), h.Width, ConnectPoint,
-                                  TakenAnchors(_dragNode?.Id), _dragNode?.Device.DockAnchor);
-        Hover = pick;
+        PickHost();
         RebuildLinks();                    // 拖动时管路跟着手走
         RaiseAll(nameof(DragX), nameof(DragY), nameof(GhostX), nameof(GhostY));
     }
 
-    /// <summary>判断插哪个接口用的参考点：设备插头的当前位置。</summary>
-    private Point ConnectPoint
+    /// <summary>
+    /// 台面上可以有好几台反应器。每次移动都把每台各算一个候选接口，
+    /// 取插头离得最近的那台——原来只认第一台，摆第二台反应器时
+    /// 别的设备怎么拖都只能连到第一台上。
+    /// </summary>
+    private void PickHost()
     {
-        get
+        if (BenchDock.IsHost(DragArtKey)) { _host = null; Hover = null; return; }
+
+        DeviceNodeViewModel? bestHost = null;
+        Anchor? bestAnchor = null;
+        var bestDist = double.MaxValue;
+
+        foreach (var h in Hosts)
         {
-            var side = _host is { } h && DragX + DragWidth / 2 < h.X + h.Width / 2 ? "L" : "R";
-            return BenchDock.PlugWorld(new Point(DragX, DragY), DragWidth, DragArtKey, side);
+            var plug = ConnectPointFor(h);
+            var a = BenchDock.Pick(DragArtKey, new Point(h.X, h.Y), h.Width, plug,
+                                   TakenAnchors(h.Id, _dragNode?.Id),
+                                   _dragNode?.Device.DockHostId == h.Id ? _dragNode.Device.DockAnchor : null);
+            if (a is null) continue;        // 这台的同类接口占满了，看下一台
+
+            var w = BenchDock.AnchorWorld(new Point(h.X, h.Y), h.Width, a);
+            var d = (w.X - plug.X) * (w.X - plug.X) + (w.Y - plug.Y) * (w.Y - plug.Y);
+            if (d >= bestDist) continue;
+            bestDist = d;
+            bestHost = h;
+            bestAnchor = a;
         }
+
+        _host = bestHost;
+        Hover = bestAnchor;
+    }
+
+    /// <summary>判断插哪个接口用的参考点：设备插头相对某台宿主的当前位置。</summary>
+    private Point ConnectPointFor(DeviceNodeViewModel host)
+    {
+        var side = DragX + DragWidth / 2 < host.X + host.Width / 2 ? "L" : "R";
+        return BenchDock.PlugWorld(new Point(DragX, DragY), DragWidth, DragArtKey, side);
     }
 
     /// <summary>Esc 撤销这次拖拽：设备既然是跟着手走的，就得把它送回原位。</summary>
@@ -500,27 +533,38 @@ public sealed class BenchViewModel : ViewModelBase
         _ = _ws.RebuildChannelsAsync();
     }
 
-    /// <summary>拖拽时把接口画出来：能插的亮、占用的暗、当前会插上的最大。</summary>
+    /// <summary>
+    /// 拖拽时把接口画出来：能插的亮、占用的暗、当前会插上的最大。
+    /// 台面上每台反应器的接口都画——不然摆了两台，只看得见一台的口，
+    /// 根本不知道另一台也能接。
+    /// </summary>
     private void RefreshPorts()
     {
         Ports.Clear();
-        if (!Dragging || _host is not { } h || BenchDock.IsHost(DragArtKey)) return;
-        var taken = TakenAnchors(_dragNode?.Id);
-        foreach (var a in BenchDock.Anchors)
+        if (!Dragging || BenchDock.IsHost(DragArtKey)) return;
+
+        foreach (var h in Hosts)
         {
-            var w = BenchDock.AnchorWorld(new Point(h.X, h.Y), h.Width, a);
-            var legal = BenchDock.Accepts(DragArtKey, a);
-            var busy = taken.Contains(a.Id);
-            Ports.Add(new PortDot
+            var taken = TakenAnchors(h.Id, _dragNode?.Id);
+            var target = ReferenceEquals(h, _host);
+            foreach (var a in BenchDock.Anchors)
             {
-                X = w.X, Y = w.Y, Label = a.Label,
-                Hot = ReferenceEquals(a, Hover),
-                Opacity = legal && !busy ? 1 : 0.14,
-                Size = ReferenceEquals(a, Hover) ? 17 : legal && !busy ? 12 : 8.4,
-                ColorHex = busy && !ReferenceEquals(a, Hover) ? "#c2c7cb"
-                         : a.Kind == PortKind.Top ? "#2f6fb5"
-                         : a.Kind == PortKind.Side ? "#c53a9d" : "#9aa0a5"
-            });
+                var w = BenchDock.AnchorWorld(new Point(h.X, h.Y), h.Width, a);
+                var legal = BenchDock.Accepts(DragArtKey, a);
+                var busy = taken.Contains(a.Id);
+                var hot = target && ReferenceEquals(a, Hover);
+                Ports.Add(new PortDot
+                {
+                    X = w.X, Y = w.Y, Label = a.Label,
+                    Hot = hot,
+                    // 不是当前瞄准的那台就淡一档，一眼看得出会接到哪台上
+                    Opacity = legal && !busy ? (target ? 1 : 0.45) : 0.14,
+                    Size = hot ? 17 : legal && !busy ? 12 : 8.4,
+                    ColorHex = busy && !hot ? "#c2c7cb"
+                             : a.Kind == PortKind.Top ? "#2f6fb5"
+                             : a.Kind == PortKind.Side ? "#c53a9d" : "#9aa0a5"
+                });
+            }
         }
     }
 
