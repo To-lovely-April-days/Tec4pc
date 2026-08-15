@@ -95,34 +95,108 @@
         <ScrollViewer>
           <StackPanel Margin="18,16,18,20">
 
-            <!-- 面板标题固定是「设备属性」；设备名在 prop-head（21px 细体） -->
-            <TextBlock Text="设备属性" FontSize="24" FontWeight="Light" Foreground="#333333"
+            <!-- h2：选中设备是「设备属性」，没选是「台面属性」（原型 renderProps 的两个分支） -->
+            <TextBlock Text="设备属性" IsVisible="{Binding HasSelection}"
+                       FontSize="24" FontWeight="Light" Foreground="#333333"
                        HorizontalAlignment="Center" Margin="0,0,0,8" />
-            <TextBlock Text="{Binding SelectedTitle}" FontSize="21" FontWeight="Light"
-                       Foreground="#333333" HorizontalAlignment="Center" Margin="0,0,0,12" />
+            <TextBlock Text="台面属性" IsVisible="{Binding !HasSelection}"
+                       FontSize="24" FontWeight="Light" Foreground="#333333"
+                       HorizontalAlignment="Center" Margin="0,0,0,8" />
 
+            <!-- ===== 选中设备 ===== -->
             <StackPanel IsVisible="{Binding HasSelection}">
-              <Button Classes="pill" Content="手动控制面板" HorizontalAlignment="Center"
-                      Margin="0,0,0,16" />
 
-              <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6">
-                <Border Classes="exp3"><ctl:TecIcon Key="ui-chev-down" Tint="#555555" /></Border>
-                <TextBlock Text="通信配置" FontSize="11.5" Foreground="#3d3d3d" VerticalAlignment="Center" />
+              <!-- prop-head：21px 细体设备名 + 26px 圆形改名钮（GBG 的 hbtn） -->
+              <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center"
+                          Margin="0,0,0,12">
+                <TextBlock Text="{Binding SelectedTitle}" IsVisible="{Binding !Renaming}"
+                           FontSize="21" FontWeight="Light" Foreground="#333333"
+                           VerticalAlignment="Center" />
+                <TextBox Classes="finput" Width="180" IsVisible="{Binding Renaming}"
+                         Text="{Binding DeviceName, Mode=TwoWay}" />
+                <Button Classes="hbtn" ToolTip.Tip="重命名"
+                        Command="{Binding ToggleRename}">
+                  <ctl:TecIcon Key="ui-pencil" Tint="#1f1f1f" />
+                </Button>
               </StackPanel>
+
+              <!-- 手动控制面板只有反应器有（原型 reactor2 分支） -->
+              <Button Classes="pill" Content="手动控制面板" IsVisible="{Binding IsReactor}"
+                      HorizontalAlignment="Center" Margin="0,0,0,16" />
+
+              <!-- 连接与设备参数：由驱动 schema 渲染，平铺成 frow，不再分节 -->
               <v:SchemaFormView DataContext="{Binding ConnectionForm}" />
+              <v:SchemaFormView DataContext="{Binding ConfigForm}" />
+
+              <!-- 探头要绑通道；反应器自带通道，没有这一行 -->
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,8" IsVisible="{Binding IsProbe}">
+                <TextBlock Text="绑定通道" Width="96" FontSize="11.5" Foreground="#3d3d3d"
+                           VerticalAlignment="Center" Margin="0,0,10,0" />
+                <ComboBox Classes="sel" Height="23" Width="196"
+                          ItemsSource="{Binding BindTargets}"
+                          SelectedItem="{Binding BindTarget, Mode=TwoWay}" />
+              </StackPanel>
+
               <Button Classes="btn" Content="测试连接" Command="{Binding Probe}"
                       HorizontalAlignment="Left" Height="26" Margin="0,4,0,0" />
               <TextBlock Text="{Binding ProbeResult}" FontSize="10.5" Foreground="#9a9a9a"
                          LineHeight="16" TextWrapping="Wrap" Margin="0,6,0,0" />
 
               <Border Height="1" Background="#d5d5d5" Margin="0,10,0,14" />
-              <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6">
-                <Border Classes="exp3"><ctl:TecIcon Key="ui-chev-down" Tint="#555555" /></Border>
-                <TextBlock Text="设备配置" FontSize="11.5" Foreground="#3d3d3d" VerticalAlignment="Center" />
+
+              <!-- 反应器：孔位 → 通道，可独立启停 -->
+              <StackPanel IsVisible="{Binding IsReactor}">
+                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+                  <Border Classes="exp3"><ctl:TecIcon Key="ui-chev-down" Tint="#555555" /></Border>
+                  <TextBlock Text="通道启用（独立启停）" FontSize="11.5" Foreground="#3d3d3d"
+                             VerticalAlignment="Center" />
+                </StackPanel>
+                <ItemsControl ItemsSource="{Binding Wells}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <StackPanel Orientation="Horizontal" Spacing="7" Margin="0,0,0,6">
+                        <CheckBox IsChecked="{Binding Enabled, Mode=TwoWay}" MinHeight="0"
+                                  VerticalAlignment="Center" />
+                        <Border Width="12" Height="12" CornerRadius="3" Background="{Binding ColorHex}"
+                                VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding Host}" FontSize="11.5" Foreground="#3d3d3d"
+                                   VerticalAlignment="Center" />
+                      </StackPanel>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <Panel Height="8" />
+                <CheckBox Content="LED 背景照明" IsChecked="True" Classes="chk2" />
+                <CheckBox Content="pH 反馈控制允许" IsChecked="True" Classes="chk2" />
               </StackPanel>
-              <v:SchemaFormView DataContext="{Binding ConfigForm}" />
+
+              <!-- 探头：反馈允许 -->
+              <CheckBox Content="自动反馈控制允许" IsChecked="True" Classes="chk2"
+                        IsVisible="{Binding IsProbe}" />
+
+              <CheckBox Content="模拟" Classes="chk2" IsChecked="{Binding DeviceSimulated, Mode=TwoWay}" />
+
+              <TextBlock Classes="intro" IsVisible="{Binding IsProbe}" Margin="0,10,0,0"
+                         Text="绑定后，该设备的数据与命令归属所选通道；配方中的加料 / pH / 分析步骤将作用于此设备。" />
             </StackPanel>
 
+            <!-- ===== 未选中：台面属性 ===== -->
+            <StackPanel IsVisible="{Binding !HasSelection}">
+              <TextBlock Classes="intro" Margin="0,0,0,14"
+                         Text="从左侧设备库拖入设备组成台面。点选台面上的设备可编辑其连接与通道绑定；下表可独立启停每个通道。" />
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                <TextBlock Text="台面名称" Width="96" FontSize="11.5" Foreground="#3d3d3d"
+                           VerticalAlignment="Center" Margin="0,0,10,0" />
+                <TextBox Classes="finput" Width="196" Text="{Binding BenchName, Mode=TwoWay}" />
+              </StackPanel>
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                <TextBlock Text="设备数" Width="96" FontSize="11.5" Foreground="#3d3d3d"
+                           VerticalAlignment="Center" Margin="0,0,10,0" />
+                <TextBox Classes="finput" Width="196" Text="{Binding DeviceCountText}" IsEnabled="False" />
+              </StackPanel>
+            </StackPanel>
+
+            <StackPanel IsVisible="{Binding !HasSelection}">
             <Border Height="1" Background="#d5d5d5" Margin="0,10,0,14" />
             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6">
               <Border Classes="exp3"><ctl:TecIcon Key="ui-chev-down" Tint="#555555" /></Border>
@@ -168,6 +242,7 @@
             <TextBlock FontSize="11.5" Foreground="#5a5a5a" LineHeight="18" TextWrapping="Wrap"
                        Margin="0,6,0,0"
                        Text="两台反应器可组成 4 通道高通量系统，也可拆分为两套独立系统分别运行；停用的通道不参与配方与运行。" />
+            </StackPanel>
           </StackPanel>
         </ScrollViewer>
       </DockPanel>
@@ -192,6 +267,30 @@
     <Style Selector="Button.pill:pointerover /template/ ContentPresenter">
       <Setter Property="Background" Value="#e3f0f9" />
       <Setter Property="BorderBrush" Value="#1a91d6" />
+    </Style>
+    <!-- GBG 的 hbtn：26px 圆钮，浅蓝底深描边 -->
+    <Style Selector="Button.hbtn">
+      <Setter Property="Width" Value="26" />
+      <Setter Property="Height" Value="26" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="CornerRadius" Value="13" />
+      <Setter Property="Background" Value="#c5d2df" />
+      <Setter Property="BorderBrush" Value="#3a3a3a" />
+      <Setter Property="BorderThickness" Value="1.6" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.hbtn:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#d9e4ef" />
+    </Style>
+    <!-- .frow.chk2：14px 方框 + 11.5px 文字 -->
+    <Style Selector="CheckBox.chk2">
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Foreground" Value="#3d3d3d" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Margin" Value="0,0,0,6" />
     </Style>
     <Style Selector="Border.exp3">
       <Setter Property="Width" Value="20" />

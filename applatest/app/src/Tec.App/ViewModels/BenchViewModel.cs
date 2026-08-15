@@ -40,6 +40,9 @@ public sealed class DeviceNodeViewModel : ViewModelBase
     public double Y => Device.Position.Y;
     public double Width => ArtKey == "reactor2" ? 176 : 120;
     public string ChannelText => Channels.Count == 0 ? "未绑定" : string.Join(" · ", Channels.Select(c => "CH" + c));
+
+    /// <summary>改名后台面上的标签要跟着变。</summary>
+    public void NameChanged() => Raise(nameof(Title));
 }
 
 /// <summary>
@@ -52,6 +55,7 @@ public sealed class BenchViewModel : ViewModelBase
     private SchemaFormViewModel? _connectionForm;
     private SchemaFormViewModel? _configForm;
     private string _probeResult = "";
+    private bool _renaming;
     private LibraryItemViewModel? _picked;
 
     public BenchViewModel(Workspace ws)
@@ -59,6 +63,7 @@ public sealed class BenchViewModel : ViewModelBase
         _ws = ws;
         Probe = new RelayCommand(async () => await ProbeAsync());
         Rebuild = new RelayCommand(async () => await _ws.RebuildChannelsAsync());
+        ToggleRename = new RelayCommand(() => Renaming = !Renaming);
         ws.BenchChanged += (_, _) => Reload();
         Reload();
     }
@@ -69,6 +74,17 @@ public sealed class BenchViewModel : ViewModelBase
 
     public RelayCommand Probe { get; }
     public RelayCommand Rebuild { get; }
+    public RelayCommand ToggleRename { get; }
+
+    /// <summary>台面名称与设备数（原型未选中设备时的两行）。</summary>
+    public string BenchName
+    {
+        get => _ws.Bench.Name;
+        set { if (value is { Length: > 0 }) { _ws.Bench.Name = value; Raise(); } }
+    }
+
+    public string DeviceCountText
+        => $"{_ws.Bench.Devices.Count} 台（{_ws.Channels.Count} 通道，{_ws.Channels.Count(c => c.Enabled)} 启用）";
 
     /// <summary>设备库里点中的那一项。真正的拖拽落位下一轮做。</summary>
     public LibraryItemViewModel? PickedFromLibrary
@@ -83,8 +99,13 @@ public sealed class BenchViewModel : ViewModelBase
         set
         {
             if (!Set(ref _selected, value)) return;
+            Renaming = false;
             BuildForms();
-            RaiseAll(nameof(HasSelection), nameof(SelectedTitle), nameof(SelectedDriver), nameof(SelectedSub));
+            BuildBindTargets();
+            BuildWells();
+            RaiseAll(nameof(HasSelection), nameof(SelectedTitle), nameof(SelectedDriver), nameof(SelectedSub),
+                     nameof(IsReactor), nameof(IsProbe), nameof(DeviceName), nameof(DeviceSimulated),
+                     nameof(BindTarget));
         }
     }
 
@@ -108,11 +129,94 @@ public sealed class BenchViewModel : ViewModelBase
 
     public bool HasSelection => _selected is not null;
     public string SelectedTitle => _selected?.Title ?? "未选中设备";
+
+    /// <summary>反应器（自带通道）和探头（要绑定通道）两种面板不一样，照原型 renderProps 分支。</summary>
+    public bool IsReactor => _selected?.Driver is { Info.ChannelsPerDevice: > 0 };
+    public bool IsProbe => _selected is not null && !IsReactor;
+
+    /// <summary>设备名可改（GBG 的铅笔按钮）。改完台面上的标签跟着变。</summary>
+    public string DeviceName
+    {
+        get => _selected?.Device.Display ?? "";
+        set
+        {
+            if (_selected is null || string.IsNullOrWhiteSpace(value)) return;
+            _selected.Device.Label = value.Trim();
+            _selected.NameChanged();
+            RaiseAll(nameof(DeviceName), nameof(SelectedTitle));
+        }
+    }
+
+    public bool Renaming
+    {
+        get => _renaming;
+        set => Set(ref _renaming, value);
+    }
+
+    /// <summary>仿真开关是设备的真实状态，不是摆设。</summary>
+    public bool DeviceSimulated
+    {
+        get => _selected?.Device.Simulated ?? true;
+        set
+        {
+            if (_selected is null || _selected.Device.Simulated == value) return;
+            _selected.Device.Simulated = value;
+            Raise();
+        }
+    }
+
+    /// <summary>探头绑到哪个通道（原型的「绑定通道」下拉，含「未绑定」）。</summary>
+    public ObservableCollection<string> BindTargets { get; } = new();
+
+    public string BindTarget
+    {
+        get
+        {
+            if (_selected is null) return "未绑定";
+            var b = _ws.Bench.Bindings.FirstOrDefault(x => x.DeviceId == _selected.Id);
+            return b is null ? "未绑定" : $"CH{b.ChannelNumber}";
+        }
+        set
+        {
+            if (_selected is null) return;
+            _ws.Bench.Bindings.RemoveAll(x => x.DeviceId == _selected.Id);
+            if (value is not null && value.StartsWith("CH") && int.TryParse(value[2..], out var ch))
+                _ws.Bench.Bindings.Add(new Binding(_selected.Id, ch, BindingMode.Exclusive));
+            Raise();
+            _ = _ws.RebuildChannelsAsync();
+        }
+    }
+
+    /// <summary>反应器的孔位 → 通道，可独立启停（原型 d.wells）。</summary>
+    public ObservableCollection<ChannelRowViewModel> Wells { get; } = new();
     public string SelectedDriver => _selected?.Driver?.Info.Name ?? "—";
     public string SelectedSub => _selected is null ? "" : $"{_selected.Id} · {_selected.ChannelText}";
 
     public string BenchSummary
         => $"{_ws.Bench.Devices.Count} 台设备 · {_ws.Channels.Count} 个通道 · 共享件 {string.Join("、", _ws.Bench.SharedDeviceIds())}";
+
+    private void BuildBindTargets()
+    {
+        BindTargets.Clear();
+        BindTargets.Add("未绑定");
+        foreach (var c in _ws.Channels.Where(c => c.Enabled).OrderBy(c => c.Number))
+            BindTargets.Add($"CH{c.Number}");
+    }
+
+    /// <summary>反应器的 A/B 孔各对一个通道，勾选即启停（原型 d.wells 那几行）。</summary>
+    private void BuildWells()
+    {
+        Wells.Clear();
+        if (_selected is null || !IsReactor) return;
+        var i = 0;
+        foreach (var n in _selected.Channels.OrderBy(x => x))
+        {
+            if (_ws.ChannelOf(n) is not { } ch) continue;
+            Wells.Add(new ChannelRowViewModel(ch, $"{(i == 0 ? "A" : "B")} 孔 → 通道 CH{n}",
+                                              Array.Empty<string>()));
+            i++;
+        }
+    }
 
     public void Reload()
     {
