@@ -50,7 +50,7 @@ public sealed class DeviceNodeViewModel : ViewModelBase
     public string ArtKey => Driver?.Info.IconKey ?? "reactor2";
     public double X => Device.Position.X;
     public double Y => Device.Position.Y;
-    public double Width => ArtKey == "reactor2" ? 176 : 120;
+    public double Width => BenchDock.DisplayWidth(ArtKey);
     /// <summary>按设备图的宽高比算出来的显示高度，停靠计算要用。</summary>
     public double Height
     {
@@ -389,7 +389,7 @@ public sealed class BenchViewModel : ViewModelBase
         _dragNew = item;
         _dragNode = null;
         DragArtKey = item.ArtKey;
-        DragWidth = DragArtKey == "reactor2" ? 176 : 120;
+        DragWidth = BenchDock.DisplayWidth(DragArtKey);
         _grab = new Point(DragWidth / 2, DragHeight / 2);
         StartDrag(at);
     }

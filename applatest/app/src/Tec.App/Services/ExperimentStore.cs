@@ -279,7 +279,7 @@ public sealed class ExperimentStore
                 Art = art,
                 X = d.Position.X,
                 Y = d.Position.Y,
-                W = art == "reactor2" ? 176 : 120,
+                W = BenchDock.DisplayWidth(art),
                 Host = d.DockHostId,
                 Anchor = d.DockAnchor,
                 Side = d.DockSideTag

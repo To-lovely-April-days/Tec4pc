@@ -186,8 +186,10 @@ public sealed class SvgArt
 
     private IBrush? FillBrush(XElement el, Paint paint, Style style, string? run)
     {
-        // 设备图约定优先
-        if (run is not null)
+        // 运行辉光：图里自己写了填色就用图里的（反应器写的是主题紫的径向渐变），
+        // 没写才退回「通道色刷一层」。通道身份由釜底那条色带表示，辉光不必再兼职——
+        // 从前这里无条件覆盖，改图里的渐变一点反应都没有。
+        if (run is not null && el.Attribute("fill") is null)
             return new SolidColorBrush(run == "2" ? paint.Tint2 : paint.Tint1, 0.30);
         if (el.Attribute("data-tint")?.Value is { } tint && el.Attribute("fill") is not null)
             return new SolidColorBrush(tint == "2" ? paint.Tint2 : paint.Tint1);
@@ -267,7 +269,10 @@ public sealed class SvgArt
         }
         if (stops.Count == 0) return null;
 
-        // 径向渐变只用于设备图辉光/探头尖端；用中心色近似，避开 Avalonia 各版本的 API 差异
+        // 径向渐变：Avalonia 的 RadialGradientBrush 在这条渲染路径上画不出东西
+        // （试过 objectBoundingBox 的相对半径，连纯色都不出），所以仍用首个 stop
+        // 的颜色近似成纯色。需要辉光的地方就在图里叠几个透明度递减的实心椭圆，
+        // 那个一定画得出来。
         if (g.Name.LocalName == "radialGradient")
             return new SolidColorBrush(stops[0].Color);
 

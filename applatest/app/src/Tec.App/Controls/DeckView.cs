@@ -55,8 +55,8 @@ public sealed class DeckView : Control
                 : ws.Bench.Bindings.Where(b => b.DeviceId == dev.InstanceId)
                                    .Select(b => b.ChannelNumber).Distinct().OrderBy(x => x).ToList();
 
-            // 台面画布上的宽度（reactor2 176，其余 120）→ viewBox 缩放
-            var wpx = key == "reactor2" ? 176.0 : 120.0;
+            // 与台面画布同一套显示宽度 → viewBox 缩放。运行页的台面总览得跟画布对得上
+            var wpx = Services.BenchDock.DisplayWidth(key);
             var k = Scale * wpx / art.ViewWidth;
             var x = dev.Position.X * Scale + Ox;
             var y = dev.Position.Y * Scale + Oy;
