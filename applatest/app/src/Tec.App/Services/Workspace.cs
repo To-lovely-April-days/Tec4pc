@@ -1,3 +1,4 @@
+using Avalonia.Threading;
 using Tec.Core;
 using Tec.Core.Benches;
 using Tec.Core.Catalog;
@@ -107,7 +108,15 @@ public sealed class Workspace
         // 配方库先读盘。读不到（第一次运行）才灌内置的六条工艺模板——
         // 否则用户删掉的模板每次开机又回来了。
         if (!Store.LoadLibrary(Library)) Library.AddRange(DemoBench.Library(Catalog));
-        RebuildChannelsAsync().GetAwaiter().GetResult();
+    }
+
+    /// <summary>
+    /// 开机建通道。单独拎出来是因为它得 await——在界面线程上阻塞等驱动收尾，
+    /// 会把界面线程和驱动互相锁死。窗口建好之后调它，界面靠 BenchChanged 自己刷新。
+    /// </summary>
+    public async Task StartAsync()
+    {
+        await RebuildChannelsAsync();
         Store.ResetDirty();            // 开机建通道会触发 BenchChanged，别一上来就标脏
 
         _safetyTimer = new Timer(_ => Engine.Safety.Evaluate(), null,
@@ -122,7 +131,7 @@ public sealed class Workspace
     {
         foreach (var s in _sessions.Values)
         {
-            try { await s.DisposeAsync(); } catch { }
+            try { await s.DisposeAsync().ConfigureAwait(false); } catch { }
         }
         _sessions.Clear();
         _channels.Clear();
@@ -172,8 +181,9 @@ public sealed class Workspace
             IDeviceSession session;
             try
             {
-                session = await driver.OpenAsync(dev.Connection, ctx, CancellationToken.None);
-                await session.StartAsync(CancellationToken.None);
+                session = await driver.OpenAsync(dev.Connection, ctx, CancellationToken.None)
+                                      .ConfigureAwait(false);
+                await session.StartAsync(CancellationToken.None).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -208,16 +218,30 @@ public sealed class Workspace
                 Engine.Safety.Add(SafetyMonitor.FromTemperature(ch.Number, t.Limits));
         }
 
-        BenchChanged?.Invoke(this, EventArgs.Empty);
+        // 上面一律 ConfigureAwait(false)，所以这里已经不在界面线程上了。
+        // BenchChanged 会驱动一堆 ObservableCollection，必须回到界面线程再发；
+        // 而且要等它发完这个方法才算结束——调用方紧接着就要抹脏标记，
+        // 事件晚一步到的话刚打开的实验立刻又被标成「改过」。
+        await RaiseBenchChangedAsync();
+    }
+
+    private Task RaiseBenchChangedAsync()
+    {
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            BenchChanged?.Invoke(this, EventArgs.Empty);
+            return Task.CompletedTask;
+        }
+        return Dispatcher.UIThread.InvokeAsync(() => BenchChanged?.Invoke(this, EventArgs.Empty)).GetTask();
     }
 
     /// <summary>载入示例台面（2 台反应器 + 2 套加料 + 探头），演示与自测用。</summary>
-    public void LoadSample()
+    public Task LoadSampleAsync()
     {
         Bench.Devices.Clear();
         Bench.Bindings.Clear();
         DemoBench.Fill(Bench);
-        RebuildChannelsAsync().GetAwaiter().GetResult();
+        return RebuildChannelsAsync();
     }
 
     public IDeviceSession? Session(string instanceId)

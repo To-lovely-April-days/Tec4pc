@@ -21,8 +21,8 @@ public sealed class RecentCardViewModel : ViewModelBase
 
     public required string Name { get; init; }
     public required string Path { get; init; }
-    /// <summary>缩略图键：bench4 / bench2 / curve / empty。</summary>
-    public required string Thumb { get; init; }
+    /// <summary>台面缩略图的画法。空 = 台面上没有设备。</summary>
+    public required IReadOnlyList<ThumbPart> Parts { get; init; }
     public required string Tag { get; init; }
     /// <summary>标签样式：live / draft / 空串。</summary>
     public required string TagClass { get; init; }
@@ -30,7 +30,6 @@ public sealed class RecentCardViewModel : ViewModelBase
     public required string Size { get; init; }
     public required string Note { get; init; }
 
-    public string ThumbKey => "thumb-" + Thumb;
     public bool IsLive => TagClass == "live";
     public bool IsDraft => TagClass == "draft";
     public bool IsPlain => TagClass.Length == 0;
@@ -80,22 +79,23 @@ public sealed class StartViewModel : ViewModelBase
         });
 
         // 双击最近实验卡片就打开它
-        OpenRecent = new RelayCommand(p =>
+        OpenRecent = new RelayCommand(p => Async(async () =>
         {
-            if (p is RecentCardViewModel card) Guarded(() => _store.Open(card.Path), $"已打开 {card.Name}");
-        });
+            if (p is RecentCardViewModel card)
+                await GuardedAsync(() => _store.OpenAsync(card.Path), $"已打开 {card.Name}");
+        }));
 
-        NewExperiment = new RelayCommand(() =>
+        NewExperiment = new RelayCommand(() => Async(async () =>
         {
-            _store.New();
-            Status = "已新建实验。去「台面」把设备拖进来。";
+            await GuardedAsync(_store.NewAsync, "已新建实验。去「台面」把设备拖进来。");
             shell.Tab = MainViewModel.TabBench;
-        });
+        }));
 
         OpenExperiment = new RelayCommand(() => Async(async () =>
         {
             if (await FileDialogs.OpenExperiment() is not { } path) return;
-            Guarded(() => _store.Open(path), $"已打开 {Path.GetFileNameWithoutExtension(path)}");
+            await GuardedAsync(() => _store.OpenAsync(path),
+                               $"已打开 {Path.GetFileNameWithoutExtension(path)}");
         }));
 
         SaveExperiment = new RelayCommand(() => Async(async () =>
@@ -110,7 +110,7 @@ public sealed class StartViewModel : ViewModelBase
         ImportBench = new RelayCommand(() => Async(async () =>
         {
             if (await FileDialogs.OpenBench() is not { } path) return;
-            Guarded(() => _store.ImportBench(path), "台面已导入。配方按通道号对回去了。");
+            await GuardedAsync(() => _store.ImportBenchAsync(path), "台面已导入。配方按通道号对回去了。");
             shell.Tab = MainViewModel.TabBench;
         }));
 
@@ -150,6 +150,18 @@ public sealed class StartViewModel : ViewModelBase
         catch (Exception ex) { Status = "出错了：" + ex.Message; }
     }
 
+    /// <summary>
+    /// 打开 / 新建 / 导入台面要等驱动开完会话，全程 await——
+    /// 早先这里是阻塞等的，台面上已经有设备时会把界面线程和驱动的收尾
+    /// 互相锁住，点「打开」就整个卡死。
+    /// </summary>
+    private async Task GuardedAsync(Func<Task> act, string okText)
+    {
+        try { await act(); Status = okText; }
+        catch (TecFileException ex) { Status = ex.Message; }
+        catch (Exception ex) { Status = "出错了：" + ex.Message; }
+    }
+
     private static async void Async(Func<Task> work)
     {
         try { await work(); } catch (Exception ex) { Console.WriteLine("[error] " + ex.Message); }
@@ -164,7 +176,7 @@ public sealed class StartViewModel : ViewModelBase
             {
                 Name = e.Name,
                 Path = e.Path,
-                Thumb = e.Devices == 0 ? "empty" : e.Channels >= 4 ? "bench4" : e.Channels >= 1 ? "bench2" : "curve",
+                Parts = e.Thumb,
                 Tag = string.Equals(e.Path, _store.CurrentPath, StringComparison.OrdinalIgnoreCase)
                     ? "已打开" : e.Steps == 0 ? "草稿" : "",
                 TagClass = string.Equals(e.Path, _store.CurrentPath, StringComparison.OrdinalIgnoreCase)

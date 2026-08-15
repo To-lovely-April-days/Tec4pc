@@ -143,8 +143,8 @@
                   <!-- .rthumb：150px 高预览 + 左上标签 + 右上图钉 -->
                   <Panel Height="150" Background="#f7f8f9">
                     <Border BorderBrush="#edeef0" BorderThickness="0,0,0,1" />
-                    <ctl:TecIcon Key="{Binding ThumbKey}" Size="290"
-                                 HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <!-- 台面的真缩略图：设备按真实坐标缩放画出来，管路一并画上 -->
+                    <ctl:BenchThumb Parts="{Binding Parts}" Margin="6" />
 
                     <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="10"
                             CornerRadius="9" Padding="9,2"

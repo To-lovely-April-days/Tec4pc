@@ -19,6 +19,9 @@ public partial class App : Application
             workspace.Boot();
             desktop.MainWindow = new MainWindow { DataContext = new MainViewModel(workspace) };
             desktop.ShutdownRequested += (_, _) => workspace.Shutdown();
+            // 建通道要 await，不能在界面线程上阻塞等——窗口先出来，
+            // 通道建好之后 BenchChanged 会把各视图刷一遍
+            _ = workspace.StartAsync();
         }
         base.OnFrameworkInitializationCompleted();
     }

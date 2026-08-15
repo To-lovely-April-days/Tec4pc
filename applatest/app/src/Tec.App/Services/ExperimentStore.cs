@@ -4,6 +4,23 @@ using Tec.Core.Recipes;
 
 namespace Tec.App.Services;
 
+/// <summary>
+/// 缩略图里的一台设备：画什么图、摆在哪儿、接在谁身上。
+/// 存这几个字段，卡片就能画出这份实验的台面真样子，不必为了画一张图去读整份文件。
+/// </summary>
+public sealed class ThumbPart
+{
+    public string Art { get; set; } = "reactor2";
+    public double X { get; set; }
+    public double Y { get; set; }
+    public double W { get; set; }
+    /// <summary>停靠在哪台设备上（宿主 InstanceId）。空 = 自由摆放。</summary>
+    public string? Host { get; set; }
+    public string? Anchor { get; set; }
+    public string? Side { get; set; }
+    public string Id { get; set; } = "";
+}
+
 /// <summary>最近打开过的一份实验。图钉是操作人自己按的，跟着列表一起存。</summary>
 public sealed class RecentEntry
 {
@@ -15,6 +32,8 @@ public sealed class RecentEntry
     public int Devices { get; set; }
     public int Channels { get; set; }
     public int Steps { get; set; }
+    /// <summary>台面缩略图的画法。空 = 台面是空的，卡片显示空台面的样子。</summary>
+    public List<ThumbPart> Thumb { get; set; } = new();
 }
 
 /// <summary>
@@ -76,7 +95,7 @@ public sealed class ExperimentStore
     // ── 新建 / 打开 / 保存 ───────────────────────────────────────────
 
     /// <summary>新建：台面清空、配方清空、回到「未命名实验」。</summary>
-    public void New()
+    public async Task NewAsync()
     {
         _ws.Bench.Devices.Clear();
         _ws.Bench.Bindings.Clear();
@@ -85,12 +104,12 @@ public sealed class ExperimentStore
         _ws.LaneNames.Clear();
         _ws.ExperimentName = "未命名实验";
         CurrentPath = null;
-        _ws.RebuildChannelsAsync().GetAwaiter().GetResult();
+        await _ws.RebuildChannelsAsync();
         Dirty = false;                 // 重建通道会触发 BenchChanged，脏标记要在它之后抹
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    public void Open(string path)
+    public async Task OpenAsync(string path)
     {
         var doc = TecFiles.LoadExperiment(path);
 
@@ -112,7 +131,7 @@ public sealed class ExperimentStore
 
         // 台面变了通道就变了。RebuildChannels 会给新出现的通道补空配方，
         // 但绝不会覆盖刚读进来的那几条——它只在缺的时候补
-        _ws.RebuildChannelsAsync().GetAwaiter().GetResult();
+        await _ws.RebuildChannelsAsync();
         Dirty = false;                 // 同上：重建之后再抹
 
         Remember(path, doc.Name);
@@ -175,10 +194,10 @@ public sealed class ExperimentStore
     /// 导入台面：只换设备，配方留着。通道号对不上的泳道会空转——
     /// 这是操作人自己要的「换一套硬件跑同一套配方」，不该替他删配方。
     /// </summary>
-    public void ImportBench(string path)
+    public async Task ImportBenchAsync(string path)
     {
         TecFiles.LoadBench(path).ApplyTo(_ws.Bench);
-        _ws.RebuildChannelsAsync().GetAwaiter().GetResult();
+        await _ws.RebuildChannelsAsync();
         MarkDirty();
         Changed?.Invoke(this, EventArgs.Empty);
     }
@@ -236,6 +255,7 @@ public sealed class ExperimentStore
             Pinned = old?.Pinned ?? false,
             Devices = _ws.Bench.Devices.Count,
             Channels = _ws.Channels.Count,
+            Thumb = ThumbOf(),
             Steps = _ws.ChannelRecipes.Values.Sum(r => r.Steps.Count)
         });
 
@@ -247,6 +267,24 @@ public sealed class ExperimentStore
         }
         SaveRecent();
     }
+
+    /// <summary>把当前台面压成缩略图的画法。宽度按设备类型取，和画布上一致。</summary>
+    private List<ThumbPart> ThumbOf()
+        => _ws.Bench.Devices.Select(d =>
+        {
+            var art = _ws.Drivers.Driver(d.DriverId)?.Info.IconKey ?? "reactor2";
+            return new ThumbPart
+            {
+                Id = d.InstanceId,
+                Art = art,
+                X = d.Position.X,
+                Y = d.Position.Y,
+                W = art == "reactor2" ? 176 : 120,
+                Host = d.DockHostId,
+                Anchor = d.DockAnchor,
+                Side = d.DockSideTag
+            };
+        }).ToList();
 
     public void Forget(string path)
     {
