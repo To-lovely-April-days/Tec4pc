@@ -6,11 +6,20 @@
         Title="TecStudio 平行合成工作站 - PSW-4"
         Width="1500" Height="940" MinWidth="1280" MinHeight="720"
         FontFamily="{StaticResource UiFont}" FontSize="12"
-        Foreground="#333333" Background="White"
+        Foreground="#333333" Background="Transparent"
+        TransparencyLevelHint="Transparent"
         ExtendClientAreaToDecorationsHint="True"
         ExtendClientAreaChromeHints="NoChrome"
         ExtendClientAreaTitleBarHeightHint="-1">
 
+  <!--
+    窗口圆角自绘：Windows 11 的 DWM 只给还原态窗口加圆角，最大化一律方角，
+    应用改不了它的行为——所以圆角由这里裁。代价是最大化时屏幕四角透出桌面。
+    OffScreenMargin 是最大化时窗口超出工作区的那一圈（自绘标题栏必须自己补），
+    不补的话四边各有几像素内容跑到屏幕外面。
+  -->
+  <Border Name="Shell" Background="White" CornerRadius="8" ClipToBounds="True"
+          Margin="{Binding $parent[Window].OffScreenMargin}">
   <DockPanel>
 
     <!-- 窗口标题栏：30px 深紫渐变，自绘（原型 .titlebar） -->
@@ -115,6 +124,7 @@
       </ContentControl>
     </Panel>
   </DockPanel>
+  </Border>
 
   <Window.Styles>
     <Style Selector="Button.win">
