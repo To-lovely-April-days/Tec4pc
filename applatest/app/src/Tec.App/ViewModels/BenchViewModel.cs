@@ -333,6 +333,16 @@ public sealed class BenchViewModel : ViewModelBase
     public double DragX { get; private set; }
     public double DragY { get; private set; }
 
+    /// <summary>设备库那一栏的宽度，与视图的三栏定义一致。</summary>
+    private const double LibraryWidth = 118;
+
+    /// <summary>
+    /// 幽灵画在跨三栏的顶层，所以要把画布坐标换成视图坐标——不这样它会被
+    /// 画布的裁剪切掉，从设备库里拖出来时像是从库底下钻出来的。
+    /// </summary>
+    public double GhostX => DragX * Zoom + PanX + LibraryWidth;
+    public double GhostY => DragY * Zoom + PanY;
+
     /// <summary>当前会插上的那个接口。</summary>
     public Anchor? Hover
     {
@@ -398,7 +408,7 @@ public sealed class BenchViewModel : ViewModelBase
                                   TakenAnchors(_dragNode?.Id), _dragNode?.Device.DockAnchor);
         Hover = pick;
         RebuildLinks();                    // 拖动时管路跟着手走
-        RaiseAll(nameof(DragX), nameof(DragY));
+        RaiseAll(nameof(DragX), nameof(DragY), nameof(GhostX), nameof(GhostY));
     }
 
     /// <summary>判断插哪个接口用的参考点：设备插头的当前位置。</summary>
