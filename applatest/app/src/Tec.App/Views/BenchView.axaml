@@ -8,26 +8,31 @@
   <Grid ColumnDefinitions="118,*,342">
 
     <!-- 设备库 -->
-    <Border Grid.Column="0" Background="#f4f4f4" BorderBrush="#dcdcdc" BorderThickness="0,0,1,0">
+    <Border Grid.Column="0" Background="{StaticResource ThemeGap}"
+            BorderBrush="#dcdcdc" BorderThickness="0,0,1,0">
       <DockPanel>
-        <TextBlock DockPanel.Dock="Top" Text="设备库" FontSize="11" Foreground="#7a7a7a"
-                   HorizontalAlignment="Center" Margin="0,6,0,8" />
+        <Border DockPanel.Dock="Top" Background="{StaticResource ThemeFill}" Padding="0,6,0,8">
+          <TextBlock Text="设备库" FontSize="11" Foreground="#6a6480" HorizontalAlignment="Center" />
+        </Border>
         <ScrollViewer Padding="0,0,0,40">
           <ItemsControl ItemsSource="{Binding Library}">
             <ItemsControl.ItemTemplate>
               <DataTemplate>
-                <StackPanel Width="100" Margin="0,0,0,10" HorizontalAlignment="Center"
-                            PointerPressed="OnLibraryPressed" Background="Transparent">
-                  <Border Width="100" Height="56" Background="White" BorderBrush="#cfcfcf"
-                          BorderThickness="1" CornerRadius="3" ClipToBounds="True">
-                    <ctl:DeviceArtView ArtKey="{Binding ArtKey}" ArtWidth="88"
-                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
-                  </Border>
-                  <TextBlock Text="{Binding Name}" FontSize="10" Foreground="#4a4a4a"
-                             TextAlignment="Center" TextWrapping="Wrap" Margin="0,3,0,0" />
-                  <TextBlock Text="{Binding Problem}" IsVisible="{Binding HasProblem}"
-                             FontSize="9.5" Foreground="#b3261e" TextAlignment="Center" TextWrapping="Wrap" />
-                </StackPanel>
+                <!-- 一台设备 = 一块主题色；块之间留 3px 白缝（GBG 的设备库就是这样） -->
+                <Border Background="{StaticResource ThemeFill}" Margin="0,0,0,3" Padding="0,7,0,6"
+                        PointerPressed="OnLibraryPressed">
+                  <StackPanel Width="100" HorizontalAlignment="Center">
+                    <Border Width="100" Height="56" Background="White" BorderBrush="#cfcfcf"
+                            BorderThickness="1" CornerRadius="3" ClipToBounds="True">
+                      <ctl:DeviceArtView ArtKey="{Binding ArtKey}" ArtWidth="88"
+                                         HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <TextBlock Text="{Binding Name}" FontSize="10" Foreground="#4a4a4a"
+                               TextAlignment="Center" TextWrapping="Wrap" Margin="0,3,0,0" />
+                    <TextBlock Text="{Binding Problem}" IsVisible="{Binding HasProblem}"
+                               FontSize="9.5" Foreground="#b3261e" TextAlignment="Center" TextWrapping="Wrap" />
+                  </StackPanel>
+                </Border>
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
@@ -80,7 +85,8 @@
     </Panel>
 
     <!-- 属性面板 -->
-    <Border Grid.Column="2" Background="#ececec" BorderBrush="#d2d2d2" BorderThickness="1,0,0,0">
+    <Border Grid.Column="2" Background="{StaticResource ThemeGap}"
+            BorderBrush="#d2d2d2" BorderThickness="1,0,0,0">
       <DockPanel>
         <Border DockPanel.Dock="Bottom" BorderBrush="#d5d5d5" BorderThickness="0,1,0,0"
                 Padding="18,12,18,14">
@@ -93,7 +99,28 @@
         </Border>
 
         <ScrollViewer>
-          <StackPanel Margin="18,16,18,20">
+          <StackPanel>
+
+            <!-- ===== Welcome 区：常驻，不随选中变化（GBG 的第一块） ===== -->
+            <Border Background="{StaticResource ThemeFill}" Padding="18,16,18,10">
+              <StackPanel>
+                <TextBlock Text="台面" FontSize="24" FontWeight="Light" Foreground="#333333"
+                           HorizontalAlignment="Center" Margin="0,0,0,8" />
+                <TextBlock Classes="intro" Margin="0,0,0,4"
+                           Text="从左侧设备库拖入设备组成台面。点选台面上的设备可编辑其连接与通道绑定；下表可独立启停每个通道。" />
+                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6,0,0">
+                  <Border Classes="exp3"><ctl:TecIcon Key="ui-chev-down" Tint="#555555" /></Border>
+                  <TextBlock Text="高级设置" FontSize="11.5" Foreground="#3d3d3d" VerticalAlignment="Center" />
+                </StackPanel>
+              </StackPanel>
+            </Border>
+
+            <!-- Welcome 区与属性区之间是一道白缝，不是灰线 -->
+            <Panel Height="6" />
+
+            <!-- ===== 属性区 ===== -->
+            <Border Background="{StaticResource ThemeFill}" Padding="18,16,18,20">
+            <StackPanel>
 
             <!-- h2：选中设备是「设备属性」，没选是「台面属性」（原型 renderProps 的两个分支） -->
             <TextBlock Text="设备属性" IsVisible="{Binding HasSelection}"
@@ -129,13 +156,13 @@
               <v:SchemaFormView DataContext="{Binding ConfigForm}" />
 
               <!-- 探头要绑通道；反应器自带通道，没有这一行 -->
-              <StackPanel Orientation="Horizontal" Margin="0,0,0,8" IsVisible="{Binding IsProbe}">
-                <TextBlock Text="绑定通道" Width="96" FontSize="11.5" Foreground="#3d3d3d"
+              <Grid ColumnDefinitions="96,*,40" Margin="0,0,0,8" IsVisible="{Binding IsProbe}">
+                <TextBlock Grid.Column="0" Text="绑定通道" FontSize="11.5" Foreground="#3d3d3d"
                            VerticalAlignment="Center" Margin="0,0,10,0" />
-                <ComboBox Classes="sel" Height="23" Width="196"
+                <ComboBox Grid.Column="1" Classes="sel" Height="23" HorizontalAlignment="Stretch"
                           ItemsSource="{Binding BindTargets}"
                           SelectedItem="{Binding BindTarget, Mode=TwoWay}" />
-              </StackPanel>
+              </Grid>
 
               <Button Classes="btn" Content="测试连接" Command="{Binding Probe}"
                       HorizontalAlignment="Left" Height="26" Margin="0,4,0,0" />
@@ -184,16 +211,16 @@
             <StackPanel IsVisible="{Binding !HasSelection}">
               <TextBlock Classes="intro" Margin="0,0,0,14"
                          Text="从左侧设备库拖入设备组成台面。点选台面上的设备可编辑其连接与通道绑定；下表可独立启停每个通道。" />
-              <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                <TextBlock Text="台面名称" Width="96" FontSize="11.5" Foreground="#3d3d3d"
+              <Grid ColumnDefinitions="96,*,40" Margin="0,0,0,8">
+                <TextBlock Grid.Column="0" Text="台面名称" FontSize="11.5" Foreground="#3d3d3d"
                            VerticalAlignment="Center" Margin="0,0,10,0" />
-                <TextBox Classes="finput" Width="196" Text="{Binding BenchName, Mode=TwoWay}" />
-              </StackPanel>
-              <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                <TextBlock Text="设备数" Width="96" FontSize="11.5" Foreground="#3d3d3d"
+                <TextBox Grid.Column="1" Classes="finput" Text="{Binding BenchName, Mode=TwoWay}" />
+              </Grid>
+              <Grid ColumnDefinitions="96,*,40" Margin="0,0,0,8">
+                <TextBlock Grid.Column="0" Text="设备数" FontSize="11.5" Foreground="#3d3d3d"
                            VerticalAlignment="Center" Margin="0,0,10,0" />
-                <TextBox Classes="finput" Width="196" Text="{Binding DeviceCountText}" IsEnabled="False" />
-              </StackPanel>
+                <TextBox Grid.Column="1" Classes="finput" Text="{Binding DeviceCountText}" IsEnabled="False" />
+              </Grid>
             </StackPanel>
 
             <StackPanel IsVisible="{Binding !HasSelection}">
@@ -243,6 +270,8 @@
                        Margin="0,6,0,0"
                        Text="两台反应器可组成 4 通道高通量系统，也可拆分为两套独立系统分别运行；停用的通道不参与配方与运行。" />
             </StackPanel>
+            </StackPanel>
+            </Border>
           </StackPanel>
         </ScrollViewer>
       </DockPanel>

@@ -10,7 +10,9 @@
     <ItemsControl ItemsSource="{Binding Fields}">
       <ItemsControl.ItemTemplate>
         <DataTemplate>
-          <Grid ColumnDefinitions="96,*,Auto" Margin="0,0,0,8" IsVisible="{Binding IsVisible}">
+          <!-- 单位列固定 40px（原型 .pf-u）：写 Auto 的话没有单位的行输入框会多伸出去，
+               一列输入框长短不一 -->
+          <Grid ColumnDefinitions="96,*,40" Margin="0,0,0,8" IsVisible="{Binding IsVisible}">
             <TextBlock Grid.Column="0" Text="{Binding Label}" VerticalAlignment="Center"
                        FontSize="11.5" Foreground="#3d3d3d" TextWrapping="Wrap" Margin="0,0,10,0" />
 

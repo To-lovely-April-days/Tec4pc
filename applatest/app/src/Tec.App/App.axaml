@@ -7,6 +7,13 @@
        选中态四件套（实线边 / 底色 / 柔环 / 深蓝加粗文字）来自原型 :root，
        对比度 10.6:1，是刻意选的，别改浅。 -->
   <Application.Resources>
+    <!-- 主题色：取自标题栏的深紫 #3c2d63，调淡到能当大面积底色。
+         面板成块着色、块与块之间用白缝分隔（GBG 的做法），
+         所以「底」是主题色、「缝」是白色。改配色只改这两支笔。 -->
+    <SolidColorBrush x:Key="ThemeFill" Color="#ece9f5" />
+    <SolidColorBrush x:Key="ThemeGap" Color="#ffffff" />
+    <SolidColorBrush x:Key="ThemeLine" Color="#d6d0e6" />
+
     <SolidColorBrush x:Key="SelBd" Color="#1a7fc4" />
     <SolidColorBrush x:Key="SelBg" Color="#e8f2fb" />
     <SolidColorBrush x:Key="SelRing" Color="#381a7fc4" />
