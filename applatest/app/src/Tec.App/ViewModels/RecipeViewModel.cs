@@ -156,6 +156,30 @@ public sealed class LaneViewModel : ViewModelBase
         }
     }
 
+    /// <summary>可改挂到哪个通道（原型 lh-sel + remapLane）。</summary>
+    public ObservableCollection<string> ChannelOptions { get; } = new();
+
+    public string ChannelPick
+    {
+        get => ChannelLabel;
+        set
+        {
+            // 「机A · CH1」里取 CHn
+            var i = value?.LastIndexOf("CH", StringComparison.Ordinal) ?? -1;
+            if (i < 0 || !int.TryParse(value![(i + 2)..], out var target) || target == Channel) return;
+            _owner.Remap(Channel, target);
+        }
+    }
+
+    public void RefreshOptions()
+    {
+        Raise(nameof(LaneName));
+        ChannelOptions.Clear();
+        foreach (var c in _owner.Workspace.Channels.Where(c => c.Enabled).OrderBy(c => c.Number))
+            ChannelOptions.Add(_owner.LabelOf(c.Number));
+        RaiseAll(nameof(ChannelLabel), nameof(ChannelPick));
+    }
+
     public bool IsCurrent
     {
         get => _isCurrent;
@@ -203,10 +227,52 @@ public sealed class RecipeViewModel : ViewModelBase
         ApplyLib = new RelayCommand(DoApplyLib);
         SaveToLib = new RelayCommand(DoSaveToLib);
 
+        // 台面变了通道就变了，泳道的通道下拉要跟着刷新
+        ws.BenchChanged += (_, _) => RefreshAll();
+
         RefreshAll();
     }
 
     public Workspace Workspace { get; }
+
+    /// <summary>机A · CH1（原型 chLabel），泳道下拉与标题共用。</summary>
+    public string LabelOf(int channel)
+    {
+        var ch = Workspace.ChannelOf(channel);
+        if (ch is null) return $"CH{channel}";
+        var hosts = Workspace.Bench.Devices
+            .Where(d => d.DriverId == Rd105ReactorDriver.DriverId).ToList();
+        var idx = hosts.FindIndex(d => d.InstanceId == ch.HostInstanceId);
+        var machine = idx >= 0 && idx < 8 ? "机" + "ABCDEFGH"[idx] : ch.HostInstanceId;
+        return $"{machine} · CH{channel}";
+    }
+
+    /// <summary>把一条泳道改挂到另一个通道（原型 remapLane）：两边的配方与名称对调。</summary>
+    public void Remap(int from, int to)
+    {
+        if (from == to) return;
+        var recipes = Workspace.ChannelRecipes;
+        var names = Workspace.LaneNames;
+        recipes.TryGetValue(from, out var ra);
+        recipes.TryGetValue(to, out var rb);
+        names.TryGetValue(from, out var na);
+        names.TryGetValue(to, out var nb);
+        if (ra is not null) recipes[to] = ra; else recipes.Remove(to);
+        if (rb is not null) recipes[from] = rb; else recipes.Remove(from);
+        names[to] = na ?? "新配方";
+        names[from] = nb ?? "新配方";
+        CurCh = to;
+        RefreshAll();
+    }
+
+    /// <summary>删掉这条泳道（原型 removeChannelTab）：清空该通道的配方。</summary>
+    public void RemoveLane(int channel)
+    {
+        Workspace.ChannelRecipes[channel] = new Recipe { Name = "新配方" };
+        Workspace.LaneNames[channel] = "新配方";
+        RefreshAll();
+    }
+
     public ObservableCollection<ModuleGroup> Groups { get; } = new();
     public ObservableCollection<LaneViewModel> Lanes { get; } = new();
     public ObservableCollection<Recipe> Library { get; } = new();
@@ -354,6 +420,7 @@ public sealed class RecipeViewModel : ViewModelBase
         {
             lane.IsCurrent = lane.Channel == _curCh;
             lane.RefreshHint();
+            lane.RefreshOptions();
             lane.Steps.Clear();
             if (!Workspace.ChannelRecipes.TryGetValue(lane.Channel, out var recipe)) continue;
             var plan = Schedule.Build(recipe, Workspace.Catalog);

@@ -30,4 +30,11 @@ public partial class RecipeView : UserControl
     {
         if (sender is Control { DataContext: ModuleGroup g }) g.Open = !g.Open;
     }
+
+    /// <summary>泳道头的垃圾桶：清空该通道的配方（原型 removeChannelTab）。</summary>
+    private void OnLaneRemove(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (DataContext is RecipeViewModel vm && sender is Control { DataContext: LaneViewModel lane })
+            vm.RemoveLane(lane.Channel);
+    }
 }
