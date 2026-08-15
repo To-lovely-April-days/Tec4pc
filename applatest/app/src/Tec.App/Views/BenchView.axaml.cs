@@ -11,6 +11,13 @@ public partial class BenchView : UserControl
 
     private BenchViewModel? Vm => DataContext as BenchViewModel;
 
+    // 按下先记着，指针挪开一段距离才算拖拽——单纯点一下只是选中，
+    // 不该在画布上冒出一个跟手的幽灵设备
+    private const double DragSlop = 4;
+    private LibraryItemViewModel? _pendingLib;
+    private DeviceNodeViewModel? _pendingDev;
+    private Point _pressAt;
+
     /// <summary>
     /// 拖拽坐标一律换算到 World（缩放平移之内的那层），这样放大以后
     /// 落点仍然对得上设备的实际坐标；设备库与画布两套坐标系也统一了。
@@ -23,7 +30,9 @@ public partial class BenchView : UserControl
         if (Vm is not { } vm || sender is not Control { DataContext: LibraryItemViewModel item }) return;
         vm.PickedFromLibrary = item;
         if (!item.Usable) return;                       // 驱动不可用的不让拖
-        vm.BeginDragFromLibrary(item, OnStage(e));
+        _pendingLib = item;
+        _pendingDev = null;
+        _pressAt = OnStage(e);
         e.Pointer.Capture(Stage);
         e.Handled = true;
     }
@@ -32,20 +41,34 @@ public partial class BenchView : UserControl
     private void OnDevicePressed(object? sender, PointerPressedEventArgs e)
     {
         if (Vm is not { } vm || sender is not Control { DataContext: DeviceNodeViewModel node }) return;
-        vm.BeginDragDevice(node, OnStage(e));
+        vm.Selected = node;                             // 按下就选中，拖不拖另说
+        _pendingDev = node;
+        _pendingLib = null;
+        _pressAt = OnStage(e);
         e.Pointer.Capture(Stage);
         e.Handled = true;
     }
 
     private void OnStageMoved(object? sender, PointerEventArgs e)
     {
-        if (Vm is { Dragging: true } vm) vm.DragTo(OnStage(e));
+        if (Vm is not { } vm) return;
+        var at = OnStage(e);
+
+        if (!vm.Dragging && (_pendingLib is not null || _pendingDev is not null))
+        {
+            if (Math.Abs(at.X - _pressAt.X) < DragSlop && Math.Abs(at.Y - _pressAt.Y) < DragSlop) return;
+            if (_pendingLib is { } lib) vm.BeginDragFromLibrary(lib, _pressAt);
+            else if (_pendingDev is { } dev) vm.BeginDragDevice(dev, _pressAt);
+        }
+
+        if (vm.Dragging) vm.DragTo(at);
     }
 
     private void OnStageReleased(object? sender, PointerReleasedEventArgs e)
     {
-        if (Vm is not { Dragging: true } vm) return;
-        vm.EndDrag(OnStage(e));
+        _pendingLib = null;
+        _pendingDev = null;
+        if (Vm is { Dragging: true } vm) vm.EndDrag(OnStage(e));
         e.Pointer.Capture(null);
     }
 

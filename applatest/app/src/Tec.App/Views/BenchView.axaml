@@ -66,8 +66,8 @@
         </ItemsControl.Styles>
         <ItemsControl.ItemTemplate>
           <DataTemplate>
-            <Border Padding="6,6,6,4" BorderThickness="1.6" CornerRadius="4"
-                    BorderBrush="Transparent" Background="Transparent"
+            <!-- 本地值会盖掉样式，所以底色与描边都交给 Style 定 -->
+            <Border Classes="dev" Classes.sel="{Binding IsSelected}"
                     PointerPressed="OnDevicePressed">
               <StackPanel>
                 <ctl:DeviceArtView ArtKey="{Binding ArtKey}" ArtWidth="{Binding Width}" />
@@ -109,9 +109,8 @@
       </ItemsControl>
 
       <Canvas IsHitTestVisible="False" IsVisible="{Binding Dragging}">
-        <Border Canvas.Left="{Binding DragX}" Canvas.Top="{Binding DragY}" Opacity="0.75"
-                Padding="6,6,6,4" BorderThickness="1.6" CornerRadius="4"
-                BorderBrush="#1a7fc4" Background="#22ffffff">
+        <Border Canvas.Left="{Binding DragX}" Canvas.Top="{Binding DragY}" Opacity="0.7"
+                Padding="6,6,6,4">
           <ctl:DeviceArtView ArtKey="{Binding DragArtKey}" ArtWidth="{Binding DragWidth}" />
         </Border>
       </Canvas>
@@ -363,6 +362,20 @@
       <Setter Property="Background" Value="#e3f0f9" />
       <Setter Property="BorderBrush" Value="#1a91d6" />
     </Style>
+    <Style Selector="Border.dev">
+      <Setter Property="Padding" Value="6,6,6,4" />
+      <Setter Property="BorderThickness" Value="1.6" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <!-- 台面上选中的设备描一圈蓝框 -->
+    <Style Selector="Border.dev.sel">
+      <Setter Property="BorderBrush" Value="#1a7fc4" />
+      <Setter Property="Background" Value="#0d1a7fc4" />
+    </Style>
+
     <!-- GBG 的 hbtn：26px 圆钮，浅蓝底深描边 -->
     <Style Selector="Button.hbtn">
       <Setter Property="Width" Value="26" />

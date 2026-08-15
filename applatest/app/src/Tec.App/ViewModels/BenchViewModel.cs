@@ -62,6 +62,10 @@ public sealed class DeviceNodeViewModel : ViewModelBase
 
     /// <summary>改名后台面上的标签要跟着变。</summary>
     public void NameChanged() => Raise(nameof(Title));
+
+    private bool _sel;
+    /// <summary>选中的设备在画布上描一圈框。</summary>
+    public bool IsSelected { get => _sel; set => Set(ref _sel, value); }
 }
 
 /// <summary>
@@ -210,8 +214,11 @@ public sealed class BenchViewModel : ViewModelBase
         get => _selected;
         set
         {
+            var prev = _selected;
             if (!Set(ref _selected, value)) return;
-            if (value is null) { Wells.Clear(); ConnectionForm = null; ConfigForm = null; }
+            if (prev is not null) prev.IsSelected = false;
+            if (value is not null) value.IsSelected = true;
+            else { Wells.Clear(); ConnectionForm = null; ConfigForm = null; }
             Renaming = false;
             BuildForms();
             BuildBindTargets();
