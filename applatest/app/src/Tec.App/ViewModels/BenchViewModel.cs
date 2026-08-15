@@ -56,6 +56,9 @@ public sealed class BenchViewModel : ViewModelBase
     private SchemaFormViewModel? _configForm;
     private string _probeResult = "";
     private bool _renaming;
+    private bool _advOpen;
+    private bool _wellsOpen = true;
+    private bool _chOpen = true;
     private LibraryItemViewModel? _picked;
 
     public BenchViewModel(Workspace ws)
@@ -64,6 +67,9 @@ public sealed class BenchViewModel : ViewModelBase
         Probe = new RelayCommand(async () => await ProbeAsync());
         Rebuild = new RelayCommand(async () => await _ws.RebuildChannelsAsync());
         ToggleRename = new RelayCommand(() => Renaming = !Renaming);
+        ToggleAdvanced = new RelayCommand(() => AdvancedOpen = !AdvancedOpen);
+        ToggleWells = new RelayCommand(() => WellsOpen = !WellsOpen);
+        ToggleChTable = new RelayCommand(() => ChTableOpen = !ChTableOpen);
         ws.BenchChanged += (_, _) => Reload();
         Reload();
     }
@@ -75,6 +81,14 @@ public sealed class BenchViewModel : ViewModelBase
     public RelayCommand Probe { get; }
     public RelayCommand Rebuild { get; }
     public RelayCommand ToggleRename { get; }
+    public RelayCommand ToggleAdvanced { get; }
+    public RelayCommand ToggleWells { get; }
+    public RelayCommand ToggleChTable { get; }
+
+    /// <summary>三个 CARET 折叠区的开合。圆圈箭头点了要真收起来，不是装饰。</summary>
+    public bool AdvancedOpen { get => _advOpen; set => Set(ref _advOpen, value); }
+    public bool WellsOpen { get => _wellsOpen; set => Set(ref _wellsOpen, value); }
+    public bool ChTableOpen { get => _chOpen; set => Set(ref _chOpen, value); }
 
     /// <summary>台面名称与设备数（原型未选中设备时的两行）。</summary>
     public string BenchName

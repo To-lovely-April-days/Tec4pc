@@ -21,12 +21,11 @@
                 <!-- 一台设备 = 一块主题色；块之间留 3px 白缝（GBG 的设备库就是这样） -->
                 <Border Background="{StaticResource ThemeFill}" Margin="0,0,0,3" Padding="0,7,0,6"
                         PointerPressed="OnLibraryPressed">
-                  <StackPanel Width="100" HorizontalAlignment="Center">
-                    <Border Width="100" Height="56" Background="White" BorderBrush="#cfcfcf"
-                            BorderThickness="1" CornerRadius="3" ClipToBounds="True">
-                      <ctl:DeviceArtView ArtKey="{Binding ArtKey}" ArtWidth="88"
-                                         HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Border>
+                  <StackPanel HorizontalAlignment="Center">
+                    <!-- 不套白框：设备图直接铺在主题色上，按栏宽整幅画完，
+                         原来的 100×56 白框 + ClipToBounds 会把反应器这种宽图切掉 -->
+                    <ctl:DeviceArtView ArtKey="{Binding ArtKey}" ArtWidth="104"
+                                       HorizontalAlignment="Center" />
                     <TextBlock Text="{Binding Name}" FontSize="10" Foreground="#4a4a4a"
                                TextAlignment="Center" TextWrapping="Wrap" Margin="0,3,0,0" />
                     <TextBlock Text="{Binding Problem}" IsVisible="{Binding HasProblem}"
@@ -108,9 +107,25 @@
                            HorizontalAlignment="Center" Margin="0,0,0,8" />
                 <TextBlock Classes="intro" Margin="0,0,0,4"
                            Text="从左侧设备库拖入设备组成台面。点选台面上的设备可编辑其连接与通道绑定；下表可独立启停每个通道。" />
-                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6,0,0">
-                  <Border Classes="exp3"><ctl:TecIcon Key="ui-chev-down" Tint="#555555" /></Border>
-                  <TextBlock Text="高级设置" FontSize="11.5" Foreground="#3d3d3d" VerticalAlignment="Center" />
+                <Button Classes="acc" Command="{Binding ToggleAdvanced}" Margin="0,6,0,0">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Border Classes="exp3" Classes.up="{Binding AdvancedOpen}">
+                      <ctl:TecIcon Key="ui-chev-down" Tint="#555555" />
+                    </Border>
+                    <TextBlock Text="高级设置" FontSize="11.5" Foreground="#3d3d3d" VerticalAlignment="Center" />
+                  </StackPanel>
+                </Button>
+                <StackPanel IsVisible="{Binding AdvancedOpen}" Margin="0,8,0,0">
+                  <Grid ColumnDefinitions="96,*,40" Margin="0,0,0,8">
+                    <TextBlock Grid.Column="0" Text="台面名称" FontSize="11.5" Foreground="#3d3d3d"
+                               VerticalAlignment="Center" Margin="0,0,10,0" />
+                    <TextBox Grid.Column="1" Classes="finput" Text="{Binding BenchName, Mode=TwoWay}" />
+                  </Grid>
+                  <Grid ColumnDefinitions="96,*,40">
+                    <TextBlock Grid.Column="0" Text="设备数" FontSize="11.5" Foreground="#3d3d3d"
+                               VerticalAlignment="Center" Margin="0,0,10,0" />
+                    <TextBox Grid.Column="1" Classes="finput" Text="{Binding DeviceCountText}" IsEnabled="False" />
+                  </Grid>
                 </StackPanel>
               </StackPanel>
             </Border>
@@ -173,12 +188,16 @@
 
               <!-- 反应器：孔位 → 通道，可独立启停 -->
               <StackPanel IsVisible="{Binding IsReactor}">
-                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
-                  <Border Classes="exp3"><ctl:TecIcon Key="ui-chev-down" Tint="#555555" /></Border>
-                  <TextBlock Text="通道启用（独立启停）" FontSize="11.5" Foreground="#3d3d3d"
-                             VerticalAlignment="Center" />
-                </StackPanel>
-                <ItemsControl ItemsSource="{Binding Wells}">
+                <Button Classes="acc" Command="{Binding ToggleWells}" Margin="0,0,0,8">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Border Classes="exp3" Classes.up="{Binding WellsOpen}">
+                      <ctl:TecIcon Key="ui-chev-down" Tint="#555555" />
+                    </Border>
+                    <TextBlock Text="通道启用（独立启停）" FontSize="11.5" Foreground="#3d3d3d"
+                               VerticalAlignment="Center" />
+                  </StackPanel>
+                </Button>
+                <ItemsControl ItemsSource="{Binding Wells}" IsVisible="{Binding WellsOpen}">
                   <ItemsControl.ItemTemplate>
                     <DataTemplate>
                       <StackPanel Orientation="Horizontal" Spacing="7" Margin="0,0,0,6">
@@ -208,31 +227,22 @@
             </StackPanel>
 
             <!-- ===== 未选中：台面属性 ===== -->
-            <StackPanel IsVisible="{Binding !HasSelection}">
-              <TextBlock Classes="intro" Margin="0,0,0,14"
-                         Text="从左侧设备库拖入设备组成台面。点选台面上的设备可编辑其连接与通道绑定；下表可独立启停每个通道。" />
-              <Grid ColumnDefinitions="96,*,40" Margin="0,0,0,8">
-                <TextBlock Grid.Column="0" Text="台面名称" FontSize="11.5" Foreground="#3d3d3d"
-                           VerticalAlignment="Center" Margin="0,0,10,0" />
-                <TextBox Grid.Column="1" Classes="finput" Text="{Binding BenchName, Mode=TwoWay}" />
-              </Grid>
-              <Grid ColumnDefinitions="96,*,40" Margin="0,0,0,8">
-                <TextBlock Grid.Column="0" Text="设备数" FontSize="11.5" Foreground="#3d3d3d"
-                           VerticalAlignment="Center" Margin="0,0,10,0" />
-                <TextBox Grid.Column="1" Classes="finput" Text="{Binding DeviceCountText}" IsEnabled="False" />
-              </Grid>
-            </StackPanel>
 
             <StackPanel IsVisible="{Binding !HasSelection}">
             <Border Height="1" Background="#d5d5d5" Margin="0,10,0,14" />
-            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6">
-              <Border Classes="exp3"><ctl:TecIcon Key="ui-chev-down" Tint="#555555" /></Border>
-              <TextBlock Text="通道总表（勾选 = 启用）" FontSize="11.5" Foreground="#3d3d3d"
-                         VerticalAlignment="Center" />
-            </StackPanel>
+            <Button Classes="acc" Command="{Binding ToggleChTable}" Margin="0,6">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <Border Classes="exp3" Classes.up="{Binding ChTableOpen}">
+                  <ctl:TecIcon Key="ui-chev-down" Tint="#555555" />
+                </Border>
+                <TextBlock Text="通道总表（勾选 = 启用）" FontSize="11.5" Foreground="#3d3d3d"
+                           VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
 
             <!-- .chtable：色块 + CHn + 来源 + 探头标签 + 启停勾选 -->
-            <Border Background="White" BorderBrush="#dcdcdc" BorderThickness="1" CornerRadius="3">
+            <Border Background="White" BorderBrush="#dcdcdc" BorderThickness="1" CornerRadius="3"
+                    IsVisible="{Binding ChTableOpen}">
               <ItemsControl ItemsSource="{Binding ChannelRows}">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
@@ -268,6 +278,7 @@
 
             <TextBlock FontSize="11.5" Foreground="#5a5a5a" LineHeight="18" TextWrapping="Wrap"
                        Margin="0,6,0,0"
+                       IsVisible="{Binding ChTableOpen}"
                        Text="两台反应器可组成 4 通道高通量系统，也可拆分为两套独立系统分别运行；停用的通道不参与配方与运行。" />
             </StackPanel>
             </StackPanel>
@@ -320,6 +331,25 @@
       <Setter Property="Foreground" Value="#3d3d3d" />
       <Setter Property="MinHeight" Value="0" />
       <Setter Property="Margin" Value="0,0,0,6" />
+    </Style>
+    <!-- .acc：整行可点，看起来还是一行字 -->
+    <Style Selector="Button.acc">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0,6" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Left" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.acc:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <!-- 收起时箭头翻上去 -->
+    <Style Selector="Border.exp3.up">
+      <Setter Property="RenderTransform">
+        <RotateTransform Angle="180" />
+      </Setter>
     </Style>
     <Style Selector="Border.exp3">
       <Setter Property="Width" Value="20" />
