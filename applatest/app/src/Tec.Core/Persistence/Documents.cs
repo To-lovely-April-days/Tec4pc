@@ -1,0 +1,105 @@
+using Tec.Core.Benches;
+using Tec.Core.Recipes;
+using Tec.Driver.Abi;
+
+namespace Tec.Core.Persistence;
+
+// 文件格式与内存模型分开写。模型天天改，文件格式是对外承诺——
+// 混在一起的话，某天给 DeviceInstance 加个界面用的字段，
+// 昨天存的实验就打不开了。
+
+public sealed class DeviceDoc
+{
+    public string DriverId { get; set; } = "";
+    public string InstanceId { get; set; } = "";
+    public string? Label { get; set; }
+    public double X { get; set; }
+    public double Y { get; set; }
+    public bool Simulated { get; set; } = true;
+    public ParameterSet Connection { get; set; } = new();
+    public ParameterSet Config { get; set; } = new();
+
+    // 停靠关系。探头插在哪台反应器的哪个管口上，是台面的一部分，必须存
+    public string? DockHostId { get; set; }
+    public DockSide Dock { get; set; } = DockSide.None;
+    public int DockSlot { get; set; }
+    public string? DockAnchor { get; set; }
+    public string? DockSideTag { get; set; }
+}
+
+public sealed class BindingDoc
+{
+    public string DeviceId { get; set; } = "";
+    public int Channel { get; set; }
+    public BindingMode Mode { get; set; } = BindingMode.Exclusive;
+    public int Port { get; set; }
+}
+
+public sealed class StationDoc
+{
+    public string Name { get; set; } = "";
+    public List<int> Channels { get; set; } = new();
+}
+
+/// <summary>台面文件（.tecbench）。</summary>
+public sealed class BenchDoc
+{
+    public int Schema { get; set; } = Bench.CurrentSchemaVersion;
+    public string Name { get; set; } = "";
+    public List<DeviceDoc> Devices { get; set; } = new();
+    public List<BindingDoc> Bindings { get; set; } = new();
+    public List<StationDoc> Stations { get; set; } = new();
+}
+
+public sealed class StepDoc
+{
+    public string StepId { get; set; } = "";
+    public string CommandId { get; set; } = "";
+    public ParameterSet Parameters { get; set; } = new();
+    public List<ParameterSet>? Rows { get; set; }
+    public bool Enabled { get; set; } = true;
+    public string? Comment { get; set; }
+}
+
+/// <summary>配方文件（.tecrecipe），也是实验文件与配方库里的一条。</summary>
+public sealed class RecipeDoc
+{
+    public int Schema { get; set; } = Recipe.CurrentSchemaVersion;
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string? Author { get; set; }
+    public string? Notes { get; set; }
+    public DateTimeOffset ModifiedAt { get; set; }
+    public List<StepDoc> Steps { get; set; } = new();
+}
+
+/// <summary>一条泳道：挂哪个通道、叫什么名、配方是什么。</summary>
+public sealed class LaneDoc
+{
+    public int Channel { get; set; }
+    public string Name { get; set; } = "新配方";
+    public RecipeDoc Recipe { get; set; } = new();
+}
+
+/// <summary>
+/// 实验文件（.tec）：台面 + 每通道配方 + 配方库。
+/// 打开一个实验 = 台面照原样摆回来、配方照原样填回去，接着就能跑。
+/// 运行记录不在里面——那是 GLP 记录，只追加，单独落盘。
+/// </summary>
+public sealed class ExperimentDoc
+{
+    public const int CurrentSchema = 1;
+
+    public int Schema { get; set; } = CurrentSchema;
+    public string Name { get; set; } = "未命名实验";
+    public string? Author { get; set; }
+    public string? Notes { get; set; }
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.Now;
+    public DateTimeOffset ModifiedAt { get; set; } = DateTimeOffset.Now;
+    public string AppVersion { get; set; } = "1.0";
+
+    public BenchDoc Bench { get; set; } = new();
+    public List<LaneDoc> Lanes { get; set; } = new();
+    /// <summary>随实验一起走的配方库。换台电脑打开，库里那几条模板还在。</summary>
+    public List<RecipeDoc> Library { get; set; } = new();
+}

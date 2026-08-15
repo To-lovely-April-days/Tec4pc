@@ -32,15 +32,23 @@
       </Border.Background>
       <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto" Margin="8,0,0,0">
         <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-          <ctl:TecIcon Key="ui-tb-run" />
-          <ctl:TecIcon Key="ui-tb-save" />
+          <Button Classes="tbico" Command="{Binding SimRun}" ToolTip.Tip="运行">
+            <ctl:TecIcon Key="ui-tb-run" />
+          </Button>
+          <Button Classes="tbico" Command="{Binding Start.SaveExperiment}" ToolTip.Tip="保存实验">
+            <ctl:TecIcon Key="ui-tb-save" />
+          </Button>
         </StackPanel>
         <Border Grid.Column="1" Margin="10,0,0,0" Padding="8,2" CornerRadius="3"
                 Background="#24ffffff" VerticalAlignment="Center">
           <TextBlock Text="基础" Foreground="White" FontSize="12" />
         </Border>
+        <!-- 实验名跟着当前打开的文件走，改过没存的加个星号 -->
         <TextBlock Grid.Column="2" Margin="10,0,0,0" VerticalAlignment="Center"
-                   Text="TecStudio 平行合成工作站 - PSW-4" Foreground="White" FontSize="12" />
+                   Foreground="White" FontSize="12">
+          <Run Text="TecStudio 平行合成工作站 - PSW-4 · " />
+          <Run Text="{Binding DocTitle}" />
+        </TextBlock>
         <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
           <StackPanel Orientation="Horizontal" Spacing="4" Margin="6,0">
             <ctl:TecIcon Key="ui-tb-about" Tint="#e6e0f5" VerticalAlignment="Center" />
@@ -127,6 +135,18 @@
   </Border>
 
   <Window.Styles>
+    <!-- 标题栏左上那两个图标按钮：只有指针悬停时才显出底色，平时和标题栏一体 -->
+    <Style Selector="Button.tbico">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="3" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.tbico:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#33ffffff" />
+    </Style>
+
     <Style Selector="Button.win">
       <Setter Property="Width" Value="30" />
       <Setter Property="Height" Value="24" />

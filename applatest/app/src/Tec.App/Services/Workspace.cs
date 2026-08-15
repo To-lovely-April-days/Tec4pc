@@ -46,6 +46,9 @@ public sealed class Workspace
     public IReadOnlyList<Channel> Channels => _channels;
     public List<Recipe> Library { get; } = new();
 
+    /// <summary>打开 / 新建 / 保存实验。Boot() 里建好。</summary>
+    public ExperimentStore Store { get; private set; } = null!;
+
     /// <summary>
     /// 每通道一条配方（原型 recipes = {1:…,2:…,3:…,4:[]}）。
     /// 配方视图编辑的就是它；运行视图启动某通道时用它的这一条。
@@ -99,9 +102,13 @@ public sealed class Workspace
 
         // 台面从空开始：设备由用户从设备库拖进来。要示例台面调 LoadSample()。
         // 配方也从空开始——预置几条「降温结晶」看着像已经配好了，其实一步没有。
-        // 配方库那六条是工艺模板（产品自带内容），不是实验数据，留着。
-        Library.AddRange(DemoBench.Library(Catalog));
+        Store = new ExperimentStore(this);
+
+        // 配方库先读盘。读不到（第一次运行）才灌内置的六条工艺模板——
+        // 否则用户删掉的模板每次开机又回来了。
+        if (!Store.LoadLibrary(Library)) Library.AddRange(DemoBench.Library(Catalog));
         RebuildChannelsAsync().GetAwaiter().GetResult();
+        Store.ResetDirty();            // 开机建通道会触发 BenchChanged，别一上来就标脏
 
         _safetyTimer = new Timer(_ => Engine.Safety.Evaluate(), null,
                                  TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(1));
@@ -221,6 +228,8 @@ public sealed class Workspace
     public void Shutdown()
     {
         _safetyTimer?.Dispose();
+        Store?.SaveLibrary();          // 配方库改了就留在盘上，下次开机还在
+        Store?.SaveRecent();
         Engine.AbortAll(null, "程序退出");
         foreach (var s in _sessions.Values)
         {

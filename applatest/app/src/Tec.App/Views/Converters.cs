@@ -46,4 +46,8 @@ public static class Converters
 
     public static readonly IValueConverter NameWeight =
         new FuncValueConverter<bool, FontWeight>(on => on ? FontWeight.SemiBold : FontWeight.Normal);
+
+    /// <summary>非空字符串才显示。空提示行不该占着一行的高度。</summary>
+    public static readonly IValueConverter NotBlank =
+        new FuncValueConverter<string?, bool>(s => !string.IsNullOrWhiteSpace(s));
 }

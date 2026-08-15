@@ -137,6 +137,7 @@ public sealed class LaneViewModel : ViewModelBase
         {
             _owner.Workspace.LaneNames[Channel] = value;
             if (_owner.Workspace.ChannelRecipes.TryGetValue(Channel, out var r)) r.Name = value;
+            _owner.Workspace.Store.MarkDirty();
             Raise();
         }
     }
@@ -226,11 +227,21 @@ public sealed class RecipeViewModel : ViewModelBase
 
         // 台面变了通道就变了，泳道的通道下拉要跟着刷新
         ws.BenchChanged += (_, _) => RefreshAll();
+        // 打开别的实验会整份换掉配方库，右栏那个下拉得跟着换
+        ws.Store.Changed += (_, _) => ReloadLibrary();
 
         RefreshAll();
     }
 
     public Workspace Workspace { get; }
+
+    private void ReloadLibrary()
+    {
+        var keepId = _libPick?.Id;
+        Library.Clear();
+        foreach (var r in Workspace.Library) Library.Add(r);
+        LibPick = Library.FirstOrDefault(r => r.Id == keepId) ?? Library.FirstOrDefault();
+    }
 
     /// <summary>机A · CH1（原型 chLabel），泳道下拉与标题共用。</summary>
     public string LabelOf(int channel)
@@ -258,6 +269,7 @@ public sealed class RecipeViewModel : ViewModelBase
         if (rb is not null) recipes[from] = rb; else recipes.Remove(from);
         names[to] = na ?? "新配方";
         names[from] = nb ?? "新配方";
+        Workspace.Store.MarkDirty();
         CurCh = to;
         RefreshAll();
     }
@@ -267,6 +279,7 @@ public sealed class RecipeViewModel : ViewModelBase
     {
         Workspace.ChannelRecipes[channel] = new Recipe { Name = "新配方" };
         Workspace.LaneNames[channel] = "新配方";
+        Workspace.Store.MarkDirty();
         RefreshAll();
     }
 
@@ -365,6 +378,7 @@ public sealed class RecipeViewModel : ViewModelBase
         var at = _selectedStep is null ? recipe.Steps.Count : recipe.Steps.IndexOf(_selectedStep.Step) + 1;
         recipe.Steps.Insert(Math.Clamp(at, 0, recipe.Steps.Count), step);
         recipe.ModifiedAt = DateTimeOffset.Now;
+        Workspace.Store.MarkDirty();
         RefreshAll();
         SelectedStep = Lanes.First(l => l.Channel == _curCh).Steps.FirstOrDefault(v => v.Step.StepId == step.StepId);
     }
@@ -391,6 +405,7 @@ public sealed class RecipeViewModel : ViewModelBase
     {
         Current.Steps.Remove(s.Step);
         if (_selectedStep == s) SelectedStep = null;
+        Workspace.Store.MarkDirty();
         RefreshAll();
     }
 
@@ -402,6 +417,7 @@ public sealed class RecipeViewModel : ViewModelBase
         copy.Name = Workspace.LaneNames.TryGetValue(_curCh, out var n) ? n : copy.Name;
         Workspace.ChannelRecipes[_copyTarget] = copy;
         Workspace.LaneNames[_copyTarget] = copy.Name;
+        Workspace.Store.MarkDirty();
         RefreshAll();
     }
 
@@ -422,6 +438,7 @@ public sealed class RecipeViewModel : ViewModelBase
         copy.Name = Workspace.LaneNames.TryGetValue(_curCh, out var n) ? n : copy.Name;
         Workspace.Library.Add(copy);
         Library.Add(copy);
+        Workspace.Store.SaveLibrary();     // 存进库就该落盘，不然关掉程序白存
         LibPick = copy;
     }
 
@@ -500,7 +517,8 @@ public sealed class RecipeViewModel : ViewModelBase
             step = replaced;
         }
         Form = new SchemaFormViewModel(d.Parameters, step.Parameters, rows,
-                                       Workspace.ChannelOf(_curCh), RefreshAll);
+                                       Workspace.ChannelOf(_curCh),
+                                       () => { Workspace.Store.MarkDirty(); RefreshAll(); });
     }
 
     // ── 右栏通道状态（原型 chStateList）─────────────────────────────

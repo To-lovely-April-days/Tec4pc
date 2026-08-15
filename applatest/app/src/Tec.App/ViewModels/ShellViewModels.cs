@@ -5,6 +5,7 @@ using Tec.App.Services;
 using Tec.Core;
 using Tec.Core.Catalog;
 using Tec.Core.Recipes;
+using Tec.Core.Persistence;
 using Tec.Core.Scheduling;
 using Tec.Drivers.Simulator;
 
@@ -50,16 +51,18 @@ public sealed class RecentCardViewModel : ViewModelBase
 public sealed class StartViewModel : ViewModelBase
 {
     private readonly MainViewModel _shell;
+    private readonly ExperimentStore _store;
+    private string _status = "";
 
     public StartViewModel(Workspace ws, MainViewModel shell)
     {
         _shell = shell;
         Workspace = ws;
+        _store = ws.Store;
 
-        // 最近实验来自真实保存过的实验文件。存盘功能做好之前这里就是空的——
-        // 不摆演示卡片，免得看着像有数据其实点不开。
         Recent.CollectionChanged += (_, _) => Raise(nameof(IsEmpty));
         ws.BenchChanged += (_, _) => Raise(nameof(Subtitle));
+        _store.Changed += (_, _) => Reload();
 
         Pick = new RelayCommand(p =>
         {
@@ -70,12 +73,128 @@ public sealed class StartViewModel : ViewModelBase
 
         TogglePin = new RelayCommand(p =>
         {
-            if (p is RecentCardViewModel card) card.Pinned = !card.Pinned;
+            if (p is not RecentCardViewModel card) return;
+            card.Pinned = !card.Pinned;
+            var e = _store.Recent.FirstOrDefault(r => r.Path == card.Path);
+            if (e is not null) { e.Pinned = card.Pinned; _store.SaveRecent(); }
         });
+
+        // 双击最近实验卡片就打开它
+        OpenRecent = new RelayCommand(p =>
+        {
+            if (p is RecentCardViewModel card) Guarded(() => _store.Open(card.Path), $"已打开 {card.Name}");
+        });
+
+        NewExperiment = new RelayCommand(() =>
+        {
+            _store.New();
+            Status = "已新建实验。去「台面」把设备拖进来。";
+            shell.Tab = MainViewModel.TabBench;
+        });
+
+        OpenExperiment = new RelayCommand(() => Async(async () =>
+        {
+            if (await FileDialogs.OpenExperiment() is not { } path) return;
+            Guarded(() => _store.Open(path), $"已打开 {Path.GetFileNameWithoutExtension(path)}");
+        }));
+
+        SaveExperiment = new RelayCommand(() => Async(async () =>
+        {
+            // 还没存过盘的直接走另存为，不然「保存」按下去毫无反应
+            if (_store.CurrentPath is null) { await SaveAsFlow(); return; }
+            Guarded(_store.Save, $"已保存到 {_store.CurrentPath}");
+        }));
+
+        SaveAsExperiment = new RelayCommand(() => Async(SaveAsFlow));
+
+        ImportBench = new RelayCommand(() => Async(async () =>
+        {
+            if (await FileDialogs.OpenBench() is not { } path) return;
+            Guarded(() => _store.ImportBench(path), "台面已导入。配方按通道号对回去了。");
+            shell.Tab = MainViewModel.TabBench;
+        }));
+
+        ExportBench = new RelayCommand(() => Async(async () =>
+        {
+            if (await FileDialogs.SaveBench(ws.ExperimentName + "_台面") is not { } path) return;
+            Guarded(() => _store.ExportBench(path), $"台面已导出到 {path}");
+        }));
+
+        Quit = new RelayCommand(() =>
+            (Avalonia.Application.Current?.ApplicationLifetime
+                as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime)
+                ?.Shutdown());
 
         OpenBench = new RelayCommand(() => shell.Tab = MainViewModel.TabBench);
         OpenExport = new RelayCommand(() => shell.Tab = MainViewModel.TabExport);
         OpenRecipe = new RelayCommand(() => shell.Tab = MainViewModel.TabRecipe);
+
+        Reload();
+    }
+
+    private async Task SaveAsFlow()
+    {
+        var suggested = Workspace.ExperimentName;
+        if (await FileDialogs.SaveExperiment(suggested) is not { } path) return;
+        Guarded(() => _store.SaveAs(path), $"已保存到 {path}");
+    }
+
+    /// <summary>
+    /// 文件操作一律兜住异常，把 TecFileException 那句人话原样显示。
+    /// 抛到 Avalonia 的默认处理里就是整个窗口挂掉。
+    /// </summary>
+    private void Guarded(Action act, string okText)
+    {
+        try { act(); Status = okText; }
+        catch (TecFileException ex) { Status = ex.Message; }
+        catch (Exception ex) { Status = "出错了：" + ex.Message; }
+    }
+
+    private static async void Async(Func<Task> work)
+    {
+        try { await work(); } catch (Exception ex) { Console.WriteLine("[error] " + ex.Message); }
+    }
+
+    /// <summary>把最近实验列表重画成卡片。</summary>
+    public void Reload()
+    {
+        Recent.Clear();
+        foreach (var e in _store.Recent)
+            Recent.Add(new RecentCardViewModel
+            {
+                Name = e.Name,
+                Path = e.Path,
+                Thumb = e.Devices == 0 ? "empty" : e.Channels >= 4 ? "bench4" : e.Channels >= 1 ? "bench2" : "curve",
+                Tag = string.Equals(e.Path, _store.CurrentPath, StringComparison.OrdinalIgnoreCase)
+                    ? "已打开" : e.Steps == 0 ? "草稿" : "",
+                TagClass = string.Equals(e.Path, _store.CurrentPath, StringComparison.OrdinalIgnoreCase)
+                    ? "live" : e.Steps == 0 ? "draft" : "",
+                When = Ago(e.OpenedAt),
+                Size = Size(e.Path),
+                Note = $"{e.Devices} 台设备 · {e.Channels} 个通道 · 共 {e.Steps} 步",
+                Pinned = e.Pinned,
+                On = string.Equals(e.Path, _store.CurrentPath, StringComparison.OrdinalIgnoreCase)
+            });
+        RaiseAll(nameof(IsEmpty), nameof(Subtitle), nameof(CurrentFile));
+    }
+
+    private static string Ago(DateTimeOffset at)
+    {
+        var d = DateTimeOffset.Now - at;
+        if (d < TimeSpan.FromMinutes(1)) return "刚刚";
+        if (at.Date == DateTimeOffset.Now.Date) return "今天 " + at.ToString("HH:mm");
+        if (at.Date == DateTimeOffset.Now.Date.AddDays(-1)) return "昨天 " + at.ToString("HH:mm");
+        return at.ToString("MM/dd HH:mm");
+    }
+
+    private static string Size(string path)
+    {
+        try
+        {
+            var n = new FileInfo(path).Length;
+            return n >= 1048576 ? $"{n / 1048576.0:F1} MB" : n >= 1024 ? $"{n / 1024} KB" : $"{n} B";
+        }
+        catch { return "—"; }
     }
 
     public Workspace Workspace { get; }
@@ -84,8 +203,26 @@ public sealed class StartViewModel : ViewModelBase
     /// <summary>一条最近实验都没有时，卡片区换成一句说明——空白一片容易让人以为是没加载出来。</summary>
     public bool IsEmpty => Recent.Count == 0;
 
+    /// <summary>当前打开的文件路径，没存过盘就说没存过。</summary>
+    public string CurrentFile => _store.CurrentPath ?? "（还没保存过）";
+
+    /// <summary>最近一次文件操作的结果。成了失败了都写在这儿，不弹框。</summary>
+    public string Status
+    {
+        get => _status;
+        set => Set(ref _status, value);
+    }
+
     public RelayCommand Pick { get; }
     public RelayCommand TogglePin { get; }
+    public RelayCommand OpenRecent { get; }
+    public RelayCommand NewExperiment { get; }
+    public RelayCommand OpenExperiment { get; }
+    public RelayCommand SaveExperiment { get; }
+    public RelayCommand SaveAsExperiment { get; }
+    public RelayCommand ImportBench { get; }
+    public RelayCommand ExportBench { get; }
+    public RelayCommand Quit { get; }
     public RelayCommand OpenBench { get; }
     public RelayCommand OpenExport { get; }
     public RelayCommand OpenRecipe { get; }
@@ -150,6 +287,7 @@ public sealed class RecipeLibViewModel : ViewModelBase
             copy.Name = _selected.Recipe.Name + "_副本";
             copy.ModifiedAt = DateTimeOffset.Now;
             ws.Library.Insert(ws.Library.IndexOf(_selected.Recipe) + 1, copy);
+            ws.Store.SaveLibrary();
             Reload();
             Selected = Rows.FirstOrDefault(r => ReferenceEquals(r.Recipe, copy));
         });
@@ -159,12 +297,21 @@ public sealed class RecipeLibViewModel : ViewModelBase
             if (_selected is null || ws.Library.Count <= 1) return;   // 至少保留一个配方
             var i = ws.Library.IndexOf(_selected.Recipe);
             ws.Library.Remove(_selected.Recipe);
+            ws.Store.SaveLibrary();
             Reload();
             Selected = Rows.ElementAtOrDefault(Math.Min(i, Rows.Count - 1)) ?? Rows.FirstOrDefault();
         });
 
         ApplyToChannel = new RelayCommand(() => Apply(false));
         ApplyToAll = new RelayCommand(() => Apply(true));
+
+        // 打开别的实验会整份换掉配方库
+        ws.Store.Changed += (_, _) =>
+        {
+            var keep = _selected?.Recipe.Id;
+            Reload();
+            Selected = Rows.FirstOrDefault(r => r.Recipe.Id == keep) ?? Rows.FirstOrDefault();
+        };
     }
 
     public ObservableCollection<LibRowViewModel> Rows { get; } = new();

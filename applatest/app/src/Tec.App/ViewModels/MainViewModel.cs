@@ -25,6 +25,8 @@ public sealed class MainViewModel : ViewModelBase
         Run = new RunViewModel(ws);
         Export = new ExportViewModel(ws);
 
+        ws.Store.Changed += (_, _) => Raise(nameof(DocTitle));
+
         Go = new RelayCommand(p =>
         {
             if (p is null) return;
@@ -96,6 +98,9 @@ public sealed class MainViewModel : ViewModelBase
     public bool IsCompounds => _tab == TabCompounds;
     public bool IsRun => _tab == TabRun;
     public bool IsExport => _tab == TabExport;
+
+    /// <summary>标题栏上的实验名。改过还没存的带一个星号。</summary>
+    public string DocTitle => Workspace.Store.Title;
 
     public string SimNote => Workspace.TimeScale > 1
         ? $"仿真 {Workspace.TimeScale:F0}×"
