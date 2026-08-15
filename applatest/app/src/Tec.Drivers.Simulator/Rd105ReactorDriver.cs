@@ -82,6 +82,9 @@ internal sealed class Rd105Session : SimSession
             { Nominal = new ValueRange(-40, 200), Period = TimeSpan.FromSeconds(1) },
         new TagDescriptor("dT", "Tr−Tj", "℃", DataShape.Scalar)
             { DerivedFrom = "Tr,Tj", Period = TimeSpan.FromSeconds(1) },
+        // 控温目标值。只在控温期间有数据——停控（自然冷却）时本来就没有设定值
+        new TagDescriptor("Tset", "设定温度", "℃", DataShape.Scalar)
+            { Nominal = new ValueRange(-40, 180), Period = TimeSpan.FromSeconds(1) },
         new TagDescriptor("rpm", "搅拌转速", "rpm", DataShape.Scalar)
             { Nominal = new ValueRange(0, 1200), Period = TimeSpan.FromSeconds(1) }
     };
@@ -198,6 +201,9 @@ internal sealed class ReactorWell : ITemperatureControl
         _emit(Channel, "Tr", Math.Round(CurrentReactor, 2));
         _emit(Channel, "Tj", Math.Round(CurrentJacket, 2));
         _emit(Channel, "dT", Math.Round(CurrentReactor - CurrentJacket, 2));
+        // 设定温度只在控温时才存在：停控（自然冷却）没有设定值，
+        // 这一路断掉比拿釜温顶替诚实——导出的是要签进记录的数据。
+        if (_controlling) _emit(Channel, "Tset", Math.Round(_target, 2));
         Stirrer.Tick(dt);
     }
 }

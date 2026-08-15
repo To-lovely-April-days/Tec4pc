@@ -29,7 +29,7 @@ public class ExportTests
     public async Task 执行记录同时给出计划实际与两种偏差()
     {
         await using var h = await RunTwoChannelsAsync();
-        var csv = RecordExporter.ExecutionCsv(h.Engine.Record, TimeBase.Channel);
+        var csv = RecordExporter.ExecutionCsv(h.Engine.Record, TimeBase.Channel, h.Catalog);
 
         Assert.Contains("开始偏差", csv);
         Assert.Contains("时长偏差", csv);
@@ -95,7 +95,7 @@ public class ExportTests
     public void 没有记录时不编数据()
     {
         var record = new RunRecord { CreatedAt = DateTimeOffset.Now };
-        var csv = RecordExporter.ExecutionCsv(record, TimeBase.Wall);
+        var csv = RecordExporter.ExecutionCsv(record, TimeBase.Wall, new CommandCatalog());
         var rows = csv.Split('\n').Where(l => l.StartsWith("CH", StringComparison.Ordinal)).ToList();
         Assert.Empty(rows);
     }

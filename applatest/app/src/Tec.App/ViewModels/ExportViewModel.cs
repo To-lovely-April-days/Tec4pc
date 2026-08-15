@@ -408,10 +408,21 @@ public sealed class ExportViewModel : ViewModelBase
         Sum.Add(new MetaPair { K = "格式", V = CurFmtName });
     }
 
+    /// <summary>
+    /// 数据项的键沿用原型 DITEMS，采集标签由驱动给定，两边只有累计加料量不同名。
+    /// 预览与真正写文件必须走同一份映射，否则勾了什么和导出什么会对不上。
+    /// </summary>
+    private static string TagOf(string key) => key switch { "vol" => "volume", _ => key };
+
+    /// <summary>当前勾选的数值数据项对应的采集标签（不含「步骤执行记录」）。</summary>
+    private List<string> SelectedTags()
+        => Groups.SelectMany(g => g.Items)
+                 .Where(i => i.Key != "steps" && i.On && i.Available)
+                 .Select(i => TagOf(i.Key)).Distinct().ToList();
+
     private string Sample(int ch, string key, DateTimeOffset at)
     {
-        var tag = key switch { "Tset" => "Tr", _ => key };
-        var series = _ws.Pipeline.Series(ch, tag);
+        var series = _ws.Pipeline.Series(ch, TagOf(key));
         if (series is null) return "";
         var snap = series.Snapshot();
         var best = snap.LastOrDefault(s => s.WallClock <= at);
@@ -458,7 +469,7 @@ public sealed class ExportViewModel : ViewModelBase
                     s.PlanDuration > TimeSpan.Zero ? Fmt.Hms(s.PlanDuration) : "—",
                     s.ActualDuration is { } ad ? Fmt.Hms(ad) : "—",
                     s.DurationDeviation is { } dd ? Fmt.Signed(dd) : "—",
-                    s.Reason?.ToString() ?? "—",
+                    EndBy.Text(s, _ws.Catalog),
                     chRun.Operator ?? "管理员"
                 }));
 
@@ -490,12 +501,15 @@ public sealed class ExportViewModel : ViewModelBase
                 Grid = TimeSpan.FromSeconds(_interval switch { "原始（1 s）" => 1, "5 s" => 5, "1 min" => 60, _ => 10 })
             };
             opt.Channels.AddRange(chs);
+            // 数据项的勾选此前只作用于预览，写出的文件仍是全量——导出的内容
+            // 必须与界面上勾的一致，否则这一栏等于摆设
+            opt.Tags.AddRange(SelectedTags());
 
             File.WriteAllText(Path.Combine(dir, "data.csv"),
                 RecordExporter.SamplesLongCsv(_ws.Pipeline, rec, opt), new UTF8Encoding(true));
             if (StepsOn)
                 File.WriteAllText(Path.Combine(dir, "steps.csv"),
-                    RecordExporter.ExecutionCsv(rec, opt.TimeBase), new UTF8Encoding(true));
+                    RecordExporter.ExecutionCsv(rec, opt.TimeBase, _ws.Catalog), new UTF8Encoding(true));
 
             using var store = new RecordStore(Path.Combine(dir, "run.glp"));
             foreach (var ch in rec.Channels)

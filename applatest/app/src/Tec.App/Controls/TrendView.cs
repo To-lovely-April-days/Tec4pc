@@ -40,6 +40,8 @@ public sealed class TrendView : Control
 
     static TrendView() => AffectsRender<TrendView>(ModelProperty);
 
+    public TrendView() => ClipToBounds = true;
+
     public TrendModel? Model
     {
         get => GetValue(ModelProperty);
@@ -84,11 +86,15 @@ public sealed class TrendView : Control
         Text(ctx, "℃", new Point(L - 30, T - 3), 10, axis);
         if (m.HasPh) Text(ctx, "pH", new Point(w - R + 12, T - 3), 10, green);
 
-        // 曲线：紫 dT（×4+40）→ 蓝 Tj → 红 Tr → 绿 pH 虚线（原型的绘制顺序）
-        Curve(ctx, m.Dt, p => new Point(Xt(p.T), Y(p.V * 4 + 40)), "#b56cc9", 1.3, opacity: 0.8);
-        Curve(ctx, m.Tj, p => new Point(Xt(p.T), Y(p.V)), "#3f6fd8", 1.6);
-        Curve(ctx, m.Tr, p => new Point(Xt(p.T), Y(p.V)), "#e02020", 1.8);
-        Curve(ctx, m.Ph, p => new Point(Xt(p.T), Y2(p.V)), "#2f8f49", 1.4, dash: true);
+        // 曲线：紫 dT（×4+40）→ 蓝 Tj → 红 Tr → 绿 pH 虚线（原型的绘制顺序）。
+        // 原型是 SVG viewBox，超出图区的部分天然裁掉；这里显式裁到绘图矩形。
+        using (ctx.PushClip(new Rect(L, T, Math.Max(w - L - R, 0), Math.Max(h - T - B, 0))))
+        {
+            Curve(ctx, m.Dt, p => new Point(Xt(p.T), Y(p.V * 4 + 40)), "#b56cc9", 1.3, opacity: 0.8);
+            Curve(ctx, m.Tj, p => new Point(Xt(p.T), Y(p.V)), "#3f6fd8", 1.6);
+            Curve(ctx, m.Tr, p => new Point(Xt(p.T), Y(p.V)), "#e02020", 1.8);
+            Curve(ctx, m.Ph, p => new Point(Xt(p.T), Y2(p.V)), "#2f8f49", 1.4, dash: true);
+        }
 
         // 当前时刻
         var nowX = Xt(m.NowSec);

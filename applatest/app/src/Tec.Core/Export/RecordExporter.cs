@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using Tec.Core.Catalog;
 using Tec.Core.Data;
 using Tec.Core.Records;
 using Tec.Driver.Abi;
@@ -43,7 +44,11 @@ public static class RecordExporter
 {
     private const string Sep = ",";
 
-    public static string ExecutionCsv(RunRecord record, TimeBase timeBase)
+    /// <summary>
+    /// 执行记录 CSV。结束原因与状态写中文：这是要交出去的记录文件，
+    /// 不能一边界面显示「到达设定」、文件里却是 Reached。
+    /// </summary>
+    public static string ExecutionCsv(RunRecord record, TimeBase timeBase, CommandCatalog catalog)
     {
         var sb = new StringBuilder();
         sb.AppendLine("# 执行记录 " + record.Name + "  批次 " + record.RunId);
@@ -78,8 +83,8 @@ public static class RecordExporter
                     Fmt.Hms(s.PlanDuration),
                     s.ActualDuration is { } ad ? Fmt.Hms(ad) : "",
                     s.DurationDeviation is { } dd ? Fmt.Signed(dd) : "",
-                    s.Reason?.ToString() ?? "",
-                    s.Status.ToString(),
+                    EndBy.Text(s, catalog),
+                    Status(s.Status),
                     Esc(s.Note ?? ""),
                     source));
             }
@@ -236,6 +241,16 @@ public static class RecordExporter
         TerminationKind.Alarm => "报警",
         TerminationKind.Timeout => "超时",
         _ => "立即"
+    };
+
+    private static string Status(StepStatus s) => s switch
+    {
+        StepStatus.Pending => "待执行",
+        StepStatus.Running => "执行中",
+        StepStatus.Done => "完成",
+        StepStatus.Skipped => "跳过",
+        StepStatus.Aborted => "中止",
+        _ => "失败"
     };
 
     private static string Esc(string s)

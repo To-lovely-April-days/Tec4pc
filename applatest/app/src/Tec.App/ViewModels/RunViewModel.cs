@@ -5,6 +5,7 @@ using Tec.App.Controls;
 using Tec.App.Services;
 using Tec.Core;
 using Tec.Core.Records;
+using Tec.Driver.Abi;
 
 namespace Tec.App.ViewModels;
 
@@ -35,7 +36,7 @@ public sealed class StatTileViewModel : ViewModelBase
     public string PhText => HasPh ? Read("pH", "F2", "") : "—";
     public string RpmText => Started && _ws.Pipeline.TryLatest(Channel, "rpm", _ws.Clock.Now, out var s)
         ? $"{s.Value:F0} rpm" : "0 rpm";
-    public bool HasPh => _ws.ChannelOf(Channel)?.Capabilities.Get<Tec.Driver.Abi.IScalarSensor>()
+    public bool HasPh => _ws.ChannelOf(Channel)?.Capabilities.Get<IScalarSensor>()
                               ?.Tags.Any(t => t.Tag == "pH") ?? false;
 
     public string StartLine
@@ -323,10 +324,19 @@ public sealed class RunViewModel : ViewModelBase
             if (run is null || _ws.Pipeline.Series(_trendCh, tag) is not { } s) return null;
             var snap = s.Snapshot();
             if (snap.Length < 2) return null;
-            var step = Math.Max(1, snap.Length / 400);
-            var pts = new List<(double, double)>(snap.Length / step + 1);
-            for (var i = 0; i < snap.Length; i += step)
-                pts.Add((AxisOf(_trendCh, (snap[i].WallClock - run.StartedAt).TotalSeconds), snap[i].Value));
+
+            // 原型 trendData 只覆盖「通道启动 → 现在」。采集管线从开机就在记，
+            // 启动前的样点（釜温常温平线）不属于这次运行，窗口外的点也不该进图。
+            double AxisX(int i) => AxisOf(_trendCh, (snap[i].WallClock - run.StartedAt).TotalSeconds);
+            int lo = 0, hi = snap.Length - 1;
+            while (lo < hi && AxisX(lo + 1) <= rg.A) lo++;      // 各留一个窗口外的点接线
+            while (hi > lo && AxisX(hi - 1) >= rg.B) hi--;
+            if (hi - lo + 1 < 2) return null;
+
+            var step = Math.Max(1, (hi - lo + 1) / 400);
+            var pts = new List<(double, double)>((hi - lo) / step + 2);
+            for (var i = lo; i <= hi; i += step) pts.Add((AxisX(i), snap[i].Value));
+            if (pts.Count > 0 && pts[^1].Item1 < AxisX(hi)) pts.Add((AxisX(hi), snap[hi].Value));
             return new TrendSeries { Points = pts };
         }
 
@@ -479,21 +489,7 @@ public sealed class RunViewModel : ViewModelBase
         return "";
     }
 
-    private static string EndByText(EndReason? r) => r switch
-    {
-        EndReason.Reached => "到温",
-        EndReason.TimerElapsed => "计时到",
-        EndReason.QuantityDelivered => "加毕",
-        EndReason.ConditionMet => "条件满足",
-        EndReason.OperatorConfirmed => "操作人确认",
-        EndReason.Completed => "完成",
-        EndReason.Timeout => "超时",
-        EndReason.Alarm => "报警",
-        EndReason.Aborted => "中止",
-        EndReason.Skipped => "跳过",
-        EndReason.Failed => "失败",
-        _ => "—"
-    };
+    private string EndByText(StepRecord s) => EndBy.Text(s, _ws.Catalog);
 
     private static string EvLabel(EventKind k) => k switch
     {
@@ -537,7 +533,7 @@ public sealed class RunViewModel : ViewModelBase
                     DurDev = s.DurationDeviation is { } dd && Math.Abs(dd.TotalSeconds) >= 1
                         ? Signed(dd.TotalSeconds) : "—",
                     DurDevClass = DevClass(s.DurationDeviation?.TotalSeconds, s.PlanDuration.TotalSeconds),
-                    EndBy = EndByText(s.Reason),
+                    EndBy = EndByText(s),
                     User = run.Operator ?? "管理员"
                 }));
             foreach (var e in run.Events)
