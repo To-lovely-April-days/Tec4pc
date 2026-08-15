@@ -111,6 +111,19 @@ public static class BenchDock
     public static bool Accepts(string artKey, Anchor a) => AttachOf(artKey) == a.Kind;
 
     /// <summary>
+    /// 管路从设备哪一侧出去。探头的电极永远朝下，所以固定向下；加料 / 取样 /
+    /// 液相这类设备摆在哪儿都可能，按接口相对它的方位取主轴方向——不这样的话
+    /// 泵放在反应器左上方，管路也会先往下绕一圈再拐回来。
+    /// </summary>
+    public static string ExitDir(string artKey, Point from, Point to)
+    {
+        if (AttachOf(artKey) == PortKind.Top) return "down";
+        var dx = to.X - from.X;
+        var dy = to.Y - from.Y;
+        return Math.Abs(dx) >= Math.Abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up");
+    }
+
+    /// <summary>
     /// 选接口（原型 pickAnchor）：探头只比上方管口的横向距离；侧接设备先按落点
     /// 判左右，再在该侧取最近的；该侧占满就退到另一侧。已被占用的口不参与。
     /// </summary>

@@ -397,6 +397,7 @@ public sealed class BenchViewModel : ViewModelBase
             pick = BenchDock.Pick(DragArtKey, new Point(h.X, h.Y), h.Width, ConnectPoint,
                                   TakenAnchors(_dragNode?.Id), _dragNode?.Device.DockAnchor);
         Hover = pick;
+        RebuildLinks();                    // 拖动时管路跟着手走
         RaiseAll(nameof(DragX), nameof(DragY));
     }
 
@@ -417,6 +418,7 @@ public sealed class BenchViewModel : ViewModelBase
         _hover = null;
         Ports.Clear();
         Raise(nameof(Dragging));
+        RebuildLinks();
     }
 
     /// <summary>松手：插上就吸附并连线，没插上就自由摆放。</summary>
@@ -455,6 +457,7 @@ public sealed class BenchViewModel : ViewModelBase
         }
 
         CancelDrag();
+        RebuildLinks();
         _ = _ws.RebuildChannelsAsync();
     }
 
@@ -482,7 +485,10 @@ public sealed class BenchViewModel : ViewModelBase
         }
     }
 
-    /// <summary>按停靠关系重算全部管路。</summary>
+    /// <summary>
+    /// 按停靠关系重算全部管路。拖动中的那台用幽灵的位置算，管路跟着手走；
+    /// 从设备库拖出来的新设备，只要选中了接口就先画一条预览。
+    /// </summary>
     private void RebuildLinks()
     {
         Links.Clear();
@@ -490,19 +496,33 @@ public sealed class BenchViewModel : ViewModelBase
         {
             var dev = node.Device;
             if (dev.DockAnchor is null || dev.DockHostId is null) continue;
+            if (_dragNode is not null && dev.InstanceId == _dragNode.Id) continue;   // 由预览接管
             var host = Devices.FirstOrDefault(d => d.Id == dev.DockHostId);
             if (host is null) continue;
             var a = BenchDock.Anchors.FirstOrDefault(x => x.Id == dev.DockAnchor);
             if (a is null) continue;
+            Add(node.ArtKey, new Point(node.X, node.Y), node.Width, dev.DockSideTag,
+                dev.InstanceId, host, a);
+        }
 
+        if (Dragging && Hover is { } ha && _host is { } hh && !BenchDock.IsHost(DragArtKey))
+        {
+            var side = ha.Side ?? (DragX + DragWidth / 2 < hh.X + hh.Width / 2 ? "L" : "R");
+            Add(DragArtKey, new Point(DragX, DragY), DragWidth, side,
+                _dragNode?.Id ?? "?", hh, ha);
+        }
+
+        void Add(string art, Point pos, double width, string? side,
+                 string devId, DeviceNodeViewModel host, Anchor a)
+        {
             var to = BenchDock.AnchorWorld(new Point(host.X, host.Y), host.Width, a);
-            var from = BenchDock.PlugWorld(new Point(node.X, node.Y), node.Width,
-                                           node.ArtKey, dev.DockSideTag);
-            var plug = BenchDock.PlugOf(node.ArtKey, dev.DockSideTag);
-            Links.Add(new BenchLink(dev.InstanceId, host.Id, a.Id, BenchDock.LinkOf(node.ArtKey))
+            var from = BenchDock.PlugWorld(pos, width, art, side);
+            Links.Add(new BenchLink(devId, host.Id, a.Id, BenchDock.LinkOf(art))
             {
-                From = from, FromDir = plug.Dir,
-                To = to, ToDir = a.Dir,
+                From = from,
+                FromDir = BenchDock.ExitDir(art, from, to),
+                To = to,
+                ToDir = a.Dir,
                 Channel = host.Channels.ElementAtOrDefault(a.Slot),
                 Label = a.Label
             });
