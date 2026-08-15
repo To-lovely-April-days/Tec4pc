@@ -1,8 +1,12 @@
 using System.Collections.ObjectModel;
+using Avalonia;
 using Tec.App.Services;
 using Tec.Core.Benches;
 using Tec.Driver.Abi;
 using Tec.DriverHost;
+
+using Point = Avalonia.Point;
+using BPoint = Tec.Core.Benches.Point;
 
 namespace Tec.App.ViewModels;
 
@@ -39,6 +43,21 @@ public sealed class DeviceNodeViewModel : ViewModelBase
     public double X => Device.Position.X;
     public double Y => Device.Position.Y;
     public double Width => ArtKey == "reactor2" ? 176 : 120;
+    /// <summary>按设备图的宽高比算出来的显示高度，停靠计算要用。</summary>
+    public double Height
+    {
+        get
+        {
+            var art = Controls.DeviceArtCache.Get(ArtKey);
+            return art is null ? Width * 0.8 : Width * art.ViewHeight / art.ViewWidth;
+        }
+    }
+
+    public void MoveTo(Point p)
+    {
+        Device.Position = new BPoint(p.X, p.Y);
+        RaiseAll(nameof(X), nameof(Y));
+    }
     public string ChannelText => Channels.Count == 0 ? "未绑定" : string.Join(" · ", Channels.Select(c => "CH" + c));
 
     /// <summary>改名后台面上的标签要跟着变。</summary>
@@ -205,6 +224,190 @@ public sealed class BenchViewModel : ViewModelBase
 
     /// <summary>反应器的孔位 → 通道，可独立启停（原型 d.wells）。</summary>
     public ObservableCollection<ChannelRowViewModel> Wells { get; } = new();
+
+    // ── 拖拽落位 ────────────────────────────────────────────────────
+    private LibraryItemViewModel? _dragNew;      // 从设备库拖出来的新设备
+    private DeviceNodeViewModel? _dragNode;      // 台面上被拖动的既有设备
+    private Point _grab;                         // 抓取点相对设备左上角的偏移
+    private DockPort? _hover;
+
+    /// <summary>拖拽期间显示的可插入口。空 = 没在拖。</summary>
+    public ObservableCollection<DockPort> Ports { get; } = new();
+
+    public bool Dragging => _dragNew is not null || _dragNode is not null;
+    public string DragArtKey { get; private set; } = "";
+    public double DragWidth { get; private set; }
+    public double DragX { get; private set; }
+    public double DragY { get; private set; }
+
+    /// <summary>当前会插上的那个口，画高亮用。</summary>
+    public DockPort? Hover
+    {
+        get => _hover;
+        private set { if (!ReferenceEquals(_hover, value)) { _hover = value; Raise(); } }
+    }
+
+    private double DragHeight
+    {
+        get
+        {
+            var art = Controls.DeviceArtCache.Get(DragArtKey);
+            return art is null ? DragWidth * 0.8 : DragWidth * art.ViewHeight / art.ViewWidth;
+        }
+    }
+
+    /// <summary>台面上所有反应器开出来的口。</summary>
+    private IEnumerable<DockPort> AllPorts(string? exceptId = null)
+        => Devices.Where(d => d.ArtKey == "reactor2" && d.Id != exceptId)
+                  .SelectMany(d => BenchDock.PortsOf(d.Id, new Point(d.X, d.Y), d.Width, d.Channels));
+
+    public void BeginDragFromLibrary(LibraryItemViewModel item, Point at)
+    {
+        _dragNew = item;
+        _dragNode = null;
+        DragArtKey = item.ArtKey;
+        DragWidth = DragArtKey == "reactor2" ? 176 : 120;
+        _grab = new Point(DragWidth / 2, DragHeight / 2);
+        StartDrag(at);
+    }
+
+    public void BeginDragDevice(DeviceNodeViewModel node, Point at)
+    {
+        _dragNode = node;
+        _dragNew = null;
+        DragArtKey = node.ArtKey;
+        DragWidth = node.Width;
+        _grab = new Point(at.X - node.X, at.Y - node.Y);
+        Selected = node;
+        StartDrag(at);
+    }
+
+    private void StartDrag(Point at)
+    {
+        Ports.Clear();
+        foreach (var p in AllPorts(_dragNode?.Id)) Ports.Add(p);
+        DragTo(at);
+        RaiseAll(nameof(Dragging), nameof(DragArtKey), nameof(DragWidth));
+    }
+
+    public void DragTo(Point at)
+    {
+        if (!Dragging) return;
+        DragX = at.X - _grab.X;
+        DragY = at.Y - _grab.Y;
+        Hover = BenchDock.Nearest(Ports, DragArtKey, ConnectPoint);
+        RaiseAll(nameof(DragX), nameof(DragY));
+    }
+
+    /// <summary>
+    /// 判断插哪个口用的参考点：探头看电极尖（图底端中线），
+    /// 侧接的设备看自身中心——这样吸附的手感跟真实装配一致。
+    /// </summary>
+    private Point ConnectPoint => BenchDock.IsProbe(DragArtKey)
+        ? new Point(DragX + BenchDock.NodePad + DragWidth / 2, DragY + BenchDock.NodePad + DragHeight)
+        : new Point(DragX + BenchDock.NodePad + DragWidth / 2, DragY + BenchDock.NodePad + DragHeight / 2);
+
+    public void CancelDrag()
+    {
+        _dragNew = null;
+        _dragNode = null;
+        Ports.Clear();
+        Hover = null;
+        Raise(nameof(Dragging));
+    }
+
+    /// <summary>松手：插上就吸附并连线，没插上就自由摆放。</summary>
+    public void EndDrag(Point at)
+    {
+        if (!Dragging) return;
+        DragTo(at);
+        var port = Hover;
+        var dev = _dragNode?.Device ?? CreateDevice();
+        if (dev is null) { CancelDrag(); return; }
+
+        if (port is not null)
+        {
+            var host = Devices.FirstOrDefault(d => d.Id == port.HostId);
+            dev.DockHostId = port.HostId;
+            dev.Dock = port.Side;
+            dev.DockSlot = port.Slot;
+            var slot = BenchDock.Place(port, DragWidth, DragHeight, host?.Width ?? 176);
+            dev.Position = new BPoint(slot.X, slot.Y);
+            Rebind(dev.InstanceId, port.Channels, port.Side == DockSide.Top);
+        }
+        else
+        {
+            dev.DockHostId = null;
+            dev.Dock = DockSide.None;
+            dev.Position = new BPoint(DragX, DragY);
+            _ws.Bench.Bindings.RemoveAll(b => b.DeviceId == dev.InstanceId);
+        }
+
+        // 宿主被拖动时，插在它身上的设备跟着走
+        if (_dragNode is not null && _dragNode.ArtKey == "reactor2") Follow(dev);
+
+        CancelDrag();
+        _ = _ws.RebuildChannelsAsync();
+    }
+
+    /// <summary>反应器移动后，插在它上面的设备重新按口摆放。</summary>
+    private void Follow(DeviceInstance host)
+    {
+        var hostNode = Devices.FirstOrDefault(d => d.Id == host.InstanceId);
+        if (hostNode is null) return;
+        var ports = BenchDock.PortsOf(host.InstanceId, new Point(host.Position.X, host.Position.Y),
+                                      hostNode.Width, hostNode.Channels).ToList();
+        foreach (var child in _ws.Bench.Devices.Where(d => d.DockHostId == host.InstanceId))
+        {
+            var port = ports.FirstOrDefault(p => p.Side == child.Dock && p.Slot == child.DockSlot);
+            if (port is null) continue;
+            var node = Devices.FirstOrDefault(d => d.Id == child.InstanceId);
+            var w = node?.Width ?? 120;
+            var h = node?.Height ?? 96;
+            var cp = BenchDock.Place(port, w, h, hostNode.Width);
+            child.Position = new BPoint(cp.X, cp.Y);
+        }
+    }
+
+    private void Rebind(string deviceId, IReadOnlyList<int> channels, bool exclusive)
+    {
+        _ws.Bench.Bindings.RemoveAll(b => b.DeviceId == deviceId);
+        foreach (var ch in channels)
+            _ws.Bench.Bindings.Add(new Binding(deviceId, ch,
+                exclusive ? BindingMode.Exclusive : BindingMode.Shared));
+    }
+
+    /// <summary>台面上的编号前缀，沿用预置台面的写法（R1/P1/PH1/TU1…）。</summary>
+    private static string PrefixOf(string artKey) => artKey switch
+    {
+        "reactor2" => "R",
+        "pump" => "P",
+        "ph" => "PH",
+        "turb" => "TU",
+        "raman" => "RA",
+        "ir" => "IR",
+        "psd" => "PS",
+        "sampler" => "SA",
+        "hplc" => "HP",
+        _ => "D"
+    };
+
+    /// <summary>新设备的编号按类型顺延，撞号就往后排。</summary>
+    private DeviceInstance? CreateDevice()
+    {
+        if (_dragNew is null) return null;
+        var prefix = PrefixOf(_dragNew.ArtKey);
+        var n = 1;
+        while (_ws.Bench.Device($"{prefix}{n}") is not null) n++;
+        var dev = new DeviceInstance
+        {
+            DriverId = _dragNew.Package.Id,
+            InstanceId = $"{prefix}{n}",
+            Position = new BPoint(DragX, DragY)
+        };
+        _ws.Bench.Devices.Add(dev);
+        return dev;
+    }
     public string SelectedDriver => _selected?.Driver?.Info.Name ?? "—";
     public string SelectedSub => _selected is null ? "" : $"{_selected.Id} · {_selected.ChannelText}";
 

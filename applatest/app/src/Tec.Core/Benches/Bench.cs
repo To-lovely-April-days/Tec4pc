@@ -20,8 +20,20 @@ public sealed class Station
     public List<int> Channels { get; } = new();
 }
 
+/// <summary>
+/// 设备停靠在宿主（反应器）的哪一侧。探头从上方插进釜口，加料 / 取样 / 液相
+/// 走侧面接口——这是台面上真实的装配关系，不只是画得好看。
+/// </summary>
+public enum DockSide { None, Top, Left, Right }
+
 public sealed class DeviceInstance
 {
+    /// <summary>停靠在哪台设备上（宿主的 InstanceId）。空 = 自由摆放。</summary>
+    public string? DockHostId { get; set; }
+    public DockSide Dock { get; set; } = DockSide.None;
+    /// <summary>顶部停靠时插在第几个孔位（0 = A 孔，1 = B 孔）。侧面停靠时无意义。</summary>
+    public int DockSlot { get; set; }
+
     public required string DriverId { get; init; }
     public required string InstanceId { get; init; }
     public string? Label { get; set; }

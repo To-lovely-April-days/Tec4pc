@@ -41,7 +41,9 @@
     </Border>
 
     <!-- 台面：28px 网格底 + 绑定连线 + 设备 + 左下工具条 -->
-    <Panel Grid.Column="1" Background="White" ClipToBounds="True">
+    <Panel Grid.Column="1" Name="Stage" Background="White" ClipToBounds="True"
+           Focusable="True" PointerMoved="OnStageMoved" PointerReleased="OnStageReleased"
+           KeyDown="OnKeyDown">
       <ctl:GridBackdrop />
       <ctl:BenchWires Nodes="{Binding Devices}" />
 
@@ -71,6 +73,33 @@
           </DataTemplate>
         </ItemsControl.ItemTemplate>
       </ItemsControl>
+
+      <!-- 拖拽中：可插的口 + 跟手的幽灵设备 -->
+      <ItemsControl ItemsSource="{Binding Ports}" IsHitTestVisible="False">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate><Canvas /></ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.Styles>
+          <Style Selector="ItemsControl > ContentPresenter">
+            <Setter Property="Canvas.Left" Value="{Binding Anchor.X}" />
+            <Setter Property="Canvas.Top" Value="{Binding Anchor.Y}" />
+          </Style>
+        </ItemsControl.Styles>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <Border Width="18" Height="18" CornerRadius="9" Margin="-9,-9,0,0"
+                    Background="#331a7fc4" BorderBrush="#1a7fc4" BorderThickness="1.5" />
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <Canvas IsHitTestVisible="False" IsVisible="{Binding Dragging}">
+        <Border Canvas.Left="{Binding DragX}" Canvas.Top="{Binding DragY}" Opacity="0.75"
+                Padding="6,6,6,4" BorderThickness="1.6" CornerRadius="4"
+                BorderBrush="#1a7fc4" Background="#22ffffff">
+          <ctl:DeviceArtView ArtKey="{Binding DragArtKey}" ArtWidth="{Binding DragWidth}" />
+        </Border>
+      </Canvas>
 
       <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Left"
                   VerticalAlignment="Bottom" Margin="12">
