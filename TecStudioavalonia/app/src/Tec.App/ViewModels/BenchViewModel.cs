@@ -52,6 +52,7 @@ public sealed class BenchViewModel : ViewModelBase
     private SchemaFormViewModel? _connectionForm;
     private SchemaFormViewModel? _configForm;
     private string _probeResult = "";
+    private LibraryItemViewModel? _picked;
 
     public BenchViewModel(Workspace ws)
     {
@@ -68,6 +69,13 @@ public sealed class BenchViewModel : ViewModelBase
 
     public RelayCommand Probe { get; }
     public RelayCommand Rebuild { get; }
+
+    /// <summary>设备库里点中的那一项。真正的拖拽落位下一轮做。</summary>
+    public LibraryItemViewModel? PickedFromLibrary
+    {
+        get => _picked;
+        set => Set(ref _picked, value);
+    }
 
     public DeviceNodeViewModel? Selected
     {

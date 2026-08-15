@@ -3,62 +3,163 @@
              x:Class="Tec.App.App"
              RequestedThemeVariant="Light">
 
+  <!-- 配色与尺寸全部照抄原型 tecstudio.html 的 CSS，不另起一套。
+       选中态四件套（实线边 / 底色 / 柔环 / 深蓝加粗文字）来自原型 :root，
+       对比度 10.6:1，是刻意选的，别改浅。 -->
   <Application.Resources>
-    <!-- 沿用《台面与配方界面设计说明》§6 的配色与两条硬规则：
-         选中态对比度 ≥ 7:1；状态类不复用工具类名。 -->
-    <Color x:Key="TecInk">#1c2024</Color>
-    <Color x:Key="TecMuted">#6b7280</Color>
-    <Color x:Key="TecLine">#d8dde3</Color>
-    <Color x:Key="TecPanel">#f6f7f9</Color>
-    <Color x:Key="TecAccent">#1f6feb</Color>
+    <SolidColorBrush x:Key="SelBd" Color="#1a7fc4" />
+    <SolidColorBrush x:Key="SelBg" Color="#e8f2fb" />
+    <SolidColorBrush x:Key="SelRing" Color="#381a7fc4" />
+    <SolidColorBrush x:Key="SelTx" Color="#0b3760" />
+    <SolidColorBrush x:Key="HovBg" Color="#f2f8fd" />
 
-    <SolidColorBrush x:Key="Ink" Color="#1c2024" />
-    <SolidColorBrush x:Key="Muted" Color="#6b7280" />
-    <SolidColorBrush x:Key="Line" Color="#d8dde3" />
-    <SolidColorBrush x:Key="Panel" Color="#f6f7f9" />
-    <SolidColorBrush x:Key="PanelAlt" Color="#eef1f5" />
-    <SolidColorBrush x:Key="Accent" Color="#1f6feb" />
-    <SolidColorBrush x:Key="Ok" Color="#177245" />
-    <SolidColorBrush x:Key="Warn" Color="#a4590a" />
-    <SolidColorBrush x:Key="Bad" Color="#b3261e" />
+    <SolidColorBrush x:Key="Ink" Color="#333333" />
+    <SolidColorBrush x:Key="Ink2" Color="#3b3b3b" />
+    <SolidColorBrush x:Key="Muted" Color="#7a7a7a" />
+    <SolidColorBrush x:Key="Muted2" Color="#9a9a9a" />
+    <SolidColorBrush x:Key="Line" Color="#dcdcdc" />
+    <SolidColorBrush x:Key="Line2" Color="#e3e3e3" />
+    <SolidColorBrush x:Key="LibBg" Color="#f4f4f4" />
+    <SolidColorBrush x:Key="PropsBg" Color="#ececec" />
+    <SolidColorBrush x:Key="PropsLine" Color="#d2d2d2" />
+    <SolidColorBrush x:Key="Divider" Color="#d5d5d5" />
+    <SolidColorBrush x:Key="MenuBlue" Color="#1a91d6" />
+    <SolidColorBrush x:Key="Green" Color="#2f8f49" />
+    <SolidColorBrush x:Key="Red" Color="#e02020" />
+
+    <!-- 通道色，与原型 chColor 一致 -->
     <SolidColorBrush x:Key="Ch1" Color="#2f7ed8" />
     <SolidColorBrush x:Key="Ch2" Color="#2aa87a" />
     <SolidColorBrush x:Key="Ch3" Color="#c9772b" />
     <SolidColorBrush x:Key="Ch4" Color="#8a63d2" />
+
+    <FontFamily x:Key="UiFont">Segoe UI, Microsoft YaHei UI, Microsoft YaHei, system-ui, Arial</FontFamily>
   </Application.Resources>
 
   <Application.Styles>
     <FluentTheme />
 
-    <Style Selector="TextBlock.h1">
-      <Setter Property="FontSize" Value="17" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="Foreground" Value="{StaticResource Ink}" />
+    <!-- 主菜单项：25px 细体，悬停 #0a84c8，选中 #1a91d6 -->
+    <Style Selector="Button.menu">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="11,0" />
+      <Setter Property="FontSize" Value="25" />
+      <Setter Property="FontWeight" Value="Light" />
+      <Setter Property="Foreground" Value="#3b3b3b" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Cursor" Value="Hand" />
     </Style>
-    <Style Selector="TextBlock.h2">
-      <Setter Property="FontSize" Value="13" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="Foreground" Value="{StaticResource Ink}" />
+    <Style Selector="Button.menu:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="TextBlock.Foreground" Value="#0a84c8" />
+    </Style>
+    <Style Selector="Button.menu.on">
+      <Setter Property="Foreground" Value="#1a91d6" />
+    </Style>
+
+    <!-- 圆形工具按钮：34px，2px 深灰描边 -->
+    <Style Selector="Button.tbtn">
+      <Setter Property="Width" Value="34" />
+      <Setter Property="Height" Value="34" />
+      <Setter Property="CornerRadius" Value="17" />
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderBrush" Value="#4a4a4a" />
+      <Setter Property="BorderThickness" Value="2" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.tbtn:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#e8f4fb" />
+      <Setter Property="BorderBrush" Value="#1a91d6" />
+    </Style>
+    <Style Selector="Button.tbtn.sm">
+      <Setter Property="Width" Value="30" />
+      <Setter Property="Height" Value="30" />
+      <Setter Property="CornerRadius" Value="15" />
+      <Setter Property="BorderThickness" Value="1.6" />
+    </Style>
+    <Style Selector="Button.tbtn.foot">
+      <Setter Property="Width" Value="32" />
+      <Setter Property="Height" Value="32" />
+      <Setter Property="CornerRadius" Value="16" />
+      <Setter Property="Background" Value="#ececec" />
+    </Style>
+
+    <!-- 普通按钮 28px；主按钮绿色 -->
+    <Style Selector="Button.btn">
+      <Setter Property="MinWidth" Value="72" />
+      <Setter Property="Height" Value="28" />
+      <Setter Property="Padding" Value="14,0" />
+      <Setter Property="BorderBrush" Value="#b9b9b9" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Background" Value="White" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Foreground" Value="#333333" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.btn.primary">
+      <Setter Property="Background" Value="#2f8f49" />
+      <Setter Property="BorderBrush" Value="#2a7f41" />
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+
+    <Style Selector="ComboBox.sel">
+      <Setter Property="Height" Value="26" />
+      <Setter Property="MinHeight" Value="26" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Padding" Value="6,0" />
+      <Setter Property="BorderBrush" Value="#a8a8a8" />
+      <Setter Property="CornerRadius" Value="2" />
+      <Setter Property="Background" Value="White" />
+    </Style>
+    <Style Selector="TextBox.finput">
+      <Setter Property="Height" Value="24" />
+      <Setter Property="MinHeight" Value="24" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Padding" Value="6,2" />
+      <Setter Property="BorderBrush" Value="#a8a8a8" />
+      <Setter Property="CornerRadius" Value="2" />
+    </Style>
+
+    <!-- 面板小节头：原型统一用圆形箭头，不用细横线 -->
+    <Style Selector="TextBlock.acc">
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Foreground" Value="#3d3d3d" />
+      <Setter Property="Margin" Value="0,6" />
+    </Style>
+    <Style Selector="TextBlock.h2big">
+      <Setter Property="FontSize" Value="24" />
+      <Setter Property="FontWeight" Value="Light" />
+      <Setter Property="Foreground" Value="#333333" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="Margin" Value="0,0,0,8" />
+    </Style>
+    <Style Selector="TextBlock.intro">
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Foreground" Value="#5a5a5a" />
+      <Setter Property="LineHeight" Value="18" />
+      <Setter Property="TextAlignment" Value="Center" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="Margin" Value="0,0,0,14" />
+    </Style>
+    <Style Selector="TextBlock.lbl">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Foreground" Value="#444444" />
+      <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style Selector="TextBlock.muted">
-      <Setter Property="FontSize" Value="12" />
-      <Setter Property="Foreground" Value="{StaticResource Muted}" />
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="Foreground" Value="#7a7a7a" />
     </Style>
     <Style Selector="TextBlock.mono">
       <Setter Property="FontFamily" Value="Consolas, Menlo, monospace" />
-      <Setter Property="FontSize" Value="12" />
-    </Style>
-    <Style Selector="Border.card">
-      <Setter Property="Background" Value="White" />
-      <Setter Property="BorderBrush" Value="{StaticResource Line}" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="CornerRadius" Value="6" />
-      <Setter Property="Padding" Value="10" />
-    </Style>
-    <Style Selector="Border.section">
-      <Setter Property="Background" Value="{StaticResource Panel}" />
-      <Setter Property="BorderBrush" Value="{StaticResource Line}" />
-      <Setter Property="BorderThickness" Value="0,0,1,0" />
+      <Setter Property="FontSize" Value="11.5" />
     </Style>
   </Application.Styles>
 

@@ -49,6 +49,12 @@ public sealed class StepViewModel : ViewModelBase
     public CommandDescriptor? Descriptor { get; }
 
     public string Title => Entry.Title;
+    /// <summary>指令名（原型步骤卡的标题行）。</summary>
+    public string Name => Descriptor?.DisplayName ?? Entry.CommandId;
+    /// <summary>卡片上那一行摘要，对应原型 PSPEC.sum。</summary>
+    public string Summary => Descriptor is null
+        ? "缺少驱动"
+        : Descriptor.SummaryOf(new CommandInput(Step.Parameters, Step.Rows));
     public string Module => Descriptor?.Module ?? "—";
     public string Termination => TerminationText.Of(Entry.Termination);
     public string PlanStart => Fmt.Hms(Entry.Start);
