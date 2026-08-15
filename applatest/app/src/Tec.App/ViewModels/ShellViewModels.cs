@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
+using Tec.App.Controls;
 using Tec.App.Services;
 using Tec.Core;
 using Tec.Core.Catalog;
@@ -295,24 +296,59 @@ public sealed class RecipeLibViewModel : ViewModelBase
 public sealed class CompoundViewModel : ViewModelBase
 {
     private bool _sel;
+    private string _cas = "", _formula = "", _category = "", _solvent = "", _note = "";
+    private double _mw, _mp;
+
     /// <summary>选中态由 CompoundsViewModel 统一维护（表格行整行加深加粗）。</summary>
     public bool IsSelected { get => _sel; set => Set(ref _sel, value); }
 
     public required string Name { get; init; }
-    public required string Cas { get; init; }
-    public required string Formula { get; init; }
-    public required double Mw { get; init; }
-    public required double Mp { get; init; }
-    public required string Category { get; init; }
+
+    // 物性详情面板是这些字段的编辑面，改了表格同一行立刻跟着变
+    public required string Cas { get => _cas; set => Set(ref _cas, value); }
+    public required string Formula { get => _formula; set => Set(ref _formula, value); }
+    public required string Category
+    {
+        get => _category;
+        set { if (Set(ref _category, value)) Raise(nameof(CategoryColor)); }
+    }
+    public required string Solvent { get => _solvent; set => Set(ref _solvent, value); }
+    public required string Note { get => _note; set => Set(ref _note, value); }
+
+    public required double Mw
+    {
+        get => _mw;
+        set { if (Set(ref _mw, value)) RaiseAll(nameof(MwText), nameof(MwEdit)); }
+    }
+
+    public required double Mp
+    {
+        get => _mp;
+        set { if (Set(ref _mp, value)) RaiseAll(nameof(MpText), nameof(MpEdit)); }
+    }
+
     /// <summary>溶解度对温度的二次拟合系数 a + b·T + c·T²（g/100 mL 水）。原型 sol 数组。</summary>
     public required double[] Solubility { get; init; }
-    public required string Solvent { get; init; }
-    public required string Note { get; init; }
 
+    /// <summary>骨架式的画法数据；没有的（离子化合物）用 IonText 显示离子对。</summary>
+    public Molecule? Structure { get; init; }
+    public string? IonText { get; init; }
+
+    /// <summary>分子量 / 熔点按原型的小数位显示：表格与编辑框用同一份格式，免得一个 342.30 一个 342.3。</summary>
     public string MwText => Mw.ToString("F2", CultureInfo.InvariantCulture);
-    public string MwUnitText => MwText + " g/mol";
     public string MpText => Mp.ToString("F1", CultureInfo.InvariantCulture);
-    public string MpUnitText => MpText + " ℃";
+
+    public string MwEdit
+    {
+        get => MwText;
+        set { if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var v)) Mw = v; }
+    }
+
+    public string MpEdit
+    {
+        get => MpText;
+        set { if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var v)) Mp = v; }
+    }
 
     /// <summary>原型 CATCOLOR。</summary>
     public string CategoryColor => Category switch
@@ -333,24 +369,26 @@ public sealed class CompoundsViewModel : ViewModelBase
 
     private static readonly CompoundViewModel[] Seed =
     {
-        New("苯甲酸", "65-85-0", "C7H6O2", 122.12, 122.4, "有机酸", new[] { 0.17, 0.006, 0.0006 }, "水 / 乙醇", "常用结晶模型物"),
-        New("水杨酸", "69-72-7", "C7H6O3", 138.12, 158.6, "有机酸", new[] { 0.12, 0.004, 0.0005 }, "水 / 乙醇", "温度敏感"),
-        New("柠檬酸", "77-92-9", "C6H8O7", 192.12, 153.0, "有机酸", new[] { 54, 1.5, 0.012 }, "水", "高溶解度"),
-        New("对乙酰氨基酚", "103-90-2", "C8H9NO2", 151.16, 169.0, "药物", new[] { 0.8, 0.03, 0.002 }, "水 / 乙醇", "药物结晶筛选常用"),
-        New("布洛芬", "15687-27-1", "C13H18O2", 206.28, 76.0, "药物", new[] { 0.002, 0.0004, 0.00008 }, "乙醇 / 乙酸乙酯", "难溶于水"),
-        New("甘氨酸", "56-40-6", "C2H5NO2", 75.07, 233.0, "氨基酸", new[] { 14.2, 0.44, 0.004 }, "水", "多晶型 α/β/γ"),
-        New("L-谷氨酸", "56-86-0", "C5H9NO4", 147.13, 199.0, "氨基酸", new[] { 0.35, 0.02, 0.001 }, "水", "多晶型 α/β"),
-        New("硫酸铵", "7783-20-2", "(NH4)2SO4", 132.14, 235.0, "无机盐", new[] { 70.6, 0.25, 0.0 }, "水", "盐析常用"),
-        New("氯化钾", "7447-40-7", "KCl", 74.55, 770.0, "无机盐", new[] { 28, 0.32, 0.0 }, "水", "教学演示"),
-        New("蔗糖", "57-50-1", "C12H22O11", 342.30, 186.0, "糖类", new[] { 179, 1.1, 0.02 }, "水", "高粘度体系")
+        New("苯甲酸", "65-85-0", "C7H6O2", 122.12, 122.4, "有机酸", new[] { 0.17, 0.006, 0.0006 }, "水 / 乙醇", "常用结晶模型物", Structures.BenzoicAcid),
+        New("水杨酸", "69-72-7", "C7H6O3", 138.12, 158.6, "有机酸", new[] { 0.12, 0.004, 0.0005 }, "水 / 乙醇", "温度敏感", Structures.SalicylicAcid),
+        New("柠檬酸", "77-92-9", "C6H8O7", 192.12, 153.0, "有机酸", new[] { 54, 1.5, 0.012 }, "水", "高溶解度", Structures.CitricAcid),
+        New("对乙酰氨基酚", "103-90-2", "C8H9NO2", 151.16, 169.0, "药物", new[] { 0.8, 0.03, 0.002 }, "水 / 乙醇", "药物结晶筛选常用", Structures.Paracetamol),
+        New("布洛芬", "15687-27-1", "C13H18O2", 206.28, 76.0, "药物", new[] { 0.002, 0.0004, 0.00008 }, "乙醇 / 乙酸乙酯", "难溶于水", Structures.Ibuprofen),
+        New("甘氨酸", "56-40-6", "C2H5NO2", 75.07, 233.0, "氨基酸", new[] { 14.2, 0.44, 0.004 }, "水", "多晶型 α/β/γ", Structures.Glycine),
+        New("L-谷氨酸", "56-86-0", "C5H9NO4", 147.13, 199.0, "氨基酸", new[] { 0.35, 0.02, 0.001 }, "水", "多晶型 α/β", Structures.GlutamicAcid),
+        New("硫酸铵", "7783-20-2", "(NH4)2SO4", 132.14, 235.0, "无机盐", new[] { 70.6, 0.25, 0.0 }, "水", "盐析常用", null, "2 NH₄⁺ + SO₄²⁻"),
+        New("氯化钾", "7447-40-7", "KCl", 74.55, 770.0, "无机盐", new[] { 28, 0.32, 0.0 }, "水", "教学演示", null, "K⁺ + Cl⁻"),
+        New("蔗糖", "57-50-1", "C12H22O11", 342.30, 186.0, "糖类", new[] { 179, 1.1, 0.02 }, "水", "高粘度体系", Structures.Sucrose)
     };
 
     private static CompoundViewModel New(string n, string cas, string fx, double mw, double mp,
-                                         string cat, double[] sol, string solvent, string note)
+                                         string cat, double[] sol, string solvent, string note,
+                                         Molecule? structure = null, string? ion = null)
         => new()
         {
             Name = n, Cas = cas, Formula = fx, Mw = mw, Mp = mp,
-            Category = cat, Solubility = sol, Solvent = solvent, Note = note
+            Category = cat, Solubility = sol, Solvent = solvent, Note = note,
+            Structure = structure, IonText = ion
         };
 
     public CompoundsViewModel()

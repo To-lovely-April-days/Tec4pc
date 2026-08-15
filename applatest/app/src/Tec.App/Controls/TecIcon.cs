@@ -96,6 +96,12 @@ public sealed class TecIcon : Control
             Current = White ? Colors.White : Tint,
             StrokeOverride = White ? Colors.White : null
         };
+
+        // 图标画在自身范围的正中。被 Border / Panel 拉伸时（比如 CARET 的 20px 圆圈，
+        // 原型是 place-items:center），控件比图大，按左上角画就会偏出圆心。
+        var dx = Math.Max(0, (Bounds.Width - r.W) / 2);
+        var dy = Math.Max(0, (Bounds.Height - r.H) / 2);
+        using var _ = ctx.PushTransform(Matrix.CreateTranslation(dx, dy));
         r.Art.Render(ctx, r.W / r.Art.ViewWidth, paint);
     }
 }

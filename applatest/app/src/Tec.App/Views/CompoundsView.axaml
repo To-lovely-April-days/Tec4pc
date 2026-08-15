@@ -5,6 +5,8 @@
   <UserControl.Styles>
     <!-- .crow：44 色块 / 名称 / CAS / 分子式 / 分子量 / 熔点 / 类别 / 备注 -->
     <Style Selector="Border.crow">
+      <!-- 没有背景的 Border 不参与命中测试，点在列与列之间就没反应 -->
+      <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderBrush" Value="#ececec" />
       <Setter Property="BorderThickness" Value="0,0,0,1" />
       <Setter Property="Cursor" Value="Hand" />
@@ -42,6 +44,12 @@
       <Setter Property="FontSize" Value="11" />
       <Setter Property="Foreground" Value="#3a3a3a" />
       <Setter Property="Margin" Value="10,8" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TextBlock.unit">
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="Foreground" Value="#8d8d8d" />
+      <Setter Property="Margin" Value="6,0,0,0" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style Selector="TextBlock.frowk">
@@ -106,9 +114,6 @@
                 <Border Classes="crow" PointerPressed="OnRowPressed"
                         Classes.sel="{Binding IsSelected}">
                   <Grid ColumnDefinitions="44,1.4*,1*,1*,76,76,100,1.2*">
-                    <Border Grid.Column="0" Width="14" Height="14" CornerRadius="3"
-                            Background="{Binding CategoryColor}"
-                            HorizontalAlignment="Center" VerticalAlignment="Center" />
                     <TextBlock Grid.Column="1" Text="{Binding Name}" />
                     <TextBlock Grid.Column="2" Text="{Binding Cas}" />
                     <TextBlock Grid.Column="3" Text="{Binding Formula}" Classes="fx" />
@@ -137,30 +142,38 @@
           <TextBlock Text="{Binding Name}" FontSize="21" FontWeight="Light" Foreground="#333333"
                      HorizontalAlignment="Center" Margin="0,0,0,12" />
 
+          <!-- 结构式：骨架式；离子化合物没有骨架，排离子对 -->
+          <Border Background="White" BorderBrush="#dcdcdc" BorderThickness="1" CornerRadius="3"
+                  Margin="0,0,0,14">
+            <ctl:MoleculeView Structure="{Binding Structure}" IonText="{Binding IonText}" />
+          </Border>
+
           <StackPanel Spacing="7">
             <StackPanel Orientation="Horizontal">
               <TextBlock Text="CAS 号" Classes="frowk" />
-              <TextBox Classes="finput" Text="{Binding Cas}" IsEnabled="False" Width="196" />
+              <TextBox Classes="finput" Text="{Binding Cas, Mode=TwoWay}" Width="196" />
             </StackPanel>
             <StackPanel Orientation="Horizontal">
               <TextBlock Text="分子式" Classes="frowk" />
-              <TextBox Classes="finput" Text="{Binding Formula}" IsEnabled="False" Width="196" />
+              <TextBox Classes="finput" Text="{Binding Formula, Mode=TwoWay}" Width="196" />
             </StackPanel>
             <StackPanel Orientation="Horizontal">
               <TextBlock Text="分子量" Classes="frowk" />
-              <TextBox Classes="finput" Text="{Binding MwUnitText}" IsEnabled="False" Width="196" />
+              <TextBox Classes="finput" Text="{Binding MwEdit, Mode=TwoWay}" Width="152" />
+              <TextBlock Text="g/mol" Classes="unit" />
             </StackPanel>
             <StackPanel Orientation="Horizontal">
               <TextBlock Text="熔点" Classes="frowk" />
-              <TextBox Classes="finput" Text="{Binding MpUnitText}" IsEnabled="False" Width="196" />
+              <TextBox Classes="finput" Text="{Binding MpEdit, Mode=TwoWay}" Width="152" />
+              <TextBlock Text="℃" Classes="unit" />
             </StackPanel>
             <StackPanel Orientation="Horizontal">
               <TextBlock Text="常用溶剂" Classes="frowk" />
-              <TextBox Classes="finput" Text="{Binding Solvent}" IsEnabled="False" Width="196" />
+              <TextBox Classes="finput" Text="{Binding Solvent, Mode=TwoWay}" Width="196" />
             </StackPanel>
             <StackPanel Orientation="Horizontal">
               <TextBlock Text="备注" Classes="frowk" />
-              <TextBox Classes="finput" Text="{Binding Note}" IsEnabled="False" Width="196" />
+              <TextBox Classes="finput" Text="{Binding Note, Mode=TwoWay}" Width="196" />
             </StackPanel>
           </StackPanel>
 
