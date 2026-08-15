@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Tec.Drivers.Simulator</RootNamespace>
+    <AssemblyName>Tec.Drivers.Simulator</AssemblyName>
+  </PropertyGroup>
+
+  <!-- 驱动只引用契约包。引用到 Tec.Core 就是架构被破坏了。 -->
+  <ItemGroup>
+    <ProjectReference Include="..\Tec.Driver.Abi\Tec.Driver.Abi.csproj" />
+  </ItemGroup>
+
+</Project>

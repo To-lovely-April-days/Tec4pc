@@ -1,0 +1,19 @@
+{
+  "id": "vendor.turbidity.acme",
+  "name": "Acme 在线浊度计 T-200",
+  "vendor": "Acme Analytical",
+  "version": "2.1.0",
+
+  "abi": "1.0",
+
+  "entry": "Vendor.Turbidity.Acme.dll",
+  "assemblyQualifiedType": "Vendor.Turbidity.Acme.AcmeTurbidityDriver",
+
+  "capabilities": ["IScalarSensor"],
+
+  "channelsPerDevice": 0,
+  "simulatorIncluded": true,
+
+  "icon": "turb",
+  "description": "第三方原位散射浊度；只回传标量，谱图与建模留在厂商自己的软件里。"
+}

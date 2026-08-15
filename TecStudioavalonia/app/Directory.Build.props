@@ -1,0 +1,14 @@
+<Project>
+
+  <!-- 新工程与仓库根部的 TecStudio.sln 完全隔离：
+       MSBuild 只会从各自项目目录向上查找，src/TecControl.* 不会读到这份 props。 -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <NeutralLanguage>zh-CN</NeutralLanguage>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+</Project>

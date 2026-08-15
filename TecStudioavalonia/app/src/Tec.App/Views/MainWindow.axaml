@@ -1,0 +1,75 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:v="clr-namespace:Tec.App.Views"
+        x:Class="Tec.App.Views.MainWindow"
+        Title="TecStudio · 四通道平行合成反应工作站"
+        Width="1500" Height="940" MinWidth="1180" MinHeight="720"
+        FontFamily="Microsoft YaHei UI, PingFang SC, Noto Sans CJK SC, Segoe UI, sans-serif"
+        Background="White">
+
+  <DockPanel>
+
+    <Border DockPanel.Dock="Top" Background="#20262c" Padding="16,10">
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="14">
+          <TextBlock Text="TecStudio" FontSize="17" FontWeight="SemiBold" Foreground="White"
+                     VerticalAlignment="Center" />
+          <TextBlock Text="{Binding Title}" FontSize="13" Foreground="#c7ced6" VerticalAlignment="Center" />
+        </StackPanel>
+        <TextBlock Grid.Column="1" Text="{Binding ClockText}" FontSize="12" Foreground="#9aa5b1"
+                   VerticalAlignment="Center" />
+      </Grid>
+    </Border>
+
+    <Border DockPanel.Dock="Left" Width="112" Background="#2b333b">
+      <StackPanel Margin="0,10">
+        <Button Content="台面" Command="{Binding GoBench}" Classes="nav" />
+        <Button Content="配方" Command="{Binding GoRecipe}" Classes="nav" />
+        <Button Content="运行" Command="{Binding GoRun}" Classes="nav" />
+        <Button Content="记录导出" Command="{Binding GoExport}" Classes="nav" />
+      </StackPanel>
+    </Border>
+
+    <Panel>
+      <ContentControl IsVisible="{Binding IsBench}" Content="{Binding Bench}">
+        <ContentControl.ContentTemplate>
+          <DataTemplate><v:BenchView /></DataTemplate>
+        </ContentControl.ContentTemplate>
+      </ContentControl>
+
+      <ContentControl IsVisible="{Binding IsRecipe}" Content="{Binding Recipe}">
+        <ContentControl.ContentTemplate>
+          <DataTemplate><v:RecipeView /></DataTemplate>
+        </ContentControl.ContentTemplate>
+      </ContentControl>
+
+      <ContentControl IsVisible="{Binding IsRun}" Content="{Binding Run}">
+        <ContentControl.ContentTemplate>
+          <DataTemplate><v:RunView /></DataTemplate>
+        </ContentControl.ContentTemplate>
+      </ContentControl>
+
+      <ContentControl IsVisible="{Binding IsExport}" Content="{Binding Export}">
+        <ContentControl.ContentTemplate>
+          <DataTemplate><v:ExportView /></DataTemplate>
+        </ContentControl.ContentTemplate>
+      </ContentControl>
+    </Panel>
+  </DockPanel>
+
+  <Window.Styles>
+    <Style Selector="Button.nav">
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="#d4dae1" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0,12" />
+      <Setter Property="FontSize" Value="13" />
+    </Style>
+    <Style Selector="Button.nav:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#3a444d" />
+      <Setter Property="TextBlock.Foreground" Value="White" />
+    </Style>
+  </Window.Styles>
+</Window>

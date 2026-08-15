@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Tec.Core</RootNamespace>
+    <AssemblyName>Tec.Core</AssemblyName>
+  </PropertyGroup>
+
+  <!-- 领域核心：不引用 Avalonia，不引用任何具体驱动。
+       这里出现 "Raman" / "RD105" 这样的名字就是架构被破坏了（核心架构 §1）。 -->
+  <ItemGroup>
+    <ProjectReference Include="..\Tec.Driver.Abi\Tec.Driver.Abi.csproj" />
+  </ItemGroup>
+
+</Project>

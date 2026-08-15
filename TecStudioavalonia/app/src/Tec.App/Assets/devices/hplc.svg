@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 136 150" width="136" height="150"><defs>
+  <linearGradient id="a31_Glass" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0" stop-color="#88a5b1"/><stop offset="0.18" stop-color="#abcbd9"/>
+    <stop offset="0.42" stop-color="#9bbac8"/><stop offset="0.66" stop-color="#8aa2b0"/>
+    <stop offset="0.86" stop-color="#8193a1"/><stop offset="1" stop-color="#6c7b88"/></linearGradient>
+  <linearGradient id="a31_Lcd" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0" stop-color="#9aa0a9"/><stop offset="0.07" stop-color="#90a4b6"/>
+    <stop offset="0.20" stop-color="#a3bcd0"/><stop offset="0.36" stop-color="#aec9e4"/>
+    <stop offset="0.52" stop-color="#9bbbd8"/><stop offset="0.70" stop-color="#82a8c4"/>
+    <stop offset="0.82" stop-color="#70a4c0"/><stop offset="0.93" stop-color="#7ba6c4"/>
+    <stop offset="1" stop-color="#8995aa"/></linearGradient>
+  <linearGradient id="a31_Deck" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#c4c7c8"/><stop offset="1" stop-color="#adb1b2"/></linearGradient>
+  <radialGradient id="a31_Run1"><stop offset="0" stop-color="#010101" stop-opacity="0.55"/>
+    <stop offset="0.55" stop-color="#010101" stop-opacity="0.22"/>
+    <stop offset="1" stop-color="#010101" stop-opacity="0"/></radialGradient>
+  <radialGradient id="a31_Run2"><stop offset="0" stop-color="#020202" stop-opacity="0.55"/>
+    <stop offset="0.55" stop-color="#020202" stop-opacity="0.22"/>
+    <stop offset="1" stop-color="#020202" stop-opacity="0"/></radialGradient>
+  <filter id="a31_Soft2" x="-50%" y="-200%" width="200%" height="500%">
+    <feGaussianBlur stdDeviation="1.7"/></filter></defs>
+  
+    <rect x="22" y="10" width="104" height="2.6" fill="#5c6064"/>
+    <rect x="22" y="12.6" width="104" height="26" rx="1.2" fill="#f9f9fb" stroke="#5b5f63" stroke-width="1.6"/>
+    
+  <rect x="30" y="15" width="44" height="16" rx="1.2" fill="#f2f4f6" stroke="#4e5256" stroke-width="2"/>
+  <rect x="34.6" y="16.9" width="34" height="10.3" rx="0.8" fill="url(#a31_Lcd)"/>
+  <rect x="35.6" y="18" width="5.44" height="8.1" rx="0.6" fill="#8892a2" opacity="0.5"/><circle cx="112" cy="23" r="4" fill="#bfc0be" stroke="#6d7175" stroke-width="1.4"/>
+  
+    <rect x="22" y="40" width="104" height="2.6" fill="#5c6064"/>
+    <rect x="22" y="42.6" width="104" height="26" rx="1.2" fill="#f9f9fb" stroke="#5b5f63" stroke-width="1.6"/>
+    <circle cx="44" cy="56" r="9.5" fill="#bfc0be" stroke="#6a6e72" stroke-width="1.8"/>
+     <circle cx="44" cy="56" r="3.2" fill="#666a6e"/>
+     <path d="M60 51h52M60 61h34" stroke="#a8acb0" stroke-width="1.3"/>
+  
+    <rect x="22" y="70" width="104" height="2.6" fill="#5c6064"/>
+    <rect x="22" y="72.6" width="104" height="26" rx="1.2" fill="#f9f9fb" stroke="#5b5f63" stroke-width="1.6"/>
+    <rect x="32" y="79" width="62" height="12" rx="6" fill="#8f8f9b" stroke="#4e4e58" stroke-width="1.8"/>
+     <path d="M40 85h46" stroke="#38414e" stroke-width="3" stroke-linecap="round"/>
+     <text x="112" y="89" font-size="8" fill="#7a7e82" text-anchor="middle" font-family="sans-serif">柱温</text>
+  
+    <rect x="22" y="100" width="104" height="2.6" fill="#5c6064"/>
+    <rect x="22" y="102.6" width="104" height="26" rx="1.2" fill="#f9f9fb" stroke="#5b5f63" stroke-width="1.6"/>
+    
+  <rect x="30" y="105" width="50" height="16" rx="1.2" fill="#f2f4f6" stroke="#4e5256" stroke-width="2"/>
+  <rect x="34.6" y="106.9" width="40" height="10.3" rx="0.8" fill="url(#a31_Lcd)"/>
+  <rect x="35.6" y="108" width="6.4" height="8.1" rx="0.6" fill="#8892a2" opacity="0.5"/><circle cx="106" cy="113" r="4.4" fill="#bfc0be" stroke="#6d7175" stroke-width="1.4"/>
+  <rect x="24" y="130" width="100" height="6" fill="#f5f5f5" stroke="#5c5e60" stroke-width="1.5"/>
+  <path d="M22 56H9v76" fill="none" stroke="#bcbcbc" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="9" cy="136" r="4.4" fill="#010101" stroke="#4e4e58" stroke-width="1.2" data-tint="1"/></svg>

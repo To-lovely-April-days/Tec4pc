@@ -1,0 +1,190 @@
+using Tec.Core.Recipes;
+using Tec.Core.Scheduling;
+using Tec.Driver.Abi;
+
+namespace Tec.Core.Records;
+
+public enum StepStatus { Pending, Running, Done, Skipped, Aborted, Failed }
+
+public enum EventKind
+{
+    ChannelStarted,
+    ChannelFinished,
+    Paused,
+    Resumed,
+    ParameterChanged,
+    StepSkipped,
+    Alarm,
+    SafetyAction,
+    OperatorMark,
+    Sampling,
+    ResourceWait,
+    DeviceFault,
+    Note
+}
+
+/// <summary>
+/// 一条步骤记录。**两种偏差必须分开存**（§8.3）：
+/// 开始偏差 = 被前面拖累了多少；时长偏差 = 这步自己跑得对不对。
+/// 只报一个数就分不出"这步慢"和"前面拖累"，排查方向完全不同。
+/// </summary>
+public sealed class StepRecord
+{
+    public required int Index { get; init; }
+    public required string StepId { get; init; }
+    public required string CommandId { get; init; }
+    public required string Title { get; init; }
+    public required TerminationKind Termination { get; init; }
+    /// <summary>循环体里的第几轮。第 1 轮以外的计划时间由循环跨度推移得到。</summary>
+    public int Iteration { get; init; } = 1;
+
+    // 计划：永远来自冻结基线，之后再改配方也不动它（§7.2）
+    public required TimeSpan PlanStart { get; init; }
+    public required TimeSpan PlanDuration { get; init; }
+
+    // 实际
+    public DateTimeOffset? ActualStart { get; set; }
+    public DateTimeOffset? ActualEnd { get; set; }
+    public TimeSpan? ActualDuration { get; set; }
+    public EndReason? Reason { get; set; }
+    public StepStatus Status { get; set; } = StepStatus.Pending;
+    public string? Note { get; set; }
+
+    /// <summary>该通道自己的 t0。通道各自启动，不能用批次时间。</summary>
+    public DateTimeOffset ChannelStart { get; init; }
+
+    public TimeSpan? ActualStartOffset
+        => ActualStart is { } a ? a - ChannelStart : null;
+
+    public TimeSpan? StartDeviation
+        => ActualStartOffset is { } o ? o - PlanStart : null;
+
+    public TimeSpan? DurationDeviation
+        => ActualDuration is { } d ? d - PlanDuration : null;
+
+    /// <summary>
+    /// 相对阈值要配绝对下限：只用百分比的话，5 秒的步骤抖 1 秒就报红，表会被噪声淹掉（§13.5）。
+    /// </summary>
+    public bool DurationOutOfTolerance(double ratio = 0.10, TimeSpan? floor = null)
+    {
+        if (DurationDeviation is not { } dev) return false;
+        if (Termination == TerminationKind.Immediate) return false;
+        var abs = dev < TimeSpan.Zero ? dev.Negate() : dev;
+        var f = floor ?? TimeSpan.FromSeconds(20);
+        if (abs < f) return false;
+        return PlanDuration > TimeSpan.Zero && abs.TotalSeconds > PlanDuration.TotalSeconds * ratio;
+    }
+}
+
+public sealed class EventRecord
+{
+    public required DateTimeOffset At { get; init; }
+    public required int Channel { get; init; }
+    public required EventKind Kind { get; init; }
+    public required string Text { get; init; }
+    public string? User { get; init; }
+    public int? StepIndex { get; init; }
+    /// <summary>参数修改事件的改前/改后值，审计要能还原（§7.6）。</summary>
+    public string? Before { get; init; }
+    public string? After { get; init; }
+}
+
+/// <summary>启动那一刻冻结下来的配方 + 排期。这是 GLP 的前提（§7.2）。</summary>
+public sealed class RunBaseline
+{
+    public required Recipe Recipe { get; init; }
+    public required Schedule Schedule { get; init; }
+    public required DateTimeOffset FrozenAt { get; init; }
+    public string? ApprovedBy { get; init; }
+}
+
+public enum ChannelRunState { Idle, Loading, Ready, Running, Paused, Aborting, Completed, Faulted }
+
+/// <summary>通道子记录。批次只是把同时段的通道子记录归拢在一起（§7.1）。</summary>
+public sealed class ChannelRun
+{
+    public required int Channel { get; init; }
+    public required RunBaseline Baseline { get; init; }
+    public required DateTimeOffset StartedAt { get; init; }
+    public DateTimeOffset? FinishedAt { get; set; }
+    public ChannelRunState State { get; set; } = ChannelRunState.Ready;
+    public string? Operator { get; init; }
+    /// <summary>仿真运行必须标出来，绝不能和真实数据混进一份报告（§8.1）。</summary>
+    public bool Simulated { get; init; }
+
+    private readonly List<StepRecord> _steps = new();
+    private readonly List<EventRecord> _events = new();
+
+    public IReadOnlyList<StepRecord> Steps => _steps;
+    public IReadOnlyList<EventRecord> Events => _events;
+
+    // 只追加，不允许更新或删除；修正走"追加一条更正事件"（§8.3）
+    public void Append(StepRecord s) => _steps.Add(s);
+    public void Append(EventRecord e) => _events.Add(e);
+
+    public StepRecord? Current
+    {
+        get
+        {
+            for (var i = _steps.Count - 1; i >= 0; i--)
+                if (_steps[i].Status == StepStatus.Running) return _steps[i];
+            return null;
+        }
+    }
+
+    public TimeSpan Elapsed(DateTimeOffset now)
+        => (FinishedAt ?? now) - StartedAt;
+
+    /// <summary>滚动预测：基线 + 当前累计偏移外推。和基线分开放，绝不混在一个视图里（§7.2）。</summary>
+    public DateTimeOffset ProjectedFinish(DateTimeOffset now)
+    {
+        var drift = TimeSpan.Zero;
+        for (var i = _steps.Count - 1; i >= 0; i--)
+        {
+            var s = _steps[i];
+            if (s.Status == StepStatus.Running && s.ActualStartOffset is { } o)
+            {
+                drift = o - s.PlanStart;
+                var ran = now - (s.ActualStart ?? now);
+                if (ran > s.PlanDuration) drift += ran - s.PlanDuration;
+                break;
+            }
+            if (s.Status == StepStatus.Done && s.ActualStartOffset is { } o2 && s.ActualDuration is { } d2)
+            {
+                drift = o2 + d2 - (s.PlanStart + s.PlanDuration);
+                break;
+            }
+        }
+        return StartedAt + Baseline.Schedule.Total + drift;
+    }
+}
+
+/// <summary>批次。</summary>
+public sealed class RunRecord
+{
+    public string RunId { get; init; } = DateTimeOffset.Now.ToString("yyyyMMdd-HHmmss");
+    public string Name { get; set; } = "未命名批次";
+    public string? Operator { get; set; }
+    public required DateTimeOffset CreatedAt { get; init; }
+    public DateTimeOffset? ClosedAt { get; set; }
+    public string BenchName { get; set; } = "";
+
+    private readonly List<ChannelRun> _channels = new();
+    public IReadOnlyList<ChannelRun> Channels => _channels;
+
+    public void Append(ChannelRun c) => _channels.Add(c);
+
+    public ChannelRun? Of(int channel)
+    {
+        for (var i = _channels.Count - 1; i >= 0; i--)
+            if (_channels[i].Channel == channel) return _channels[i];
+        return null;
+    }
+
+    public IReadOnlyList<int> StartedChannels
+        => _channels.Select(c => c.Channel).Distinct().OrderBy(x => x).ToList();
+
+    /// <summary>批次里最早的通道启动时刻。墙钟对齐的时间轴以它为原点。</summary>
+    public DateTimeOffset? FirstStart
+        => _channels.Count == 0 ? null : _channels.Min(c => c.StartedAt);
+}

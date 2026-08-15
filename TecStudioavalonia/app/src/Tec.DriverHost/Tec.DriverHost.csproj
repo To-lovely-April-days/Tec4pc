@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Tec.DriverHost</RootNamespace>
+    <AssemblyName>Tec.DriverHost</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tec.Driver.Abi\Tec.Driver.Abi.csproj" />
+  </ItemGroup>
+
+</Project>

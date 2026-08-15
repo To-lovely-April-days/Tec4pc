@@ -1,0 +1,113 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctl="clr-namespace:Tec.App.Controls"
+             xmlns:v="clr-namespace:Tec.App.Views"
+             x:Class="Tec.App.Views.BenchView">
+
+  <Grid ColumnDefinitions="230,*,340">
+
+    <!-- 设备库：不可用的驱动也列出来并说明原因，不能悄悄消失 -->
+    <Border Grid.Column="0" Classes="section">
+      <DockPanel Margin="10">
+        <TextBlock DockPanel.Dock="Top" Text="设备库" Classes="h2" Margin="0,0,0,8" />
+        <TextBlock DockPanel.Dock="Top" Text="拖进台面即成为设备实例；配件是整机固定件，在属性面板里选型。"
+                   Classes="muted" TextWrapping="Wrap" Margin="0,0,0,10" />
+        <ScrollViewer>
+          <ItemsControl ItemsSource="{Binding Library}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Border Classes="card" Margin="0,0,0,8">
+                  <StackPanel Spacing="4">
+                    <ctl:DeviceArtView ArtKey="{Binding ArtKey}" ArtWidth="150" HorizontalAlignment="Center" />
+                    <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding Sub}" Classes="muted" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding Problem}" IsVisible="{Binding HasProblem}"
+                               FontSize="11" Foreground="#b3261e" TextWrapping="Wrap" />
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </DockPanel>
+    </Border>
+
+    <!-- 台面画布 -->
+    <DockPanel Grid.Column="1" Margin="12">
+      <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="12" Margin="0,0,0,8">
+        <TextBlock Text="台面" Classes="h2" VerticalAlignment="Center" />
+        <TextBlock Text="{Binding BenchSummary}" Classes="muted" VerticalAlignment="Center" />
+        <Button Content="重建通道" Command="{Binding Rebuild}" FontSize="12" Padding="10,3" />
+      </StackPanel>
+
+      <Border Background="#fbfcfd" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="6">
+        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+          <ItemsControl ItemsSource="{Binding Devices}" Width="760" Height="470">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate><Canvas /></ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.Styles>
+              <Style Selector="ItemsControl > ContentPresenter">
+                <Setter Property="Canvas.Left" Value="{Binding X}" />
+                <Setter Property="Canvas.Top" Value="{Binding Y}" />
+              </Style>
+            </ItemsControl.Styles>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <StackPanel PointerPressed="OnDevicePressed" Background="Transparent">
+                  <ctl:DeviceArtView ArtKey="{Binding ArtKey}" ArtWidth="{Binding Width}" />
+                  <TextBlock Text="{Binding Title}" FontSize="11" FontWeight="SemiBold"
+                             HorizontalAlignment="Center" />
+                  <TextBlock Text="{Binding ChannelText}" FontSize="10" Foreground="#6b7280"
+                             HorizontalAlignment="Center" />
+                </StackPanel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </Border>
+    </DockPanel>
+
+    <!-- 属性面板：通信配置 + 设备配置，全部按 schema 渲染 -->
+    <Border Grid.Column="2" Background="{StaticResource Panel}" BorderBrush="{StaticResource Line}"
+            BorderThickness="1,0,0,0">
+      <ScrollViewer>
+        <StackPanel Margin="12" Spacing="10">
+          <TextBlock Text="{Binding SelectedTitle}" Classes="h2" />
+          <TextBlock Text="{Binding SelectedSub}" Classes="muted" />
+          <TextBlock Text="{Binding SelectedDriver}" Classes="muted" />
+
+          <StackPanel IsVisible="{Binding HasSelection}" Spacing="10">
+            <Border Height="1" Background="#e5e8ec" />
+            <TextBlock Text="通信配置" Classes="h2" />
+            <v:SchemaFormView DataContext="{Binding ConnectionForm}" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button Content="测试连接" Command="{Binding Probe}" FontSize="12" Padding="10,3" />
+            </StackPanel>
+            <TextBlock Text="{Binding ProbeResult}" Classes="muted" TextWrapping="Wrap" />
+
+            <Border Height="1" Background="#e5e8ec" />
+            <TextBlock Text="设备配置" Classes="h2" />
+            <v:SchemaFormView DataContext="{Binding ConfigForm}" />
+          </StackPanel>
+
+          <Border Height="1" Background="#e5e8ec" />
+          <TextBlock Text="通道" Classes="h2" />
+          <ItemsControl ItemsSource="{Binding ChannelRows}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Border Classes="card" Margin="0,0,0,6" Padding="8">
+                  <StackPanel Spacing="2">
+                    <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding Host}" Classes="muted" />
+                    <TextBlock Text="{Binding Capabilities}" Classes="muted" TextWrapping="Wrap" />
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </ScrollViewer>
+    </Border>
+  </Grid>
+</UserControl>

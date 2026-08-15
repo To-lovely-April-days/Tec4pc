@@ -1,0 +1,66 @@
+﻿Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.11.35222.181
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{3C251A66-0C84-527C-B12F-21F6518914DC}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{F84AFA64-C9C9-5E0C-84D8-6886397D6C2F}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Tec.Driver.Abi", "src\Tec.Driver.Abi\Tec.Driver.Abi.csproj", "{6B697E45-0851-567D-BC2B-75D78655C94F}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Tec.Core", "src\Tec.Core\Tec.Core.csproj", "{5D95C8A2-F197-5A71-87B6-873D46557790}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Tec.DriverHost", "src\Tec.DriverHost\Tec.DriverHost.csproj", "{FB94E0A6-0F8B-5B23-AB06-B608B40B9738}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Tec.Drivers.Simulator", "src\Tec.Drivers.Simulator\Tec.Drivers.Simulator.csproj", "{82703CA3-1D60-5D69-9D53-637FF397A237}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Tec.App", "src\Tec.App\Tec.App.csproj", "{B322DAA7-9EE0-5849-BEE8-C4F3B2719062}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Tec.Core.Tests", "tests\Tec.Core.Tests\Tec.Core.Tests.csproj", "{39452DD5-6153-59D2-ADD5-3379541E1F2A}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{6B697E45-0851-567D-BC2B-75D78655C94F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6B697E45-0851-567D-BC2B-75D78655C94F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6B697E45-0851-567D-BC2B-75D78655C94F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6B697E45-0851-567D-BC2B-75D78655C94F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5D95C8A2-F197-5A71-87B6-873D46557790}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5D95C8A2-F197-5A71-87B6-873D46557790}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5D95C8A2-F197-5A71-87B6-873D46557790}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5D95C8A2-F197-5A71-87B6-873D46557790}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FB94E0A6-0F8B-5B23-AB06-B608B40B9738}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FB94E0A6-0F8B-5B23-AB06-B608B40B9738}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FB94E0A6-0F8B-5B23-AB06-B608B40B9738}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FB94E0A6-0F8B-5B23-AB06-B608B40B9738}.Release|Any CPU.Build.0 = Release|Any CPU
+		{82703CA3-1D60-5D69-9D53-637FF397A237}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{82703CA3-1D60-5D69-9D53-637FF397A237}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{82703CA3-1D60-5D69-9D53-637FF397A237}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{82703CA3-1D60-5D69-9D53-637FF397A237}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B322DAA7-9EE0-5849-BEE8-C4F3B2719062}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B322DAA7-9EE0-5849-BEE8-C4F3B2719062}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B322DAA7-9EE0-5849-BEE8-C4F3B2719062}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B322DAA7-9EE0-5849-BEE8-C4F3B2719062}.Release|Any CPU.Build.0 = Release|Any CPU
+		{39452DD5-6153-59D2-ADD5-3379541E1F2A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{39452DD5-6153-59D2-ADD5-3379541E1F2A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{39452DD5-6153-59D2-ADD5-3379541E1F2A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{39452DD5-6153-59D2-ADD5-3379541E1F2A}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{6B697E45-0851-567D-BC2B-75D78655C94F} = {3C251A66-0C84-527C-B12F-21F6518914DC}
+		{5D95C8A2-F197-5A71-87B6-873D46557790} = {3C251A66-0C84-527C-B12F-21F6518914DC}
+		{FB94E0A6-0F8B-5B23-AB06-B608B40B9738} = {3C251A66-0C84-527C-B12F-21F6518914DC}
+		{82703CA3-1D60-5D69-9D53-637FF397A237} = {3C251A66-0C84-527C-B12F-21F6518914DC}
+		{B322DAA7-9EE0-5849-BEE8-C4F3B2719062} = {3C251A66-0C84-527C-B12F-21F6518914DC}
+		{39452DD5-6153-59D2-ADD5-3379541E1F2A} = {F84AFA64-C9C9-5E0C-84D8-6886397D6C2F}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {FC2D90A0-0FEF-5234-A176-B4B89E7DF3C9}
+	EndGlobalSection
+EndGlobal

@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 146" width="128" height="146"><defs>
+  <linearGradient id="a27_Glass" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0" stop-color="#88a5b1"/><stop offset="0.18" stop-color="#abcbd9"/>
+    <stop offset="0.42" stop-color="#9bbac8"/><stop offset="0.66" stop-color="#8aa2b0"/>
+    <stop offset="0.86" stop-color="#8193a1"/><stop offset="1" stop-color="#6c7b88"/></linearGradient>
+  <linearGradient id="a27_Lcd" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0" stop-color="#9aa0a9"/><stop offset="0.07" stop-color="#90a4b6"/>
+    <stop offset="0.20" stop-color="#a3bcd0"/><stop offset="0.36" stop-color="#aec9e4"/>
+    <stop offset="0.52" stop-color="#9bbbd8"/><stop offset="0.70" stop-color="#82a8c4"/>
+    <stop offset="0.82" stop-color="#70a4c0"/><stop offset="0.93" stop-color="#7ba6c4"/>
+    <stop offset="1" stop-color="#8995aa"/></linearGradient>
+  <linearGradient id="a27_Deck" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#c4c7c8"/><stop offset="1" stop-color="#adb1b2"/></linearGradient>
+  <radialGradient id="a27_Run1"><stop offset="0" stop-color="#010101" stop-opacity="0.55"/>
+    <stop offset="0.55" stop-color="#010101" stop-opacity="0.22"/>
+    <stop offset="1" stop-color="#010101" stop-opacity="0"/></radialGradient>
+  <radialGradient id="a27_Run2"><stop offset="0" stop-color="#020202" stop-opacity="0.55"/>
+    <stop offset="0.55" stop-color="#020202" stop-opacity="0.22"/>
+    <stop offset="1" stop-color="#020202" stop-opacity="0"/></radialGradient>
+  <filter id="a27_Soft2" x="-50%" y="-200%" width="200%" height="500%">
+    <feGaussianBlur stdDeviation="1.7"/></filter></defs>
+  
+  <rect x="14" y="19.5" width="7.6" height="5" rx="2.2" fill="#54565a"/>
+  <rect x="70" y="19.5" width="7.6" height="5" rx="2.2" fill="#54565a"/>
+  <rect x="8" y="24" width="76" height="48" rx="1.6" fill="#f9f9fb" stroke="#5b5f63" stroke-width="1.7"/>
+  <rect x="8" y="22.4" width="76" height="2.4" fill="#5a5a5a"/>
+  <rect x="8" y="63" width="76" height="2.4" fill="#6a6e72"/>
+  
+  <rect x="14" y="30" width="64" height="24" rx="1.2" fill="#f2f4f6" stroke="#4e5256" stroke-width="2"/>
+  <rect x="18.6" y="31.9" width="54" height="18.3" rx="0.8" fill="url(#a27_Lcd)"/>
+  <rect x="19.6" y="33" width="8.64" height="16.1" rx="0.6" fill="#8892a2" opacity="0.5"/>
+    <path d="M20 48l6-10 5 6 6-12 5 10 6-7 5 5 6-8 5 15" fill="none" stroke="#e6f0f6" stroke-width="1.5" stroke-linejoin="round" opacity=".9"/>
+    <circle cx="22" cy="61" r="3.4" fill="#bfc0be" stroke="#6d7175" stroke-width="1.4"/>
+    <text x="66" y="64" font-size="8" fill="#7a7e82" text-anchor="middle" font-family="sans-serif">Raman</text>
+  <path d="M84 52C102 52 102 60 102 72" fill="none" stroke="#bcbcbc" stroke-width="2.8" stroke-linecap="round"/>
+  <path d="M86 52C100 52 100 62 100 72" fill="none" stroke="#dba32c" stroke-width="1" opacity=".55"/>
+  
+  <rect x="94" y="70" width="16" height="10" rx="2" fill="#bfc0be" stroke="#6d7175" stroke-width="1.6"/>
+  <rect x="97.4" y="80" width="9.2" height="36" rx="1.6" fill="#e8eaec" stroke="#5b5f63" stroke-width="1.5"/>
+  <rect x="99.4" y="84" width="2.4" height="28" rx="1" fill="#fff" opacity=".8"/>
+  <path d="M97.4 116h9.2l-4.6 8z" fill="#38414e" stroke="#4e4e58" stroke-width="1.2" stroke-linejoin="round"/>
+       <circle cx="102" cy="128" r="3.8" fill="#010101" data-tint="1"/></svg>
