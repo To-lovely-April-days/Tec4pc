@@ -43,8 +43,15 @@
     <!-- 台面：28px 网格底 + 绑定连线 + 设备 + 左下工具条 -->
     <Panel Grid.Column="1" Name="Stage" Background="White" ClipToBounds="True"
            Focusable="True" PointerMoved="OnStageMoved" PointerReleased="OnStageReleased"
-           KeyDown="OnKeyDown">
-      <ctl:GridBackdrop />
+           KeyDown="OnKeyDown" SizeChanged="OnStageSize">
+      <Panel Name="World">
+        <Panel.RenderTransform>
+          <TransformGroup>
+            <ScaleTransform ScaleX="{Binding Zoom}" ScaleY="{Binding Zoom}" />
+            <TranslateTransform X="{Binding PanX}" Y="{Binding PanY}" />
+          </TransformGroup>
+        </Panel.RenderTransform>
+      <ctl:GridBackdrop IsVisible="{Binding ShowGrid}" />
       <ctl:BenchWires Nodes="{Binding Devices}" />
 
       <ItemsControl ItemsSource="{Binding Devices}">
@@ -101,13 +108,21 @@
         </Border>
       </Canvas>
 
+      </Panel>
+
       <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Left"
                   VerticalAlignment="Bottom" Margin="12">
-        <Button Classes="tbtn sm" ToolTip.Tip="放大"><ctl:TecIcon Key="ui-tool-zoomin" /></Button>
-        <Button Classes="tbtn sm" ToolTip.Tip="缩小"><ctl:TecIcon Key="ui-tool-zoomout" /></Button>
-        <Button Classes="tbtn sm" ToolTip.Tip="适应"><ctl:TecIcon Key="ui-tool-fit" /></Button>
-        <Button Classes="tbtn sm" ToolTip.Tip="网格"><ctl:TecIcon Key="ui-tool-grid" /></Button>
+        <Button Classes="tbtn sm" ToolTip.Tip="放大" Command="{Binding ZoomIn}"><ctl:TecIcon Key="ui-tool-zoomin" /></Button>
+        <Button Classes="tbtn sm" ToolTip.Tip="缩小" Command="{Binding ZoomOut}"><ctl:TecIcon Key="ui-tool-zoomout" /></Button>
+        <Button Classes="tbtn sm" ToolTip.Tip="适应窗口" Command="{Binding FitAll}"><ctl:TecIcon Key="ui-tool-fit" /></Button>
+        <Button Classes="tbtn sm" ToolTip.Tip="网格" Command="{Binding ToggleGrid}"><ctl:TecIcon Key="ui-tool-grid" /></Button>
+        <TextBlock Text="{Binding ZoomText}" FontSize="11" Foreground="#9a9a9a"
+                   VerticalAlignment="Center" Margin="4,0,0,0" />
       </StackPanel>
+
+      <TextBlock Text="从左侧设备库把设备拖到这里" IsVisible="{Binding IsEmpty}"
+                 FontSize="14" Foreground="#b6b0c4" HorizontalAlignment="Center"
+                 VerticalAlignment="Center" IsHitTestVisible="False" />
 
       <TextBlock Text="{Binding BenchSummary}" FontSize="11" Foreground="#9a9a9a"
                  HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="14" />
@@ -133,7 +148,7 @@
               <Button Classes="tbtn foot" ToolTip.Tip="保存"><ctl:TecIcon Key="ui-foot-save" /></Button>
               <Button Classes="tbtn foot" ToolTip.Tip="连接" Command="{Binding Probe}"><ctl:TecIcon Key="ui-foot-link" /></Button>
               <Button Classes="tbtn foot" ToolTip.Tip="初始化" Command="{Binding Rebuild}"><ctl:TecIcon Key="ui-foot-init" /></Button>
-              <Button Classes="tbtn foot" ToolTip.Tip="删除选中设备"><ctl:TecIcon Key="ui-foot-trash" /></Button>
+              <Button Classes="tbtn foot" ToolTip.Tip="删除选中设备" Command="{Binding DeleteSelected}"><ctl:TecIcon Key="ui-foot-trash" /></Button>
             </StackPanel>
           </StackPanel>
         </Border>

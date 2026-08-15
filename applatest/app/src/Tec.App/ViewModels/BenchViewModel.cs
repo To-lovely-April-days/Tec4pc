@@ -89,6 +89,11 @@ public sealed class BenchViewModel : ViewModelBase
         ToggleAdvanced = new RelayCommand(() => AdvancedOpen = !AdvancedOpen);
         ToggleWells = new RelayCommand(() => WellsOpen = !WellsOpen);
         ToggleChTable = new RelayCommand(() => ChTableOpen = !ChTableOpen);
+        DeleteSelected = new RelayCommand(Delete);
+        ZoomIn = new RelayCommand(() => Scale(1.25));
+        ZoomOut = new RelayCommand(() => Scale(1 / 1.25));
+        FitAll = new RelayCommand(Fit);
+        ToggleGrid = new RelayCommand(() => ShowGrid = !ShowGrid);
         ws.BenchChanged += (_, _) => Reload();
         Reload();
     }
@@ -103,6 +108,79 @@ public sealed class BenchViewModel : ViewModelBase
     public RelayCommand ToggleAdvanced { get; }
     public RelayCommand ToggleWells { get; }
     public RelayCommand ToggleChTable { get; }
+    public RelayCommand DeleteSelected { get; }
+    public RelayCommand ZoomIn { get; }
+    public RelayCommand ZoomOut { get; }
+    public RelayCommand FitAll { get; }
+    public RelayCommand ToggleGrid { get; }
+
+    // ── 视图变换（左下角四个工具）──────────────────────────────────
+    private double _zoom = 1, _panX, _panY;
+    private bool _grid = true;
+    private Size _stage = new(900, 700);
+
+    public double Zoom
+    {
+        get => _zoom;
+        private set { if (Set(ref _zoom, value)) Raise(nameof(ZoomText)); }
+    }
+
+    public double PanX { get => _panX; private set => Set(ref _panX, value); }
+    public double PanY { get => _panY; private set => Set(ref _panY, value); }
+    public bool ShowGrid { get => _grid; private set => Set(ref _grid, value); }
+    public string ZoomText => $"{Zoom * 100:F0}%";
+
+    /// <summary>画布可视区尺寸，由视图在尺寸变化时告诉它——「适应」要用。</summary>
+    public void StageSize(Size s) => _stage = s;
+
+    private void Scale(double factor)
+    {
+        // 以可视区中心为锚点缩放，不然放大后看的是左上角
+        var cx = _stage.Width / 2;
+        var cy = _stage.Height / 2;
+        var next = Math.Clamp(Zoom * factor, 0.4, 2.5);
+        var k = next / Zoom;
+        PanX = cx - (cx - PanX) * k;
+        PanY = cy - (cy - PanY) * k;
+        Zoom = next;
+    }
+
+    /// <summary>适应：把所有设备的包围盒缩放平移到可视区里，留一圈边距。</summary>
+    private void Fit()
+    {
+        if (Devices.Count == 0) { Zoom = 1; PanX = PanY = 0; return; }
+        double x0 = double.MaxValue, y0 = double.MaxValue, x1 = double.MinValue, y1 = double.MinValue;
+        foreach (var d in Devices)
+        {
+            x0 = Math.Min(x0, d.X);
+            y0 = Math.Min(y0, d.Y);
+            x1 = Math.Max(x1, d.X + d.Width + BenchDock.NodePad * 2);
+            y1 = Math.Max(y1, d.Y + d.Height + BenchDock.NodePad * 2 + 26);   // 26 = 名称两行
+        }
+        const double pad = 40;
+        var z = Math.Clamp(Math.Min((_stage.Width - pad * 2) / Math.Max(x1 - x0, 1),
+                                    (_stage.Height - pad * 2) / Math.Max(y1 - y0, 1)), 0.4, 2.5);
+        Zoom = z;
+        PanX = (_stage.Width - (x1 - x0) * z) / 2 - x0 * z;
+        PanY = (_stage.Height - (y1 - y0) * z) / 2 - y0 * z;
+    }
+
+    /// <summary>删除选中的设备。插在它身上的设备一并松开，绑定也清掉。</summary>
+    private void Delete()
+    {
+        if (_selected is null) return;
+        var id = _selected.Id;
+        foreach (var child in _ws.Bench.Devices.Where(d => d.DockHostId == id))
+        {
+            child.DockHostId = null;
+            child.Dock = DockSide.None;
+            _ws.Bench.Bindings.RemoveAll(b => b.DeviceId == child.InstanceId);
+        }
+        _ws.Bench.Bindings.RemoveAll(b => b.DeviceId == id);
+        _ws.Bench.Devices.RemoveAll(d => d.InstanceId == id);
+        Selected = null;
+        _ = _ws.RebuildChannelsAsync();
+    }
 
     /// <summary>三个 CARET 折叠区的开合。圆圈箭头点了要真收起来，不是装饰。</summary>
     public bool AdvancedOpen { get => _advOpen; set => Set(ref _advOpen, value); }
@@ -132,6 +210,7 @@ public sealed class BenchViewModel : ViewModelBase
         set
         {
             if (!Set(ref _selected, value)) return;
+            if (value is null) { Wells.Clear(); ConnectionForm = null; ConfigForm = null; }
             Renaming = false;
             BuildForms();
             BuildBindTargets();
@@ -163,6 +242,8 @@ public sealed class BenchViewModel : ViewModelBase
     public bool HasProbeResult => _probeResult.Length > 0;
 
     public bool HasSelection => _selected is not null;
+    /// <summary>空台面时画布上给一句提示，而不是一片空白。</summary>
+    public bool IsEmpty => Devices.Count == 0;
     public string SelectedTitle => _selected?.Title ?? "未选中设备";
 
     /// <summary>反应器（自带通道）和探头（要绑定通道）两种面板不一样，照原型 renderProps 分支。</summary>
@@ -451,6 +532,7 @@ public sealed class BenchViewModel : ViewModelBase
                 : _ws.Bench.Bindings.Where(b => b.DeviceId == dev.InstanceId).Select(b => b.ChannelNumber).ToList();
             Devices.Add(new DeviceNodeViewModel(dev, driver, chs));
         }
+        Raise(nameof(IsEmpty));
 
         ChannelRows.Clear();
         var reactors = _ws.Bench.Devices

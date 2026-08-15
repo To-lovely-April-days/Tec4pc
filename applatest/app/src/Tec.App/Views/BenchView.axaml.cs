@@ -11,8 +11,11 @@ public partial class BenchView : UserControl
 
     private BenchViewModel? Vm => DataContext as BenchViewModel;
 
-    /// <summary>拖拽的坐标一律换算到画布，不然设备库与画布两套坐标系对不上。</summary>
-    private Point OnStage(PointerEventArgs e) => e.GetPosition(Stage);
+    /// <summary>
+    /// 拖拽坐标一律换算到 World（缩放平移之内的那层），这样放大以后
+    /// 落点仍然对得上设备的实际坐标；设备库与画布两套坐标系也统一了。
+    /// </summary>
+    private Point OnStage(PointerEventArgs e) => e.GetPosition(World);
 
     // ── 从设备库拖出来 ──────────────────────────────────────────────
     private void OnLibraryPressed(object? sender, PointerPressedEventArgs e)
@@ -46,9 +49,14 @@ public partial class BenchView : UserControl
         e.Pointer.Capture(null);
     }
 
-    /// <summary>拖到一半按 Esc 取消。</summary>
+    /// <summary>Esc 取消拖拽；Delete 删掉选中的设备。</summary>
     private void OnKeyDown(object? sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Escape && Vm is { Dragging: true } vm) vm.CancelDrag();
+        if (Vm is not { } vm) return;
+        if (e.Key == Key.Escape && vm.Dragging) { vm.CancelDrag(); e.Handled = true; }
+        else if (e.Key == Key.Delete && vm.HasSelection) { vm.DeleteSelected.Execute(null); e.Handled = true; }
     }
+
+    /// <summary>「适应窗口」要知道可视区多大。</summary>
+    private void OnStageSize(object? sender, SizeChangedEventArgs e) => Vm?.StageSize(e.NewSize);
 }

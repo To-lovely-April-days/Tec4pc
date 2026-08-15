@@ -93,7 +93,7 @@ public sealed class Workspace
         Engine.ResourceOf = DemoBench.ResourceOf;
 
         TimeScale = 60;                       // 演示用；接真机时改回 1
-        DemoBench.Fill(Bench);
+        // 台面从空开始：设备由用户从设备库拖进来。要示例台面调 LoadSample()。
         Library.AddRange(DemoBench.Library(Catalog));    // 配方库六条 = 原型 RECIPELIB
         // CH1/CH3 同构、CH2 pH 反馈、CH4 空——与原型预置一致
         var presets = DemoBench.Recipes().ToList();
@@ -193,6 +193,15 @@ public sealed class Workspace
         }
 
         BenchChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>载入示例台面（2 台反应器 + 2 套加料 + 探头），演示与自测用。</summary>
+    public void LoadSample()
+    {
+        Bench.Devices.Clear();
+        Bench.Bindings.Clear();
+        DemoBench.Fill(Bench);
+        RebuildChannelsAsync().GetAwaiter().GetResult();
     }
 
     public IDeviceSession? Session(string instanceId)
