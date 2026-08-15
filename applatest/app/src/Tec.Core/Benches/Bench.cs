@@ -33,6 +33,10 @@ public sealed class DeviceInstance
     public DockSide Dock { get; set; } = DockSide.None;
     /// <summary>顶部停靠时插在第几个孔位（0 = A 孔，1 = B 孔）。侧面停靠时无意义。</summary>
     public int DockSlot { get; set; }
+    /// <summary>接在宿主的哪个具名接口上（T1a / R2 / BUS…）。一个接口只接一台设备。</summary>
+    public string? DockAnchor { get; set; }
+    /// <summary>侧接时停在左还是右（L / R），决定走线用哪个插头。</summary>
+    public string? DockSideTag { get; set; }
 
     public required string DriverId { get; init; }
     public required string InstanceId { get; init; }

@@ -2,106 +2,235 @@ using Avalonia;
 using Tec.Core.Benches;
 
 using Point = Avalonia.Point;
-using BPoint = Tec.Core.Benches.Point;
 
 namespace Tec.App.Services;
 
-/// <summary>台面上的一个可停靠位置。</summary>
-public sealed record DockPort(string HostId, DockSide Side, int Slot, Point Anchor)
+/// <summary>接口种类：上方管口 / 侧口 / 控制总线。</summary>
+public enum PortKind { Top, Side, Bus }
+
+/// <summary>管路类型，决定连线怎么画（原型 LT）。</summary>
+public enum LinkKind { Probe, Feed, Sample, Signal }
+
+/// <summary>设备身上的插头：自身图坐标里的一点 + 出线方向。</summary>
+public readonly record struct Plug(double X, double Y, string Dir);
+
+/// <summary>
+/// 反应器上的一个具名接口（原型 anchors）。一个接口同时只接一台设备。
+/// </summary>
+public sealed record Anchor(string Id, PortKind Kind, double X, double Y, string Dir, string Label)
 {
-    /// <summary>这个口对应哪些通道：顶部口对一个孔位，侧面口服务宿主的全部通道。</summary>
-    public IReadOnlyList<int> Channels { get; init; } = Array.Empty<int>();
+    /// <summary>属于哪个孔位（0 = A 孔 / 通道 1，1 = B 孔 / 通道 2）。总线不属于任何孔位。</summary>
+    public int Slot { get; init; }
+    /// <summary>侧口在左还是右。</summary>
+    public string? Side { get; init; }
+}
+
+/// <summary>台面上一条已接好的管路。</summary>
+public sealed record BenchLink(string DeviceId, string HostId, string AnchorId, LinkKind Kind)
+{
+    public required Point From { get; init; }
+    public required string FromDir { get; init; }
+    public required Point To { get; init; }
+    public required string ToDir { get; init; }
+    public int Channel { get; init; }
     public string Label { get; init; } = "";
 }
 
 /// <summary>
-/// 停靠几何：哪种设备能插哪儿、插上去以后摆在什么位置。
-///
-/// 反应器图 176×140（viewBox），两个孔位中心 x = 46 / 126，y = 75.5。
-/// 探头从上方插进孔口，所以摆在孔位正上方、图底端往下压一截，
-/// 让电极看起来伸进釜里；加料泵 / 取样 / 液相走侧面，摆在反应器左右。
+/// 停靠几何：反应器开哪些口、什么设备能插、插上以后摆在哪儿、管路怎么走。
+/// 数据照 tecstudioworkcell 原型的 anchors / plug 逐条搬过来（同一套设备图，
+/// 坐标可以直接用）。
 /// </summary>
 public static class BenchDock
 {
-    public const double NodePad = 7;                 // 设备节点的 padding，与视图一致
-    private const double ArtVw = 176, ArtVh = 140;   // 反应器图的 viewBox
-    private const double WellX1 = 46, WellX2 = 126, WellY = 75.5;
+    public const double NodePad = 7;
+    private const double ArtVw = 176, ArtVh = 140;
+    private const double GapTop = 62, GapSide = 152, GapEdge = 40;
 
-    /// <summary>吸附半径：拖到离口这么近就算插上了。</summary>
-    public const double SnapRadius = 70;
+    public const double SnapRadius = 120;
 
-    /// <summary>探头类：从上方插。其余按侧面走。</summary>
-    public static bool IsProbe(string artKey)
-        => artKey is "ph" or "turb" or "raman" or "ir" or "psd";
+    /// <summary>反应器的 11 个接口：每通道 3 个上方管口，左右各 2 个侧口，1 个总线口。</summary>
+    public static readonly IReadOnlyList<Anchor> Anchors = new[]
+    {
+        new Anchor("T1a", PortKind.Top, 44.8, 9.6, "up", "通道1 · 管口 A") { Slot = 0 },
+        new Anchor("T1b", PortKind.Top, 57.0, 9.2, "up", "通道1 · 管口 B") { Slot = 0 },
+        new Anchor("T1c", PortKind.Top, 69.9, 4.6, "up", "通道1 · 主口") { Slot = 0 },
+        new Anchor("T2a", PortKind.Top, 102.1, 4.6, "up", "通道2 · 主口") { Slot = 1 },
+        new Anchor("T2b", PortKind.Top, 115.0, 9.2, "up", "通道2 · 管口 B") { Slot = 1 },
+        new Anchor("T2c", PortKind.Top, 127.2, 9.6, "up", "通道2 · 管口 A") { Slot = 1 },
+        new Anchor("L1", PortKind.Side, 4.9, 76, "left", "左侧口 · 通道1") { Slot = 0, Side = "L" },
+        new Anchor("L2", PortKind.Side, 4.9, 99, "left", "左侧口 · 通道2") { Slot = 1, Side = "L" },
+        new Anchor("R1", PortKind.Side, 168.1, 76, "right", "右侧口 · 通道1") { Slot = 0, Side = "R" },
+        new Anchor("R2", PortKind.Side, 168.1, 99, "right", "右侧口 · 通道2") { Slot = 1, Side = "R" },
+        new Anchor("BUS", PortKind.Bus, 86.5, 134.6, "down", "控制总线")
+    };
 
-    public static DockSide DefaultSideFor(string artKey)
-        => IsProbe(artKey) ? DockSide.Top : DockSide.Left;
+    /// <summary>各设备的插头位置与出线方向（原型 plug / plugL）。</summary>
+    private static readonly Dictionary<string, (Plug Plug, Plug? Left, PortKind Attach, LinkKind Link)> Defs =
+        new(StringComparer.Ordinal)
+        {
+            ["ph"] = (new Plug(90, 128.2, "down"), null, PortKind.Top, LinkKind.Probe),
+            ["turb"] = (new Plug(80, 125.8, "down"), null, PortKind.Top, LinkKind.Probe),
+            ["raman"] = (new Plug(102, 131.8, "down"), null, PortKind.Top, LinkKind.Probe),
+            ["ir"] = (new Plug(104, 131.8, "down"), null, PortKind.Top, LinkKind.Probe),
+            ["psd"] = (new Plug(104, 130.8, "down"), null, PortKind.Top, LinkKind.Probe),
+            ["pump"] = (new Plug(46, 124.6, "down"), null, PortKind.Side, LinkKind.Feed),
+            ["sampler"] = (new Plug(30, 136, "down"), new Plug(138, 130, "right"), PortKind.Side, LinkKind.Sample),
+            ["hplc"] = (new Plug(9, 136, "left"), new Plug(127, 136, "right"), PortKind.Side, LinkKind.Sample),
+            ["host"] = (new Plug(70, 8, "up"), null, PortKind.Bus, LinkKind.Signal)
+        };
+
+    public static bool IsHost(string artKey) => artKey == "reactor2";
+    public static bool Known(string artKey) => Defs.ContainsKey(artKey);
+    public static PortKind AttachOf(string artKey)
+        => Defs.TryGetValue(artKey, out var d) ? d.Attach : PortKind.Side;
+    public static LinkKind LinkOf(string artKey)
+        => Defs.TryGetValue(artKey, out var d) ? d.Link : LinkKind.Signal;
+
+    /// <summary>取插头。停在左侧且该设备有左侧插头时用左侧那个（取样、液相两侧走线不同）。</summary>
+    public static Plug PlugOf(string artKey, string? side)
+    {
+        if (!Defs.TryGetValue(artKey, out var d)) return new Plug(0, 0, "down");
+        return side == "L" && d.Left is { } l ? l : d.Plug;
+    }
 
     private static double ScaleOf(double width) => width / ArtVw;
 
-    /// <summary>宿主上所有可停靠的口。</summary>
-    public static IEnumerable<DockPort> PortsOf(string hostId, Point hostPos, double hostWidth,
-                                                IReadOnlyList<int> hostChannels)
+    /// <summary>接口在画布上的位置。</summary>
+    public static Point AnchorWorld(Point hostPos, double hostWidth, Anchor a)
     {
         var s = ScaleOf(hostWidth);
-        var h = ArtVh * s;
-        var x0 = hostPos.X + NodePad;
-        var y0 = hostPos.Y + NodePad;
-
-        for (var i = 0; i < hostChannels.Count && i < 2; i++)
-        {
-            var wx = x0 + (i == 0 ? WellX1 : WellX2) * s;
-            yield return new DockPort(hostId, DockSide.Top, i, new Point(wx, y0 + WellY * s))
-            {
-                Channels = new[] { hostChannels[i] },
-                Label = $"{(i == 0 ? "A" : "B")} 孔 · CH{hostChannels[i]}"
-            };
-        }
-
-        yield return new DockPort(hostId, DockSide.Left, 0, new Point(x0 - 6, y0 + h / 2))
-        {
-            Channels = hostChannels,
-            Label = "左侧接口"
-        };
-        yield return new DockPort(hostId, DockSide.Right, 0, new Point(x0 + ArtVw * s + 6, y0 + h / 2))
-        {
-            Channels = hostChannels,
-            Label = "右侧接口"
-        };
+        return new Point(hostPos.X + NodePad + a.X * s, hostPos.Y + NodePad + a.Y * s);
     }
 
-    /// <summary>这种设备能不能插这个口。探头只走顶部，加料 / 取样 / 液相只走侧面。</summary>
-    public static bool Accepts(string artKey, DockSide side)
-        => IsProbe(artKey) ? side == DockSide.Top : side is DockSide.Left or DockSide.Right;
+    public static Point PlugWorld(Point devPos, double devWidth, string artKey, string? side)
+    {
+        var art = Controls.DeviceArtCache.Get(artKey);
+        var s = art is null ? 1 : devWidth / art.ViewWidth;
+        var p = PlugOf(artKey, side);
+        return new Point(devPos.X + NodePad + p.X * s, devPos.Y + NodePad + p.Y * s);
+    }
+
+    public static bool Accepts(string artKey, Anchor a) => AttachOf(artKey) == a.Kind;
 
     /// <summary>
-    /// 插上以后设备摆在哪儿。返回的是节点左上角坐标（含 padding 的那个外框）。
-    /// 顶部：孔位正上方，往下压 22px 让电极伸进釜口；侧面：贴着反应器外沿。
+    /// 插上以后设备摆在哪儿（原型 placeNode）：让设备的插头正对接口，
+    /// 上方留 GAP_TOP、侧面留 GAP_SIDE；插头朝下的侧接设备（取样）贴着外沿放。
     /// </summary>
-    public static Point Place(DockPort port, double devWidth, double devHeight, double hostWidth)
+    public static Point Place(Point hostPos, double hostWidth, Anchor a,
+                              string artKey, double devWidth, double devHeight)
     {
-        var w = devWidth + NodePad * 2;
-        var h = devHeight + NodePad * 2;
-        return port.Side switch
+        var w = AnchorWorld(hostPos, hostWidth, a);
+        var art = Controls.DeviceArtCache.Get(artKey);
+        var s = art is null ? 1 : devWidth / art.ViewWidth;
+        var side = a.Side;
+        var pl = PlugOf(artKey, side);
+
+        double x, y;
+        if (a.Kind == PortKind.Top)
         {
-            DockSide.Top => new Point(port.Anchor.X - w / 2, port.Anchor.Y - h + 22),
-            DockSide.Left => new Point(port.Anchor.X - w, port.Anchor.Y - h / 2),
-            _ => new Point(port.Anchor.X, port.Anchor.Y - h / 2)
-        };
+            x = w.X - pl.X * s;
+            y = w.Y - GapTop - pl.Y * s;
+        }
+        else if (a.Kind == PortKind.Bus)
+        {
+            x = w.X - pl.X * s;
+            y = w.Y + 72;
+        }
+        else if (pl.Dir == "down")
+        {
+            x = side == "L" ? w.X - GapEdge - devWidth : w.X + GapEdge;
+            y = w.Y - 40 - pl.Y * s;
+        }
+        else
+        {
+            x = side == "L" ? w.X - GapSide - pl.X * s : w.X + GapSide - pl.X * s;
+            y = w.Y - pl.Y * s;
+        }
+        return new Point(x - NodePad, y - NodePad);
     }
 
-    /// <summary>离拖动点最近的、能接受这种设备的口。够不着就返回 null。</summary>
-    public static DockPort? Nearest(IEnumerable<DockPort> ports, string artKey, Point at,
-                                    double radius = SnapRadius)
+    /// <summary>
+    /// 选接口（原型 pickAnchor）：探头只比上方管口的横向距离；侧接设备先按落点
+    /// 判左右，再在该侧取最近的；该侧占满就退到另一侧。已被占用的口不参与。
+    /// </summary>
+    public static Anchor? Pick(string artKey, Point hostPos, double hostWidth, Point drop,
+                               ISet<string> taken, string? keep = null)
     {
-        DockPort? best = null;
-        var bestD = double.MaxValue;
-        foreach (var p in ports)
+        if (!Known(artKey)) return null;
+        var attach = AttachOf(artKey);
+        var side = drop.X < hostPos.X + NodePad + hostWidth / 2 ? "L" : "R";
+
+        bool Free(Anchor a) => a.Id == keep || !taken.Contains(a.Id);
+
+        var cands = Anchors.Where(a => Free(a) && a.Kind == attach &&
+                                       (attach != PortKind.Side || a.Side == side)).ToList();
+        if (cands.Count == 0 && attach == PortKind.Side)
+            cands = Anchors.Where(a => a.Kind == PortKind.Side && Free(a)).ToList();
+        if (cands.Count == 0) return null;
+
+        Anchor best = cands[0];
+        var bd = double.MaxValue;
+        foreach (var a in cands)
         {
-            if (!Accepts(artKey, p.Side)) continue;
-            var d = Math.Sqrt(Math.Pow(p.Anchor.X - at.X, 2) + Math.Pow(p.Anchor.Y - at.Y, 2));
-            if (d < bestD) { bestD = d; best = p; }
+            var w = AnchorWorld(hostPos, hostWidth, a);
+            var dist = attach == PortKind.Top
+                ? Math.Abs(w.X - drop.X)
+                : Math.Abs(w.Y - drop.Y) * 1.4 + Math.Abs(w.X - drop.X) * 0.2;
+            if (dist < bd) { bd = dist; best = a; }
         }
-        return bestD <= radius ? best : null;
+        return bd <= SnapRadius ? best : null;
+    }
+
+    // ── 正交折线 + 圆角（原型 orth / roundPath）─────────────────────
+    private static bool IsV(string dir) => dir is "up" or "down";
+
+    private static Point StepOut(Point p, string dir, double n) => dir switch
+    {
+        "left" => new Point(p.X - n, p.Y),
+        "right" => new Point(p.X + n, p.Y),
+        "up" => new Point(p.X, p.Y - n),
+        _ => new Point(p.X, p.Y + n)
+    };
+
+    /// <summary>两端各先直出一小段，再用一条中线拐过去——管路不会斜着穿设备。</summary>
+    public static List<Point> Route(Point a, string ad, Point b, string bd, double stub = 24)
+    {
+        var A = StepOut(a, ad, stub);
+        var B = StepOut(b, bd, stub);
+        var pts = new List<Point> { a, A };
+
+        if (IsV(ad) && IsV(bd))
+        {
+            if (Math.Abs(A.X - B.X) > 0.5)
+            {
+                var my = (A.Y + B.Y) / 2;
+                pts.Add(new Point(A.X, my));
+                pts.Add(new Point(B.X, my));
+            }
+        }
+        else if (!IsV(ad) && !IsV(bd))
+        {
+            if (Math.Abs(A.Y - B.Y) > 0.5)
+            {
+                var mx = (A.X + B.X) / 2;
+                pts.Add(new Point(mx, A.Y));
+                pts.Add(new Point(mx, B.Y));
+            }
+        }
+        else if (IsV(ad)) pts.Add(new Point(A.X, B.Y));
+        else pts.Add(new Point(B.X, A.Y));
+
+        pts.Add(B);
+        pts.Add(b);
+
+        var outp = new List<Point>();
+        foreach (var p in pts)
+        {
+            if (outp.Count == 0 ||
+                Math.Abs(outp[^1].X - p.X) > 0.4 || Math.Abs(outp[^1].Y - p.Y) > 0.4)
+                outp.Add(p);
+        }
+        return outp;
     }
 }

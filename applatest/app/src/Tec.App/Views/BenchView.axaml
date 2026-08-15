@@ -52,7 +52,7 @@
           </TransformGroup>
         </Panel.RenderTransform>
       <ctl:GridBackdrop IsVisible="{Binding ShowGrid}" />
-      <ctl:BenchWires Nodes="{Binding Devices}" />
+      <ctl:BenchLinks Links="{Binding Links}" />
 
       <ItemsControl ItemsSource="{Binding Devices}">
         <ItemsControl.ItemsPanel>
@@ -88,14 +88,22 @@
         </ItemsControl.ItemsPanel>
         <ItemsControl.Styles>
           <Style Selector="ItemsControl > ContentPresenter">
-            <Setter Property="Canvas.Left" Value="{Binding Anchor.X}" />
-            <Setter Property="Canvas.Top" Value="{Binding Anchor.Y}" />
+            <Setter Property="Canvas.Left" Value="{Binding Left}" />
+            <Setter Property="Canvas.Top" Value="{Binding Top}" />
           </Style>
         </ItemsControl.Styles>
         <ItemsControl.ItemTemplate>
           <DataTemplate>
-            <Border Width="18" Height="18" CornerRadius="9" Margin="-9,-9,0,0"
-                    Background="#331a7fc4" BorderBrush="#1a7fc4" BorderThickness="1.5" />
+            <!-- 能插的亮、占用的暗、当前会插上的最大并显示名字 -->
+            <Panel Opacity="{Binding Opacity}">
+              <Ellipse Width="{Binding Size}" Height="{Binding Size}"
+                       Fill="White" Stroke="{Binding ColorHex}" StrokeThickness="1.8" />
+              <Ellipse Width="5" Height="5" Fill="{Binding ColorHex}"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+              <TextBlock Text="{Binding Label}" IsVisible="{Binding Hot}" FontSize="10.5"
+                         Foreground="{Binding ColorHex}" HorizontalAlignment="Center"
+                         VerticalAlignment="Top" Margin="0,-18,0,0" />
+            </Panel>
           </DataTemplate>
         </ItemsControl.ItemTemplate>
       </ItemsControl>

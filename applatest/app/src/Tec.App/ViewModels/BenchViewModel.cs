@@ -173,6 +173,7 @@ public sealed class BenchViewModel : ViewModelBase
         foreach (var child in _ws.Bench.Devices.Where(d => d.DockHostId == id))
         {
             child.DockHostId = null;
+            child.DockAnchor = null;
             child.Dock = DockSide.None;
             _ws.Bench.Bindings.RemoveAll(b => b.DeviceId == child.InstanceId);
         }
@@ -310,10 +311,14 @@ public sealed class BenchViewModel : ViewModelBase
     private LibraryItemViewModel? _dragNew;      // 从设备库拖出来的新设备
     private DeviceNodeViewModel? _dragNode;      // 台面上被拖动的既有设备
     private Point _grab;                         // 抓取点相对设备左上角的偏移
-    private DockPort? _hover;
+    private Anchor? _hover;
+    private DeviceNodeViewModel? _host;
 
-    /// <summary>拖拽期间显示的可插入口。空 = 没在拖。</summary>
-    public ObservableCollection<DockPort> Ports { get; } = new();
+    /// <summary>拖拽期间显示的可插接口。空 = 没在拖。</summary>
+    public ObservableCollection<PortDot> Ports { get; } = new();
+
+    /// <summary>台面上已接好的管路，交给 BenchLinks 画。</summary>
+    public ObservableCollection<BenchLink> Links { get; } = new();
 
     public bool Dragging => _dragNew is not null || _dragNode is not null;
     public string DragArtKey { get; private set; } = "";
@@ -321,11 +326,11 @@ public sealed class BenchViewModel : ViewModelBase
     public double DragX { get; private set; }
     public double DragY { get; private set; }
 
-    /// <summary>当前会插上的那个口，画高亮用。</summary>
-    public DockPort? Hover
+    /// <summary>当前会插上的那个接口。</summary>
+    public Anchor? Hover
     {
         get => _hover;
-        private set { if (!ReferenceEquals(_hover, value)) { _hover = value; Raise(); } }
+        private set { if (!ReferenceEquals(_hover, value)) { _hover = value; RefreshPorts(); } }
     }
 
     private double DragHeight
@@ -337,10 +342,14 @@ public sealed class BenchViewModel : ViewModelBase
         }
     }
 
-    /// <summary>台面上所有反应器开出来的口。</summary>
-    private IEnumerable<DockPort> AllPorts(string? exceptId = null)
-        => Devices.Where(d => d.ArtKey == "reactor2" && d.Id != exceptId)
-                  .SelectMany(d => BenchDock.PortsOf(d.Id, new Point(d.X, d.Y), d.Width, d.Channels));
+    /// <summary>台面上的宿主（反应器）。原型一台反应器为中心，这里取第一台。</summary>
+    private DeviceNodeViewModel? Host => Devices.FirstOrDefault(d => BenchDock.IsHost(d.ArtKey));
+
+    private ISet<string> TakenAnchors(string? exceptDevice = null)
+        => _ws.Bench.Devices
+              .Where(d => d.DockAnchor is not null && d.InstanceId != exceptDevice)
+              .Select(d => d.DockAnchor!)
+              .ToHashSet(StringComparer.Ordinal);
 
     public void BeginDragFromLibrary(LibraryItemViewModel item, Point at)
     {
@@ -365,8 +374,7 @@ public sealed class BenchViewModel : ViewModelBase
 
     private void StartDrag(Point at)
     {
-        Ports.Clear();
-        foreach (var p in AllPorts(_dragNode?.Id)) Ports.Add(p);
+        _host = Host;
         DragTo(at);
         RaiseAll(nameof(Dragging), nameof(DragArtKey), nameof(DragWidth));
     }
@@ -376,24 +384,31 @@ public sealed class BenchViewModel : ViewModelBase
         if (!Dragging) return;
         DragX = at.X - _grab.X;
         DragY = at.Y - _grab.Y;
-        Hover = BenchDock.Nearest(Ports, DragArtKey, ConnectPoint);
+
+        Anchor? pick = null;
+        if (_host is { } h && !BenchDock.IsHost(DragArtKey))
+            pick = BenchDock.Pick(DragArtKey, new Point(h.X, h.Y), h.Width, ConnectPoint,
+                                  TakenAnchors(_dragNode?.Id), _dragNode?.Device.DockAnchor);
+        Hover = pick;
         RaiseAll(nameof(DragX), nameof(DragY));
     }
 
-    /// <summary>
-    /// 判断插哪个口用的参考点：探头看电极尖（图底端中线），
-    /// 侧接的设备看自身中心——这样吸附的手感跟真实装配一致。
-    /// </summary>
-    private Point ConnectPoint => BenchDock.IsProbe(DragArtKey)
-        ? new Point(DragX + BenchDock.NodePad + DragWidth / 2, DragY + BenchDock.NodePad + DragHeight)
-        : new Point(DragX + BenchDock.NodePad + DragWidth / 2, DragY + BenchDock.NodePad + DragHeight / 2);
+    /// <summary>判断插哪个接口用的参考点：设备插头的当前位置。</summary>
+    private Point ConnectPoint
+    {
+        get
+        {
+            var side = _host is { } h && DragX + DragWidth / 2 < h.X + h.Width / 2 ? "L" : "R";
+            return BenchDock.PlugWorld(new Point(DragX, DragY), DragWidth, DragArtKey, side);
+        }
+    }
 
     public void CancelDrag()
     {
         _dragNew = null;
         _dragNode = null;
+        _hover = null;
         Ports.Clear();
-        Hover = null;
         Raise(nameof(Dragging));
     }
 
@@ -402,33 +417,92 @@ public sealed class BenchViewModel : ViewModelBase
     {
         if (!Dragging) return;
         DragTo(at);
-        var port = Hover;
+        var anchor = Hover;
+        var host = _host;
         var dev = _dragNode?.Device ?? CreateDevice();
         if (dev is null) { CancelDrag(); return; }
 
-        if (port is not null)
+        if (anchor is not null && host is not null)
         {
-            var host = Devices.FirstOrDefault(d => d.Id == port.HostId);
-            dev.DockHostId = port.HostId;
-            dev.Dock = port.Side;
-            dev.DockSlot = port.Slot;
-            var slot = BenchDock.Place(port, DragWidth, DragHeight, host?.Width ?? 176);
-            dev.Position = new BPoint(slot.X, slot.Y);
-            Rebind(dev.InstanceId, port.Channels, port.Side == DockSide.Top);
+            var side = anchor.Side ?? (DragX + DragWidth / 2 < host.X + host.Width / 2 ? "L" : "R");
+            var at2 = BenchDock.Place(new Point(host.X, host.Y), host.Width, anchor,
+                                      DragArtKey, DragWidth, DragHeight);
+            dev.DockHostId = host.Id;
+            dev.DockAnchor = anchor.Id;
+            dev.DockSideTag = side;
+            dev.Dock = anchor.Kind == PortKind.Top ? DockSide.Top
+                     : side == "L" ? DockSide.Left : DockSide.Right;
+            dev.DockSlot = anchor.Slot;
+            dev.Position = new BPoint(at2.X, at2.Y);
+
+            var ch = host.Channels.ElementAtOrDefault(anchor.Slot);
+            Rebind(dev.InstanceId, ch > 0 ? new[] { ch } : Array.Empty<int>(),
+                   anchor.Kind == PortKind.Top);
         }
         else
         {
             dev.DockHostId = null;
+            dev.DockAnchor = null;
             dev.Dock = DockSide.None;
             dev.Position = new BPoint(DragX, DragY);
             _ws.Bench.Bindings.RemoveAll(b => b.DeviceId == dev.InstanceId);
         }
 
-        // 宿主被拖动时，插在它身上的设备跟着走
-        if (_dragNode is not null && _dragNode.ArtKey == "reactor2") Follow(dev);
+        if (_dragNode is not null && BenchDock.IsHost(_dragNode.ArtKey)) Follow(dev);
 
         CancelDrag();
         _ = _ws.RebuildChannelsAsync();
+    }
+
+    /// <summary>拖拽时把接口画出来：能插的亮、占用的暗、当前会插上的最大。</summary>
+    private void RefreshPorts()
+    {
+        Ports.Clear();
+        if (!Dragging || _host is not { } h || BenchDock.IsHost(DragArtKey)) return;
+        var taken = TakenAnchors(_dragNode?.Id);
+        foreach (var a in BenchDock.Anchors)
+        {
+            var w = BenchDock.AnchorWorld(new Point(h.X, h.Y), h.Width, a);
+            var legal = BenchDock.Accepts(DragArtKey, a);
+            var busy = taken.Contains(a.Id);
+            Ports.Add(new PortDot
+            {
+                X = w.X, Y = w.Y, Label = a.Label,
+                Hot = ReferenceEquals(a, Hover),
+                Opacity = legal && !busy ? 1 : 0.14,
+                Size = ReferenceEquals(a, Hover) ? 17 : legal && !busy ? 12 : 8.4,
+                ColorHex = busy && !ReferenceEquals(a, Hover) ? "#c2c7cb"
+                         : a.Kind == PortKind.Top ? "#2f6fb5"
+                         : a.Kind == PortKind.Side ? "#c53a9d" : "#9aa0a5"
+            });
+        }
+    }
+
+    /// <summary>按停靠关系重算全部管路。</summary>
+    private void RebuildLinks()
+    {
+        Links.Clear();
+        foreach (var node in Devices)
+        {
+            var dev = node.Device;
+            if (dev.DockAnchor is null || dev.DockHostId is null) continue;
+            var host = Devices.FirstOrDefault(d => d.Id == dev.DockHostId);
+            if (host is null) continue;
+            var a = BenchDock.Anchors.FirstOrDefault(x => x.Id == dev.DockAnchor);
+            if (a is null) continue;
+
+            var to = BenchDock.AnchorWorld(new Point(host.X, host.Y), host.Width, a);
+            var from = BenchDock.PlugWorld(new Point(node.X, node.Y), node.Width,
+                                           node.ArtKey, dev.DockSideTag);
+            var plug = BenchDock.PlugOf(node.ArtKey, dev.DockSideTag);
+            Links.Add(new BenchLink(dev.InstanceId, host.Id, a.Id, BenchDock.LinkOf(node.ArtKey))
+            {
+                From = from, FromDir = plug.Dir,
+                To = to, ToDir = a.Dir,
+                Channel = host.Channels.ElementAtOrDefault(a.Slot),
+                Label = a.Label
+            });
+        }
     }
 
     /// <summary>反应器移动后，插在它上面的设备重新按口摆放。</summary>
@@ -436,16 +510,14 @@ public sealed class BenchViewModel : ViewModelBase
     {
         var hostNode = Devices.FirstOrDefault(d => d.Id == host.InstanceId);
         if (hostNode is null) return;
-        var ports = BenchDock.PortsOf(host.InstanceId, new Point(host.Position.X, host.Position.Y),
-                                      hostNode.Width, hostNode.Channels).ToList();
+        var hp = new Point(host.Position.X, host.Position.Y);
         foreach (var child in _ws.Bench.Devices.Where(d => d.DockHostId == host.InstanceId))
         {
-            var port = ports.FirstOrDefault(p => p.Side == child.Dock && p.Slot == child.DockSlot);
-            if (port is null) continue;
+            var a = BenchDock.Anchors.FirstOrDefault(x => x.Id == child.DockAnchor);
+            if (a is null) continue;
             var node = Devices.FirstOrDefault(d => d.Id == child.InstanceId);
-            var w = node?.Width ?? 120;
-            var h = node?.Height ?? 96;
-            var cp = BenchDock.Place(port, w, h, hostNode.Width);
+            var cp = BenchDock.Place(hp, hostNode.Width, a, node?.ArtKey ?? "ph",
+                                     node?.Width ?? 120, node?.Height ?? 96);
             child.Position = new BPoint(cp.X, cp.Y);
         }
     }
@@ -532,6 +604,7 @@ public sealed class BenchViewModel : ViewModelBase
                 : _ws.Bench.Bindings.Where(b => b.DeviceId == dev.InstanceId).Select(b => b.ChannelNumber).ToList();
             Devices.Add(new DeviceNodeViewModel(dev, driver, chs));
         }
+        RebuildLinks();
         Raise(nameof(IsEmpty));
 
         ChannelRows.Clear();
@@ -627,4 +700,18 @@ public sealed class ChannelRowViewModel : ViewModelBase
         IImageSource => "图像",
         _ => c.GetType().Name
     };
+}
+
+/// <summary>拖拽时画在画布上的一个接口点。</summary>
+public sealed class PortDot
+{
+    public double X { get; init; }
+    public double Y { get; init; }
+    public double Size { get; init; } = 12;
+    public double Opacity { get; init; } = 1;
+    public bool Hot { get; init; }
+    public string ColorHex { get; init; } = "#2f6fb5";
+    public string Label { get; init; } = "";
+    public double Left => X - Size / 2;
+    public double Top => Y - Size / 2;
 }
