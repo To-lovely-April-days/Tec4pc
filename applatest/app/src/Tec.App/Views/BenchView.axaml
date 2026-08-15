@@ -22,10 +22,11 @@
                 <Border Background="{StaticResource ThemeFill}" Margin="0,0,0,3" Padding="0,7,0,6"
                         PointerPressed="OnLibraryPressed">
                   <StackPanel HorizontalAlignment="Center">
-                    <!-- 不套白框：设备图直接铺在主题色上，按栏宽整幅画完，
-                         原来的 100×56 白框 + ClipToBounds 会把反应器这种宽图切掉 -->
-                    <ctl:DeviceArtView ArtKey="{Binding ArtKey}" ArtWidth="104"
-                                       HorizontalAlignment="Center" />
+                    <!-- 统一 108×88 的格子，图等比缩进去。各设备图的高度本来就接近
+                         （138~150），按高度缩放出来的比例也就接近，看着是一样大的；
+                         宽的那两台（反应器 176、加料泵 172）由宽度兜住，整幅不裁 -->
+                    <ctl:DeviceArtView ArtKey="{Binding ArtKey}" Fit="True"
+                                       Width="108" Height="88" HorizontalAlignment="Center" />
                     <TextBlock Text="{Binding Name}" FontSize="10" Foreground="#4a4a4a"
                                TextAlignment="Center" TextWrapping="Wrap" Margin="0,3,0,0" />
                     <TextBlock Text="{Binding Problem}" IsVisible="{Binding HasProblem}"

@@ -53,7 +53,7 @@ public sealed class DeviceArtView : Control
     static DeviceArtView()
     {
         AffectsRender<DeviceArtView>(ArtKeyProperty, Tint1Property, Tint2Property, Run1Property, Run2Property);
-        AffectsMeasure<DeviceArtView>(ArtKeyProperty, ArtWidthProperty);
+        AffectsMeasure<DeviceArtView>(ArtKeyProperty, ArtWidthProperty, FitProperty);
     }
 
     public string ArtKey
@@ -92,12 +92,34 @@ public sealed class DeviceArtView : Control
         set => SetValue(Run2Property, value);
     }
 
+    /// <summary>
+    /// 等比缩到给定格子里（设备库用）。设备图宽高比差得很远——探头细长、
+    /// 反应器扁宽——按同一个宽度画出来就高矮不齐；固定格子、缩到格子内才齐整。
+    /// </summary>
+    public static readonly StyledProperty<bool> FitProperty =
+        AvaloniaProperty.Register<DeviceArtView, bool>(nameof(Fit));
+
+    public bool Fit
+    {
+        get => GetValue(FitProperty);
+        set => SetValue(FitProperty, value);
+    }
+
     protected override Size MeasureOverride(Size availableSize)
     {
         var art = DeviceArtCache.Get(ArtKey);
         if (art is null) return new Size(ArtWidth, ArtWidth * 0.7);
+        if (Fit) return availableSize;                    // 由外面的格子定尺寸
         var scale = ArtWidth / art.ViewWidth;
         return new Size(ArtWidth, art.ViewHeight * scale);
+    }
+
+    /// <summary>缩放比与居中偏移：Fit 时取宽高两个方向的较小比例，整幅不裁。</summary>
+    private (double Scale, double Dx, double Dy) Place(SvgArt art)
+    {
+        if (!Fit) return (ArtWidth / art.ViewWidth, 0, 0);
+        var s = Math.Min(Bounds.Width / art.ViewWidth, Bounds.Height / art.ViewHeight);
+        return (s, (Bounds.Width - art.ViewWidth * s) / 2, (Bounds.Height - art.ViewHeight * s) / 2);
     }
 
     public override void Render(DrawingContext context)
@@ -110,7 +132,8 @@ public sealed class DeviceArtView : Control
                 new Rect(0, 0, Bounds.Width, Bounds.Height), 4, 4);
             return;
         }
-        var scale = ArtWidth / art.ViewWidth;
+        var (scale, dx, dy) = Place(art);
+        using var _ = context.PushTransform(Matrix.CreateTranslation(dx, dy));
         art.Render(context, scale, new SvgArt.Paint(Tint1, Tint2, Run1, Run2));
     }
 }
