@@ -35,7 +35,15 @@ public sealed class DeviceNodeViewModel : ViewModelBase
 
     public DeviceInstance Device { get; }
     public IDeviceDriver? Driver { get; }
-    public IReadOnlyList<int> Channels { get; }
+    public IReadOnlyList<int> Channels { get; private set; }
+
+    /// <summary>绑定变了只改这一处，不用把整个节点换掉。</summary>
+    public void SetChannels(IReadOnlyList<int> chs)
+    {
+        if (Channels.SequenceEqual(chs)) return;
+        Channels = chs;
+        Raise(nameof(ChannelText));
+    }
 
     public string Id => Device.InstanceId;
     public string Title => Device.Display;
@@ -633,15 +641,7 @@ public sealed class BenchViewModel : ViewModelBase
         Library.Clear();
         foreach (var p in _ws.Drivers.ForLibrary()) Library.Add(new LibraryItemViewModel(p));
 
-        Devices.Clear();
-        foreach (var dev in _ws.Bench.Devices)
-        {
-            var driver = _ws.Drivers.Driver(dev.DriverId);
-            var chs = driver is { Info.ChannelsPerDevice: > 0 }
-                ? _ws.Channels.Where(c => c.HostInstanceId == dev.InstanceId).Select(c => c.Number).ToList()
-                : _ws.Bench.Bindings.Where(b => b.DeviceId == dev.InstanceId).Select(b => b.ChannelNumber).ToList();
-            Devices.Add(new DeviceNodeViewModel(dev, driver, chs));
-        }
+        SyncDevices();
         RebuildLinks();
         Raise(nameof(IsEmpty));
 
@@ -669,6 +669,45 @@ public sealed class BenchViewModel : ViewModelBase
         }
 
         Raise(nameof(BenchSummary));
+    }
+
+    /// <summary>
+    /// 把节点列表对齐到台面，能复用的就地更新，不整批重建。
+    /// 重建过一次的话，正在拖的那个节点就成了孤儿——它照旧在改模型，
+    /// 但已经不在画面上了，于是拖动全程设备"钉"在原地，松手后又一次重建才跳过去。
+    /// 台面重建是异步回来的，什么时候落地不一定，所以这毛病时有时无。
+    /// </summary>
+    private void SyncDevices()
+    {
+        // 台面上已经没有的（或者整份台面被换掉、模型对象都不是原来那个了）先摘掉
+        for (var i = Devices.Count - 1; i >= 0; i--)
+        {
+            var live = _ws.Bench.Device(Devices[i].Id);
+            if (live is null || !ReferenceEquals(live, Devices[i].Device)) Devices.RemoveAt(i);
+        }
+
+        for (var i = 0; i < _ws.Bench.Devices.Count; i++)
+        {
+            var dev = _ws.Bench.Devices[i];
+            var driver = _ws.Drivers.Driver(dev.DriverId);
+            var chs = driver is { Info.ChannelsPerDevice: > 0 }
+                ? _ws.Channels.Where(c => c.HostInstanceId == dev.InstanceId).Select(c => c.Number).ToList()
+                : _ws.Bench.Bindings.Where(b => b.DeviceId == dev.InstanceId).Select(b => b.ChannelNumber).ToList();
+
+            var at = -1;
+            for (var k = 0; k < Devices.Count; k++)
+                if (ReferenceEquals(Devices[k].Device, dev)) { at = k; break; }
+
+            if (at < 0) Devices.Insert(Math.Min(i, Devices.Count), new DeviceNodeViewModel(dev, driver, chs));
+            else
+            {
+                Devices[at].SetChannels(chs);
+                if (at != i && i < Devices.Count) Devices.Move(at, i);
+            }
+        }
+
+        // 选中的那台如果被摘掉了，右栏得跟着清空
+        if (_selected is { } sel && !Devices.Contains(sel)) Selected = null;
     }
 
     private void BuildForms()
