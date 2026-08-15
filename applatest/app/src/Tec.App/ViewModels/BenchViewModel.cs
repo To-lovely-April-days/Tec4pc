@@ -318,6 +318,7 @@ public sealed class BenchViewModel : ViewModelBase
     private LibraryItemViewModel? _dragNew;      // 从设备库拖出来的新设备
     private DeviceNodeViewModel? _dragNode;      // 台面上被拖动的既有设备
     private Point _grab;                         // 抓取点相对设备左上角的偏移
+    private Point _origin;                       // 拖之前设备在哪儿，Esc 要送回去
     private Anchor? _hover;
     private DeviceNodeViewModel? _host;
 
@@ -328,6 +329,13 @@ public sealed class BenchViewModel : ViewModelBase
     public ObservableCollection<BenchLink> Links { get; } = new();
 
     public bool Dragging => _dragNew is not null || _dragNode is not null;
+
+    /// <summary>
+    /// 幽灵只在「从设备库往外拖」时出现——那会儿画布上还没有这台设备，
+    /// 总得有个东西跟着手。拖已有的设备时设备自己在动，再画一个幽灵就是重影。
+    /// </summary>
+    public bool ShowGhost => _dragNew is not null;
+
     public string DragArtKey { get; private set; } = "";
     public double DragWidth { get; private set; }
     public double DragX { get; private set; }
@@ -385,6 +393,7 @@ public sealed class BenchViewModel : ViewModelBase
         DragArtKey = node.ArtKey;
         DragWidth = node.Width;
         _grab = new Point(at.X - node.X, at.Y - node.Y);
+        _origin = new Point(node.X, node.Y);
         Selected = node;
         StartDrag(at);
     }
@@ -393,7 +402,7 @@ public sealed class BenchViewModel : ViewModelBase
     {
         _host = Host;
         DragTo(at);
-        RaiseAll(nameof(Dragging), nameof(DragArtKey), nameof(DragWidth));
+        RaiseAll(nameof(Dragging), nameof(ShowGhost), nameof(DragArtKey), nameof(DragWidth));
     }
 
     public void DragTo(Point at)
@@ -401,6 +410,10 @@ public sealed class BenchViewModel : ViewModelBase
         if (!Dragging) return;
         DragX = at.X - _grab.X;
         DragY = at.Y - _grab.Y;
+
+        // 台面上已有的设备直接跟着手走。原来是把设备留在原地、另画一个幽灵，
+        // 看着就像拖不动——设备本来就在画布上，让它自己动才对
+        _dragNode?.MoveTo(new Point(DragX, DragY));
 
         Anchor? pick = null;
         if (_host is { } h && !BenchDock.IsHost(DragArtKey))
@@ -421,13 +434,21 @@ public sealed class BenchViewModel : ViewModelBase
         }
     }
 
+    /// <summary>Esc 撤销这次拖拽：设备既然是跟着手走的，就得把它送回原位。</summary>
     public void CancelDrag()
+    {
+        _dragNode?.MoveTo(_origin);
+        ClearDrag();
+    }
+
+    /// <summary>只清拖拽状态，不动设备位置。落位成功后走这条。</summary>
+    private void ClearDrag()
     {
         _dragNew = null;
         _dragNode = null;
         _hover = null;
         Ports.Clear();
-        Raise(nameof(Dragging));
+        RaiseAll(nameof(Dragging), nameof(ShowGhost));
         RebuildLinks();
     }
 
@@ -439,7 +460,7 @@ public sealed class BenchViewModel : ViewModelBase
         var anchor = Hover;
         var host = _host;
         var dev = _dragNode?.Device ?? CreateDevice();
-        if (dev is null) { CancelDrag(); return; }
+        if (dev is null) { ClearDrag(); return; }
 
         // 落点就是用户放的位置，设备不被吸走；变的是连线（用户明确要求）
         dev.Position = new BPoint(DragX, DragY);
@@ -466,7 +487,7 @@ public sealed class BenchViewModel : ViewModelBase
             _ws.Bench.Bindings.RemoveAll(b => b.DeviceId == dev.InstanceId);
         }
 
-        CancelDrag();
+        ClearDrag();
         RebuildLinks();
         _ = _ws.RebuildChannelsAsync();
     }

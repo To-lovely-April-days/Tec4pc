@@ -164,25 +164,24 @@
                     </Button>
                   </Panel>
 
-                  <!-- .rbody -->
-                  <StackPanel Margin="14,12,14,13">
+                  <!-- .rbody：只留两行。第一行实验名，第二行规模 + 时间体积靠右。
+                       完整路径进 ToolTip——它长得永远显示不全，占一整行不值 -->
+                  <StackPanel Margin="14,10,14,11" Spacing="3"
+                              ToolTip.Tip="{Binding Path}">
                     <TextBlock Text="{Binding Name}" FontSize="15" LineHeight="19"
                                TextTrimming="CharacterEllipsis"
                                Foreground="{Binding On, Converter={x:Static v:Converters.NameFg}}"
                                FontWeight="{Binding On, Converter={x:Static v:Converters.NameWeight}}" />
-                    <TextBlock Text="{Binding Path}" FontSize="11" Foreground="#a2a2a2"
-                               Margin="0,3,0,0" TextTrimming="CharacterEllipsis"
-                               ToolTip.Tip="{Binding Path}" />
-                    <TextBlock Text="{Binding Note}" FontSize="11.5" Foreground="#6f6f6f"
-                               Margin="0,9,0,0" LineHeight="17" MinHeight="34"
-                               TextWrapping="Wrap" MaxLines="2" />
-                    <Border BorderBrush="#f2f2f2" BorderThickness="0,1,0,0" Margin="0,10,0,0" Padding="0,9,0,0">
-                      <StackPanel Orientation="Horizontal" Spacing="0" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding When}" FontSize="10.5" Foreground="#9a9a9a" />
-                        <Ellipse Width="3" Height="3" Fill="#cfcfcf" Margin="7,0" VerticalAlignment="Center" />
-                        <TextBlock Text="{Binding Size}" FontSize="10.5" Foreground="#9a9a9a" />
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBlock Grid.Column="0" Text="{Binding Note}" FontSize="11" Foreground="#8a8a8a"
+                                 LineHeight="16" TextTrimming="CharacterEllipsis"
+                                 VerticalAlignment="Center" Margin="0,0,8,0" />
+                      <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding When}" FontSize="10.5" Foreground="#a8a8a8" />
+                        <Ellipse Width="3" Height="3" Fill="#cfcfcf" Margin="6,0" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding Size}" FontSize="10.5" Foreground="#a8a8a8" />
                       </StackPanel>
-                    </Border>
+                    </Grid>
                   </StackPanel>
                 </StackPanel>
               </Border>

@@ -334,9 +334,10 @@
         </ScrollViewer>
       </DockPanel>
     </Border>
-    <!-- 拖拽中的幽灵：跨三栏画在最上层，从设备库拖出来时压在库面板上方 -->
+    <!-- 拖拽中的幽灵：跨三栏画在最上层，从设备库拖出来时压在库面板上方。
+         拖台面上已有的设备时不画——那台设备自己跟着手在走 -->
     <Canvas Grid.Column="0" Grid.ColumnSpan="3" IsHitTestVisible="False"
-            IsVisible="{Binding Dragging}">
+            IsVisible="{Binding ShowGhost}">
       <Border Canvas.Left="{Binding GhostX}" Canvas.Top="{Binding GhostY}" Opacity="0.7"
               Padding="6,6,6,4" RenderTransformOrigin="0%,0%">
         <Border.RenderTransform>
