@@ -2,73 +2,183 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ctl="clr-namespace:Tec.App.Controls"
              x:Class="Tec.App.Views.CompoundsView">
+  <UserControl.Styles>
+    <!-- .crow：44 色块 / 名称 / CAS / 分子式 / 分子量 / 熔点 / 类别 / 备注 -->
+    <Style Selector="Border.crow">
+      <Setter Property="BorderBrush" Value="#ececec" />
+      <Setter Property="BorderThickness" Value="0,0,0,1" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Border.crow:pointerover">
+      <Setter Property="Background" Value="#f5f5f5" />
+    </Style>
+    <Style Selector="Border.crow.sel">
+      <Setter Property="Background" Value="#e8f2fb" />
+      <Setter Property="BorderBrush" Value="#ececec" />
+    </Style>
+    <Style Selector="Border.crow TextBlock">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Foreground" Value="#2b2b2b" />
+      <Setter Property="Margin" Value="10,8" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.crow.sel TextBlock">
+      <Setter Property="Foreground" Value="#0b3760" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Border.crow TextBlock.fx">
+      <Setter Property="FontFamily" Value="Consolas,monospace" />
+      <Setter Property="Foreground" Value="#4a4a4a" />
+    </Style>
+    <Style Selector="Border.crow TextBlock.note">
+      <Setter Property="Foreground" Value="#7a7a7a" />
+    </Style>
+    <Style Selector="Border.crow.sel TextBlock.fx, Border.crow.sel TextBlock.note">
+      <Setter Property="Foreground" Value="#0b3760" />
+    </Style>
+    <!-- 表头：11px + 字距，粘在顶部 -->
+    <Style Selector="TextBlock.chd">
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="Foreground" Value="#3a3a3a" />
+      <Setter Property="Margin" Value="10,8" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TextBlock.frowk">
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Foreground" Value="#3d3d3d" />
+      <Setter Property="Width" Value="96" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <!-- CARET：圆圈 + 箭头（与台面属性面板同款） -->
+    <Style Selector="Border.exp3">
+      <Setter Property="Width" Value="20" />
+      <Setter Property="Height" Value="20" />
+      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="BorderBrush" Value="#6b6b6b" />
+      <Setter Property="BorderThickness" Value="1.5" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+  </UserControl.Styles>
+
   <Grid ColumnDefinitions="*,342">
 
+    <!-- ========== .cmain ========== -->
     <DockPanel Grid.Column="0" Background="White">
-      <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="10" Margin="16,12">
-        <TextBlock Text="检索：" Classes="lbl" />
-        <StackPanel Orientation="Horizontal" Spacing="6">
-          <ctl:TecIcon Key="ui-search" VerticalAlignment="Center" />
-          <TextBox Classes="finput" Width="220" Text="{Binding Search, Mode=TwoWay}"
-                   Watermark="名称 / CAS / 分子式" />
-        </StackPanel>
-        <TextBlock Text="类别：" Classes="lbl" Margin="6,0,0,0" />
-        <ComboBox Classes="sel" Width="130" ItemsSource="{Binding Categories}"
-                  SelectedItem="{Binding Category, Mode=TwoWay}" />
-        <Button Classes="tbtn sm" ToolTip.Tip="新增化合物"><ctl:TecIcon Key="ui-cmp-cmpnew" /></Button>
-        <Button Classes="tbtn sm" ToolTip.Tip="导入"><ctl:TecIcon Key="ui-cmp-cmpimport" /></Button>
-      </StackPanel>
 
-      <Border BorderBrush="#e3e3e3" BorderThickness="0,1,0,0">
-        <DockPanel>
-          <Grid DockPanel.Dock="Top" ColumnDefinitions="160,120,140,90,90,*" Background="#f7f7f7" Height="28">
-            <TextBlock Grid.Column="0" Text="名称"   Classes="muted" Margin="12,7,0,0" />
-            <TextBlock Grid.Column="1" Text="CAS"    Classes="muted" Margin="4,7,0,0" />
-            <TextBlock Grid.Column="2" Text="分子式" Classes="muted" Margin="4,7,0,0" />
-            <TextBlock Grid.Column="3" Text="分子量" Classes="muted" Margin="4,7,0,0" />
-            <TextBlock Grid.Column="4" Text="熔点"   Classes="muted" Margin="4,7,0,0" />
-            <TextBlock Grid.Column="5" Text="类别"   Classes="muted" Margin="4,7,0,0" />
-          </Grid>
-          <ListBox ItemsSource="{Binding Rows}" SelectedItem="{Binding Selected, Mode=TwoWay}"
-                   Background="Transparent" BorderThickness="0">
-            <ListBox.ItemTemplate>
-              <DataTemplate>
-                <Grid ColumnDefinitions="160,120,140,90,90,*">
-                  <TextBlock Grid.Column="0" Text="{Binding Name}" FontSize="12" />
-                  <TextBlock Grid.Column="1" Text="{Binding Cas}" Classes="mono" />
-                  <TextBlock Grid.Column="2" Text="{Binding Formula}" Classes="mono" />
-                  <TextBlock Grid.Column="3" Text="{Binding MwText}" Classes="mono" />
-                  <TextBlock Grid.Column="4" Text="{Binding MpText}" Classes="mono" />
-                  <TextBlock Grid.Column="5" Text="{Binding Category}" FontSize="11"
-                             Foreground="{Binding CategoryColor}" />
-                </Grid>
-              </DataTemplate>
-            </ListBox.ItemTemplate>
-          </ListBox>
-        </DockPanel>
+      <!-- .ctool：58px 高，#ededed -->
+      <Border DockPanel.Dock="Top" Height="58" Background="#ededed">
+        <StackPanel Orientation="Horizontal" Spacing="10" Margin="14,0" VerticalAlignment="Center">
+          <TextBlock Text="检索：" FontSize="12" Foreground="#444444" VerticalAlignment="Center" />
+          <Panel Width="260">
+            <TextBox Classes="finput" Height="26" Padding="26,0,6,0"
+                     Text="{Binding Search, Mode=TwoWay}" Watermark="名称 / CAS / 分子式" />
+            <ctl:TecIcon Key="ui-search" HorizontalAlignment="Left" VerticalAlignment="Center"
+                         Margin="7,0,0,0" IsHitTestVisible="False" />
+          </Panel>
+          <TextBlock Text="类别：" FontSize="12" Foreground="#444444" VerticalAlignment="Center" />
+          <ComboBox Classes="sel" Width="130" ItemsSource="{Binding Categories}"
+                    SelectedItem="{Binding Category, Mode=TwoWay}" />
+          <Button Classes="tbtn sm" ToolTip.Tip="新增化合物"><ctl:TecIcon Key="ui-cmp-cmpnew" /></Button>
+          <Button Classes="tbtn sm" ToolTip.Tip="导入"><ctl:TecIcon Key="ui-cmp-cmpimport" /></Button>
+        </StackPanel>
       </Border>
+
+      <!-- 表头（.crow.head）：常驻顶部 -->
+      <Border DockPanel.Dock="Top" Background="#fafafa"
+              BorderBrush="#d5d5d5" BorderThickness="0,0,0,1">
+        <Grid ColumnDefinitions="44,1.4*,1*,1*,76,76,100,1.2*">
+          <TextBlock Grid.Column="1" Text="名称" Classes="chd" />
+          <TextBlock Grid.Column="2" Text="CAS 号" Classes="chd" />
+          <TextBlock Grid.Column="3" Text="分子式" Classes="chd" />
+          <TextBlock Grid.Column="4" Text="分子量" Classes="chd" />
+          <TextBlock Grid.Column="5" Text="熔点 ℃" Classes="chd" />
+          <TextBlock Grid.Column="6" Text="类别" Classes="chd" />
+          <TextBlock Grid.Column="7" Text="备注" Classes="chd" />
+        </Grid>
+      </Border>
+
+      <ScrollViewer>
+        <StackPanel>
+          <ItemsControl ItemsSource="{Binding Rows}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Border Classes="crow" PointerPressed="OnRowPressed"
+                        Classes.sel="{Binding IsSelected}">
+                  <Grid ColumnDefinitions="44,1.4*,1*,1*,76,76,100,1.2*">
+                    <Border Grid.Column="0" Width="14" Height="14" CornerRadius="3"
+                            Background="{Binding CategoryColor}"
+                            HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="1" Text="{Binding Name}" />
+                    <TextBlock Grid.Column="2" Text="{Binding Cas}" />
+                    <TextBlock Grid.Column="3" Text="{Binding Formula}" Classes="fx" />
+                    <TextBlock Grid.Column="4" Text="{Binding MwText}" />
+                    <TextBlock Grid.Column="5" Text="{Binding MpText}" />
+                    <TextBlock Grid.Column="6" Text="{Binding Category}" />
+                    <TextBlock Grid.Column="7" Text="{Binding Note}" Classes="note" />
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <TextBlock Text="没有匹配的化合物" IsVisible="{Binding NoRows}"
+                     FontSize="12" Foreground="#a2a2a2" Margin="30"
+                     HorizontalAlignment="Center" />
+        </StackPanel>
+      </ScrollViewer>
     </DockPanel>
 
+    <!-- ========== 右侧物性详情 ========== -->
     <Border Grid.Column="1" Background="#ececec" BorderBrush="#d2d2d2" BorderThickness="1,0,0,0">
       <ScrollViewer>
-        <StackPanel Margin="18,16" Spacing="8" IsVisible="{Binding HasSelection}">
-          <TextBlock Text="{Binding Selected.Name}" Classes="h2big" />
-          <TextBlock Text="{Binding Selected.Note}" Classes="intro" />
-          <Border Height="1" Background="#d5d5d5" />
-          <TextBlock Text="物性" Classes="acc" />
-          <Grid ColumnDefinitions="80,*" RowDefinitions="Auto,Auto,Auto,Auto">
-            <TextBlock Grid.Row="0" Grid.Column="0" Text="CAS"    Classes="muted" />
-            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Selected.Cas}" Classes="mono" />
-            <TextBlock Grid.Row="1" Grid.Column="0" Text="分子式" Classes="muted" />
-            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Selected.Formula}" Classes="mono" />
-            <TextBlock Grid.Row="2" Grid.Column="0" Text="分子量" Classes="muted" />
-            <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Selected.MwText}" Classes="mono" />
-            <TextBlock Grid.Row="3" Grid.Column="0" Text="熔点"   Classes="muted" />
-            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Selected.MpText}" Classes="mono" />
-          </Grid>
-          <Border Height="1" Background="#d5d5d5" />
-          <TextBlock Text="溶解度" Classes="acc" />
-          <TextBlock Text="{Binding SolubilityText}" FontSize="11.5" Foreground="#4a4a4a" TextWrapping="Wrap" />
+        <StackPanel Margin="18,16,18,20" DataContext="{Binding Selected}">
+          <TextBlock Text="物性详情" FontSize="24" FontWeight="Light" Foreground="#333333"
+                     HorizontalAlignment="Center" Margin="0,0,0,8" />
+          <TextBlock Text="{Binding Name}" FontSize="21" FontWeight="Light" Foreground="#333333"
+                     HorizontalAlignment="Center" Margin="0,0,0,12" />
+
+          <StackPanel Spacing="7">
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Text="CAS 号" Classes="frowk" />
+              <TextBox Classes="finput" Text="{Binding Cas}" IsEnabled="False" Width="196" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Text="分子式" Classes="frowk" />
+              <TextBox Classes="finput" Text="{Binding Formula}" IsEnabled="False" Width="196" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Text="分子量" Classes="frowk" />
+              <TextBox Classes="finput" Text="{Binding MwUnitText}" IsEnabled="False" Width="196" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Text="熔点" Classes="frowk" />
+              <TextBox Classes="finput" Text="{Binding MpUnitText}" IsEnabled="False" Width="196" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Text="常用溶剂" Classes="frowk" />
+              <TextBox Classes="finput" Text="{Binding Solvent}" IsEnabled="False" Width="196" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Text="备注" Classes="frowk" />
+              <TextBox Classes="finput" Text="{Binding Note}" IsEnabled="False" Width="196" />
+            </StackPanel>
+          </StackPanel>
+
+          <Border Height="1" Background="#d5d5d5" Margin="0,12,0,14" />
+          <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+            <Border Classes="exp3"><ctl:TecIcon Key="ui-chev-down" Tint="#555555" /></Border>
+            <TextBlock Text="溶解度 – 温度（g/100 mL 水）" FontSize="11.5" Foreground="#3d3d3d"
+                       VerticalAlignment="Center" />
+          </StackPanel>
+
+          <Border Background="White" BorderBrush="#dcdcdc" BorderThickness="1" CornerRadius="3">
+            <ctl:SolubilityView Coefficients="{Binding Solubility}" />
+          </Border>
+
+          <Button Classes="btn primary" Content="提取到配方参数"
+                  HorizontalAlignment="Center" Margin="0,14,0,0" />
+          <TextBlock Classes="intro" Margin="0,10,0,0"
+                     Text="配方中的升温 / 恒温步骤可自动引用该化合物的饱和温度与溶解度数据（FR-5.9）。" />
         </StackPanel>
       </ScrollViewer>
     </Border>

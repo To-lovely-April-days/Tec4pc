@@ -2,73 +2,240 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ctl="clr-namespace:Tec.App.Controls"
              x:Class="Tec.App.Views.RecipeLibView">
-  <Grid ColumnDefinitions="240,*,342">
+  <UserControl.Styles>
+    <!-- .rrow：34px 圆图标 + 名称 + 元信息 + 模块色带；选中只加深加粗 -->
+    <Style Selector="Border.rrow">
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderBrush" Value="#f0f0f0" />
+      <Setter Property="BorderThickness" Value="4,0,0,1" />
+      <Setter Property="Padding" Value="8,12,14,12" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Border.rrow:pointerover">
+      <Setter Property="Background" Value="#f5f5f5" />
+    </Style>
+    <Style Selector="Border.rrow.sel">
+      <Setter Property="Background" Value="#e8f2fb" />
+      <Setter Property="BorderBrush" Value="#1a7fc4" />
+      <Setter Property="BorderThickness" Value="4,0,0,1" />
+    </Style>
+    <Style Selector="Border.rrow Border.ri">
+      <Setter Property="Width" Value="34" />
+      <Setter Property="Height" Value="34" />
+      <Setter Property="CornerRadius" Value="17" />
+      <Setter Property="Background" Value="#f2f2f2" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.rrow.sel Border.ri">
+      <Setter Property="Background" Value="#d4e7f7" />
+    </Style>
+    <Style Selector="Border.rrow TextBlock.rn2">
+      <Setter Property="FontSize" Value="13.5" />
+      <Setter Property="Foreground" Value="#2b2b2b" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+    <Style Selector="Border.rrow.sel TextBlock.rn2">
+      <Setter Property="Foreground" Value="#0b3760" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Border.rrow TextBlock.rm2">
+      <Setter Property="FontSize" Value="10.5" />
+      <Setter Property="Foreground" Value="#9a9a9a" />
+      <Setter Property="Margin" Value="0,2,0,0" />
+    </Style>
+    <Style Selector="Border.rrow.sel TextBlock.rm2">
+      <Setter Property="Foreground" Value="#6b8ba8" />
+    </Style>
+    <Style Selector="TextBlock.frowk">
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Foreground" Value="#3d3d3d" />
+      <Setter Property="Width" Value="96" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.exp3">
+      <Setter Property="Width" Value="20" />
+      <Setter Property="Height" Value="20" />
+      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="BorderBrush" Value="#6b6b6b" />
+      <Setter Property="BorderThickness" Value="1.5" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+  </UserControl.Styles>
 
-    <Border Grid.Column="0" Background="#f4f4f4" BorderBrush="#dcdcdc" BorderThickness="0,0,1,0">
+  <Grid ColumnDefinitions="312,*,342">
+
+    <!-- ========== 左：配方列表 ========== -->
+    <Border Grid.Column="0" Background="White" BorderBrush="#dcdcdc" BorderThickness="0,0,1,0">
       <DockPanel>
         <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="14,12,14,8">
-          <TextBlock Text="配方库" FontSize="20" FontWeight="Light" Foreground="#3b3b3b" VerticalAlignment="Center" />
+          <TextBlock Text="配方库" FontSize="20" FontWeight="Light" Foreground="#3b3b3b"
+                     VerticalAlignment="Center" Width="200" />
           <Button Classes="tbtn sm" ToolTip.Tip="从当前通道新建"><ctl:TecIcon Key="ui-lh-libnew" /></Button>
           <Button Classes="tbtn sm" ToolTip.Tip="导入"><ctl:TecIcon Key="ui-lh-libimport" /></Button>
         </StackPanel>
-        <ListBox ItemsSource="{Binding Items}" SelectedItem="{Binding Selected, Mode=TwoWay}"
-                 Background="Transparent" BorderThickness="0">
-          <ListBox.ItemTemplate>
-            <DataTemplate>
-              <StackPanel>
-                <TextBlock Text="{Binding Name}" FontSize="12.5" />
-                <TextBlock Text="{Binding Author}" FontSize="10.5" Foreground="#7a7a7a" />
-              </StackPanel>
-            </DataTemplate>
-          </ListBox.ItemTemplate>
-        </ListBox>
-      </DockPanel>
-    </Border>
-
-    <DockPanel Grid.Column="1" Background="White">
-      <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="14" Margin="24,14,24,10">
-        <TextBlock Text="{Binding Name}" FontSize="24" FontWeight="Light" Foreground="#2b2b2b" />
-        <TextBlock Text="{Binding Desc}" FontSize="12" Foreground="#7a7a7a" VerticalAlignment="Bottom" Margin="0,0,0,3" />
-      </StackPanel>
-      <Border BorderBrush="#e3e3e3" BorderThickness="0,1,0,0">
         <ScrollViewer>
-          <ItemsControl ItemsSource="{Binding Flow}" Margin="24,18">
+          <ItemsControl ItemsSource="{Binding Rows}">
             <ItemsControl.ItemTemplate>
               <DataTemplate>
-                <Border Width="420" Margin="0,0,0,8" Padding="10" Background="White"
-                        BorderBrush="#dcdcdc" BorderThickness="1" CornerRadius="3">
-                  <Grid ColumnDefinitions="28,*,90">
-                    <TextBlock Grid.Column="0" Text="{Binding Ordinal}" FontSize="11" Foreground="#9a9a9a" />
-                    <StackPanel Grid.Column="1">
-                      <TextBlock Text="{Binding Name}" FontSize="12.5" />
-                      <TextBlock Text="{Binding Summary}" FontSize="11" Foreground="#7a7a7a" TextWrapping="Wrap" />
+                <Border Classes="rrow" Classes.sel="{Binding IsSelected}" PointerPressed="OnRowPressed">
+                  <Grid ColumnDefinitions="Auto,*">
+                    <Border Grid.Column="0" Classes="ri">
+                      <ctl:TecIcon Key="ui-lib-doc" Size="17" Tint="{Binding InkHex}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <StackPanel Grid.Column="1" Margin="11,0,0,0" VerticalAlignment="Center">
+                      <TextBlock Text="{Binding Name}" Classes="rn2" />
+                      <TextBlock Text="{Binding Meta}" Classes="rm2" />
+                      <!-- .rmix：一步一段，按模块着色 -->
+                      <Border Height="4" CornerRadius="2" Background="#f0f0f0"
+                              Margin="0,7,0,0" ClipToBounds="True">
+                        <ItemsControl ItemsSource="{Binding Mix}">
+                          <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate><UniformGrid Rows="1" /></ItemsPanelTemplate>
+                          </ItemsControl.ItemsPanel>
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate><Border Background="{Binding}" /></DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                      </Border>
                     </StackPanel>
-                    <TextBlock Grid.Column="2" Text="{Binding PlanDuration}" Classes="mono"
-                               HorizontalAlignment="Right" Foreground="#7a7a7a" />
                   </Grid>
                 </Border>
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
         </ScrollViewer>
+      </DockPanel>
+    </Border>
+
+    <!-- ========== 中：只读流程预览 ========== -->
+    <DockPanel Grid.Column="1" Background="White">
+      <Border DockPanel.Dock="Top" BorderBrush="#e3e3e3" BorderThickness="0,0,0,1" Padding="24,14,24,10">
+        <StackPanel Orientation="Horizontal" Spacing="14">
+          <TextBlock Text="{Binding Name}" FontSize="24" FontWeight="Light" Foreground="#2b2b2b" />
+          <TextBlock Text="{Binding Desc}" FontSize="12" Foreground="#7a7a7a"
+                     VerticalAlignment="Bottom" Margin="0,0,0,3" />
+        </StackPanel>
       </Border>
+
+      <Panel>
+        <ctl:GridBackdrop LineBrush="#fbfbfb" />
+        <ScrollViewer>
+          <StackPanel HorizontalAlignment="Center" Margin="0,18,0,40">
+            <Border Width="270" Height="30" Background="#2eaa4e" CornerRadius="2" Padding="11,0">
+              <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <ctl:TecIcon Key="ui-cap-begin" />
+                <TextBlock Text="开始" Foreground="White" FontSize="12.5" />
+              </StackPanel>
+            </Border>
+
+            <ItemsControl ItemsSource="{Binding Flow}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <StackPanel HorizontalAlignment="Center">
+                    <Border Width="1" Height="14" Background="#7a7a7a" HorizontalAlignment="Center" />
+                    <!-- .step.ro：只读，没有删除按钮，不跟随选中 -->
+                    <Border Width="270" Background="White" BorderBrush="#d3dae0"
+                            BorderThickness="1" CornerRadius="4">
+                      <StackPanel>
+                        <Grid ColumnDefinitions="Auto,*" Margin="9,8">
+                          <Border Grid.Column="0" Width="44" Height="44" CornerRadius="5"
+                                  Background="{Binding ModuleColor}">
+                            <ctl:TecIcon Key="{Binding IconKey}" White="True" Size="26"
+                                         HorizontalAlignment="Center" VerticalAlignment="Center" />
+                          </Border>
+                          <StackPanel Grid.Column="1" Margin="9,1,0,0">
+                            <TextBlock Text="{Binding Desc}" FontSize="11.5" Foreground="#22303a"
+                                       TextWrapping="Wrap" MaxLines="3" LineHeight="16" />
+                            <TextBlock Text="{Binding ModLine}" FontSize="9.5" Foreground="#93a3ae"
+                                       Margin="0,3,0,0" />
+                          </StackPanel>
+                        </Grid>
+                        <Border Background="#fafbfc" BorderBrush="#eef1f3" BorderThickness="0,1,0,0"
+                                CornerRadius="0,0,4,4" Padding="9,4,9,5">
+                          <TextBlock FontSize="10" Foreground="#8b98a2">
+                            <Run Text="预计开始 " /><Run Text="{Binding PlanStart}"
+                                FontWeight="SemiBold" Foreground="#4a5560" />
+                          </TextBlock>
+                        </Border>
+                      </StackPanel>
+                    </Border>
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <Border Width="1" Height="14" Background="#7a7a7a" HorizontalAlignment="Center" />
+            <Border Width="270" Height="30" Background="#b8483c" CornerRadius="2" Padding="11,0">
+              <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <ctl:TecIcon Key="ui-cap-end" />
+                <TextBlock Text="结束" Foreground="White" FontSize="12.5" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+      </Panel>
     </DockPanel>
 
+    <!-- ========== 右：配方属性 / 应用 ========== -->
     <Border Grid.Column="2" Background="#ececec" BorderBrush="#d2d2d2" BorderThickness="1,0,0,0">
       <DockPanel>
         <Border DockPanel.Dock="Bottom" BorderBrush="#d5d5d5" BorderThickness="0,1,0,0" Padding="18,12,18,14">
           <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center">
-            <Button Classes="tbtn foot" Command="{Binding Duplicate}" ToolTip.Tip="另存副本"><ctl:TecIcon Key="ui-foot-dup" /></Button>
-            <Button Classes="tbtn foot" Command="{Binding Delete}" ToolTip.Tip="删除"><ctl:TecIcon Key="ui-foot-trash2" /></Button>
+            <Button Classes="tbtn foot" Command="{Binding Duplicate}" ToolTip.Tip="另存副本">
+              <ctl:TecIcon Key="ui-foot-dup" />
+            </Button>
+            <Button Classes="tbtn foot" Command="{Binding Delete}" ToolTip.Tip="删除">
+              <ctl:TecIcon Key="ui-foot-trash2" />
+            </Button>
           </StackPanel>
         </Border>
-        <StackPanel Margin="18,16" Spacing="10">
-          <TextBlock Text="{Binding Name}" Classes="h2big" />
-          <TextBlock Classes="intro"
-                     Text="应用会替换当前通道的全部步骤。配方绑的是能力不是设备，换一台满足同样能力的反应器照样能跑。" />
-          <Button Classes="btn primary" Content="应用到配方编辑" Command="{Binding ApplyToRecipe}"
-                  HorizontalAlignment="Stretch" />
-        </StackPanel>
+
+        <ScrollViewer>
+          <StackPanel Margin="18,16,18,20">
+            <TextBlock Text="配方属性" FontSize="24" FontWeight="Light" Foreground="#333333"
+                       HorizontalAlignment="Center" Margin="0,0,0,12" />
+
+            <StackPanel Spacing="7">
+              <StackPanel Orientation="Horizontal">
+                <TextBlock Text="名称" Classes="frowk" />
+                <TextBox Classes="finput" Width="196" Text="{Binding Name, Mode=TwoWay}" />
+              </StackPanel>
+              <StackPanel Orientation="Horizontal">
+                <TextBlock Text="描述" Classes="frowk" />
+                <TextBox Classes="finput" Width="196" Text="{Binding Desc, Mode=TwoWay}" />
+              </StackPanel>
+              <StackPanel Orientation="Horizontal">
+                <TextBlock Text="步骤数" Classes="frowk" />
+                <TextBox Classes="finput" Width="196" Text="{Binding StepCountText}" IsEnabled="False" />
+              </StackPanel>
+              <StackPanel Orientation="Horizontal">
+                <TextBlock Text="最近更新" Classes="frowk" />
+                <TextBox Classes="finput" Width="196" Text="{Binding UpdatedText}" IsEnabled="False" />
+              </StackPanel>
+            </StackPanel>
+
+            <Border Height="1" Background="#d5d5d5" Margin="0,12,0,14" />
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,10">
+              <Border Classes="exp3"><ctl:TecIcon Key="ui-chev-down" Tint="#555555" /></Border>
+              <TextBlock Text="应用到通道" FontSize="11.5" Foreground="#3d3d3d" VerticalAlignment="Center" />
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Text="目标通道" Classes="frowk" />
+              <ComboBox Classes="sel" Width="196" Height="23" ItemsSource="{Binding ApplyTargets}"
+                        SelectedItem="{Binding ApplyTarget, Mode=TwoWay}" />
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,12,0,6">
+              <Button Classes="btn primary" Content="应用到该通道" Command="{Binding ApplyToChannel}" />
+              <Button Classes="btn" Content="应用到全部通道" Command="{Binding ApplyToAll}" />
+            </StackPanel>
+
+            <TextBlock Classes="intro" Margin="0,8,0,0"
+                       Text="应用会替换目标通道当前的全部步骤，并跳转到配方编辑界面。" />
+          </StackPanel>
+        </ScrollViewer>
       </DockPanel>
     </Border>
   </Grid>

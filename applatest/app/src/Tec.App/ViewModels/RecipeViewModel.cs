@@ -100,7 +100,7 @@ public sealed class StepViewModel : ViewModelBase
         : Descriptor.SummaryOf(new CommandInput(Step.Parameters, Step.Rows));
     public string ModLine => $"{Module} · {Name}";
 
-    public string PlanStart => Fmt.Hms(Entry.Start);
+    public string PlanStart => Fmt.Offset(Entry.Start);
     public string PlanDuration => Fmt.Hms(Entry.Extent);
     public bool HasDuration => Entry.Extent > TimeSpan.Zero;
     public bool IsMissing => !Entry.Known;

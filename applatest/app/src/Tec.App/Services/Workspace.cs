@@ -94,11 +94,12 @@ public sealed class Workspace
 
         TimeScale = 60;                       // 演示用；接真机时改回 1
         DemoBench.Fill(Bench);
-        Library.AddRange(DemoBench.Recipes());
+        Library.AddRange(DemoBench.Library(Catalog));    // 配方库六条 = 原型 RECIPELIB
         // CH1/CH3 同构、CH2 pH 反馈、CH4 空——与原型预置一致
-        ChannelRecipes[1] = Library[0].Snapshot();
-        ChannelRecipes[2] = Library[1].Snapshot();
-        ChannelRecipes[3] = Library[0].Snapshot();
+        var presets = DemoBench.Recipes().ToList();
+        ChannelRecipes[1] = presets[0].Snapshot();
+        ChannelRecipes[2] = presets[1].Snapshot();
+        ChannelRecipes[3] = presets[0].Snapshot();
         ChannelRecipes[4] = new Recipe { Name = "新配方" };
         RebuildChannelsAsync().GetAwaiter().GetResult();
 

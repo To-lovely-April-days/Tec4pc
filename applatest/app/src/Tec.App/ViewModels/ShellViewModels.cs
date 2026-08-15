@@ -109,108 +109,219 @@ public sealed class StartViewModel : ViewModelBase
 
 // ── 配方库视图 ───────────────────────────────────────────────────────
 
+public sealed class LibRowViewModel : ViewModelBase
+{
+    private bool _sel;
+    public required Recipe Recipe { get; init; }
+    public required IReadOnlyList<string> Mix { get; init; }
+    public bool IsSelected
+    {
+        get => _sel;
+        set { if (Set(ref _sel, value)) Raise(nameof(InkHex)); }
+    }
+    public string Name => Recipe.Name;
+    /// <summary>属性面板改名后由列表行自己刷新（名字两处显示，必须同步）。</summary>
+    public void NameChanged() => RaiseAll(nameof(Name), nameof(Meta));
+    /// <summary>文档图标的描边色：选中转深蓝（原型 renderLibView 内联 SVG 的 stroke）。</summary>
+    public string InkHex => _sel ? "#0b3760" : "#9a9a9a";
+    /// <summary>原型 rm2：「N 步 · 更新 MM/dd」。</summary>
+    public string Meta => $"{Recipe.Steps.Count} 步 · 更新 {Recipe.ModifiedAt:MM/dd}";
+}
+
+/// <summary>
+/// 配方库（原型 renderLibView 的 1:1）：左 312px 列表（圆图标 + 名称 + 元信息 + 模块色带），
+/// 中间只读流程预览（与配方页同一种步骤卡），右侧配方属性 + 应用到通道。
+/// </summary>
 public sealed class RecipeLibViewModel : ViewModelBase
 {
     private readonly Workspace _ws;
     private readonly MainViewModel _shell;
-    private Recipe? _selected;
+    private LibRowViewModel? _selected;
+    private int _applyCh;
 
     public RecipeLibViewModel(Workspace ws, MainViewModel shell)
     {
         _ws = ws;
         _shell = shell;
-        foreach (var r in ws.Library) Items.Add(r);
-        _selected = Items.FirstOrDefault();
+        Reload();
+        Selected = Rows.FirstOrDefault();
 
         Duplicate = new RelayCommand(() =>
         {
             if (_selected is null) return;
-            var copy = _selected.Snapshot();
-            copy.Name = _selected.Name + " 副本";
-            ws.Library.Add(copy);
-            Items.Add(copy);
-            Selected = copy;
+            var copy = _selected.Recipe.Snapshot();
+            copy.Name = _selected.Recipe.Name + "_副本";
+            copy.ModifiedAt = DateTimeOffset.Now;
+            ws.Library.Insert(ws.Library.IndexOf(_selected.Recipe) + 1, copy);
+            Reload();
+            Selected = Rows.FirstOrDefault(r => ReferenceEquals(r.Recipe, copy));
         });
 
         Delete = new RelayCommand(() =>
         {
-            if (_selected is null) return;
-            ws.Library.Remove(_selected);
-            Items.Remove(_selected);
-            Selected = Items.FirstOrDefault();
+            if (_selected is null || ws.Library.Count <= 1) return;   // 至少保留一个配方
+            var i = ws.Library.IndexOf(_selected.Recipe);
+            ws.Library.Remove(_selected.Recipe);
+            Reload();
+            Selected = Rows.ElementAtOrDefault(Math.Min(i, Rows.Count - 1)) ?? Rows.FirstOrDefault();
         });
 
-        ApplyToRecipe = new RelayCommand(() =>
-        {
-            if (_selected is null) return;
-            var copy = _selected.Snapshot();
-            ws.ChannelRecipes[shell.Recipe.CurCh] = copy;
-            ws.LaneNames[shell.Recipe.CurCh] = copy.Name;
-            shell.Recipe.RefreshAll();
-            shell.Tab = MainViewModel.TabRecipe;
-        });
-
-        Refresh();
+        ApplyToChannel = new RelayCommand(() => Apply(false));
+        ApplyToAll = new RelayCommand(() => Apply(true));
     }
 
-    public ObservableCollection<Recipe> Items { get; } = new();
+    public ObservableCollection<LibRowViewModel> Rows { get; } = new();
     public ObservableCollection<StepViewModel> Flow { get; } = new();
+    public ObservableCollection<string> ApplyTargets { get; } = new();
 
     public RelayCommand Duplicate { get; }
     public RelayCommand Delete { get; }
-    public RelayCommand ApplyToRecipe { get; }
+    public RelayCommand ApplyToChannel { get; }
+    public RelayCommand ApplyToAll { get; }
 
-    public Recipe? Selected
+    public LibRowViewModel? Selected
     {
         get => _selected;
-        set { if (Set(ref _selected, value)) Refresh(); }
+        set
+        {
+            if (value is null) return;
+            var old = _selected;
+            if (!Set(ref _selected, value)) return;
+            if (old is not null) old.IsSelected = false;
+            value.IsSelected = true;
+            Refresh();
+        }
     }
 
-    public string Name => _selected?.Name ?? "—";
-    public string Desc => _selected is null
-        ? ""
-        : $"{_selected.Steps.Count} 步 · 预计 {Fmt.Hms(Plan.Total)} · {_selected.Author ?? "—"}";
+    public Recipe? Current => _selected?.Recipe;
 
-    public Schedule Plan { get; private set; } = Schedule.Empty;
+    public string Name
+    {
+        get => Current?.Name ?? "—";
+        set
+        {
+            if (Current is null || value == Current.Name) return;
+            Current.Name = value;
+            _selected!.NameChanged();
+            Raise();
+        }
+    }
+
+    public string Desc
+    {
+        get => Current?.Notes ?? "";
+        set { if (Current is not null) { Current.Notes = value; Raise(); } }
+    }
+
+    public string StepCountText => Current is null ? "" : Current.Steps.Count.ToString();
+    public string UpdatedText => Current is null ? "" : Current.ModifiedAt.ToString("MM/dd");
+
+    /// <summary>目标通道下拉：启用的通道，已在配方页有泳道的带上泳道名。</summary>
+    public string ApplyTarget
+    {
+        get => LabelOf(_applyCh);
+        set
+        {
+            var n = value?.Split(' ').FirstOrDefault()?.Replace("CH", "");
+            if (int.TryParse(n, out var c)) { _applyCh = c; Raise(); }
+        }
+    }
+
+    public bool HasTargets => ApplyTargets.Count > 0;
+
+    private string LabelOf(int ch)
+        => _ws.LaneNames.TryGetValue(ch, out var lane) && lane.Length > 0 ? $"CH{ch} · {lane}" : $"CH{ch}";
+
+    private void Reload()
+    {
+        Rows.Clear();
+        foreach (var r in _ws.Library)
+            Rows.Add(new LibRowViewModel { Recipe = r, Mix = MixOf(r) });
+    }
+
+    /// <summary>列表底部的模块色带：一步一段，结束实验不计（原型 rmix）。</summary>
+    private IReadOnlyList<string> MixOf(Recipe r)
+        => r.Steps.Where(s => s.CommandId != BuiltinCommands.Finish)
+                  .Select(s => ModuleInfo.ColorOf(_ws.Catalog.TryGet(s.CommandId, out var d) ? d.Module : "通用"))
+                  .ToList();
 
     private void Refresh()
     {
         Flow.Clear();
-        Plan = _selected is null ? Schedule.Empty : Schedule.Build(_selected, _ws.Catalog);
-        if (_selected is not null)
-            for (var i = 0; i < _selected.Steps.Count; i++)
+        var r = Current;
+        if (r is not null)
+        {
+            var plan = Schedule.Build(r, _ws.Catalog);
+            for (var i = 0; i < r.Steps.Count; i++)
             {
-                _ws.Catalog.TryGet(_selected.Steps[i].CommandId, out var d);
-                Flow.Add(new StepViewModel(i + 1, _selected.Steps[i], Plan.Entries[i], d));
+                if (r.Steps[i].CommandId == BuiltinCommands.Finish) continue;   // 原型预览不列结束实验
+                _ws.Catalog.TryGet(r.Steps[i].CommandId, out var d);
+                Flow.Add(new StepViewModel(i + 1, r.Steps[i], plan.Entries[i], d));
             }
-        RaiseAll(nameof(Name), nameof(Desc));
+        }
+
+        var chs = _ws.Channels.Where(c => c.Enabled).Select(c => c.Number).OrderBy(x => x).ToList();
+        ApplyTargets.Clear();
+        foreach (var c in chs) ApplyTargets.Add(LabelOf(c));
+        if (!chs.Contains(_applyCh)) _applyCh = chs.FirstOrDefault();
+
+        RaiseAll(nameof(Name), nameof(Desc), nameof(StepCountText), nameof(UpdatedText),
+                 nameof(ApplyTarget), nameof(HasTargets), nameof(Current));
+    }
+
+    /// <summary>应用会替换目标通道的全部步骤，并跳到配方页（原型 libApplyTo）。</summary>
+    private void Apply(bool all)
+    {
+        var r = Current;
+        if (r is null) return;
+        var targets = all
+            ? _ws.Channels.Where(c => c.Enabled).Select(c => c.Number).ToList()
+            : new List<int> { _applyCh };
+        if (targets.Count == 0 || targets[0] == 0) return;
+
+        foreach (var c in targets)
+        {
+            _ws.ChannelRecipes[c] = r.Snapshot();
+            _ws.LaneNames[c] = r.Name;
+        }
+        if (!all) _shell.Recipe.CurCh = targets[0];
+        _shell.Recipe.RefreshAll();
+        _shell.Tab = MainViewModel.TabRecipe;
     }
 }
 
 // ── 化合物数据库 ─────────────────────────────────────────────────────
 
-public sealed class CompoundViewModel
+public sealed class CompoundViewModel : ViewModelBase
 {
+    private bool _sel;
+    /// <summary>选中态由 CompoundsViewModel 统一维护（表格行整行加深加粗）。</summary>
+    public bool IsSelected { get => _sel; set => Set(ref _sel, value); }
+
     public required string Name { get; init; }
     public required string Cas { get; init; }
     public required string Formula { get; init; }
     public required double Mw { get; init; }
     public required double Mp { get; init; }
     public required string Category { get; init; }
-    /// <summary>溶解度三点：25 / 50 / 80 ℃ 附近的 g/g 溶剂。原型 sol 数组。</summary>
+    /// <summary>溶解度对温度的二次拟合系数 a + b·T + c·T²（g/100 mL 水）。原型 sol 数组。</summary>
     public required double[] Solubility { get; init; }
     public required string Solvent { get; init; }
     public required string Note { get; init; }
 
     public string MwText => Mw.ToString("F2", CultureInfo.InvariantCulture);
-    public string MpText => Mp.ToString("F1", CultureInfo.InvariantCulture) + " ℃";
+    public string MwUnitText => MwText + " g/mol";
+    public string MpText => Mp.ToString("F1", CultureInfo.InvariantCulture);
+    public string MpUnitText => MpText + " ℃";
+
+    /// <summary>原型 CATCOLOR。</summary>
     public string CategoryColor => Category switch
     {
         "有机酸" => "#ec5a24",
         "药物" => "#3f6fd8",
         "氨基酸" => "#2f8f49",
-        "无机盐" => "#8a63d2",
-        _ => "#dba32c"
+        "无机盐" => "#8a5a3b",
+        _ => "#c0399f"
     };
 }
 
@@ -246,7 +357,7 @@ public sealed class CompoundsViewModel : ViewModelBase
     {
         foreach (var c in new[] { "全部", "有机酸", "药物", "氨基酸", "无机盐", "糖类" }) Categories.Add(c);
         Apply();
-        _selected = Rows.FirstOrDefault();
+        Selected = Rows.FirstOrDefault();
     }
 
     public ObservableCollection<CompoundViewModel> Rows { get; } = new();
@@ -267,15 +378,27 @@ public sealed class CompoundsViewModel : ViewModelBase
     public CompoundViewModel? Selected
     {
         get => _selected;
-        set { if (Set(ref _selected, value)) RaiseAll(nameof(HasSelection), nameof(SolubilityText)); }
+        set
+        {
+            // 列表用筛选结果重建，选中项不能跟着被清掉（原型 curCmp 独立于筛选）
+            if (value is null) return;
+            var old = _selected;
+            if (!Set(ref _selected, value)) return;
+            if (old is not null) old.IsSelected = false;
+            value.IsSelected = true;
+            RaiseAll(nameof(HasSelection), nameof(ExtractNote), nameof(Coefficients));
+        }
     }
 
     public bool HasSelection => _selected is not null;
 
-    public string SolubilityText => _selected is null
-        ? ""
-        : $"25 ℃ {_selected.Solubility[0]:G3} · 50 ℃ {_selected.Solubility[1]:G3} · 80 ℃ {_selected.Solubility[2]:G3}"
-          + $"（g/g {_selected.Solvent}）";
+    /// <summary>曲线控件要的二次拟合系数。</summary>
+    public double[]? Coefficients => _selected?.Solubility;
+
+    public string ExtractNote => _selected is null ? "" : $"已将 {_selected.Name} 的物性数据提取到当前配方参数";
+
+    /// <summary>没有匹配项时表格给一句话，而不是空白（原型同款）。</summary>
+    public bool NoRows => Rows.Count == 0;
 
     private void Apply()
     {
@@ -289,5 +412,6 @@ public sealed class CompoundsViewModel : ViewModelBase
                 !c.Formula.Contains(_search, StringComparison.OrdinalIgnoreCase)) continue;
             Rows.Add(c);
         }
+        Raise(nameof(NoRows));
     }
 }

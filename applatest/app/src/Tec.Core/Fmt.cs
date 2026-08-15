@@ -26,6 +26,17 @@ public static class Fmt
         return (neg ? "−" : "+") + body;
     }
 
+    /// <summary>
+    /// 00:17:35 这种两位补零的相对时刻（原型 clock(sec)）。
+    /// 步骤卡的「预计开始」用它，与 Hms 的 0:17:35 不是一回事。
+    /// </summary>
+    public static string Offset(TimeSpan t)
+    {
+        var s = (int)Math.Round(t.TotalSeconds);
+        if (s < 0) s = 0;
+        return $"{s / 3600:D2}:{s % 3600 / 60:D2}:{s % 60:D2}";
+    }
+
     public static string Clock(DateTimeOffset t) => t.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
 
     public static string Stamp(DateTimeOffset t) => t.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);

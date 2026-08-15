@@ -32,6 +32,7 @@ public sealed class ChannelRunner
     private volatile TaskCompletionSource<bool>? _pauseGate;   // 非空 = 暂停中
     private volatile bool _skipRequested;
     private Task? _loop;
+    private StepRecord? _pending;                // Start() 里同步建好的第一步，循环接手它而不是另建一条
 
     public ChannelRunner(
         Channel channel,
@@ -99,8 +100,18 @@ public sealed class ChannelRunner
         _live = recipe.Snapshot();
         _skipRequested = false;
         _pauseGate = null;
+        _pending = null;
         _cts = new CancellationTokenSource();
         State = ChannelRunState.Running;
+
+        // 启动即成立：执行循环是异步跑的，但记录不能等它被调度上才出现。
+        // 操作人看到通道「运行中」的那一刻，第一步就必须已经在记录里可查——
+        // 否则此刻读记录的界面与导出会看到一张空表（§7.3）。
+        if (FirstExecutable(frozenRecipe, frozenSchedule) is { } first)
+        {
+            _pending = NewRecord(run, first.Step, first.Entry, TimeSpan.Zero, 1, startedAt);
+            run.Append(_pending);
+        }
 
         Log(EventKind.ChannelStarted, $"CH{Number} 启动：{frozenRecipe.Name}", user);
         Raise();
@@ -293,30 +304,66 @@ public sealed class ChannelRunner
         }
     }
 
-    private async Task ExecuteStepAsync(ChannelRun run, Step step, ScheduleEntry? entry,
-                                        TimeSpan planShift, int iteration, CancellationToken ct)
+    /// <summary>
+    /// 循环真正会执行的第一步（跳过停用步与循环标记）。循环标记不产生记录行，
+    /// 所以配方以「循环开始」打头时，第一步是它后面那一条。
+    /// </summary>
+    private static (Step Step, ScheduleEntry? Entry)? FirstExecutable(Recipe recipe, Schedule schedule)
+    {
+        for (var i = 0; i < recipe.Steps.Count; i++)
+        {
+            var s = recipe.Steps[i];
+            if (!s.Enabled) continue;
+            if (BuiltinCommands.IsLoopBegin(s.CommandId) || BuiltinCommands.IsLoopEnd(s.CommandId)) continue;
+            return (s, i < schedule.Entries.Count ? schedule.Entries[i] : null);
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// 建记录行。执行开始就建，不是等执行完才写：这样"正在跑什么"和"跑完了什么"
+    /// 是同一张表的不同状态，界面不需要维护第二份状态（§7.3）。
+    /// </summary>
+    private StepRecord NewRecord(ChannelRun run, Step step, ScheduleEntry? entry,
+                                 TimeSpan planShift, int iteration, DateTimeOffset at)
     {
         var known = _catalog.TryGet(step.CommandId, out var d);
-        var input = new CommandInput(step.Parameters, step.Rows);
-        var title = known ? Describe(d, input) : $"缺少驱动：{step.CommandId}";
-
-        // 第 4 步就建行，不是等执行完才写：这样"正在跑什么"和"跑完了什么"
-        // 是同一张表的不同状态，界面不需要维护第二份状态（§7.3）
-        var rec = new StepRecord
+        return new StepRecord
         {
             Index = entry?.Index ?? run.Steps.Count,
             StepId = step.StepId,
             CommandId = step.CommandId,
-            Title = title,
+            Title = known ? Describe(d, new CommandInput(step.Parameters, step.Rows))
+                          : $"缺少驱动：{step.CommandId}",
             Termination = known ? d.Termination : TerminationKind.Immediate,
             Iteration = iteration,
             PlanStart = (entry?.Start ?? TimeSpan.Zero) + planShift,
             PlanDuration = entry?.Duration ?? TimeSpan.Zero,
             ChannelStart = run.StartedAt,
-            ActualStart = _now(),
+            ActualStart = at,
             Status = StepStatus.Running
         };
-        run.Append(rec);
+    }
+
+    private async Task ExecuteStepAsync(ChannelRun run, Step step, ScheduleEntry? entry,
+                                        TimeSpan planShift, int iteration, CancellationToken ct)
+    {
+        var known = _catalog.TryGet(step.CommandId, out var d);
+        var input = new CommandInput(step.Parameters, step.Rows);
+
+        // Start() 已经把第一步建好了就接手它，别再建第二条
+        StepRecord rec;
+        if (_pending is { } pre && pre.StepId == step.StepId && pre.Iteration == iteration)
+        {
+            _pending = null;
+            rec = pre;
+            rec.ActualStart = _now();
+        }
+        else
+        {
+            rec = NewRecord(run, step, entry, planShift, iteration, _now());
+            run.Append(rec);
+        }
         StepChanged?.Invoke(this, rec);
         Raise();
 
@@ -346,6 +393,9 @@ public sealed class ChannelRunner
         var need = _resourceOf(Number, step.CommandId);
         if (need is not null)
         {
+            // 等待时长按仿真时钟量：租约里的 Waited 走的是真实墙钟，
+            // 在时标加速下（仿真 400×）算出来永远接近 0，写进记录没有意义。
+            var waitBegan = _now();
             lease = await _arbiter.AcquireAsync(need.ResourceId, Number, need.Priority, need.Policy, ct)
                                   .ConfigureAwait(false);
             if (lease is null)
@@ -353,9 +403,20 @@ public sealed class ChannelRunner
                 Finish(rec, EndReason.Failed, StepStatus.Failed, $"资源被占用：{need.ResourceId}");
                 return;
             }
-            if (lease.Waited > TimeSpan.FromSeconds(1))
+
+            var waited = _now() - waitBegan;
+            if (waited > TimeSpan.Zero)
+            {
+                // 排队的时候这一步并没有在执行。实际开始按拿到资源的时刻记，
+                // 否则记录里这一步的区间会把等待也算进去，看上去两个通道
+                // 同时占着同一台泵——共享设备的排队就查不出来了（§7.4）。
+                rec.ActualStart = _now();
+                StepChanged?.Invoke(this, rec);
+                Raise();
+            }
+            if (waited > TimeSpan.FromSeconds(1))
                 Log(EventKind.ResourceWait,
-                    $"等待 {need.ResourceId} {Fmt.Hms(lease.Waited)}", Operator, rec.Index);
+                    $"等待 {need.ResourceId} {Fmt.Hms(waited)}", Operator, rec.Index);
         }
 
         try
