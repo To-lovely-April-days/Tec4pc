@@ -35,6 +35,11 @@ public sealed class MainViewModel : ViewModelBase
         // 停止 / 暂停⇄继续 / 单步（跳过当前步）
         SimRun = new RelayCommand(() =>
         {
+            // 第一次启动时开一个批次，名字取当前实验名——记录里的批次名不能是空的，
+            // 导出页整条记录都靠它认人
+            if (ws.Engine.Record.Channels.Count == 0)
+                ws.Engine.NewBatch(ws.ExperimentName, "管理员", ws.Bench.Name);
+
             foreach (var ch in ws.Channels.Where(c => c.Enabled))
             {
                 var runner = ws.Engine.Runner(ch.Number);

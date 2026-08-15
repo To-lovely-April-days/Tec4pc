@@ -10,10 +10,9 @@
     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8"
                 Height="44" Margin="14,0" VerticalAlignment="Top">
       <TextBlock Text="实验：" FontSize="12" Foreground="#444444" VerticalAlignment="Center" />
-      <ComboBox Classes="sel" Width="260" VerticalAlignment="Center" SelectedIndex="0">
-        <ComboBoxItem Content="降温结晶_梯度筛选_0814" />
-        <ComboBoxItem Content="硝化_控温加料_0812" />
-      </ComboBox>
+      <!-- 同时只打开一个实验；能切换要等「打开实验」做出来 -->
+      <TextBlock Text="{Binding ExperimentName}" FontSize="12" FontWeight="SemiBold"
+                 Foreground="#2b2b2b" VerticalAlignment="Center" />
       <TextBlock Text="{Binding RunTop}" FontSize="12" Foreground="#444444"
                  VerticalAlignment="Center" Margin="14,0,0,0" />
     </StackPanel>

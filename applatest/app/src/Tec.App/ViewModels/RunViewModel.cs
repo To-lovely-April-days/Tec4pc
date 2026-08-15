@@ -157,7 +157,10 @@ public sealed class RunViewModel : ViewModelBase
     public RelayCommand ToggleChip { get; }
 
     // ── runtop（原型 renderRunTop）──────────────────────────────────
-    public string ExperimentName => "降温结晶_梯度筛选_0814";
+    /// <summary>批次跑起来了就用批次名，否则用当前实验名（还没存过盘就是「未命名实验」）。</summary>
+    public string ExperimentName => _ws.Engine.Record.Channels.Count > 0
+        ? _ws.Engine.Record.Name
+        : _ws.ExperimentName;
     public string RunTop
     {
         get

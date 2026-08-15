@@ -6,6 +6,7 @@ using Tec.Core;
 using Tec.Core.Catalog;
 using Tec.Core.Recipes;
 using Tec.Core.Scheduling;
+using Tec.Drivers.Simulator;
 
 namespace Tec.App.ViewModels;
 
@@ -55,22 +56,10 @@ public sealed class StartViewModel : ViewModelBase
         _shell = shell;
         Workspace = ws;
 
-        // 原型 RECENTS 五条，逐字段照搬
-        Add("降温结晶_梯度筛选_0814", @"D:\TecStudio\Experiments\降温结晶_梯度筛选_0814.tec",
-            "bench4", "正在运行", "live", "今天 09:12", "2.4 MB", true, true,
-            "4 通道并行：CH1/CH3 梯度降温对比，CH2 pH 反馈加料，CH4 停用。");
-        Add("硝化_控温加料_0812", @"D:\TecStudio\Experiments\硝化_控温加料_0812.tec",
-            "curve", "已完成", "", "08/12 17:40", "1.1 MB", false, false,
-            "恒速滴加 + Tr−Tj 放热监控，拉曼跟踪晶型转变。");
-        Add("溶解度曲线_自动测定", @"D:\TecStudio\Experiments\溶解度曲线_自动测定.tec",
-            "bench2", "双通道", "", "08/10 14:03", "860 KB", false, false,
-            "单台反应器拆分使用：CH1 升温溶解，浊度判定溶清点，自动记录。");
-        Add("介稳区_自动测定", @"D:\TecStudio\Experiments\介稳区_自动测定.tec",
-            "curve", "模板", "", "08/06 08:55", "3.7 MB", true, false,
-            "联用在线颗粒分析，无人值守自动测定结晶介稳区。");
-        Add("新建实验", "（未保存）",
-            "empty", "草稿", "draft", "08/05 11:20", "—", false, false,
-            "台面还没有放置任何设备。");
+        // 最近实验来自真实保存过的实验文件。存盘功能做好之前这里就是空的——
+        // 不摆演示卡片，免得看着像有数据其实点不开。
+        Recent.CollectionChanged += (_, _) => Raise(nameof(IsEmpty));
+        ws.BenchChanged += (_, _) => Raise(nameof(Subtitle));
 
         Pick = new RelayCommand(p =>
         {
@@ -78,6 +67,7 @@ public sealed class StartViewModel : ViewModelBase
             foreach (var c in Recent) c.On = false;
             card.On = true;
         });
+
         TogglePin = new RelayCommand(p =>
         {
             if (p is RecentCardViewModel card) card.Pinned = !card.Pinned;
@@ -88,16 +78,11 @@ public sealed class StartViewModel : ViewModelBase
         OpenRecipe = new RelayCommand(() => shell.Tab = MainViewModel.TabRecipe);
     }
 
-    private void Add(string n, string path, string th, string tag, string tagc,
-                     string when, string size, bool pinned, bool on, string note)
-        => Recent.Add(new RecentCardViewModel
-        {
-            Name = n, Path = path, Thumb = th, Tag = tag, TagClass = tagc,
-            When = when, Size = size, Note = note, Pinned = pinned, On = on
-        });
-
     public Workspace Workspace { get; }
     public ObservableCollection<RecentCardViewModel> Recent { get; } = new();
+
+    /// <summary>一条最近实验都没有时，卡片区换成一句说明——空白一片容易让人以为是没加载出来。</summary>
+    public bool IsEmpty => Recent.Count == 0;
 
     public RelayCommand Pick { get; }
     public RelayCommand TogglePin { get; }
@@ -105,7 +90,18 @@ public sealed class StartViewModel : ViewModelBase
     public RelayCommand OpenExport { get; }
     public RelayCommand OpenRecipe { get; }
 
-    public string Subtitle => "平行合成工作站 1.0 · 台面 PSW-4 · 2 台双通道反应器 · 4 通道";
+    /// <summary>副标题照台面实况写。台面空着就说空着，不写死「2 台反应器 · 4 通道」。</summary>
+    public string Subtitle
+    {
+        get
+        {
+            var hosts = Workspace.Bench.Devices.Count(d => d.DriverId == Rd105ReactorDriver.DriverId);
+            var chs = Workspace.Channels.Count;
+            return hosts == 0
+                ? "平行合成工作站 1.0 · 台面还是空的，去「台面」把设备拖进来"
+                : $"平行合成工作站 1.0 · {Workspace.Bench.Name} · {hosts} 台双通道反应器 · {chs} 通道";
+        }
+    }
 }
 
 // ── 配方库视图 ───────────────────────────────────────────────────────

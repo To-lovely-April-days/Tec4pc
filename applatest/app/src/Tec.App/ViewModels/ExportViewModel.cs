@@ -7,7 +7,10 @@ using Tec.Core.Records;
 
 namespace Tec.App.ViewModels;
 
-/// <summary>实验记录列表的一行（原型 RUNS + .rrow.one）。第 0 条是本次正在运行的批次。</summary>
+/// <summary>
+/// 实验记录列表的一行（原型 RUNS + .rrow.one）。整条都由真实批次记录换算得来，
+/// 没启动过通道就一条都没有——归档实验要等记录文件读取做出来才会出现。
+/// </summary>
 public sealed class RunEntryViewModel : ViewModelBase
 {
     private bool _sel;
@@ -87,60 +90,37 @@ public sealed class PrevRow
 /// <summary>
 /// 数据导出（原型 view-export 的 1:1）：
 /// 左 实验记录列表 ｜ 中 exhead + 通道 / 数据项 / 时间范围 / 预览 ｜ 右 342px 导出设置。
-/// 第 0 条实验 = 本次运行的批次（实时数据）；归档实验的记录由记录文件读取，原型不伪造，
-/// 这里同样给占位说明。
+/// 列表里只有真实跑过的批次——每次进入这一页都从执行引擎的记录重建。
+/// 历史归档实验要等「读取记录文件」做出来才会出现，这里不摆样例。
 /// </summary>
 public sealed class ExportViewModel : ViewModelBase
 {
     private readonly Workspace _ws;
-    private int _curRun;
+    private RunEntryViewModel? _cur;
     private string _range = "全程";
     private string _interval = "10 s";
     private string _baseLabel = "绝对时间";
     private bool _prevData = true;
     private string _dest = "local";
     private string _from = "00:00:00";
-    private string _to = "06:00:12";
+    private string _to = "00:00:00";
+    private string _signer = "管理员";
 
     private static readonly string[] DefOn =
         { "Tr", "Tj", "dT", "Tset", "pH", "rpm", "flow", "vol", "turb", "steps" };
 
+    /// <summary>探头驱动 → 数据项依赖的探头名。数据项能不能勾看台面上到底装了什么。</summary>
+    private static readonly Dictionary<string, string> ProbeNames = new(StringComparer.Ordinal)
+    {
+        ["tec.probe.ph"] = "pH",
+        ["tec.probe.turbidity"] = "浊度",
+        ["tec.probe.raman"] = "拉曼",
+        ["tec.probe.ir"] = "红外"
+    };
+
     public ExportViewModel(Workspace ws)
     {
         _ws = ws;
-
-        // 原型 RUNS：第 0 条为正在运行的批次，其余三条为归档演示数据
-        Runs.Add(new RunEntryViewModel
-        {
-            Id = "EXP-20260814-001", Name = "降温结晶_梯度筛选_0814", Start = "2026-08-14 09:12",
-            DurSec = 29915, Chs = new[] { 1, 2, 3, 4 }, RecipeName = "降温结晶_梯度筛选",
-            User = "管理员", State = "运行中", Probes = new[] { "pH", "拉曼", "浊度" },
-            Alarms = 1, Marks = 6, Live = true,
-            Spans = new Dictionary<int, (int, int)?>
-            { [1] = (0, 28655), [2] = (360, 10655), [3] = (1260, 28655), [4] = null }
-        });
-        Runs.Add(new RunEntryViewModel
-        {
-            Id = "EXP-20260812-003", Name = "硝化_控温加料_0812", Start = "2026-08-12 17:40",
-            DurSec = 14400, Chs = new[] { 1, 2 }, RecipeName = "硝化_控温加料",
-            User = "管理员", State = "已完成", Probes = new[] { "pH" }, Alarms = 2, Marks = 3,
-            Spans = new Dictionary<int, (int, int)?> { [1] = (0, 14400), [2] = (900, 13200) }
-        });
-        Runs.Add(new RunEntryViewModel
-        {
-            Id = "EXP-20260810-002", Name = "溶解度曲线_自动测定", Start = "2026-08-10 14:03",
-            DurSec = 28800, Chs = new[] { 1 }, RecipeName = "溶解度曲线_自动",
-            User = "张工", State = "已完成", Probes = new[] { "浊度" }, Alarms = 0, Marks = 12,
-            Spans = new Dictionary<int, (int, int)?> { [1] = (0, 28800) }
-        });
-        Runs.Add(new RunEntryViewModel
-        {
-            Id = "EXP-20260806-001", Name = "介稳区_自动测定", Start = "2026-08-06 08:55",
-            DurSec = 36000, Chs = new[] { 1, 2, 3, 4 }, RecipeName = "介稳区_自动测定",
-            User = "张工", State = "已完成", Probes = new[] { "浊度", "拉曼" }, Alarms = 1, Marks = 20,
-            Spans = new Dictionary<int, (int, int)?>
-            { [1] = (0, 34200), [2] = (600, 33600), [3] = (600, 33600), [4] = (1800, 30600) }
-        });
 
         foreach (var f in new (string, string, string)[]
         {
@@ -170,7 +150,7 @@ public sealed class ExportViewModel : ViewModelBase
         });
         SetPrev = new RelayCommand(p => { PrevData = Convert.ToString(p) == "data"; });
         DoExport = new RelayCommand(Export);
-        SelectRun(Runs[0]);
+        Rebuild();
     }
 
     public ObservableCollection<RunEntryViewModel> Runs { get; } = new();
@@ -189,8 +169,11 @@ public sealed class ExportViewModel : ViewModelBase
     public RelayCommand SetPrev { get; }
     public RelayCommand DoExport { get; }
 
-    public RunEntryViewModel Cur => Runs[_curRun];
-    public string ExName => Cur.Name;
+    public RunEntryViewModel? Cur => _cur;
+    /// <summary>一条记录都没有时整个中栏收起来，换成一句说明。</summary>
+    public bool HasRun => _cur is not null;
+    public bool NoRun => _cur is null;
+    public string ExName => _cur?.Name ?? "没有可导出的实验";
 
     public ObservableCollection<string> RangeOptions { get; } = new() { "全程", "自定义时段" };
     public ObservableCollection<string> IntervalOptions { get; } = new() { "原始（1 s）", "5 s", "10 s", "1 min" };
@@ -242,22 +225,117 @@ public sealed class ExportViewModel : ViewModelBase
         }
     }
 
+    /// <summary>导出真正会写到哪儿——写死一个 D:\ 路径，点了导出才发现文件不在那儿。</summary>
+    public string LocalDir => Path.Combine(AppContext.BaseDirectory, "exports");
+
+    /// <summary>可移动磁盘按实际枚举。没插盘就照实说没插。</summary>
+    public string UsbNote
+    {
+        get
+        {
+            try
+            {
+                var d = DriveInfo.GetDrives()
+                    .FirstOrDefault(x => x.DriveType == DriveType.Removable && x.IsReady);
+                if (d is null) return "未检测到可移动磁盘";
+                var name = d.VolumeLabel.Length > 0 ? d.VolumeLabel : "可移动磁盘";
+                return $"{name} ({d.Name.TrimEnd('\\')}) · 剩余 {d.AvailableFreeSpace / 1073741824.0:F1} GB";
+            }
+            catch { return "未检测到可移动磁盘"; }
+        }
+    }
+
     public string Dest { get => _dest; set { Set(ref _dest, value); RaiseAll(nameof(DestLocal), nameof(DestUsb)); } }
     public bool DestLocal => _dest == "local";
     public bool DestUsb => _dest == "usb";
     public RelayCommand SetDestLocal => new(() => Dest = "local");
     public RelayCommand SetDestUsb => new(() => Dest = "usb");
 
+    /// <summary>签名人。真的写进 GLP 文件的签名块，不是摆着看的。</summary>
+    public string Signer
+    {
+        get => _signer;
+        set => Set(ref _signer, value);
+    }
+
     public string Status { get; private set; } = "";
 
     private bool StepsOn => Groups.SelectMany(g => g.Items).FirstOrDefault(i => i.Key == "steps")?.On ?? false;
 
-    public void Reload() => SelectRun(Cur);
+    public void Reload() => Rebuild();
+
+    /// <summary>
+    /// 从执行引擎的批次记录重建列表。通道一条都没启动过就是空的——
+    /// 宁可空着也不摆演示行，免得点进去发现导不出东西。
+    /// </summary>
+    private void Rebuild()
+    {
+        var keep = _cur?.Id;
+        Runs.Clear();
+
+        var rec = _ws.Engine.Record;
+        if (rec.Channels.Count > 0) Runs.Add(Entry(rec));
+
+        _cur = Runs.FirstOrDefault(r => r.Id == keep) ?? Runs.FirstOrDefault();
+        if (_cur is { } run) SelectRun(run);
+        else
+        {
+            Meta.Clear(); Chips.Clear(); Groups.Clear();
+            PrevRows.Clear(); PrevHeader.Clear(); Sum.Clear();
+            _to = "00:00:00";
+            RaiseAll(nameof(ToText), nameof(ExName), nameof(FileNote), nameof(HasRun), nameof(NoRun));
+        }
+    }
+
+    /// <summary>把批次记录换算成列表行。时长、通道区间、报警与标记全部数出来，不写死。</summary>
+    private RunEntryViewModel Entry(RunRecord rec)
+    {
+        var now = _ws.Clock.Now;
+        var t0 = rec.FirstStart ?? rec.CreatedAt;
+        var end = rec.Channels.All(c => c.FinishedAt is not null)
+            ? rec.Channels.Max(c => c.FinishedAt!.Value)
+            : now;
+
+        var probes = _ws.Bench.Devices
+            .Select(d => ProbeNames.TryGetValue(d.DriverId, out var n) ? n : null)
+            .Where(n => n is not null).Select(n => n!).Distinct().ToList();
+
+        var spans = new Dictionary<int, (int Off, int Dur)?>();
+        foreach (var ch in rec.StartedChannels)
+        {
+            var run = rec.Of(ch);
+            spans[ch] = run is null
+                ? null
+                : ((int)(run.StartedAt - t0).TotalSeconds,
+                   (int)((run.FinishedAt ?? now) - run.StartedAt).TotalSeconds);
+        }
+
+        var running = rec.Channels.Any(c => c.State is ChannelRunState.Running or ChannelRunState.Paused);
+        var recipes = rec.Channels.Select(c => c.Baseline.Recipe.Name).Distinct().ToList();
+
+        return new RunEntryViewModel
+        {
+            Id = rec.RunId,
+            Name = rec.Name,
+            Start = t0.ToString("yyyy-MM-dd HH:mm"),
+            DurSec = Math.Max(0, (int)(end - t0).TotalSeconds),
+            Chs = rec.StartedChannels,
+            RecipeName = recipes.Count switch
+            { 0 => "—", 1 => recipes[0], _ => string.Join(" / ", recipes) },
+            User = rec.Operator ?? "管理员",
+            State = running ? "运行中" : "已完成",
+            Probes = probes,
+            Alarms = rec.Channels.Sum(c => c.Events.Count(e => e.Kind == EventKind.Alarm)),
+            Marks = rec.Channels.Sum(c => c.Events.Count(e => e.Kind == EventKind.OperatorMark)),
+            Live = true,
+            Spans = spans
+        };
+    }
 
     private void SelectRun(RunEntryViewModel run)
     {
         foreach (var r in Runs) r.IsSel = r == run;
-        _curRun = Runs.IndexOf(run);
+        _cur = run;
         _to = RunEntryViewModel.Hms(run.DurSec);
         Raise(nameof(ToText));
 
@@ -312,7 +390,7 @@ public sealed class ExportViewModel : ViewModelBase
             Groups.Add(group);
         }
 
-        RaiseAll(nameof(ExName), nameof(FileNote));
+        RaiseAll(nameof(ExName), nameof(FileNote), nameof(HasRun), nameof(NoRun));
         Refresh();
     }
 
@@ -323,7 +401,7 @@ public sealed class ExportViewModel : ViewModelBase
         PrevRows.Clear();
         Sum.Clear();
 
-        var run = Cur;
+        if (_cur is not { } run) return;
         var chs = Chips.Where(c => c.On).Select(c => c.Ch).OrderBy(x => x).ToList();
         var items = Groups.SelectMany(g => g.Items)
                           .Where(i => i.Key != "steps" && i.On && i.Available).ToList();
@@ -357,7 +435,7 @@ public sealed class ExportViewModel : ViewModelBase
 
         if (!run.Live)
         {
-            PrevRows.Add(new PrevRow { Cells = new[] { "归档实验的采样数据由记录文件读取，原型未内置。" } });
+            PrevRows.Add(new PrevRow { Cells = new[] { "归档实验的采样数据由记录文件读取，尚未实现。" } });
         }
         else
         {
@@ -447,9 +525,9 @@ public sealed class ExportViewModel : ViewModelBase
         }
         if (!run.Live)
         {
-            // 原型原话：归档实验不伪造记录
+            // 归档实验的记录不编——读不到就照实说读不到
             PrevRows.Add(new PrevRow { Cells = new[]
-                { $"归档实验的执行记录由记录文件读取，原型未内置。本次记录含 {run.Alarms} 次报警、{run.Marks} 处标记，导出时随步骤行一并写出。" } });
+                { $"归档实验的执行记录由记录文件读取，尚未实现。该批次含 {run.Alarms} 次报警、{run.Marks} 处标记，导出时随步骤行一并写出。" } });
             Sum.Add(new MetaPair { K = "报警", V = $"{run.Alarms} 次" });
             Sum.Add(new MetaPair { K = "标记", V = $"{run.Marks} 处" });
             Sum.Add(new MetaPair { K = "列", V = "11" });
@@ -485,9 +563,10 @@ public sealed class ExportViewModel : ViewModelBase
 
     private void Export()
     {
+        if (_cur is not { } cur) { Status = "还没有可导出的实验"; Raise(nameof(Status)); return; }
         var chs = Chips.Where(c => c.On).Select(c => c.Ch).ToList();
         if (chs.Count == 0) { Status = "请至少选择一个导出通道"; Raise(nameof(Status)); return; }
-        if (!Cur.Live) { Status = "归档实验由记录文件导出，原型未内置"; Raise(nameof(Status)); return; }
+        if (!cur.Live) { Status = "归档实验由记录文件导出，尚未实现读取"; Raise(nameof(Status)); return; }
 
         var rec = _ws.Engine.Record;
         var dir = Path.Combine(AppContext.BaseDirectory, "exports", rec.RunId);
@@ -518,7 +597,7 @@ public sealed class ExportViewModel : ViewModelBase
                 foreach (var s in ch.Steps) store.Write(ch.Channel, s);
                 foreach (var e in ch.Events) store.Write(e);
             }
-            store.Sign(rec.Operator ?? "管理员", "导出时签名");
+            store.Sign(_signer.Length > 0 ? _signer : rec.Operator ?? "管理员", "导出时签名");
             Status = $"已导出到 {dir}";
         }
         catch (Exception ex)

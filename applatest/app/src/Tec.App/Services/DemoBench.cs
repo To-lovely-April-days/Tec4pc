@@ -104,8 +104,9 @@ public static class DemoBench
             : null;
 
     /// <summary>
-    /// 预置配方按原型 recipes 的构型来：CH1 降温结晶、CH2 pH 反馈加料。
-    /// 参数键、默认值与原型 PSPEC 一致，改这里之前先改原型。
+    /// 示例配方：CH1 降温结晶、CH2 pH 反馈加料。参数键、默认值与原型 PSPEC 一致。
+    /// **只给 LoadSample() 这类演示 / 自测用**，不要接回 Boot()——
+    /// 程序启动时每个通道都该是空配方，预置几条会让人以为已经配好了。
     /// </summary>
     public static IEnumerable<Recipe> Recipes()
     {

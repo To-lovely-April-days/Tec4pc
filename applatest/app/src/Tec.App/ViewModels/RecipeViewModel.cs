@@ -218,9 +218,6 @@ public sealed class RecipeViewModel : ViewModelBase
         foreach (var r in ws.Library) Library.Add(r);
         _libPick = Library.FirstOrDefault();
 
-        foreach (var ch in ws.ChannelRecipes.Keys.OrderBy(x => x))
-            Lanes.Add(new LaneViewModel(this, ch));
-
         AddStep = new RelayCommand(p => { if (p is CommandItemViewModel c) AddCommand(c); });
         RemoveStep = new RelayCommand(p => { if (p is StepViewModel s) Delete(s); });
         CopyRecipe = new RelayCommand(DoCopy);
@@ -276,7 +273,7 @@ public sealed class RecipeViewModel : ViewModelBase
     public ObservableCollection<ModuleGroup> Groups { get; } = new();
     public ObservableCollection<LaneViewModel> Lanes { get; } = new();
     public ObservableCollection<Recipe> Library { get; } = new();
-    public ObservableCollection<int> CopyTargets { get; } = new();
+    public ObservableCollection<CopyTargetOption> CopyTargets { get; } = new();
     public ObservableCollection<ValidationIssue> Issues { get; } = new();
 
     public RelayCommand AddStep { get; }
@@ -298,10 +295,21 @@ public sealed class RecipeViewModel : ViewModelBase
 
     public string CurName => Workspace.LaneNames.TryGetValue(_curCh, out var n) ? $"通道 {_curCh}（{n}）" : $"通道 {_curCh}";
 
-    public int CopyTarget
+    /// <summary>工具条那个「配方：」下拉。泳道是动态的，不能靠 SelectedIndex="0" 顶着。</summary>
+    public LaneViewModel? CurLane
     {
-        get => _copyTarget;
-        set => Set(ref _copyTarget, value);
+        get => Lanes.FirstOrDefault(l => l.Channel == _curCh);
+        set { if (value is not null) CurCh = value.Channel; }
+    }
+
+    /// <summary>
+    /// 复制目标。可空——泳道是动态的，选项一度会是空的，
+    /// ComboBox 这时会把 SelectedItem 置回 null，收不下 null 就直接抛类型转换异常。
+    /// </summary>
+    public CopyTargetOption? CopyTarget
+    {
+        get => CopyTargets.FirstOrDefault(o => o.Channel == _copyTarget);
+        set { if (value is not null) Set(ref _copyTarget, value.Channel); else Raise(); }
     }
 
     public Recipe? LibPick
@@ -333,14 +341,19 @@ public sealed class RecipeViewModel : ViewModelBase
     public string SelectedTitle => _selectedStep?.Name ?? "未选中步骤";
     public string? SelectedTip => _selectedStep?.Descriptor?.Tip;
 
-    public Recipe Current => Workspace.ChannelRecipes.TryGetValue(_curCh, out var r)
-        ? r
-        : Workspace.ChannelRecipes[_curCh] = new Recipe { Name = "新配方" };
+    /// <summary>
+    /// 当前泳道的配方。台面上一个通道都没有时给一条不入库的空配方顶着，
+    /// 免得为了让界面不崩，反手在 ChannelRecipes 里造出一条根本不存在的通道。
+    /// </summary>
+    public Recipe Current => Workspace.ChannelRecipes.TryGetValue(_curCh, out var r) ? r : _scratch;
+
+    private readonly Recipe _scratch = new() { Name = "新配方" };
 
     // ── 中列操作 ─────────────────────────────────────────────────────
 
     private void AddCommand(CommandItemViewModel c)
     {
+        if (NoLanes) return;                      // 没有通道就没有地方放这一步
         var d = c.Descriptor;
         var step = new Step
         {
@@ -416,6 +429,7 @@ public sealed class RecipeViewModel : ViewModelBase
 
     public void RefreshAll()
     {
+        SyncLanes();
         foreach (var lane in Lanes)
         {
             lane.IsCurrent = lane.Channel == _curCh;
@@ -433,16 +447,40 @@ public sealed class RecipeViewModel : ViewModelBase
 
         CopyTargets.Clear();
         foreach (var ch in Workspace.ChannelRecipes.Keys.OrderBy(x => x))
-            if (ch != _curCh) CopyTargets.Add(ch);
-        if (!CopyTargets.Contains(_copyTarget) && CopyTargets.Count > 0)
-            CopyTarget = CopyTargets[0];
+            if (ch != _curCh) CopyTargets.Add(new CopyTargetOption(ch));
+        if (CopyTargets.All(o => o.Channel != _copyTarget) && CopyTargets.Count > 0)
+            _copyTarget = CopyTargets[0].Channel;
+        Raise(nameof(CopyTarget));
 
         Issues.Clear();
         foreach (var i in RecipeValidator.Validate(Current, Workspace.Catalog, Workspace.ChannelOf(_curCh)))
             Issues.Add(i);
 
-        RaiseAll(nameof(CurName), nameof(ChannelStates));
+        RaiseAll(nameof(CurName), nameof(ChannelStates), nameof(HasLanes), nameof(NoLanes), nameof(CurLane));
     }
+
+    /// <summary>
+    /// 泳道跟着通道走：台面上拖进一台双通道反应器就多两条泳道，拖走就收回去。
+    /// 台面空着的时候一条泳道都没有——这是对的，没有反应器就没有通道可配。
+    /// </summary>
+    private void SyncLanes()
+    {
+        var want = Workspace.ChannelRecipes.Keys.OrderBy(x => x).ToList();
+        for (var i = Lanes.Count - 1; i >= 0; i--)
+            if (!want.Contains(Lanes[i].Channel)) Lanes.RemoveAt(i);
+        foreach (var ch in want)
+        {
+            if (Lanes.Any(l => l.Channel == ch)) continue;
+            var at = Lanes.Count;
+            for (var i = 0; i < Lanes.Count; i++)
+                if (Lanes[i].Channel > ch) { at = i; break; }
+            Lanes.Insert(at, new LaneViewModel(this, ch));
+        }
+        if (Lanes.Count > 0 && Lanes.All(l => l.Channel != _curCh)) _curCh = Lanes[0].Channel;
+    }
+
+    public bool HasLanes => Lanes.Count > 0;
+    public bool NoLanes => Lanes.Count == 0;
 
     private void RebuildForm()
     {
@@ -483,4 +521,11 @@ public sealed record ChannelStateRow(int Channel, string Name, int StepCount, bo
     };
     public string Label => $"CH{Channel} · {Name}";
     public string State => StepCount == 0 ? "空" : $"{StepCount} 步";
+}
+
+/// <summary>「复制到」下拉的一项。用具名类型而不是裸 int：选项一度会是空的，
+/// ComboBox 这时会把 SelectedItem 置回 null，绑到 int 上就抛类型转换异常。</summary>
+public sealed record CopyTargetOption(int Channel)
+{
+    public string Label => $"通道 {Channel}";
 }

@@ -110,6 +110,17 @@
                   VerticalAlignment="Center" />
         </Grid>
 
+        <!-- 一条都没有时的说明。等存盘做出来，保存过的实验会自己出现在这里 -->
+        <Border IsVisible="{Binding IsEmpty}" Background="#fafafa" BorderBrush="#e6e6e6"
+                BorderThickness="1" CornerRadius="5" Padding="26,30" Margin="0,0,14,14">
+          <StackPanel Spacing="7">
+            <TextBlock Text="还没有实验" FontSize="15" Foreground="#6f6f6f" />
+            <TextBlock FontSize="12" Foreground="#9a9a9a" LineHeight="19" MaxWidth="520"
+                       TextWrapping="Wrap"
+                       Text="新建实验、在台面上摆好设备、配好配方，保存之后就会出现在这里。" />
+          </StackPanel>
+        </Border>
+
         <!-- .recgrid：292px 卡片自动铺排 -->
         <ItemsControl ItemsSource="{Binding Recent}">
           <ItemsControl.ItemsPanel>

@@ -52,11 +52,14 @@ public sealed class Workspace
     /// </summary>
     public Dictionary<int, Recipe> ChannelRecipes { get; } = new();
 
-    /// <summary>每条泳道的配方名称（原型 laneName）。</summary>
-    public Dictionary<int, string> LaneNames { get; } = new()
-    {
-        [1] = "降温结晶", [2] = "pH 反馈加料", [3] = "降温结晶（对照）", [4] = "新配方"
-    };
+    /// <summary>每条泳道的配方名称（原型 laneName）。配方是空的，名字也就只能是「新配方」。</summary>
+    public Dictionary<int, string> LaneNames { get; } = new();
+
+    /// <summary>
+    /// 当前实验名。存盘 / 读取做出来之前一直是「未命名实验」——
+    /// 界面上不写死某个实验名，免得看着像已经打开了什么东西。
+    /// </summary>
+    public string ExperimentName { get; set; } = "未命名实验";
 
     public event Action<int, string>? MarkRequested;
     public event EventHandler? BenchChanged;
@@ -93,14 +96,11 @@ public sealed class Workspace
         Engine.ResourceOf = DemoBench.ResourceOf;
 
         TimeScale = 60;                       // 演示用；接真机时改回 1
+
         // 台面从空开始：设备由用户从设备库拖进来。要示例台面调 LoadSample()。
-        Library.AddRange(DemoBench.Library(Catalog));    // 配方库六条 = 原型 RECIPELIB
-        // CH1/CH3 同构、CH2 pH 反馈、CH4 空——与原型预置一致
-        var presets = DemoBench.Recipes().ToList();
-        ChannelRecipes[1] = presets[0].Snapshot();
-        ChannelRecipes[2] = presets[1].Snapshot();
-        ChannelRecipes[3] = presets[0].Snapshot();
-        ChannelRecipes[4] = new Recipe { Name = "新配方" };
+        // 配方也从空开始——预置几条「降温结晶」看着像已经配好了，其实一步没有。
+        // 配方库那六条是工艺模板（产品自带内容），不是实验数据，留着。
+        Library.AddRange(DemoBench.Library(Catalog));
         RebuildChannelsAsync().GetAwaiter().GetResult();
 
         _safetyTimer = new Timer(_ => Engine.Safety.Evaluate(), null,
@@ -184,7 +184,16 @@ public sealed class Workspace
             }
         }
 
-        // 3. 执行器 + 安全限值。缺省从设备 Limits 推导，操作人只能收紧（§7.5）
+        // 3. 每个通道配一条空配方与一条泳道名。拖一台反应器进来就多两条泳道，
+        //    内容由用户自己往里加——不预置步骤。
+        foreach (var ch in _channels)
+        {
+            if (!ChannelRecipes.ContainsKey(ch.Number))
+                ChannelRecipes[ch.Number] = new Recipe { Name = "新配方" };
+            if (!LaneNames.ContainsKey(ch.Number)) LaneNames[ch.Number] = "新配方";
+        }
+
+        // 4. 执行器 + 安全限值。缺省从设备 Limits 推导，操作人只能收紧（§7.5）
         foreach (var ch in _channels)
         {
             Engine.Attach(ch);

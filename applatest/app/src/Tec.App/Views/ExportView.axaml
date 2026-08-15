@@ -16,6 +16,10 @@
           <Button Classes="tbtn sm" ToolTip.Tip="按日期筛选"><ctl:TecIcon Key="ui-ex-calendar" /></Button>
         </StackPanel>
         <ScrollViewer>
+          <StackPanel>
+          <TextBlock IsVisible="{Binding NoRun}" Margin="16,14,16,0" FontSize="11.5"
+                     Foreground="#9a9a9a" LineHeight="18" TextWrapping="Wrap"
+                     Text="还没有跑过实验。启动任一通道后，本次批次会出现在这里。" />
           <ItemsControl ItemsSource="{Binding Runs}">
             <ItemsControl.ItemTemplate>
               <DataTemplate>
@@ -35,6 +39,7 @@
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
+          </StackPanel>
         </ScrollViewer>
       </DockPanel>
     </Border>
@@ -63,6 +68,16 @@
 
       <ScrollViewer>
         <StackPanel Margin="22,14,22,30">
+
+          <!-- 没有记录时不摆一堆勾不动的设置项，直接说清楚要先跑一次 -->
+          <StackPanel IsVisible="{Binding NoRun}" Spacing="7" Margin="0,6,0,0">
+            <TextBlock Text="还没有可以导出的数据" FontSize="15" Foreground="#6f6f6f" />
+            <TextBlock FontSize="12" Foreground="#9a9a9a" LineHeight="19" MaxWidth="560"
+                       TextWrapping="Wrap"
+                       Text="导出的是执行引擎记下来的真实数据。先在「台面」摆好设备、在「配方」写好步骤，用模拟模式的运行按钮启动通道，跑过之后这里就有内容了。" />
+          </StackPanel>
+
+          <StackPanel IsVisible="{Binding HasRun}">
 
           <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,4">
             <Border Classes="exp3s"><ctl:TecIcon Key="ui-chev-down" Tint="#555555" /></Border>
@@ -215,6 +230,7 @@
               </ItemsControl.ItemTemplate>
             </ItemsControl>
           </Border>
+          </StackPanel>
         </StackPanel>
       </ScrollViewer>
     </DockPanel>
@@ -299,7 +315,9 @@
                 <ctl:TecIcon Key="ui-dest-local" Tint="#7a8791" VerticalAlignment="Center" />
                 <StackPanel>
                   <TextBlock Text="本地文件夹" FontSize="12" Foreground="#2b2b2b" />
-                  <TextBlock Text="D:\TecStudio\Export" FontSize="10.5" Foreground="#9a9a9a" />
+                  <TextBlock Text="{Binding LocalDir}" FontSize="10.5" Foreground="#9a9a9a"
+                             TextTrimming="CharacterEllipsis" MaxWidth="210"
+                             ToolTip.Tip="{Binding LocalDir}" />
                 </StackPanel>
               </StackPanel>
             </Border>
@@ -312,7 +330,7 @@
                 <ctl:TecIcon Key="ui-dest-usb" Tint="#7a8791" VerticalAlignment="Center" />
                 <StackPanel>
                   <TextBlock Text="USB 记忆盘" FontSize="12" Foreground="#2b2b2b" />
-                  <TextBlock Text="KINGSTON (E:) · 剩余 14.9 GB" FontSize="10.5" Foreground="#9a9a9a" />
+                  <TextBlock Text="{Binding UsbNote}" FontSize="10.5" Foreground="#9a9a9a" />
                 </StackPanel>
               </StackPanel>
             </Border>
@@ -330,7 +348,7 @@
                 <StackPanel Orientation="Horizontal" Spacing="10">
                   <TextBlock Text="签名人" FontSize="11.5" Foreground="#3d3d3d" Width="52"
                              VerticalAlignment="Center" />
-                  <TextBox Classes="finput" Width="180" Text="管理员" />
+                  <TextBox Classes="finput" Width="180" Text="{Binding Signer, Mode=TwoWay}" />
                 </StackPanel>
                 <CheckBox Content="本次导出写入系统日志" FontSize="11.5" IsChecked="True" MinHeight="0"
                           Margin="0,0,0,6" />
