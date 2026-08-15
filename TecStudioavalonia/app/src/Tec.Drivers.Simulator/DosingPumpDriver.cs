@@ -21,26 +21,21 @@ public sealed class DosingPumpDriver : IDeviceDriver
 
     public ParameterSchema ConnectionSchema { get; } = new(new[]
     {
-        new FieldSpec("端口", "串口", FieldKind.Choice)
-            { Default = "COM4", Choices = new[] { "COM1", "COM2", "COM3", "COM4", "COM5", "COM6" } },
-        new FieldSpec("波特率", "波特率", FieldKind.Choice)
-            { Default = "9600", Choices = new[] { "9600", "19200", "38400" } },
-        new FieldSpec("站号", "站号", FieldKind.Number) { Default = 2d, Min = 1, Max = 247, Step = 1, Decimals = 0 }
+        Field.Sel("端口", "串口", new[] { "COM1", "COM2", "COM3", "COM4", "COM5", "COM6" }, "COM4"),
+        Field.Sel("波特率", "波特率", new[] { "9600", "19200", "38400" }, "9600"),
+        Field.Num("站号", "站号", 2, "", 1, 247, 1)
     });
 
     public ParameterSchema ConfigSchema { get; } = new(new[]
     {
-        new FieldSpec("注射器", "注射器规格", FieldKind.Choice)
-            { Default = "10 mL", Choices = new[] { "1 mL", "5 mL", "10 mL", "25 mL", "50 mL" } },
-        new FieldSpec("管路内径", "管路内径", FieldKind.Number)
-            { Default = 1.6d, Unit = "mm", Min = 0.2, Max = 6, Step = 0.1, Decimals = 1 },
-        new FieldSpec("物料", "默认物料", FieldKind.Text) { Default = "去离子水" },
-        new FieldSpec("标定系数", "标定 mL/rev", FieldKind.Number)
-            { Default = 0.125d, Unit = "mL/rev", Min = 0.001, Max = 10, Step = 0.001, Decimals = 3,
-              Tip = "标定记录属于设备实例并进 GLP；未标定的泵会被配方校验拦下来" }
-    });
+        Field.Sel("注射器", "注射器规格", new[] { "1 mL", "5 mL", "10 mL", "25 mL", "50 mL" }, "10 mL"),
+        Field.Num("管路内径", "管路内径", 1.6, "mm", 0.2, 6, 0.1),
+        Field.Text("物料", "默认物料", "去离子水"),
+        Field.Num("标定系数", "标定 mL/rev", 0.125, "mL/rev", 0.001, 10, 0.001)
+    })
+    { Tip = "标定记录属于设备实例并进 GLP；未标定的泵会被配方校验拦下来。" };
 
-    public IReadOnlyList<CommandDescriptor> Commands => DosingCommands.All;
+    public IReadOnlyList<CommandDescriptor> Commands => CommandSpecs.Dosing;
 
     public async Task<ProbeResult> ProbeAsync(ParameterSet connection, CancellationToken ct)
     {
@@ -92,11 +87,10 @@ internal sealed class PumpSession : SimSession
     }
 
     private static readonly HandlerTable Table = new HandlerTable()
-        .Add(DosingCommands.Constant, () => new DoseHandler())
-        .Add(DosingCommands.Bolus, () => new DoseHandler())
-        .Add(DosingCommands.Segmented, () => new SegmentedDoseHandler())
-        .Add(DosingCommands.Feedback, () => new FeedbackDoseHandler())
-        .Add(DosingCommands.Stop, () => new StopDoseHandler());
+        .Add(CommandSpecs.DoseRate, () => new DoseHandler())
+        .Add(CommandSpecs.DoseVolume, () => new DoseHandler())
+        .Add(CommandSpecs.DoseSegments, () => new SegmentedDoseHandler())
+        .Add(CommandSpecs.DosePh, () => new FeedbackDoseHandler());
 
     public override ICommandHandler? Resolve(string commandId) => Table.Resolve(commandId);
 }
@@ -154,119 +148,6 @@ internal sealed class DosingImpl : IDosing
     }
 }
 
-internal static class DosingCommands
-{
-    public const string Constant = "tec.dose.constant";
-    public const string Bolus = "tec.dose.bolus";
-    public const string Segmented = "tec.dose.segmented";
-    public const string Feedback = "tec.dose.feedback";
-    public const string Stop = "tec.dose.stop";
-
-    private const string Mod = "加料";
-
-    private static string N(double v, int d = 1) => v.ToString("F" + d, CultureInfo.InvariantCulture);
-
-    private static TimeSpan ConstantEstimate(CommandInput p, EstimationContext ctx)
-    {
-        var volume = Math.Max(0, p.Num("体积"));
-        var rate = Math.Max(0.001, p.Num("流量", 1));
-        ctx.Volume += volume;
-        return TimeSpan.FromSeconds(volume / rate * 60.0);
-    }
-
-    private static TimeSpan SegmentedEstimate(CommandInput input, EstimationContext ctx)
-    {
-        var total = TimeSpan.Zero;
-        foreach (var row in input.RowsOrEmpty)
-        {
-            var volume = Math.Max(0, row.Num("体积"));
-            var rate = Math.Max(0.001, row.Num("流量", 1));
-            total += TimeSpan.FromSeconds(volume / rate * 60.0);
-            total += TimeSpan.FromSeconds(Math.Max(0, row.Num("间隔")));
-            ctx.Volume += volume;
-        }
-        return total;
-    }
-
-    public static IReadOnlyList<CommandDescriptor> All { get; } = new[]
-    {
-        new CommandDescriptor(Constant, "恒速加料", Mod, typeof(IDosing),
-            new ParameterSchema(new[]
-            {
-                new FieldSpec("体积", "总体积", FieldKind.Number)
-                    { Default = 10d, Unit = "mL", Min = 0.01, Max = 500, Step = 0.1, Decimals = 2,
-                      LimitFrom = "Dosing.Limits.MaxVolume" },
-                new FieldSpec("流量", "流量", FieldKind.Number)
-                    { Default = 2d, Unit = "mL/min", Min = 0.01, Max = 20, Step = 0.1, Decimals = 2,
-                      LimitFrom = "Dosing.Limits.Max" },
-                new FieldSpec("物料", "物料", FieldKind.Text) { Default = "" }
-            }),
-            TerminationKind.Quantity, ConstantEstimate,
-            p => $"恒速加料 {N(p.Num("体积"), 2)} mL @ {N(p.Num("流量"), 2)} mL/min")
-        { IconKey = "dose", SupportsHotEdit = true },
-
-        new CommandDescriptor(Bolus, "定量加料", Mod, typeof(IDosing),
-            new ParameterSchema(new[]
-            {
-                new FieldSpec("体积", "体积", FieldKind.Number)
-                    { Default = 2d, Unit = "mL", Min = 0.01, Max = 500, Step = 0.1, Decimals = 2 },
-                new FieldSpec("流量", "最大流量", FieldKind.Number)
-                    { Default = 10d, Unit = "mL/min", Min = 0.01, Max = 20, Step = 0.1, Decimals = 2 }
-            }),
-            TerminationKind.Quantity, ConstantEstimate,
-            p => $"定量加料 {N(p.Num("体积"), 2)} mL")
-        { IconKey = "dose-bolus" },
-
-        new CommandDescriptor(Segmented, "分段加料", Mod, typeof(IDosing),
-            new ParameterSchema(Array.Empty<FieldSpec>())
-            {
-                Table = new TableSpec("加料分段", new[]
-                {
-                    new FieldSpec("体积", "mL", FieldKind.Number) { Default = 2d, Unit = "mL", Min = 0.01, Max = 500, Decimals = 2 },
-                    new FieldSpec("流量", "mL/min", FieldKind.Number) { Default = 1d, Unit = "mL/min", Min = 0.01, Max = 20, Decimals = 2 },
-                    new FieldSpec("间隔", "段后等待 s", FieldKind.Duration) { Default = 300d, Unit = "s", Min = 0 }
-                }),
-                Tip = "每段加完等待设定时间再进下一段；每段都会在执行记录里留一行。"
-            },
-            TerminationKind.Quantity, SegmentedEstimate,
-            i => i.RowsOrEmpty.Count == 0
-                ? "分段加料（未设分段）"
-                : $"分段加料 {i.RowsOrEmpty.Count} 段，共 {N(i.RowsOrEmpty.Sum(r => r.Num("体积")), 2)} mL")
-        { IconKey = "dose-seg" },
-
-        // FR-5.14 自动反馈控制。它同时要 IDosing 与 IScalarSensor——
-        // 判据用哪一路由参数选，所以换成第三方浊度计也不用改这条指令（§9.1）
-        new CommandDescriptor(Feedback, "反馈加料", Mod, typeof(IDosing),
-            new ParameterSchema(new[]
-            {
-                new FieldSpec("判据标签", "判据来源", FieldKind.Choice)
-                    { Default = "pH", Choices = new[] { "pH", "turb" } },
-                new FieldSpec("目标", "判据目标", FieldKind.Number)
-                    { Default = 5.5d, Min = -1000, Max = 1000, Step = 0.1, Decimals = 2 },
-                new FieldSpec("方向", "加料使其", FieldKind.Choice)
-                    { Default = "下降至目标", Choices = new[] { "下降至目标", "上升至目标" } },
-                new FieldSpec("流量", "加料流量", FieldKind.Number)
-                    { Default = 0.5d, Unit = "mL/min", Min = 0.01, Max = 20, Step = 0.05, Decimals = 2 },
-                new FieldSpec("最大体积", "最大加料量", FieldKind.Number)
-                    { Default = 20d, Unit = "mL", Min = 0.1, Max = 500, Step = 0.5, Decimals = 2,
-                      LimitFrom = "Dosing.Limits.MaxVolume" },
-                new FieldSpec("预计", "预计耗时", FieldKind.Duration)
-                    { Default = 1200d, Unit = "s", Min = 0, Max = 86400, Tip = "只用于排期" },
-                new FieldSpec("超时", "超时保护", FieldKind.Duration) { Default = 5400d, Unit = "s", Min = 0, Max = 86400 },
-                ProbeCommands.FailAction()
-            }),
-            TerminationKind.Condition,
-            (p, ctx) => { ctx.Volume += p.Num("最大体积") * 0.5; return TimeSpan.FromSeconds(Math.Max(0, p.Num("预计", 1200))); },
-            p => $"反馈加料至 {p.Str("判据标签")} {N(p.Num("目标"), 2)}，最多 {N(p.Num("最大体积"), 1)} mL")
-        { IconKey = "dose-fb", SupportsHotEdit = true, AlsoRequires = new[] { typeof(IScalarSensor) } },
-
-        new CommandDescriptor(Stop, "停止加料", Mod, typeof(IDosing),
-            ParameterSchema.Empty, TerminationKind.Immediate,
-            (_, _) => TimeSpan.Zero, _ => "停止加料")
-        { IconKey = "dose-off" }
-    };
-}
-
 internal sealed class DoseHandler : ICommandHandler
 {
     public async Task<CommandOutcome> ExecuteAsync(CommandContext ctx, CommandInput p, CancellationToken ct)
@@ -276,12 +157,15 @@ internal sealed class DoseHandler : ICommandHandler
         if (dosing.Calibration is null)
             ctx.Note?.Invoke("泵未标定，加料量以命令值记录");
 
-        var volume = Math.Max(0, p.Num("体积"));
-        var rate = Math.Max(0.001, p.Num("流量", 1));
+        // 恒速加料给 rate；定量加料给 dur，流量由体积/时间反算——原型就是这么分的
+        var volume = Math.Max(0, p.Num("vol"));
+        var rate = p.Has("rate")
+            ? Math.Max(0.001, p.Num("rate"))
+            : Math.Max(0.001, volume / Math.Max(p.Num("dur", 1), 0.001));
         var began = ctx.Now();
         var startTotal = dosing.TotalVolume;
 
-        await dosing.DoseAsync(new DoseRequest(volume, rate) { Material = p.Str("物料") }, ct).ConfigureAwait(false);
+        await dosing.DoseAsync(new DoseRequest(volume, rate) { Material = p.Str("liq") }, ct).ConfigureAwait(false);
         var planned = TimeSpan.FromSeconds(volume / rate * 60.0);
         await SimTime.PollAsync(() => dosing.TotalVolume - startTotal >= volume,
                                 planned + TimeSpan.FromMinutes(5), ctx.TimeScale, ctx.Now, ct).ConfigureAwait(false);
@@ -307,8 +191,8 @@ internal sealed class SegmentedDoseHandler : ICommandHandler
         foreach (var row in input.RowsOrEmpty)
         {
             ct.ThrowIfCancellationRequested();
-            var volume = Math.Max(0, row.Num("体积"));
-            var rate = Math.Max(0.001, row.Num("流量", 1));
+            var volume = Math.Max(0, row.Num("v"));
+            var rate = Math.Max(0.001, row.Num("r"));
             var start = dosing.TotalVolume;
             await dosing.DoseAsync(new DoseRequest(volume, rate), ct).ConfigureAwait(false);
             var planned = TimeSpan.FromSeconds(volume / rate * 60.0);
@@ -316,7 +200,7 @@ internal sealed class SegmentedDoseHandler : ICommandHandler
                                     planned + TimeSpan.FromMinutes(5), ctx.TimeScale, ctx.Now, ct).ConfigureAwait(false);
             await dosing.StopAsync(ct).ConfigureAwait(false);
             grand += dosing.TotalVolume - start;
-            await SimTime.DelayAsync(TimeSpan.FromSeconds(Math.Max(0, row.Num("间隔"))), ctx.TimeScale, ct)
+            await SimTime.DelayAsync(TimeSpan.FromMinutes(Math.Max(0, row.Num("w"))), ctx.TimeScale, ct)
                          .ConfigureAwait(false);
         }
 
@@ -347,13 +231,14 @@ internal sealed class FeedbackDoseHandler : ICommandHandler
         var sensor = ctx.Capabilities.Get<IScalarSensor>()
                      ?? throw new InvalidOperationException("该通道没有反馈判据用的检测能力");
 
-        var tag = p.Str("判据标签", "pH");
-        var target = p.Num("目标");
-        var downward = p.Str("方向", "下降至目标").StartsWith("下降", StringComparison.Ordinal);
-        var rate = Math.Max(0.01, p.Num("流量", 0.5));
-        var cap = Math.Max(0, p.Num("最大体积", 20));
-        var timeout = TimeSpan.FromSeconds(Math.Max(0, p.Num("超时", 5400)));
-        var onFail = p.Str("信号失效", "停止并报警");
+        const string tag = "pH";
+        var target = p.Num("target", 7);
+        var band = Math.Max(0.01, p.Num("band", 0.2));
+        var rate = Math.Max(0.01, p.Num("maxRate", 1));
+        var cap = Math.Max(0, p.Num("maxVol", 50));
+        var timeout = TimeSpan.FromMinutes(Math.Max(1, p.Num("dur", 60)));
+        // 外部信号失效时绝不允许"继续按最后一个值加"——那是安全事故（§9.4）
+        const string onFail = "停止并报警";
 
         var began = ctx.Now();
         var startTotal = dosing.TotalVolume;
@@ -370,8 +255,14 @@ internal sealed class FeedbackDoseHandler : ICommandHandler
                 break;
             }
 
-            var hit = downward ? s.Value <= target : s.Value >= target;
-            if (hit) { reason = EndReason.ConditionMet; break; }
+            // 死区内就停泵等着，出了死区再加——原型 pH 反馈加料的语义
+            if (s.Value <= target + band)
+            {
+                await dosing.StopAsync(ct).ConfigureAwait(false);
+                if (ctx.Now() >= deadline) { reason = EndReason.TimerElapsed; break; }
+                await SimTime.DelayAsync(TimeSpan.FromSeconds(2), ctx.TimeScale, ct).ConfigureAwait(false);
+                continue;
+            }
 
             if (dosing.TotalVolume - startTotal >= cap)
             {
@@ -380,7 +271,7 @@ internal sealed class FeedbackDoseHandler : ICommandHandler
                 break;
             }
 
-            if (ctx.Now() >= deadline) { reason = EndReason.Timeout; break; }
+            if (ctx.Now() >= deadline) { reason = EndReason.TimerElapsed; break; }
 
             await dosing.SetRateAsync(rate, ct).ConfigureAwait(false);
             await SimTime.DelayAsync(TimeSpan.FromSeconds(2), ctx.TimeScale, ct).ConfigureAwait(false);

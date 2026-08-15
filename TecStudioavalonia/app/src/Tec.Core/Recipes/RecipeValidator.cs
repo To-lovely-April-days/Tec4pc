@@ -63,8 +63,9 @@ public static class RecipeValidator
                         $"第 {i + 1} 步 {f.Label} = {Fmt.Num(v)} 高于上限 {Fmt.Num(max)}") { StepIndex = i });
             }
 
-            // 超时保护：到不了的目标不能把通道永远挂住（§4.3）
-            if (d.RequiresTimeout && !s.Parameters.Has("超时"))
+            // 超时保护：到不了的目标不能把通道永远挂住（§4.3）。
+            // 只有声明了 timeout 字段的指令才查——原型的参数表里并非每条都有。
+            if (d.RequiresTimeout && d.Parameters.Find("timeout") is not null && !s.Parameters.Has("timeout"))
                 issues.Add(new ValidationIssue(IssueLevel.Warning, "no-timeout",
                     $"第 {i + 1} 步「{d.DisplayName}」按{Termination(d.Termination)}结束但没有设超时") { StepIndex = i });
 
@@ -147,7 +148,7 @@ public static class RecipeValidator
         {
             if (!catalog.TryGet(s.CommandId, out var d)) continue;
             if (d.RequiredCapability != typeof(IDosing)) continue;
-            total += Math.Max(0, s.Parameters.Num("体积"));
+            total += Math.Max(0, s.Parameters.Num("vol"));
         }
         if (total > 0 && total > dosing.Limits.MaxVolume)
             issues.Add(new ValidationIssue(IssueLevel.Error, "volume",

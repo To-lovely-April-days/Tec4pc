@@ -1,5 +1,7 @@
+using Tec.Core.Catalog;
 using Tec.Core.Records;
 using Tec.Core.Scheduling;
+using Tec.Drivers.Simulator;
 using Tec.Driver.Abi;
 using Xunit;
 
@@ -12,7 +14,7 @@ public class ExecutionTests
     {
         await using var h = new Harness(200);
         await h.ReactorChannelAsync(1);
-        var recipe = Harness.RecipeOf("等待", Harness.Mk("tec.flow.wait", ("时长", 600d)));
+        var recipe = Harness.RecipeOf("等待", Harness.Mk(BuiltinCommands.Wait, ("dur", 10d)));
 
         var run = h.Engine.StartChannel(1, recipe, "测试员");
         await Task.Delay(300);
@@ -32,12 +34,12 @@ public class ExecutionTests
     {
         await using var h = new Harness(600);
         await h.ReactorChannelAsync(1);
-        var recipe = Harness.RecipeOf("冻结", Harness.Mk("tec.flow.wait", ("时长", 60d)));
+        var recipe = Harness.RecipeOf("冻结", Harness.Mk(BuiltinCommands.Wait, ("dur", 1d)));
 
         var run = h.Engine.StartChannel(1, recipe, "测试员");
         var frozen = run.Baseline.Schedule.Total;
 
-        recipe.Steps.Add(Harness.Mk("tec.flow.wait", ("时长", 3600d)));
+        recipe.Steps.Add(Harness.Mk(BuiltinCommands.Wait, ("dur", 60d)));
 
         Assert.Equal(frozen, run.Baseline.Schedule.Total);
         Assert.Single(run.Baseline.Recipe.Steps);
@@ -51,8 +53,8 @@ public class ExecutionTests
         await using var h = new Harness(200);
         await h.ReactorChannelAsync(1);
         var recipe = Harness.RecipeOf("两步",
-            Harness.Mk("tec.flow.wait", ("时长", 60d)),
-            Harness.Mk("tec.flow.wait", ("时长", 60d)));
+            Harness.Mk(BuiltinCommands.Wait, ("dur", 1d)),
+            Harness.Mk(BuiltinCommands.Wait, ("dur", 1d)));
 
         var run = h.Engine.StartChannel(1, recipe, "测试员");
         await h.Engine.Runner(1)!.Completion;
@@ -75,7 +77,7 @@ public class ExecutionTests
         await using var h = new Harness(200);
         await h.ReactorChannelAsync(1);
         var recipe = Harness.RecipeOf("计时",
-            Harness.Mk("tec.flow.wait", ("时长", 120d)));
+            Harness.Mk(BuiltinCommands.Wait, ("dur", 2d)));
 
         var run = h.Engine.StartChannel(1, recipe);
         await h.Engine.Runner(1)!.Completion;
@@ -94,7 +96,7 @@ public class ExecutionTests
         await using var h = new Harness(600);
         await h.ReactorChannelAsync(1);
         await h.ReactorChannelAsync(2);
-        var recipe = Harness.RecipeOf("并行", Harness.Mk("tec.flow.wait", ("时长", 300d)));
+        var recipe = Harness.RecipeOf("并行", Harness.Mk(BuiltinCommands.Wait, ("dur", 5d)));
 
         var a = h.Engine.StartChannel(1, recipe);
         await Task.Delay(120);
@@ -115,7 +117,7 @@ public class ExecutionTests
         await using var h = new Harness(2000);
         await h.ReactorChannelAsync(1);
         var recipe = Harness.RecipeOf("够不着",
-            Harness.Mk("tec.temp.rampTo", ("目标", 500d), ("速率", 5d), ("容差", 0.1d), ("超时", 120d)));
+            Harness.Mk(CommandSpecs.PassiveCool, ("target", -35d), ("timeout", 2d)));
 
         var run = h.Engine.StartChannel(1, recipe);
         await h.Engine.Runner(1)!.Completion;
@@ -132,9 +134,9 @@ public class ExecutionTests
         await using var h = new Harness(2000);
         await h.ReactorChannelAsync(1);
         var recipe = Harness.RecipeOf("三轮",
-            Harness.Mk("tec.flow.loopBegin", ("方式", "按次数"), ("次数", 3d)),
-            Harness.Mk("tec.flow.wait", ("时长", 60d)),
-            Harness.Mk("tec.flow.loopEnd"));
+            Harness.Mk(BuiltinCommands.LoopBegin, ("by", "按次数"), ("n", 3d)),
+            Harness.Mk(BuiltinCommands.Wait, ("dur", 1d)),
+            Harness.Mk(BuiltinCommands.LoopEnd));
 
         var run = h.Engine.StartChannel(1, recipe);
         await h.Engine.Runner(1)!.Completion;
@@ -152,8 +154,8 @@ public class ExecutionTests
         await using var h = new Harness(200);
         await h.ReactorChannelAsync(1);
         var recipe = Harness.RecipeOf("暂停",
-            Harness.Mk("tec.flow.wait", ("时长", 60d)),
-            Harness.Mk("tec.flow.wait", ("时长", 60d)));
+            Harness.Mk(BuiltinCommands.Wait, ("dur", 1d)),
+            Harness.Mk(BuiltinCommands.Wait, ("dur", 1d)));
 
         var run = h.Engine.StartChannel(1, recipe);
         var runner = h.Engine.Runner(1)!;
@@ -173,14 +175,14 @@ public class ExecutionTests
         await using var h = new Harness(60);
         await h.ReactorChannelAsync(1);
         var recipe = Harness.RecipeOf("热改",
-            Harness.Mk("tec.flow.wait", ("时长", 600d)),
-            Harness.Mk("tec.flow.wait", ("时长", 600d)));
+            Harness.Mk(BuiltinCommands.Wait, ("dur", 10d)),
+            Harness.Mk(BuiltinCommands.Wait, ("dur", 10d)));
 
         var run = h.Engine.StartChannel(1, recipe);
         var runner = h.Engine.Runner(1)!;
         var target = recipe.Steps[1];
 
-        var result = runner.ProposeEdit(target.StepId, ParameterSet.Of(("时长", 60d)), "管理员", "缩短保温");
+        var result = runner.ProposeEdit(target.StepId, ParameterSet.Of(("dur", 1d)), "管理员", "缩短保温");
         Assert.True(result.Applied, result.Message);
 
         var audit = run.Events.FirstOrDefault(e => e.Kind == EventKind.ParameterChanged);
@@ -189,7 +191,7 @@ public class ExecutionTests
         Assert.NotEqual(audit.Before, audit.After);
 
         // 基线不变
-        Assert.Equal(TimeSpan.FromSeconds(1200), run.Baseline.Schedule.Total);
+        Assert.Equal(TimeSpan.FromMinutes(20), run.Baseline.Schedule.Total);
 
         runner.Abort("测试员");
         await runner.Completion;
@@ -201,7 +203,7 @@ public class ExecutionTests
         await using var h = new Harness(600);
         var ch = await h.ReactorChannelAsync(1);          // 没有泵
         var recipe = Harness.RecipeOf("要加料",
-            Harness.Mk("tec.dose.constant", ("体积", 2d), ("流量", 1d)));
+            Harness.Mk(CommandSpecs.DoseRate, ("vol", 2d), ("rate", 1d)));
 
         var issues = Recipes.RecipeValidator.Validate(recipe, h.Catalog, ch);
         Assert.Contains(issues, i => i.Level == Recipes.IssueLevel.Error && i.Code == "capability");
@@ -219,7 +221,7 @@ public class ExecutionTests
             : null;
 
         var recipe = Harness.RecipeOf("加料",
-            Harness.Mk("tec.dose.constant", ("体积", 4d), ("流量", 1d)));
+            Harness.Mk(CommandSpecs.DoseRate, ("vol", 4d), ("rate", 1d)));
 
         var a = h.Engine.StartChannel(1, recipe);
         var b = h.Engine.StartChannel(2, recipe);

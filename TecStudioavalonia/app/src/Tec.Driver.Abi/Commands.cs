@@ -116,6 +116,11 @@ public sealed record CommandDescriptor(
 {
     public string? IconKey { get; init; }
     /// <summary>
+    /// 步骤卡上那一行短摘要。原型把它和整句描述分开写（PSPEC.sum vs DESC），
+    /// 这里照搬：不给就回落到整句描述。
+    /// </summary>
+    public DescriptionTemplate? Summarize { get; init; }
+    /// <summary>
     /// 除 RequiredCapability 之外还要具备的能力。
     /// 反馈加料就是典型：既要 IDosing 才能加，又要 IScalarSensor 才有判据。
     /// </summary>
@@ -125,6 +130,18 @@ public sealed record CommandDescriptor(
     /// <summary>Setpoint / Condition 指令必须有超时保护，否则到不了的目标会把通道永远挂住。</summary>
     public bool RequiresTimeout => Termination is TerminationKind.Setpoint or TerminationKind.Condition;
     public string? Tip { get; init; }
+
+    public string SummaryOf(CommandInput input)
+    {
+        try { return (Summarize ?? Describe)(input); }
+        catch { return DisplayName; }
+    }
+
+    public string DescribeOf(CommandInput input)
+    {
+        try { return Describe(input); }
+        catch { return DisplayName; }
+    }
 }
 
 public sealed class CommandContext

@@ -23,8 +23,8 @@ public class ValidatorTests
     public void 循环不配对要报错()
     {
         var recipe = Harness.RecipeOf("漏了结束",
-            Harness.Mk("tec.flow.loopBegin", ("方式", "按次数"), ("次数", 2d)),
-            Harness.Mk("tec.flow.wait", ("时长", 60d)));
+            Harness.Mk(BuiltinCommands.LoopBegin, ("by", "按次数"), ("n", 2d)),
+            Harness.Mk(BuiltinCommands.Wait, ("dur", 1d)));
         var issues = RecipeValidator.Validate(recipe, Catalog());
         Assert.Contains(issues, i => i.Code == "loop-unbalanced" && i.Level == IssueLevel.Error);
     }
@@ -33,18 +33,71 @@ public class ValidatorTests
     public void 参数超出静态范围要报错()
     {
         var recipe = Harness.RecipeOf("超范围",
-            Harness.Mk("tec.temp.rampTo", ("目标", 900d), ("速率", 2d), ("超时", 600d)));
+            Harness.Mk(CommandSpecs.RampUp, ("target", 900d), ("rate", 2d)));
         var issues = RecipeValidator.Validate(recipe, Catalog());
         Assert.Contains(issues, i => i.Code == "out-of-range" && i.Level == IssueLevel.Error);
     }
 
     [Fact]
-    public void 到达目标类指令没设超时要提醒()
+    public void 声明了超时字段却没填要提醒()
     {
+        // 自然冷却是原型里唯一自带"超时放弃"的到达类指令
         var recipe = Harness.RecipeOf("没超时",
-            Harness.Mk("tec.temp.rampTo", ("目标", 60d), ("速率", 2d)));
+            Harness.Mk(CommandSpecs.PassiveCool, ("target", 25d)));
         var issues = RecipeValidator.Validate(recipe, Catalog());
         Assert.Contains(issues, i => i.Code == "no-timeout" && i.Level == IssueLevel.Warning);
+    }
+
+    [Fact]
+    public void 三十一条指令一条不少()
+    {
+        var c = Catalog();
+        c.Register(new TurbidityProbeDriver().Commands);
+        c.Register(new RamanProbeDriver().Commands);
+        c.Register(new InfraredProbeDriver().Commands);
+
+        // 原型 CMDS：通用 8 · 温度 8 · 搅拌 3 · 加料 4 · pH 3 · 在线分析 5
+        Assert.Equal(31, c.All.Count);
+        Assert.Equal(8, c.InModule("通用").Count);
+        Assert.Equal(8, c.InModule("温度模块").Count);
+        Assert.Equal(3, c.InModule("搅拌").Count);
+        Assert.Equal(4, c.InModule("加料").Count);
+        Assert.Equal(3, c.InModule("pH 控制").Count);
+        Assert.Equal(5, c.InModule("在线分析").Count);
+    }
+
+    [Fact]
+    public void 指令名与原型逐字一致()
+    {
+        var c = Catalog();
+        c.Register(new TurbidityProbeDriver().Commands);
+        c.Register(new RamanProbeDriver().Commands);
+        c.Register(new InfraredProbeDriver().Commands);
+        var names = c.All.Select(d => d.DisplayName).ToHashSet(StringComparer.Ordinal);
+
+        foreach (var n in new[]
+        {
+            "等待", "循环开始", "循环结束", "消息提示", "标记事件", "采样提醒", "安全联锁", "结束实验",
+            "升温至", "降温至", "梯度控温", "恒温保持", "结晶模式（蒸回流）", "夹套控温 Tj", "釜内控温 Tr", "自然冷却",
+            "设定转速", "转速梯度", "停止搅拌",
+            "恒速加料", "定量加料", "分段加料", "pH 反馈加料",
+            "pH 采集", "pH 保持（反馈）", "pH 上下限报警",
+            "拉曼采集", "红外采集", "浊度采集", "Tr−Tj 记录", "溶解度点测定"
+        })
+            Assert.True(names.Contains(n), $"指令「{n}」在原型里有，实装里没有");
+    }
+
+    [Fact]
+    public void 摘要与整句描述按原型分两句写()
+    {
+        var c = Catalog();
+        Assert.True(c.TryGet(CommandSpecs.RampUp, out var d));
+        var p = new ParameterSet().FillDefaults(d.Parameters);
+
+        // PSPEC.sum：卡片上那一行
+        Assert.Equal("釜内 Tr → 60 ℃ · 2 ℃/min", d.SummaryOf(p));
+        // DESC：整句工艺语句
+        Assert.Equal("升温 釜内 Tr 至 60 ℃，2 ℃/min", d.DescribeOf(p));
     }
 
     [Fact]
@@ -61,7 +114,7 @@ public class ValidatorTests
     public void 反馈加料同时要求加料与检测两项能力()
     {
         var catalog = Catalog();
-        Assert.True(catalog.TryGet("tec.dose.feedback", out var d));
+        Assert.True(catalog.TryGet(CommandSpecs.DosePh, out var d));
         Assert.Equal(typeof(IDosing), d.RequiredCapability);
         Assert.Contains(typeof(IScalarSensor), d.AlsoRequires);
     }
@@ -71,7 +124,7 @@ public class ValidatorTests
     {
         var catalog = Catalog();
         var recipe = Harness.RecipeOf("加料",
-            Harness.Mk("tec.dose.constant", ("体积", 10d), ("流量", 1d)));   // 10 min
+            Harness.Mk(CommandSpecs.DoseRate, ("vol", 10d), ("rate", 1d)));   // 10 min
         var t0 = new DateTimeOffset(2026, 1, 1, 9, 0, 0, TimeSpan.Zero);
 
         var plans = new Dictionary<int, (Schedule Schedule, DateTimeOffset Start)>
@@ -90,7 +143,7 @@ public class ValidatorTests
     {
         var catalog = Catalog();
         var recipe = Harness.RecipeOf("加料",
-            Harness.Mk("tec.dose.constant", ("体积", 2d), ("流量", 1d)));   // 2 min
+            Harness.Mk(CommandSpecs.DoseRate, ("vol", 2d), ("rate", 1d)));   // 2 min
         var t0 = new DateTimeOffset(2026, 1, 1, 9, 0, 0, TimeSpan.Zero);
 
         var plans = new Dictionary<int, (Schedule Schedule, DateTimeOffset Start)>

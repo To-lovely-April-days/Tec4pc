@@ -103,6 +103,10 @@ public static class DemoBench
             ? new ResourceNeed(channel <= 2 ? "P1" : "P2", ResourcePolicy.Queue)
             : null;
 
+    /// <summary>
+    /// 预置配方按原型 recipes 的构型来：CH1 降温结晶、CH2 pH 反馈加料。
+    /// 参数键、默认值与原型 PSPEC 一致，改这里之前先改原型。
+    /// </summary>
     public static IEnumerable<Recipe> Recipes()
     {
         yield return Cooling();
@@ -111,44 +115,45 @@ public static class DemoBench
 
     private static Recipe Cooling()
     {
-        var r = new Recipe { Name = "降温结晶 · 介稳区", Author = "工程师" };
-        r.Steps.Add(Mk("tec.stir.set", ("转速", 350d)));
-        r.Steps.Add(Mk("tec.light.set", ("开关", true), ("亮度", 0.8d)));
-        r.Steps.Add(Mk("tec.temp.rampTo", ("目标", 60d), ("速率", 2d), ("控温对象", "釜内 Tr"),
-                         ("容差", 0.5d), ("超时", 3600d)));
-        r.Steps.Add(Mk("tec.temp.hold", ("温度", 60d), ("时长", 1800d)));
-        r.Steps.Add(Mk("tec.flow.loopBegin", ("方式", "按次数"), ("次数", 3d)));
-        r.Steps.Add(Mk("tec.temp.coolTo", ("目标", 15d), ("速率", 0.4d), ("容差", 0.5d), ("超时", 7200d)));
-        r.Steps.Add(Mk("tec.turb.waitThreshold", ("阈值", 25d), ("方向", "≥ 阈值"), ("保持", 20d),
-                         ("预计", 1800d), ("超时", 10800d), ("信号失效", "停止并报警")));
-        r.Steps.Add(Mk("tec.flow.mark", ("标记", "成核点")));
-        r.Steps.Add(Mk("tec.temp.rampTo", ("目标", 55d), ("速率", 1.5d), ("控温对象", "釜内 Tr"),
-                         ("容差", 0.5d), ("超时", 3600d)));
-        r.Steps.Add(Mk("tec.flow.loopEnd"));
-        r.Steps.Add(Mk("tec.temp.coolTo", ("目标", 5d), ("速率", 0.3d), ("容差", 0.5d), ("超时", 7200d)));
-        r.Steps.Add(Mk("tec.flow.wait", ("时长", 3600d)));
-        r.Steps.Add(Mk("tec.stir.stop"));
-        r.Steps.Add(Mk("tec.temp.stop"));
+        var r = new Recipe { Name = "降温结晶", Author = "工程师" };
+        r.Steps.Add(Mk(CommandSpecs.SetSpeed, ("rpm", 400d), ("ramp", 5d)));
+        r.Steps.Add(Mk(CommandSpecs.RampUp, ("target", 60d), ("rate", 2d),
+                       ("obj", "釜内 Tr"), ("tol", 0.5d), ("wait", true)));
+        r.Steps.Add(Mk(CommandSpecs.Hold, ("dur", 30d), ("tol", 0.1d), ("obj", "釜内 Tr")));
+        r.Steps.Add(Mk(CommandSpecs.DoseRate, ("pump", "加料泵 1"), ("liq", "反溶剂"),
+                       ("rate", 0.5d), ("vol", 10d), ("sync", true)));
+        r.Steps.Add(Gradient());
+        r.Steps.Add(Mk(CommandSpecs.Raman, ("integ", 500d), ("avg", 3d), ("mode", "连续"), ("interval", 30d)));
+        r.Steps.Add(Mk(BuiltinCommands.Finish, ("cool", true), ("safe", 30d), ("stir", true)));
         return r;
     }
 
     private static Recipe Neutralize()
     {
-        var r = new Recipe { Name = "中和反应 · pH 反馈", Author = "工程师" };
-        r.Steps.Add(Mk("tec.stir.set", ("转速", 450d)));
-        r.Steps.Add(Mk("tec.temp.rampTo", ("目标", 35d), ("速率", 3d), ("控温对象", "釜内 Tr"),
-                         ("容差", 0.5d), ("超时", 1800d)));
-        r.Steps.Add(Mk("tec.dose.constant", ("体积", 8d), ("流量", 2d), ("物料", "底液")));
-        r.Steps.Add(Mk("tec.dose.feedback", ("判据标签", "pH"), ("目标", 5.5d), ("方向", "下降至目标"),
-                         ("流量", 0.5d), ("最大体积", 20d), ("预计", 1200d), ("超时", 5400d),
-                         ("信号失效", "停止并报警")));
-        r.Steps.Add(Mk("tec.ph.record", ("标注", "终点 pH")));
-        r.Steps.Add(Mk("tec.temp.hold", ("温度", 35d), ("时长", 900d)));
-        r.Steps.Add(Mk("tec.flow.prompt", ("提示", "取样送检后继续"), ("超时", 0d)));
-        r.Steps.Add(Mk("tec.temp.coolTo", ("目标", 20d), ("速率", 1d), ("容差", 0.5d), ("超时", 3600d)));
-        r.Steps.Add(Mk("tec.stir.stop"));
+        var r = new Recipe { Name = "pH 反馈加料", Author = "工程师" };
+        r.Steps.Add(Mk(CommandSpecs.SetSpeed, ("rpm", 400d), ("ramp", 5d)));
+        r.Steps.Add(Mk(CommandSpecs.RampUp, ("target", 60d), ("rate", 2d),
+                       ("obj", "釜内 Tr"), ("tol", 0.5d), ("wait", true)));
+        r.Steps.Add(Mk(CommandSpecs.DosePh, ("target", 7d), ("band", 0.2d), ("pump", "加料泵 2"),
+                       ("maxRate", 1d), ("maxVol", 50d), ("dur", 60d)));
+        r.Steps.Add(Mk(CommandSpecs.Hold, ("dur", 30d), ("tol", 0.1d), ("obj", "釜内 Tr")));
+        r.Steps.Add(Mk(CommandSpecs.PassiveCool, ("target", 25d), ("timeout", 120d)));
+        r.Steps.Add(Mk(BuiltinCommands.Finish, ("cool", true), ("safe", 30d), ("stir", true)));
         return r;
     }
+
+    /// <summary>梯度控温带分段表：3 段，与原型 PSPEC 的默认 rows 一致。</summary>
+    private static Step Gradient() => new()
+    {
+        CommandId = CommandSpecs.Gradient,
+        Parameters = ParameterSet.Of(("obj", "釜内 Tr"), ("loop", false)),
+        Rows = new List<ParameterSet>
+        {
+            ParameterSet.Of(("t", 60d), ("r", 1d), ("h", 10d)),
+            ParameterSet.Of(("t", 30d), ("r", 0.3d), ("h", 20d)),
+            ParameterSet.Of(("t", 5d), ("r", 0.1d), ("h", 30d))
+        }
+    };
 
     private static Step Mk(string commandId, params (string Key, object? Value)[] p)
         => new() { CommandId = commandId, Parameters = ParameterSet.Of(p) };

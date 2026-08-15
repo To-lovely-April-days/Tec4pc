@@ -19,22 +19,21 @@ public abstract class ScalarProbeDriver : IDeviceDriver
 
     public virtual ParameterSchema ConnectionSchema { get; } = new(new[]
     {
-        new FieldSpec("接入方式", "接入方式", FieldKind.Choice)
-            { Default = "Modbus TCP", Choices = new[] { "Modbus RTU", "Modbus TCP", "OPC UA", "厂商 SDK", "文件监视" },
-              Tip = "第三方仪器的协议五花八门；真正的工作量在这里，不在画图（§9.4）" },
-        new FieldSpec("地址", "地址 / 端点", FieldKind.Text) { Default = "192.168.1.50:502" },
-        new FieldSpec("点位", "点位 / 寄存器", FieldKind.Text) { Default = "40001" },
-        new FieldSpec("采样周期", "采样周期", FieldKind.Duration) { Default = 2d, Unit = "s", Min = 0.2, Max = 600 },
-        new FieldSpec("时间戳来源", "时间戳来源", FieldKind.Choice)
-            { Default = "本机接收时刻", Choices = new[] { "本机接收时刻", "仪器自带时间戳" },
-              Tip = "对方的时间戳可能没有、可能没对时；统一换算到单调钟并记录换算依据（§9.4）" }
-    });
+        Field.Sel("接入方式", "接入方式",
+            new[] { "Modbus RTU", "Modbus TCP", "OPC UA", "厂商 SDK", "文件监视" }, "Modbus TCP"),
+        Field.Text("地址", "地址 / 端点", "192.168.1.50:502"),
+        Field.Text("点位", "点位 / 寄存器", "40001"),
+        Field.Num("采样周期", "采样周期", 2, "s", 0.2, 600, 0.1),
+        Field.Sel("时间戳来源", "时间戳来源", new[] { "本机接收时刻", "仪器自带时间戳" }, "本机接收时刻")
+    })
+    { Tip = "第三方仪器的协议五花八门，真正的工作量在这里，不在画图。对方的时间戳可能没有、"
+            + "可能没对时；统一换算到单调钟并记录换算依据（§9.4）。" };
 
     public virtual ParameterSchema ConfigSchema { get; } = new(new[]
     {
-        new FieldSpec("量程下限", "量程下限", FieldKind.Number) { Default = 0d, Step = 0.1 },
-        new FieldSpec("量程上限", "量程上限", FieldKind.Number) { Default = 14d, Step = 0.1 },
-        new FieldSpec("失效判定", "多久没数算失效", FieldKind.Duration) { Default = 30d, Unit = "s", Min = 5, Max = 600 }
+        Field.Num("量程下限", "量程下限", 0, "", null, null, 0.1),
+        Field.Num("量程上限", "量程上限", 14, "", null, null, 0.1),
+        Field.Num("失效判定", "多久没数算失效", 30, "s", 5, 600, 1)
     });
 
     public async Task<ProbeResult> ProbeAsync(ParameterSet connection, CancellationToken ct)
@@ -83,9 +82,13 @@ internal sealed class ScalarSession : SimSession
     }
 
     private static readonly HandlerTable Table = new HandlerTable()
-        .Add(ProbeCommands.PhWait, () => new WaitScalarHandler("pH"))
-        .Add(ProbeCommands.PhRecord, () => new RecordScalarHandler("pH"))
-        .Add(ProbeCommands.TurbWait, () => new WaitScalarHandler("turb"));
+        .Add(CommandSpecs.PhSample, () => new SampleHandler("pH"))
+        .Add(CommandSpecs.PhHold, () => new PhHoldHandler())
+        .Add(CommandSpecs.PhAlarm, () => new AlarmHandler("pH"))
+        .Add(CommandSpecs.Turbidity, () => new SampleHandler("turb"))
+        .Add(CommandSpecs.Solubility, () => new SolubilityHandler())
+        .Add(CommandSpecs.Raman, () => new SampleHandler("raman"))
+        .Add(CommandSpecs.Infrared, () => new SampleHandler("ir"));
 
     public override ICommandHandler? Resolve(string commandId) => Table.Resolve(commandId);
 }
@@ -137,7 +140,7 @@ public sealed class PhProbeDriver : ScalarProbeDriver
     public override TagDescriptor Tag { get; } = new("pH", "pH", "", DataShape.Scalar)
     { Nominal = new ValueRange(0, 14), Period = TimeSpan.FromSeconds(2) };
 
-    public override IReadOnlyList<CommandDescriptor> Commands => ProbeCommands.Ph;
+    public override IReadOnlyList<CommandDescriptor> Commands => CommandSpecs.Ph;
 
     internal override double Simulate(double seconds, double noise)
         => 7.4 - 2.2 * (1 - Math.Exp(-seconds / 900.0)) + noise;
@@ -158,7 +161,7 @@ public sealed class TurbidityProbeDriver : ScalarProbeDriver
     public override TagDescriptor Tag { get; } = new("turb", "浊度", "NTU", DataShape.Scalar)
     { Nominal = new ValueRange(0, 500), Period = TimeSpan.FromSeconds(2) };
 
-    public override IReadOnlyList<CommandDescriptor> Commands => ProbeCommands.Turbidity;
+    public override IReadOnlyList<CommandDescriptor> Commands => CommandSpecs.TurbidityCommands;
 
     /// <summary>成核之前几乎为零，成核后陡升——这才是"突升 = 成核点"能被判出来的原因。</summary>
     internal override double Simulate(double seconds, double noise)
@@ -169,128 +172,154 @@ public sealed class TurbidityProbeDriver : ScalarProbeDriver
     }
 }
 
-// ── 指令 ─────────────────────────────────────────────────────────────
+// ── 指令处理器 ───────────────────────────────────────────────────────
 
-internal static class ProbeCommands
+internal static class ProbeHelp
 {
-    public const string PhWait = "tec.ph.waitReach";
-    public const string PhRecord = "tec.ph.record";
-    public const string TurbWait = "tec.turb.waitThreshold";
-
-    private static string N(double v, int d = 2) => v.ToString("F" + d, CultureInfo.InvariantCulture);
-
-    /// <summary>
-    /// 外部信号驱动动作时，**失效行为必须显式声明，默认不能是"继续"**（§9.4）。
-    /// pH 探头掉线了还在按最后一个 pH 值加料，是安全事故，不是数据问题。
-    /// </summary>
-    internal static FieldSpec FailAction() => new("信号失效", "信号失效时", FieldKind.Choice)
-    {
-        Default = "停止并报警",
-        Choices = new[] { "停止并报警", "保持当前输出并报警", "中止该通道" },
-        Tip = "没有「继续」这个选项。"
-    };
-
-    private static FieldSpec Timeout(double seconds) => new("超时", "超时保护", FieldKind.Duration)
-    { Default = seconds, Unit = "s", Min = 0, Max = 86400 };
-
-    /// <summary>条件类步骤的排期估算只能靠人给一个预期值——它两个方向都可能偏，偏差最大。</summary>
-    private static TimeSpan ConditionEstimate(CommandInput p, EstimationContext ctx)
-        => TimeSpan.FromSeconds(Math.Max(0, p.Num("预计", 600)));
-
-    private static FieldSpec Expected(double seconds) => new("预计", "预计耗时", FieldKind.Duration)
-    { Default = seconds, Unit = "s", Min = 0, Max = 86400, Tip = "只用于排期；实际以条件命中为准" };
-
-    public static IReadOnlyList<CommandDescriptor> Ph { get; } = new[]
-    {
-        new CommandDescriptor(PhWait, "等待 pH 达到", "pH", typeof(IScalarSensor),
-            new ParameterSchema(new[]
-            {
-                new FieldSpec("目标", "目标 pH", FieldKind.Number)
-                    { Default = 5.5d, Min = 0, Max = 14, Step = 0.1, Decimals = 2 },
-                new FieldSpec("方向", "判据方向", FieldKind.Choice)
-                    { Default = "≤ 目标", Choices = new[] { "≤ 目标", "≥ 目标" } },
-                new FieldSpec("保持", "持续满足", FieldKind.Duration)
-                    { Default = 30d, Unit = "s", Min = 0, Max = 3600, Tip = "去抖：避免一个噪点就判成到达" },
-                Expected(900), Timeout(7200), FailAction()
-            }),
-            TerminationKind.Condition, ConditionEstimate,
-            p => $"等待 pH {p.Str("方向", "≤ 目标").Replace("目标", N(p.Num("目标")))}")
-        { IconKey = "ph", SupportsHotEdit = true },
-
-        new CommandDescriptor(PhRecord, "记录 pH", "pH", typeof(IScalarSensor),
-            new ParameterSchema(new[]
-            {
-                new FieldSpec("标注", "标注", FieldKind.Text) { Default = "取样点 pH" }
-            }),
-            TerminationKind.Immediate, (_, _) => TimeSpan.Zero,
-            p => $"记录 pH：{p.Str("标注")}")
-        { IconKey = "mark" }
-    };
-
-    public static IReadOnlyList<CommandDescriptor> Turbidity { get; } = new[]
-    {
-        new CommandDescriptor(TurbWait, "等待浊度阈值", "在线分析", typeof(IScalarSensor),
-            new ParameterSchema(new[]
-            {
-                new FieldSpec("阈值", "浊度阈值", FieldKind.Number)
-                    { Default = 25d, Unit = "NTU", Min = 0, Max = 1000, Step = 1, Decimals = 1 },
-                new FieldSpec("方向", "判据方向", FieldKind.Choice)
-                    { Default = "≥ 阈值", Choices = new[] { "≥ 阈值", "≤ 阈值" } },
-                new FieldSpec("保持", "持续满足", FieldKind.Duration) { Default = 20d, Unit = "s", Min = 0, Max = 3600 },
-                Expected(1800), Timeout(10800), FailAction()
-            }),
-            TerminationKind.Condition, ConditionEstimate,
-            p => $"等待浊度 {p.Str("方向", "≥ 阈值").Replace("阈值", N(p.Num("阈值"), 1) + " NTU")}")
-        { IconKey = "turb", SupportsHotEdit = true }
-    };
+    public static IScalarSensor Sensor(CommandContext ctx)
+        => ctx.Capabilities.Get<IScalarSensor>()
+           ?? throw new InvalidOperationException("该通道没有对应的在线检测能力");
 }
 
-internal sealed class WaitScalarHandler : ICommandHandler
+/// <summary>
+/// 采集类指令（pH 采集 / 浊度采集 / 拉曼采集 / 红外采集）。
+/// 采集本身是常驻的——驱动一连上就在推数；这条指令做的是"从这里开始记进本次实验"，
+/// 所以它是 Immediate，不占时间。原型的 SECS 里也没有它们。
+/// </summary>
+internal sealed class SampleHandler : ICommandHandler
 {
     private readonly string _tag;
-    public WaitScalarHandler(string tag) => _tag = tag;
-
-    public async Task<CommandOutcome> ExecuteAsync(CommandContext ctx, CommandInput p, CancellationToken ct)
-    {
-        var sensor = ctx.Capabilities.Get<IScalarSensor>()
-                     ?? throw new InvalidOperationException("该通道没有对应的在线检测能力");
-        var target = p.Has("目标") ? p.Num("目标") : p.Num("阈值");
-        var upward = p.Str("方向").StartsWith("≥", StringComparison.Ordinal);
-        var hold = TimeSpan.FromSeconds(Math.Max(0, p.Num("保持")));
-        var timeout = TimeSpan.FromSeconds(Math.Max(0, p.Num("超时", 7200)));
-        var began = ctx.Now();
-        DateTimeOffset? satisfiedSince = null;
-
-        var ok = await SimTime.PollAsync(() =>
-        {
-            if (!sensor.TryReadLatest(_tag, out var s) || s.Quality == Quality.Bad)
-            {
-                satisfiedSince = null;
-                return false;
-            }
-            var hit = upward ? s.Value >= target : s.Value <= target;
-            if (!hit) { satisfiedSince = null; return false; }
-            satisfiedSince ??= ctx.Now();
-            return ctx.Now() - satisfiedSince.Value >= hold;
-        }, timeout, ctx.TimeScale, ctx.Now, ct).ConfigureAwait(false);
-
-        if (!ok) ctx.Note?.Invoke($"{_tag} 未在超时内满足判据，按「{p.Str("信号失效", "停止并报警")}」处理");
-        return new CommandOutcome(ok ? EndReason.ConditionMet : EndReason.Timeout, ctx.Now() - began);
-    }
-}
-
-internal sealed class RecordScalarHandler : ICommandHandler
-{
-    private readonly string _tag;
-    public RecordScalarHandler(string tag) => _tag = tag;
+    public SampleHandler(string tag) => _tag = tag;
 
     public Task<CommandOutcome> ExecuteAsync(CommandContext ctx, CommandInput p, CancellationToken ct)
     {
         var sensor = ctx.Capabilities.Get<IScalarSensor>();
-        if (sensor is not null && sensor.TryReadLatest(_tag, out var s))
-            ctx.Note?.Invoke($"{p.Str("标注")}：{_tag} = {s.Value:F2}（{s.Quality}）");
-        else
-            ctx.Note?.Invoke($"{p.Str("标注")}：{_tag} 无有效读数");
+        var now = sensor is not null && sensor.TryReadLatest(_tag, out var s)
+            ? $"当前 {s.Value:F2}（{s.Quality}）"
+            : "当前无有效读数";
+        ctx.Note?.Invoke($"开始采集 {_tag}，每 {Txt.Fx(p.Num("interval", 1))} s；{now}");
         return Task.FromResult(CommandOutcome.Instant());
     }
+}
+
+/// <summary>pH 保持（反馈）：靠加料把 pH 压在死区里，维持设定时长。</summary>
+internal sealed class PhHoldHandler : ICommandHandler
+{
+    public async Task<CommandOutcome> ExecuteAsync(CommandContext ctx, CommandInput p, CancellationToken ct)
+    {
+        var sensor = ProbeHelp.Sensor(ctx);
+        var dosing = ctx.Capabilities.Get<IDosing>();
+        var began = ctx.Now();
+        var target = p.Num("target", 7);
+        var band = Math.Max(0.01, p.Num("band", 0.1));
+        var deadline = began + TimeSpan.FromMinutes(Math.Max(1, p.Num("dur", 60)));
+
+        while (!ct.IsCancellationRequested && ctx.Now() < deadline)
+        {
+            if (!sensor.TryReadLatest("pH", out var s) || s.Quality is Quality.Bad or Quality.Stale)
+            {
+                if (dosing is not null) await dosing.StopAsync(ct).ConfigureAwait(false);
+                ctx.Note?.Invoke("pH 信号失效，已停止调节并报警");
+                return new CommandOutcome(EndReason.Alarm, ctx.Now() - began);
+            }
+
+            if (dosing is not null)
+            {
+                if (s.Value > target + band) await dosing.SetRateAsync(0.5, ct).ConfigureAwait(false);
+                else await dosing.StopAsync(ct).ConfigureAwait(false);
+            }
+            await SimTime.DelayAsync(TimeSpan.FromSeconds(5), ctx.TimeScale, ct).ConfigureAwait(false);
+        }
+
+        if (dosing is not null) await dosing.StopAsync(ct).ConfigureAwait(false);
+        return new CommandOutcome(EndReason.TimerElapsed, ctx.Now() - began);
+    }
+}
+
+/// <summary>pH 上下限报警：登记一条监视，不占时间。真正的安全层在 Core 的 SafetyMonitor。</summary>
+internal sealed class AlarmHandler : ICommandHandler
+{
+    private readonly string _tag;
+    public AlarmHandler(string tag) => _tag = tag;
+
+    public Task<CommandOutcome> ExecuteAsync(CommandContext ctx, CommandInput p, CancellationToken ct)
+    {
+        ctx.Note?.Invoke($"{_tag} 报警带 {Txt.Fx(p.Num("lo"))} ~ {Txt.Fx(p.Num("hi"))}，超出时{p.Str("act")}");
+        return Task.FromResult(CommandOutcome.Instant());
+    }
+}
+
+/// <summary>
+/// 溶解度点测定：等浊度降到溶清阈值以下并持续确认时长。
+/// 条件类步骤两个方向都可能偏，偏差最大——这正是它被单列成 Condition 的原因。
+/// </summary>
+internal sealed class SolubilityHandler : ICommandHandler
+{
+    public async Task<CommandOutcome> ExecuteAsync(CommandContext ctx, CommandInput p, CancellationToken ct)
+    {
+        var sensor = ProbeHelp.Sensor(ctx);
+        var began = ctx.Now();
+        var thr = p.Num("thr", 5);
+        var hold = TimeSpan.FromMinutes(Math.Max(0, p.Num("hold", 2)));
+        DateTimeOffset? since = null;
+
+        var ok = await SimTime.PollAsync(() =>
+        {
+            if (!sensor.TryReadLatest("turb", out var s) || s.Quality == Quality.Bad) { since = null; return false; }
+            if (s.Value > thr) { since = null; return false; }
+            since ??= ctx.Now();
+            return ctx.Now() - since.Value >= hold;
+        }, TimeSpan.FromHours(4), ctx.TimeScale, ctx.Now, ct).ConfigureAwait(false);
+
+        if (ok) ctx.Note?.Invoke($"溶清点：浊度持续低于 {Txt.Fx(thr)} 达 {Txt.Fx(p.Num("hold", 2))} min");
+        return new CommandOutcome(ok ? EndReason.ConditionMet : EndReason.Timeout, ctx.Now() - began);
+    }
+}
+
+// ── 在线拉曼 / 在线红外 ──────────────────────────────────────────────
+// 第一版按 L1 接：只回传一个特征峰强度，进趋势 / 判据 / 记录 / 导出。
+// 完整谱图是 L2（瀑布图 + 游标切片，只看不建模），要等真拿到原始数据流再做（§9.3）。
+
+public sealed class RamanProbeDriver : ScalarProbeDriver
+{
+    public const string DriverId = "tec.probe.raman";
+
+    public override DriverInfo Info { get; } = new(DriverId, "在线拉曼", "第三方", "1.0.0")
+    {
+        ChannelsPerDevice = 0,
+        IconKey = "raman",
+        Description = "光纤探头；第一版只回传特征峰强度（L1），谱图留在厂商软件里。",
+        Capabilities = new[] { nameof(IScalarSensor) }
+    };
+
+    public override TagDescriptor Tag { get; } = new("raman", "拉曼特征峰", "a.u.", DataShape.Scalar)
+    { Nominal = new ValueRange(0, 100), Period = TimeSpan.FromSeconds(30) };
+
+    public override IReadOnlyList<CommandDescriptor> Commands => CommandSpecs.RamanCommands;
+
+    /// <summary>晶型转化：特征峰随时间单调上升并趋于平台。</summary>
+    internal override double Simulate(double seconds, double noise)
+        => 4 + 62 * (1 - Math.Exp(-seconds / 2400.0)) + noise * 3;
+}
+
+public sealed class InfraredProbeDriver : ScalarProbeDriver
+{
+    public const string DriverId = "tec.probe.ir";
+
+    public override DriverInfo Info { get; } = new(DriverId, "在线红外", "第三方", "1.0.0")
+    {
+        ChannelsPerDevice = 0,
+        IconKey = "ir",
+        Description = "ATR 探头；同样按 L1 接入，回传特征峰面积。",
+        Capabilities = new[] { nameof(IScalarSensor) }
+    };
+
+    public override TagDescriptor Tag { get; } = new("ir", "红外特征峰", "a.u.", DataShape.Scalar)
+    { Nominal = new ValueRange(0, 100), Period = TimeSpan.FromSeconds(15) };
+
+    public override IReadOnlyList<CommandDescriptor> Commands => CommandSpecs.InfraredCommands;
+
+    /// <summary>反应物消耗：峰面积随反应进行下降。</summary>
+    internal override double Simulate(double seconds, double noise)
+        => 88 * Math.Exp(-seconds / 3000.0) + 6 + noise * 2;
 }

@@ -1,5 +1,7 @@
 using Tec.Core.Export;
+using Tec.Core.Catalog;
 using Tec.Core.Records;
+using Tec.Drivers.Simulator;
 using Xunit;
 
 namespace Tec.Core.Tests;
@@ -12,8 +14,8 @@ public class ExportTests
         await h.ReactorChannelAsync(1);
         await h.ReactorChannelAsync(2);
         var recipe = Harness.RecipeOf("导出用",
-            Harness.Mk("tec.stir.set", ("转速", 300d)),
-            Harness.Mk("tec.flow.wait", ("时长", 120d)));
+            Harness.Mk(CommandSpecs.SetSpeed, ("rpm", 300d), ("ramp", 5d)),
+            Harness.Mk(BuiltinCommands.Wait, ("dur", 2d)));
 
         h.Engine.StartChannel(1, recipe, "测试员");
         await Task.Delay(150);                 // CH2 晚一点启动：通道各自启动

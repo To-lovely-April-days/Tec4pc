@@ -67,6 +67,8 @@ public sealed class Workspace
         Drivers.RegisterBuiltin(new DosingPumpDriver());
         Drivers.RegisterBuiltin(new PhProbeDriver());
         Drivers.RegisterBuiltin(new TurbidityProbeDriver());
+        Drivers.RegisterBuiltin(new RamanProbeDriver());
+        Drivers.RegisterBuiltin(new InfraredProbeDriver());
         Drivers.Discover(Path.Combine(AppContext.BaseDirectory, "drivers"));
         Drivers.LoadAll();
 

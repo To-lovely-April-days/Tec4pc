@@ -20,7 +20,7 @@ public class ScheduleTests
     public void 升温耗时由温差与速率推算()
     {
         var recipe = Harness.RecipeOf("升温",
-            Harness.Mk("tec.temp.rampTo", ("目标", 60d), ("速率", 2d)));
+            Harness.Mk(CommandSpecs.RampUp, ("target", 60d), ("rate", 2d)));
         var s = Schedule.Build(recipe, Catalog(), new EstimationContext { Temperature = 20 });
 
         // (60 − 20) / 2 = 20 min
@@ -32,8 +32,8 @@ public class ScheduleTests
     public void 估算上下文串行推进而不是各算各的()
     {
         var recipe = Harness.RecipeOf("两段升温",
-            Harness.Mk("tec.temp.rampTo", ("目标", 40d), ("速率", 2d)),
-            Harness.Mk("tec.temp.rampTo", ("目标", 60d), ("速率", 2d)));
+            Harness.Mk(CommandSpecs.RampUp, ("target", 40d), ("rate", 2d)),
+            Harness.Mk(CommandSpecs.RampUp, ("target", 60d), ("rate", 2d)));
         var s = Schedule.Build(recipe, Catalog(), new EstimationContext { Temperature = 20 });
 
         Assert.Equal(TimeSpan.FromMinutes(10), s.Entries[0].Duration);  // 20 → 40
@@ -45,10 +45,10 @@ public class ScheduleTests
     public void 循环开始行的跨度覆盖全部轮次()
     {
         var recipe = Harness.RecipeOf("循环",
-            Harness.Mk("tec.flow.loopBegin", ("方式", "按次数"), ("次数", 3d)),
-            Harness.Mk("tec.flow.wait", ("时长", 600d)),
-            Harness.Mk("tec.flow.loopEnd"),
-            Harness.Mk("tec.flow.wait", ("时长", 60d)));
+            Harness.Mk(BuiltinCommands.LoopBegin, ("by", "按次数"), ("n", 3d)),
+            Harness.Mk(BuiltinCommands.Wait, ("dur", 10d)),
+            Harness.Mk(BuiltinCommands.LoopEnd),
+            Harness.Mk(BuiltinCommands.Wait, ("dur", 1d)));
         var s = Schedule.Build(recipe, Catalog());
 
         Assert.Equal(3, s.Entries[0].Repeats);
@@ -61,9 +61,9 @@ public class ScheduleTests
     public void 总时长取跨度而不是单轮时长()
     {
         var recipe = Harness.RecipeOf("只有循环",
-            Harness.Mk("tec.flow.loopBegin", ("方式", "按次数"), ("次数", 4d)),
-            Harness.Mk("tec.flow.wait", ("时长", 300d)),
-            Harness.Mk("tec.flow.loopEnd"));
+            Harness.Mk(BuiltinCommands.LoopBegin, ("by", "按次数"), ("n", 4d)),
+            Harness.Mk(BuiltinCommands.Wait, ("dur", 5d)),
+            Harness.Mk(BuiltinCommands.LoopEnd));
         var s = Schedule.Build(recipe, Catalog());
         Assert.Equal(TimeSpan.FromMinutes(20), s.Total);
     }
@@ -72,7 +72,7 @@ public class ScheduleTests
     public void 缺少驱动的步骤照样排得进去且被点名()
     {
         var recipe = Harness.RecipeOf("含未知指令",
-            Harness.Mk("tec.flow.wait", ("时长", 60d)),
+            Harness.Mk(BuiltinCommands.Wait, ("dur", 1d)),
             Harness.Mk("vendor.unknown.cmd"));
         var s = Schedule.Build(recipe, Catalog());
 
@@ -86,8 +86,8 @@ public class ScheduleTests
     public void 停用的步骤不占时间()
     {
         var recipe = Harness.RecipeOf("停用",
-            Harness.Mk("tec.flow.wait", ("时长", 600d)),
-            Harness.Mk("tec.flow.wait", ("时长", 600d)));
+            Harness.Mk(BuiltinCommands.Wait, ("dur", 10d)),
+            Harness.Mk(BuiltinCommands.Wait, ("dur", 10d)));
         recipe.Steps[0].Enabled = false;
         var s = Schedule.Build(recipe, Catalog());
 
@@ -98,11 +98,11 @@ public class ScheduleTests
     [Fact]
     public void 分段加料的时长来自分段表()
     {
-        var step = Harness.Mk("tec.dose.segmented");
+        var step = Harness.Mk(CommandSpecs.DoseSegments);
         var rows = new List<ParameterSet>
         {
-            ParameterSet.Of(("体积", 2d), ("流量", 1d), ("间隔", 60d)),   // 2 min + 1 min
-            ParameterSet.Of(("体积", 4d), ("流量", 2d), ("间隔", 0d))     // 2 min
+            ParameterSet.Of(("v", 2d), ("r", 1d), ("w", 1d)),   // 2 min + 1 min
+            ParameterSet.Of(("v", 4d), ("r", 2d), ("w", 0d))     // 2 min
         };
         var recipe = Harness.RecipeOf("分段", new Recipes.Step
         {
@@ -119,8 +119,8 @@ public class ScheduleTests
     public void 同样的输入必须得到同样的排期()
     {
         var recipe = Harness.RecipeOf("确定性",
-            Harness.Mk("tec.temp.rampTo", ("目标", 55d), ("速率", 1.5d)),
-            Harness.Mk("tec.temp.hold", ("温度", 55d), ("时长", 900d)));
+            Harness.Mk(CommandSpecs.RampUp, ("target", 55d), ("rate", 1.5d)),
+            Harness.Mk(CommandSpecs.Hold, ("dur", 15d)));
         var a = Schedule.Build(recipe, Catalog());
         var b = Schedule.Build(recipe, Catalog());
         Assert.Equal(a.Total, b.Total);

@@ -46,6 +46,47 @@ public sealed record TableSpec(string Label, IReadOnlyList<FieldSpec> Columns)
     public int MaxRows { get; init; } = 32;
 }
 
+/// <summary>
+/// FieldSpec 的构造快捷方式，对应原型里的 N / S / B / X 四个工厂函数。
+/// 保持一一对应，是为了让 31 条指令的声明能逐字对照原型，改动时看得出差在哪。
+/// </summary>
+public static class Field
+{
+    /// <summary>N(k,l,d,u,ex) —— 数值。小数位由 step 推导，与原型的显示精度一致。</summary>
+    public static FieldSpec Num(string key, string label, double def, string unit = "",
+                                double? min = null, double? max = null, double? step = null)
+        => new(key, label, FieldKind.Number)
+        {
+            Default = def,
+            Unit = unit,
+            Min = min,
+            Max = max,
+            Step = step,
+            Decimals = DecimalsOf(step)
+        };
+
+    /// <summary>S(k,l,o,d) —— 下拉。</summary>
+    public static FieldSpec Sel(string key, string label, IReadOnlyList<string> options, string def)
+        => new(key, label, FieldKind.Choice) { Default = def, Choices = options };
+
+    /// <summary>B(k,l,d) —— 勾选。</summary>
+    public static FieldSpec Bool(string key, string label, bool def)
+        => new(key, label, FieldKind.Toggle) { Default = def };
+
+    /// <summary>X(k,l,d,ph) —— 文本。</summary>
+    public static FieldSpec Text(string key, string label, string def, string? placeholder = null)
+        => new(key, label, FieldKind.Text) { Default = def, Tip = placeholder };
+
+    private static int DecimalsOf(double? step) => step switch
+    {
+        null => 1,
+        >= 1 => 0,
+        >= 0.1 => 1,
+        >= 0.01 => 2,
+        _ => 3
+    };
+}
+
 public sealed record ParameterSchema(IReadOnlyList<FieldSpec> Fields)
 {
     public TableSpec? Table { get; init; }
