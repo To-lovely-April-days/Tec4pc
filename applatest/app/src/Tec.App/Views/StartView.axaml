@@ -1,0 +1,232 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctl="clr-namespace:Tec.App.Controls"
+             xmlns:v="clr-namespace:Tec.App.Views"
+             x:Class="Tec.App.Views.StartView">
+
+  <!-- 原型 view-start：左 .startnav（16px 细体 + 3px 左侧选中条）｜右 .startmain -->
+  <Grid ColumnDefinitions="Auto,*">
+
+    <Border Grid.Column="0" Background="#fafafa" BorderBrush="#dcdcdc" BorderThickness="0,0,1,0">
+      <ScrollViewer Width="268">
+        <StackPanel Margin="0,18">
+        <Button Classes="snav on">
+          <StackPanel Orientation="Horizontal" Spacing="14">
+            <Panel Width="22"><ctl:TecIcon Key="ui-snav-open" Tint="#0b3760"
+                         HorizontalAlignment="Center" VerticalAlignment="Center" /></Panel>
+            <TextBlock Text="打开实验" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
+        <Button Classes="snav">
+          <StackPanel Orientation="Horizontal" Spacing="14">
+            <Panel Width="22"><ctl:TecIcon Key="ui-snav-new" Tint="#3d3d3d"
+                         HorizontalAlignment="Center" VerticalAlignment="Center" /></Panel>
+            <TextBlock Text="新建实验" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
+        <Button Classes="snav">
+          <StackPanel Orientation="Horizontal" Spacing="14">
+            <Panel Width="22"><ctl:TecIcon Key="ui-snav-save" Tint="#3d3d3d"
+                         HorizontalAlignment="Center" VerticalAlignment="Center" /></Panel>
+            <TextBlock Text="保存" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
+        <Button Classes="snav">
+          <StackPanel Orientation="Horizontal" Spacing="14">
+            <Panel Width="22"><ctl:TecIcon Key="ui-snav-saveas" Tint="#3d3d3d"
+                         HorizontalAlignment="Center" VerticalAlignment="Center" /></Panel>
+            <TextBlock Text="另存为" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
+        <Border Height="1" Background="#e2e2e2" Margin="22,10" />
+        <Button Classes="snav">
+          <StackPanel Orientation="Horizontal" Spacing="14">
+            <Panel Width="22"><ctl:TecIcon Key="ui-snav-import" Tint="#3d3d3d"
+                         HorizontalAlignment="Center" VerticalAlignment="Center" /></Panel>
+            <TextBlock Text="导入台面" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
+        <Button Classes="snav">
+          <StackPanel Orientation="Horizontal" Spacing="14">
+            <Panel Width="22"><ctl:TecIcon Key="ui-snav-export" Tint="#3d3d3d"
+                         HorizontalAlignment="Center" VerticalAlignment="Center" /></Panel>
+            <TextBlock Text="导出台面" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
+        <Button Classes="snav" Command="{Binding OpenExport}">
+          <StackPanel Orientation="Horizontal" Spacing="14">
+            <Panel Width="22"><ctl:TecIcon Key="ui-snav-glp" Tint="#3d3d3d"
+                         HorizontalAlignment="Center" VerticalAlignment="Center" /></Panel>
+            <TextBlock Text="数据导出（GLP）" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
+        <Button Classes="snav">
+          <StackPanel Orientation="Horizontal" Spacing="14">
+            <Panel Width="22"><ctl:TecIcon Key="ui-snav-settings" Tint="#3d3d3d"
+                         HorizontalAlignment="Center" VerticalAlignment="Center" /></Panel>
+            <TextBlock Text="设置" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
+        <Border Height="1" Background="#e2e2e2" Margin="22,10" />
+        <Button Classes="snav">
+          <StackPanel Orientation="Horizontal" Spacing="14">
+            <Panel Width="22"><ctl:TecIcon Key="ui-snav-about" Tint="#3d3d3d"
+                         HorizontalAlignment="Center" VerticalAlignment="Center" /></Panel>
+            <TextBlock Text="关于" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
+        <Button Classes="snav">
+          <StackPanel Orientation="Horizontal" Spacing="14">
+            <Panel Width="22"><ctl:TecIcon Key="ui-snav-exit" Tint="#3d3d3d"
+                         HorizontalAlignment="Center" VerticalAlignment="Center" /></Panel>
+            <TextBlock Text="退出" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
+        </StackPanel>
+      </ScrollViewer>
+    </Border>
+
+    <ScrollViewer Grid.Column="1">
+      <StackPanel Margin="30,22,30,40" MaxWidth="1400" HorizontalAlignment="Left">
+
+        <!-- .hero：56px 绿圆标 + 36px 极细标题 -->
+        <StackPanel Orientation="Horizontal" Spacing="16" Margin="0,0,0,6">
+          <Border Width="56" Height="56" CornerRadius="28" Background="#2f8f49"
+                  VerticalAlignment="Bottom">
+            <ctl:TecIcon Key="ui-mark" HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+          <StackPanel VerticalAlignment="Bottom">
+            <TextBlock Text="TecStudio" FontSize="36" FontWeight="ExtraLight"
+                       Foreground="#2b2b2b" LineHeight="38" />
+            <TextBlock Text="{Binding Subtitle}" FontSize="13" Foreground="#7a7a7a" Margin="0,6,0,0" />
+          </StackPanel>
+        </StackPanel>
+
+        <!-- .section-h：19px 细体 + 右侧细线 -->
+        <Grid ColumnDefinitions="Auto,*" Margin="0,26,0,10">
+          <TextBlock Grid.Column="0" Text="最近实验" FontSize="19" FontWeight="Light"
+                     Foreground="#3b3b3b" VerticalAlignment="Center" />
+          <Border Grid.Column="1" Height="1" Background="#e2e2e2" Margin="10,0,0,0"
+                  VerticalAlignment="Center" />
+        </Grid>
+
+        <!-- .recgrid：292px 卡片自动铺排 -->
+        <ItemsControl ItemsSource="{Binding Recent}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Border Width="292" Margin="0,0,14,14" CornerRadius="5" ClipToBounds="True"
+                      Background="White" BorderBrush="#e2e4e6" BorderThickness="1"
+                      Classes.on="{Binding On}" Cursor="Hand"
+                      PointerPressed="OnCardPressed">
+                <StackPanel>
+                  <!-- .rthumb：150px 高预览 + 左上标签 + 右上图钉 -->
+                  <Panel Height="150" Background="#f7f8f9">
+                    <Border BorderBrush="#edeef0" BorderThickness="0,0,0,1" />
+                    <ctl:TecIcon Key="{Binding ThumbKey}" Size="290"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center" />
+
+                    <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="10"
+                            CornerRadius="9" Padding="9,2"
+                            Background="{Binding TagClass, Converter={x:Static v:Converters.TagBg}}"
+                            BorderBrush="{Binding TagClass, Converter={x:Static v:Converters.TagBorder}}"
+                            BorderThickness="1">
+                      <TextBlock Text="{Binding Tag}" FontSize="10"
+                                 Foreground="{Binding TagClass, Converter={x:Static v:Converters.TagFg}}" />
+                    </Border>
+
+                    <Button Classes="rpin" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="8"
+                            Classes.pinned="{Binding Pinned}"
+                            Command="{Binding $parent[UserControl].DataContext.TogglePin}"
+                            CommandParameter="{Binding}">
+                      <ctl:TecIcon Key="ui-pin"
+                                   Tint="{Binding Pinned, Converter={x:Static v:Converters.PinTint}}" />
+                    </Button>
+                  </Panel>
+
+                  <!-- .rbody -->
+                  <StackPanel Margin="14,12,14,13">
+                    <TextBlock Text="{Binding Name}" FontSize="15" LineHeight="19"
+                               TextTrimming="CharacterEllipsis"
+                               Foreground="{Binding On, Converter={x:Static v:Converters.NameFg}}"
+                               FontWeight="{Binding On, Converter={x:Static v:Converters.NameWeight}}" />
+                    <TextBlock Text="{Binding Path}" FontSize="11" Foreground="#a2a2a2"
+                               Margin="0,3,0,0" TextTrimming="CharacterEllipsis"
+                               ToolTip.Tip="{Binding Path}" />
+                    <TextBlock Text="{Binding Note}" FontSize="11.5" Foreground="#6f6f6f"
+                               Margin="0,9,0,0" LineHeight="17" MinHeight="34"
+                               TextWrapping="Wrap" MaxLines="2" />
+                    <Border BorderBrush="#f2f2f2" BorderThickness="0,1,0,0" Margin="0,10,0,0" Padding="0,9,0,0">
+                      <StackPanel Orientation="Horizontal" Spacing="0" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding When}" FontSize="10.5" Foreground="#9a9a9a" />
+                        <Ellipse Width="3" Height="3" Fill="#cfcfcf" Margin="7,0" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding Size}" FontSize="10.5" Foreground="#9a9a9a" />
+                      </StackPanel>
+                    </Border>
+                  </StackPanel>
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+
+  <UserControl.Styles>
+    <!-- .snav：16px 细体，3px 左侧选中条，选中底 #e8f2fb + 深蓝字 -->
+    <Style Selector="Button.snav">
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Left" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="3,0,0,0" />
+      <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="Padding" Value="19,11" />
+      <Setter Property="FontSize" Value="16" />
+      <Setter Property="FontWeight" Value="Light" />
+      <Setter Property="Foreground" Value="#3d3d3d" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.snav:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#f2f8fd" />
+      <Setter Property="TextBlock.Foreground" Value="#0a84c8" />
+    </Style>
+    <Style Selector="Button.snav.on">
+      <Setter Property="BorderBrush" Value="#1a7fc4" />
+      <Setter Property="Background" Value="#e8f2fb" />
+      <Setter Property="Foreground" Value="#0b3760" />
+      <Setter Property="FontWeight" Value="Normal" />
+    </Style>
+    <Style Selector="Button.snav.on /template/ ContentPresenter">
+      <Setter Property="Background" Value="#e8f2fb" />
+    </Style>
+
+    <!-- .rcard 悬停 / 选中 -->
+    <Style Selector="Border.on">
+      <Setter Property="BorderBrush" Value="#1a7fc4" />
+      <Setter Property="BoxShadow" Value="0 0 0 2 #381a7fc4" />
+    </Style>
+
+    <Style Selector="Button.rpin">
+      <Setter Property="Width" Value="24" />
+      <Setter Property="Height" Value="24" />
+      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Opacity" Value="0" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border:pointerover Button.rpin">
+      <Setter Property="Opacity" Value="0.55" />
+    </Style>
+    <Style Selector="Button.rpin.pinned">
+      <Setter Property="Opacity" Value="1" />
+      <Setter Property="Background" Value="#e6ffffff" />
+    </Style>
+  </UserControl.Styles>
+</UserControl>

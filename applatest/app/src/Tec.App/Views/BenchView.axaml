@@ -1,0 +1,206 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctl="clr-namespace:Tec.App.Controls"
+             xmlns:v="clr-namespace:Tec.App.Views"
+             x:Class="Tec.App.Views.BenchView">
+
+  <!-- 三栏宽度照原型：设备库 118 · 台面自适应 · 属性面板 342 -->
+  <Grid ColumnDefinitions="118,*,342">
+
+    <!-- 设备库 -->
+    <Border Grid.Column="0" Background="#f4f4f4" BorderBrush="#dcdcdc" BorderThickness="0,0,1,0">
+      <DockPanel>
+        <TextBlock DockPanel.Dock="Top" Text="设备库" FontSize="11" Foreground="#7a7a7a"
+                   HorizontalAlignment="Center" Margin="0,6,0,8" />
+        <ScrollViewer Padding="0,0,0,40">
+          <ItemsControl ItemsSource="{Binding Library}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <StackPanel Width="100" Margin="0,0,0,10" HorizontalAlignment="Center"
+                            PointerPressed="OnLibraryPressed" Background="Transparent">
+                  <Border Width="100" Height="56" Background="White" BorderBrush="#cfcfcf"
+                          BorderThickness="1" CornerRadius="3" ClipToBounds="True">
+                    <ctl:DeviceArtView ArtKey="{Binding ArtKey}" ArtWidth="88"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                  </Border>
+                  <TextBlock Text="{Binding Name}" FontSize="10" Foreground="#4a4a4a"
+                             TextAlignment="Center" TextWrapping="Wrap" Margin="0,3,0,0" />
+                  <TextBlock Text="{Binding Problem}" IsVisible="{Binding HasProblem}"
+                             FontSize="9.5" Foreground="#b3261e" TextAlignment="Center" TextWrapping="Wrap" />
+                </StackPanel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </DockPanel>
+    </Border>
+
+    <!-- 台面：28px 网格底 + 绑定连线 + 设备 + 左下工具条 -->
+    <Panel Grid.Column="1" Background="White" ClipToBounds="True">
+      <ctl:GridBackdrop />
+      <ctl:BenchWires Nodes="{Binding Devices}" />
+
+      <ItemsControl ItemsSource="{Binding Devices}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate><Canvas /></ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.Styles>
+          <Style Selector="ItemsControl > ContentPresenter">
+            <Setter Property="Canvas.Left" Value="{Binding X}" />
+            <Setter Property="Canvas.Top" Value="{Binding Y}" />
+          </Style>
+        </ItemsControl.Styles>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <Border Padding="6,6,6,4" BorderThickness="1.6" CornerRadius="4"
+                    BorderBrush="Transparent" Background="Transparent"
+                    PointerPressed="OnDevicePressed">
+              <StackPanel>
+                <ctl:DeviceArtView ArtKey="{Binding ArtKey}" ArtWidth="{Binding Width}" />
+                <TextBlock Text="{Binding Title}" FontSize="11" Foreground="#3b3b3b"
+                           HorizontalAlignment="Center" Margin="0,2,0,0" />
+                <TextBlock Text="{Binding ChannelText}" FontSize="10" Foreground="#9a9a9a"
+                           HorizontalAlignment="Center" />
+              </StackPanel>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Left"
+                  VerticalAlignment="Bottom" Margin="12">
+        <Button Classes="tbtn sm" ToolTip.Tip="放大"><ctl:TecIcon Key="ui-tool-zoomin" /></Button>
+        <Button Classes="tbtn sm" ToolTip.Tip="缩小"><ctl:TecIcon Key="ui-tool-zoomout" /></Button>
+        <Button Classes="tbtn sm" ToolTip.Tip="适应"><ctl:TecIcon Key="ui-tool-fit" /></Button>
+        <Button Classes="tbtn sm" ToolTip.Tip="网格"><ctl:TecIcon Key="ui-tool-grid" /></Button>
+      </StackPanel>
+
+      <TextBlock Text="{Binding BenchSummary}" FontSize="11" Foreground="#9a9a9a"
+                 HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="14" />
+    </Panel>
+
+    <!-- 属性面板 -->
+    <Border Grid.Column="2" Background="#ececec" BorderBrush="#d2d2d2" BorderThickness="1,0,0,0">
+      <DockPanel>
+        <Border DockPanel.Dock="Bottom" BorderBrush="#d5d5d5" BorderThickness="0,1,0,0"
+                Padding="18,12,18,14">
+          <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center">
+            <Button Classes="tbtn foot" ToolTip.Tip="保存"><ctl:TecIcon Key="ui-foot-save" /></Button>
+            <Button Classes="tbtn foot" ToolTip.Tip="连接" Command="{Binding Probe}"><ctl:TecIcon Key="ui-foot-link" /></Button>
+            <Button Classes="tbtn foot" ToolTip.Tip="初始化" Command="{Binding Rebuild}"><ctl:TecIcon Key="ui-foot-init" /></Button>
+            <Button Classes="tbtn foot" ToolTip.Tip="删除选中设备"><ctl:TecIcon Key="ui-foot-trash" /></Button>
+          </StackPanel>
+        </Border>
+
+        <ScrollViewer>
+          <StackPanel Margin="18,16,18,20">
+
+            <!-- 面板标题固定是「设备属性」；设备名在 prop-head（21px 细体） -->
+            <TextBlock Text="设备属性" FontSize="24" FontWeight="Light" Foreground="#333333"
+                       HorizontalAlignment="Center" Margin="0,0,0,8" />
+            <TextBlock Text="{Binding SelectedTitle}" FontSize="21" FontWeight="Light"
+                       Foreground="#333333" HorizontalAlignment="Center" Margin="0,0,0,12" />
+
+            <StackPanel IsVisible="{Binding HasSelection}">
+              <Button Classes="pill" Content="手动控制面板" HorizontalAlignment="Center"
+                      Margin="0,0,0,16" />
+
+              <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6">
+                <Border Classes="exp3"><ctl:TecIcon Key="ui-chev-down" Tint="#555555" /></Border>
+                <TextBlock Text="通信配置" FontSize="11.5" Foreground="#3d3d3d" VerticalAlignment="Center" />
+              </StackPanel>
+              <v:SchemaFormView DataContext="{Binding ConnectionForm}" />
+              <Button Classes="btn" Content="测试连接" Command="{Binding Probe}"
+                      HorizontalAlignment="Left" Height="26" Margin="0,4,0,0" />
+              <TextBlock Text="{Binding ProbeResult}" FontSize="10.5" Foreground="#9a9a9a"
+                         LineHeight="16" TextWrapping="Wrap" Margin="0,6,0,0" />
+
+              <Border Height="1" Background="#d5d5d5" Margin="0,10,0,14" />
+              <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6">
+                <Border Classes="exp3"><ctl:TecIcon Key="ui-chev-down" Tint="#555555" /></Border>
+                <TextBlock Text="设备配置" FontSize="11.5" Foreground="#3d3d3d" VerticalAlignment="Center" />
+              </StackPanel>
+              <v:SchemaFormView DataContext="{Binding ConfigForm}" />
+            </StackPanel>
+
+            <Border Height="1" Background="#d5d5d5" Margin="0,10,0,14" />
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6">
+              <Border Classes="exp3"><ctl:TecIcon Key="ui-chev-down" Tint="#555555" /></Border>
+              <TextBlock Text="通道总表（勾选 = 启用）" FontSize="11.5" Foreground="#3d3d3d"
+                         VerticalAlignment="Center" />
+            </StackPanel>
+
+            <!-- .chtable：色块 + CHn + 来源 + 探头标签 + 启停勾选 -->
+            <Border Background="White" BorderBrush="#dcdcdc" BorderThickness="1" CornerRadius="3">
+              <ItemsControl ItemsSource="{Binding ChannelRows}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border BorderBrush="#eeeeee" BorderThickness="0,0,0,1" Padding="10,7">
+                      <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto">
+                        <Border Grid.Column="0" Width="12" Height="12" CornerRadius="3"
+                                Background="{Binding ColorHex}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="12" FontWeight="SemiBold"
+                                   Foreground="#2b2b2b" Margin="8,0,0,0" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="2" Text="{Binding Host}" FontSize="11" Foreground="#8d8d8d"
+                                   Margin="8,0,0,0" VerticalAlignment="Center" />
+                        <ItemsControl Grid.Column="3" ItemsSource="{Binding Probes}" VerticalAlignment="Center">
+                          <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="4" /></ItemsPanelTemplate>
+                          </ItemsControl.ItemsPanel>
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                              <Border Background="#fafafa" BorderBrush="#c8c8c8" BorderThickness="1"
+                                      CornerRadius="8" Padding="6,1">
+                                <TextBlock Text="{Binding}" FontSize="9" Foreground="#7a7a7a" />
+                              </Border>
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <CheckBox Grid.Column="4" IsChecked="{Binding Enabled, Mode=TwoWay}"
+                                  Margin="8,0,0,0" VerticalAlignment="Center" MinHeight="0" />
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </Border>
+
+            <TextBlock FontSize="11.5" Foreground="#5a5a5a" LineHeight="18" TextWrapping="Wrap"
+                       Margin="0,6,0,0"
+                       Text="两台反应器可组成 4 通道高通量系统，也可拆分为两套独立系统分别运行；停用的通道不参与配方与运行。" />
+          </StackPanel>
+        </ScrollViewer>
+      </DockPanel>
+    </Border>
+  </Grid>
+
+  <UserControl.Styles>
+    <Style Selector="Button.pill">
+      <Setter Property="Height" Value="26" />
+      <Setter Property="Padding" Value="16,0" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="Background" Value="#f7f7f7" />
+      <Setter Property="BorderBrush" Value="#8b8b8b" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Foreground" Value="#333333" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.pill:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#e3f0f9" />
+      <Setter Property="BorderBrush" Value="#1a91d6" />
+    </Style>
+    <Style Selector="Border.exp3">
+      <Setter Property="Width" Value="20" />
+      <Setter Property="Height" Value="20" />
+      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="BorderBrush" Value="#6b6b6b" />
+      <Setter Property="BorderThickness" Value="1.5" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+  </UserControl.Styles>
+</UserControl>

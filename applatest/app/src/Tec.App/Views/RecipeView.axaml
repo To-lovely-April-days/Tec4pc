@@ -1,0 +1,351 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctl="clr-namespace:Tec.App.Controls"
+             xmlns:v="clr-namespace:Tec.App.Views"
+             x:Class="Tec.App.Views.RecipeView">
+
+  <!-- 原型 view-recipe：工具箱 308 ｜ 中列 ｜ 属性 342 -->
+  <Grid ColumnDefinitions="308,*,342">
+
+    <!-- ══ 左：步骤工具箱（原型 renderToolbox）══ -->
+    <Border Grid.Column="0" Background="White" BorderBrush="#dcdcdc" BorderThickness="0,0,1,0">
+      <ScrollViewer>
+        <ItemsControl ItemsSource="{Binding Groups}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <StackPanel>
+                <!-- grpbar：圆形箭头 + 模块色块 + 组名（通用组没有条，直接平铺） -->
+                <Border IsVisible="{Binding HasBar}" Background="#f2f2f2"
+                        BorderBrush="#dcdcdc" BorderThickness="0,1" Padding="10,8"
+                        PointerPressed="OnGroupBarPressed" Cursor="Hand">
+                  <StackPanel Orientation="Horizontal" Spacing="9">
+                    <Border Width="20" Height="20" CornerRadius="10"
+                            BorderBrush="#6b6b6b" BorderThickness="1.5">
+                      <ctl:TecIcon Key="ui-chev-up" Tint="#555555"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <Border Width="12" Height="12" CornerRadius="3"
+                            Background="{Binding Color}" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="Light"
+                               Foreground="#3d3d3d" VerticalAlignment="Center" />
+                  </StackPanel>
+                </Border>
+
+                <!-- cmdgrid：4 列 × 84 高，图标 + 指令名 -->
+                <ItemsControl ItemsSource="{Binding Commands}" IsVisible="{Binding Open}"
+                              Margin="6,6,6,10">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate><UniformGrid Columns="4" /></ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Button Classes="cmd" Command="{Binding $parent[UserControl].DataContext.AddStep}"
+                              CommandParameter="{Binding}">
+                        <StackPanel>
+                          <Panel Height="34">
+                            <ctl:TecIcon Key="{Binding IconKey}"
+                                         HorizontalAlignment="Center" VerticalAlignment="Center" />
+                          </Panel>
+                          <TextBlock Text="{Binding Name}" FontSize="10" Foreground="#3a3a3a"
+                                     TextAlignment="Center" TextWrapping="Wrap" Margin="0,4,0,0" />
+                        </StackPanel>
+                      </Button>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+    </Border>
+
+    <!-- ══ 中：配方工具条 + 一键复制 + 泳道 ══ -->
+    <DockPanel Grid.Column="1" Background="White">
+
+      <!-- advbar -->
+      <Border DockPanel.Dock="Top" Height="44" BorderBrush="#e3e3e3" BorderThickness="0,0,0,1">
+        <StackPanel Orientation="Horizontal" Spacing="8" Margin="12,0" VerticalAlignment="Center">
+          <TextBlock Text="配方：" Classes="lbl" />
+          <ComboBox Classes="sel" Width="220" ItemsSource="{Binding Lanes}"
+                    SelectedIndex="0">
+            <ComboBox.ItemTemplate>
+              <DataTemplate><TextBlock Text="{Binding LaneName}" /></DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+          <Button Classes="tbtn sm" ToolTip.Tip="新建"><ctl:TecIcon Key="ui-bar-plus" /></Button>
+          <Button Classes="tbtn sm" ToolTip.Tip="撤销"><ctl:TecIcon Key="ui-bar-undo" /></Button>
+          <Button Classes="tbtn sm" ToolTip.Tip="重做"><ctl:TecIcon Key="ui-bar-redo" /></Button>
+        </StackPanel>
+      </Border>
+
+      <!-- copybar -->
+      <Border DockPanel.Dock="Top" Background="#fafafa" BorderBrush="#e3e3e3"
+              BorderThickness="0,0,0,1" Padding="14,8">
+        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <ctl:TecIcon Key="ui-copybar" />
+          <TextBlock Classes="lbl">
+            <Run Text="把 " /><Run Text="{Binding CurName}" FontWeight="SemiBold" /><Run Text=" 的配方复制到" />
+          </TextBlock>
+          <ComboBox Classes="sel" Width="130" ItemsSource="{Binding CopyTargets}"
+                    SelectedItem="{Binding CopyTarget, Mode=TwoWay}">
+            <ComboBox.ItemTemplate>
+              <DataTemplate><TextBlock Text="{Binding StringFormat='通道 {0}'}" /></DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+          <Button Classes="btn primary" Content="一键复制" Command="{Binding CopyRecipe}" />
+          <TextBlock Text="各通道配方可独立编辑，互不影响" FontSize="12" Foreground="#9a9a9a"
+                     VerticalAlignment="Center" />
+        </StackPanel>
+      </Border>
+
+      <!-- lanes：网格底纹 + 泳道横排 -->
+      <Panel>
+        <ctl:GridBackdrop LineBrush="#fbfbfb" />
+        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+          <ItemsControl ItemsSource="{Binding Lanes}" Margin="14,12,14,40">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Orientation="Horizontal" Spacing="12" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <!-- .lane：选中 = 蓝实线边 + 柔环 -->
+                <Border Width="300" Padding="4" CornerRadius="5" BorderThickness="1.6"
+                        BorderBrush="Transparent" Background="Transparent"
+                        Classes.laneSel="{Binding IsCurrent}"
+                        PointerPressed="OnLanePressed" Cursor="Hand">
+                  <StackPanel>
+                    <!-- lane-head：淡紫粉底 #efd9ec -->
+                    <Border Background="#efd9ec" CornerRadius="3" Padding="10,9">
+                      <StackPanel Spacing="7">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                          <TextBlock Text="名称：" FontSize="12" Width="42" VerticalAlignment="Center" />
+                          <TextBox Classes="finput" Width="150"
+                                   Text="{Binding LaneName, Mode=TwoWay}" />
+                          <Button Classes="lhbtn" ToolTip.Tip="删除该通道标签">
+                            <ctl:TecIcon Key="ui-lane-trash" Tint="#3a3a3a" />
+                          </Button>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                          <TextBlock Text="通道：" FontSize="12" Width="42" VerticalAlignment="Center" />
+                          <Border Width="150" Height="26" Background="#f7ecf6" CornerRadius="2"
+                                  BorderBrush="#a8a8a8" BorderThickness="1">
+                            <TextBlock Text="{Binding ChannelLabel}" FontSize="12"
+                                       VerticalAlignment="Center" Margin="6,0" />
+                          </Border>
+                          <Button Classes="lhbtn" ToolTip.Tip="通道属性（在台面中设置）">
+                            <ctl:TecIcon Key="ui-lane-pencil" Tint="#3a3a3a" />
+                          </Button>
+                        </StackPanel>
+                      </StackPanel>
+                    </Border>
+
+                    <!-- lane-body：开始帽 → 步骤卡 → 落点 → 结束帽 -->
+                    <StackPanel HorizontalAlignment="Center" Margin="0,10,0,0">
+                      <Border Width="270" Height="30" Background="#2eaa4e" CornerRadius="2" Padding="11,0">
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                          <ctl:TecIcon Key="ui-cap-begin" />
+                          <TextBlock Text="开始" Foreground="White" FontSize="12.5" />
+                        </StackPanel>
+                      </Border>
+
+                      <ItemsControl ItemsSource="{Binding Steps}">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate>
+                            <StackPanel HorizontalAlignment="Center">
+                              <Border Width="1" Height="14" Background="#7a7a7a" HorizontalAlignment="Center" />
+                              <!-- .step 卡片 -->
+                              <Border Width="270" Background="White" BorderBrush="#d3dae0"
+                                      BorderThickness="1" CornerRadius="4" Cursor="Hand"
+                                      Classes.stepSel="{Binding IsSelected}"
+                                      PointerPressed="OnStepPressed">
+                                <StackPanel>
+                                  <Grid ColumnDefinitions="Auto,*" Margin="9,8">
+                                    <Border Grid.Column="0" Width="44" Height="44" CornerRadius="5"
+                                            Background="{Binding ModuleColor}">
+                                      <ctl:TecIcon Key="{Binding IconKey}" White="True" Size="26"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Border>
+                                    <StackPanel Grid.Column="1" Margin="9,1,0,0">
+                                      <TextBlock Text="{Binding Desc}" FontSize="11.5" Foreground="#22303a"
+                                                 TextWrapping="Wrap" MaxLines="3" LineHeight="16" />
+                                      <TextBlock Text="{Binding ModLine}" FontSize="9.5" Foreground="#93a3ae"
+                                                 Margin="0,3,0,0" />
+                                    </StackPanel>
+                                  </Grid>
+                                  <!-- sfoot -->
+                                  <Border Background="#fafbfc" BorderBrush="#eef1f3" BorderThickness="0,1,0,0"
+                                          CornerRadius="0,0,4,4" Padding="9,4,9,5">
+                                    <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                                      <TextBlock Grid.Column="0" FontSize="10" Foreground="#8b98a2">
+                                        <Run Text="预计开始 " /><Run Text="{Binding PlanStart}"
+                                            FontWeight="SemiBold" Foreground="#4a5560" />
+                                      </TextBlock>
+                                      <TextBlock Grid.Column="2" FontSize="10" Foreground="#a8b3bb"
+                                                 IsVisible="{Binding HasDuration}" Margin="0,0,8,0">
+                                        <Run Text="耗时 " /><Run Text="{Binding PlanDuration}" />
+                                      </TextBlock>
+                                      <Button Grid.Column="3" Classes="trash" ToolTip.Tip="删除该步骤"
+                                              Command="{Binding $parent[UserControl].DataContext.RemoveStep}"
+                                              CommandParameter="{Binding}">
+                                        <ctl:TecIcon Key="ui-trash-step" />
+                                      </Button>
+                                    </Grid>
+                                  </Border>
+                                </StackPanel>
+                              </Border>
+                            </StackPanel>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+
+                      <Border Width="1" Height="14" Background="#7a7a7a" HorizontalAlignment="Center" />
+                      <Panel Width="270" Height="64">
+                        <Rectangle Fill="White" Stroke="#9a9a9a" StrokeThickness="1.5"
+                                   StrokeDashArray="4,3" />
+                        <TextBlock Text="{Binding DropHint}" FontSize="11" Foreground="#8d8d8d"
+                                   TextAlignment="Center" VerticalAlignment="Center"
+                                   TextWrapping="Wrap" Margin="4" />
+                      </Panel>
+                      <Border Width="1" Height="14" Background="#7a7a7a" HorizontalAlignment="Center" />
+                      <Border Width="270" Height="30" Background="#b8483c" CornerRadius="2" Padding="11,0">
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                          <ctl:TecIcon Key="ui-cap-end" />
+                          <TextBlock Text="结束" Foreground="White" FontSize="12.5" />
+                        </StackPanel>
+                      </Border>
+                    </StackPanel>
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </Panel>
+    </DockPanel>
+
+    <!-- ══ 右：步骤属性 + 应用配方库 + 通道状态 ══ -->
+    <Border Grid.Column="2" Background="#ececec" BorderBrush="#d2d2d2" BorderThickness="1,0,0,0">
+      <ScrollViewer>
+        <StackPanel Margin="18,16" Spacing="6">
+          <TextBlock Text="{Binding SelectedTitle}" Classes="h2big" />
+          <TextBlock Text="{Binding SelectedTip}" Classes="intro"
+                     IsVisible="{Binding HasSelection}" />
+          <v:SchemaFormView DataContext="{Binding Form}" IsVisible="{Binding HasSelection}" />
+
+          <Border Height="1" Background="#d5d5d5" Margin="0,10" />
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Border Width="16" Height="16" CornerRadius="8" BorderBrush="#6b6b6b" BorderThickness="1.3">
+              <ctl:TecIcon Key="ui-chev-down" Tint="#555555" Size="10"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <TextBlock Text="应用配方库" Classes="acc" VerticalAlignment="Center" />
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" Spacing="10">
+            <TextBlock Text="配方" Classes="lbl" Width="40" />
+            <ComboBox Classes="sel" Width="220" ItemsSource="{Binding Library}"
+                      SelectedItem="{Binding LibPick, Mode=TwoWay}">
+              <ComboBox.ItemTemplate>
+                <DataTemplate><TextBlock Text="{Binding Name}" /></DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,12,0,6">
+            <Button Classes="btn primary" Content="应用到当前通道" Command="{Binding ApplyLib}" />
+            <Button Classes="btn" Content="存入配方库" Command="{Binding SaveToLib}" />
+          </StackPanel>
+          <TextBlock Classes="intro" Margin="0,8,0,0"
+                     Text="应用会替换当前通道的全部步骤。" />
+
+          <Border Height="1" Background="#d5d5d5" Margin="0,10" />
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Border Width="16" Height="16" CornerRadius="8" BorderBrush="#6b6b6b" BorderThickness="1.3">
+              <ctl:TecIcon Key="ui-chev-down" Tint="#555555" Size="10"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <TextBlock Text="通道状态" Classes="acc" VerticalAlignment="Center" />
+          </StackPanel>
+          <Border Background="White" BorderBrush="#dcdcdc" BorderThickness="1" CornerRadius="3">
+            <ItemsControl ItemsSource="{Binding ChannelStates}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border BorderBrush="#eeeeee" BorderThickness="0,0,0,1" Padding="10,7">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                      <Border Width="9" Height="9" CornerRadius="5" VerticalAlignment="Center"
+                              Background="{Binding Enabled, Converter={x:Static v:Converters.LedBrush}}"
+                              BorderBrush="#a5a5a5" BorderThickness="1" />
+                      <Border Width="11" Height="11" CornerRadius="3" VerticalAlignment="Center"
+                              Background="{Binding ColorHex}" />
+                      <TextBlock Text="{Binding Label}" FontSize="12" Foreground="#2b2b2b"
+                                 VerticalAlignment="Center" />
+                      <TextBlock Text="{Binding State}" FontSize="11" Foreground="#8d8d8d"
+                                 VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </Border>
+        </StackPanel>
+      </ScrollViewer>
+    </Border>
+  </Grid>
+
+  <UserControl.Styles>
+    <Style Selector="Button.cmd">
+      <Setter Property="Height" Value="84" />
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="Padding" Value="3,8,3,4" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="VerticalContentAlignment" Value="Top" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.cmd:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#e8f4fb" />
+    </Style>
+
+    <Style Selector="Button.lhbtn">
+      <Setter Property="Width" Value="26" />
+      <Setter Property="Height" Value="26" />
+      <Setter Property="CornerRadius" Value="13" />
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderBrush" Value="#8a6a86" />
+      <Setter Property="BorderThickness" Value="1.5" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.lhbtn:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#e8f2fb" />
+      <Setter Property="BorderBrush" Value="#1a7fc4" />
+    </Style>
+
+    <Style Selector="Button.trash">
+      <Setter Property="Width" Value="17" />
+      <Setter Property="Height" Value="17" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.trash:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#fdecea" />
+    </Style>
+
+    <Style Selector="Border.laneSel">
+      <Setter Property="BorderBrush" Value="#1a7fc4" />
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BoxShadow" Value="0 0 0 3 #381a7fc4, 0 2 10 0 #12000000" />
+    </Style>
+    <Style Selector="Border.stepSel">
+      <Setter Property="BorderBrush" Value="#1a7fc4" />
+      <Setter Property="BoxShadow" Value="0 0 0 2 #1a7fc4, 0 0 0 5 #381a7fc4" />
+    </Style>
+  </UserControl.Styles>
+</UserControl>

@@ -1,0 +1,15 @@
+<svg viewBox="0 0 292 150">
+    <rect x="22" y="22" width="118" height="70" rx="6" fill="#eff0f2" stroke="#adb2b7"/>
+    <circle cx="58" cy="57" r="17" fill="#dcdee1" stroke="#a5abb0"/><circle cx="58" cy="57" r="9" fill="#3f6fd8"/>
+    <circle cx="104" cy="57" r="17" fill="#dcdee1" stroke="#a5abb0"/><circle cx="104" cy="57" r="9" fill="#2f8f49"/>
+    <rect x="156" y="22" width="118" height="70" rx="6" fill="#eff0f2" stroke="#adb2b7"/>
+    <circle cx="192" cy="57" r="17" fill="#dcdee1" stroke="#a5abb0"/><circle cx="192" cy="57" r="9" fill="#dba32c"/>
+    <circle cx="238" cy="57" r="17" fill="#dcdee1" stroke="#a5abb0"/><circle cx="238" cy="57" r="9" fill="#c0399f"/>
+    <rect x="30" y="108" width="56" height="26" rx="4" fill="#eff0f2" stroke="#adb2b7"/>
+    <rect x="36" y="114" width="26" height="8" rx="2" fill="#8dbde4"/>
+    <rect x="206" y="108" width="56" height="26" rx="4" fill="#eff0f2" stroke="#adb2b7"/>
+    <rect x="212" y="114" width="26" height="8" rx="2" fill="#8dbde4"/>
+    <path d="M58 96v-14M238 96v-14" stroke="#9aa4ab" stroke-width="1.4" stroke-dasharray="4 3"/>
+    <rect x="118" y="108" width="52" height="30" rx="4" fill="#eff0f2" stroke="#adb2b7"/>
+    <path d="M126 126l5-7 4 5 5-9 4 7 5-5 4 4 5-6" stroke="#dba32c" stroke-width="1.4" fill="none"/>
+  </svg>

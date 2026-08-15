@@ -1,0 +1,380 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctl="clr-namespace:Tec.App.Controls"
+             x:Class="Tec.App.Views.RunView">
+
+  <!-- 原型 view-run：runtop 44px → runbody 三块 pane → 底部执行记录抽屉 -->
+  <DockPanel Background="White">
+
+    <!-- runtop -->
+    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8"
+                Height="44" Margin="14,0" VerticalAlignment="Top">
+      <TextBlock Text="实验：" FontSize="12" Foreground="#444444" VerticalAlignment="Center" />
+      <ComboBox Classes="sel" Width="260" VerticalAlignment="Center" SelectedIndex="0">
+        <ComboBoxItem Content="降温结晶_梯度筛选_0814" />
+        <ComboBoxItem Content="硝化_控温加料_0812" />
+      </ComboBox>
+      <TextBlock Text="{Binding RunTop}" FontSize="12" Foreground="#444444"
+                 VerticalAlignment="Center" Margin="14,0,0,0" />
+    </StackPanel>
+
+    <!-- 执行记录抽屉（原型 .rundraw，贴在底部） -->
+    <Border DockPanel.Dock="Bottom" BorderBrush="#b9b9b9" BorderThickness="0,1,0,0" Background="White">
+      <DockPanel>
+        <!-- rdhead 32px -->
+        <Border DockPanel.Dock="Top" Height="32" Background="Transparent" Cursor="Hand"
+                PointerPressed="OnDrawHeadPressed">
+          <StackPanel Orientation="Horizontal" Spacing="10" Margin="12,0" VerticalAlignment="Center">
+            <Border Width="18" Height="18" CornerRadius="9" BorderBrush="#6b6b6b" BorderThickness="1.5">
+              <ctl:TecIcon Key="ui-chev-up" Tint="#555555" Size="9"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <TextBlock Text="执行记录" FontSize="12" FontWeight="SemiBold" Foreground="#3d3d3d"
+                       VerticalAlignment="Center" />
+            <TextBlock Text="{Binding DrawLast}" FontSize="12" Foreground="#8d8d8d"
+                       VerticalAlignment="Center" />
+            <TextBlock Text="{Binding DrawCnt}" FontSize="11" Foreground="#8d8d8d"
+                       VerticalAlignment="Center" />
+          </StackPanel>
+        </Border>
+
+        <StackPanel IsVisible="{Binding DrawOpen}" Height="268">
+          <!-- rdtool -->
+          <StackPanel Orientation="Horizontal" Spacing="8" Margin="12,0,12,6">
+            <TextBlock Text="通道" FontSize="11.5" Foreground="#444444" VerticalAlignment="Center" />
+            <ItemsControl ItemsSource="{Binding Chips}" VerticalAlignment="Center">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="6" /></ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border Classes="chchip" Classes.on="{Binding On}"
+                          PointerPressed="OnChipPressed" Cursor="Hand">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <Ellipse Width="10" Height="10" Fill="{Binding ColorHex}" />
+                      <TextBlock Text="{Binding Label}" FontSize="11.5" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Border Width="1" />
+            <TextBlock Text="排列" FontSize="11.5" Foreground="#444444" VerticalAlignment="Center"
+                       Margin="12,0,0,0" />
+            <ComboBox Classes="sel" Width="128" ItemsSource="{Binding SortOptions}"
+                      SelectedItem="{Binding SortLabel, Mode=TwoWay}" />
+            <CheckBox Content="含事件行" FontSize="12" IsChecked="{Binding WithEvents, Mode=TwoWay}"
+                      MinHeight="0" VerticalAlignment="Center" />
+          </StackPanel>
+
+          <!-- rdtbl：11 列 -->
+          <ScrollViewer Height="220">
+            <StackPanel>
+              <Grid Classes="rdhdr" ColumnDefinitions="64,30,*,72,72,72,72,72,72,84,64" Background="#f5f5f5">
+                <TextBlock Grid.Column="0" Text="通道" />
+                <TextBlock Grid.Column="1" Text="#" />
+                <TextBlock Grid.Column="2" Text="步骤 / 事件" />
+                <TextBlock Grid.Column="3" Text="计划开始" />
+                <TextBlock Grid.Column="4" Text="实际开始" />
+                <TextBlock Grid.Column="5" Text="开始偏差" />
+                <TextBlock Grid.Column="6" Text="计划时长" />
+                <TextBlock Grid.Column="7" Text="实际时长" />
+                <TextBlock Grid.Column="8" Text="时长偏差" />
+                <TextBlock Grid.Column="9" Text="结束原因" />
+                <TextBlock Grid.Column="10" Text="操作人" />
+              </Grid>
+              <ItemsControl ItemsSource="{Binding Rows}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border Classes="rdrow" Classes.ev="{Binding IsEvent}" Classes.alarm="{Binding IsAlarm}"
+                            Classes.sep="{Binding GroupSep}">
+                      <Grid ColumnDefinitions="64,30,*,72,72,72,72,72,72,84,64">
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="5">
+                          <Border Width="8" Height="8" CornerRadius="2" Background="{Binding ChColorHex}"
+                                  VerticalAlignment="Center" />
+                          <TextBlock Text="{Binding Ch, StringFormat='CH{0}'}" />
+                        </StackPanel>
+                        <TextBlock Grid.Column="1" Text="{Binding Seq}" Classes="num" />
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="5">
+                          <Border Classes="rdbadge" Classes.al="{Binding IsAlarm}"
+                                  Classes.evb="{Binding IsEvent}" IsVisible="{Binding HasBadge}">
+                            <TextBlock Text="{Binding Badge}" FontSize="10" />
+                          </Border>
+                          <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                        <TextBlock Grid.Column="3" Text="{Binding PlanStart}" Classes="num" />
+                        <TextBlock Grid.Column="4" Text="{Binding RealStart}" Classes="num" />
+                        <TextBlock Grid.Column="5" Text="{Binding StartDev}" Classes="num"
+                                   Classes.warn="{Binding StartDevClass, Converter={x:Static ctl:Is.Warn}}"
+                                   Classes.bad="{Binding StartDevClass, Converter={x:Static ctl:Is.Bad}}" />
+                        <TextBlock Grid.Column="6" Text="{Binding PlanDur}" Classes="num" />
+                        <TextBlock Grid.Column="7" Text="{Binding RealDur}" Classes="num"
+                                   Classes.run="{Binding Running}" />
+                        <TextBlock Grid.Column="8" Text="{Binding DurDev}" Classes="num"
+                                   Classes.warn="{Binding DurDevClass, Converter={x:Static ctl:Is.Warn}}"
+                                   Classes.bad="{Binding DurDevClass, Converter={x:Static ctl:Is.Bad}}" />
+                        <TextBlock Grid.Column="9" Text="{Binding EndBy}" />
+                        <TextBlock Grid.Column="10" Text="{Binding User}" />
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <TextBlock IsVisible="{Binding NoRows}" Margin="0,22" TextAlignment="Center"
+                         FontSize="12" Foreground="#9a9a9a"
+                         Text="尚无执行记录。通道启动后，每一步与每一次操作都会实时记入此表。" />
+            </StackPanel>
+          </ScrollViewer>
+        </StackPanel>
+      </DockPanel>
+    </Border>
+
+    <!-- runbody -->
+    <Grid ColumnDefinitions="560,6,*,6,430" Margin="8,0,8,8">
+
+      <!-- pane 台面总览 -->
+      <Border Grid.Column="0" Classes="pane">
+        <DockPanel>
+          <Border DockPanel.Dock="Left" Classes="panetab">
+            <StackPanel Spacing="10" Margin="0,8,0,0" HorizontalAlignment="Center">
+              <ctl:TecIcon Key="ui-collapse" Tint="#555555" HorizontalAlignment="Center" />
+              <TextBlock Classes="vtxt" Text="台&#10;面&#10;总&#10;览" />
+            </StackPanel>
+          </Border>
+          <DockPanel>
+            <!-- statusrow 120px -->
+            <Border DockPanel.Dock="Bottom" Height="120" BorderBrush="#dcdcdc" BorderThickness="0,1,0,0">
+              <ItemsControl ItemsSource="{Binding Tiles}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate><UniformGrid Rows="1" /></ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border Classes="stat" Classes.off="{Binding Off}">
+                      <Grid ColumnDefinitions="12,Auto,*">
+                        <Border Grid.Column="0" Background="{Binding ColorHex}" />
+                        <TextBlock Grid.Column="1" Text="{Binding NameVertical}" FontSize="13"
+                                   FontWeight="Light" Foreground="#333333" Margin="2,8"
+                                   LineHeight="14" TextAlignment="Center" />
+                        <StackPanel Grid.Column="2" Margin="6,8" Spacing="3">
+                          <StackPanel Orientation="Horizontal" Spacing="5">
+                            <TextBlock Text="Tr" Classes="statk" /><TextBlock Text="{Binding TrText}" Classes="statv" />
+                          </StackPanel>
+                          <StackPanel Orientation="Horizontal" Spacing="5">
+                            <TextBlock Text="Tj" Classes="statk" /><TextBlock Text="{Binding TjText}" Classes="statv" />
+                          </StackPanel>
+                          <StackPanel Orientation="Horizontal" Spacing="5">
+                            <TextBlock Text="pH" Classes="statk" /><TextBlock Text="{Binding PhText}" Classes="statv" />
+                          </StackPanel>
+                          <StackPanel Orientation="Horizontal" Spacing="5">
+                            <TextBlock Text="搅拌" Classes="statk" /><TextBlock Text="{Binding RpmText}" Classes="statv" />
+                          </StackPanel>
+                          <TextBlock Text="{Binding StartLine}" FontSize="11" Foreground="#8d8d8d" />
+                          <TextBlock Text="{Binding StepNow}" FontSize="10" Foreground="#2f8f49"
+                                     TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </Border>
+            <!-- deck -->
+            <Border Background="#f7f7f7" ClipToBounds="True">
+              <ctl:DeckView x:Name="Deck" Workspace="{Binding Workspace}" />
+            </Border>
+          </DockPanel>
+        </DockPanel>
+      </Border>
+
+      <!-- pane 趋势曲线 -->
+      <Border Grid.Column="2" Classes="pane">
+        <DockPanel>
+          <Border DockPanel.Dock="Left" Classes="panetab">
+            <StackPanel Spacing="10" Margin="0,8,0,0" HorizontalAlignment="Center">
+              <ctl:TecIcon Key="ui-collapse" Tint="#555555" HorizontalAlignment="Center" />
+              <TextBlock Classes="vtxt" Text="趋&#10;势&#10;曲&#10;线" />
+            </StackPanel>
+          </Border>
+          <DockPanel>
+            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="10" Margin="10,8">
+              <TextBlock Text="通道" FontSize="12" Foreground="#444444" VerticalAlignment="Center" />
+              <ComboBox Classes="sel" Width="104" ItemsSource="{Binding TrendChannels}"
+                        SelectedItem="{Binding TrendChLabel, Mode=TwoWay}" />
+              <TextBlock Text="窗口" FontSize="12" Foreground="#444444" VerticalAlignment="Center"
+                         Margin="4,0,0,0" />
+              <ComboBox Classes="sel" Width="118" ItemsSource="{Binding TrendWins}"
+                        SelectedItem="{Binding TrendWinLabel, Mode=TwoWay}" />
+              <StackPanel Orientation="Horizontal" Spacing="12" Margin="14,0,0,0" VerticalAlignment="Center">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                  <Border Width="14" Height="3" CornerRadius="2" Background="#e02020" VerticalAlignment="Center" />
+                  <TextBlock Text="Tr 釜内" FontSize="11" Foreground="#444444" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                  <Border Width="14" Height="3" CornerRadius="2" Background="#3f6fd8" VerticalAlignment="Center" />
+                  <TextBlock Text="Tj 夹套" FontSize="11" Foreground="#444444" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                  <Border Width="14" Height="3" CornerRadius="2" Background="#b56cc9" VerticalAlignment="Center" />
+                  <TextBlock Text="Tr−Tj" FontSize="11" Foreground="#444444" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding TrendHasPh}">
+                  <Border Width="14" Height="3" CornerRadius="2" Background="#2f8f49" VerticalAlignment="Center" />
+                  <TextBlock Text="pH" FontSize="11" Foreground="#444444" />
+                </StackPanel>
+              </StackPanel>
+            </StackPanel>
+            <ctl:TrendView Model="{Binding Trend}" />
+          </DockPanel>
+        </DockPanel>
+      </Border>
+
+      <!-- pane 步骤甘特 -->
+      <Border Grid.Column="4" Classes="pane">
+        <DockPanel>
+          <Border DockPanel.Dock="Left" Classes="panetab">
+            <StackPanel Spacing="10" Margin="0,8,0,0" HorizontalAlignment="Center">
+              <ctl:TecIcon Key="ui-collapse" Tint="#555555" HorizontalAlignment="Center" />
+              <TextBlock Classes="vtxt" Text="步&#10;骤&#10;进&#10;度" />
+            </StackPanel>
+          </Border>
+          <DockPanel>
+            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="10" Margin="10,8">
+              <ComboBox Classes="sel" Width="104" FontSize="11" ItemsSource="{Binding AlignOptions}"
+                        SelectedItem="{Binding AlignLabel, Mode=TwoWay}" />
+              <CheckBox Content="显示时间" FontSize="12" IsChecked="{Binding ShowTime, Mode=TwoWay}"
+                        MinHeight="0" VerticalAlignment="Center" />
+              <TextBlock Text="{Binding GTotal}" FontSize="11" Foreground="#5a5a5a" VerticalAlignment="Center" />
+              <TextBlock Text="淡 = 计划，实 = 实际" FontSize="11" Foreground="#9a9a9a" VerticalAlignment="Center" />
+            </StackPanel>
+            <ScrollViewer>
+              <ctl:GanttView Model="{Binding Gantt}" />
+            </ScrollViewer>
+          </DockPanel>
+        </DockPanel>
+      </Border>
+    </Grid>
+  </DockPanel>
+
+  <UserControl.Styles>
+    <Style Selector="Border.pane">
+      <Setter Property="BorderBrush" Value="#b9b9b9" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Background" Value="White" />
+    </Style>
+    <Style Selector="Border.panetab">
+      <Setter Property="Width" Value="28" />
+      <Setter Property="Background" Value="#f4f4f4" />
+      <Setter Property="BorderBrush" Value="#dcdcdc" />
+      <Setter Property="BorderThickness" Value="0,0,1,0" />
+    </Style>
+    <Style Selector="TextBlock.vtxt">
+      <Setter Property="FontSize" Value="15" />
+      <Setter Property="FontWeight" Value="Light" />
+      <Setter Property="Foreground" Value="#3d3d3d" />
+      <Setter Property="LineHeight" Value="17" />
+      <Setter Property="TextAlignment" Value="Center" />
+    </Style>
+
+    <Style Selector="Border.stat">
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderBrush" Value="#dcdcdc" />
+      <Setter Property="BorderThickness" Value="0,0,1,0" />
+    </Style>
+    <Style Selector="Border.stat.off">
+      <Setter Property="Background" Value="#f4f4f4" />
+    </Style>
+    <Style Selector="TextBlock.statk">
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="Foreground" Value="#666666" />
+      <Setter Property="MinWidth" Value="24" />
+    </Style>
+    <Style Selector="TextBlock.statv">
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="Foreground" Value="#333333" />
+    </Style>
+
+    <Style Selector="Border.chchip">
+      <Setter Property="BorderBrush" Value="#d5d5d5" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="14" />
+      <Setter Property="Padding" Value="8,5,12,5" />
+      <Setter Property="Background" Value="White" />
+    </Style>
+    <Style Selector="Border.chchip.on">
+      <Setter Property="BorderBrush" Value="#1a7fc4" />
+      <Setter Property="Background" Value="#e8f2fb" />
+    </Style>
+
+    <Style Selector="Grid.rdhdr > TextBlock">
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Foreground" Value="#5a5a5a" />
+      <Setter Property="Padding" Value="8,5" />
+    </Style>
+    <Style Selector="Border.rdrow">
+      <Setter Property="BorderBrush" Value="#f0f0f0" />
+      <Setter Property="BorderThickness" Value="0,0,0,1" />
+    </Style>
+    <Style Selector="Border.rdrow.ev">
+      <Setter Property="Background" Value="#fafafa" />
+    </Style>
+    <Style Selector="Border.rdrow.alarm">
+      <Setter Property="Background" Value="#fdf4f3" />
+    </Style>
+    <Style Selector="Border.rdrow.sep">
+      <Setter Property="BorderBrush" Value="#d5d5d5" />
+      <Setter Property="BorderThickness" Value="0,1,0,1" />
+    </Style>
+    <Style Selector="Border.rdrow TextBlock">
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Foreground" Value="#2b2b2b" />
+      <Setter Property="Padding" Value="8,4" />
+    </Style>
+    <Style Selector="Border.rdrow.ev TextBlock">
+      <Setter Property="Foreground" Value="#7a7a7a" />
+      <Setter Property="FontStyle" Value="Italic" />
+    </Style>
+    <Style Selector="Border.rdrow.alarm TextBlock">
+      <Setter Property="Foreground" Value="#c0392b" />
+    </Style>
+    <Style Selector="TextBlock.num">
+      <Setter Property="TextAlignment" Value="Right" />
+      <Setter Property="FontFamily" Value="Consolas, Menlo, monospace" />
+    </Style>
+    <Style Selector="TextBlock.warn">
+      <Setter Property="Foreground" Value="#a8710a" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="TextBlock.bad">
+      <Setter Property="Foreground" Value="#c0392b" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="TextBlock.run">
+      <Setter Property="Foreground" Value="#2f8f49" />
+    </Style>
+
+    <Style Selector="Border.rdbadge">
+      <Setter Property="Height" Value="15" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="Padding" Value="6,0" />
+      <Setter Property="Background" Value="#eef4e9" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.rdbadge > TextBlock">
+      <Setter Property="Foreground" Value="#2f8f49" />
+      <Setter Property="Padding" Value="0" />
+    </Style>
+    <Style Selector="Border.rdbadge.evb">
+      <Setter Property="Background" Value="#eeeeee" />
+    </Style>
+    <Style Selector="Border.rdbadge.evb > TextBlock">
+      <Setter Property="Foreground" Value="#6b6b6b" />
+    </Style>
+    <Style Selector="Border.rdbadge.al">
+      <Setter Property="Background" Value="#fbe6e3" />
+    </Style>
+    <Style Selector="Border.rdbadge.al > TextBlock">
+      <Setter Property="Foreground" Value="#c0392b" />
+    </Style>
+  </UserControl.Styles>
+</UserControl>

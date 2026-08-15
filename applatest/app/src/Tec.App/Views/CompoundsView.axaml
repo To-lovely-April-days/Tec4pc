@@ -1,0 +1,76 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctl="clr-namespace:Tec.App.Controls"
+             x:Class="Tec.App.Views.CompoundsView">
+  <Grid ColumnDefinitions="*,342">
+
+    <DockPanel Grid.Column="0" Background="White">
+      <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="10" Margin="16,12">
+        <TextBlock Text="检索：" Classes="lbl" />
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <ctl:TecIcon Key="ui-search" VerticalAlignment="Center" />
+          <TextBox Classes="finput" Width="220" Text="{Binding Search, Mode=TwoWay}"
+                   Watermark="名称 / CAS / 分子式" />
+        </StackPanel>
+        <TextBlock Text="类别：" Classes="lbl" Margin="6,0,0,0" />
+        <ComboBox Classes="sel" Width="130" ItemsSource="{Binding Categories}"
+                  SelectedItem="{Binding Category, Mode=TwoWay}" />
+        <Button Classes="tbtn sm" ToolTip.Tip="新增化合物"><ctl:TecIcon Key="ui-cmp-cmpnew" /></Button>
+        <Button Classes="tbtn sm" ToolTip.Tip="导入"><ctl:TecIcon Key="ui-cmp-cmpimport" /></Button>
+      </StackPanel>
+
+      <Border BorderBrush="#e3e3e3" BorderThickness="0,1,0,0">
+        <DockPanel>
+          <Grid DockPanel.Dock="Top" ColumnDefinitions="160,120,140,90,90,*" Background="#f7f7f7" Height="28">
+            <TextBlock Grid.Column="0" Text="名称"   Classes="muted" Margin="12,7,0,0" />
+            <TextBlock Grid.Column="1" Text="CAS"    Classes="muted" Margin="4,7,0,0" />
+            <TextBlock Grid.Column="2" Text="分子式" Classes="muted" Margin="4,7,0,0" />
+            <TextBlock Grid.Column="3" Text="分子量" Classes="muted" Margin="4,7,0,0" />
+            <TextBlock Grid.Column="4" Text="熔点"   Classes="muted" Margin="4,7,0,0" />
+            <TextBlock Grid.Column="5" Text="类别"   Classes="muted" Margin="4,7,0,0" />
+          </Grid>
+          <ListBox ItemsSource="{Binding Rows}" SelectedItem="{Binding Selected, Mode=TwoWay}"
+                   Background="Transparent" BorderThickness="0">
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <Grid ColumnDefinitions="160,120,140,90,90,*">
+                  <TextBlock Grid.Column="0" Text="{Binding Name}" FontSize="12" />
+                  <TextBlock Grid.Column="1" Text="{Binding Cas}" Classes="mono" />
+                  <TextBlock Grid.Column="2" Text="{Binding Formula}" Classes="mono" />
+                  <TextBlock Grid.Column="3" Text="{Binding MwText}" Classes="mono" />
+                  <TextBlock Grid.Column="4" Text="{Binding MpText}" Classes="mono" />
+                  <TextBlock Grid.Column="5" Text="{Binding Category}" FontSize="11"
+                             Foreground="{Binding CategoryColor}" />
+                </Grid>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </DockPanel>
+      </Border>
+    </DockPanel>
+
+    <Border Grid.Column="1" Background="#ececec" BorderBrush="#d2d2d2" BorderThickness="1,0,0,0">
+      <ScrollViewer>
+        <StackPanel Margin="18,16" Spacing="8" IsVisible="{Binding HasSelection}">
+          <TextBlock Text="{Binding Selected.Name}" Classes="h2big" />
+          <TextBlock Text="{Binding Selected.Note}" Classes="intro" />
+          <Border Height="1" Background="#d5d5d5" />
+          <TextBlock Text="物性" Classes="acc" />
+          <Grid ColumnDefinitions="80,*" RowDefinitions="Auto,Auto,Auto,Auto">
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="CAS"    Classes="muted" />
+            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Selected.Cas}" Classes="mono" />
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="分子式" Classes="muted" />
+            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Selected.Formula}" Classes="mono" />
+            <TextBlock Grid.Row="2" Grid.Column="0" Text="分子量" Classes="muted" />
+            <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Selected.MwText}" Classes="mono" />
+            <TextBlock Grid.Row="3" Grid.Column="0" Text="熔点"   Classes="muted" />
+            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Selected.MpText}" Classes="mono" />
+          </Grid>
+          <Border Height="1" Background="#d5d5d5" />
+          <TextBlock Text="溶解度" Classes="acc" />
+          <TextBlock Text="{Binding SolubilityText}" FontSize="11.5" Foreground="#4a4a4a" TextWrapping="Wrap" />
+        </StackPanel>
+      </ScrollViewer>
+    </Border>
+  </Grid>
+</UserControl>

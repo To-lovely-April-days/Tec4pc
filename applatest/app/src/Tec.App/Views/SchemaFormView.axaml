@@ -1,0 +1,105 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Tec.App.Views.SchemaFormView">
+
+  <!-- 表单一律由 schema 渲染。尺寸照原型 .frow / .finput：
+       标签 96px · 11.5px，输入框 23px 高 · 11.5px，行间距 8px。
+       提示是 .pf-tip —— 10.5px 灰字，不是蓝底方块。 -->
+  <StackPanel>
+
+    <ItemsControl ItemsSource="{Binding Fields}">
+      <ItemsControl.ItemTemplate>
+        <DataTemplate>
+          <Grid ColumnDefinitions="96,*,Auto" Margin="0,0,0,8" IsVisible="{Binding IsVisible}">
+            <TextBlock Grid.Column="0" Text="{Binding Label}" VerticalAlignment="Center"
+                       FontSize="11.5" Foreground="#3d3d3d" TextWrapping="Wrap" Margin="0,0,10,0" />
+
+            <TextBox Grid.Column="1" Classes="fin" Text="{Binding NumberText, Mode=TwoWay}"
+                     IsVisible="{Binding IsNumber}" />
+            <TextBox Grid.Column="1" Classes="fin" Text="{Binding DurationText, Mode=TwoWay}"
+                     IsVisible="{Binding IsDuration}" Watermark="时:分:秒" />
+            <ComboBox Grid.Column="1" Classes="fsel" ItemsSource="{Binding Choices}"
+                      SelectedItem="{Binding ChoiceValue, Mode=TwoWay}"
+                      IsVisible="{Binding IsChoice}" HorizontalAlignment="Stretch" />
+            <CheckBox Grid.Column="1" IsChecked="{Binding ToggleValue, Mode=TwoWay}"
+                      IsVisible="{Binding IsToggle}" MinHeight="23" Padding="4,0,0,0" />
+            <TextBox Grid.Column="1" Classes="fin" Text="{Binding TextValue, Mode=TwoWay}"
+                     IsVisible="{Binding IsText}" />
+
+            <TextBlock Grid.Column="2" Text="{Binding Unit}" FontSize="10.5" Foreground="#8d8d8d"
+                       VerticalAlignment="Center" Margin="7,0,0,0" />
+          </Grid>
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+
+    <!-- 多分段表：梯度控温、分段加料 -->
+    <StackPanel IsVisible="{Binding HasTable}">
+      <Border Height="1" Background="#d5d5d5" Margin="0,10,0,10" />
+      <TextBlock Text="{Binding TableLabel}" FontSize="11.5" Foreground="#3d3d3d" Margin="0,0,0,6" />
+      <ItemsControl ItemsSource="{Binding RowForms}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <Border Background="#f8f9fb" BorderBrush="#e5e8ec" BorderThickness="1"
+                    CornerRadius="3" Padding="6" Margin="0,0,0,4">
+              <ItemsControl ItemsSource="{Binding}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="6" /></ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <StackPanel Width="90">
+                      <TextBlock Text="{Binding Label}" FontSize="10" Foreground="#8d8d8d" Margin="0,0,0,2" />
+                      <TextBox Classes="fin" Text="{Binding NumberText, Mode=TwoWay}" IsVisible="{Binding IsNumber}" />
+                      <TextBox Classes="fin" Text="{Binding DurationText, Mode=TwoWay}" IsVisible="{Binding IsDuration}" />
+                      <ComboBox Classes="fsel" ItemsSource="{Binding Choices}"
+                                SelectedItem="{Binding ChoiceValue, Mode=TwoWay}"
+                                IsVisible="{Binding IsChoice}" HorizontalAlignment="Stretch" />
+                      <TextBox Classes="fin" Text="{Binding TextValue, Mode=TwoWay}" IsVisible="{Binding IsText}" />
+                    </StackPanel>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+      <Button Classes="btn" Content="＋ 添加一段" Click="OnAddRow" HorizontalAlignment="Left"
+              Height="24" MinWidth="0" Padding="10,0" FontSize="11.5" Margin="0,2,0,0" />
+    </StackPanel>
+
+    <!-- .pf-tip：10.5px 灰字 -->
+    <TextBlock IsVisible="{Binding HasTip}" Text="{Binding Tip}"
+               FontSize="10.5" Foreground="#9a9a9a" LineHeight="16"
+               TextWrapping="Wrap" Margin="0,7,0,0" />
+  </StackPanel>
+
+  <UserControl.Styles>
+    <Style Selector="TextBox.fin">
+      <Setter Property="Height" Value="23" />
+      <Setter Property="MinHeight" Value="23" />
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Padding" Value="6,0" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="BorderBrush" Value="#a8a8a8" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="2" />
+      <Setter Property="Background" Value="White" />
+      <Setter Property="Foreground" Value="#222222" />
+    </Style>
+    <Style Selector="TextBox.fin:focus">
+      <Setter Property="BorderBrush" Value="#1a7fc4" />
+    </Style>
+    <Style Selector="ComboBox.fsel">
+      <Setter Property="Height" Value="23" />
+      <Setter Property="MinHeight" Value="23" />
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Padding" Value="6,0" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="BorderBrush" Value="#a8a8a8" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="2" />
+      <Setter Property="Background" Value="White" />
+    </Style>
+  </UserControl.Styles>
+</UserControl>

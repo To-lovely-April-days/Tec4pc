@@ -1,0 +1,6 @@
+<svg width="28" height="28" viewBox="0 0 28 28" fill="none"
+  stroke-linecap="round" stroke-linejoin="round">
+  <g stroke="#4a5560" stroke-width="1.6"><rect x="3.4" y="10.6" width="21.2" height="6.8" rx="2"/><path d="M9.2 10.6v6.8M18.8 10.6v6.8"/></g>
+  <g stroke="#2f8f49" stroke-width="1.7"><path d="M14 2.6v4.8M11.7 5.1L14 7.4l2.3-2.3"/>
+                   <path d="M9.2 19.4v5.2M18.8 19.4v5.2" stroke-dasharray="2.8 2.2"/>
+                   <path d="M9.2 22h9.6" stroke-opacity=".55"/></g></svg>
