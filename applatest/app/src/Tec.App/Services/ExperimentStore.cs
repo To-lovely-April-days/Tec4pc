@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Tec.Core.Compounds;
 using Tec.Core.Persistence;
 using Tec.Core.Recipes;
 
@@ -51,6 +52,7 @@ public sealed class ExperimentStore
     {
         _ws = ws;
         _recentPath = Path.Combine(DataDir, "recent.json");
+        OpenDb();
         LoadRecent();
         // 台面动过就是改过。打开 / 新建自己会把脏标记抹掉，抹在重建通道之后
         ws.BenchChanged += (_, _) => MarkDirty();
@@ -115,6 +117,12 @@ public sealed class ExperimentStore
     /// </summary>
     public IReadOnlyList<string> LastMigration { get; private set; } = Array.Empty<string>();
 
+    /// <summary>
+    /// 上一次装载时另外做了什么（跟指令翻译不是一回事，所以不能混在一起说）。
+    /// 现在只有一件：老文件里带的配方库并进了全局库。
+    /// </summary>
+    public IReadOnlyList<string> LastNotes { get; private set; } = Array.Empty<string>();
+
     public async Task OpenAsync(string path)
     {
         var doc = TecFiles.LoadExperiment(path);
@@ -132,18 +140,14 @@ public sealed class ExperimentStore
             foreach (var n in notes) migrated.Add($"{lane.Name}·{n}");
         }
 
-        _ws.Library.Clear();
-        foreach (var r in doc.Library)
-        {
-            _ws.Library.Add(r.ToModel(out var notes));
-            foreach (var n in notes) migrated.Add($"配方库·{n}");
-        }
-        // 老实验文件里可能还带着早期版本自动灌的六条演示配方，一并清掉。
-        // 不在这里标脏：刚打开的实验不该显示成"有未保存的改动"；
-        // 每次打开都会清一遍，它们再也不会出现在界面上
-        SeedPurge.Apply(_ws.Library);
+        // 配方库不再跟着实验文件走（它是全局的，见「全局库」那一节）。
+        // 老文件里带的那一份**不能直接扔**——那可能是操作人在别的机器上编的工艺。
+        // 库里没有的并进来，并了几条说一声；库里已经有的（按配方号认）不动
+        var loadNotes = new List<string>();
+        MergeLegacyLibrary(doc, migrated, loadNotes);
 
         LastMigration = migrated;
+        LastNotes = loadNotes;
 
         _ws.ExperimentName = doc.Name;
         CurrentPath = path;
@@ -155,6 +159,32 @@ public sealed class ExperimentStore
 
         Remember(path, doc.Name);
         Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// 老实验文件里带着的那份配方库，并进全局库。
+    /// 按配方号认人：库里已经有的不动（本机那份才是新的），没有的补进去。
+    /// 早期版本自动灌的六条演示配方顺手清掉，别让它们借着老文件回来。
+    /// </summary>
+    private void MergeLegacyLibrary(ExperimentDoc doc, List<string> migrated, List<string> notes)
+    {
+        if (doc.Library.Count == 0) return;
+
+        var have = _ws.Library.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
+        var added = new List<Recipe>();
+        foreach (var d in doc.Library)
+        {
+            if (!have.Add(d.Id)) continue;
+            var r = d.ToModel(out var ns);
+            added.Add(r);
+            foreach (var n in ns) migrated.Add($"配方库·{n}");
+        }
+        SeedPurge.Apply(added);
+        if (added.Count == 0) return;
+
+        foreach (var r in added) _ws.Library.Add(r);
+        SaveLibrary();
+        notes.Add($"这份实验是老格式，里头带的 {added.Count} 条配方已并入配方库——配方库现在是全局的，不再跟着实验文件走");
     }
 
     /// <summary>保存到当前路径。没有当前路径时调用方该走「另存为」。</summary>
@@ -180,13 +210,18 @@ public sealed class ExperimentStore
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>把 Workspace 现在的样子拍成一份实验文档。</summary>
+    /// <summary>
+    /// 把 Workspace 现在的样子拍成一份实验文档。
+    /// **配方库与化合物库不在里头**：它们是全局的，存在 tecstudio.db。
+    /// 从前每份实验都带一份配方库副本，同一条配方在几份实验里各存一遍，
+    /// 改了一处别处还是老的——分不清哪份才算数。
+    /// </summary>
     public ExperimentDoc Snapshot(string name)
     {
         var doc = new ExperimentDoc
         {
             Name = name,
-            Author = "管理员",
+            Author = _ws.Operator,
             Bench = _ws.Bench.ToDoc()
         };
         foreach (var ch in _ws.ChannelRecipes.Keys.OrderBy(x => x))
@@ -196,7 +231,6 @@ public sealed class ExperimentStore
                 Name = _ws.LaneNames.TryGetValue(ch, out var n) ? n : "新配方",
                 Recipe = _ws.ChannelRecipes[ch].ToDoc()
             });
-        foreach (var r in _ws.Library) doc.Library.Add(r.ToDoc());
         return doc;
     }
 
@@ -221,41 +255,122 @@ public sealed class ExperimentStore
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    // ── 配方库持久化 ────────────────────────────────────────────────
-
-    private string LibraryPath => Path.Combine(DataDir, "library.json");
+    // ── 全局库（配方 + 化合物）────────────────────────────────────────
 
     /// <summary>
-    /// 配方库存在数据目录里，跟着这台机器走。实验文件里也带一份，
-    /// 是为了把实验拷给别人时模板不丢。
+    /// 全局库文件。配方库和化合物库都在这里头——它们跟**这台机器**走，
+    /// 不跟某一份实验走。开不起来就是 null，程序照常能用，只是这一开机存不住库。
     /// </summary>
-    public void SaveLibrary()
-    {
-        try
-        {
-            var docs = _ws.Library.Select(r => r.ToDoc()).ToList();
-            Directory.CreateDirectory(DataDir);
-            File.WriteAllText(LibraryPath, TecJson.Write(docs));
-        }
-        catch (Exception ex) { Console.WriteLine($"[warn] 配方库存盘失败：{ex.Message}"); }
-    }
+    public LibraryDb? Db { get; private set; }
 
-    /// <summary>返回 true 表示磁盘上确实有一份库，调用方就别再灌种子模板了。</summary>
-    public bool LoadLibrary(IList<Recipe> into)
+    /// <summary>全局库存在哪儿。界面上要能告诉操作人"东西存到哪去了"。</summary>
+    public static string LibraryDbPath { get; } = Path.Combine(DataDir, "tecstudio.db");
+
+    private static string LegacyLibraryPath => Path.Combine(DataDir, "library.json");
+
+    private void OpenDb()
     {
-        if (!File.Exists(LibraryPath)) return false;
         try
         {
-            var docs = TecJson.Read<List<RecipeDoc>>(File.ReadAllText(LibraryPath));
-            into.Clear();
-            foreach (var d in docs) into.Add(d.ToModel());
-            return true;
+            Db = new LibraryDb(LibraryDbPath);
+            MigrateLegacyLibrary();
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[warn] 配方库读盘失败，退回内置模板：{ex.Message}");
+            // 盘满、目录只读、文件被另一个进程独占——都不该让程序开不起来。
+            // 库这一开机存不住，但台面和实验文件照旧能存
+            Console.WriteLine($"[warn] 全局库打不开，本次运行配方库与化合物库不会落盘：{ex.Message}");
+            Db = null;
+        }
+    }
+
+    /// <summary>
+    /// 老版本的配方库是 library.json。搬进数据库之后把它改名留着——
+    /// 不删，万一搬砸了操作人还能自己找回来；改了名下次开机就不会再搬一遍。
+    /// </summary>
+    private void MigrateLegacyLibrary()
+    {
+        if (Db is null || !File.Exists(LegacyLibraryPath)) return;
+        try
+        {
+            var docs = TecJson.Read<List<RecipeDoc>>(File.ReadAllText(LegacyLibraryPath));
+            var have = Db.LoadRecipes();
+            var ids = have.Select(d => d.Id).ToHashSet(StringComparer.Ordinal);
+            var added = docs.Where(d => ids.Add(d.Id)).ToList();
+            if (added.Count > 0)
+            {
+                have.AddRange(added);
+                Db.SaveRecipes(have);
+            }
+            File.Move(LegacyLibraryPath, LegacyLibraryPath + ".bak", overwrite: true);
+            Console.WriteLine($"[info] 老配方库已搬进 {LibraryDbPath}（{added.Count} 条）");
+        }
+        catch (Exception ex) { Console.WriteLine($"[warn] 老配方库搬迁失败，原文件留着：{ex.Message}"); }
+    }
+
+    /// <summary>把内存里的配方库整个对齐到数据库：改的改、删的删。</summary>
+    public void SaveLibrary()
+    {
+        if (Db is null) return;
+        try { Db.SaveRecipes(_ws.Library.Select(r => r.ToDoc()).ToList()); }
+        catch (Exception ex) { Console.WriteLine($"[warn] 配方库存盘失败：{ex.Message}"); }
+    }
+
+    /// <summary>返回 true 表示库里确实有东西。</summary>
+    public bool LoadLibrary(IList<Recipe> into)
+    {
+        if (Db is null) return false;
+        try
+        {
+            var docs = Db.LoadRecipes();
+            into.Clear();
+            foreach (var d in docs) into.Add(d.ToModel());
+            return into.Count > 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[warn] 配方库读盘失败：{ex.Message}");
             return false;
         }
+    }
+
+    /// <summary>
+    /// 化合物库读盘。第一次开机库是空的，把程序自带的参考数据灌一次；
+    /// 灌过就记一笔，操作人删掉的那条不会下次开机又回来。
+    /// </summary>
+    public void LoadCompounds(IList<Compound> into)
+    {
+        into.Clear();
+        if (Db is null)
+        {
+            // 库开不起来时至少让界面有东西可看，只是改了存不住
+            foreach (var c in CompoundSeed.All) into.Add(c.Clone());
+            return;
+        }
+        try
+        {
+            if (Db.CompoundCount == 0 && Db.Meta(CompoundSeed.MetaKey) is null)
+            {
+                Db.SaveCompounds(CompoundSeed.All);
+                Db.SetMeta(CompoundSeed.MetaKey, "1");
+            }
+            foreach (var c in Db.LoadCompounds()) into.Add(c);
+        }
+        catch (Exception ex) { Console.WriteLine($"[warn] 化合物库读盘失败：{ex.Message}"); }
+    }
+
+    /// <summary>改一条化合物就写一条，不必把整张表重写。</summary>
+    public void SaveCompound(Compound c)
+    {
+        if (Db is null) return;
+        try { Db.SaveCompound(c); }
+        catch (Exception ex) { Console.WriteLine($"[warn] 化合物存盘失败：{ex.Message}"); }
+    }
+
+    public void CloseDb()
+    {
+        Db?.Dispose();
+        Db = null;
     }
 
     // ── 最近实验 ────────────────────────────────────────────────────

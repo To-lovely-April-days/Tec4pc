@@ -9,6 +9,24 @@ namespace Tec.App.Services;
 /// </summary>
 public static class Structures
 {
+    /// <summary>
+    /// 按键取骨架式。化合物库里只存这个键，坐标不进库——
+    /// 那是程序自带的图形资源，存进数据库以后改了画法就对不上了。
+    /// 键不认识（比如操作人自己新增的化合物）返回 null，界面显示成没有结构式。
+    /// </summary>
+    public static Molecule? Get(string? key) => key switch
+    {
+        "BenzoicAcid" => BenzoicAcid,
+        "SalicylicAcid" => SalicylicAcid,
+        "CitricAcid" => CitricAcid,
+        "Paracetamol" => Paracetamol,
+        "Ibuprofen" => Ibuprofen,
+        "Glycine" => Glycine,
+        "GlutamicAcid" => GlutamicAcid,
+        "Sucrose" => Sucrose,
+        _ => null
+    };
+
     /// <summary>苯环六个顶点，Kekulé 式三条双键。</summary>
     private static (double X, double Y, string? L)[] Ring(double cx, double cy) => new (double, double, string?)[]
     {

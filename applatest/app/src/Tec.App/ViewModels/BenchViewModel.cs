@@ -729,7 +729,9 @@ public sealed class BenchViewModel : ViewModelBase
             ChannelRows.Add(new ChannelRowViewModel(ch, host, probes));
         }
 
-        Raise(nameof(BenchSummary));
+        // 台面属性里的「设备数」也得跟着变——拖进来一台反应器，右栏还写着 0 台，
+        // 而底下状态条已经是「1 台设备 · 2 个通道」，两处对不上
+        RaiseAll(nameof(BenchSummary), nameof(DeviceCountText));
     }
 
     /// <summary>

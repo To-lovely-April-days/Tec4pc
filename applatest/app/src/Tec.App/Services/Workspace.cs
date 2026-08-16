@@ -3,6 +3,7 @@ using Avalonia.Threading;
 using Tec.Core;
 using Tec.Core.Benches;
 using Tec.Core.Catalog;
+using Tec.Core.Compounds;
 using Tec.Core.Data;
 using Tec.Core.Execution;
 using Tec.Core.Recipes;
@@ -52,6 +53,12 @@ public sealed class Workspace
     /// 切到配方库页看不见，得重开程序（那正是"保存了列表里没有"的原因）。
     /// </summary>
     public ObservableCollection<Recipe> Library { get; } = new();
+
+    /// <summary>
+    /// 化合物库。跟配方库一样是**全局**的：物性数据在哪份实验里都是那个值，
+    /// 存在 tecstudio.db，不写进 .tec 文件。
+    /// </summary>
+    public ObservableCollection<Compound> Compounds { get; } = new();
 
     /// <summary>
     /// 当前操作人。存配方、开批次、写记录都署这个名。
@@ -126,6 +133,10 @@ public sealed class Workspace
         // 早期版本自动灌过六条演示配方，已经落盘的那些在这里一次性清掉
         Store.LoadLibrary(Library);
         if (SeedPurge.Apply(Library) > 0) Store.SaveLibrary();
+
+        // 化合物库同样从全局库读。头一回开机库是空的，灌一次程序自带的参考数据——
+        // 物性数据不是工艺，属于该自带的资料（见 CompoundSeed 的说明）
+        Store.LoadCompounds(Compounds);
     }
 
     /// <summary>
@@ -281,6 +292,7 @@ public sealed class Workspace
         _safetyTimer?.Dispose();
         Store?.SaveLibrary();          // 配方库改了就留在盘上，下次开机还在
         Store?.SaveRecent();
+        Store?.CloseDb();              // 关掉数据库连接，WAL 才会合并回主文件
         Engine.AbortAll(null, "程序退出");
         foreach (var s in _sessions.Values)
         {

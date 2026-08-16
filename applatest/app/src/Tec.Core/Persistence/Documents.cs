@@ -102,6 +102,10 @@ public sealed class ExperimentDoc
 
     public BenchDoc Bench { get; set; } = new();
     public List<LaneDoc> Lanes { get; set; } = new();
-    /// <summary>随实验一起走的配方库。换台电脑打开，库里那几条模板还在。</summary>
+    /// <summary>
+    /// **老格式遗留**：早期版本把配方库也塞进实验文件里。
+    /// 配方库现在是全局的（一台机器一份，存在 tecstudio.db），新存的文件这里恒为空；
+    /// 字段留着是为了打得开老文件——打开时里头的配方并进全局库，不悄悄扔掉。
+    /// </summary>
     public List<RecipeDoc> Library { get; set; } = new();
 }

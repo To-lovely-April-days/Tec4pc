@@ -151,9 +151,13 @@
     </DockPanel>
 
     <!-- ========== 右侧物性详情 ========== -->
-    <Border Grid.Column="1" Background="#ececec" BorderBrush="#d2d2d2" BorderThickness="1,0,0,0">
+    <!-- 与台面属性同一套观感：白底面板 + 浅紫内容块。
+         从前这一整栏是 #ececec 的灰，跟台面 / 配方 / 配方库那三页对不上 -->
+    <Border Grid.Column="1" Background="{StaticResource ThemeGap}"
+            BorderBrush="#d2d2d2" BorderThickness="1,0,0,0">
       <ScrollViewer>
-        <StackPanel Margin="18,16,18,20" DataContext="{Binding Selected}">
+        <Border Background="{StaticResource ThemeFill}" Padding="18,16,18,20">
+        <StackPanel DataContext="{Binding Selected}">
           <TextBlock Text="物性详情" FontSize="24" FontWeight="Light" Foreground="#333333"
                      HorizontalAlignment="Center" Margin="0,0,0,8" />
           <TextBlock Text="{Binding Name}" FontSize="21" FontWeight="Light" Foreground="#333333"
@@ -219,6 +223,7 @@
           <TextBlock Classes="intro" Margin="0,10,0,0"
                      Text="配方中的升温 / 恒温步骤可自动引用该化合物的饱和温度与溶解度数据（FR-5.9）。" />
         </StackPanel>
+        </Border>
       </ScrollViewer>
     </Border>
   </Grid>

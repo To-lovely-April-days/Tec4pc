@@ -11,4 +11,11 @@
     <ProjectReference Include="..\Tec.Driver.Abi\Tec.Driver.Abi.csproj" />
   </ItemGroup>
 
+  <!-- 全局库（配方 + 化合物）的落盘。Persistence 这一层本来就在读写文件
+       （TecFiles 写 .tec / .tecbench / .tecrecipe），多一个数据库文件是同一类事。
+       bundle 版自带各平台的原生 sqlite3，装机不必另外装运行时。 -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.11" />
+  </ItemGroup>
+
 </Project>

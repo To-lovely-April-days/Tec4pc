@@ -4,6 +4,7 @@ using Tec.App.Controls;
 using Tec.App.Services;
 using Tec.Core;
 using Tec.Core.Catalog;
+using Tec.Core.Compounds;
 using Tec.Core.Recipes;
 using Tec.Core.Persistence;
 using Tec.Core.Scheduling;
@@ -169,10 +170,17 @@ public sealed class StartViewModel : ViewModelBase
     /// </summary>
     private string MigrationNote()
     {
+        var text = "";
         var n = _store.LastMigration;
-        if (n.Count == 0) return "";
-        var head = n.Count == 1 ? n[0] : $"{n[0]} 等 {n.Count} 处";
-        return $"。这份实验是旧指令库存的，已转换：{head}";
+        if (n.Count > 0)
+        {
+            var head = n.Count == 1 ? n[0] : $"{n[0]} 等 {n.Count} 处";
+            text += $"。这份实验是旧指令库存的，已转换：{head}";
+        }
+        // 装载时另外做过的事（比如老文件里的配方库并进了全局库）。
+        // 跟指令翻译分开说——把两件事串成一句，读起来像是配方库也被"转换"了
+        foreach (var note in _store.LastNotes) text += "。" + note;
+        return text;
     }
 
     private bool Guarded(Action act, string okText)
@@ -532,46 +540,85 @@ public sealed class RecipeLibViewModel : ViewModelBase
 
 // ── 化合物数据库 ─────────────────────────────────────────────────────
 
+/// <summary>
+/// 表格一行 = 右栏物性详情的编辑面。数据本身在 <see cref="Compound"/> 上，
+/// 这里只做通知与格式化——改一个字段就写一条进全局库，不必按「保存」。
+/// </summary>
 public sealed class CompoundViewModel : ViewModelBase
 {
+    private readonly Compound _m;
+    private readonly Action<Compound> _save;
     private bool _sel;
-    private string _cas = "", _formula = "", _category = "", _solvent = "", _note = "";
-    private double _mw, _mp;
+
+    public CompoundViewModel(Compound model, Action<Compound> save)
+    {
+        _m = model;
+        _save = save;
+    }
+
+    /// <summary>底下那条数据。存盘、提取到配方参数都拿它。</summary>
+    public Compound Model => _m;
 
     /// <summary>选中态由 CompoundsViewModel 统一维护（表格行整行加深加粗）。</summary>
     public bool IsSelected { get => _sel; set => Set(ref _sel, value); }
 
-    public required string Name { get; init; }
-
-    // 物性详情面板是这些字段的编辑面，改了表格同一行立刻跟着变
-    public required string Cas { get => _cas; set => Set(ref _cas, value); }
-    public required string Formula { get => _formula; set => Set(ref _formula, value); }
-    public required string Category
+    // 物性详情面板是这些字段的编辑面，改了表格同一行立刻跟着变，同时落进库
+    public string Name
     {
-        get => _category;
-        set { if (Set(ref _category, value)) Raise(nameof(CategoryColor)); }
-    }
-    public required string Solvent { get => _solvent; set => Set(ref _solvent, value); }
-    public required string Note { get => _note; set => Set(ref _note, value); }
-
-    public required double Mw
-    {
-        get => _mw;
-        set { if (Set(ref _mw, value)) RaiseAll(nameof(MwText), nameof(MwEdit)); }
+        get => _m.Name;
+        set => Edit(_m.Name, value, v => _m.Name = v);
     }
 
-    public required double Mp
+    public string Cas
     {
-        get => _mp;
-        set { if (Set(ref _mp, value)) RaiseAll(nameof(MpText), nameof(MpEdit)); }
+        get => _m.Cas;
+        set => Edit(_m.Cas, value, v => _m.Cas = v);
     }
 
-    /// <summary>溶解度对温度的二次拟合系数 a + b·T + c·T²（g/100 mL 水）。原型 sol 数组。</summary>
-    public required double[] Solubility { get; init; }
+    public string Formula
+    {
+        get => _m.Formula;
+        set => Edit(_m.Formula, value, v => _m.Formula = v);
+    }
 
-    /// <summary>骨架式的画法数据；没有的（离子化合物）用 IonText 显示离子对。</summary>
-    public Molecule? Structure { get; init; }
-    public string? IonText { get; init; }
+    public string Category
+    {
+        get => _m.Category;
+        set => Edit(_m.Category, value, v => _m.Category = v, new[] { nameof(CategoryColor) });
+    }
+
+    public string Solvent
+    {
+        get => _m.Solvent;
+        set => Edit(_m.Solvent, value, v => _m.Solvent = v);
+    }
+
+    public string Note
+    {
+        get => _m.Note;
+        set => Edit(_m.Note, value, v => _m.Note = v);
+    }
+
+    public double Mw
+    {
+        get => _m.Mw;
+        set => Edit(_m.Mw, value, v => _m.Mw = v, new[] { nameof(MwText), nameof(MwEdit) });
+    }
+
+    public double Mp
+    {
+        get => _m.Mp;
+        set => Edit(_m.Mp, value, v => _m.Mp = v, new[] { nameof(MpText), nameof(MpEdit) });
+    }
+
+    /// <summary>溶解度对温度的二次拟合系数 a + b·T + c·T²（g/100 mL 水）。</summary>
+    public double[] Solubility => _m.Solubility;
+
+    /// <summary>骨架式的画法。库里只存一个键，画法是程序自带的图形资源。</summary>
+    public Molecule? Structure => Structures.Get(_m.StructureKey);
+
+    /// <summary>离子对。没有骨架式的（无机盐）排这个。</summary>
+    public string? IonText => _m.IonText;
 
     /// <summary>分子量 / 熔点按原型的小数位显示：表格与编辑框用同一份格式，免得一个 342.30 一个 342.3。</summary>
     public string MwText => Mw.ToString("F2", CultureInfo.InvariantCulture);
@@ -598,6 +645,17 @@ public sealed class CompoundViewModel : ViewModelBase
         "无机盐" => "#8a5a3b",
         _ => "#c0399f"
     };
+
+    /// <summary>改一个字段：值真的变了才通知、才落盘。</summary>
+    private void Edit<T>(T old, T value, Action<T> set, string[]? also = null,
+                         [System.Runtime.CompilerServices.CallerMemberName] string? name = null)
+    {
+        if (EqualityComparer<T>.Default.Equals(old, value)) return;
+        set(value);
+        Raise(name);
+        if (also is not null) RaiseAll(also);
+        _save(_m);
+    }
 }
 
 public sealed class CompoundsViewModel : ViewModelBase
@@ -605,39 +663,20 @@ public sealed class CompoundsViewModel : ViewModelBase
     /// <summary>右栏「溶解度 – 温度」小节的开合。</summary>
     public SectionViewModel SolubilitySection { get; } = new();
 
+    private readonly Workspace _ws;
+    private readonly List<CompoundViewModel> _all = new();
     private string _search = "";
     private string _category = "全部";
     private CompoundViewModel? _selected;
 
-    private static readonly CompoundViewModel[] Seed =
+    public CompoundsViewModel(Workspace ws)
     {
-        New("苯甲酸", "65-85-0", "C7H6O2", 122.12, 122.4, "有机酸", new[] { 0.17, 0.006, 0.0006 }, "水 / 乙醇", "常用结晶模型物", Structures.BenzoicAcid),
-        New("水杨酸", "69-72-7", "C7H6O3", 138.12, 158.6, "有机酸", new[] { 0.12, 0.004, 0.0005 }, "水 / 乙醇", "温度敏感", Structures.SalicylicAcid),
-        New("柠檬酸", "77-92-9", "C6H8O7", 192.12, 153.0, "有机酸", new[] { 54, 1.5, 0.012 }, "水", "高溶解度", Structures.CitricAcid),
-        New("对乙酰氨基酚", "103-90-2", "C8H9NO2", 151.16, 169.0, "药物", new[] { 0.8, 0.03, 0.002 }, "水 / 乙醇", "药物结晶筛选常用", Structures.Paracetamol),
-        New("布洛芬", "15687-27-1", "C13H18O2", 206.28, 76.0, "药物", new[] { 0.002, 0.0004, 0.00008 }, "乙醇 / 乙酸乙酯", "难溶于水", Structures.Ibuprofen),
-        New("甘氨酸", "56-40-6", "C2H5NO2", 75.07, 233.0, "氨基酸", new[] { 14.2, 0.44, 0.004 }, "水", "多晶型 α/β/γ", Structures.Glycine),
-        New("L-谷氨酸", "56-86-0", "C5H9NO4", 147.13, 199.0, "氨基酸", new[] { 0.35, 0.02, 0.001 }, "水", "多晶型 α/β", Structures.GlutamicAcid),
-        New("硫酸铵", "7783-20-2", "(NH4)2SO4", 132.14, 235.0, "无机盐", new[] { 70.6, 0.25, 0.0 }, "水", "盐析常用", null, "2 NH₄⁺ + SO₄²⁻"),
-        New("氯化钾", "7447-40-7", "KCl", 74.55, 770.0, "无机盐", new[] { 28, 0.32, 0.0 }, "水", "教学演示", null, "K⁺ + Cl⁻"),
-        New("蔗糖", "57-50-1", "C12H22O11", 342.30, 186.0, "糖类", new[] { 179, 1.1, 0.02 }, "水", "高粘度体系", Structures.Sucrose)
-    };
-
-    private static CompoundViewModel New(string n, string cas, string fx, double mw, double mp,
-                                         string cat, double[] sol, string solvent, string note,
-                                         Molecule? structure = null, string? ion = null)
-        => new()
-        {
-            Name = n, Cas = cas, Formula = fx, Mw = mw, Mp = mp,
-            Category = cat, Solubility = sol, Solvent = solvent, Note = note,
-            Structure = structure, IonText = ion
-        };
-
-    public CompoundsViewModel()
-    {
+        _ws = ws;
         foreach (var c in new[] { "全部", "有机酸", "药物", "氨基酸", "无机盐", "糖类" }) Categories.Add(c);
-        Apply();
-        Selected = Rows.FirstOrDefault();
+
+        // 化合物库是全局的，从 tecstudio.db 读；改一个字段写一条回去
+        Reload();
+        ws.Compounds.CollectionChanged += (_, _) => Reload();
     }
 
     public ObservableCollection<CompoundViewModel> Rows { get; } = new();
@@ -680,10 +719,24 @@ public sealed class CompoundsViewModel : ViewModelBase
     /// <summary>没有匹配项时表格给一句话，而不是空白（原型同款）。</summary>
     public bool NoRows => Rows.Count == 0;
 
+    /// <summary>库里一条都没有——跟「筛出来是空的」不是一回事，说法也不一样。</summary>
+    public bool IsEmpty => _all.Count == 0;
+
+    private void Reload()
+    {
+        var keep = _selected?.Cas;
+        _all.Clear();
+        foreach (var c in _ws.Compounds) _all.Add(new CompoundViewModel(c, _ws.Store.SaveCompound));
+        Apply();
+        _selected = null;
+        Selected = Rows.FirstOrDefault(r => r.Cas == keep) ?? Rows.FirstOrDefault();
+        Raise(nameof(IsEmpty));
+    }
+
     private void Apply()
     {
         Rows.Clear();
-        foreach (var c in Seed)
+        foreach (var c in _all)
         {
             if (_category != "全部" && c.Category != _category) continue;
             if (_search.Length > 0 &&
