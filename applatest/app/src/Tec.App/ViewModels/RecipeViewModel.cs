@@ -111,6 +111,22 @@ public sealed class StepViewModel : ViewModelBase
         get => _selected;
         set => Set(ref _selected, value);
     }
+
+    /// <summary>拖拽落点指示：松手会插在这张卡**之前**。画在卡片上方那截连接线上。</summary>
+    private bool _dropBefore;
+    public bool DropBefore
+    {
+        get => _dropBefore;
+        set => Set(ref _dropBefore, value);
+    }
+
+    /// <summary>正被拖走的那张卡自己变淡，好让人看出「它要挪去别处」。</summary>
+    private bool _ghosted;
+    public bool Ghosted
+    {
+        get => _ghosted;
+        set => Set(ref _ghosted, value);
+    }
 }
 
 /// <summary>一条泳道 = 一个通道的配方（原型 .lane）。</summary>
@@ -187,7 +203,25 @@ public sealed class LaneViewModel : ViewModelBase
         set => Set(ref _isCurrent, value);
     }
 
-    public string DropHint => IsCurrent ? "点击左侧步骤库添加到此通道" : "点选此列后可编辑";
+    /// <summary>落点在这条泳道的末尾（拖到虚线框上）。</summary>
+    private bool _dropAtEnd;
+    public bool DropAtEnd
+    {
+        get => _dropAtEnd;
+        set { if (Set(ref _dropAtEnd, value)) Raise(nameof(DropHint)); }
+    }
+
+    /// <summary>松手会落在这条泳道里。整条描蓝，一眼看得出要放进哪个通道。</summary>
+    private bool _isDropLane;
+    public bool IsDropLane
+    {
+        get => _isDropLane;
+        set => Set(ref _isDropLane, value);
+    }
+
+    public string DropHint => DropAtEnd
+        ? "松手放到这里"
+        : IsCurrent ? "从左侧步骤库拖进来，或点一下也行" : "点选此列后可编辑";
 
     public void RefreshHint() => RaiseAll(nameof(DropHint), nameof(IsCurrent));
 }
@@ -367,13 +401,7 @@ public sealed class RecipeViewModel : ViewModelBase
     private void AddCommand(CommandItemViewModel c)
     {
         if (NoLanes) return;                      // 没有通道就没有地方放这一步
-        var d = c.Descriptor;
-        var step = new Step
-        {
-            CommandId = d.Id,
-            Parameters = new ParameterSet().FillDefaults(d.Parameters),
-            Rows = d.Parameters.Table is null ? null : DefaultRows(d)
-        };
+        var step = NewStep(c.Descriptor);
         var recipe = Current;
         var at = _selectedStep is null ? recipe.Steps.Count : recipe.Steps.IndexOf(_selectedStep.Step) + 1;
         recipe.Steps.Insert(Math.Clamp(at, 0, recipe.Steps.Count), step);
@@ -402,6 +430,159 @@ public sealed class RecipeViewModel : ViewModelBase
         Workspace.Store.MarkDirty();
         RefreshAll();
     }
+
+    // ── 拖拽：从步骤库拖进泳道 / 在泳道之间挪步骤 ─────────────────────
+    //
+    // 手写指针跟踪而不是用 DragDrop：落点指示要精确到「插在第几张卡之前」，
+    // 系统拖放给不了这个粒度，而且台面那边已经是这套写法，两处保持一致。
+
+    private CommandItemViewModel? _dragCmd;
+    private StepViewModel? _dragStep;
+    private int _dragFromCh;
+    private bool _dragging;
+    private int? _dropCh;
+    private int _dropAt;
+
+    public bool Dragging
+    {
+        get => _dragging;
+        private set => Set(ref _dragging, value);
+    }
+
+    private double _dragX, _dragY;
+    public double DragX { get => _dragX; private set => Set(ref _dragX, value); }
+    public double DragY { get => _dragY; private set => Set(ref _dragY, value); }
+
+    public string DragTitle { get; private set; } = "";
+    public string DragIcon { get; private set; } = "cmd-wait";
+    public string DragColor { get; private set; } = "#9aa4ab";
+
+    /// <summary>从左边的步骤库拖出来。</summary>
+    public void BeginDragCommand(CommandItemViewModel c)
+    {
+        if (NoLanes) return;                       // 没有通道就没有地方放
+        _dragCmd = c;
+        _dragStep = null;
+        DragTitle = c.Name;
+        DragIcon = c.IconKey;
+        DragColor = ModuleInfo.ColorOf(c.Module);
+        StartDrag();
+    }
+
+    /// <summary>拖泳道里已有的步骤：可以在本道内换位置，也可以整条挪到别的通道。</summary>
+    public void BeginDragStep(StepViewModel s, int fromChannel)
+    {
+        _dragStep = s;
+        _dragCmd = null;
+        _dragFromCh = fromChannel;
+        DragTitle = s.Name;
+        DragIcon = s.IconKey;
+        DragColor = s.ModuleColor;
+        s.Ghosted = true;
+        StartDrag();
+    }
+
+    private void StartDrag()
+    {
+        _dropCh = null;
+        Dragging = true;
+        RaiseAll(nameof(DragTitle), nameof(DragIcon), nameof(DragColor));
+    }
+
+    /// <summary>
+    /// 指针挪到哪了。落点由视图算好传进来——只有视图知道每张卡片实际画在哪。
+    /// channel 为 null 表示当前不在任何泳道上，这时不给落点指示：
+    /// 拖到空处松手应该什么都不发生，而不是悄悄插到上一次的位置。
+    /// </summary>
+    public void DragTo(double x, double y, int? channel, int index)
+    {
+        DragX = x;
+        DragY = y;
+        if (channel == _dropCh && index == _dropAt) return;
+        _dropCh = channel;
+        _dropAt = index;
+        ShowDropMark();
+    }
+
+    private void ShowDropMark()
+    {
+        foreach (var lane in Lanes)
+        {
+            var hit = _dropCh == lane.Channel;
+            lane.IsDropLane = hit;
+            lane.DropAtEnd = hit && _dropAt >= lane.Steps.Count;
+            for (var i = 0; i < lane.Steps.Count; i++)
+                lane.Steps[i].DropBefore = hit && i == _dropAt;
+        }
+    }
+
+    private void ClearDropMark()
+    {
+        foreach (var lane in Lanes)
+        {
+            lane.DropAtEnd = false;
+            lane.IsDropLane = false;
+            foreach (var s in lane.Steps) { s.DropBefore = false; s.Ghosted = false; }
+        }
+    }
+
+    public void CancelDrag()
+    {
+        ClearDropMark();
+        _dragCmd = null;
+        _dragStep = null;
+        Dragging = false;
+    }
+
+    /// <summary>松手。落在有效位置才动配方，否则等于没拖过。</summary>
+    public void EndDrag()
+    {
+        var cmd = _dragCmd;
+        var step = _dragStep;
+        var toCh = _dropCh;
+        var at = _dropAt;
+        CancelDrag();
+
+        if (toCh is not { } ch || !Workspace.ChannelRecipes.TryGetValue(ch, out var target)) return;
+
+        string keepId;
+        if (cmd is not null)
+        {
+            var made = NewStep(cmd.Descriptor);
+            target.Steps.Insert(Math.Clamp(at, 0, target.Steps.Count), made);
+            keepId = made.StepId;
+        }
+        else if (step is not null)
+        {
+            if (!Workspace.ChannelRecipes.TryGetValue(_dragFromCh, out var source)) return;
+            var from = source.Steps.IndexOf(step.Step);
+            if (from < 0) return;
+
+            // 同一条泳道里往后挪：先摘掉会让后面的下标整体前移一位
+            if (ReferenceEquals(source, target) && at > from) at--;
+            if (ReferenceEquals(source, target) && at == from) return;   // 原地没动
+
+            source.Steps.RemoveAt(from);
+            target.Steps.Insert(Math.Clamp(at, 0, target.Steps.Count), step.Step);
+            source.ModifiedAt = DateTimeOffset.Now;
+            keepId = step.Step.StepId;
+        }
+        else return;
+
+        target.ModifiedAt = DateTimeOffset.Now;
+        Workspace.Store.MarkDirty();
+        CurCh = ch;                     // 落到哪条道就切到哪条道，右栏跟着换
+        RefreshAll();
+        SelectedStep = Lanes.FirstOrDefault(l => l.Channel == ch)?
+                            .Steps.FirstOrDefault(v => v.Step.StepId == keepId);
+    }
+
+    private static Step NewStep(CommandDescriptor d) => new()
+    {
+        CommandId = d.Id,
+        Parameters = new ParameterSet().FillDefaults(d.Parameters),
+        Rows = d.Parameters.Table is null ? null : DefaultRows(d)
+    };
 
     /// <summary>一键复制（原型 copyRecipe）：深拷贝，各通道互不影响。</summary>
     private void DoCopy()

@@ -2,7 +2,8 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ctl="clr-namespace:Tec.App.Controls"
              xmlns:v="clr-namespace:Tec.App.Views"
-             x:Class="Tec.App.Views.RecipeView">
+             x:Class="Tec.App.Views.RecipeView"
+             Focusable="True" KeyDown="OnKeyDown">
 
   <!-- 原型 view-recipe：工具箱 308 ｜ 中列 ｜ 属性 342 -->
   <Grid ColumnDefinitions="308,*,342">
@@ -121,8 +122,10 @@
               <DataTemplate>
                 <!-- .lane：选中 = 蓝实线边 + 柔环 -->
                 <Border Width="300" Padding="4" CornerRadius="5" BorderThickness="1.6"
+                        Tag="lane"
                         BorderBrush="Transparent" Background="Transparent"
                         Classes.laneSel="{Binding IsCurrent}"
+                        Classes.laneDrop="{Binding IsDropLane}"
                         PointerPressed="OnLanePressed" Cursor="Hand">
                   <StackPanel>
                     <!-- lane-head：淡紫粉底 #efd9ec -->
@@ -162,11 +165,20 @@
                         <ItemsControl.ItemTemplate>
                           <DataTemplate>
                             <StackPanel HorizontalAlignment="Center">
-                              <Border Width="1" Height="14" Background="#7a7a7a" HorizontalAlignment="Center" />
+                              <!-- 连接线那一截同时当落点指示条用：高度不变，拖动时版面不跳 -->
+                              <Panel Height="14">
+                                <Border Width="1" Height="14" Background="#7a7a7a"
+                                        HorizontalAlignment="Center" />
+                                <Border Width="270" Height="4" CornerRadius="2" Background="#1a7fc4"
+                                        VerticalAlignment="Center"
+                                        IsVisible="{Binding DropBefore}" />
+                              </Panel>
                               <!-- .step 卡片 -->
                               <Border Width="270" Background="White" BorderBrush="#d3dae0"
                                       BorderThickness="1" CornerRadius="4" Cursor="Hand"
+                                      Tag="stepcard"
                                       Classes.stepSel="{Binding IsSelected}"
+                                      Classes.stepGhost="{Binding Ghosted}"
                                       PointerPressed="OnStepPressed">
                                 <StackPanel>
                                   <Grid ColumnDefinitions="Auto,*" Margin="9,8">
@@ -208,10 +220,16 @@
                         </ItemsControl.ItemTemplate>
                       </ItemsControl>
 
-                      <Border Width="1" Height="14" Background="#7a7a7a" HorizontalAlignment="Center" />
+                      <Panel Height="14">
+                        <Border Width="1" Height="14" Background="#7a7a7a" HorizontalAlignment="Center" />
+                        <Border Width="270" Height="4" CornerRadius="2" Background="#1a7fc4"
+                                VerticalAlignment="Center" IsVisible="{Binding DropAtEnd}" />
+                      </Panel>
                       <Panel Width="270" Height="64">
                         <Rectangle Fill="White" Stroke="#9a9a9a" StrokeThickness="1.5"
-                                   StrokeDashArray="4,3" />
+                                   StrokeDashArray="4,3" IsVisible="{Binding !DropAtEnd}" />
+                        <Rectangle Fill="#eef7fd" Stroke="#1a7fc4" StrokeThickness="1.8"
+                                   StrokeDashArray="4,3" IsVisible="{Binding DropAtEnd}" />
                         <TextBlock Text="{Binding DropHint}" FontSize="11" Foreground="#8d8d8d"
                                    TextAlignment="Center" VerticalAlignment="Center"
                                    TextWrapping="Wrap" Margin="4" />
@@ -298,6 +316,23 @@
         </StackPanel>
       </ScrollViewer>
     </Border>
+    <!-- 跟手的幽灵卡。盖在三列之上、不吃事件，所以底下照样能命中泳道 -->
+    <Canvas Grid.Column="0" Grid.ColumnSpan="3" IsHitTestVisible="False">
+      <Border IsVisible="{Binding Dragging}"
+              Canvas.Left="{Binding DragX}" Canvas.Top="{Binding DragY}"
+              Width="216" Background="White" BorderBrush="#1a7fc4" BorderThickness="1.5"
+              CornerRadius="4" Padding="8,6" Opacity="0.94"
+              BoxShadow="0 5 16 0 #33000000">
+        <StackPanel Orientation="Horizontal" Spacing="9">
+          <Border Width="30" Height="30" CornerRadius="4" Background="{Binding DragColor}">
+            <ctl:TecIcon Key="{Binding DragIcon}" White="True" Size="19"
+                         HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+          <TextBlock Text="{Binding DragTitle}" FontSize="12" Foreground="#22303a"
+                     VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+      </Border>
+    </Canvas>
   </Grid>
 
   <UserControl.Styles>
@@ -349,6 +384,13 @@
       <Setter Property="BorderBrush" Value="#1a7fc4" />
       <Setter Property="Background" Value="White" />
       <Setter Property="BoxShadow" Value="0 0 0 3 #381a7fc4, 0 2 10 0 #12000000" />
+    </Style>
+    <Style Selector="Border.stepGhost">
+      <Setter Property="Opacity" Value="0.42" />
+    </Style>
+    <Style Selector="Border.laneDrop">
+      <Setter Property="BorderBrush" Value="#1a7fc4" />
+      <Setter Property="Background" Value="#f7fbfe" />
     </Style>
     <Style Selector="Border.stepSel">
       <Setter Property="BorderBrush" Value="#1a7fc4" />
