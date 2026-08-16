@@ -59,9 +59,22 @@ public sealed class RunEngine
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>
+    /// 把一条通道接进引擎。同一条通道重复接就是同一个执行器。
+    ///
+    /// **台面重建之后必须换执行器。** 台面一动（拖进一台设备、删掉一台）就会
+    /// 重开全部会话、重建全部 Channel 对象；这时通道号还是那个号，但对象和
+    /// 它背后的会话都是新的。老执行器手里攥着已经 Dispose 的会话，让它接着跑
+    /// 等于对着空气下指令——界面上通道明明「运行中」，釜温却一动不动，
+    /// 而且一声不吭。所以对象换了就把老的摘掉重来。
+    /// </summary>
     public ChannelRunner Attach(Channel channel)
     {
-        if (_runners.TryGetValue(channel.Number, out var existing)) return existing;
+        if (_runners.TryGetValue(channel.Number, out var existing))
+        {
+            if (ReferenceEquals(existing.Channel, channel)) return existing;
+            Detach(channel.Number, "台面重建，设备会话已重开");
+        }
         var r = new ChannelRunner(channel, Catalog, Builtins, Arbiter, Now, (ch, id) => ResourceOf(ch, id))
         {
             TimeScale = TimeScale
@@ -71,10 +84,14 @@ public sealed class RunEngine
         return r;
     }
 
-    public void Detach(int channel)
+    /// <summary>
+    /// 摘掉一条通道。正在跑的先中止——它的设备会话已经没了，
+    /// 让记录停在「运行中」比停在「中止」糟得多：后者至少写清了为什么停。
+    /// </summary>
+    public void Detach(int channel, string reason = "通道从台面移除")
     {
         if (_runners.Remove(channel, out var r) && r.State is ChannelRunState.Running or ChannelRunState.Paused)
-            r.Abort(null, "通道从台面移除");
+            r.Abort(null, reason);
     }
 
     public ChannelRunner? Runner(int channel)

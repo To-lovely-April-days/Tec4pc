@@ -148,7 +148,7 @@
 
     <!-- runbody。列宽随折叠状态在 RunView.axaml.cs 里算——
          ColumnDefinition 不在可视树上，绑不了 DataContext -->
-    <Grid x:Name="Body" ColumnDefinitions="560,6,*,6,430" Margin="8,0,8,8">
+    <Grid x:Name="Body" ColumnDefinitions="600,6,*,6,430" Margin="8,0,8,8">
 
       <!-- pane 台面总览 -->
       <Border Grid.Column="0" Classes="pane">
@@ -162,59 +162,110 @@
             </StackPanel>
           </Border>
           <DockPanel IsVisible="{Binding BenchPane.Open}">
-            <!-- statusrow 120px -->
-            <Border DockPanel.Dock="Bottom" Height="120" BorderBrush="#dcdcdc" BorderThickness="0,1,0,0">
+            <!-- statusrow：按宿主设备分组。一台 RD-105 = 两路，摆一个框里，
+                 「这两路共用一台机器」一眼看得见；但每一路自己启停 -->
+            <Border DockPanel.Dock="Bottom" Height="178" BorderBrush="#dcdcdc" BorderThickness="0,1,0,0">
               <Panel>
-                <ItemsControl ItemsSource="{Binding Tiles}">
-                  <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate><UniformGrid Rows="1" /></ItemsPanelTemplate>
-                  </ItemsControl.ItemsPanel>
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                      <Border Classes="stat" Classes.off="{Binding Off}" Classes.sel="{Binding IsSelected}"
-                              ClipToBounds="False" Cursor="Hand" PointerPressed="OnTilePressed">
-                        <Grid ColumnDefinitions="12,Auto,*">
-                          <Border Grid.Column="0" Background="{Binding ColorHex}" />
-                          <TextBlock Grid.Column="1" Text="{Binding NameVertical}" FontSize="13"
-                                     FontWeight="Light" Foreground="#333333" Margin="2,8"
-                                     LineHeight="14" TextAlignment="Center" />
+                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                  <ItemsControl ItemsSource="{Binding Groups}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <Border BorderBrush="#dcdcdc" BorderThickness="0,0,1,0">
+                          <DockPanel>
+                            <!-- 设备头：这一框里的两路属于哪台机器 -->
+                            <Border DockPanel.Dock="Top" Height="24" Background="#f4f4f4"
+                                    BorderBrush="#e3e3e3" BorderThickness="0,0,0,1" Padding="9,0">
+                              <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Title}" FontSize="11.5" FontWeight="SemiBold"
+                                           Foreground="#3d3d3d" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding Sub}" FontSize="10.5" Foreground="#9a9a9a"
+                                           VerticalAlignment="Center" />
+                              </StackPanel>
+                            </Border>
 
-                          <!-- 停用：只写「已停用」和它是哪个孔（原型 .stat.off 的两行） -->
-                          <StackPanel Grid.Column="2" Margin="6,8" Spacing="3" IsVisible="{Binding Off}">
-                            <TextBlock Text="已停用" FontSize="11" Foreground="#b0b0b0" />
-                            <TextBlock Text="{Binding HostLabel}" FontSize="11" Foreground="#b0b0b0"
-                                       TextTrimming="CharacterEllipsis" />
-                          </StackPanel>
+                            <ItemsControl ItemsSource="{Binding Tiles}">
+                              <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                              </ItemsControl.ItemsPanel>
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                  <Border Classes="stat" Classes.off="{Binding Off}"
+                                          Classes.sel="{Binding IsSelected}" Width="140"
+                                          Cursor="Hand" PointerPressed="OnTilePressed">
+                                    <Grid ColumnDefinitions="12,Auto,*">
+                                      <Border Grid.Column="0" Background="{Binding ColorHex}" />
+                                      <TextBlock Grid.Column="1" Text="{Binding NameVertical}" FontSize="13"
+                                                 FontWeight="Light" Foreground="#333333" Margin="2,8"
+                                                 LineHeight="14" TextAlignment="Center" />
 
-                          <StackPanel Grid.Column="2" Margin="6,8" Spacing="3" IsVisible="{Binding On}">
-                            <StackPanel Orientation="Horizontal" Spacing="5">
-                              <TextBlock Text="Tr" Classes="statk" /><TextBlock Text="{Binding TrText}" Classes="statv" />
-                            </StackPanel>
-                            <StackPanel Orientation="Horizontal" Spacing="5">
-                              <TextBlock Text="Tj" Classes="statk" /><TextBlock Text="{Binding TjText}" Classes="statv" />
-                            </StackPanel>
-                            <StackPanel Orientation="Horizontal" Spacing="5">
-                              <TextBlock Text="pH" Classes="statk" /><TextBlock Text="{Binding PhText}" Classes="statv" />
-                            </StackPanel>
-                            <StackPanel Orientation="Horizontal" Spacing="5">
-                              <TextBlock Text="搅拌" Classes="statk" /><TextBlock Text="{Binding RpmText}" Classes="statv" />
-                            </StackPanel>
-                            <TextBlock Text="{Binding StartLine}" FontSize="11" Foreground="#8d8d8d" />
-                            <TextBlock Text="{Binding StepNow}" FontSize="10" Foreground="#2f8f49"
-                                       TextTrimming="CharacterEllipsis" />
-                          </StackPanel>
+                                      <DockPanel Grid.Column="2" Margin="6,6,6,4">
+                                        <!-- 这一路自己的四个操作。整机启停在菜单栏那排圆钮上 -->
+                                        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal"
+                                                    Spacing="5" HorizontalAlignment="Center" Margin="0,4,0,0">
+                                          <Button Classes="chbtn" Command="{Binding Start}"
+                                                  IsEnabled="{Binding CanStart}" ToolTip.Tip="{Binding StartTip}">
+                                            <ctl:TecIcon Key="ui-sim-play" Tint="#1f1f1f" Recolor="True" Size="10" />
+                                          </Button>
+                                          <Button Classes="chbtn" Command="{Binding PauseResume}"
+                                                  IsEnabled="{Binding CanPause}" ToolTip.Tip="{Binding PauseTip}">
+                                            <ctl:TecIcon Key="ui-sim-pause" Tint="#1f1f1f" Recolor="True" Size="10" />
+                                          </Button>
+                                          <Button Classes="chbtn" Command="{Binding Stop}"
+                                                  IsEnabled="{Binding CanStop}" ToolTip.Tip="停止这一路">
+                                            <ctl:TecIcon Key="ui-sim-stop" Tint="#1f1f1f" Recolor="True" Size="10" />
+                                          </Button>
+                                          <Button Classes="chbtn" Command="{Binding Skip}"
+                                                  IsEnabled="{Binding CanSkip}" ToolTip.Tip="跳过当前步">
+                                            <ctl:TecIcon Key="ui-sim-step" Tint="#1f1f1f" Recolor="True" Size="10" />
+                                          </Button>
+                                        </StackPanel>
 
-                          <!-- 没启动的那一路在磁贴左下角挂一个灰点（原型 .stat .dot）。
-                               原型是 bottom:-6px 半悬在面板边上的，这里改成贴着底边——
-                               悬出去的那半会被面板裁掉，只剩个月牙 -->
-                          <Ellipse Grid.Column="0" Width="14" Height="14" Fill="#c8c8c8"
-                                   HorizontalAlignment="Center" VerticalAlignment="Bottom"
-                                   Margin="0,0,0,3" IsVisible="{Binding NotStartedDot}" />
-                        </Grid>
-                      </Border>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
+                                        <!-- 状态一个词说清：待机 / 运行中 / 已暂停 / 已完成 / 故障 -->
+                                        <Border DockPanel.Dock="Top" CornerRadius="9" Height="17" Padding="7,0"
+                                                HorizontalAlignment="Left" Margin="0,0,0,4"
+                                                Background="{Binding StateFillHex}">
+                                          <TextBlock Text="{Binding StateText}" FontSize="10.5"
+                                                     Foreground="{Binding StateColorHex}"
+                                                     VerticalAlignment="Center" />
+                                        </Border>
+
+                                        <!-- 停用：只写它是哪个孔（数据行留着全是「—」，看着像坏了） -->
+                                        <TextBlock IsVisible="{Binding Off}" Text="{Binding HostLabel}"
+                                                   FontSize="11" Foreground="#b0b0b0"
+                                                   TextTrimming="CharacterEllipsis" VerticalAlignment="Top" />
+
+                                        <StackPanel IsVisible="{Binding On}" Spacing="2" VerticalAlignment="Top">
+                                          <StackPanel Orientation="Horizontal" Spacing="5">
+                                            <TextBlock Text="Tr" Classes="statk" /><TextBlock Text="{Binding TrText}" Classes="statv" />
+                                          </StackPanel>
+                                          <StackPanel Orientation="Horizontal" Spacing="5">
+                                            <TextBlock Text="Tj" Classes="statk" /><TextBlock Text="{Binding TjText}" Classes="statv" />
+                                          </StackPanel>
+                                          <StackPanel Orientation="Horizontal" Spacing="5">
+                                            <TextBlock Text="pH" Classes="statk" /><TextBlock Text="{Binding PhText}" Classes="statv" />
+                                          </StackPanel>
+                                          <StackPanel Orientation="Horizontal" Spacing="5">
+                                            <TextBlock Text="搅拌" Classes="statk" /><TextBlock Text="{Binding RpmText}" Classes="statv" />
+                                          </StackPanel>
+                                          <TextBlock Text="{Binding StartLine}" FontSize="10.5" Foreground="#8d8d8d" />
+                                          <TextBlock Text="{Binding StepNow}" FontSize="10" Foreground="#2f8f49"
+                                                     TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                      </DockPanel>
+                                    </Grid>
+                                  </Border>
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                          </DockPanel>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </ScrollViewer>
                 <TextBlock IsVisible="{Binding NoChannels}" FontSize="12" Foreground="#9a9a9a"
                            HorizontalAlignment="Center" VerticalAlignment="Center"
                            Text="台面上还没有通道。拖一台反应器进台面，这里就会出现它的通道。" />
@@ -373,6 +424,35 @@
       <Setter Property="BorderBrush" Value="#1a7fc4" />
       <Setter Property="BorderThickness" Value="0,2,1,0" />
     </Style>
+    <!-- 磁贴上那一路自己的操作钮：20px 圆圈，比底部工具条那排小一号 -->
+    <Style Selector="Button.chbtn">
+      <Setter Property="Width" Value="20" />
+      <Setter Property="Height" Value="20" />
+      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderBrush" Value="#6b6b6b" />
+      <Setter Property="BorderThickness" Value="1.4" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.chbtn:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#e8f2fb" />
+      <Setter Property="BorderBrush" Value="#1a7fc4" />
+    </Style>
+    <!-- 按不了的时候还是一个圈，只是淡下去；缺省禁用样式会把描边抹掉，剩一块灰饼 -->
+    <Style Selector="Button.chbtn:disabled /template/ ContentPresenter">
+      <Setter Property="Background" Value="#fafafa" />
+      <Setter Property="BorderBrush" Value="#d2d2d2" />
+    </Style>
+    <Style Selector="Button.chbtn:disabled">
+      <Setter Property="Opacity" Value="0.5" />
+      <Setter Property="Cursor" Value="Arrow" />
+    </Style>
+
     <Style Selector="TextBlock.statk">
       <Setter Property="FontSize" Value="11" />
       <Setter Property="Foreground" Value="#666666" />

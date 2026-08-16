@@ -7,6 +7,7 @@ using Tec.Core.Compounds;
 using Tec.Core.Data;
 using Tec.Core.Execution;
 using Tec.Core.Recipes;
+using Tec.Core.Records;
 using Tec.Core.Safety;
 using Tec.Driver.Abi;
 using Tec.DriverHost;
@@ -158,6 +159,18 @@ public sealed class Workspace
     /// </summary>
     public async Task RebuildChannelsAsync()
     {
+        // 台面一动，全部设备会话都要重开。**先把正在跑的通道停下来并记一笔**——
+        // 它的会话马上就要被 Dispose，让它「接着跑」只是对着空气下指令：
+        // 界面上通道明明「运行中」，釜温却一动不动，而且一声不吭。
+        // 停下来至少在记录里写清了为什么停
+        foreach (var r in Engine.Runners.ToList())
+            if (r.State is ChannelRunState.Running or ChannelRunState.Paused)
+                r.Abort(Operator, "台面改动，设备会话重开");
+        foreach (var r in Engine.Runners.ToList())
+        {
+            try { await r.Completion.ConfigureAwait(false); } catch { }
+        }
+
         foreach (var s in _sessions.Values)
         {
             try { await s.DisposeAsync().ConfigureAwait(false); } catch { }
@@ -240,6 +253,12 @@ public sealed class Workspace
         }
 
         // 4. 执行器 + 安全限值。缺省从设备 Limits 推导，操作人只能收紧（§7.5）
+        //    台面上已经没有的通道，执行器一并摘掉——留着的话它指向一个
+        //    早已不存在的孔位，下一次「全部启动」会去启一条不在台面上的通道
+        foreach (var gone in Engine.Runners.Select(r => r.Number)
+                                   .Where(n => _channels.All(c => c.Number != n)).ToList())
+            Engine.Detach(gone);
+
         foreach (var ch in _channels)
         {
             Engine.Attach(ch);

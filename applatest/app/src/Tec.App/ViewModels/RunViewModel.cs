@@ -27,11 +27,31 @@ public static class WellLabel
     }
 }
 
-/// <summary>通道磁贴（原型 .stat）：12px 色条 + 竖排 CHn + 数据行 + 当前步。</summary>
+/// <summary>
+/// 通道磁贴（原型 .stat）：12px 色条 + 竖排 CHn + 状态 + 数据行 + 当前步 + 本路的四个操作。
+///
+/// **每一路自己启停。** 一台双通道反应器上的两个孔共用一台机器，但工艺是各跑各的：
+/// A 孔在结晶、B 孔在做空白，B 孔出了问题要单独停，A 孔那一炉不能跟着黄掉。
+/// 引擎本来就是按通道走的（一个 ChannelRunner 管一路），这里只是把入口摆到那一路自己身上。
+/// 整机启停在菜单栏右边那排圆钮上，两者不冲突：那排是「全部已启用通道」。
+/// </summary>
 public sealed class StatTileViewModel : ViewModelBase
 {
     private readonly Workspace _ws;
-    public StatTileViewModel(Workspace ws, int channel) { _ws = ws; Channel = channel; }
+    private readonly Action<string> _say;
+    private readonly Action _changed;
+
+    public StatTileViewModel(Workspace ws, int channel, Action<string> say, Action changed)
+    {
+        _ws = ws;
+        Channel = channel;
+        _say = say;
+        _changed = changed;
+        Start = new RelayCommand(DoStart);
+        PauseResume = new RelayCommand(DoPauseResume);
+        Stop = new RelayCommand(DoStop);
+        Skip = new RelayCommand(DoSkip);
+    }
 
     private bool _sel;
 
@@ -80,7 +100,13 @@ public sealed class StatTileViewModel : ViewModelBase
             if (Run is not { } r) return "▶ 待机（未启动）";
             var cur = r.Current;
             if (cur is null)
-                return r.State == ChannelRunState.Completed ? "▶ 已完成全部步骤" : "▶（步骤间）";
+                return r.State switch
+                {
+                    ChannelRunState.Completed => "▶ 已完成全部步骤",
+                    ChannelRunState.Aborted => "▶ 已中止",
+                    ChannelRunState.Faulted => "▶ 已故障停机",
+                    _ => "▶（步骤间）"
+                };
             var ran = _ws.Clock.Now - (cur.ActualStart ?? _ws.Clock.Now);
             return cur.PlanDuration > TimeSpan.Zero
                 ? $"▶ {cur.Title}（{Brief(ran)} / {Brief(cur.PlanDuration)}）"
@@ -90,6 +116,133 @@ public sealed class StatTileViewModel : ViewModelBase
 
     public bool NotStartedDot => !Off && !Started;
 
+    // ── 这一路现在是什么状态 ────────────────────────────────────────
+
+    private Tec.Core.Execution.ChannelRunner? Runner => _ws.Engine.Runner(Channel);
+    private bool HasSteps => _ws.ChannelRecipes.TryGetValue(Channel, out var r) && r.Steps.Count > 0;
+
+    /// <summary>
+    /// 状态一个词说清。「未编排」和「待机」要分开——前者该去配方页加步骤，
+    /// 后者按一下启动就走，该做的下一步不一样。
+    ///
+    /// 跑完 / 被停掉之后 runner 会回到 Idle（好让人再起一趟），这一趟的结局
+    /// 留在运行记录上。只看 runner 的话，刚被停掉的通道会显示成「待机」，
+    /// 像是从没跑过——所以 runner 闲下来时改看记录。
+    /// </summary>
+    public string StateText => Off ? "已停用"
+        : Runner?.State switch
+        {
+            ChannelRunState.Running => "运行中",
+            ChannelRunState.Paused => "已暂停",
+            ChannelRunState.Aborting => "正在停止",
+            ChannelRunState.Completed => "已完成",
+            ChannelRunState.Faulted => "故障",
+            _ => Run is { } r && r.State is ChannelRunState.Aborted or ChannelRunState.Faulted
+                     or ChannelRunState.Completed
+                 ? RunStateWords.Of(r.State)
+                 : HasSteps ? "待机" : "未编排"
+        };
+
+    /// <summary>状态色。跑着的绿、暂停琥珀、故障红，其余灰。</summary>
+    public string StateColorHex => StateText switch
+    {
+        "运行中" => "#2f8f49",
+        "已暂停" or "正在停止" => "#a8710a",
+        "故障" => "#c0392b",
+        "已中止" => "#a05a4a",
+        "已完成" => "#5f8a6a",
+        _ => "#8d8d8d"
+    };
+
+    public string StateFillHex => StateText switch
+    {
+        "运行中" => "#eaf4ec",
+        "已暂停" or "正在停止" => "#fbf3e4",
+        "故障" => "#fbe6e3",
+        "已中止" => "#f6ecea",
+        "已完成" => "#eef3ef",
+        _ => "#f0f0f0"
+    };
+
+    // ── 这一路自己的四个操作 ────────────────────────────────────────
+
+    public RelayCommand Start { get; }
+    public RelayCommand PauseResume { get; }
+    public RelayCommand Stop { get; }
+    public RelayCommand Skip { get; }
+
+    /// <summary>
+    /// 没编排步骤的启不了——空跑一趟只会在记录里留一条什么都没干的子记录。
+    /// 跑完 / 出故障的可以再来一遍（记录里是新的一条，不覆盖旧的）；
+    /// 正在跑和正在收尾的不能重启。
+    /// </summary>
+    public bool CanStart => On && HasSteps && Runner?.State is null
+        or ChannelRunState.Idle or ChannelRunState.Ready
+        or ChannelRunState.Completed or ChannelRunState.Faulted or ChannelRunState.Paused;
+
+    public bool CanPause => Runner?.State is ChannelRunState.Running or ChannelRunState.Paused;
+    public bool CanStop => Runner?.State is ChannelRunState.Running or ChannelRunState.Paused;
+    public bool CanSkip => CanStop;
+
+    public string StartTip => Runner?.State == ChannelRunState.Paused
+        ? $"继续 CH{Channel}"
+        : !On ? $"CH{Channel} 已停用（在台面上启停）"
+        : !HasSteps ? $"CH{Channel} 还没编排步骤，去「配方」加几步"
+        : $"启动 CH{Channel}";
+
+    public string PauseTip => Runner?.State == ChannelRunState.Paused
+        ? $"继续 CH{Channel}" : $"暂停 CH{Channel}";
+
+    private void DoStart()
+    {
+        if (!CanStart) { _say(StartTip); return; }
+
+        // 第一次启动要开批次，与菜单栏那四个钮同一套——记录里的批次名不能是空的
+        if (_ws.Engine.Record.Channels.Count == 0)
+            _ws.Engine.NewBatch(_ws.ExperimentName, _ws.Operator, _ws.Bench.Name);
+
+        if (Runner is { State: ChannelRunState.Paused } paused)
+        {
+            paused.Resume(_ws.Operator);
+            _say($"CH{Channel} 已继续");
+        }
+        else
+        {
+            if (!_ws.ChannelRecipes.TryGetValue(Channel, out var recipe)) return;
+            try
+            {
+                _ws.Engine.StartChannel(Channel, recipe, _ws.Operator);
+                _say($"CH{Channel} 已启动（{recipe.Steps.Count} 步）");
+            }
+            catch (Exception ex) { _say($"CH{Channel} 启动失败：{ex.Message}"); }
+        }
+        _changed();
+    }
+
+    private void DoPauseResume()
+    {
+        if (Runner is not { } r) return;
+        if (r.State == ChannelRunState.Paused) { r.Resume(_ws.Operator); _say($"CH{Channel} 已继续"); }
+        else { r.Pause(_ws.Operator); _say($"CH{Channel} 已暂停"); }
+        _changed();
+    }
+
+    private void DoStop()
+    {
+        if (Runner is not { } r) return;
+        r.Abort(_ws.Operator, $"操作人停止 CH{Channel}");
+        _say($"CH{Channel} 已停止");
+        _changed();
+    }
+
+    private void DoSkip()
+    {
+        if (Runner is not { } r) return;
+        r.SkipCurrent(_ws.Operator, "操作人跳过");
+        _say($"CH{Channel} 已跳过当前步");
+        _changed();
+    }
+
     private static string Brief(TimeSpan t)
         => t.TotalHours >= 1 ? $"{(int)t.TotalHours} h {t.Minutes} min"
          : t.TotalMinutes >= 1 ? $"{(int)t.TotalMinutes} min"
@@ -97,7 +250,24 @@ public sealed class StatTileViewModel : ViewModelBase
 
     public void Tick() => RaiseAll(nameof(TrText), nameof(TjText), nameof(PhText), nameof(RpmText),
                                    nameof(StartLine), nameof(StepNow), nameof(NotStartedDot),
-                                   nameof(Off), nameof(On), nameof(HostLabel), nameof(ColorHex));
+                                   nameof(Off), nameof(On), nameof(HostLabel), nameof(ColorHex),
+                                   nameof(StateText), nameof(StateColorHex), nameof(StateFillHex),
+                                   nameof(CanStart), nameof(CanPause), nameof(CanStop), nameof(CanSkip),
+                                   nameof(StartTip), nameof(PauseTip));
+}
+
+/// <summary>
+/// 一台宿主设备 + 它的那几路（RD-105 是两路：A 孔 / B 孔）。
+///
+/// 磁贴按设备分组摆，是为了让「这两路共用一台机器」一眼看得见——
+/// 平铺成一排 CH1..CH8 的话，谁跟谁同机全靠数。同机不等于同步：
+/// 每一路自己启停，分组只是把归属画出来。
+/// </summary>
+public sealed class DeviceGroupViewModel
+{
+    public required string Title { get; init; }
+    public required string Sub { get; init; }
+    public required IReadOnlyList<StatTileViewModel> Tiles { get; init; }
 }
 
 /// <summary>执行记录抽屉的一行（原型 drawRow 的 11 列）。</summary>
@@ -188,7 +358,25 @@ public sealed class RunViewModel : ViewModelBase
 
         var keep = Selected?.Channel;
         Tiles.Clear();
-        foreach (var ch in now) Tiles.Add(new StatTileViewModel(_ws, ch));
+        foreach (var ch in now) Tiles.Add(new StatTileViewModel(_ws, ch, Tell, Tick));
+
+        // 按宿主设备分组：一台 RD-105 两路，摆在一个框里。
+        // 台面上设备的先后顺序就是这里的先后顺序，跟画布对得上
+        Groups.Clear();
+        foreach (var dev in _ws.Bench.Devices)
+        {
+            var chs = _ws.Channels.Where(c => c.HostInstanceId == dev.InstanceId)
+                                  .Select(c => c.Number).OrderBy(x => x).ToList();
+            if (chs.Count == 0) continue;
+            var tiles = chs.Select(n => Tiles.First(t => t.Channel == n)).ToList();
+            Groups.Add(new DeviceGroupViewModel
+            {
+                Title = dev.Display,
+                Sub = $"{chs.Count} 通道",
+                Tiles = tiles
+            });
+        }
+
         Selected = Tiles.FirstOrDefault(t => t.Channel == keep) ?? Tiles.FirstOrDefault();
         RaiseAll(nameof(NoChannels), nameof(HasSelection));
     }
@@ -280,6 +468,8 @@ public sealed class RunViewModel : ViewModelBase
     public SectionViewModel TrendPane { get; } = new();
     public SectionViewModel GanttPane { get; } = new();
     public ObservableCollection<StatTileViewModel> Tiles { get; } = new();
+    /// <summary>磁贴按宿主设备分组（一台 RD-105 = 两路）。界面按这个摆。</summary>
+    public ObservableCollection<DeviceGroupViewModel> Groups { get; } = new();
     public ObservableCollection<DrawRowViewModel> Rows { get; } = new();
     public ObservableCollection<DrawChipViewModel> Chips { get; } = new();
     public ObservableCollection<string> TrendChannels { get; } = new();
@@ -297,14 +487,29 @@ public sealed class RunViewModel : ViewModelBase
     {
         get
         {
-            var started = _ws.Engine.Record.Channels.ToList();
-            var enabled = _ws.Channels.Count(c => c.Enabled);
             if (NoChannels) return "台面上还没有通道 —— 去「台面」把反应器拖进来";
+
+            var enabled = _ws.Channels.Count(c => c.Enabled);
+            var started = _ws.Engine.Record.Channels.ToList();
             if (started.Count == 0) return $"0 / {enabled} 通道运行中";
+
+            // **数现在真的在跑的那几路。** 从前这里数的是「启动过的」，
+            // 于是全部跑完之后顶上还写着「2 / 4 通道运行中 · 预计 17:14 全部完成」，
+            // 一个早已收工的批次显示成还在跑
+            var live = _ws.Engine.Runners.Count(
+                r => r.State is ChannelRunState.Running or ChannelRunState.Paused);
             var from = started.Min(r => r.StartedAt);
-            var fin = started.Max(r => r.ProjectedFinish(_ws.Clock.Now));
-            return $"{started.Count} / {enabled} 通道运行中 · 批次已运行 {Fmt.Hms(_ws.Clock.Now - from)}"
-                 + $" · 预计 {fin:HH:mm} 全部完成";
+            var elapsed = $"批次已运行 {Fmt.Hms(_ws.Clock.Now - from)}";
+
+            if (live == 0)
+            {
+                var last = started.Max(r => r.FinishedAt ?? _ws.Clock.Now);
+                return $"{started.Count} 条通道记录 · 全部已结束 · 批次用时 {Fmt.Hms(last - from)}";
+            }
+            var fin = started.Where(r => r.FinishedAt is null)
+                             .Select(r => r.ProjectedFinish(_ws.Clock.Now))
+                             .DefaultIfEmpty(_ws.Clock.Now).Max();
+            return $"{live} / {enabled} 通道运行中 · {elapsed} · 预计 {fin:HH:mm} 全部完成";
         }
     }
 
@@ -651,13 +856,19 @@ public sealed class RunViewModel : ViewModelBase
 
     private static string EvLabel(EventKind k) => k switch
     {
+        EventKind.ChannelStarted => "启动",
+        EventKind.ChannelFinished => "结束",
         EventKind.OperatorMark => "手动标记",
         EventKind.ParameterChanged => "参数修改",
         EventKind.Paused => "暂停",
         EventKind.Resumed => "继续",
+        EventKind.Aborted => "中止",
+        EventKind.StepSkipped => "跳过",
         EventKind.Alarm or EventKind.SafetyAction => "报警",
+        EventKind.DeviceFault => "设备故障",
         EventKind.ResourceWait => "等待资源",
-        _ => "事件"
+        EventKind.Sampling => "取样",
+        _ => "提示"
     };
 
     private void RebuildRows()
@@ -694,14 +905,16 @@ public sealed class RunViewModel : ViewModelBase
                     EndBy = EndByText(s),
                     User = run.Operator ?? "管理员"
                 }));
+            // 事件一条不漏。从前这里把启动 / 结束 / Note 过滤掉了，中止走的又正是 Note——
+            // 于是「谁在什么时候停了这一路」在执行记录里根本查不到，那恰恰是最该留的一条。
+            // 嫌吵就用工具条上的「含事件行」关掉整类，而不是替操作人挑哪几条该留
             foreach (var e in run.Events)
             {
-                if (e.Kind is EventKind.ChannelStarted or EventKind.ChannelFinished or EventKind.Note) continue;
                 all.Add((e.At, new DrawRowViewModel
                 {
                     Ch = run.Channel,
                     IsEvent = true,
-                    IsAlarm = e.Kind is EventKind.Alarm or EventKind.SafetyAction,
+                    IsAlarm = e.Kind is EventKind.Alarm or EventKind.SafetyAction or EventKind.DeviceFault,
                     Badge = EvLabel(e.Kind),
                     Name = e.Text,
                     RealStart = e.At.ToString("HH:mm:ss"),

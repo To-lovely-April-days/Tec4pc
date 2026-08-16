@@ -14,6 +14,10 @@ public enum EventKind
     Resumed,
     ParameterChanged,
     StepSkipped,
+    /// <summary>通道被中止（操作人停的、安全层停的）。
+    /// 从前它走 Note，界面把 Note 过滤掉了，于是「谁在什么时候停了这一路」
+    /// 在执行记录里根本查不到——那正是 GLP 最该留下的一条。</summary>
+    Aborted,
     Alarm,
     SafetyAction,
     OperatorMark,
@@ -98,7 +102,30 @@ public sealed class RunBaseline
     public string? ApprovedBy { get; init; }
 }
 
-public enum ChannelRunState { Idle, Loading, Ready, Running, Paused, Aborting, Completed, Faulted }
+/// <summary>
+/// 通道的运行状态。Aborting 是「正在收尾」的过渡态，Aborted 才是这一趟的结局——
+/// 两者要分开：从前收尾完了记录上留的还是 Aborting，界面读出来是「正在停止」，
+/// 一个早已停下的通道永远显示成正在停。
+/// </summary>
+public enum ChannelRunState { Idle, Loading, Ready, Running, Paused, Aborting, Aborted, Completed, Faulted }
+
+/// <summary>状态的中文说法。记录里写给人看的地方都走这一处，免得枚举名漏到界面上。</summary>
+public static class RunStateWords
+{
+    public static string Of(ChannelRunState s) => s switch
+    {
+        ChannelRunState.Idle => "待机",
+        ChannelRunState.Loading => "准备中",
+        ChannelRunState.Ready => "就绪",
+        ChannelRunState.Running => "运行中",
+        ChannelRunState.Paused => "已暂停",
+        ChannelRunState.Aborting => "正在停止",
+        ChannelRunState.Aborted => "已中止",
+        ChannelRunState.Completed => "已完成",
+        ChannelRunState.Faulted => "故障",
+        _ => s.ToString()
+    };
+}
 
 /// <summary>通道子记录。批次只是把同时段的通道子记录归拢在一起（§7.1）。</summary>
 public sealed class ChannelRun

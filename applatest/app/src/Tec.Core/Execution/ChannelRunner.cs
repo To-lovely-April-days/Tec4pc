@@ -113,7 +113,7 @@ public sealed class ChannelRunner
             run.Append(_pending);
         }
 
-        Log(EventKind.ChannelStarted, $"CH{Number} 启动：{frozenRecipe.Name}", user);
+        Log(EventKind.ChannelStarted, $"启动：{frozenRecipe.Name}", user);
         Raise();
 
         _loop = Task.Run(() => RunLoopAsync(run, _cts.Token));
@@ -131,20 +131,32 @@ public sealed class ChannelRunner
         _pauseGate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         State = ChannelRunState.Paused;
         if (Run is not null) Run.State = ChannelRunState.Paused;
-        Log(EventKind.Paused, $"CH{Number} 暂停", user);
+        Log(EventKind.Paused, "暂停", user);
         Raise();
     }
 
     public void Resume(string? user = null)
     {
+        if (!Unblock()) return;
+        Log(EventKind.Resumed, "继续", user);
+        Raise();
+    }
+
+    /// <summary>
+    /// 放开暂停闸门，**不写记录**。中止时要先放开闸门才收得了尾，
+    /// 但那不是操作人按了「继续」——记成一条继续，记录上会出现
+    /// 「中止」后面紧跟一条「继续」，读的人会以为有人又把它开起来了。
+    /// 返回 false 表示本来就没在暂停。
+    /// </summary>
+    private bool Unblock()
+    {
         var gate = _pauseGate;
-        if (gate is null) return;
+        if (gate is null) return false;
         _pauseGate = null;
         State = ChannelRunState.Running;
         if (Run is not null) Run.State = ChannelRunState.Running;
         gate.TrySetResult(true);
-        Log(EventKind.Resumed, $"CH{Number} 继续", user);
-        Raise();
+        return true;
     }
 
     public void Abort(string? user = null, string reason = "操作人中止")
@@ -152,8 +164,9 @@ public sealed class ChannelRunner
         if (State is ChannelRunState.Idle or ChannelRunState.Completed) return;
         State = ChannelRunState.Aborting;
         if (Run is not null) Run.State = ChannelRunState.Aborting;
-        Log(EventKind.Note, $"CH{Number} 中止：{reason}", user);
-        if (IsPaused) Resume(user);
+        Log(EventKind.Aborted, $"中止：{reason}", user);
+        Unblock();                     // 放开闸门才收得了尾，但这不是「继续」，不记
+        
         _cts?.Cancel();
         Raise();
     }
@@ -163,6 +176,7 @@ public sealed class ChannelRunner
         if (State != ChannelRunState.Running && State != ChannelRunState.Paused) return;
         _skipRequested = true;
         Log(EventKind.StepSkipped, $"跳过当前步：{reason}", user);
+        // 暂停着按跳过，这一路确实从暂停回到运行了——那是操作人要的，照实记
         if (IsPaused) Resume(user);
     }
 
@@ -287,7 +301,7 @@ public sealed class ChannelRunner
                 if (done.Status == StepStatus.Failed && step.PauseOnFault)
                 {
                     Log(EventKind.Alarm,
-                        $"CH{Number} 第 {pc} 步「{done.Title}」失败，已暂停：{done.Note ?? "未说明原因"}",
+                        $"第 {pc} 步「{done.Title}」失败，已暂停：{done.Note ?? "未说明原因"}",
                         null);
                     Pause();
                 }
@@ -301,17 +315,20 @@ public sealed class ChannelRunner
         {
             faulted = true;
             MarkRunningFailed(run, ex);
-            Log(EventKind.DeviceFault, $"CH{Number} 执行异常：{ex.Message}", null);
+            Log(EventKind.DeviceFault, $"执行异常：{ex.Message}", null);
         }
         finally
         {
             run.FinishedAt = _now();
+            // 收尾完了这一趟的结局是 Aborted，不是过渡态 Aborting——
+            // 记录上留 Aborting 的话，一个早已停下的通道会一直显示成「正在停止」
             run.State = faulted ? ChannelRunState.Faulted
-                : _cts is { IsCancellationRequested: true } ? ChannelRunState.Aborting
+                : _cts is { IsCancellationRequested: true } ? ChannelRunState.Aborted
                 : ChannelRunState.Completed;
-            State = run.State == ChannelRunState.Aborting ? ChannelRunState.Idle : run.State;
+            // 中止过的通道回到 Idle，好让操作人再起一趟（记录里是新的一条，不覆盖旧的）
+            State = run.State == ChannelRunState.Aborted ? ChannelRunState.Idle : run.State;
             Log(EventKind.ChannelFinished,
-                $"CH{Number} 结束：{run.State}，用时 {Fmt.Hms(run.Elapsed(_now()))}", Operator);
+                $"结束：{RunStateWords.Of(run.State)}，用时 {Fmt.Hms(run.Elapsed(_now()))}", Operator);
             Raise();
         }
     }

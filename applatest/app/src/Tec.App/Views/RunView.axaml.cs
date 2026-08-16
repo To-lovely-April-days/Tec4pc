@@ -64,7 +64,7 @@ public partial class RunView : UserControl
         var star = new GridLength(1, GridUnitType.Star);
 
         Body.ColumnDefinitions[0].Width =
-            !bench ? tab : (!trend && !gantt) ? star : new GridLength(560);
+            !bench ? tab : (!trend && !gantt) ? star : new GridLength(600);
         Body.ColumnDefinitions[2].Width = trend ? star : tab;
         Body.ColumnDefinitions[4].Width =
             !gantt ? tab : !trend ? star : new GridLength(430);
