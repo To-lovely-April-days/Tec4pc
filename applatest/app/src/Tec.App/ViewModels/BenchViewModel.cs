@@ -707,14 +707,11 @@ public sealed class BenchViewModel : ViewModelBase
         Raise(nameof(IsEmpty));
 
         ChannelRows.Clear();
-        var reactors = _ws.Bench.Devices
-            .Where(d => _ws.Drivers.Driver(d.DriverId) is { Info.ChannelsPerDevice: > 0 }).ToList();
         foreach (var ch in _ws.Channels)
         {
-            // 机A · A 孔（原型 devLabel）
-            var idx = reactors.FindIndex(d => d.InstanceId == ch.HostInstanceId);
-            var machine = idx >= 0 && idx < 8 ? "机" + "ABCDEFGH"[idx] : ch.HostInstanceId;
-            var host = $"{machine} · {(ch.Well == 0 ? "A" : "B")} 孔";
+            // 机A · A 孔（原型 devLabel）。运行页的通道磁贴用的是同一句，
+            // 所以这句只写一处——两页各写一遍，同一个孔迟早在两页里叫出两个名字
+            var host = WellLabel.Of(_ws, ch.Number);
 
             // 绑到该通道的探头，短名去掉"在线检测/在线"（原型 ptag 的写法）
             var probes = _ws.Bench.Bindings

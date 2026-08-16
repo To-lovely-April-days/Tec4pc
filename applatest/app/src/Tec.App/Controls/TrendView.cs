@@ -80,7 +80,8 @@ public sealed class TrendView : Control
         {
             var x = Xt(tick);
             ctx.DrawLine(gridPen2, new Point(x, T), new Point(x, h - B));
-            Text(ctx, m.Label(tick), new Point(x, h - 18), 10, axis, center: true);
+            // 首末两个刻度居中摆会露到图外被裁掉（右下角写着「17:1」那种），夹回框内
+            Text(ctx, m.Label(tick), new Point(x, h - 18), 10, axis, center: true, clampTo: w);
         }
 
         Text(ctx, "℃", new Point(L - 30, T - 3), 10, axis);
@@ -132,12 +133,14 @@ public sealed class TrendView : Control
         for (; t <= b; t += step) yield return t;
     }
 
+    /// <param name="clampTo">给了就把文字夹在 [0, clampTo] 里，免得贴边的刻度被裁掉半截。</param>
     private static void Text(DrawingContext ctx, string s, Point at, double size, IBrush brush,
-                             bool center = false, bool right = false)
+                             bool center = false, bool right = false, double clampTo = 0)
     {
         var ft = new FormattedText(s, CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
             new Typeface("Segoe UI"), size, brush);
         var x = center ? at.X - ft.Width / 2 : right ? at.X - ft.Width : at.X;
+        if (clampTo > ft.Width) x = Math.Clamp(x, 0, clampTo - ft.Width);
         ctx.DrawText(ft, new Point(x, at.Y));
     }
 }

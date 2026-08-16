@@ -93,10 +93,11 @@ public sealed class GanttView : Control
         var ticks = TrendView.Ticks(m.AxisFrom, m.AxisTo, 5).ToList();
         foreach (var t in ticks)
         {
-            var p = (t - m.AxisFrom) / span;
             var label = m.Label(t);
             var ft = Ft(label, 10, new SolidColorBrush(Color.Parse("#666666")));
-            var x = X(t) - (p > 0.97 ? ft.Width : p > 0.02 ? ft.Width / 2 : 0);
+            // 一律居中，再夹回框内。原来靠 p>0.97 判断右端，末刻度落在 0.95 那种
+            // 就照样居中，右半截露到框外被裁成「17:1」
+            var x = Math.Clamp(X(t) - ft.Width / 2, LeftW, Math.Max(LeftW, w - ft.Width));
             ctx.DrawText(ft, new Point(x, 5));
         }
 

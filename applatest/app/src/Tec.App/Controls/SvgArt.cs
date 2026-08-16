@@ -52,6 +52,12 @@ public sealed class SvgArt
         public Color Current { get; init; } = Color.Parse("#3d3d3d");
         /// <summary>非空时：所有实体描边强制此色（原型 iconWhite 的白描边版）。</summary>
         public Color? StrokeOverride { get; init; }
+        /// <summary>
+        /// 非空时：实心填充也强制此色。模拟模式那四个图标（play/pause/stop/step）
+        /// 在原型里是铺在黑条上的，fill 写死 #fff——原样搬到白底圆钮上就整个看不见了。
+        /// 这里只换颜色不动几何，图还是提取出来的那一份。
+        /// </summary>
+        public Color? FillOverride { get; init; }
     }
 
     /// <summary>可继承的表现属性（SVG 规范里 fill/stroke 一类就是继承的）。</summary>
@@ -200,6 +206,9 @@ public sealed class SvgArt
         if (value is null)
             value = style.Stroke is null ? "#000000" : "none";
         if (value == "none") return null;
+
+        if (paint.FillOverride is { } forcedFill)
+            return new SolidColorBrush(forcedFill, style.FillOpacity);
 
         var brush = BrushOf(value, paint);
         return brush is SolidColorBrush sc && style.FillOpacity < 1

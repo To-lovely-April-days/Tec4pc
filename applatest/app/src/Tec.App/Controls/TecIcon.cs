@@ -30,9 +30,12 @@ public sealed class TecIcon : Control
     public static readonly StyledProperty<bool> WhiteProperty =
         AvaloniaProperty.Register<TecIcon, bool>(nameof(White));
 
+    public static readonly StyledProperty<bool> RecolorProperty =
+        AvaloniaProperty.Register<TecIcon, bool>(nameof(Recolor));
+
     static TecIcon()
     {
-        AffectsRender<TecIcon>(KeyProperty, TintProperty, WhiteProperty);
+        AffectsRender<TecIcon>(KeyProperty, TintProperty, WhiteProperty, RecolorProperty);
         AffectsMeasure<TecIcon>(KeyProperty, SizeProperty);
     }
 
@@ -52,6 +55,16 @@ public sealed class TecIcon : Control
     {
         get => GetValue(TintProperty);
         set => SetValue(TintProperty, value);
+    }
+
+    /// <summary>
+    /// 连写死的颜色一起换成 Tint。原型里铺在黑条上的图标 fill 是写死的 #fff，
+    /// 搬到白底圆钮上原样画就是一片白——开这个开关按 Tint 重上色，几何不动。
+    /// </summary>
+    public bool Recolor
+    {
+        get => GetValue(RecolorProperty);
+        set => SetValue(RecolorProperty, value);
     }
 
     public bool White
@@ -94,7 +107,8 @@ public sealed class TecIcon : Control
         var paint = new SvgArt.Paint(Colors.Gray, Colors.Gray, false, false)
         {
             Current = White ? Colors.White : Tint,
-            StrokeOverride = White ? Colors.White : null
+            StrokeOverride = White ? Colors.White : Recolor ? Tint : null,
+            FillOverride = Recolor && !White ? Tint : null
         };
 
         // 图标画在自身范围的正中。被 Border / Panel 拉伸时（比如 CARET 的 20px 圆圈，

@@ -107,6 +107,32 @@ public sealed class RunEngine
         return ctx;
     }
 
+    /// <summary>
+    /// 手动标记：操作人在运行途中记的一笔（「取样一次」「投料完成」「看到析晶」）。
+    /// 记录只追加不修改（§8.3），所以标记就是一条 OperatorMark 事件，
+    /// 落在这条通道的记录链上，导出时跟步骤行一起走。
+    ///
+    /// 只有跑起来的通道才能标——没有运行记录就没有链可挂，
+    /// 挂到哪儿都是编的。返回 false 表示这条通道还没启动。
+    /// </summary>
+    public bool Mark(int channel, string text, string? user = null)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        var run = Record.Of(channel);
+        if (run is null) return false;
+        run.Append(new EventRecord
+        {
+            At = Now(),
+            Channel = channel,
+            Kind = EventKind.OperatorMark,
+            Text = text.Trim(),
+            User = user,
+            StepIndex = run.Current?.Index
+        });
+        Changed?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
     public void PauseAll(string? user = null)
     {
         foreach (var r in _runners.Values) r.Pause(user);

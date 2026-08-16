@@ -9,16 +9,41 @@ using Tec.Driver.Abi;
 
 namespace Tec.App.ViewModels;
 
+/// <summary>
+/// 「机A · A 孔」这种孔位说法。台面视图的通道总表和运行视图的通道磁贴都要用同一句，
+/// 两处各写一遍迟早对不上——同一个孔在一页叫「机A · A 孔」另一页叫别的，人会以为是两个孔。
+/// </summary>
+public static class WellLabel
+{
+    public static string Of(Workspace ws, int channel)
+    {
+        var ch = ws.ChannelOf(channel);
+        if (ch is null) return "";
+        var reactors = ws.Bench.Devices
+            .Where(d => ws.Drivers.Driver(d.DriverId) is { Info.ChannelsPerDevice: > 0 }).ToList();
+        var idx = reactors.FindIndex(d => d.InstanceId == ch.HostInstanceId);
+        var machine = idx >= 0 && idx < 8 ? "机" + "ABCDEFGH"[idx] : ch.HostInstanceId;
+        return $"{machine} · {(ch.Well == 0 ? "A" : "B")} 孔";
+    }
+}
+
 /// <summary>通道磁贴（原型 .stat）：12px 色条 + 竖排 CHn + 数据行 + 当前步。</summary>
 public sealed class StatTileViewModel : ViewModelBase
 {
     private readonly Workspace _ws;
     public StatTileViewModel(Workspace ws, int channel) { _ws = ws; Channel = channel; }
 
+    private bool _sel;
+
     public int Channel { get; }
+    /// <summary>选中的那一路：顶栏那排单通道操作按钮对它下手。</summary>
+    public bool IsSelected { get => _sel; set => Set(ref _sel, value); }
     /// <summary>竖排通道名：一行一个字符（CSS vertical-rl 的等价）。</summary>
     public string NameVertical => string.Join("\n", $"CH{Channel}".ToCharArray());
     public bool Off => !(_ws.ChannelOf(Channel)?.Enabled ?? false);
+    public bool On => !Off;
+    /// <summary>停用的通道只写「已停用」和它是哪个孔——数据行留着全是「—」，看着像坏了。</summary>
+    public string HostLabel => WellLabel.Of(_ws, Channel);
     public string ColorHex => Off ? "#c2c2c2" : Channel switch
     { 1 => "#2f7ed8", 2 => "#2aa87a", 3 => "#c9772b", _ => "#8a63d2" };
 
@@ -72,7 +97,7 @@ public sealed class StatTileViewModel : ViewModelBase
 
     public void Tick() => RaiseAll(nameof(TrText), nameof(TjText), nameof(PhText), nameof(RpmText),
                                    nameof(StartLine), nameof(StepNow), nameof(NotStartedDot),
-                                   nameof(Off), nameof(ColorHex));
+                                   nameof(Off), nameof(On), nameof(HostLabel), nameof(ColorHex));
 }
 
 /// <summary>执行记录抽屉的一行（原型 drawRow 的 11 列）。</summary>
@@ -132,13 +157,18 @@ public sealed class RunViewModel : ViewModelBase
     public RunViewModel(Workspace ws)
     {
         _ws = ws;
-        foreach (var ch in ws.Channels.Select(c => c.Number).OrderBy(x => x))
-            Tiles.Add(new StatTileViewModel(ws, ch));
 
         ToggleDraw = new RelayCommand(() => DrawOpen = !DrawOpen);
         ToggleChip = new RelayCommand(p => { if (p is DrawChipViewModel c) { c.On = !c.On; RebuildRows(); } });
+        BuildCommands();
 
         foreach (var w in new[] { "已采集", "全程（同甘特）", "最近 30 min", "最近 2 h" }) TrendWins.Add(w);
+
+        // 通道是台面变出来的，而这个视图在开机建通道**之前**就构造好了。
+        // 早先磁贴只在构造里灌一次，于是那一排永远是空的——台面上明明有两个通道，
+        // 运行页却一块磁贴都没有。跟着台面走才对
+        SyncChannels();
+        ws.BenchChanged += (_, _) => { SyncChannels(); Tick(); };
 
         _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(700) };
         _timer.Tick += (_, _) => Tick();
@@ -146,7 +176,191 @@ public sealed class RunViewModel : ViewModelBase
         Tick();
     }
 
+    /// <summary>
+    /// 磁贴与趋势通道下拉对齐到台面现有的通道。**按通道号比，不按个数比**：
+    /// 停用 CH2 同时启用 CH3，个数没变但那是两个通道，只看个数就永远不刷新。
+    /// </summary>
+    private void SyncChannels()
+    {
+        var now = _ws.Channels.Select(c => c.Number).OrderBy(x => x).ToList();
+        if (Tiles.Select(t => t.Channel).SequenceEqual(now)) return;
+
+        var keep = Selected?.Channel;
+        Tiles.Clear();
+        foreach (var ch in now) Tiles.Add(new StatTileViewModel(_ws, ch));
+        Selected = Tiles.FirstOrDefault(t => t.Channel == keep) ?? Tiles.FirstOrDefault();
+        RaiseAll(nameof(NoChannels), nameof(HasSelection));
+    }
+
+    // ── 单通道操作 ──────────────────────────────────────────────────
+    // 四条通道各跑各的配方，只能整机启停是不够用的：CH2 出了问题要单独停，
+    // 别的三条还在跑（这也是这台机器做成四通道的意义）。
+    // 引擎本来就是按通道走的（ChannelRunner），这里只是把入口接出来。
+
+    private StatTileViewModel? _selected;
+
+    /// <summary>点中的那块磁贴。顶栏那排按钮对它下手。</summary>
+    public StatTileViewModel? Selected
+    {
+        get => _selected;
+        set
+        {
+            var old = _selected;
+            if (!Set(ref _selected, value)) return;
+            if (old is not null) old.IsSelected = false;
+            if (value is not null) value.IsSelected = true;
+            RaiseAll(nameof(HasSelection), nameof(SelectedLabel), nameof(CanStart), nameof(CanPause),
+                     nameof(CanStop), nameof(PauseTip), nameof(ActHint));
+        }
+    }
+
+    public bool HasSelection => _selected is not null;
+    public string SelectedLabel => _selected is null ? "" : $"CH{_selected.Channel}";
+
+    private ChannelRun? RunOf(StatTileViewModel? t)
+        => t is null ? null : _ws.Engine.Record.Of(t.Channel);
+    private Tec.Core.Execution.ChannelRunner? RunnerOf(StatTileViewModel? t)
+        => t is null ? null : _ws.Engine.Runner(t.Channel);
+
+    /// <summary>没编排步骤的通道启不了——启起来也是空跑一趟，记录里留一条什么都没干的批次。</summary>
+    public bool CanStart
+    {
+        get
+        {
+            if (_selected is null || _selected.Off) return false;
+            if (!_ws.ChannelRecipes.TryGetValue(_selected.Channel, out var r) || r.Steps.Count == 0) return false;
+            // 跑完 / 出故障的可以再来一遍（记录里是新的一条子记录，不覆盖旧的）；
+            // 正在跑和正在收尾的不能重启
+            var st = RunnerOf(_selected)?.State;
+            return st is null or ChannelRunState.Idle or ChannelRunState.Ready
+                   or ChannelRunState.Completed or ChannelRunState.Faulted or ChannelRunState.Paused;
+        }
+    }
+
+    public bool CanPause => RunnerOf(_selected)?.State is ChannelRunState.Running or ChannelRunState.Paused;
+    public bool CanStop => RunnerOf(_selected)?.State is ChannelRunState.Running or ChannelRunState.Paused;
+    public string PauseTip => RunnerOf(_selected)?.State == ChannelRunState.Paused ? "继续该通道" : "暂停该通道";
+
+    /// <summary>这一排按钮为什么是灰的，得说出来——灰着不解释比没有按钮更难受。</summary>
+    public string ActHint
+    {
+        get
+        {
+            if (_selected is null) return "点一块通道磁贴，这排按钮就对那一路生效。";
+            if (_selected.Off) return $"CH{_selected.Channel} 已停用（在台面上启停）。";
+            if (!_ws.ChannelRecipes.TryGetValue(_selected.Channel, out var r) || r.Steps.Count == 0)
+                return $"CH{_selected.Channel} 还没编排步骤，去「配方」加几步。";
+            return "";
+        }
+    }
+
+    public RelayCommand StartOne { get; private set; } = null!;
+    public RelayCommand PauseOne { get; private set; } = null!;
+    public RelayCommand StopOne { get; private set; } = null!;
+    public RelayCommand SkipOne { get; private set; } = null!;
+
+    /// <summary>手动标记要写的那句话。空的时候「记一笔」是灰的——空标记进了记录等于噪声。</summary>
+    public string MarkText
+    {
+        get => _markText;
+        set { if (Set(ref _markText, value)) Raise(nameof(CanMark)); }
+    }
+    private string _markText = "";
+
+    /// <summary>只有跑起来的通道才挂得上标记：没有运行记录就没有那条链。</summary>
+    public bool CanMark => _markText.Trim().Length > 0 && RunOf(_selected) is not null;
+
+    public RelayCommand Mark { get; private set; } = null!;
+
+    /// <summary>顶栏的一句回话（标记记下了没有、通道停了没有）。</summary>
+    public string Say { get; private set; } = "";
+    public bool HasSay => Say.Length > 0;
+
+    private void Tell(string text)
+    {
+        Say = text;
+        RaiseAll(nameof(Say), nameof(HasSay));
+        var stamp = ++_sayStamp;
+        DispatcherTimer.RunOnce(() =>
+        {
+            if (stamp != _sayStamp) return;
+            Say = "";
+            RaiseAll(nameof(Say), nameof(HasSay));
+        }, TimeSpan.FromSeconds(6));
+    }
+    private int _sayStamp;
+
+    private void BuildCommands()
+    {
+        StartOne = new RelayCommand(() =>
+        {
+            if (_selected is not { } t || !CanStart) return;
+            // 第一次启动要开批次，与菜单栏那四个钮同一套（记录里的批次名不能是空的）
+            if (_ws.Engine.Record.Channels.Count == 0)
+                _ws.Engine.NewBatch(_ws.ExperimentName, _ws.Operator, _ws.Bench.Name);
+
+            var runner = RunnerOf(t);
+            if (runner?.State == ChannelRunState.Paused) { runner.Resume(_ws.Operator); Tell($"CH{t.Channel} 已继续"); }
+            else
+            {
+                if (!_ws.ChannelRecipes.TryGetValue(t.Channel, out var recipe)) return;
+                try { _ws.Engine.StartChannel(t.Channel, recipe, _ws.Operator); Tell($"CH{t.Channel} 已启动（{recipe.Steps.Count} 步）"); }
+                catch (Exception ex) { Tell($"CH{t.Channel} 启动失败：{ex.Message}"); }
+            }
+            Tick();
+        });
+
+        PauseOne = new RelayCommand(() =>
+        {
+            if (RunnerOf(_selected) is not { } r || _selected is null) return;
+            if (r.State == ChannelRunState.Paused) { r.Resume(_ws.Operator); Tell($"CH{_selected.Channel} 已继续"); }
+            else { r.Pause(_ws.Operator); Tell($"CH{_selected.Channel} 已暂停"); }
+            Tick();
+        });
+
+        StopOne = new RelayCommand(() =>
+        {
+            if (RunnerOf(_selected) is not { } r || _selected is null) return;
+            r.Abort(_ws.Operator, $"操作人停止 CH{_selected.Channel}");
+            Tell($"CH{_selected.Channel} 已停止");
+            Tick();
+        });
+
+        SkipOne = new RelayCommand(() =>
+        {
+            if (RunnerOf(_selected) is not { } r || _selected is null) return;
+            r.SkipCurrent(_ws.Operator, "操作人跳过");
+            Tell($"CH{_selected.Channel} 已跳过当前步");
+            Tick();
+        });
+
+        Mark = new RelayCommand(() =>
+        {
+            if (_selected is not { } t || !CanMark) return;
+            if (_ws.Engine.Mark(t.Channel, MarkText, _ws.Operator))
+            {
+                Tell($"CH{t.Channel} 已记一笔：{MarkText.Trim()}");
+                MarkText = "";
+                // 记完立刻能看见——抽屉是关着的就替他打开
+                DrawOpen = true;
+                Tick();
+            }
+            else Tell($"CH{t.Channel} 还没启动，标记没有可挂的记录链。");
+        });
+    }
+
     public Workspace Workspace => _ws;
+
+    /// <summary>台面上一个通道都没有。三块 pane 各自给一句空状态，而不是画一堆空格子。</summary>
+    public bool NoChannels => Tiles.Count == 0;
+
+    /// <summary>
+    /// 三块 pane 的折叠。原型里那个圆圈箭头只有 cursor:pointer，点了不动——
+    /// 这一版让它真收起来：收起后只剩 28px 的竖标签，腾出的宽度给还开着的那块。
+    /// </summary>
+    public SectionViewModel BenchPane { get; } = new();
+    public SectionViewModel TrendPane { get; } = new();
+    public SectionViewModel GanttPane { get; } = new();
     public ObservableCollection<StatTileViewModel> Tiles { get; } = new();
     public ObservableCollection<DrawRowViewModel> Rows { get; } = new();
     public ObservableCollection<DrawChipViewModel> Chips { get; } = new();
@@ -167,6 +381,7 @@ public sealed class RunViewModel : ViewModelBase
         {
             var started = _ws.Engine.Record.Channels.ToList();
             var enabled = _ws.Channels.Count(c => c.Enabled);
+            if (NoChannels) return "台面上还没有通道 —— 去「台面」把反应器拖进来";
             if (started.Count == 0) return $"0 / {enabled} 通道运行中";
             var from = started.Min(r => r.StartedAt);
             var fin = started.Max(r => r.ProjectedFinish(_ws.Clock.Now));
@@ -194,6 +409,19 @@ public sealed class RunViewModel : ViewModelBase
 
     public TrendModel? Trend { get; private set; }
     public bool TrendHasPh => Tiles.FirstOrDefault(t => t.Channel == _trendCh)?.HasPh ?? false;
+
+    /// <summary>
+    /// 这一格没有可画的东西。空网格看着像图崩了，要写清楚是「还没启动」还是
+    /// 「启动了但还没采到点」——这两件事该做的下一步不一样。
+    /// </summary>
+    public bool TrendEmpty
+        => Trend is null || (Trend.Tr is null && Trend.Tj is null && Trend.Dt is null && Trend.Ph is null);
+
+    public string TrendEmptyText
+        => NoChannels ? "台面上还没有通道。"
+         : _ws.Engine.Record.Of(_trendCh) is null
+             ? $"通道 {_trendCh} 还没有启动。启动后这里实时画 Tr / Tj / Tr−Tj。"
+             : "正在等第一批采样……";
 
     // ── 甘特 ────────────────────────────────────────────────────────
     public string AlignLabel
@@ -255,19 +483,29 @@ public sealed class RunViewModel : ViewModelBase
     {
         foreach (var t in Tiles) t.Tick();
 
+        // 同上：按内容比，不按个数比
         var enabled = _ws.Channels.Where(c => c.Enabled).Select(c => c.Number).ToList();
-        if (TrendChannels.Count != enabled.Count)
+        var want = enabled.Select(c => $"通道 {c}").ToList();
+        if (!TrendChannels.SequenceEqual(want))
         {
             TrendChannels.Clear();
-            foreach (var c in enabled) TrendChannels.Add($"通道 {c}");
+            foreach (var c in want) TrendChannels.Add(c);
+            Raise(nameof(TrendChLabel));
         }
-        if (!enabled.Contains(_trendCh) && enabled.Count > 0) _trendCh = enabled[0];
+        if (!enabled.Contains(_trendCh) && enabled.Count > 0) { _trendCh = enabled[0]; Raise(nameof(TrendChLabel)); }
 
         BuildTrend();
         BuildGantt();
         RebuildRows();
-        RaiseAll(nameof(RunTop), nameof(Trend), nameof(Gantt), nameof(GTotal),
-                 nameof(TrendHasPh), nameof(DrawLast), nameof(DrawCnt), nameof(NoRows));
+        // ExperimentName 早先不在这一串里：视图第一次绑定时还没打开实验，
+        // 于是运行页顶上一直写着「未命名实验」，标题栏却已经是打开的那份的名字
+        RaiseAll(nameof(ExperimentName),
+                 nameof(RunTop), nameof(Trend), nameof(Gantt), nameof(GTotal),
+                 nameof(TrendHasPh), nameof(TrendEmpty), nameof(TrendEmptyText),
+                 nameof(NoChannels), nameof(DrawLast), nameof(DrawCnt), nameof(NoRows),
+                 // 通道状态一直在变（跑完了、被中止了），这排按钮的可按性得跟着变
+                 nameof(CanStart), nameof(CanPause), nameof(CanStop), nameof(CanMark),
+                 nameof(PauseTip), nameof(ActHint), nameof(SelectedLabel), nameof(HasSelection));
     }
 
     public void Stop() => _timer.Stop();
@@ -508,7 +746,7 @@ public sealed class RunViewModel : ViewModelBase
     private void RebuildRows()
     {
         var started = _ws.Engine.Record.Channels.Select(c => c.Channel).Distinct().OrderBy(x => x).ToList();
-        if (Chips.Count != started.Count)
+        if (!Chips.Select(c => c.Ch).SequenceEqual(started))
         {
             Chips.Clear();
             foreach (var c in started) Chips.Add(new DrawChipViewModel { Ch = c });
