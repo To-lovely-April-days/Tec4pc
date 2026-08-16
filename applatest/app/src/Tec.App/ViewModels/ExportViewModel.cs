@@ -95,6 +95,16 @@ public sealed class PrevRow
 /// </summary>
 public sealed class ExportViewModel : ViewModelBase
 {
+    // 面板里的八个可折叠小节。原来圆圈箭头只是画上去的，点了没反应
+    public SectionViewModel ChannelsSection { get; } = new();
+    public SectionViewModel ItemsSection { get; } = new();
+    public SectionViewModel RangeSection { get; } = new();
+    public SectionViewModel PreviewSection { get; } = new();
+    public SectionViewModel FormatSection { get; } = new();
+    public SectionViewModel ReportSection { get; } = new();
+    public SectionViewModel TargetSection { get; } = new();
+    public SectionViewModel GlpSection { get; } = new();
+
     private readonly Workspace _ws;
     private RunEntryViewModel? _cur;
     private string _range = "全程";

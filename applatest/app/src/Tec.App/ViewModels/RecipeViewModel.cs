@@ -338,6 +338,11 @@ public sealed class RecipeViewModel : ViewModelBase
     public RelayCommand SaveToLib { get; }
     public RelayCommand NewRecipe { get; }
     public RelayCommand ManageLibrary { get; }
+
+    // 右栏三个可折叠小节。默认都展开——这是常用面板，一进来就该看得见
+    public SectionViewModel ExecSection { get; } = new();
+    public SectionViewModel LibSection { get; } = new();
+    public SectionViewModel StatesSection { get; } = new();
     /// <summary>「管理配方库 →」往哪跳。由外壳注入，视图模型不认识标签页。</summary>
     public Action? GoLibrary { get; set; }
     public RelayCommand Undo { get; }

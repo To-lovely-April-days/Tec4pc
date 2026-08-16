@@ -79,10 +79,15 @@
 
           <StackPanel IsVisible="{Binding HasRun}">
 
-          <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,4">
-            <Border Classes="exp3s"><ctl:TecIcon Key="ui-chev-down" Tint="#555555" /></Border>
-            <TextBlock Text="导出通道" Classes="accs" />
-          </StackPanel>
+          <Button Classes="secbtn" Command="{Binding ChannelsSection.Toggle}" Margin="0,0,0,4">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Border Classes="exp3s" Classes.up="{Binding ChannelsSection.Open}">
+                <ctl:TecIcon Key="ui-chev-down" Tint="#555555" />
+              </Border>
+              <TextBlock Text="导出通道" Classes="accs" />
+            </StackPanel>
+          </Button>
+          <StackPanel IsVisible="{Binding ChannelsSection.Open}">
           <ItemsControl ItemsSource="{Binding Chips}" Margin="0,4,0,0">
             <ItemsControl.ItemsPanel>
               <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
@@ -104,11 +109,17 @@
                   PointerPressed="OnAllChPressed">
             <TextBlock Text="全选 / 反选" FontSize="11.5" />
           </Border>
-
-          <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,14,0,4">
-            <Border Classes="exp3s"><ctl:TecIcon Key="ui-chev-down" Tint="#555555" /></Border>
-            <TextBlock Text="数据项" Classes="accs" />
           </StackPanel>
+
+          <Button Classes="secbtn" Command="{Binding ItemsSection.Toggle}" Margin="0,14,0,4">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Border Classes="exp3s" Classes.up="{Binding ItemsSection.Open}">
+                <ctl:TecIcon Key="ui-chev-down" Tint="#555555" />
+              </Border>
+              <TextBlock Text="数据项" Classes="accs" />
+            </StackPanel>
+          </Button>
+          <StackPanel IsVisible="{Binding ItemsSection.Open}">
           <ItemsControl ItemsSource="{Binding Groups}">
             <ItemsControl.ItemTemplate>
               <DataTemplate>
@@ -137,11 +148,17 @@
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
-
-          <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,14,0,4">
-            <Border Classes="exp3s"><ctl:TecIcon Key="ui-chev-down" Tint="#555555" /></Border>
-            <TextBlock Text="时间范围与采样" Classes="accs" />
           </StackPanel>
+
+          <Button Classes="secbtn" Command="{Binding RangeSection.Toggle}" Margin="0,14,0,4">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Border Classes="exp3s" Classes.up="{Binding RangeSection.Open}">
+                <ctl:TecIcon Key="ui-chev-down" Tint="#555555" />
+              </Border>
+              <TextBlock Text="时间范围与采样" Classes="accs" />
+            </StackPanel>
+          </Button>
+          <StackPanel IsVisible="{Binding RangeSection.Open}">
           <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,4,0,0">
             <TextBlock Text="范围" FontSize="11.5" Foreground="#3d3d3d" VerticalAlignment="Center" />
             <ComboBox Classes="sel" Width="110" Height="24" ItemsSource="{Binding RangeOptions}"
@@ -160,18 +177,25 @@
           </StackPanel>
           <TextBlock Text="{Binding BaseTip}" FontSize="10.5" Foreground="#9a9a9a" LineHeight="16"
                      TextWrapping="Wrap" Margin="0,7,0,0" />
+          </StackPanel>
 
           <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" Margin="0,14,0,4">
-            <Border Grid.Column="0" Classes="exp3s" Margin="0,0,8,0">
-              <ctl:TecIcon Key="ui-chev-down" Tint="#555555" />
-            </Border>
-            <TextBlock Grid.Column="1" Text="数据预览" Classes="accs" />
+            <Button Grid.Column="0" Classes="secbtn" Command="{Binding PreviewSection.Toggle}"
+                    Margin="0,0,8,0">
+              <Border Classes="exp3s" Classes.up="{Binding PreviewSection.Open}">
+                <ctl:TecIcon Key="ui-chev-down" Tint="#555555" />
+              </Border>
+            </Button>
+            <Button Grid.Column="1" Classes="secbtn" Command="{Binding PreviewSection.Toggle}">
+              <TextBlock Text="数据预览" Classes="accs" />
+            </Button>
             <Button Grid.Column="3" Classes="ptab" Classes.on="{Binding PrevData}"
                     Content="采样数据" Command="{Binding SetPrev}" CommandParameter="data" />
             <Button Grid.Column="4" Classes="ptab" Classes.on="{Binding PrevStep}"
                     Content="步骤记录" Command="{Binding SetPrev}" CommandParameter="step" Margin="2,0,0,0" />
           </Grid>
 
+          <StackPanel IsVisible="{Binding PreviewSection.Open}">
           <!-- dprev -->
           <Border BorderBrush="#dcdcdc" BorderThickness="1" CornerRadius="3" Background="White"
                   MaxHeight="220">
@@ -212,6 +236,7 @@
               </StackPanel>
             </ScrollViewer>
           </Border>
+          </StackPanel>
 
           <!-- dsum -->
           <Border Background="#f7f9fa" BorderBrush="#e6e9eb" BorderThickness="1" CornerRadius="3"
@@ -252,10 +277,15 @@
             <TextBlock Text="{Binding ExName}" FontSize="11.5" Foreground="#7a7a7a"
                        HorizontalAlignment="Center" Margin="0,2,0,10" />
 
-            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6,0,4">
-              <Border Classes="exp3s"><ctl:TecIcon Key="ui-chev-down" Tint="#555555" /></Border>
-              <TextBlock Text="导出格式" Classes="accs" />
-            </StackPanel>
+            <Button Classes="secbtn" Command="{Binding FormatSection.Toggle}" Margin="0,6,0,4">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <Border Classes="exp3s" Classes.up="{Binding FormatSection.Open}">
+                  <ctl:TecIcon Key="ui-chev-down" Tint="#555555" />
+                </Border>
+                <TextBlock Text="导出格式" Classes="accs" />
+              </StackPanel>
+            </Button>
+            <StackPanel IsVisible="{Binding FormatSection.Open}">
             <ItemsControl ItemsSource="{Binding Fmts}">
               <ItemsControl.ItemsPanel>
                 <ItemsPanelTemplate><UniformGrid Columns="2" /></ItemsPanelTemplate>
@@ -280,12 +310,18 @@
             </ItemsControl>
             <TextBlock Text="{Binding FileNote}" FontSize="10.5" Foreground="#9a9a9a" LineHeight="16"
                        TextWrapping="Wrap" Margin="0,7,0,0" />
+            </StackPanel>
 
-            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,14,0,4">
-              <Border Classes="exp3s"><ctl:TecIcon Key="ui-chev-down" Tint="#555555" /></Border>
+            <Button Classes="secbtn" Command="{Binding ReportSection.Toggle}" Margin="0,14,0,4">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+              <Border Classes="exp3s" Classes.up="{Binding ReportSection.Open}">
+                <ctl:TecIcon Key="ui-chev-down" Tint="#555555" />
+              </Border>
               <TextBlock Text="报告内容" Classes="accs" />
               <TextBlock Text="仅 Word / PDF" FontSize="10" Foreground="#9a9a9a" VerticalAlignment="Center" />
-            </StackPanel>
+              </StackPanel>
+            </Button>
+            <StackPanel IsVisible="{Binding ReportSection.Open}">
             <StackPanel IsEnabled="{Binding ReportEnabled}" Spacing="6">
               <StackPanel Orientation="Horizontal" Spacing="10">
                 <TextBlock Text="模板" FontSize="11.5" Foreground="#3d3d3d" VerticalAlignment="Center" />
@@ -301,11 +337,17 @@
               <CheckBox Content="配方参数与台面配置" FontSize="11.5" IsChecked="True" MinHeight="0" />
               <CheckBox Content="化合物物性数据" FontSize="11.5" MinHeight="0" />
             </StackPanel>
-
-            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,14,0,4">
-              <Border Classes="exp3s"><ctl:TecIcon Key="ui-chev-down" Tint="#555555" /></Border>
-              <TextBlock Text="导出目标" Classes="accs" />
             </StackPanel>
+
+            <Button Classes="secbtn" Command="{Binding TargetSection.Toggle}" Margin="0,14,0,4">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <Border Classes="exp3s" Classes.up="{Binding TargetSection.Open}">
+                  <ctl:TecIcon Key="ui-chev-down" Tint="#555555" />
+                </Border>
+                <TextBlock Text="导出目标" Classes="accs" />
+              </StackPanel>
+            </Button>
+            <StackPanel IsVisible="{Binding TargetSection.Open}">
             <Border Classes="dest" Classes.on="{Binding DestLocal}" Cursor="Hand"
                     PointerPressed="OnDestLocal">
               <StackPanel Orientation="Horizontal" Spacing="9">
@@ -334,11 +376,17 @@
                 </StackPanel>
               </StackPanel>
             </Border>
-
-            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,14,0,4">
-              <Border Classes="exp3s"><ctl:TecIcon Key="ui-chev-down" Tint="#555555" /></Border>
-              <TextBlock Text="GLP 合规" Classes="accs" />
             </StackPanel>
+
+            <Button Classes="secbtn" Command="{Binding GlpSection.Toggle}" Margin="0,14,0,4">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <Border Classes="exp3s" Classes.up="{Binding GlpSection.Open}">
+                  <ctl:TecIcon Key="ui-chev-down" Tint="#555555" />
+                </Border>
+                <TextBlock Text="GLP 合规" Classes="accs" />
+              </StackPanel>
+            </Button>
+            <StackPanel IsVisible="{Binding GlpSection.Open}">
             <Border Background="White" BorderBrush="#dcdcdc" BorderThickness="1" CornerRadius="4"
                     Padding="11,9,11,4">
               <StackPanel Spacing="8">
@@ -354,6 +402,7 @@
                           Margin="0,0,0,6" />
               </StackPanel>
             </Border>
+            </StackPanel>
             <TextBlock FontSize="10.5" Foreground="#9a9a9a" LineHeight="16" TextWrapping="Wrap"
                        Margin="0,7,0,0"
                        Text="导出文件包含原始采样数据、配方参数、台面配置与操作记录，满足实验记录完整可追溯的要求。" />
@@ -396,6 +445,22 @@
       <Setter Property="FontSize" Value="11.5" />
       <Setter Property="Foreground" Value="#3d3d3d" />
       <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.exp3s.up">
+      <Setter Property="RenderTransform">
+        <RotateTransform Angle="180" />
+      </Setter>
+    </Style>
+    <Style Selector="Button.secbtn">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0,2" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="HorizontalContentAlignment" Value="Left" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.secbtn:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
     </Style>
     <Style Selector="Border.exp3s">
       <Setter Property="Width" Value="16" />

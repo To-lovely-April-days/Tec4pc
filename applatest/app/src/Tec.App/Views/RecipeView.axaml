@@ -22,9 +22,10 @@
                   <Border IsVisible="{Binding HasBar}" Background="Transparent"
                           Padding="10,8" PointerPressed="OnGroupBarPressed" Cursor="Hand">
                     <StackPanel Orientation="Horizontal" Spacing="9">
-                      <Border Width="20" Height="20" CornerRadius="10"
-                              BorderBrush="#6b6b6b" BorderThickness="1.5">
-                        <ctl:TecIcon Key="ui-chev-up" Tint="#555555"
+                      <!-- 展开时箭头朝上，收起朝下。原来钉死成 ui-chev-up，
+                           点了内容收了、箭头没动，看着像没生效 -->
+                      <Border Classes="exp3" Classes.up="{Binding Open}">
+                        <ctl:TecIcon Key="ui-chev-down" Tint="#555555"
                                      HorizontalAlignment="Center" VerticalAlignment="Center" />
                       </Border>
                       <Border Width="12" Height="12" CornerRadius="3"
@@ -295,27 +296,32 @@
 
           <!-- 执行选项：两个真会影响运行的开关 -->
           <StackPanel IsVisible="{Binding HasSelection}" Margin="0,14,0,0" Spacing="6">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <Border Width="16" Height="16" CornerRadius="8" BorderBrush="#6b6b6b" BorderThickness="1.3">
-                <ctl:TecIcon Key="ui-chev-down" Tint="#555555" Size="10"
-                             HorizontalAlignment="Center" VerticalAlignment="Center" />
-              </Border>
-              <TextBlock Text="执行选项" Classes="acc" VerticalAlignment="Center" />
+            <Button Classes="secbtn" Command="{Binding ExecSection.Toggle}">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <Border Classes="exp3s" Classes.up="{Binding ExecSection.Open}">
+                  <ctl:TecIcon Key="ui-chev-down" Tint="#555555" Size="10" />
+                </Border>
+                <TextBlock Text="执行选项" Classes="acc" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <StackPanel IsVisible="{Binding ExecSection.Open}" Spacing="6">
+              <CheckBox Classes="chk2" Content="失败时暂停并报警"
+                        IsChecked="{Binding PauseOnFault, Mode=TwoWay}" />
+              <CheckBox Classes="chk2" Content="跳过该步骤（不执行、不计入排期）"
+                        IsChecked="{Binding StepSkipped, Mode=TwoWay}" />
             </StackPanel>
-            <CheckBox Classes="chk2" Content="失败时暂停并报警"
-                      IsChecked="{Binding PauseOnFault, Mode=TwoWay}" />
-            <CheckBox Classes="chk2" Content="跳过该步骤（不执行、不计入排期）"
-                      IsChecked="{Binding StepSkipped, Mode=TwoWay}" />
           </StackPanel>
 
           <Border Height="1" Background="#d5d5d5" Margin="0,14" />
-          <StackPanel Orientation="Horizontal" Spacing="8">
-            <Border Width="16" Height="16" CornerRadius="8" BorderBrush="#6b6b6b" BorderThickness="1.3">
-              <ctl:TecIcon Key="ui-chev-down" Tint="#555555" Size="10"
-                           HorizontalAlignment="Center" VerticalAlignment="Center" />
-            </Border>
-            <TextBlock Text="应用配方库" Classes="acc" VerticalAlignment="Center" />
-          </StackPanel>
+          <Button Classes="secbtn" Command="{Binding LibSection.Toggle}">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Border Classes="exp3s" Classes.up="{Binding LibSection.Open}">
+                <ctl:TecIcon Key="ui-chev-down" Tint="#555555" Size="10" />
+              </Border>
+              <TextBlock Text="应用配方库" Classes="acc" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <StackPanel IsVisible="{Binding LibSection.Open}">
           <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,6,0,0">
             <TextBlock Text="配方" Classes="lbl" Width="40" />
             <ComboBox Classes="sel" Width="220" ItemsSource="{Binding Library}"
@@ -336,16 +342,19 @@
               <Button Classes="linkbtn" Content="管理配方库 →" Command="{Binding ManageLibrary}" />
             </InlineUIContainer>
           </TextBlock>
+          </StackPanel>
 
           <Border Height="1" Background="#d5d5d5" Margin="0,10" />
-          <StackPanel Orientation="Horizontal" Spacing="8">
-            <Border Width="16" Height="16" CornerRadius="8" BorderBrush="#6b6b6b" BorderThickness="1.3">
-              <ctl:TecIcon Key="ui-chev-down" Tint="#555555" Size="10"
-                           HorizontalAlignment="Center" VerticalAlignment="Center" />
-            </Border>
-            <TextBlock Text="通道状态" Classes="acc" VerticalAlignment="Center" />
-          </StackPanel>
-          <Border Background="White" BorderBrush="#dcdcdc" BorderThickness="1" CornerRadius="3">
+          <Button Classes="secbtn" Command="{Binding StatesSection.Toggle}">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Border Classes="exp3s" Classes.up="{Binding StatesSection.Open}">
+                <ctl:TecIcon Key="ui-chev-down" Tint="#555555" Size="10" />
+              </Border>
+              <TextBlock Text="通道状态" Classes="acc" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Border Background="White" BorderBrush="#dcdcdc" BorderThickness="1" CornerRadius="3"
+                  IsVisible="{Binding StatesSection.Open}">
             <ItemsControl ItemsSource="{Binding ChannelStates}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate>
@@ -445,6 +454,46 @@
       <Setter Property="Background" Value="White" />
       <Setter Property="BoxShadow" Value="0 0 0 3 #381a7fc4, 0 2 10 0 #12000000" />
     </Style>
+    <!-- 圆圈箭头：展开朝上、收起朝下 -->
+    <Style Selector="Border.exp3">
+      <Setter Property="Width" Value="20" />
+      <Setter Property="Height" Value="20" />
+      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="BorderBrush" Value="#6b6b6b" />
+      <Setter Property="BorderThickness" Value="1.5" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.exp3s">
+      <Setter Property="Width" Value="16" />
+      <Setter Property="Height" Value="16" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="BorderBrush" Value="#6b6b6b" />
+      <Setter Property="BorderThickness" Value="1.3" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.exp3 > :is(Control), Border.exp3s > :is(Control)">
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.exp3.up, Border.exp3s.up">
+      <Setter Property="RenderTransform">
+        <RotateTransform Angle="180" />
+      </Setter>
+    </Style>
+    <!-- 小节头：整行可点，看起来还是一行字 -->
+    <Style Selector="Button.secbtn">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0,4" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Left" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.secbtn:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+
     <!-- .pf-row.bool：14px 方框 + 11.5px 文字，与台面属性同款 -->
     <Style Selector="CheckBox.chk2">
       <Setter Property="FontSize" Value="11.5" />

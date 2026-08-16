@@ -314,6 +314,9 @@ public sealed class LibRowViewModel : ViewModelBase
 /// </summary>
 public sealed class RecipeLibViewModel : ViewModelBase
 {
+    /// <summary>右栏「应用到通道」小节的开合。</summary>
+    public SectionViewModel ApplySection { get; } = new();
+
     private readonly Workspace _ws;
     private readonly MainViewModel _shell;
     private LibRowViewModel? _selected;
@@ -552,6 +555,9 @@ public sealed class CompoundViewModel : ViewModelBase
 
 public sealed class CompoundsViewModel : ViewModelBase
 {
+    /// <summary>右栏「溶解度 – 温度」小节的开合。</summary>
+    public SectionViewModel SolubilitySection { get; } = new();
+
     private string _search = "";
     private string _category = "全部";
     private CompoundViewModel? _selected;

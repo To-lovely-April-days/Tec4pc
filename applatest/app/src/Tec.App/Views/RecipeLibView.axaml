@@ -52,6 +52,23 @@
       <Setter Property="Width" Value="96" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
+    <Style Selector="Border.exp3.up">
+      <Setter Property="RenderTransform">
+        <RotateTransform Angle="180" />
+      </Setter>
+    </Style>
+    <Style Selector="Button.secbtn">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0,4" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Left" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.secbtn:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
     <Style Selector="Border.exp3">
       <Setter Property="Width" Value="20" />
       <Setter Property="Height" Value="20" />
@@ -216,24 +233,30 @@
             </StackPanel>
 
             <Border Height="1" Background="#d5d5d5" Margin="0,12,0,14" />
-            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,10">
-              <Border Classes="exp3"><ctl:TecIcon Key="ui-chev-down" Tint="#555555" /></Border>
-              <TextBlock Text="应用到通道" FontSize="11.5" Foreground="#3d3d3d" VerticalAlignment="Center" />
-            </StackPanel>
+            <Button Classes="secbtn" Command="{Binding ApplySection.Toggle}" Margin="0,0,0,10">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <Border Classes="exp3" Classes.up="{Binding ApplySection.Open}">
+                  <ctl:TecIcon Key="ui-chev-down" Tint="#555555" />
+                </Border>
+                <TextBlock Text="应用到通道" FontSize="11.5" Foreground="#3d3d3d" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
 
-            <StackPanel Orientation="Horizontal">
-              <TextBlock Text="目标通道" Classes="frowk" />
-              <ComboBox Classes="sel" Width="196" Height="23" ItemsSource="{Binding ApplyTargets}"
-                        SelectedItem="{Binding ApplyTarget, Mode=TwoWay}" />
-            </StackPanel>
+            <StackPanel IsVisible="{Binding ApplySection.Open}">
+              <StackPanel Orientation="Horizontal">
+                <TextBlock Text="目标通道" Classes="frowk" />
+                <ComboBox Classes="sel" Width="196" Height="23" ItemsSource="{Binding ApplyTargets}"
+                          SelectedItem="{Binding ApplyTarget, Mode=TwoWay}" />
+              </StackPanel>
 
-            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,12,0,6">
-              <Button Classes="btn primary" Content="应用到该通道" Command="{Binding ApplyToChannel}" />
-              <Button Classes="btn" Content="应用到全部通道" Command="{Binding ApplyToAll}" />
-            </StackPanel>
+              <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,12,0,6">
+                <Button Classes="btn primary" Content="应用到该通道" Command="{Binding ApplyToChannel}" />
+                <Button Classes="btn" Content="应用到全部通道" Command="{Binding ApplyToAll}" />
+              </StackPanel>
 
-            <TextBlock Classes="intro" Margin="0,8,0,0"
-                       Text="应用会替换目标通道当前的全部步骤，并跳转到配方编辑界面。" />
+              <TextBlock Classes="intro" Margin="0,8,0,0"
+                         Text="应用会替换目标通道当前的全部步骤，并跳转到配方编辑界面。" />
+            </StackPanel>
           </StackPanel>
         </ScrollViewer>
       </DockPanel>

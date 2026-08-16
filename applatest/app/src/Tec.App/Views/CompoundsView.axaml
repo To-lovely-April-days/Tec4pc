@@ -59,6 +59,23 @@
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <!-- CARET：圆圈 + 箭头（与台面属性面板同款） -->
+    <Style Selector="Border.exp3.up">
+      <Setter Property="RenderTransform">
+        <RotateTransform Angle="180" />
+      </Setter>
+    </Style>
+    <Style Selector="Button.secbtn">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0,4" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Left" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.secbtn:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
     <Style Selector="Border.exp3">
       <Setter Property="Width" Value="20" />
       <Setter Property="Height" Value="20" />
@@ -178,13 +195,22 @@
           </StackPanel>
 
           <Border Height="1" Background="#d5d5d5" Margin="0,12,0,14" />
-          <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
-            <Border Classes="exp3"><ctl:TecIcon Key="ui-chev-down" Tint="#555555" /></Border>
-            <TextBlock Text="溶解度 – 温度（g/100 mL 水）" FontSize="11.5" Foreground="#3d3d3d"
-                       VerticalAlignment="Center" />
-          </StackPanel>
+          <!-- 这一块的 DataContext 是选中的化合物，小节状态在视图模型上，
+               所以要顺着 UserControl 往上取 -->
+          <Button Classes="secbtn" Margin="0,0,0,8"
+                  Command="{Binding $parent[UserControl].DataContext.SolubilitySection.Toggle}">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Border Classes="exp3"
+                      Classes.up="{Binding $parent[UserControl].DataContext.SolubilitySection.Open}">
+                <ctl:TecIcon Key="ui-chev-down" Tint="#555555" />
+              </Border>
+              <TextBlock Text="溶解度 – 温度（g/100 mL 水）" FontSize="11.5" Foreground="#3d3d3d"
+                         VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
 
-          <Border Background="White" BorderBrush="#dcdcdc" BorderThickness="1" CornerRadius="3">
+          <Border Background="White" BorderBrush="#dcdcdc" BorderThickness="1" CornerRadius="3"
+                  IsVisible="{Binding $parent[UserControl].DataContext.SolubilitySection.Open}">
             <ctl:SolubilityView Coefficients="{Binding Solubility}" />
           </Border>
 
