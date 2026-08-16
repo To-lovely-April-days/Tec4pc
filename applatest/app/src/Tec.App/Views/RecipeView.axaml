@@ -16,7 +16,7 @@
         <ItemsControl ItemsSource="{Binding Groups}">
           <ItemsControl.ItemTemplate>
             <DataTemplate>
-              <Border Background="{StaticResource ThemeFill}" Margin="0,0,0,3">
+              <Border Background="{StaticResource ThemeFill}" Margin="0,0,0,7">
                 <StackPanel>
                   <!-- grpbar：圆形箭头 + 模块色块 + 组名（通用组没有条，直接平铺） -->
                   <Border IsVisible="{Binding HasBar}" Background="Transparent"
@@ -331,12 +331,20 @@
               </ComboBox.ItemTemplate>
             </ComboBox>
           </StackPanel>
-          <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,12,0,6">
-            <Button Classes="btn primary" Content="应用到当前通道" Command="{Binding ApplyLib}" />
-            <Button Classes="btn" Content="存入配方库" Command="{Binding SaveToLib}" />
+          <!-- 圆圈图标 + 居中，与台面属性底部那排动作按钮同款 -->
+          <StackPanel Orientation="Horizontal" Spacing="14" Margin="0,12,0,8"
+                      HorizontalAlignment="Center">
+            <Button Classes="tbtn foot" ToolTip.Tip="应用到当前通道（替换全部步骤）"
+                    Command="{Binding ApplyLib}">
+              <ctl:TecIcon Key="ui-snav-import" />
+            </Button>
+            <Button Classes="tbtn foot" ToolTip.Tip="把当前通道的配方存入配方库"
+                    Command="{Binding SaveToLib}">
+              <ctl:TecIcon Key="ui-foot-save" />
+            </Button>
           </StackPanel>
           <TextBlock FontSize="11.5" Foreground="#5a5a5a" LineHeight="18"
-                     TextWrapping="Wrap" Margin="0,8,0,0">
+                     TextWrapping="Wrap" TextAlignment="Center" Margin="0,2,0,0">
             <Run Text="应用会替换当前通道的全部步骤。" />
             <InlineUIContainer>
               <Button Classes="linkbtn" Content="管理配方库 →" Command="{Binding ManageLibrary}" />

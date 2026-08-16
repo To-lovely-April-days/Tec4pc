@@ -18,8 +18,8 @@
           <ItemsControl ItemsSource="{Binding Library}">
             <ItemsControl.ItemTemplate>
               <DataTemplate>
-                <!-- 一台设备 = 一块主题色；块之间留 3px 白缝（GBG 的设备库就是这样） -->
-                <Border Background="{StaticResource ThemeFill}" Margin="0,0,0,3" Padding="0,7,0,6"
+                <!-- 一台设备 = 一块主题色；块之间留一道白缝（GBG 的设备库就是这样） -->
+                <Border Background="{StaticResource ThemeFill}" Margin="0,0,0,7" Padding="0,7,0,6"
                         PointerPressed="OnLibraryPressed">
                   <StackPanel HorizontalAlignment="Center">
                     <!-- 统一 108×88 的格子，图等比缩进去。各设备图的高度本来就接近
