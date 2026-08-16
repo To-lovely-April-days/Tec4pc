@@ -138,6 +138,10 @@ public sealed class ExperimentStore
             _ws.Library.Add(r.ToModel(out var notes));
             foreach (var n in notes) migrated.Add($"配方库·{n}");
         }
+        // 老实验文件里可能还带着早期版本自动灌的六条演示配方，一并清掉。
+        // 不在这里标脏：刚打开的实验不该显示成"有未保存的改动"；
+        // 每次打开都会清一遍，它们再也不会出现在界面上
+        SeedPurge.Apply(_ws.Library);
 
         LastMigration = migrated;
 

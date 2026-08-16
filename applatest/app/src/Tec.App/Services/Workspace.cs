@@ -108,12 +108,12 @@ public sealed class Workspace
         // 配方也从空开始——预置几条「降温结晶」看着像已经配好了，其实一步没有。
         Store = new ExperimentStore(this);
 
-        // 配方库先读盘。读不到（第一次运行）才灌内置的六条工艺模板——
-        // 否则用户删掉的模板每次开机又回来了。
         // 配方库读盘；读不到就是空的。**不预置示例配方**——
         // 界面上出现的每一条都得是操作人自己存进去的，凭空多出六条会让人
-        // 以为工艺已经配好了（§不伪造数据）
+        // 以为工艺已经配好了（§不伪造数据）。
+        // 早期版本自动灌过六条演示配方，已经落盘的那些在这里一次性清掉
         Store.LoadLibrary(Library);
+        if (SeedPurge.Apply(Library) > 0) Store.SaveLibrary();
     }
 
     /// <summary>

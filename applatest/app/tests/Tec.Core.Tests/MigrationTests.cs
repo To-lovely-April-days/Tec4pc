@@ -142,7 +142,7 @@ public sealed class MigrationTests
         var issues = RecipeValidator.Validate(r, Catalog());
         // tec.stir.setSpeed 从来就不是有效 Id（是早年的手误），它照样该被报出来；
         // 翻译过的两条不许再报
-        Assert.Single(issues.Where(i => i.Code == "missing-driver"));
+        Assert.Single(issues, i => i.Code == "missing-driver");
         Assert.DoesNotContain(issues, i => i.Code == "out-of-range");
     }
 }
