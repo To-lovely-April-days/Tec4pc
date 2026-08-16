@@ -86,11 +86,9 @@ internal sealed class PumpSession : SimSession
         foreach (var p in _ports) p.Tick(dt, Noise(0.01));
     }
 
+    // pH 反馈加料由 pH 探头那边认领（判据是 pH，泵只是执行机构），这里只管纯加料
     private static readonly HandlerTable Table = new HandlerTable()
-        .Add(CommandSpecs.DoseRate, () => new DoseHandler())
-        .Add(CommandSpecs.DoseVolume, () => new DoseHandler())
-        .Add(CommandSpecs.DoseSegments, () => new SegmentedDoseHandler())
-        .Add(CommandSpecs.DosePh, () => new FeedbackDoseHandler());
+        .Add(CommandSpecs.Dose, () => new DoseHandler());
 
     public override ICommandHandler? Resolve(string commandId) => Table.Resolve(commandId);
 }
@@ -157,11 +155,8 @@ internal sealed class DoseHandler : ICommandHandler
         if (dosing.Calibration is null)
             ctx.Note?.Invoke("泵未标定，加料量以命令值记录");
 
-        // 恒速加料给 rate；定量加料给 dur，流量由体积/时间反算——原型就是这么分的
         var volume = Math.Max(0, p.Num("vol"));
-        var rate = p.Has("rate")
-            ? Math.Max(0.001, p.Num("rate"))
-            : Math.Max(0.001, volume / Math.Max(p.Num("dur", 1), 0.001));
+        var rate = Math.Max(0.001, p.Num("rate"));
         var began = ctx.Now();
         var startTotal = dosing.TotalVolume;
 
@@ -176,45 +171,6 @@ internal sealed class DoseHandler : ICommandHandler
         {
             Note = $"实加 {actual:F2} mL"
         };
-    }
-}
-
-internal sealed class SegmentedDoseHandler : ICommandHandler
-{
-    public async Task<CommandOutcome> ExecuteAsync(CommandContext ctx, CommandInput input, CancellationToken ct)
-    {
-        var dosing = ctx.Capabilities.Get<IDosing>()
-                     ?? throw new InvalidOperationException("该通道没有加料能力");
-        var began = ctx.Now();
-        var grand = 0d;
-
-        foreach (var row in input.RowsOrEmpty)
-        {
-            ct.ThrowIfCancellationRequested();
-            var volume = Math.Max(0, row.Num("v"));
-            var rate = Math.Max(0.001, row.Num("r"));
-            var start = dosing.TotalVolume;
-            await dosing.DoseAsync(new DoseRequest(volume, rate), ct).ConfigureAwait(false);
-            var planned = TimeSpan.FromSeconds(volume / rate * 60.0);
-            await SimTime.PollAsync(() => dosing.TotalVolume - start >= volume,
-                                    planned + TimeSpan.FromMinutes(5), ctx.TimeScale, ctx.Now, ct).ConfigureAwait(false);
-            await dosing.StopAsync(ct).ConfigureAwait(false);
-            grand += dosing.TotalVolume - start;
-            await SimTime.DelayAsync(TimeSpan.FromMinutes(Math.Max(0, row.Num("w"))), ctx.TimeScale, ct)
-                         .ConfigureAwait(false);
-        }
-
-        return new CommandOutcome(EndReason.QuantityDelivered, ctx.Now() - began) { Note = $"实加 {grand:F2} mL" };
-    }
-}
-
-internal sealed class StopDoseHandler : ICommandHandler
-{
-    public async Task<CommandOutcome> ExecuteAsync(CommandContext ctx, CommandInput p, CancellationToken ct)
-    {
-        var dosing = ctx.Capabilities.Get<IDosing>();
-        if (dosing is not null) await dosing.StopAsync(ct).ConfigureAwait(false);
-        return CommandOutcome.Instant();
     }
 }
 

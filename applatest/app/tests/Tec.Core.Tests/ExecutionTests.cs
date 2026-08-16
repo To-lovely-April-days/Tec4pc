@@ -203,7 +203,7 @@ public class ExecutionTests
         await using var h = new Harness(600);
         var ch = await h.ReactorChannelAsync(1);          // 没有泵
         var recipe = Harness.RecipeOf("要加料",
-            Harness.Mk(CommandSpecs.DoseRate, ("vol", 2d), ("rate", 1d)));
+            Harness.Mk(CommandSpecs.Dose, ("vol", 2d), ("rate", 1d)));
 
         var issues = Recipes.RecipeValidator.Validate(recipe, h.Catalog, ch);
         Assert.Contains(issues, i => i.Level == Recipes.IssueLevel.Error && i.Code == "capability");
@@ -221,7 +221,7 @@ public class ExecutionTests
             : null;
 
         var recipe = Harness.RecipeOf("加料",
-            Harness.Mk(CommandSpecs.DoseRate, ("vol", 4d), ("rate", 1d)));
+            Harness.Mk(CommandSpecs.Dose, ("vol", 4d), ("rate", 1d)));
 
         var a = h.Engine.StartChannel(1, recipe);
         var b = h.Engine.StartChannel(2, recipe);

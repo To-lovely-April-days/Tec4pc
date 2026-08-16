@@ -84,7 +84,10 @@ public sealed class StartViewModel : ViewModelBase
         {
             if (p is not RecentCardViewModel card) return;
             if (await GuardedAsync(() => _store.OpenAsync(card.Path), $"已打开 {card.Name}"))
+            {
+                Status += MigrationNote();
                 shell.Tab = MainViewModel.TabBench;
+            }
         }));
 
         NewExperiment = new RelayCommand(() => Async(async () =>
@@ -98,7 +101,10 @@ public sealed class StartViewModel : ViewModelBase
             if (await FileDialogs.OpenExperiment() is not { } path) return;
             if (await GuardedAsync(() => _store.OpenAsync(path),
                                    $"已打开 {Path.GetFileNameWithoutExtension(path)}"))
+            {
+                Status += MigrationNote();
                 shell.Tab = MainViewModel.TabBench;
+            }
         }));
 
         SaveExperiment = new RelayCommand(() => Async(async () =>
@@ -157,6 +163,18 @@ public sealed class StartViewModel : ViewModelBase
     /// 文件操作一律兜住异常，把 TecFileException 那句人话原样显示。
     /// 抛到 Avalonia 的默认处理里就是整个窗口挂掉。
     /// </summary>
+    /// <summary>
+    /// 装载时翻译过老指令就在状态里说一句。翻译是就地改了操作人存下来的东西，
+    /// 不出声等于偷偷改配方——那是这行不能干的事。
+    /// </summary>
+    private string MigrationNote()
+    {
+        var n = _store.LastMigration;
+        if (n.Count == 0) return "";
+        var head = n.Count == 1 ? n[0] : $"{n[0]} 等 {n.Count} 处";
+        return $"。这份实验是旧指令库存的，已转换：{head}";
+    }
+
     private bool Guarded(Action act, string okText)
     {
         try { act(); Status = okText; return true; }

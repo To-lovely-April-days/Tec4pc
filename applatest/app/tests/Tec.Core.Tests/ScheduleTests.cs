@@ -20,7 +20,7 @@ public class ScheduleTests
     public void 升温耗时由温差与速率推算()
     {
         var recipe = Harness.RecipeOf("升温",
-            Harness.Mk(CommandSpecs.RampUp, ("target", 60d), ("rate", 2d)));
+            Harness.Mk(CommandSpecs.Control, ("target", 60d), ("rate", 2d)));
         var s = Schedule.Build(recipe, Catalog(), new EstimationContext { Temperature = 20 });
 
         // (60 − 20) / 2 = 20 min
@@ -32,8 +32,8 @@ public class ScheduleTests
     public void 估算上下文串行推进而不是各算各的()
     {
         var recipe = Harness.RecipeOf("两段升温",
-            Harness.Mk(CommandSpecs.RampUp, ("target", 40d), ("rate", 2d)),
-            Harness.Mk(CommandSpecs.RampUp, ("target", 60d), ("rate", 2d)));
+            Harness.Mk(CommandSpecs.Control, ("target", 40d), ("rate", 2d)),
+            Harness.Mk(CommandSpecs.Control, ("target", 60d), ("rate", 2d)));
         var s = Schedule.Build(recipe, Catalog(), new EstimationContext { Temperature = 20 });
 
         Assert.Equal(TimeSpan.FromMinutes(10), s.Entries[0].Duration);  // 20 → 40
@@ -96,15 +96,17 @@ public class ScheduleTests
     }
 
     [Fact]
-    public void 分段加料的时长来自分段表()
+    public void 梯度控温的时长来自分段表()
     {
-        var step = Harness.Mk(CommandSpecs.DoseSegments);
+        var step = Harness.Mk(CommandSpecs.Gradient);
         var rows = new List<ParameterSet>
         {
-            ParameterSet.Of(("v", 2d), ("r", 1d), ("w", 1d)),   // 2 min + 1 min
-            ParameterSet.Of(("v", 4d), ("r", 2d), ("w", 0d))     // 2 min
+            // 起点 25 ℃：升到 45 ℃ 用 10 min，再保持 5 min
+            ParameterSet.Of(("t", 45d), ("r", 2d), ("h", 5d)),
+            // 从 45 ℃ 降到 25 ℃ 用 20 min，不保持
+            ParameterSet.Of(("t", 25d), ("r", 1d), ("h", 0d))
         };
-        var recipe = Harness.RecipeOf("分段", new Recipes.Step
+        var recipe = Harness.RecipeOf("梯度", new Recipes.Step
         {
             CommandId = step.CommandId,
             Parameters = step.Parameters,
@@ -112,14 +114,14 @@ public class ScheduleTests
         });
 
         var s = Schedule.Build(recipe, Catalog());
-        Assert.Equal(TimeSpan.FromMinutes(5), s.Total);
+        Assert.Equal(TimeSpan.FromMinutes(35), s.Total);
     }
 
     [Fact]
     public void 同样的输入必须得到同样的排期()
     {
         var recipe = Harness.RecipeOf("确定性",
-            Harness.Mk(CommandSpecs.RampUp, ("target", 55d), ("rate", 1.5d)),
+            Harness.Mk(CommandSpecs.Control, ("target", 55d), ("rate", 1.5d)),
             Harness.Mk(CommandSpecs.Hold, ("dur", 15d)));
         var a = Schedule.Build(recipe, Catalog());
         var b = Schedule.Build(recipe, Catalog());

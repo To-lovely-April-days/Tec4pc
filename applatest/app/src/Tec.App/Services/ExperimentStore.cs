@@ -109,22 +109,37 @@ public sealed class ExperimentStore
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>
+    /// 上一次装载时翻译了哪些老指令。指令库精简过，老配方里的旧 Id 会被就地翻译——
+    /// 翻了什么必须让操作人看见，悄悄改掉他存下来的东西不行。
+    /// </summary>
+    public IReadOnlyList<string> LastMigration { get; private set; } = Array.Empty<string>();
+
     public async Task OpenAsync(string path)
     {
         var doc = TecFiles.LoadExperiment(path);
 
         doc.Bench.ApplyTo(_ws.Bench);
 
+        var migrated = new List<string>();
+
         _ws.ChannelRecipes.Clear();
         _ws.LaneNames.Clear();
         foreach (var lane in doc.Lanes)
         {
-            _ws.ChannelRecipes[lane.Channel] = lane.Recipe.ToModel();
+            _ws.ChannelRecipes[lane.Channel] = lane.Recipe.ToModel(out var notes);
             _ws.LaneNames[lane.Channel] = lane.Name;
+            foreach (var n in notes) migrated.Add($"{lane.Name}·{n}");
         }
 
         _ws.Library.Clear();
-        foreach (var r in doc.Library) _ws.Library.Add(r.ToModel());
+        foreach (var r in doc.Library)
+        {
+            _ws.Library.Add(r.ToModel(out var notes));
+            foreach (var n in notes) migrated.Add($"配方库·{n}");
+        }
+
+        LastMigration = migrated;
 
         _ws.ExperimentName = doc.Name;
         CurrentPath = path;

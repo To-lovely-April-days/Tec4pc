@@ -83,8 +83,8 @@ internal sealed class ScalarSession : SimSession
 
     private static readonly HandlerTable Table = new HandlerTable()
         .Add(CommandSpecs.PhSample, () => new SampleHandler("pH"))
-        .Add(CommandSpecs.PhHold, () => new PhHoldHandler())
-        .Add(CommandSpecs.PhAlarm, () => new AlarmHandler("pH"))
+        // 反馈加料的闭环实现只有一份，在加料泵那边——判据是 pH，动作是加料
+        .Add(CommandSpecs.PhHold, () => new FeedbackDoseHandler())
         .Add(CommandSpecs.Turbidity, () => new SampleHandler("turb"))
         .Add(CommandSpecs.Solubility, () => new SolubilityHandler())
         .Add(CommandSpecs.Raman, () => new SampleHandler("raman"))
@@ -203,52 +203,6 @@ internal sealed class SampleHandler : ICommandHandler
 }
 
 /// <summary>pH 保持（反馈）：靠加料把 pH 压在死区里，维持设定时长。</summary>
-internal sealed class PhHoldHandler : ICommandHandler
-{
-    public async Task<CommandOutcome> ExecuteAsync(CommandContext ctx, CommandInput p, CancellationToken ct)
-    {
-        var sensor = ProbeHelp.Sensor(ctx);
-        var dosing = ctx.Capabilities.Get<IDosing>();
-        var began = ctx.Now();
-        var target = p.Num("target", 7);
-        var band = Math.Max(0.01, p.Num("band", 0.1));
-        var deadline = began + TimeSpan.FromMinutes(Math.Max(1, p.Num("dur", 60)));
-
-        while (!ct.IsCancellationRequested && ctx.Now() < deadline)
-        {
-            if (!sensor.TryReadLatest("pH", out var s) || s.Quality is Quality.Bad or Quality.Stale)
-            {
-                if (dosing is not null) await dosing.StopAsync(ct).ConfigureAwait(false);
-                ctx.Note?.Invoke("pH 信号失效，已停止调节并报警");
-                return new CommandOutcome(EndReason.Alarm, ctx.Now() - began);
-            }
-
-            if (dosing is not null)
-            {
-                if (s.Value > target + band) await dosing.SetRateAsync(0.5, ct).ConfigureAwait(false);
-                else await dosing.StopAsync(ct).ConfigureAwait(false);
-            }
-            await SimTime.DelayAsync(TimeSpan.FromSeconds(5), ctx.TimeScale, ct).ConfigureAwait(false);
-        }
-
-        if (dosing is not null) await dosing.StopAsync(ct).ConfigureAwait(false);
-        return new CommandOutcome(EndReason.TimerElapsed, ctx.Now() - began);
-    }
-}
-
-/// <summary>pH 上下限报警：登记一条监视，不占时间。真正的安全层在 Core 的 SafetyMonitor。</summary>
-internal sealed class AlarmHandler : ICommandHandler
-{
-    private readonly string _tag;
-    public AlarmHandler(string tag) => _tag = tag;
-
-    public Task<CommandOutcome> ExecuteAsync(CommandContext ctx, CommandInput p, CancellationToken ct)
-    {
-        ctx.Note?.Invoke($"{_tag} 报警带 {Txt.Fx(p.Num("lo"))} ~ {Txt.Fx(p.Num("hi"))}，超出时{p.Str("act")}");
-        return Task.FromResult(CommandOutcome.Instant());
-    }
-}
-
 /// <summary>
 /// 溶解度点测定：等浊度降到溶清阈值以下并持续确认时长。
 /// 条件类步骤两个方向都可能偏，偏差最大——这正是它被单列成 Condition 的原因。

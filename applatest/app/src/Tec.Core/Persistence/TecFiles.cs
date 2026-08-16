@@ -118,7 +118,13 @@ public static class TecFiles
         }
     }
 
-    public static Recipe ToModel(this RecipeDoc doc)
+    public static Recipe ToModel(this RecipeDoc doc) => doc.ToModel(out _);
+
+    /// <summary>
+    /// 带迁移说明的装载。老指令 Id 会被翻译成现在这套，翻译了什么由 migrated 带出来——
+    /// 悄悄改掉操作人存下来的东西不行，改了得说。
+    /// </summary>
+    public static Recipe ToModel(this RecipeDoc doc, out IReadOnlyList<string> migrated)
     {
         Guard(doc.Schema, Recipe.CurrentSchemaVersion, "配方");
 
@@ -144,6 +150,7 @@ public static class TecFiles
                 Comment = s.Comment
             });
         }
+        migrated = RecipeMigration.Apply(r);
         return r;
     }
 

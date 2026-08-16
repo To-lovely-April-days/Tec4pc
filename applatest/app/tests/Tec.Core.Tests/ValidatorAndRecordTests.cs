@@ -33,7 +33,7 @@ public class ValidatorTests
     public void 参数超出静态范围要报错()
     {
         var recipe = Harness.RecipeOf("超范围",
-            Harness.Mk(CommandSpecs.RampUp, ("target", 900d), ("rate", 2d)));
+            Harness.Mk(CommandSpecs.Control, ("target", 900d), ("rate", 2d)));
         var issues = RecipeValidator.Validate(recipe, Catalog());
         Assert.Contains(issues, i => i.Code == "out-of-range" && i.Level == IssueLevel.Error);
     }
@@ -49,25 +49,25 @@ public class ValidatorTests
     }
 
     [Fact]
-    public void 三十一条指令一条不少()
+    public void 二十条指令一条不多一条不少()
     {
         var c = Catalog();
         c.Register(new TurbidityProbeDriver().Commands);
         c.Register(new RamanProbeDriver().Commands);
         c.Register(new InfraredProbeDriver().Commands);
 
-        // 原型 CMDS：通用 8 · 温度 8 · 搅拌 3 · 加料 4 · pH 3 · 在线分析 5
-        Assert.Equal(31, c.All.Count);
+        // 通用 8 · 温度 4 · 搅拌 1 · 加料 1 · pH 2 · 在线分析 4
+        Assert.Equal(20, c.All.Count);
         Assert.Equal(8, c.InModule("通用").Count);
-        Assert.Equal(8, c.InModule("温度模块").Count);
-        Assert.Equal(3, c.InModule("搅拌").Count);
-        Assert.Equal(4, c.InModule("加料").Count);
-        Assert.Equal(3, c.InModule("pH 控制").Count);
-        Assert.Equal(5, c.InModule("在线分析").Count);
+        Assert.Equal(4, c.InModule("温度模块").Count);
+        Assert.Single(c.InModule("搅拌"));
+        Assert.Single(c.InModule("加料"));
+        Assert.Equal(2, c.InModule("pH 控制").Count);
+        Assert.Equal(4, c.InModule("在线分析").Count);
     }
 
     [Fact]
-    public void 指令名与原型逐字一致()
+    public void 精简掉的指令不许偷偷回来()
     {
         var c = Catalog();
         c.Register(new TurbidityProbeDriver().Commands);
@@ -78,26 +78,36 @@ public class ValidatorTests
         foreach (var n in new[]
         {
             "等待", "循环开始", "循环结束", "消息提示", "标记事件", "采样提醒", "安全联锁", "结束实验",
-            "升温至", "降温至", "梯度控温", "恒温保持", "结晶模式（蒸回流）", "夹套控温 Tj", "釜内控温 Tr", "自然冷却",
-            "设定转速", "转速梯度", "停止搅拌",
-            "恒速加料", "定量加料", "分段加料", "pH 反馈加料",
-            "pH 采集", "pH 保持（反馈）", "pH 上下限报警",
-            "拉曼采集", "红外采集", "浊度采集", "Tr−Tj 记录", "溶解度点测定"
+            "控温", "恒温保持", "梯度控温", "自然冷却",
+            "搅拌",
+            "加料",
+            "pH 采集", "pH 反馈加料",
+            "拉曼采集", "红外采集", "浊度采集", "溶解度点测定"
         })
-            Assert.True(names.Contains(n), $"指令「{n}」在原型里有，实装里没有");
+            Assert.True(names.Contains(n), $"指令「{n}」应该在，实装里没有");
+
+        // 合并 / 删掉的那些：同一个动作只留一条，回来了就是又拆开了
+        foreach (var n in new[]
+        {
+            "升温至", "降温至", "夹套控温 Tj", "釜内控温 Tr", "结晶模式（蒸回流）",
+            "设定转速", "转速梯度", "停止搅拌",
+            "恒速加料", "定量加料", "分段加料",
+            "pH 保持（反馈）", "pH 上下限报警", "Tr−Tj 记录"
+        })
+            Assert.False(names.Contains(n), $"指令「{n}」已经并掉了，不该再出现在指令库里");
     }
 
     [Fact]
     public void 摘要与整句描述按原型分两句写()
     {
         var c = Catalog();
-        Assert.True(c.TryGet(CommandSpecs.RampUp, out var d));
+        Assert.True(c.TryGet(CommandSpecs.Control, out var d));
         var p = new ParameterSet().FillDefaults(d.Parameters);
 
         // PSPEC.sum：卡片上那一行
         Assert.Equal("釜内 Tr → 60 ℃ · 2 ℃/min", d.SummaryOf(p));
         // DESC：整句工艺语句
-        Assert.Equal("升温 釜内 Tr 至 60 ℃，2 ℃/min", d.DescribeOf(p));
+        Assert.Equal("控温 釜内 Tr 至 60 ℃，2 ℃/min", d.DescribeOf(p));
     }
 
     [Fact]
@@ -111,12 +121,14 @@ public class ValidatorTests
     }
 
     [Fact]
-    public void 反馈加料同时要求加料与检测两项能力()
+    public void 反馈加料同时要求检测与加料两项能力()
     {
         var catalog = Catalog();
-        Assert.True(catalog.TryGet(CommandSpecs.DosePh, out var d));
-        Assert.Equal(typeof(IDosing), d.RequiredCapability);
-        Assert.Contains(typeof(IScalarSensor), d.AlsoRequires);
+        Assert.True(catalog.TryGet(CommandSpecs.PhHold, out var d));
+        // 判据是 pH，泵只是执行机构：主能力落在检测上，加料是附加要求
+        Assert.Equal(typeof(IScalarSensor), d.RequiredCapability);
+        Assert.Contains(typeof(IDosing), d.AlsoRequires);
+        Assert.Equal(CommandSpecs.ModPh, d.Module);
     }
 
     [Fact]
@@ -124,7 +136,7 @@ public class ValidatorTests
     {
         var catalog = Catalog();
         var recipe = Harness.RecipeOf("加料",
-            Harness.Mk(CommandSpecs.DoseRate, ("vol", 10d), ("rate", 1d)));   // 10 min
+            Harness.Mk(CommandSpecs.Dose, ("vol", 10d), ("rate", 1d)));   // 10 min
         var t0 = new DateTimeOffset(2026, 1, 1, 9, 0, 0, TimeSpan.Zero);
 
         var plans = new Dictionary<int, (Schedule Schedule, DateTimeOffset Start)>
@@ -143,7 +155,7 @@ public class ValidatorTests
     {
         var catalog = Catalog();
         var recipe = Harness.RecipeOf("加料",
-            Harness.Mk(CommandSpecs.DoseRate, ("vol", 2d), ("rate", 1d)));   // 2 min
+            Harness.Mk(CommandSpecs.Dose, ("vol", 2d), ("rate", 1d)));   // 2 min
         var t0 = new DateTimeOffset(2026, 1, 1, 9, 0, 0, TimeSpan.Zero);
 
         var plans = new Dictionary<int, (Schedule Schedule, DateTimeOffset Start)>

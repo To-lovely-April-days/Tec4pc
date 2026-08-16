@@ -170,6 +170,9 @@ public sealed class ParameterSet : IEnumerable<KeyValuePair<string, object?>>
         return c;
     }
 
+    /// <summary>删掉一个键。指令合并后老参数键要真的消失，留着会被误当成有效值。</summary>
+    public bool Remove(string key) => _values.Remove(key);
+
     public ParameterSet Clone() => new(_values);
 
     /// <summary>按 schema 填齐缺省值，缺什么补什么，已有的不动。</summary>

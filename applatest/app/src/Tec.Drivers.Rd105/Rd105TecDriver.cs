@@ -63,8 +63,7 @@ public sealed class Rd105TecDriver : IDeviceDriver
     };
 
     /// <summary>指令是静态声明的，没连硬件也要能编辑配方（§3.3）。</summary>
-    public IReadOnlyList<CommandDescriptor> Commands { get; } =
-        CommandSpecs.Temperature.Concat(CommandSpecs.DeltaTCommands).ToList();
+    public IReadOnlyList<CommandDescriptor> Commands { get; } = CommandSpecs.Temperature;
 
     public async Task<ProbeResult> ProbeAsync(ParameterSet connection, CancellationToken ct)
     {

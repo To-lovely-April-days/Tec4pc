@@ -152,26 +152,25 @@ public static class DemoBench
         }
 
         yield return R("降温结晶_梯度筛选", "升温溶解 → 恒温 → 梯度降温结晶，拉曼跟踪晶型", "08/14",
-            S(CommandSpecs.SetSpeed, ("rpm", 400d)),
-            S(CommandSpecs.RampUp, ("target", 60d), ("rate", 2d)),
+            S(CommandSpecs.Stir, ("rpm", 400d)),
+            S(CommandSpecs.Control, ("target", 60d), ("rate", 2d)),
             S(CommandSpecs.Hold, ("dur", 30d), ("tol", 0.1d)),
             GradientOf(catalog, (50d, 0.5d, 10d), (30d, 0.2d, 20d), (5d, 0.1d, 30d)),
             S(CommandSpecs.Raman, ("integ", 500d), ("mode", "连续")),
             S(BuiltinCommands.Finish));
 
         yield return R("硝化_控温加料", "低温恒速滴加，Tr−Tj 放热监控，超温联锁", "08/12",
-            S(CommandSpecs.SetSpeed, ("rpm", 500d)),
-            S(CommandSpecs.RampDown, ("target", 5d), ("rate", 1d)),
+            S(CommandSpecs.Stir, ("rpm", 500d)),
+            S(CommandSpecs.Control, ("target", 5d), ("rate", 1d)),
             S(BuiltinCommands.Interlock, ("src", "釜内 Tr"), ("op", ">"), ("val", 15d), ("act", "停止加料")),
-            S(CommandSpecs.DoseRate, ("rate", 0.3d), ("vol", 20d), ("liq", "硝酸 65%")),
-            S(CommandSpecs.DeltaT, ("interval", 1d)),
+            S(CommandSpecs.Dose, ("rate", 0.3d), ("vol", 20d), ("liq", "硝酸 65%")),
             S(CommandSpecs.Hold, ("dur", 60d), ("tol", 0.1d)),
             S(BuiltinCommands.Finish));
 
         yield return R("溶解度曲线_自动", "循环升温溶清判定，浊度确定溶解点，自动记录", "08/10",
-            S(CommandSpecs.SetSpeed, ("rpm", 300d)),
+            S(CommandSpecs.Stir, ("rpm", 300d)),
             S(BuiltinCommands.LoopBegin, ("by", "按次数"), ("n", 8d)),
-            S(CommandSpecs.RampUp, ("target", 60d), ("rate", 0.3d)),
+            S(CommandSpecs.Control, ("target", 60d), ("rate", 0.3d)),
             S(CommandSpecs.Turbidity, ("interval", 1d), ("thr", 5d)),
             S(CommandSpecs.Solubility, ("by", "浊度"), ("thr", 5d)),
             S(BuiltinCommands.LoopEnd),
@@ -179,28 +178,33 @@ public static class DemoBench
             S(BuiltinCommands.Finish));
 
         yield return R("介稳区_自动测定", "循环降温-升温，浊度判定成核点与溶清点", "08/06",
-            S(CommandSpecs.SetSpeed, ("rpm", 400d)),
+            S(CommandSpecs.Stir, ("rpm", 400d)),
             S(BuiltinCommands.LoopBegin, ("by", "按次数"), ("n", 5d)),
-            S(CommandSpecs.RampDown, ("target", 0d), ("rate", 0.5d)),
+            S(CommandSpecs.Control, ("target", 0d), ("rate", 0.5d)),
             S(CommandSpecs.Turbidity, ("interval", 1d), ("thr", 50d)),
-            S(CommandSpecs.RampUp, ("target", 60d), ("rate", 0.3d)),
+            S(CommandSpecs.Control, ("target", 60d), ("rate", 0.3d)),
             S(BuiltinCommands.LoopEnd),
             S(BuiltinCommands.Finish));
 
         yield return R("pH恒定_反应加料", "pH 反馈加料维持恒定，无人值守", "08/02",
-            S(CommandSpecs.SetSpeed, ("rpm", 350d)),
-            S(CommandSpecs.RampUp, ("target", 40d), ("rate", 2d)),
-            S(CommandSpecs.DosePh, ("target", 7d), ("band", 0.2d), ("dur", 120d)),
-            S(CommandSpecs.PhAlarm, ("lo", 6.5d), ("hi", 7.5d)),
+            S(CommandSpecs.Stir, ("rpm", 350d)),
+            S(CommandSpecs.Control, ("target", 40d), ("rate", 2d)),
+            S(CommandSpecs.PhHold, ("target", 7d), ("band", 0.2d), ("dur", 120d)),
+            S(BuiltinCommands.Interlock, ("src", "pH"), ("op", ">"), ("val", 7.5d), ("act", "停止加料")),
             S(CommandSpecs.Hold, ("dur", 120d), ("tol", 0.1d)),
             S(BuiltinCommands.Finish));
 
         yield return R("分段反溶剂_结晶", "三段递减流量加入反溶剂，段间静置成核", "07/28",
-            S(CommandSpecs.SetSpeed, ("rpm", 450d)),
+            S(CommandSpecs.Stir, ("rpm", 450d)),
             S(CommandSpecs.Hold, ("dur", 15d), ("tol", 0.1d)),
-            SegmentsOf(catalog, "反溶剂", (5d, 1d, 5d), (5d, 0.5d, 10d), (5d, 0.2d, 20d)),
+            S(CommandSpecs.Dose, ("liq", "反溶剂"), ("vol", 5d), ("rate", 1d)),
+            S(BuiltinCommands.Wait, ("dur", 5d)),
+            S(CommandSpecs.Dose, ("liq", "反溶剂"), ("vol", 5d), ("rate", 0.5d)),
+            S(BuiltinCommands.Wait, ("dur", 10d)),
+            S(CommandSpecs.Dose, ("liq", "反溶剂"), ("vol", 5d), ("rate", 0.2d)),
+            S(BuiltinCommands.Wait, ("dur", 20d)),
             S(CommandSpecs.Turbidity, ("interval", 1d), ("thr", 50d)),
-            S(CommandSpecs.RampDown, ("target", 10d), ("rate", 0.3d)),
+            S(CommandSpecs.Control, ("target", 10d), ("rate", 0.3d)),
             S(BuiltinCommands.Finish));
     }
 
@@ -216,19 +220,6 @@ public static class DemoBench
         };
     }
 
-    private static Step SegmentsOf(CommandCatalog catalog, string liquid,
-                                   params (double V, double R, double W)[] rows)
-    {
-        var p = new ParameterSet();
-        if (catalog.TryGet(CommandSpecs.DoseSegments, out var d)) p = p.FillDefaults(d.Parameters);
-        return new Step
-        {
-            CommandId = CommandSpecs.DoseSegments,
-            Parameters = p.With("liq", liquid),
-            Rows = rows.Select(r => ParameterSet.Of(("v", r.V), ("r", r.R), ("w", r.W))).ToList()
-        };
-    }
-
     /// <summary>带分段表的指令的默认行（与原型 PSPEC.rows 一致）。</summary>
     private static List<ParameterSet>? DefaultRowsOf(string id) => id switch
     {
@@ -238,23 +229,17 @@ public static class DemoBench
             ParameterSet.Of(("t", 30d), ("r", 0.3d), ("h", 20d)),
             ParameterSet.Of(("t", 5d), ("r", 0.1d), ("h", 30d))
         },
-        CommandSpecs.DoseSegments => new List<ParameterSet>
-        {
-            ParameterSet.Of(("v", 5d), ("r", 1d), ("w", 5d)),
-            ParameterSet.Of(("v", 5d), ("r", 0.5d), ("w", 10d)),
-            ParameterSet.Of(("v", 5d), ("r", 0.2d), ("w", 20d))
-        },
         _ => null
     };
 
     private static Recipe Cooling()
     {
         var r = new Recipe { Name = "降温结晶", Author = "工程师" };
-        r.Steps.Add(Mk(CommandSpecs.SetSpeed, ("rpm", 400d), ("ramp", 5d)));
-        r.Steps.Add(Mk(CommandSpecs.RampUp, ("target", 60d), ("rate", 2d),
+        r.Steps.Add(Mk(CommandSpecs.Stir, ("rpm", 400d), ("ramp", 5d)));
+        r.Steps.Add(Mk(CommandSpecs.Control, ("target", 60d), ("rate", 2d),
                        ("obj", "釜内 Tr"), ("tol", 0.5d), ("wait", true)));
         r.Steps.Add(Mk(CommandSpecs.Hold, ("dur", 30d), ("tol", 0.1d), ("obj", "釜内 Tr")));
-        r.Steps.Add(Mk(CommandSpecs.DoseRate, ("pump", "加料泵 1"), ("liq", "反溶剂"),
+        r.Steps.Add(Mk(CommandSpecs.Dose, ("pump", "加料泵 1"), ("liq", "反溶剂"),
                        ("rate", 0.5d), ("vol", 10d), ("sync", true)));
         r.Steps.Add(Gradient());
         r.Steps.Add(Mk(CommandSpecs.Raman, ("integ", 500d), ("avg", 3d), ("mode", "连续"), ("interval", 30d)));
@@ -265,10 +250,10 @@ public static class DemoBench
     private static Recipe Neutralize()
     {
         var r = new Recipe { Name = "pH 反馈加料", Author = "工程师" };
-        r.Steps.Add(Mk(CommandSpecs.SetSpeed, ("rpm", 400d), ("ramp", 5d)));
-        r.Steps.Add(Mk(CommandSpecs.RampUp, ("target", 60d), ("rate", 2d),
+        r.Steps.Add(Mk(CommandSpecs.Stir, ("rpm", 400d), ("ramp", 5d)));
+        r.Steps.Add(Mk(CommandSpecs.Control, ("target", 60d), ("rate", 2d),
                        ("obj", "釜内 Tr"), ("tol", 0.5d), ("wait", true)));
-        r.Steps.Add(Mk(CommandSpecs.DosePh, ("target", 7d), ("band", 0.2d), ("pump", "加料泵 2"),
+        r.Steps.Add(Mk(CommandSpecs.PhHold, ("target", 7d), ("band", 0.2d), ("pump", "加料泵 2"),
                        ("maxRate", 1d), ("maxVol", 50d), ("dur", 60d)));
         r.Steps.Add(Mk(CommandSpecs.Hold, ("dur", 30d), ("tol", 0.1d), ("obj", "釜内 Tr")));
         r.Steps.Add(Mk(CommandSpecs.PassiveCool, ("target", 25d), ("timeout", 120d)));

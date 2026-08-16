@@ -383,7 +383,7 @@ public sealed class RecipeViewModel : ViewModelBase
         SelectedStep = Lanes.First(l => l.Channel == _curCh).Steps.FirstOrDefault(v => v.Step.StepId == step.StepId);
     }
 
-    /// <summary>梯度控温 / 分段加料的默认分段，与原型 PSPEC.rows 一致。</summary>
+    /// <summary>梯度控温的默认分段。</summary>
     private static List<ParameterSet> DefaultRows(CommandDescriptor d) => d.Id switch
     {
         CommandSpecs.Gradient => new List<ParameterSet>
@@ -391,12 +391,6 @@ public sealed class RecipeViewModel : ViewModelBase
             ParameterSet.Of(("t", 60d), ("r", 1d), ("h", 10d)),
             ParameterSet.Of(("t", 30d), ("r", 0.3d), ("h", 20d)),
             ParameterSet.Of(("t", 5d), ("r", 0.1d), ("h", 30d))
-        },
-        CommandSpecs.DoseSegments => new List<ParameterSet>
-        {
-            ParameterSet.Of(("v", 5d), ("r", 1d), ("w", 5d)),
-            ParameterSet.Of(("v", 5d), ("r", 0.5d), ("w", 10d)),
-            ParameterSet.Of(("v", 5d), ("r", 0.2d), ("w", 15d))
         },
         _ => new List<ParameterSet>()
     };

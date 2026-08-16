@@ -5,8 +5,7 @@ namespace Tec.Drivers.Simulator;
 /// <summary>
 /// 双通道反应器 RD-105。一台设备开出 2 个通道，每个孔位自带温度控制 + 搅拌 + 背景灯。
 /// 指令是静态声明的——没连硬件也要能编辑配方（§3.3）。
-/// 它认领原型里的温度模块 8 条、搅拌 3 条，外加在线分析里的 Tr−Tj 记录
-/// （那一条只需要 Tr 和 Tj，本来就是反应器自己的事，不该去要第三方仪器）。
+/// 它认领温度模块 4 条与搅拌 1 条。
 /// </summary>
 public sealed class Rd105ReactorDriver : IDeviceDriver
 {
@@ -40,10 +39,7 @@ public sealed class Rd105ReactorDriver : IDeviceDriver
     { Tip = "整机固定的三个配件在这里选型；它们没有独立驱动，不上台面。" };
 
     public IReadOnlyList<CommandDescriptor> Commands { get; } =
-        CommandSpecs.Temperature
-            .Concat(CommandSpecs.Stirring)
-            .Concat(CommandSpecs.DeltaTCommands)
-            .ToList();
+        CommandSpecs.Temperature.Concat(CommandSpecs.Stirring).ToList();
 
     public async Task<ProbeResult> ProbeAsync(ParameterSet connection, CancellationToken ct)
     {
@@ -100,18 +96,11 @@ internal sealed class Rd105Session : SimSession
     }
 
     private static readonly HandlerTable Table = new HandlerTable()
-        .Add(CommandSpecs.RampUp, () => new RampHandler())
-        .Add(CommandSpecs.RampDown, () => new RampHandler())
+        .Add(CommandSpecs.Control, () => new ControlHandler())
         .Add(CommandSpecs.Gradient, () => new GradientHandler())
         .Add(CommandSpecs.Hold, () => new HoldHandler())
-        .Add(CommandSpecs.Reflux, () => new RefluxHandler())
-        .Add(CommandSpecs.JacketCtl, () => new JacketHandler())
-        .Add(CommandSpecs.ReactorCtl, () => new ReactorHandler())
         .Add(CommandSpecs.PassiveCool, () => new PassiveCoolHandler())
-        .Add(CommandSpecs.SetSpeed, () => new SetSpeedHandler())
-        .Add(CommandSpecs.SpeedRamp, () => new SpeedRampHandler())
-        .Add(CommandSpecs.StopStir, () => new StopStirHandler())
-        .Add(CommandSpecs.DeltaT, () => new DeltaTHandler());
+        .Add(CommandSpecs.Stir, () => new StirHandler());
 
     public override ICommandHandler? Resolve(string commandId) => Table.Resolve(commandId);
 }
@@ -277,8 +266,11 @@ internal static class TempHelp
            ?? throw new InvalidOperationException("该通道没有搅拌能力");
 }
 
-/// <summary>升温至 / 降温至。到达即结束；勾了"到达后等待稳定"再多等一个允差窗。</summary>
-internal sealed class RampHandler : ICommandHandler
+/// <summary>
+/// 控温。到达即结束；勾了"到达后等待稳定"再多等一个允差窗。
+/// 升温还是降温不用问——RampAsync 给的是目标值，往哪边走由当前温度决定。
+/// </summary>
+internal sealed class ControlHandler : ICommandHandler
 {
     public async Task<CommandOutcome> ExecuteAsync(CommandContext ctx, CommandInput p, CancellationToken ct)
     {
@@ -341,46 +333,6 @@ internal sealed class HoldHandler : ICommandHandler
     }
 }
 
-internal sealed class RefluxHandler : ICommandHandler
-{
-    public async Task<CommandOutcome> ExecuteAsync(CommandContext ctx, CommandInput p, CancellationToken ct)
-    {
-        var temp = TempHelp.Temp(ctx);
-        var began = ctx.Now();
-        var target = p.Num("temp", 78);
-        await temp.RampAsync(target, 2, TempChannelKind.Reactor, ct).ConfigureAwait(false);
-        await temp.WaitReachedAsync(target, 1.0, TimeSpan.FromHours(3), ct).ConfigureAwait(false);
-        await SimTime.DelayAsync(TimeSpan.FromMinutes(p.Num("dur")), ctx.TimeScale, ct).ConfigureAwait(false);
-        return new CommandOutcome(EndReason.TimerElapsed, ctx.Now() - began);
-    }
-}
-
-internal sealed class JacketHandler : ICommandHandler
-{
-    public async Task<CommandOutcome> ExecuteAsync(CommandContext ctx, CommandInput p, CancellationToken ct)
-    {
-        var temp = TempHelp.Temp(ctx);
-        var began = ctx.Now();
-        await temp.RampAsync(p.Num("target"), p.Num("rate", 2), TempChannelKind.Jacket, ct).ConfigureAwait(false);
-        await SimTime.DelayAsync(TimeSpan.FromMinutes(p.Num("dur")), ctx.TimeScale, ct).ConfigureAwait(false);
-        return new CommandOutcome(EndReason.TimerElapsed, ctx.Now() - began);
-    }
-}
-
-internal sealed class ReactorHandler : ICommandHandler
-{
-    public async Task<CommandOutcome> ExecuteAsync(CommandContext ctx, CommandInput p, CancellationToken ct)
-    {
-        var temp = TempHelp.Temp(ctx);
-        var began = ctx.Now();
-        var target = p.Num("target");
-        await temp.RampAsync(target, 2, TempChannelKind.Reactor, ct).ConfigureAwait(false);
-        await temp.WaitReachedAsync(target, 0.5, TimeSpan.FromHours(3), ct).ConfigureAwait(false);
-        await SimTime.DelayAsync(TimeSpan.FromMinutes(p.Num("dur")), ctx.TimeScale, ct).ConfigureAwait(false);
-        return new CommandOutcome(EndReason.TimerElapsed, ctx.Now() - began);
-    }
-}
-
 /// <summary>自然冷却：停掉控温靠环境降，到点或超时结束。</summary>
 internal sealed class PassiveCoolHandler : ICommandHandler
 {
@@ -399,54 +351,24 @@ internal sealed class PassiveCoolHandler : ICommandHandler
     }
 }
 
-internal sealed class SetSpeedHandler : ICommandHandler
+/// <summary>
+/// 搅拌。转速 0 走 StopAsync 而不是 SetSpeedAsync(0)——
+/// 真机上这两条是不同的寄存器操作：一个是设定值归零，一个是关输出。
+/// </summary>
+internal sealed class StirHandler : ICommandHandler
 {
     public async Task<CommandOutcome> ExecuteAsync(CommandContext ctx, CommandInput p, CancellationToken ct)
     {
         var stir = TempHelp.Stir(ctx);
         var began = ctx.Now();
-        if (stir is StirrerImpl impl) impl.SetRampSeconds(p.Num("ramp", 5));
-        await stir.SetSpeedAsync(p.Num("rpm"), ct).ConfigureAwait(false);
-        await SimTime.DelayAsync(TimeSpan.FromSeconds(p.Num("ramp", 5)), ctx.TimeScale, ct).ConfigureAwait(false);
+        var rpm = p.Num("rpm");
+        var ramp = p.Num("ramp", 5);
+
+        if (stir is StirrerImpl impl) impl.SetRampSeconds(ramp);
+        if (rpm <= 0) await stir.StopAsync(ct).ConfigureAwait(false);
+        else await stir.SetSpeedAsync(rpm, ct).ConfigureAwait(false);
+
+        await SimTime.DelayAsync(TimeSpan.FromSeconds(ramp), ctx.TimeScale, ct).ConfigureAwait(false);
         return new CommandOutcome(EndReason.Reached, ctx.Now() - began);
-    }
-}
-
-internal sealed class SpeedRampHandler : ICommandHandler
-{
-    public async Task<CommandOutcome> ExecuteAsync(CommandContext ctx, CommandInput p, CancellationToken ct)
-    {
-        var stir = TempHelp.Stir(ctx);
-        var began = ctx.Now();
-        var dur = TimeSpan.FromMinutes(p.Num("dur", 10));
-        if (stir is StirrerImpl impl) impl.SetRampSeconds(Math.Max(1, dur.TotalSeconds));
-        await stir.SetSpeedAsync(p.Num("from"), ct).ConfigureAwait(false);
-        await stir.SetSpeedAsync(p.Num("to"), ct).ConfigureAwait(false);
-        await SimTime.DelayAsync(dur, ctx.TimeScale, ct).ConfigureAwait(false);
-        return new CommandOutcome(EndReason.TimerElapsed, ctx.Now() - began);
-    }
-}
-
-internal sealed class StopStirHandler : ICommandHandler
-{
-    public async Task<CommandOutcome> ExecuteAsync(CommandContext ctx, CommandInput p, CancellationToken ct)
-    {
-        var began = ctx.Now();
-        var stir = ctx.Capabilities.Get<IStirrer>();
-        if (stir is StirrerImpl impl) impl.SetRampSeconds(p.Num("ramp", 5));
-        if (stir is not null) await stir.StopAsync(ct).ConfigureAwait(false);
-        await SimTime.DelayAsync(TimeSpan.FromSeconds(p.Num("ramp", 5)), ctx.TimeScale, ct).ConfigureAwait(false);
-        return new CommandOutcome(EndReason.Reached, ctx.Now() - began);
-    }
-}
-
-/// <summary>Tr−Tj 记录：管线本来就在推 dT，这条只是把它标进记录。</summary>
-internal sealed class DeltaTHandler : ICommandHandler
-{
-    public Task<CommandOutcome> ExecuteAsync(CommandContext ctx, CommandInput p, CancellationToken ct)
-    {
-        ctx.Note?.Invoke($"开始记录 Tr−Tj，每 {Txt.Fx(p.Num("interval", 1))} s"
-                         + (p.Flag("kinetics", true) ? "（用于动力学分析）" : ""));
-        return Task.FromResult(CommandOutcome.Instant());
     }
 }
