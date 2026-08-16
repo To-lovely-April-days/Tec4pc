@@ -6,8 +6,8 @@
   <!-- 原型 view-run：runtop 44px → runbody 三块 pane → 底部执行记录抽屉 -->
   <DockPanel Background="White">
 
-    <!-- runtop -->
-    <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,*,Auto" Height="44" Margin="14,0"
+    <!-- runtop。启动 / 停止 / 暂停 / 单步在菜单栏右边那排圆钮上，这里不再摆一份 -->
+    <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,*" Height="44" Margin="14,0"
           VerticalAlignment="Top">
       <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
         <TextBlock Text="实验：" FontSize="12" Foreground="#444444" VerticalAlignment="Center" />
@@ -20,28 +20,7 @@
 
       <TextBlock Grid.Column="1" Text="{Binding Say}" IsVisible="{Binding HasSay}"
                  FontSize="11.5" Foreground="#2f8f49" VerticalAlignment="Center"
-                 TextAlignment="Right" Margin="14,0,14,0" TextTrimming="CharacterEllipsis" />
-
-      <!-- 单通道操作：对选中的那块磁贴下手。四条通道各跑各的，
-           只能整机启停不够用——CH2 出问题要单独停，别的三条还在跑 -->
-      <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
-                  IsVisible="{Binding !NoChannels}">
-        <TextBlock Text="{Binding ActHint}" FontSize="11" Foreground="#9a9a9a"
-                   VerticalAlignment="Center" Margin="0,0,6,0" />
-        <Border Background="#ece9f5" CornerRadius="11" Height="22" Padding="9,0"
-                IsVisible="{Binding HasSelection}" VerticalAlignment="Center">
-          <TextBlock Text="{Binding SelectedLabel}" FontSize="11.5" FontWeight="SemiBold"
-                     Foreground="#3d3d3d" VerticalAlignment="Center" />
-        </Border>
-        <Button Classes="tbtn foot" ToolTip.Tip="启动该通道" Command="{Binding StartOne}"
-                IsEnabled="{Binding CanStart}"><ctl:TecIcon Key="ui-sim-play" Tint="#1f1f1f" Recolor="True" Size="13" /></Button>
-        <Button Classes="tbtn foot" ToolTip.Tip="{Binding PauseTip}" Command="{Binding PauseOne}"
-                IsEnabled="{Binding CanPause}"><ctl:TecIcon Key="ui-sim-pause" Tint="#1f1f1f" Recolor="True" Size="13" /></Button>
-        <Button Classes="tbtn foot" ToolTip.Tip="停止该通道" Command="{Binding StopOne}"
-                IsEnabled="{Binding CanStop}"><ctl:TecIcon Key="ui-sim-stop" Tint="#1f1f1f" Recolor="True" Size="13" /></Button>
-        <Button Classes="tbtn foot" ToolTip.Tip="跳过当前步" Command="{Binding SkipOne}"
-                IsEnabled="{Binding CanStop}"><ctl:TecIcon Key="ui-sim-step" Tint="#1f1f1f" Recolor="True" Size="13" /></Button>
-      </StackPanel>
+                 TextAlignment="Right" Margin="14,0,0,0" TextTrimming="CharacterEllipsis" />
     </Grid>
 
     <!-- 执行记录抽屉（原型 .rundraw，贴在底部） -->

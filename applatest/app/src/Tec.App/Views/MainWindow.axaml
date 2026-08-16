@@ -84,12 +84,12 @@
         <Button Classes="menu" Content="数据导出"    Command="{Binding Go}" CommandParameter="6" Classes.on="{Binding IsExport}" />
       </StackPanel>
 
-      <!-- 模拟模式：黑色药丸 + 4 个圆钮（运行 / 停止 / 暂停 / 单步） -->
+      <!-- 运行控制：黑色药丸 + 4 个圆钮（运行 / 停止 / 暂停 / 单步）。
+           原型那句「模拟模式」去掉了——接上真机之后它就不对了，
+           而这四个钮不论仿真真机都是同一件事，图标自己说得清 -->
       <Border Background="#151515" CornerRadius="8" Height="48" Margin="0,2,150,0"
-              HorizontalAlignment="Right" VerticalAlignment="Top" Padding="22,0,10,0">
+              HorizontalAlignment="Right" VerticalAlignment="Top" Padding="12,0">
         <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
-          <TextBlock Text="模拟模式" Foreground="White" FontSize="22" VerticalAlignment="Center"
-                     Margin="0,0,8,0" />
           <Button Classes="rbtn play" Command="{Binding SimRun}" ToolTip.Tip="运行"><ctl:TecIcon Key="ui-sim-play" /></Button>
           <Button Classes="rbtn" Command="{Binding SimStop}" ToolTip.Tip="停止"><ctl:TecIcon Key="ui-sim-stop" /></Button>
           <Button Classes="rbtn" Command="{Binding SimPause}" ToolTip.Tip="暂停"><ctl:TecIcon Key="ui-sim-pause" /></Button>

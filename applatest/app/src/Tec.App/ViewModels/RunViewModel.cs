@@ -36,7 +36,7 @@ public sealed class StatTileViewModel : ViewModelBase
     private bool _sel;
 
     public int Channel { get; }
-    /// <summary>选中的那一路：顶栏那排单通道操作按钮对它下手。</summary>
+    /// <summary>选中的那一路：手动标记记到它那条记录链上。</summary>
     public bool IsSelected { get => _sel; set => Set(ref _sel, value); }
     /// <summary>竖排通道名：一行一个字符（CSS vertical-rl 的等价）。</summary>
     public string NameVertical => string.Join("\n", $"CH{Channel}".ToCharArray());
@@ -140,7 +140,8 @@ public sealed class DrawChipViewModel : ViewModelBase
 /// <summary>
 /// 运行视图（原型 view-run 的 1:1）：runtop + 三块竖标签 pane
 /// （台面总览 560 / 趋势曲线 flex / 步骤甘特 430）+ 底部执行记录抽屉。
-/// 启动/暂停/停止走菜单栏的「模拟模式」四钮（原型的运行入口就在那里）。
+/// 启动 / 停止 / 暂停 / 单步走菜单栏右边那排圆钮（原型的运行入口就在那里），
+/// 运行页不再摆第二份——同一件事两个入口，人得先想「这两排有什么不一样」。
 /// </summary>
 public sealed class RunViewModel : ViewModelBase
 {
@@ -192,14 +193,13 @@ public sealed class RunViewModel : ViewModelBase
         RaiseAll(nameof(NoChannels), nameof(HasSelection));
     }
 
-    // ── 单通道操作 ──────────────────────────────────────────────────
-    // 四条通道各跑各的配方，只能整机启停是不够用的：CH2 出了问题要单独停，
-    // 别的三条还在跑（这也是这台机器做成四通道的意义）。
-    // 引擎本来就是按通道走的（ChannelRunner），这里只是把入口接出来。
+    // ── 选中的那一路 ────────────────────────────────────────────────
+    // 启动 / 停止 / 暂停 / 单步在菜单栏右边那排圆钮上，运行页不再摆第二份。
+    // 这里的"选中"只是告诉「记一笔」写到哪条通道的记录链上。
 
     private StatTileViewModel? _selected;
 
-    /// <summary>点中的那块磁贴。顶栏那排按钮对它下手。</summary>
+    /// <summary>点中的那块磁贴。手动标记记到它那条链上。</summary>
     public StatTileViewModel? Selected
     {
         get => _selected;
@@ -209,8 +209,7 @@ public sealed class RunViewModel : ViewModelBase
             if (!Set(ref _selected, value)) return;
             if (old is not null) old.IsSelected = false;
             if (value is not null) value.IsSelected = true;
-            RaiseAll(nameof(HasSelection), nameof(SelectedLabel), nameof(CanStart), nameof(CanPause),
-                     nameof(CanStop), nameof(PauseTip), nameof(ActHint));
+            RaiseAll(nameof(HasSelection), nameof(SelectedLabel), nameof(CanMark));
         }
     }
 
@@ -219,45 +218,6 @@ public sealed class RunViewModel : ViewModelBase
 
     private ChannelRun? RunOf(StatTileViewModel? t)
         => t is null ? null : _ws.Engine.Record.Of(t.Channel);
-    private Tec.Core.Execution.ChannelRunner? RunnerOf(StatTileViewModel? t)
-        => t is null ? null : _ws.Engine.Runner(t.Channel);
-
-    /// <summary>没编排步骤的通道启不了——启起来也是空跑一趟，记录里留一条什么都没干的批次。</summary>
-    public bool CanStart
-    {
-        get
-        {
-            if (_selected is null || _selected.Off) return false;
-            if (!_ws.ChannelRecipes.TryGetValue(_selected.Channel, out var r) || r.Steps.Count == 0) return false;
-            // 跑完 / 出故障的可以再来一遍（记录里是新的一条子记录，不覆盖旧的）；
-            // 正在跑和正在收尾的不能重启
-            var st = RunnerOf(_selected)?.State;
-            return st is null or ChannelRunState.Idle or ChannelRunState.Ready
-                   or ChannelRunState.Completed or ChannelRunState.Faulted or ChannelRunState.Paused;
-        }
-    }
-
-    public bool CanPause => RunnerOf(_selected)?.State is ChannelRunState.Running or ChannelRunState.Paused;
-    public bool CanStop => RunnerOf(_selected)?.State is ChannelRunState.Running or ChannelRunState.Paused;
-    public string PauseTip => RunnerOf(_selected)?.State == ChannelRunState.Paused ? "继续该通道" : "暂停该通道";
-
-    /// <summary>这一排按钮为什么是灰的，得说出来——灰着不解释比没有按钮更难受。</summary>
-    public string ActHint
-    {
-        get
-        {
-            if (_selected is null) return "点一块通道磁贴，这排按钮就对那一路生效。";
-            if (_selected.Off) return $"CH{_selected.Channel} 已停用（在台面上启停）。";
-            if (!_ws.ChannelRecipes.TryGetValue(_selected.Channel, out var r) || r.Steps.Count == 0)
-                return $"CH{_selected.Channel} 还没编排步骤，去「配方」加几步。";
-            return "";
-        }
-    }
-
-    public RelayCommand StartOne { get; private set; } = null!;
-    public RelayCommand PauseOne { get; private set; } = null!;
-    public RelayCommand StopOne { get; private set; } = null!;
-    public RelayCommand SkipOne { get; private set; } = null!;
 
     /// <summary>手动标记要写的那句话。空的时候「记一笔」是灰的——空标记进了记录等于噪声。</summary>
     public string MarkText
@@ -272,7 +232,7 @@ public sealed class RunViewModel : ViewModelBase
 
     public RelayCommand Mark { get; private set; } = null!;
 
-    /// <summary>顶栏的一句回话（标记记下了没有、通道停了没有）。</summary>
+    /// <summary>顶栏的一句回话（标记记下了没有）。</summary>
     public string Say { get; private set; } = "";
     public bool HasSay => Say.Length > 0;
 
@@ -292,48 +252,6 @@ public sealed class RunViewModel : ViewModelBase
 
     private void BuildCommands()
     {
-        StartOne = new RelayCommand(() =>
-        {
-            if (_selected is not { } t || !CanStart) return;
-            // 第一次启动要开批次，与菜单栏那四个钮同一套（记录里的批次名不能是空的）
-            if (_ws.Engine.Record.Channels.Count == 0)
-                _ws.Engine.NewBatch(_ws.ExperimentName, _ws.Operator, _ws.Bench.Name);
-
-            var runner = RunnerOf(t);
-            if (runner?.State == ChannelRunState.Paused) { runner.Resume(_ws.Operator); Tell($"CH{t.Channel} 已继续"); }
-            else
-            {
-                if (!_ws.ChannelRecipes.TryGetValue(t.Channel, out var recipe)) return;
-                try { _ws.Engine.StartChannel(t.Channel, recipe, _ws.Operator); Tell($"CH{t.Channel} 已启动（{recipe.Steps.Count} 步）"); }
-                catch (Exception ex) { Tell($"CH{t.Channel} 启动失败：{ex.Message}"); }
-            }
-            Tick();
-        });
-
-        PauseOne = new RelayCommand(() =>
-        {
-            if (RunnerOf(_selected) is not { } r || _selected is null) return;
-            if (r.State == ChannelRunState.Paused) { r.Resume(_ws.Operator); Tell($"CH{_selected.Channel} 已继续"); }
-            else { r.Pause(_ws.Operator); Tell($"CH{_selected.Channel} 已暂停"); }
-            Tick();
-        });
-
-        StopOne = new RelayCommand(() =>
-        {
-            if (RunnerOf(_selected) is not { } r || _selected is null) return;
-            r.Abort(_ws.Operator, $"操作人停止 CH{_selected.Channel}");
-            Tell($"CH{_selected.Channel} 已停止");
-            Tick();
-        });
-
-        SkipOne = new RelayCommand(() =>
-        {
-            if (RunnerOf(_selected) is not { } r || _selected is null) return;
-            r.SkipCurrent(_ws.Operator, "操作人跳过");
-            Tell($"CH{_selected.Channel} 已跳过当前步");
-            Tick();
-        });
-
         Mark = new RelayCommand(() =>
         {
             if (_selected is not { } t || !CanMark) return;
@@ -503,9 +421,8 @@ public sealed class RunViewModel : ViewModelBase
                  nameof(RunTop), nameof(Trend), nameof(Gantt), nameof(GTotal),
                  nameof(TrendHasPh), nameof(TrendEmpty), nameof(TrendEmptyText),
                  nameof(NoChannels), nameof(DrawLast), nameof(DrawCnt), nameof(NoRows),
-                 // 通道状态一直在变（跑完了、被中止了），这排按钮的可按性得跟着变
-                 nameof(CanStart), nameof(CanPause), nameof(CanStop), nameof(CanMark),
-                 nameof(PauseTip), nameof(ActHint), nameof(SelectedLabel), nameof(HasSelection));
+                 // 通道跑起来了「记一笔」才按得下去，通道状态一直在变
+                 nameof(CanMark), nameof(SelectedLabel), nameof(HasSelection));
     }
 
     public void Stop() => _timer.Stop();
