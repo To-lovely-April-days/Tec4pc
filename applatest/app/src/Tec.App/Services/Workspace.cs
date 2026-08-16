@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using Avalonia.Threading;
 using Tec.Core;
 using Tec.Core.Benches;
@@ -45,7 +46,18 @@ public sealed class Workspace
     public UiOperatorGate OperatorGate { get; }
     public ICommandProvider Builtins { get; }
     public IReadOnlyList<Channel> Channels => _channels;
-    public List<Recipe> Library { get; } = new();
+    /// <summary>
+    /// 配方库。**可观察集合**：配方页与配方库页各有一份自己的视图行，
+    /// 谁改了另一边都得跟着变——以前是裸 List，配方页存进去一条，
+    /// 切到配方库页看不见，得重开程序（那正是"保存了列表里没有"的原因）。
+    /// </summary>
+    public ObservableCollection<Recipe> Library { get; } = new();
+
+    /// <summary>
+    /// 当前操作人。存配方、开批次、写记录都署这个名。
+    /// 现在只有一个固定值——登录还没做；先集中到一处，将来接上登录只改这一行。
+    /// </summary>
+    public string Operator { get; set; } = "管理员";
 
     /// <summary>打开 / 新建 / 保存实验。Boot() 里建好。</summary>
     public ExperimentStore Store { get; private set; } = null!;

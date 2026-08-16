@@ -241,7 +241,7 @@ public sealed class ExperimentStore
     }
 
     /// <summary>返回 true 表示磁盘上确实有一份库，调用方就别再灌种子模板了。</summary>
-    public bool LoadLibrary(List<Recipe> into)
+    public bool LoadLibrary(IList<Recipe> into)
     {
         if (!File.Exists(LibraryPath)) return false;
         try

@@ -285,6 +285,8 @@ public sealed class RecipeViewModel : ViewModelBase
         ws.BenchChanged += (_, _) => RefreshAll();
         // 打开别的实验会整份换掉配方库，右栏那个下拉得跟着换
         ws.Store.Changed += (_, _) => ReloadLibrary();
+        // 配方库页那边增删了配方，这边的下拉也得当场跟上
+        ws.Library.CollectionChanged += (_, _) => ReloadLibrary();
 
         RefreshAll();
     }
@@ -736,35 +738,48 @@ public sealed class RecipeViewModel : ViewModelBase
     {
         if (_copyTarget == _curCh || !Workspace.ChannelRecipes.ContainsKey(_copyTarget)) return;
         Record(_copyTarget);                       // 被覆盖的是目标通道，历史记在它头上
-        var copy = Current.Snapshot();
-        copy.Name = Workspace.LaneNames.TryGetValue(_curCh, out var n) ? n : copy.Name;
+        var name = Workspace.LaneNames.TryGetValue(_curCh, out var n) ? n : Current.Name;
+        var copy = Current.CopyAs(name, Current.Author);
         Workspace.ChannelRecipes[_copyTarget] = copy;
         Workspace.LaneNames[_copyTarget] = copy.Name;
         Workspace.Store.MarkDirty();
         RefreshAll();
+        Tell($"已复制到 {LabelOf(_copyTarget)}（{copy.Steps.Count} 步）");
     }
 
     /// <summary>应用配方库（原型 applyLibRecipe）：替换当前通道全部步骤。</summary>
     private void DoApplyLib()
     {
         if (_libPick is null) return;
+        // 台面上没有通道时不能应用：往 ChannelRecipes 里塞一条，界面会凭空多出
+        // 一条根本不存在的泳道
+        if (NoLanes) { Tell("台面上还没有通道，先去「台面」摆一台反应器。"); return; }
+
         Record();
-        var copy = _libPick.Snapshot();
+        // CopyAs 而不是 Snapshot：泳道里这一份是独立的工作副本。沿用库里那条的 Id，
+        // 应用到两个通道就成了两条同号配方，记录与导出都分不开
+        var copy = _libPick.CopyAs(_libPick.Name, _libPick.Author);
         Workspace.ChannelRecipes[_curCh] = copy;
         Workspace.LaneNames[_curCh] = copy.Name;
         SelectedStep = null;
+        Workspace.Store.MarkDirty();
         RefreshAll();
+        Tell($"已把「{copy.Name}」应用到 {LabelOf(_curCh)}（{copy.Steps.Count} 步）");
     }
 
     private void DoSaveToLib()
     {
-        var copy = Current.Snapshot();
-        copy.Name = Workspace.LaneNames.TryGetValue(_curCh, out var n) ? n : copy.Name;
-        Workspace.Library.Add(copy);
-        var option = new LibOption(copy);
-        Library.Add(option);
-        Workspace.Store.SaveLibrary();     // 存进库就该落盘，不然关掉程序白存
-        LibPick = option;
+        if (NoLanes) { Tell("台面上还没有通道，没有配方可存。"); return; }
+        var name = Workspace.LaneNames.TryGetValue(_curCh, out var n) && n.Length > 0
+            ? n : Current.Name;
+        // CopyAs 而不是 Snapshot：库里这条是**新的一条**，得有自己的 Id 与时间戳。
+        // 沿用原件的时间，库里「最近更新」会显示成它一直没动过；沿用 Id，
+        // 存两次就有两条撞号的记录
+        var copy = Current.CopyAs(name, Workspace.Operator);
+        Workspace.Library.Add(copy);        // Library 是可观察集合，两个页面自己会跟上
+        Workspace.Store.SaveLibrary();      // 存进库就该落盘，不然关掉程序白存
+        LibPick = Library.FirstOrDefault(o => ReferenceEquals(o.Recipe, copy));
+        Tell($"「{name}」已存入配方库（{copy.Steps.Count} 步）");
     }
 
     // ── 工具条：新建 / 撤销 / 重做 ───────────────────────────────────
@@ -827,7 +842,9 @@ public sealed class RecipeViewModel : ViewModelBase
         if (await FileDialogs.OpenRecipe() is not { } path) return;
         try
         {
-            var recipe = TecFiles.LoadRecipe(path).ToModel(out var migrated);
+            var read = TecFiles.LoadRecipe(path).ToModel(out var migrated);
+            // 同一份文件导进两个通道，得是两条各自独立的配方
+            var recipe = read.CopyAs(read.Name, read.Author);
             Record();
             Workspace.ChannelRecipes[_curCh] = recipe;
             Workspace.LaneNames[_curCh] = recipe.Name;

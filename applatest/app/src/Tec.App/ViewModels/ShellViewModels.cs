@@ -332,12 +332,9 @@ public sealed class RecipeLibViewModel : ViewModelBase
         Duplicate = new RelayCommand(() =>
         {
             if (_selected is null) return;
-            var copy = _selected.Recipe.Snapshot();
-            copy.Name = _selected.Recipe.Name + "_副本";
-            copy.ModifiedAt = DateTimeOffset.Now;
+            var copy = _selected.Recipe.CopyAs(_selected.Recipe.Name + "_副本", ws.Operator);
             ws.Library.Insert(ws.Library.IndexOf(_selected.Recipe) + 1, copy);
             ws.Store.SaveLibrary();
-            Reload();
             Selected = Rows.FirstOrDefault(r => ReferenceEquals(r.Recipe, copy));
         });
 
@@ -347,7 +344,6 @@ public sealed class RecipeLibViewModel : ViewModelBase
             var i = ws.Library.IndexOf(_selected.Recipe);
             ws.Library.Remove(_selected.Recipe);
             ws.Store.SaveLibrary();
-            Reload();
             Selected = Rows.ElementAtOrDefault(Math.Min(i, Rows.Count - 1)) ?? Rows.FirstOrDefault();
         });
 
@@ -356,12 +352,10 @@ public sealed class RecipeLibViewModel : ViewModelBase
         {
             var from = shell.Recipe.CurCh;
             if (!ws.ChannelRecipes.TryGetValue(from, out var live)) return;
-            var copy = live.Snapshot();
-            copy.Name = ws.LaneNames.TryGetValue(from, out var n) && n.Length > 0 ? n : copy.Name;
-            copy.ModifiedAt = DateTimeOffset.Now;
+            var name = ws.LaneNames.TryGetValue(from, out var n) && n.Length > 0 ? n : live.Name;
+            var copy = live.CopyAs(name, ws.Operator);
             ws.Library.Add(copy);
             ws.Store.SaveLibrary();
-            Reload();
             Selected = Rows.FirstOrDefault(r => ReferenceEquals(r.Recipe, copy));
         });
 
@@ -372,12 +366,10 @@ public sealed class RecipeLibViewModel : ViewModelBase
         ApplyToAll = new RelayCommand(() => Apply(true));
 
         // 打开别的实验会整份换掉配方库
-        ws.Store.Changed += (_, _) =>
-        {
-            var keep = _selected?.Recipe.Id;
-            Reload();
-            Selected = Rows.FirstOrDefault(r => r.Recipe.Id == keep) ?? Rows.FirstOrDefault();
-        };
+        ws.Store.Changed += (_, _) => Resync();
+        // 配方页存进来一条、或者这一页自己增删——列表当场跟上。
+        // 以前是裸 List 没有通知，配方页存了之后切过来看不见，得重开程序
+        ws.Library.CollectionChanged += (_, _) => Resync();
     }
 
     public ObservableCollection<LibRowViewModel> Rows { get; } = new();
@@ -450,6 +442,14 @@ public sealed class RecipeLibViewModel : ViewModelBase
     private string LabelOf(int ch)
         => _ws.LaneNames.TryGetValue(ch, out var lane) && lane.Length > 0 ? $"CH{ch} · {lane}" : $"CH{ch}";
 
+    /// <summary>库变了：重建列表并尽量守住原来选中的那条。</summary>
+    private void Resync()
+    {
+        var keep = _selected?.Recipe.Id;
+        Reload();
+        Selected = Rows.FirstOrDefault(r => r.Recipe.Id == keep) ?? Rows.FirstOrDefault();
+    }
+
     private void Reload()
     {
         Rows.Clear();
@@ -465,10 +465,12 @@ public sealed class RecipeLibViewModel : ViewModelBase
         if (await FileDialogs.OpenRecipe() is not { } path) return;
         try
         {
-            var recipe = Tec.Core.Persistence.TecFiles.LoadRecipe(path).ToModel();
+            var read = Tec.Core.Persistence.TecFiles.LoadRecipe(path).ToModel();
+            // 换个新 Id 再进库：同一个文件导两次，库里就该是两条各自独立的配方，
+            // 撞了 Id 之后选中、删除都会指错人
+            var recipe = read.CopyAs(read.Name, read.Author ?? _ws.Operator);
             _ws.Library.Add(recipe);
             _ws.Store.SaveLibrary();
-            Reload();
             Selected = Rows.FirstOrDefault(r => ReferenceEquals(r.Recipe, recipe));
         }
         catch { /* 读不了就当没导入：这一页没有状态行，弹框反而打断操作 */ }
@@ -517,9 +519,11 @@ public sealed class RecipeLibViewModel : ViewModelBase
 
         foreach (var c in targets)
         {
-            _ws.ChannelRecipes[c] = r.Snapshot();
+            // 每个通道一份独立副本：同号配方在记录与导出里分不开
+            _ws.ChannelRecipes[c] = r.CopyAs(r.Name, r.Author);
             _ws.LaneNames[c] = r.Name;
         }
+        _ws.Store.MarkDirty();
         if (!all) _shell.Recipe.CurCh = targets[0];
         _shell.Recipe.RefreshAll();
         _shell.Tab = MainViewModel.TabRecipe;

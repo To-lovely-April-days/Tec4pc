@@ -63,11 +63,31 @@ public sealed class Recipe
         return set;
     }
 
-    public Recipe Snapshot()
+    /// <summary>
+    /// 复制成一条**新**配方：换一个 Id、改名、记上是谁在什么时候存的。
+    ///
+    /// 存进配方库、另存副本走这一个。保住原 Id 的那种复制走 Snapshot()——
+    /// 撤销栈与运行记录靠 Id 对回原件，那两处换了 Id 就对不上了。
+    ///
+    /// 时间戳必须重打：库里「最近更新」显示的是这一条什么时候存进来的，
+    /// 沿用原件的时间会让人以为它一直没动过。
+    /// </summary>
+    public Recipe CopyAs(string name, string? author = null)
+    {
+        var r = Copy(Guid.NewGuid().ToString("N")[..8]);
+        r.Name = name;
+        r.Author = author ?? Author;
+        r.ModifiedAt = DateTimeOffset.Now;
+        return r;
+    }
+
+    public Recipe Snapshot() => Copy(Id);
+
+    private Recipe Copy(string id)
     {
         var r = new Recipe
         {
-            Id = Id,
+            Id = id,
             Name = Name,
             Author = Author,
             Notes = Notes,
