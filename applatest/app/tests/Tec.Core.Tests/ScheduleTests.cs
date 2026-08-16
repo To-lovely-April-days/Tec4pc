@@ -118,6 +118,43 @@ public class ScheduleTests
     }
 
     [Fact]
+    public void 每一步都带着开始时的估算温度()
+    {
+        // 起点 25 ℃ → 控温到 60 → 保持 → 控温到 5
+        var recipe = Harness.RecipeOf("温度接力",
+            Harness.Mk(CommandSpecs.Control, ("target", 60d), ("rate", 2d)),
+            Harness.Mk(CommandSpecs.Hold, ("dur", 10d)),
+            Harness.Mk(CommandSpecs.Control, ("target", 5d), ("rate", 1d)));
+
+        var s = Schedule.Build(recipe, Catalog());
+
+        Assert.Equal(25, s.Entries[0].StartTemp);   // 默认起点
+        Assert.Equal(60, s.Entries[1].StartTemp);   // 第一步把它推到了 60
+        Assert.Equal(60, s.Entries[2].StartTemp);   // 恒温保持不改温度
+    }
+
+    [Fact]
+    public void 曲线预览与排期用的是同一个时长()
+    {
+        // 25 → 45（2 ℃/min = 10 min）保持 5 → 25（1 ℃/min = 20 min）不保持 = 35 min
+        var step = Harness.Mk(CommandSpecs.Gradient);
+        var recipe = Harness.RecipeOf("梯度", new Recipes.Step
+        {
+            CommandId = step.CommandId,
+            Parameters = step.Parameters,
+            Rows = new List<ParameterSet>
+            {
+                ParameterSet.Of(("t", 45d), ("r", 2d), ("h", 5d)),
+                ParameterSet.Of(("t", 25d), ("r", 1d), ("h", 0d))
+            }
+        });
+
+        var s = Schedule.Build(recipe, Catalog());
+        Assert.Equal(TimeSpan.FromMinutes(35), s.Total);
+        Assert.Equal(25, s.Entries[0].StartTemp);   // 曲线就从这儿起笔
+    }
+
+    [Fact]
     public void 同样的输入必须得到同样的排期()
     {
         var recipe = Harness.RecipeOf("确定性",

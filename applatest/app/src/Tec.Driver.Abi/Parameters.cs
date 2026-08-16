@@ -44,6 +44,14 @@ public sealed record TableSpec(string Label, IReadOnlyList<FieldSpec> Columns)
 {
     public int MinRows { get; init; } = 1;
     public int MaxRows { get; init; } = 32;
+
+    /// <summary>
+    /// 这张表能不能画成图，画成哪种图。界面据此在表格上方补一条曲线预览。
+    /// 由指令自己声明而不是界面按标题猜——换个说法就画不出来了。
+    ///
+    /// 目前只有 "temp-profile"：三列依次是目标温度 / 速率 / 保持时长。
+    /// </summary>
+    public string? Chart { get; init; }
 }
 
 /// <summary>

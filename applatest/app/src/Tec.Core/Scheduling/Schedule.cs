@@ -17,6 +17,12 @@ public sealed record ScheduleEntry(
     TerminationKind Termination,
     bool Known)
 {
+    /// <summary>
+    /// 这一步开始时的估算温度。曲线预览要从这儿起笔——
+    /// 梯度控温第一段是「从当前温度升到目标」，不知道当前温度就画不出第一段有多长。
+    /// </summary>
+    public double StartTemp { get; init; } = 25;
+
     /// <summary>甘特条的实际长度：普通行取 Duration，循环开始行取 Span。</summary>
     public TimeSpan Extent => Span > Duration ? Span : Duration;
     public TimeSpan End => Start + Extent;
@@ -107,6 +113,7 @@ public sealed class Schedule
             }
 
             var dur = TimeSpan.Zero;
+            var before = ctx.Temperature;      // Estimate 会把它推进到这一步结束时的温度
             if (known)
             {
                 try { dur = d.Estimate(input, ctx); }
@@ -114,7 +121,8 @@ public sealed class Schedule
                 if (dur < TimeSpan.Zero) dur = TimeSpan.Zero;
             }
 
-            entries.Add(new ScheduleEntry(i, s.StepId, s.CommandId, t, dur, TimeSpan.Zero, 0, title, kind, known));
+            entries.Add(new ScheduleEntry(i, s.StepId, s.CommandId, t, dur, TimeSpan.Zero, 0, title, kind, known)
+            { StartTemp = before });
             t += dur;
         }
 

@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
+using Tec.App.Controls;
 using Tec.Core.Benches;
 using Tec.Driver.Abi;
 
@@ -164,13 +165,15 @@ public sealed class SchemaFormViewModel : ViewModelBase
     private readonly Action? _changed;
 
     public SchemaFormViewModel(ParameterSchema schema, ParameterSet target,
-                               List<ParameterSet>? rows = null, Channel? channel = null, Action? changed = null)
+                               List<ParameterSet>? rows = null, Channel? channel = null,
+                               Action? changed = null, double startTemp = 25)
     {
         Schema = schema;
         Target = target;
         Rows = rows;
         Channel = channel;
         _changed = changed;
+        StartTemp = startTemp;
 
         foreach (var f in schema.Fields)
             Fields.Add(new FieldViewModel(f, target, channel, OnFieldChanged));
@@ -189,6 +192,54 @@ public sealed class SchemaFormViewModel : ViewModelBase
 
     public bool HasTable => Schema.Table is not null;
     public string TableLabel => Schema.Table?.Label ?? "";
+
+    // ── 曲线预览 ─────────────────────────────────────────────────────
+
+    /// <summary>这张表要不要画成温度曲线。由指令自己声明（TableSpec.Chart）。</summary>
+    public bool HasProfile => Schema.Table?.Chart == "temp-profile";
+
+    /// <summary>这一步开始时的温度：第一段「从当前温度走到目标」的长度全靠它。</summary>
+    public double StartTemp { get; }
+
+    /// <summary>
+    /// 图下面那行小字：起点、几段、合计多久。
+    /// 起点标在图上会跟纵轴刻度撞一起，挪下来更清楚。
+    /// </summary>
+    public string ProfileNote
+    {
+        get
+        {
+            var segs = Profile;
+            if (segs.Count == 0) return "";
+            var cur = StartTemp;
+            var minutes = 0d;
+            foreach (var s in segs)
+            {
+                minutes += Math.Abs(s.Target - cur) / Math.Max(s.Rate, 0.01) + Math.Max(0, s.Hold);
+                cur = s.Target;
+            }
+            var span = minutes >= 60
+                ? $"{(int)(minutes / 60)} h {minutes % 60:F0} min"
+                : $"{minutes:F0} min";
+            return $"起点 {StartTemp:F1} ℃ · {segs.Count} 段 · 合计约 {span}";
+        }
+    }
+
+    /// <summary>
+    /// 表里的行翻成曲线的分段。列按位置取（0 目标 / 1 速率 / 2 保持），
+    /// 与 TableSpec.Chart = "temp-profile" 约定的列序一致。
+    /// </summary>
+    public IReadOnlyList<ProfileSeg> Profile
+    {
+        get
+        {
+            if (!HasProfile || Rows is null || Schema.Table is null) return Array.Empty<ProfileSeg>();
+            var c = Schema.Table.Columns;
+            if (c.Count < 3) return Array.Empty<ProfileSeg>();
+            return Rows.Select(r => new ProfileSeg(r.Num(c[0].Key), r.Num(c[1].Key), r.Num(c[2].Key)))
+                       .ToList();
+        }
+    }
     public string? Tip => Schema.Tip;
     public bool HasTip => !string.IsNullOrWhiteSpace(Schema.Tip);
 
@@ -221,6 +272,7 @@ public sealed class SchemaFormViewModel : ViewModelBase
     private void OnFieldChanged()
     {
         foreach (var f in Fields) f.RefreshVisibility();
+        RaiseAll(nameof(Profile), nameof(ProfileNote));   // 改一个格子，曲线与小字立刻跟着变
         _changed?.Invoke();
     }
 }

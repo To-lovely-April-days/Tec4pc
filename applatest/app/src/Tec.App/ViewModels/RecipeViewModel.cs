@@ -837,7 +837,10 @@ public sealed class RecipeViewModel : ViewModelBase
                                            RecordSnapshot(_curCh, before, key);
                                            Workspace.Store.MarkDirty();
                                            RefreshAll();
-                                       });
+                                       },
+                                       // 曲线从这一步开始时的温度起笔——排期已经把前面
+                                       // 那些步骤走过一遍，那个温度就是这里的起点
+                                       _selectedStep.Entry.StartTemp);
     }
 
     // ── 右栏通道状态（原型 chStateList）─────────────────────────────

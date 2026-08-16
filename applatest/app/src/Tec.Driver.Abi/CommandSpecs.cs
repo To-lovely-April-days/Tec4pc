@@ -99,7 +99,8 @@ public static class CommandSpecs
                     Field.Num("t", "目标温度", 25, "℃", null, null, 0.1),
                     Field.Num("r", "速率", 0.5, "℃/min", null, null, 0.01),
                     Field.Num("h", "保持", 10, "min", null, null, 1)
-                }),
+                })
+                { Chart = "temp-profile" },
                 Tip = "每一行是一个温度分段：以设定速率升/降到目标温度后保持指定时间，再进入下一段。"
             },
             TerminationKind.Timer, GradientEstimate,
