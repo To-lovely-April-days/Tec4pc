@@ -110,7 +110,10 @@ public sealed class Workspace
 
         // 配方库先读盘。读不到（第一次运行）才灌内置的六条工艺模板——
         // 否则用户删掉的模板每次开机又回来了。
-        if (!Store.LoadLibrary(Library)) Library.AddRange(DemoBench.Library(Catalog));
+        // 配方库读盘；读不到就是空的。**不预置示例配方**——
+        // 界面上出现的每一条都得是操作人自己存进去的，凭空多出六条会让人
+        // 以为工艺已经配好了（§不伪造数据）
+        Store.LoadLibrary(Library);
     }
 
     /// <summary>

@@ -94,6 +94,14 @@ public sealed class BenchViewModel : ViewModelBase
     public BenchViewModel(Workspace ws)
     {
         _ws = ws;
+        // 没存过盘的走不了「保存」——那得选路径，交给开始页的「另存为」
+        SaveExperiment = new RelayCommand(() =>
+        {
+            if (ws.Store.CurrentPath is null) { SaveHint = "这份实验还没存过，去「开始 → 另存为」选个位置。"; return; }
+            try { ws.Store.Save(); SaveHint = $"已保存到 {ws.Store.CurrentPath}"; }
+            catch (Exception ex) { SaveHint = "保存失败：" + ex.Message; }
+        });
+
         Probe = new RelayCommand(async () => await ProbeAsync());
         Rebuild = new RelayCommand(async () => await _ws.RebuildChannelsAsync());
         ToggleRename = new RelayCommand(() => Renaming = !Renaming);
@@ -111,6 +119,19 @@ public sealed class BenchViewModel : ViewModelBase
     public ObservableCollection<LibraryItemViewModel> Library { get; } = new();
     public ObservableCollection<DeviceNodeViewModel> Devices { get; } = new();
     public ObservableCollection<ChannelRowViewModel> ChannelRows { get; } = new();
+
+    /// <summary>底部那个保存：存实验。原来只是个图标，点了没反应。</summary>
+    public RelayCommand SaveExperiment { get; }
+
+    private string _saveHint = "";
+    /// <summary>保存的结果就写在按钮上方，与「测试连接」的回显同一个位置。</summary>
+    public string SaveHint
+    {
+        get => _saveHint;
+        private set { if (Set(ref _saveHint, value)) Raise(nameof(HasSaveHint)); }
+    }
+
+    public bool HasSaveHint => _saveHint.Length > 0;
 
     public RelayCommand Probe { get; }
     public RelayCommand Rebuild { get; }

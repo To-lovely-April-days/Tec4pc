@@ -87,10 +87,22 @@
         <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="14,12,14,8">
           <TextBlock Text="配方库" FontSize="20" FontWeight="Light" Foreground="#3b3b3b"
                      VerticalAlignment="Center" Width="200" />
-          <Button Classes="tbtn sm" ToolTip.Tip="从当前通道新建"><ctl:TecIcon Key="ui-lh-libnew" /></Button>
-          <Button Classes="tbtn sm" ToolTip.Tip="导入"><ctl:TecIcon Key="ui-lh-libimport" /></Button>
+          <Button Classes="tbtn sm" ToolTip.Tip="把配方页当前通道的配方收进库"
+                  Command="{Binding NewFromChannel}">
+            <ctl:TecIcon Key="ui-lh-libnew" />
+          </Button>
+          <Button Classes="tbtn sm" ToolTip.Tip="从文件导入（.tecrecipe）"
+                  Command="{Binding ImportToLib}">
+            <ctl:TecIcon Key="ui-lh-libimport" />
+          </Button>
         </StackPanel>
         <ScrollViewer>
+          <StackPanel>
+          <StackPanel IsVisible="{Binding IsEmpty}" Margin="16,10" Spacing="7">
+            <TextBlock Text="配方库还是空的" FontSize="14" Foreground="#6f6f6f" />
+            <TextBlock FontSize="11.5" Foreground="#9a9a9a" LineHeight="19" TextWrapping="Wrap"
+                       Text="在配方页把一条配方调好，用上面的 ＋ 收进来；或者点旁边那个按钮从 .tecrecipe 文件导入。" />
+          </StackPanel>
           <ItemsControl ItemsSource="{Binding Rows}">
             <ItemsControl.ItemTemplate>
               <DataTemplate>
@@ -121,6 +133,7 @@
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
+          </StackPanel>
         </ScrollViewer>
       </DockPanel>
     </Border>
@@ -137,7 +150,14 @@
 
       <Panel>
         <ctl:GridBackdrop LineBrush="#fbfbfb" />
-        <ScrollViewer>
+        <StackPanel IsVisible="{Binding IsEmpty}" Margin="30,26" Spacing="7"
+                    HorizontalAlignment="Left" VerticalAlignment="Top">
+          <TextBlock Text="还没有配方可看" FontSize="15" Foreground="#6f6f6f" />
+          <TextBlock FontSize="12" Foreground="#9a9a9a" LineHeight="19" MaxWidth="480"
+                     TextWrapping="Wrap"
+                     Text="库里存进第一条配方之后，这里会把它的步骤按顺序摊开，方便应用前先看一眼。" />
+        </StackPanel>
+        <ScrollViewer IsVisible="{Binding HasSelection}">
           <StackPanel HorizontalAlignment="Center" Margin="0,18,0,40">
             <Border Width="270" Height="30" Background="#2eaa4e" CornerRadius="2" Padding="11,0">
               <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
@@ -195,25 +215,37 @@
     </DockPanel>
 
     <!-- ========== 右：配方属性 / 应用 ========== -->
-    <Border Grid.Column="2" Background="#ececec" BorderBrush="#d2d2d2" BorderThickness="1,0,0,0">
+    <!-- 与台面属性同一套观感：白底面板 + 浅紫内容块 -->
+    <Border Grid.Column="2" Background="{StaticResource ThemeGap}"
+            BorderBrush="#d2d2d2" BorderThickness="1,0,0,0">
       <DockPanel>
-        <Border DockPanel.Dock="Bottom" BorderBrush="#d5d5d5" BorderThickness="0,1,0,0" Padding="18,12,18,14">
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource ThemeFill}"
+                BorderBrush="#d5d5d5" BorderThickness="0,1,0,0" Padding="18,12,18,14">
           <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center">
-            <Button Classes="tbtn foot" Command="{Binding Duplicate}" ToolTip.Tip="另存副本">
+            <Button Classes="tbtn foot" Command="{Binding SaveLib}" ToolTip.Tip="保存配方库">
+              <ctl:TecIcon Key="ui-foot-save" />
+            </Button>
+            <Button Classes="tbtn foot" Command="{Binding Duplicate}" ToolTip.Tip="另存副本"
+                    IsEnabled="{Binding HasSelection}">
               <ctl:TecIcon Key="ui-foot-dup" />
             </Button>
-            <Button Classes="tbtn foot" Command="{Binding Delete}" ToolTip.Tip="删除">
+            <Button Classes="tbtn foot" Command="{Binding Delete}" ToolTip.Tip="删除"
+                    IsEnabled="{Binding HasSelection}">
               <ctl:TecIcon Key="ui-foot-trash2" />
             </Button>
           </StackPanel>
         </Border>
 
         <ScrollViewer>
-          <StackPanel Margin="18,16,18,20">
+          <Border Background="{StaticResource ThemeFill}" Padding="18,16,18,20">
+          <StackPanel>
             <TextBlock Text="配方属性" FontSize="24" FontWeight="Light" Foreground="#333333"
                        HorizontalAlignment="Center" Margin="0,0,0,12" />
 
-            <StackPanel Spacing="7">
+            <TextBlock Classes="intro" IsVisible="{Binding IsEmpty}"
+                       Text="左边库里还没有配方。存进第一条之后，这里可以改名、写描述、应用到通道。" />
+
+            <StackPanel Spacing="7" IsVisible="{Binding HasSelection}">
               <StackPanel Orientation="Horizontal">
                 <TextBlock Text="名称" Classes="frowk" />
                 <TextBox Classes="finput" Width="196" Text="{Binding Name, Mode=TwoWay}" />
@@ -232,6 +264,7 @@
               </StackPanel>
             </StackPanel>
 
+            <StackPanel IsVisible="{Binding HasSelection}">
             <Border Height="1" Background="#d5d5d5" Margin="0,12,0,14" />
             <Button Classes="secbtn" Command="{Binding ApplySection.Toggle}" Margin="0,0,0,10">
               <StackPanel Orientation="Horizontal" Spacing="8">
@@ -249,15 +282,25 @@
                           SelectedItem="{Binding ApplyTarget, Mode=TwoWay}" />
               </StackPanel>
 
-              <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,12,0,6">
-                <Button Classes="btn primary" Content="应用到该通道" Command="{Binding ApplyToChannel}" />
-                <Button Classes="btn" Content="应用到全部通道" Command="{Binding ApplyToAll}" />
+              <!-- 圆圈图标 + 居中，与台面属性底部那排、配方页那两个同款 -->
+              <StackPanel Orientation="Horizontal" Spacing="14" Margin="0,12,0,8"
+                          HorizontalAlignment="Center">
+                <Button Classes="tbtn foot" ToolTip.Tip="应用到该通道（替换全部步骤）"
+                        Command="{Binding ApplyToChannel}">
+                  <ctl:TecIcon Key="ui-snav-import" />
+                </Button>
+                <Button Classes="tbtn foot" ToolTip.Tip="应用到全部启用的通道"
+                        Command="{Binding ApplyToAll}">
+                  <ctl:TecIcon Key="ui-foot-dup" />
+                </Button>
               </StackPanel>
 
-              <TextBlock Classes="intro" Margin="0,8,0,0"
+              <TextBlock Classes="intro" TextAlignment="Center" Margin="0,2,0,0"
                          Text="应用会替换目标通道当前的全部步骤，并跳转到配方编辑界面。" />
             </StackPanel>
+            </StackPanel>
           </StackPanel>
+          </Border>
         </ScrollViewer>
       </DockPanel>
     </Border>

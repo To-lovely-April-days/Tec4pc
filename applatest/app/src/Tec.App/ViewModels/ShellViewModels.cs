@@ -343,13 +343,30 @@ public sealed class RecipeLibViewModel : ViewModelBase
 
         Delete = new RelayCommand(() =>
         {
-            if (_selected is null || ws.Library.Count <= 1) return;   // 至少保留一个配方
+            if (_selected is null) return;
             var i = ws.Library.IndexOf(_selected.Recipe);
             ws.Library.Remove(_selected.Recipe);
             ws.Store.SaveLibrary();
             Reload();
             Selected = Rows.ElementAtOrDefault(Math.Min(i, Rows.Count - 1)) ?? Rows.FirstOrDefault();
         });
+
+        // 与配方页的「存入配方库」是同一个动作：把当前通道的配方收进库
+        NewFromChannel = new RelayCommand(() =>
+        {
+            var from = shell.Recipe.CurCh;
+            if (!ws.ChannelRecipes.TryGetValue(from, out var live)) return;
+            var copy = live.Snapshot();
+            copy.Name = ws.LaneNames.TryGetValue(from, out var n) && n.Length > 0 ? n : copy.Name;
+            copy.ModifiedAt = DateTimeOffset.Now;
+            ws.Library.Add(copy);
+            ws.Store.SaveLibrary();
+            Reload();
+            Selected = Rows.FirstOrDefault(r => ReferenceEquals(r.Recipe, copy));
+        });
+
+        ImportToLib = new RelayCommand(() => _ = ImportAsync());
+        SaveLib = new RelayCommand(() => ws.Store.SaveLibrary());
 
         ApplyToChannel = new RelayCommand(() => Apply(false));
         ApplyToAll = new RelayCommand(() => Apply(true));
@@ -371,20 +388,28 @@ public sealed class RecipeLibViewModel : ViewModelBase
     public RelayCommand Delete { get; }
     public RelayCommand ApplyToChannel { get; }
     public RelayCommand ApplyToAll { get; }
+    public RelayCommand NewFromChannel { get; }
+    public RelayCommand ImportToLib { get; }
+    public RelayCommand SaveLib { get; }
 
     public LibRowViewModel? Selected
     {
         get => _selected;
         set
         {
-            if (value is null) return;
+            // 允许置空：库可能一条都没有，硬留一个"选中项"就得凭空造一条
             var old = _selected;
             if (!Set(ref _selected, value)) return;
             if (old is not null) old.IsSelected = false;
-            value.IsSelected = true;
+            if (value is not null) value.IsSelected = true;
             Refresh();
         }
     }
+
+    /// <summary>库里一条都没有。左列表、中预览、右属性都换成空状态。</summary>
+    public bool IsEmpty => Rows.Count == 0;
+    public bool HasAny => Rows.Count > 0;
+    public bool HasSelection => _selected is not null;
 
     public Recipe? Current => _selected?.Recipe;
 
@@ -430,6 +455,23 @@ public sealed class RecipeLibViewModel : ViewModelBase
         Rows.Clear();
         foreach (var r in _ws.Library)
             Rows.Add(new LibRowViewModel { Recipe = r, Mix = MixOf(r) });
+        if (Rows.Count == 0) Selected = null;
+        RaiseAll(nameof(IsEmpty), nameof(HasAny));
+    }
+
+    /// <summary>把一份 .tecrecipe 收进库。与配方页那个导入是同一套读盘 + 老指令翻译。</summary>
+    private async Task ImportAsync()
+    {
+        if (await FileDialogs.OpenRecipe() is not { } path) return;
+        try
+        {
+            var recipe = Tec.Core.Persistence.TecFiles.LoadRecipe(path).ToModel();
+            _ws.Library.Add(recipe);
+            _ws.Store.SaveLibrary();
+            Reload();
+            Selected = Rows.FirstOrDefault(r => ReferenceEquals(r.Recipe, recipe));
+        }
+        catch { /* 读不了就当没导入：这一页没有状态行，弹框反而打断操作 */ }
     }
 
     /// <summary>列表底部的模块色带：一步一段，结束实验不计（原型 rmix）。</summary>
@@ -459,7 +501,8 @@ public sealed class RecipeLibViewModel : ViewModelBase
         if (!chs.Contains(_applyCh)) _applyCh = chs.FirstOrDefault();
 
         RaiseAll(nameof(Name), nameof(Desc), nameof(StepCountText), nameof(UpdatedText),
-                 nameof(ApplyTarget), nameof(HasTargets), nameof(Current));
+                 nameof(ApplyTarget), nameof(HasTargets), nameof(Current),
+                 nameof(IsEmpty), nameof(HasAny), nameof(HasSelection));
     }
 
     /// <summary>应用会替换目标通道的全部步骤，并跳到配方页（原型 libApplyTo）。</summary>

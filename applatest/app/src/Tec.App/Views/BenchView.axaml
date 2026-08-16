@@ -137,6 +137,9 @@
         <Border DockPanel.Dock="Bottom" Background="{StaticResource ThemeFill}"
                 BorderBrush="#d5d5d5" BorderThickness="0,1,0,0" Padding="18,10,18,14">
           <StackPanel>
+            <TextBlock Text="{Binding SaveHint}" IsVisible="{Binding HasSaveHint}"
+                       FontSize="10.5" Foreground="#7a7580" LineHeight="16" TextWrapping="Wrap"
+                       TextAlignment="Center" Margin="0,0,0,8" />
             <TextBlock Text="{Binding ProbeResult}" IsVisible="{Binding HasProbeResult}"
                        FontSize="10.5" Foreground="#7a7580" LineHeight="16" TextWrapping="Wrap"
                        TextAlignment="Center" Margin="0,0,0,8" />
@@ -146,7 +149,9 @@
               <Button Classes="pill" Content="测试连接" Command="{Binding Probe}" />
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center">
-              <Button Classes="tbtn foot" ToolTip.Tip="保存"><ctl:TecIcon Key="ui-foot-save" /></Button>
+              <Button Classes="tbtn foot" ToolTip.Tip="保存实验" Command="{Binding SaveExperiment}">
+                <ctl:TecIcon Key="ui-foot-save" />
+              </Button>
               <Button Classes="tbtn foot" ToolTip.Tip="连接" Command="{Binding Probe}"><ctl:TecIcon Key="ui-foot-link" /></Button>
               <Button Classes="tbtn foot" ToolTip.Tip="初始化" Command="{Binding Rebuild}"><ctl:TecIcon Key="ui-foot-init" /></Button>
               <Button Classes="tbtn foot" ToolTip.Tip="删除选中设备" Command="{Binding DeleteSelected}"><ctl:TecIcon Key="ui-foot-trash" /></Button>
