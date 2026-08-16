@@ -1,3 +1,4 @@
+using TecControl.Core.Protocol;
 using Tec.Driver.Abi;
 using Tec.Drivers.Rd105;
 using Xunit;
@@ -255,6 +256,115 @@ public sealed class Rd105TecDriverTests
         Assert.Equal(60, got["Tr"], 2);
         Assert.Equal(65, got["Tj"], 2);
         Assert.Equal(-5, got["dT"], 2);            // Tr − Tj，放热时为正
+    }
+
+    // ── 告警字 ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// 跑一段轮询，把采样收下来；断言在**还在跑的时候**做——
+    /// StopAsync 会把状态收回 Connected，停完再断言就什么都看不出来了。
+    /// </summary>
+    private static async Task<List<Sample>> PollWhile(
+        IDeviceSession session, Func<List<Sample>, bool> until, Action<List<Sample>>? assert = null)
+    {
+        var got = new List<Sample>();
+        using var sub = session.Samples.Subscribe(new Collect(got.Add));
+        await session.StartAsync(CancellationToken.None);
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (DateTime.UtcNow < deadline && !until(got)) await Task.Delay(30);
+        assert?.Invoke(got);
+        await session.StopAsync(CancellationToken.None);
+        return got;
+    }
+
+    [Fact]
+    public async Task 告警字发成一路采样安全层才盯得住()
+    {
+        var (driver, device) = Rig();
+        device.Set(null, "ERRORCODE", (long)TecErrorCode.OverVoltage);
+
+        var cn = ParameterSet.Of((Rd105TecDriver.FieldPort, "COM9"), (Rd105TecDriver.FieldPeriod, 200d));
+        await using var session = await driver.OpenAsync(cn, Ctx(), CancellationToken.None);
+
+        // 告警字要在 Tags 里声明，安全层才知道有这么一路可以求值
+        Assert.Contains(session.Tags, t => t.Tag == "fault");
+
+        var got = await PollWhile(session, g => g.Count(s => s.Tag == "fault") >= 2);
+        var fault = got.Where(s => s.Tag == "fault").ToList();
+        Assert.NotEmpty(fault);
+        Assert.Equal((double)(ushort)TecErrorCode.OverVoltage, fault[^1].Value);
+    }
+
+    [Fact]
+    public async Task 传感器越限时那一路温度发成Bad()
+    {
+        var (driver, device) = Rig();
+        // 通道1 传感器越限：Tr 这一路的读数不能再当好数用
+        device.Set(null, "ERRORCODE", (long)TecErrorCode.Ch1SensorOutOfRange);
+
+        var cn = ParameterSet.Of((Rd105TecDriver.FieldPort, "COM9"), (Rd105TecDriver.FieldPeriod, 200d));
+        await using var session = await driver.OpenAsync(cn, Ctx(), CancellationToken.None);
+
+        var got = await PollWhile(session, g => g.Count(s => s.Tag == "Tr") >= 3);
+        var tr = got.Where(s => s.Tag == "Tr").ToList();
+        var tj = got.Where(s => s.Tag == "Tj").ToList();
+
+        Assert.NotEmpty(tr);
+        // 「读不到值当作正常」是最危险的失败模式：越限那一路必须是 Bad，
+        // 安全层见 Bad 就触发；没越限的那一路照旧 Good，不要一起拖下水
+        Assert.All(tr, s => Assert.Equal(Quality.Bad, s.Quality));
+        Assert.All(tj, s => Assert.Equal(Quality.Good, s.Quality));
+    }
+
+    [Fact]
+    public async Task 过温停输出把设备标成故障()
+    {
+        var (driver, device) = Rig();
+        device.Set(null, "ERRORCODE", (long)TecErrorCode.OverTempShutdown);
+
+        var cn = ParameterSet.Of((Rd105TecDriver.FieldPort, "COM9"), (Rd105TecDriver.FieldPeriod, 200d));
+        await using var session = await driver.OpenAsync(cn, Ctx(), CancellationToken.None);
+
+        await PollWhile(session, _ => session.State == DeviceState.Faulted,
+                        _ => Assert.Equal(DeviceState.Faulted, session.State));
+    }
+
+    [Fact]
+    public async Task 限流中不算故障还能接着跑()
+    {
+        var (driver, device) = Rig();
+        // 「正在限流」是工况不是损坏——标成 Faulted 会把还能跑的实验掐掉
+        device.Set(null, "ERRORCODE", (long)TecErrorCode.Ch1CurrentLimiting);
+
+        var cn = ParameterSet.Of((Rd105TecDriver.FieldPort, "COM9"), (Rd105TecDriver.FieldPeriod, 200d));
+        await using var session = await driver.OpenAsync(cn, Ctx(), CancellationToken.None);
+
+        await PollWhile(session, g => g.Count(s => s.Tag == "fault") >= 2,
+                        _ => Assert.NotEqual(DeviceState.Faulted, session.State));
+    }
+
+    [Fact]
+    public async Task 告警解除后设备恢复正常()
+    {
+        var (driver, device) = Rig();
+        device.Set(null, "ERRORCODE", (long)TecErrorCode.UnderVoltage);
+
+        var cn = ParameterSet.Of((Rd105TecDriver.FieldPort, "COM9"), (Rd105TecDriver.FieldPeriod, 200d));
+        await using var session = await driver.OpenAsync(cn, Ctx(), CancellationToken.None);
+
+        using var sub = session.Samples.Subscribe(new Collect(_ => { }));
+        await session.StartAsync(CancellationToken.None);
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (DateTime.UtcNow < deadline && session.State != DeviceState.Faulted) await Task.Delay(50);
+        Assert.Equal(DeviceState.Faulted, session.State);
+
+        // 电压恢复了就该自己回到可用，不能一直挂着故障等人手动清
+        device.Set(null, "ERRORCODE", 0);
+        deadline = DateTime.UtcNow.AddSeconds(5);
+        while (DateTime.UtcNow < deadline && session.State == DeviceState.Faulted) await Task.Delay(50);
+
+        Assert.Equal(DeviceState.Ready, session.State);   // 停之前断言：StopAsync 会收回 Connected
+        await session.StopAsync(CancellationToken.None);
     }
 
     private sealed class Collect(Action<Sample> onNext) : IObserver<Sample>

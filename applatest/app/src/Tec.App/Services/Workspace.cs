@@ -219,6 +219,15 @@ public sealed class Workspace
             Engine.Attach(ch);
             if (ch.Capabilities.Get<ITemperatureControl>() is { } t)
                 Engine.Safety.Add(SafetyMonitor.FromTemperature(ch.Number, t.Limits));
+
+            // 设备自己报的告警字：非 0 就是有事。真机驱动会把它发成一路采样，
+            // 安全层照旧按越限求值——不必为「设备告警」另开一条通路。
+            // 传感器越限那种驱动还会把温度发成 Bad，安全层见 Bad 也会触发。
+            if (_sessions.Values.Any(sess => sess.Tags.Any(tag => tag.Tag == "fault")) &&
+                ch.Capabilities.Get<ITemperatureControl>() is not null)
+                Engine.Safety.Add(new SafetyLimit(ch.Number, "fault", null, 0, null,
+                                                  TimeSpan.FromSeconds(1), SafetyAction.AbortChannel)
+                { Note = "设备告警字", FromDeviceLimits = true });
         }
 
         // 上面一律 ConfigureAwait(false)，所以这里已经不在界面线程上了。

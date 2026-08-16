@@ -1,4 +1,5 @@
 using TecControl.Core.Models;
+using TecControl.Core.Protocol;
 using Tec.Driver.Abi;
 
 namespace Tec.Drivers.Rd105;
@@ -19,6 +20,7 @@ internal sealed class Rd105Session : IDeviceSession
     private readonly Rd105TemperatureControl _temp;
     private readonly TimeSpan _period;
     private DeviceState _state = DeviceState.Connected;
+    private TecErrorCode _fault = TecErrorCode.None;
 
     public Rd105Session(Rd105Link link, DriverContext ctx, ParameterSet connection)
     {
@@ -31,6 +33,7 @@ internal sealed class Rd105Session : IDeviceSession
         _temp = new Rd105TemperatureControl(ch, link, ctx.Config, _out);
 
         _link.Controller.SnapshotReceived += OnSnapshot;
+        _link.Controller.ErrorCodeReceived += OnErrorCode;
         _link.Controller.PollFaulted += OnFaulted;
     }
 
@@ -63,7 +66,12 @@ internal sealed class Rd105Session : IDeviceSession
         new TagDescriptor("dT", "Tr−Tj 温差", "℃", DataShape.Scalar)
             { Nominal = new ValueRange(-60, 60) },
         new TagDescriptor("Tset", "设定温度", "℃", DataShape.Scalar)
-            { Nominal = new ValueRange(-40, 150) }
+            { Nominal = new ValueRange(-40, 150) },
+        // 设备告警字。安全层盯着它：非 0 即告警，> 0 就该动作。
+        // 发成一路采样而不是另开一条通道，是因为安全层本来就是按采样求值的，
+        // 顺带还能进记录、能画在时间轴上——告警什么时候出现的一目了然
+        new TagDescriptor("fault", "设备告警字", "", DataShape.State)
+            { Nominal = new ValueRange(0, 0) }
     };
 
     public IReadOnlyList<ICapability> CapabilitiesOf(int well)
@@ -74,12 +82,18 @@ internal sealed class Rd105Session : IDeviceSession
     /// <summary>把保护值写进设备。OpenAsync 里调，早于任何控温动作。</summary>
     public Task ApplyProtectionAsync(CancellationToken ct) => _temp.ApplyProtectionAsync(ct);
 
-    public Task StartAsync(CancellationToken ct)
+    public async Task StartAsync(CancellationToken ct)
     {
         _link.Open();
+
+        // 先读一次告警字再开轮询。轮询循环是「先取快照、后读告警」，
+        // 不先读的话第一帧温度是在不知道有没有告警的情况下发出去的——
+        // 传感器已经越限了却发成 Good，安全层就漏掉了第一拍。
+        try { OnErrorCode(await _link.Controller.ReadErrorCodeAsync(ct).ConfigureAwait(false)); }
+        catch (Exception ex) { _ctx.Log?.Invoke("warn", $"{InstanceId} 初次读告警字失败：{ex.Message}"); }
+
         _link.Controller.StartPolling(_period);
-        State = DeviceState.Ready;
-        return Task.CompletedTask;
+        if (State != DeviceState.Faulted) State = DeviceState.Ready;
     }
 
     public Task StopAsync(CancellationToken ct)
@@ -94,18 +108,51 @@ internal sealed class Rd105Session : IDeviceSession
         var at = DateTimeOffset.Now;
         _temp.Observe(s.Temp1C, s.Temp2C);
 
+        // 传感器越限时这一路的读数不可信，发成 Bad——安全层见 Bad 就触发。
+        // 「读不到值当作正常」是最危险的失败模式（§7.5）
+        var q1 = _fault.HasFlag(TecErrorCode.Ch1SensorOutOfRange) ? Quality.Bad : Quality.Good;
+        var q2 = _fault.HasFlag(TecErrorCode.Ch2SensorOutOfRange) ? Quality.Bad : Quality.Good;
+
         // NaN = 该路没接传感器。宁可不发，也不要往曲线里塞一个假读数
-        Push("Tr", s.Temp1C, at);
-        Push("Tj", s.Temp2C, at);
+        Push("Tr", s.Temp1C, at, q1);
+        Push("Tj", s.Temp2C, at, q2);
         if (!double.IsNaN(s.Temp1C) && !double.IsNaN(s.Temp2C))
-            Push("dT", s.Temp1C - s.Temp2C, at);
-        if (_temp.Setpoint is { } sp) Push("Tset", sp, at);
+            Push("dT", s.Temp1C - s.Temp2C, at,
+                 q1 == Quality.Good && q2 == Quality.Good ? Quality.Good : Quality.Bad);
+        if (_temp.Setpoint is { } sp) Push("Tset", sp, at, Quality.Good);
     }
 
-    private void Push(string tag, double value, DateTimeOffset at)
+    /// <summary>
+    /// 每个轮询周期一条告警字。硬告警（过温停输出、供电过高过低）把设备标成故障；
+    /// 告警字本身照发，安全层按「非 0 即越限」处理。
+    /// </summary>
+    private void OnErrorCode(TecErrorCode code)
+    {
+        var at = DateTimeOffset.Now;
+        var was = _fault;
+        _fault = code;
+        _temp.Faults = code.Describe();
+
+        Push("fault", (ushort)code, at, Quality.Good);
+
+        if (code != was)
+        {
+            foreach (var text in _temp.Faults) _ctx.Log?.Invoke("warn", $"{InstanceId} 告警：{text}");
+            if (was != TecErrorCode.None && code == TecErrorCode.None)
+                _ctx.Log?.Invoke("info", $"{InstanceId} 告警已解除");
+        }
+
+        // 这几条是「已经在损坏或已经停输出」，不是「正在限流」这种可以接着跑的
+        var hard = code & (TecErrorCode.OverTempShutdown | TecErrorCode.UnderVoltage
+                           | TecErrorCode.OverVoltage);
+        if (hard != TecErrorCode.None) State = DeviceState.Faulted;
+        else if (State == DeviceState.Faulted && code == TecErrorCode.None) State = DeviceState.Ready;
+    }
+
+    private void Push(string tag, double value, DateTimeOffset at, Quality quality)
     {
         if (double.IsNaN(value)) return;
-        _out.Push(new Sample(_temp.Channel, tag, at.UtcTicks, at, value, Quality.Good));
+        _out.Push(new Sample(_temp.Channel, tag, at.UtcTicks, at, value, quality));
     }
 
     /// <summary>
@@ -121,6 +168,7 @@ internal sealed class Rd105Session : IDeviceSession
     public async ValueTask DisposeAsync()
     {
         _link.Controller.SnapshotReceived -= OnSnapshot;
+        _link.Controller.ErrorCodeReceived -= OnErrorCode;
         _link.Controller.PollFaulted -= OnFaulted;
         await StopAsync(CancellationToken.None).ConfigureAwait(false);
         _out.Complete();

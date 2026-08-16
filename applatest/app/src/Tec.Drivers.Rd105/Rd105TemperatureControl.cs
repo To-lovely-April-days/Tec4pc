@@ -43,6 +43,9 @@ internal sealed class Rd105TemperatureControl : ITemperatureControl
     /// <summary>当前设定值。还没下发过就是 null——不假装有一个。</summary>
     public double? Setpoint { get; private set; }
 
+    /// <summary>设备当前的告警条目（已翻成人话）。没有告警就是空的。</summary>
+    public IReadOnlyList<string> Faults { get; internal set; } = Array.Empty<string>();
+
     public IObservable<Sample> Temperature => _out;
 
     /// <summary>轮询到的两路温度。TC1 = 釜内 Tr，TC2 = 夹套 Tj。</summary>
