@@ -8,53 +8,56 @@
   <!-- 原型 view-recipe：工具箱 308 ｜ 中列 ｜ 属性 342 -->
   <Grid ColumnDefinitions="308,*,342">
 
-    <!-- ══ 左：步骤工具箱（原型 renderToolbox）══ -->
-    <Border Grid.Column="0" Background="White" BorderBrush="#dcdcdc" BorderThickness="0,0,1,0">
-      <ScrollViewer>
+    <!-- ══ 左：步骤工具箱 ══
+         与台面设备库同一套：一个模块 = 一块主题色，块之间留 3px 白缝 -->
+    <Border Grid.Column="0" Background="{StaticResource ThemeGap}"
+            BorderBrush="#dcdcdc" BorderThickness="0,0,1,0">
+      <ScrollViewer Padding="0,0,0,40">
         <ItemsControl ItemsSource="{Binding Groups}">
           <ItemsControl.ItemTemplate>
             <DataTemplate>
-              <StackPanel>
-                <!-- grpbar：圆形箭头 + 模块色块 + 组名（通用组没有条，直接平铺） -->
-                <Border IsVisible="{Binding HasBar}" Background="#f2f2f2"
-                        BorderBrush="#dcdcdc" BorderThickness="0,1" Padding="10,8"
-                        PointerPressed="OnGroupBarPressed" Cursor="Hand">
-                  <StackPanel Orientation="Horizontal" Spacing="9">
-                    <Border Width="20" Height="20" CornerRadius="10"
-                            BorderBrush="#6b6b6b" BorderThickness="1.5">
-                      <ctl:TecIcon Key="ui-chev-up" Tint="#555555"
-                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Border>
-                    <Border Width="12" Height="12" CornerRadius="3"
-                            Background="{Binding Color}" VerticalAlignment="Center" />
-                    <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="Light"
-                               Foreground="#3d3d3d" VerticalAlignment="Center" />
-                  </StackPanel>
-                </Border>
+              <Border Background="{StaticResource ThemeFill}" Margin="0,0,0,3">
+                <StackPanel>
+                  <!-- grpbar：圆形箭头 + 模块色块 + 组名（通用组没有条，直接平铺） -->
+                  <Border IsVisible="{Binding HasBar}" Background="Transparent"
+                          Padding="10,8" PointerPressed="OnGroupBarPressed" Cursor="Hand">
+                    <StackPanel Orientation="Horizontal" Spacing="9">
+                      <Border Width="20" Height="20" CornerRadius="10"
+                              BorderBrush="#6b6b6b" BorderThickness="1.5">
+                        <ctl:TecIcon Key="ui-chev-up" Tint="#555555"
+                                     HorizontalAlignment="Center" VerticalAlignment="Center" />
+                      </Border>
+                      <Border Width="12" Height="12" CornerRadius="3"
+                              Background="{Binding Color}" VerticalAlignment="Center" />
+                      <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="Light"
+                                 Foreground="#3d3d3d" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Border>
 
-                <!-- cmdgrid：4 列 × 84 高，图标 + 指令名 -->
-                <ItemsControl ItemsSource="{Binding Commands}" IsVisible="{Binding Open}"
-                              Margin="6,6,6,10">
-                  <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate><UniformGrid Columns="4" /></ItemsPanelTemplate>
-                  </ItemsControl.ItemsPanel>
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                      <Button Classes="cmd" Command="{Binding $parent[UserControl].DataContext.AddStep}"
-                              CommandParameter="{Binding}">
-                        <StackPanel>
-                          <Panel Height="34">
-                            <ctl:TecIcon Key="{Binding IconKey}"
-                                         HorizontalAlignment="Center" VerticalAlignment="Center" />
-                          </Panel>
-                          <TextBlock Text="{Binding Name}" FontSize="10" Foreground="#3a3a3a"
-                                     TextAlignment="Center" TextWrapping="Wrap" Margin="0,4,0,0" />
-                        </StackPanel>
-                      </Button>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
-              </StackPanel>
+                  <!-- cmdgrid：4 列 × 84 高，图标 + 指令名 -->
+                  <ItemsControl ItemsSource="{Binding Commands}" IsVisible="{Binding Open}"
+                                Margin="6,6,6,10">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate><UniformGrid Columns="4" /></ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <Button Classes="cmd" Command="{Binding $parent[UserControl].DataContext.AddStep}"
+                                CommandParameter="{Binding}">
+                          <StackPanel>
+                            <Panel Height="34">
+                              <ctl:TecIcon Key="{Binding IconKey}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Panel>
+                            <TextBlock Text="{Binding Name}" FontSize="10" Foreground="#3a3a3a"
+                                       TextAlignment="Center" TextWrapping="Wrap" Margin="0,4,0,0" />
+                          </StackPanel>
+                        </Button>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </Border>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
@@ -395,7 +398,7 @@
   <UserControl.Styles>
     <Style Selector="Button.cmd">
       <Setter Property="Height" Value="84" />
-      <Setter Property="Background" Value="White" />
+      <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderThickness" Value="0" />
       <Setter Property="CornerRadius" Value="3" />
       <Setter Property="Padding" Value="3,8,3,4" />
