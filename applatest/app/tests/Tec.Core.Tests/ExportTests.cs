@@ -1,6 +1,7 @@
 using Tec.Core.Export;
 using Tec.Core.Catalog;
 using Tec.Core.Records;
+using Tec.Driver.Abi;
 using Tec.Drivers.Simulator;
 using Xunit;
 

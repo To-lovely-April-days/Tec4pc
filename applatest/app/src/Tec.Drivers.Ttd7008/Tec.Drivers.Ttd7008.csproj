@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Tec.Drivers.Ttd7008</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tec.Driver.Abi\Tec.Driver.Abi.csproj" />
+    <!--
+      真机控制库直接引用仓库根部那套（TecStudio.sln 里的 TecControl.Core）。
+      协议、标度换算、PID、串级、自整定都在那儿，这个项目只做「翻译」：
+      把它的接口翻成 Tec.Driver.Abi 的能力契约。
+
+      只引用 Core，不碰 TecControl.App——那是 WPF，跟本程序无关。
+      也不改那边任何一个文件：那套是独立演进的，这里单向依赖。
+    -->
+    <ProjectReference Include="..\..\..\src\TecControl.Core\TecControl.Core.csproj" />
+  </ItemGroup>
+
+</Project>
