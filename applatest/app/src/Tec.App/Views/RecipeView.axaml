@@ -261,9 +261,12 @@
     </DockPanel>
 
     <!-- ══ 右：步骤属性 + 应用配方库 + 通道状态 ══ -->
-    <Border Grid.Column="2" Background="#ececec" BorderBrush="#d2d2d2" BorderThickness="1,0,0,0">
+    <!-- 与台面属性同一套观感：白底面板 + 浅紫内容块 -->
+    <Border Grid.Column="2" Background="{StaticResource ThemeGap}"
+            BorderBrush="#d2d2d2" BorderThickness="1,0,0,0">
       <ScrollViewer>
-        <StackPanel Margin="18,14,18,12" Spacing="0">
+        <Border Background="{StaticResource ThemeFill}" Padding="18,16,18,20">
+        <StackPanel Spacing="0">
           <!-- 标题恒为「步骤属性」；选没选中步骤只改下面的内容 -->
           <TextBlock Text="步骤属性" Classes="h2big" />
           <TextBlock Classes="intro" IsVisible="{Binding NoSelection}"
@@ -367,6 +370,7 @@
             </ItemsControl>
           </Border>
         </StackPanel>
+        </Border>
       </ScrollViewer>
     </Border>
     <!-- 跟手的幽灵卡。盖在三列之上、不吃事件，所以底下照样能命中泳道 -->

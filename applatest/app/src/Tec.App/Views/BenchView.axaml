@@ -128,10 +128,9 @@
                  HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="14" />
     </Panel>
 
-    <!-- 属性面板 -->
-    <!-- 属性面板底色 #ececec，与配方 / 配方库 / 导出的属性面板同一个值。
-         原型里这四处是同一套 .props 样式，白底会让它看着像另一个程序的窗口 -->
-    <Border Grid.Column="2" Background="#ececec"
+    <!-- 属性面板。白底 + 浅紫内容块这一套是本程序的观感基准，
+         配方 / 配方库 / 导出的属性面板都跟它走 -->
+    <Border Grid.Column="2" Background="{StaticResource ThemeGap}"
             BorderBrush="#d2d2d2" BorderThickness="1,0,0,0">
       <DockPanel>
         <!-- 底部工具条：设备的动作都集中在这里，底色跟面板一致 -->
@@ -158,9 +157,8 @@
         <ScrollViewer>
           <StackPanel>
 
-            <!-- 属性区。直接坐在 #ececec 上，不再套一层浅紫卡片——
-                 原型的属性面板是一整片平底，套卡片会让它看着像另一个程序的窗口 -->
-            <Border Background="Transparent" Padding="18,14,18,20">
+            <!-- 属性区 -->
+            <Border Background="{StaticResource ThemeFill}" Padding="18,16,18,20">
             <StackPanel>
 
             <!-- h2：选中设备是「设备属性」，没选是「台面属性」（原型 renderProps 的两个分支） -->
