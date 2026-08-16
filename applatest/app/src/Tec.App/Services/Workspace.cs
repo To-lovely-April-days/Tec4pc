@@ -88,6 +88,9 @@ public sealed class Workspace
         Drivers.RegisterBuiltin(new TurbidityProbeDriver());
         Drivers.RegisterBuiltin(new RamanProbeDriver());
         Drivers.RegisterBuiltin(new InfraredProbeDriver());
+        // 真机：RD105 协议的 TEC 温控器。和仿真反应器并列摆在设备库里，
+        // 台面上想用哪个用哪个——同一套配方两边都能跑
+        Drivers.RegisterBuiltin(new Tec.Drivers.Rd105.Rd105TecDriver());
         Drivers.Discover(Path.Combine(AppContext.BaseDirectory, "drivers"));
         Drivers.LoadAll();
 

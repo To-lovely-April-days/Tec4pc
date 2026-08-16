@@ -2,18 +2,18 @@ using TecControl.Core;
 using TecControl.Core.Comm;
 using Tec.Driver.Abi;
 
-namespace Tec.Drivers.Ttd7008;
+namespace Tec.Drivers.Rd105;
 
 /// <summary>
 /// 一条到温控器的链路：串口 → TecClient → TecController。
 /// 单独拎出来是为了能换成假串口——回归测试不需要插硬件，
 /// 换掉 ISerialTransport 就能把整条链路跑一遍。
 /// </summary>
-public sealed class Ttd7008Link : IDisposable
+public sealed class Rd105Link : IDisposable
 {
     private readonly ISerialTransport _transport;
 
-    public Ttd7008Link(ISerialTransport transport)
+    public Rd105Link(ISerialTransport transport)
     {
         _transport = transport;
         Client = new TecClient(transport);
@@ -42,8 +42,8 @@ public sealed class Ttd7008Link : IDisposable
     /// 帧格式固定 8N1——SerialPortTransport 就是这么写死的，
     /// 所以连接表单里不给校验位这一项，免得摆一个改了也不生效的下拉。
     /// </summary>
-    public static Ttd7008Link Serial(ParameterSet cn)
+    public static Rd105Link Serial(ParameterSet cn)
         => new(new SerialPortTransport(
-            cn.Str(Ttd7008Driver.FieldPort, "COM3"),
-            (int)cn.Num(Ttd7008Driver.FieldBaud, 38400)));
+            cn.Str(Rd105TecDriver.FieldPort, "COM3"),
+            (int)cn.Num(Rd105TecDriver.FieldBaud, 38400)));
 }

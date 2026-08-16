@@ -24,6 +24,7 @@
     <ProjectReference Include="..\Tec.Core\Tec.Core.csproj" />
     <ProjectReference Include="..\Tec.DriverHost\Tec.DriverHost.csproj" />
     <ProjectReference Include="..\Tec.Drivers.Simulator\Tec.Drivers.Simulator.csproj" />
+    <ProjectReference Include="..\Tec.Drivers.Rd105\Tec.Drivers.Rd105.csproj" />
   </ItemGroup>
 
 </Project>

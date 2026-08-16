@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <RootNamespace>Tec.Drivers.Ttd7008</RootNamespace>
+    <RootNamespace>Tec.Drivers.Rd105</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>

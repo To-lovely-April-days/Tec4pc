@@ -4,17 +4,17 @@ using TecControl.Core.Comm;
 namespace Tec.Core.Tests;
 
 /// <summary>
-/// 一台假的 TTD-7008，说 RD105 的 ASCII 协议。
+/// 一台假的 RD105 温控器，说 RD105 的 ASCII 协议。
 /// 有它就能在没有硬件的情况下把「打开串口 → 读型号 → 设定 → 轮询」整条路跑一遍；
 /// 也能故意让它答错、答慢、掉字节，验证驱动那边的容错。
 /// </summary>
-public sealed class FakeTecDevice : ISerialTransport
+public sealed class FakeRd105Device : ISerialTransport
 {
     private readonly StringBuilder _rx = new();          // 主机发来的字节，攒到 '\n' 才算一条
     private readonly Queue<byte> _tx = new();            // 待读回主机的应答
     private readonly Dictionary<string, long> _regs = new(StringComparer.Ordinal);
 
-    public FakeTecDevice()
+    public FakeRd105Device()
     {
         // 出厂值。温度这几个按 RD105 的标度：℃ ×10^5
         Set(1, "TG", 25_00000); Set(2, "TG", 25_00000);
