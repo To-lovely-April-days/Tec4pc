@@ -1,3 +1,4 @@
+using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
@@ -6,18 +7,25 @@ using Tec.App.Services;
 namespace Tec.App.Controls;
 
 /// <summary>
-/// 运行视图的台面总览（原型 renderRunDeck）：
-/// 台面设备按 0.62 缩放整体画进来，孔位上色、运行辉光、设备编号标签、绑定连线。
-/// 与台面画布共用同一份设备图（DeviceArtCache），只是缩放不同。
+/// 运行视图的台面总览（原型 renderRunDeck）：**照台面画布现在的样子画一份小的**。
+///
+/// 同一份设备图、同一套坐标、同一条管路走法（`BenchDock.Link` 两边共用），
+/// 只是整体等比缩放塞进这一格。多出来的只有一样：孔位按通道上色，
+/// 正在跑的那一路点亮辉光——这张图要回答的就是「哪个釜在跑」。
+///
+/// 早先这里是写死的 0.62 缩放 + 固定原点，设备摆远一点就跑到框外去了；
+/// 管路也是自己另画的贝塞尔曲线，跟画布上那几根正交管子对不上。
+/// 现在按包围盒自适应，画布上什么样这里就什么样。
 /// </summary>
 public sealed class DeckView : Control
 {
     public static readonly StyledProperty<Workspace?> WorkspaceProperty =
         AvaloniaProperty.Register<DeckView, Workspace?>(nameof(Workspace));
 
-    private const double Scale = 0.62, Ox = 10, Oy = 8;
-    private const double NodePad = 7;            // 原型 DEVPAD
-    private const double WellX1 = 46, WellX2 = 126, WellY = 75.5, ReactorVw = 176;
+    /// <summary>四周留一圈边，设备不贴着框。</summary>
+    private const double Pad = 14;
+    /// <summary>设备名那行字占的世界高度，算包围盒时留出来，免得被裁掉。</summary>
+    private const double LabelRoom = 18;
 
     static DeckView() => AffectsRender<DeckView>(WorkspaceProperty);
 
@@ -36,87 +44,107 @@ public sealed class DeckView : Control
     private static readonly Color Gray = Color.Parse("#c2c2c2");
     private static readonly Color ProbeGray = Color.Parse("#9aa0a5");
 
-    public override void Render(DrawingContext ctx)
+    /// <summary>一台设备在画布上占的地方：art 外面裹一圈 NodePad，与设备卡片一致。</summary>
+    private readonly record struct Node(
+        string Id, string Title, string ArtKey, SvgArt? Art,
+        Point Pos, double W, double H, bool IsHost, IReadOnlyList<int> Channels);
+
+    private List<Node> Nodes(Workspace ws)
     {
-        var ws = Workspace;
-        if (ws is null) return;
-
-        var wells = new Dictionary<int, Point>();
-
+        var list = new List<Node>();
         foreach (var dev in ws.Bench.Devices)
         {
             var driver = ws.Drivers.Driver(dev.DriverId);
             var key = driver?.Info.IconKey ?? "reactor2";
-            if (DeviceArtCache.Get(key) is not { } art) continue;
-
+            var art = DeviceArtCache.Get(key);
+            var w = BenchDock.DisplayWidth(key);
+            var h = art is null ? w * 0.8 : w * art.ViewHeight / art.ViewWidth;
             var isHost = driver is { Info.ChannelsPerDevice: > 0 };
             var chs = isHost
-                ? ws.Channels.Where(c => c.HostInstanceId == dev.InstanceId).Select(c => c.Number).ToList()
+                ? ws.Channels.Where(c => c.HostInstanceId == dev.InstanceId)
+                             .Select(c => c.Number).OrderBy(x => x).ToList()
                 : ws.Bench.Bindings.Where(b => b.DeviceId == dev.InstanceId)
                                    .Select(b => b.ChannelNumber).Distinct().OrderBy(x => x).ToList();
+            list.Add(new Node(dev.InstanceId, dev.Display, key, art,
+                              new Point(dev.Position.X, dev.Position.Y), w, h, isHost, chs));
+        }
+        return list;
+    }
 
-            // 与台面画布同一套显示宽度 → viewBox 缩放。运行页的台面总览得跟画布对得上
-            var wpx = Services.BenchDock.DisplayWidth(key);
-            var k = Scale * wpx / art.ViewWidth;
-            var x = dev.Position.X * Scale + Ox;
-            var y = dev.Position.Y * Scale + Oy;
+    public override void Render(DrawingContext ctx)
+    {
+        var ws = Workspace;
+        if (ws is null || Bounds.Width < 8 || Bounds.Height < 8) return;
+
+        var nodes = Nodes(ws);
+        if (nodes.Count == 0) return;
+
+        // 包围盒 → 等比缩放。**只缩不放**：台面上只有一台设备时放到满格反而失真，
+        // 画布 100% 是什么大小这里就多大
+        double x0 = double.MaxValue, y0 = double.MaxValue, x1 = double.MinValue, y1 = double.MinValue;
+        foreach (var n in nodes)
+        {
+            x0 = Math.Min(x0, n.Pos.X);
+            y0 = Math.Min(y0, n.Pos.Y);
+            x1 = Math.Max(x1, n.Pos.X + BenchDock.NodePad * 2 + n.W);
+            y1 = Math.Max(y1, n.Pos.Y + BenchDock.NodePad * 2 + n.H + LabelRoom);
+        }
+        var bw = Math.Max(x1 - x0, 1);
+        var bh = Math.Max(y1 - y0, 1);
+        var s = Math.Min(Math.Min((Bounds.Width - Pad * 2) / bw, (Bounds.Height - Pad * 2) / bh), 1);
+        var ox = (Bounds.Width - bw * s) / 2 - x0 * s;
+        var oy = (Bounds.Height - bh * s) / 2 - y0 * s;
+
+        Point At(Point p) => new(ox + p.X * s, oy + p.Y * s);
+
+        // 1. 管路压在设备下面，与画布同一个叠放顺序；画法也是画布那一份
+        //    （BenchLinks.Draw），只是整体缩过、不画胶囊标签——
+        //    这一格太小，几个胶囊摞在一起就糊了
+        foreach (var link in BenchDock.LinksOf(ws))
+        {
+            var pts = BenchDock.Route(link.From, link.FromDir, link.To, link.ToDir,
+                                      link.Kind == LinkKind.Probe ? 18 : 24)
+                               .Select(At).ToList();
+            BenchLinks.Draw(ctx, link, pts, s, labels: false);
+        }
+
+        // 2. 设备。宿主在下、探头压上面，同画布
+        foreach (var n in nodes.OrderBy(n => n.IsHost ? 0 : 1))
+        {
+            var at = At(new Point(n.Pos.X + BenchDock.NodePad, n.Pos.Y + BenchDock.NodePad));
 
             Color c1 = Gray, c2 = Gray;
             bool r1 = false, r2 = false;
-            if (isHost)
+            if (n.IsHost)
             {
-                if (chs.Count > 0) { c1 = ColorOf(ws, chs[0]); r1 = IsRunning(ws, chs[0]); }
-                if (chs.Count > 1) { c2 = ColorOf(ws, chs[1]); r2 = IsRunning(ws, chs[1]); }
-                for (var i = 0; i < chs.Count && i < 2; i++)
-                    wells[chs[i]] = new Point(
-                        x + (i == 0 ? WellX1 : WellX2) / ReactorVw * wpx * Scale,
-                        y + WellY / ReactorVw * wpx * Scale);
+                if (n.Channels.Count > 0) { c1 = ColorOf(ws, n.Channels[0]); r1 = IsRunning(ws, n.Channels[0]); }
+                if (n.Channels.Count > 1) { c2 = ColorOf(ws, n.Channels[1]); r2 = IsRunning(ws, n.Channels[1]); }
             }
             else
             {
-                c1 = c2 = chs.Count > 0 ? ColorOf(ws, chs[0]) : ProbeGray;
+                c1 = c2 = n.Channels.Count > 0 ? ColorOf(ws, n.Channels[0]) : ProbeGray;
             }
 
-            using (ctx.PushTransform(Matrix.CreateTranslation(x, y)))
-                art.Render(ctx, k, new SvgArt.Paint(c1, c2, r1, r2));
-
-            // 设备编号标签（13px 灰字，居中在图形下方）
-            var label = new FormattedText(dev.InstanceId, System.Globalization.CultureInfo.CurrentCulture,
-                FlowDirection.LeftToRight, new Typeface("Segoe UI"), 13,
-                new SolidColorBrush(Color.Parse("#8d8d8d")));
-            ctx.DrawText(label, new Point(
-                x + art.ViewWidth * k / 2 - label.Width / 2,
-                y + art.ViewHeight * k + 2));
+            if (n.Art is null)
+            {
+                ctx.DrawRectangle(new SolidColorBrush(Color.Parse("#e9ecef")), null,
+                    new Rect(at.X, at.Y, n.W * s, n.H * s), 2, 2);
+            }
+            else
+            {
+                using var _ = ctx.PushTransform(Matrix.CreateTranslation(at.X, at.Y));
+                n.Art.Render(ctx, n.W * s / n.Art.ViewWidth, new SvgArt.Paint(c1, c2, r1, r2));
+            }
         }
 
-        // 绑定连线：探头顶部 → 孔位中心，通道色虚线（与台面画布同款）
-        foreach (var dev in ws.Bench.Devices)
+        // 3. 设备名。字号不跟着缩——缩到 6px 就没人看得见了，
+        //    这张图是给人看「哪台在跑」的，名字得认得出
+        foreach (var n in nodes)
         {
-            var driver = ws.Drivers.Driver(dev.DriverId);
-            if (driver is not { Info.ChannelsPerDevice: 0 }) continue;
-
-            var x = dev.Position.X * Scale + Ox;
-            var y = dev.Position.Y * Scale + Oy;
-            var from = new Point(x + 120 * Scale / 2, y + NodePad * Scale);
-
-            foreach (var chn in ws.Bench.Bindings.Where(b => b.DeviceId == dev.InstanceId)
-                                                 .Select(b => b.ChannelNumber).Distinct())
-            {
-                if (!wells.TryGetValue(chn, out var to)) continue;
-                var color = Palette[(chn - 1 + 4) % 4];
-                var pen = new Pen(new SolidColorBrush(color, 0.75), 1.2)
-                { DashStyle = new DashStyle(new double[] { 4, 3 }, 0) };
-                var mid = (from.Y + to.Y) / 2;
-                var geo = new StreamGeometry();
-                using (var g = geo.Open())
-                {
-                    g.BeginFigure(from, false);
-                    g.CubicBezierTo(new Point(from.X, mid), new Point(to.X, mid), to);
-                    g.EndFigure(false);
-                }
-                ctx.DrawGeometry(null, pen, geo);
-                ctx.DrawEllipse(new SolidColorBrush(color), null, to, 2.4, 2.4);
-            }
+            var at = At(new Point(n.Pos.X + BenchDock.NodePad, n.Pos.Y + BenchDock.NodePad));
+            var ft = new FormattedText(n.Title, CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
+                new Typeface("Segoe UI"), 11, new SolidColorBrush(Color.Parse("#8d8d8d")));
+            ctx.DrawText(ft, new Point(at.X + n.W * s / 2 - ft.Width / 2, at.Y + n.H * s + 2));
         }
     }
 

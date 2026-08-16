@@ -80,41 +80,59 @@ public sealed class BenchLinks : Control
         if (Links is null) return;
 
         foreach (var link in Links.OfType<BenchLink>())
+            Draw(ctx, link, BenchDock.Route(link.From, link.FromDir, link.To, link.ToDir,
+                                            link.Kind == LinkKind.Probe ? 18 : 24),
+                 1, ShowLabels);
+    }
+
+    /// <summary>
+    /// 画一条管路。**台面画布与运行页的台面总览共用这一份画法**——
+    /// 各画各的话，同一根管子在两页会长得不一样，而总览那张图的全部意义
+    /// 就是「现在台面长什么样」。
+    /// </summary>
+    /// <param name="pts">已经折算到屏幕坐标的折线（总览那边整体缩放过）。</param>
+    /// <param name="scale">线宽与连接件按这个比例缩，太细的有下限兜着。</param>
+    /// <param name="labels">画不画胶囊标签。总览那一格太小，胶囊会糊成一片。</param>
+    public static void Draw(DrawingContext ctx, BenchLink link, IReadOnlyList<Point> pts,
+                            double scale, bool labels)
+    {
+        if (pts.Count < 2) return;
+        var geo = Rounded(pts, (link.Kind == LinkKind.Probe ? 9 : 12) * scale);
+        var col = ColorOf(link.Kind);
+        var chc = ChColors[Math.Clamp(link.Channel - 1, 0, 3)];
+        var to = pts[^1];
+        double W(double w) => Math.Max(w * scale, 0.8);
+
+        switch (link.Kind)
         {
-            var pts = BenchDock.Route(link.From, link.FromDir, link.To, link.ToDir,
-                                      link.Kind == LinkKind.Probe ? 18 : 24);
-            var geo = Rounded(pts, link.Kind == LinkKind.Probe ? 9 : 12);
-            var col = ColorOf(link.Kind);
-            var chc = ChColors[Math.Clamp(link.Channel - 1, 0, 3)];
+            case LinkKind.Probe:
+                Stroke(ctx, geo, Color.Parse("#5c5e60"), W(5.8));
+                Stroke(ctx, geo, Color.Parse("#e6e9eb"), W(3));
+                Stroke(ctx, geo, Colors.White, W(1), 0.85);
+                // 接口处的连接件与通道色点
+                ctx.DrawRectangle(new SolidColorBrush(Color.Parse("#b9bec2")), null,
+                    new RoundedRect(new Rect(to.X - 7 * scale, to.Y - 3.4 * scale,
+                                             14 * scale, 8 * scale), 1.8 * scale));
+                ctx.DrawEllipse(new SolidColorBrush(chc), null,
+                                new Point(to.X, to.Y + 8 * scale), 2.6 * scale, 2.6 * scale);
+                break;
 
-            switch (link.Kind)
-            {
-                case LinkKind.Probe:
-                    Stroke(ctx, geo, Color.Parse("#5c5e60"), 5.8);
-                    Stroke(ctx, geo, Color.Parse("#e6e9eb"), 3);
-                    Stroke(ctx, geo, Colors.White, 1, 0.85);
-                    // 接口处的连接件与通道色点
-                    ctx.DrawRectangle(new SolidColorBrush(Color.Parse("#b9bec2")), null,
-                        new RoundedRect(new Rect(link.To.X - 7, link.To.Y - 3.4, 14, 8), 1.8));
-                    ctx.DrawEllipse(new SolidColorBrush(chc), null, new Point(link.To.X, link.To.Y + 8), 2.6, 2.6);
-                    break;
+            case LinkKind.Signal:
+                Stroke(ctx, geo, col, W(1.5), dash: new double[] { 2, 4.5 });
+                break;
 
-                case LinkKind.Signal:
-                    Stroke(ctx, geo, col, 1.5, dash: new double[] { 2, 4.5 });
-                    break;
-
-                default:
-                    Stroke(ctx, geo, Colors.White, 5.4, 0.92);
-                    Stroke(ctx, geo, col, 2.6,
-                           dash: link.Kind == LinkKind.Sample ? new double[] { 8, 4 } : null);
-                    Arrow(ctx, pts, col);
-                    // 设备那一端画一个出口圆点
-                    ctx.DrawEllipse(Brushes.White, new Pen(new SolidColorBrush(col), 2), link.From, 3.8, 3.8);
-                    break;
-            }
-
-            if (ShowLabels) Label(ctx, pts, link, chc);
+            default:
+                Stroke(ctx, geo, Colors.White, W(5.4), 0.92);
+                Stroke(ctx, geo, col, W(2.6),
+                       dash: link.Kind == LinkKind.Sample ? new double[] { 8, 4 } : null);
+                Arrow(ctx, pts, col, scale);
+                // 设备那一端画一个出口圆点
+                ctx.DrawEllipse(Brushes.White, new Pen(new SolidColorBrush(col), W(2)),
+                                pts[0], 3.8 * scale, 3.8 * scale);
+                break;
         }
+
+        if (labels) Label(ctx, pts, link, chc);
     }
 
     private static void Stroke(DrawingContext ctx, Geometry geo, Color c, double w,
@@ -160,7 +178,7 @@ public sealed class BenchLinks : Control
         (a.X - b.X) * (a.X - b.X) + (a.Y - b.Y) * (a.Y - b.Y)), 0.001);
 
     /// <summary>末端箭头，指向接口。</summary>
-    private static void Arrow(DrawingContext ctx, IReadOnlyList<Point> pts, Color col)
+    private static void Arrow(DrawingContext ctx, IReadOnlyList<Point> pts, Color col, double scale = 1)
     {
         var b = pts[^1];
         var a = pts[^2];
@@ -169,13 +187,13 @@ public sealed class BenchLinks : Control
         var len = Math.Max(Math.Sqrt(dx * dx + dy * dy), 0.001);
         double ux = dx / len, uy = dy / len;
         var tip = b;
-        var back = new Point(b.X - ux * 8, b.Y - uy * 8);
+        var back = new Point(b.X - ux * 8 * scale, b.Y - uy * 8 * scale);
         var geo = new StreamGeometry();
         using (var g = geo.Open())
         {
             g.BeginFigure(tip, true);
-            g.LineTo(new Point(back.X - uy * 4, back.Y + ux * 4));
-            g.LineTo(new Point(back.X + uy * 4, back.Y - ux * 4));
+            g.LineTo(new Point(back.X - uy * 4 * scale, back.Y + ux * 4 * scale));
+            g.LineTo(new Point(back.X + uy * 4 * scale, back.Y - ux * 4 * scale));
             g.EndFigure(true);
         }
         ctx.DrawGeometry(new SolidColorBrush(col), null, geo);

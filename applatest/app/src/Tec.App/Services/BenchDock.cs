@@ -118,6 +118,57 @@ public static class BenchDock
     public static bool Accepts(string artKey, Anchor a) => AttachOf(artKey) == a.Kind;
 
     /// <summary>
+    /// 算出一条管路的几何。台面画布与运行页的台面总览共用这一个——
+    /// 两处各算一遍的话，同一份台面在两页会画成两个样子，
+    /// 而运行页那张图的全部意义就是「现在台面长什么样」。
+    /// </summary>
+    public static BenchLink Link(string artKey, Point pos, double width, string? side,
+                                 string deviceId, string hostId, Point hostPos, double hostWidth,
+                                 IReadOnlyList<int> hostChannels, Anchor a)
+    {
+        var to = AnchorWorld(hostPos, hostWidth, a);
+        var from = PlugWorld(pos, width, artKey, side);
+        return new BenchLink(deviceId, hostId, a.Id, LinkOf(artKey))
+        {
+            From = from,
+            FromDir = ExitDir(artKey, from, to),
+            To = to,
+            ToDir = a.Dir,
+            Channel = hostChannels.ElementAtOrDefault(a.Slot),
+            Label = a.Label
+        };
+    }
+
+    /// <summary>
+    /// 台面上现有的全部管路。运行页那张总览直接照这份画——
+    /// 台面画布另有一条路（它还要处理拖拽预览、排除正在拖的那台），
+    /// 但两边算单条几何走的是上面同一个 <see cref="Link"/>。
+    /// </summary>
+    public static List<BenchLink> LinksOf(Workspace ws)
+    {
+        var links = new List<BenchLink>();
+        foreach (var dev in ws.Bench.Devices)
+        {
+            if (dev.DockAnchor is null || dev.DockHostId is null) continue;
+            var host = ws.Bench.Devices.FirstOrDefault(d => d.InstanceId == dev.DockHostId);
+            if (host is null) continue;
+            var a = Anchors.FirstOrDefault(x => x.Id == dev.DockAnchor);
+            if (a is null) continue;
+
+            var artKey = ws.Drivers.Driver(dev.DriverId)?.Info.IconKey ?? "reactor2";
+            var hostKey = ws.Drivers.Driver(host.DriverId)?.Info.IconKey ?? "reactor2";
+            var hostChs = ws.Channels.Where(c => c.HostInstanceId == host.InstanceId)
+                                     .Select(c => c.Number).OrderBy(x => x).ToList();
+
+            links.Add(Link(artKey, new Point(dev.Position.X, dev.Position.Y), DisplayWidth(artKey),
+                           dev.DockSideTag, dev.InstanceId, host.InstanceId,
+                           new Point(host.Position.X, host.Position.Y), DisplayWidth(hostKey),
+                           hostChs, a));
+        }
+        return links;
+    }
+
+    /// <summary>
     /// 管路从设备哪一侧出去。探头的电极永远朝下，所以固定向下；加料 / 取样 /
     /// 液相这类设备摆在哪儿都可能，按接口相对它的方位取主轴方向——不这样的话
     /// 泵放在反应器左上方，管路也会先往下绕一圈再拐回来。

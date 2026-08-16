@@ -612,21 +612,12 @@ public sealed class BenchViewModel : ViewModelBase
                 _dragNode?.Id ?? "?", hh, ha);
         }
 
+        // 单条几何交给 BenchDock.Link——运行页的台面总览用的是同一个，
+        // 两边各写一份的话，同一台面在两页会画成两个样子
         void Add(string art, Point pos, double width, string? side,
                  string devId, DeviceNodeViewModel host, Anchor a)
-        {
-            var to = BenchDock.AnchorWorld(new Point(host.X, host.Y), host.Width, a);
-            var from = BenchDock.PlugWorld(pos, width, art, side);
-            Links.Add(new BenchLink(devId, host.Id, a.Id, BenchDock.LinkOf(art))
-            {
-                From = from,
-                FromDir = BenchDock.ExitDir(art, from, to),
-                To = to,
-                ToDir = a.Dir,
-                Channel = host.Channels.ElementAtOrDefault(a.Slot),
-                Label = a.Label
-            });
-        }
+            => Links.Add(BenchDock.Link(art, pos, width, side, devId, host.Id,
+                                        new Point(host.X, host.Y), host.Width, host.Channels, a));
     }
 
     private void Rebind(string deviceId, IReadOnlyList<int> channels, bool exclusive)
