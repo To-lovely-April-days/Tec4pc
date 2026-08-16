@@ -58,6 +58,8 @@ public sealed class StepDoc
     public ParameterSet Parameters { get; set; } = new();
     public List<ParameterSet>? Rows { get; set; }
     public bool Enabled { get; set; } = true;
+    /// <summary>老文件里没有这一项，缺省 true——与 Step 的默认一致。</summary>
+    public bool PauseOnFault { get; set; } = true;
     public string? Comment { get; set; }
 }
 

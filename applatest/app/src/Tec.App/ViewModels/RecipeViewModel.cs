@@ -238,6 +238,7 @@ public sealed class RecipeViewModel : ViewModelBase
     private int _copyTarget = 2;
     private Recipe? _libPick;
     private SchemaFormViewModel? _form;
+    private readonly RecipeHistory _history = new();
 
     public RecipeViewModel(Workspace ws)
     {
@@ -250,14 +251,18 @@ public sealed class RecipeViewModel : ViewModelBase
             Groups.Add(group);
         }
 
-        foreach (var r in ws.Library) Library.Add(r);
-        _libPick = Library.FirstOrDefault();
+        foreach (var r in ws.Library) Library.Add(new LibOption(r));
+        _libPick = Library.FirstOrDefault()?.Recipe;
 
         AddStep = new RelayCommand(p => { if (p is CommandItemViewModel c) AddCommand(c); });
         RemoveStep = new RelayCommand(p => { if (p is StepViewModel s) Delete(s); });
         CopyRecipe = new RelayCommand(DoCopy);
         ApplyLib = new RelayCommand(DoApplyLib);
         SaveToLib = new RelayCommand(DoSaveToLib);
+        NewRecipe = new RelayCommand(DoNew);
+        ManageLibrary = new RelayCommand(() => GoLibrary?.Invoke());
+        Undo = new RelayCommand(DoUndo);
+        Redo = new RelayCommand(DoRedo);
 
         // 台面变了通道就变了，泳道的通道下拉要跟着刷新
         ws.BenchChanged += (_, _) => RefreshAll();
@@ -273,8 +278,8 @@ public sealed class RecipeViewModel : ViewModelBase
     {
         var keepId = _libPick?.Id;
         Library.Clear();
-        foreach (var r in Workspace.Library) Library.Add(r);
-        LibPick = Library.FirstOrDefault(r => r.Id == keepId) ?? Library.FirstOrDefault();
+        foreach (var r in Workspace.Library) Library.Add(new LibOption(r));
+        LibPick = Library.FirstOrDefault(o => o.Recipe.Id == keepId) ?? Library.FirstOrDefault();
     }
 
     /// <summary>机A · CH1（原型 chLabel），泳道下拉与标题共用。</summary>
@@ -299,6 +304,8 @@ public sealed class RecipeViewModel : ViewModelBase
         recipes.TryGetValue(to, out var rb);
         names.TryGetValue(from, out var na);
         names.TryGetValue(to, out var nb);
+        _history.Forget(from);
+        _history.Forget(to);
         if (ra is not null) recipes[to] = ra; else recipes.Remove(to);
         if (rb is not null) recipes[from] = rb; else recipes.Remove(from);
         names[to] = na ?? "新配方";
@@ -311,6 +318,7 @@ public sealed class RecipeViewModel : ViewModelBase
     /// <summary>删掉这条泳道（原型 removeChannelTab）：清空该通道的配方。</summary>
     public void RemoveLane(int channel)
     {
+        _history.Forget(channel);          // 泳道都清了，那条道的历史对不上了
         Workspace.ChannelRecipes[channel] = new Recipe { Name = "新配方" };
         Workspace.LaneNames[channel] = "新配方";
         Workspace.Store.MarkDirty();
@@ -319,7 +327,7 @@ public sealed class RecipeViewModel : ViewModelBase
 
     public ObservableCollection<ModuleGroup> Groups { get; } = new();
     public ObservableCollection<LaneViewModel> Lanes { get; } = new();
-    public ObservableCollection<Recipe> Library { get; } = new();
+    public ObservableCollection<LibOption> Library { get; } = new();
     public ObservableCollection<CopyTargetOption> CopyTargets { get; } = new();
     public ObservableCollection<ValidationIssue> Issues { get; } = new();
 
@@ -328,6 +336,15 @@ public sealed class RecipeViewModel : ViewModelBase
     public RelayCommand CopyRecipe { get; }
     public RelayCommand ApplyLib { get; }
     public RelayCommand SaveToLib { get; }
+    public RelayCommand NewRecipe { get; }
+    public RelayCommand ManageLibrary { get; }
+    /// <summary>「管理配方库 →」往哪跳。由外壳注入，视图模型不认识标签页。</summary>
+    public Action? GoLibrary { get; set; }
+    public RelayCommand Undo { get; }
+    public RelayCommand Redo { get; }
+
+    public bool CanUndo => _history.CanUndo(_curCh);
+    public bool CanRedo => _history.CanRedo(_curCh);
 
     public int CurCh
     {
@@ -359,10 +376,21 @@ public sealed class RecipeViewModel : ViewModelBase
         set { if (value is not null) Set(ref _copyTarget, value.Channel); else Raise(); }
     }
 
-    public Recipe? LibPick
+    /// <summary>
+    /// 「应用配方库」选中的那一项。
+    ///
+    /// setter 必须在没变时**什么都不做**：ComboBox 是双向绑定，无条件 Raise 会让它
+    /// 把值再写回来，一来一回就是死循环——上一版这里栈溢出过。
+    /// </summary>
+    public LibOption? LibPick
     {
-        get => _libPick;
-        set => Set(ref _libPick, value);
+        get => Library.FirstOrDefault(o => ReferenceEquals(o.Recipe, _libPick));
+        set
+        {
+            if (value is null || ReferenceEquals(value.Recipe, _libPick)) return;
+            _libPick = value.Recipe;
+            Raise();
+        }
     }
 
     public StepViewModel? SelectedStep
@@ -374,7 +402,8 @@ public sealed class RecipeViewModel : ViewModelBase
             Set(ref _selectedStep, value);
             if (value is not null) value.IsSelected = true;
             RebuildForm();
-            RaiseAll(nameof(HasSelection), nameof(SelectedTitle), nameof(SelectedTip));
+            RaiseAll(nameof(HasSelection), nameof(NoSelection), nameof(StepName), nameof(StepColor),
+                     nameof(StepChannel), nameof(NoParams), nameof(PauseOnFault), nameof(StepSkipped));
         }
     }
 
@@ -385,8 +414,51 @@ public sealed class RecipeViewModel : ViewModelBase
     }
 
     public bool HasSelection => _selectedStep is not null;
-    public string SelectedTitle => _selectedStep?.Name ?? "未选中步骤";
-    public string? SelectedTip => _selectedStep?.Descriptor?.Tip;
+    public bool NoSelection => _selectedStep is null;
+
+    // prop-head：模块色块 + 指令名 + 它属于哪个通道
+    public string StepName => _selectedStep?.Name ?? "";
+    public string StepColor => _selectedStep?.ModuleColor ?? "#9aa4ab";
+    public string StepChannel => LabelOf(_curCh);
+
+    /// <summary>这条指令一个参数都没有（比如「循环结束」）。空着不说话会让人以为界面坏了。</summary>
+    public bool NoParams => _selectedStep?.Descriptor is { } d
+                            && d.Parameters.Fields.Count == 0 && d.Parameters.Table is null;
+
+    // ── 执行选项：两个真的会影响运行的开关，不是摆设 ──────────────────
+
+    /// <summary>失败时暂停并报警。执行引擎按它决定是停下等人还是接着往下走。</summary>
+    public bool PauseOnFault
+    {
+        get => _selectedStep?.Step.PauseOnFault ?? true;
+        set
+        {
+            if (_selectedStep is not { } s || s.Step.PauseOnFault == value) return;
+            Record();
+            s.Step.PauseOnFault = value;
+            Workspace.Store.MarkDirty();
+            Raise();
+        }
+    }
+
+    /// <summary>
+    /// 跳过该步骤。原型这一格写的是「条件满足则跳过」，但它没有地方填条件——
+    /// 一个填不了条件的条件开关点下去什么也不会发生。这里落成实打实的「跳过」：
+    /// 排期与执行都认 Step.Enabled，勾上以后这一步既不占时间也不会跑。
+    /// </summary>
+    public bool StepSkipped
+    {
+        get => _selectedStep is { } s && !s.Step.Enabled;
+        set
+        {
+            if (_selectedStep is not { } s || s.Step.Enabled == !value) return;
+            Record();
+            s.Step.Enabled = !value;
+            Workspace.Store.MarkDirty();
+            RefreshAll();
+            Raise();
+        }
+    }
 
     /// <summary>
     /// 当前泳道的配方。台面上一个通道都没有时给一条不入库的空配方顶着，
@@ -401,6 +473,7 @@ public sealed class RecipeViewModel : ViewModelBase
     private void AddCommand(CommandItemViewModel c)
     {
         if (NoLanes) return;                      // 没有通道就没有地方放这一步
+        Record();
         var step = NewStep(c.Descriptor);
         var recipe = Current;
         var at = _selectedStep is null ? recipe.Steps.Count : recipe.Steps.IndexOf(_selectedStep.Step) + 1;
@@ -425,6 +498,7 @@ public sealed class RecipeViewModel : ViewModelBase
 
     private void Delete(StepViewModel s)
     {
+        Record();
         Current.Steps.Remove(s.Step);
         if (_selectedStep == s) SelectedStep = null;
         Workspace.Store.MarkDirty();
@@ -548,6 +622,7 @@ public sealed class RecipeViewModel : ViewModelBase
         string keepId;
         if (cmd is not null)
         {
+            Record(ch);
             var made = NewStep(cmd.Descriptor);
             target.Steps.Insert(Math.Clamp(at, 0, target.Steps.Count), made);
             keepId = made.StepId;
@@ -562,6 +637,8 @@ public sealed class RecipeViewModel : ViewModelBase
             if (ReferenceEquals(source, target) && at > from) at--;
             if (ReferenceEquals(source, target) && at == from) return;   // 原地没动
 
+            Record(_dragFromCh);
+            if (!ReferenceEquals(source, target)) Record(ch);   // 跨道要两边都能撤
             source.Steps.RemoveAt(from);
             target.Steps.Insert(Math.Clamp(at, 0, target.Steps.Count), step.Step);
             source.ModifiedAt = DateTimeOffset.Now;
@@ -588,6 +665,7 @@ public sealed class RecipeViewModel : ViewModelBase
     private void DoCopy()
     {
         if (_copyTarget == _curCh || !Workspace.ChannelRecipes.ContainsKey(_copyTarget)) return;
+        Record(_copyTarget);                       // 被覆盖的是目标通道，历史记在它头上
         var copy = Current.Snapshot();
         copy.Name = Workspace.LaneNames.TryGetValue(_curCh, out var n) ? n : copy.Name;
         Workspace.ChannelRecipes[_copyTarget] = copy;
@@ -600,6 +678,7 @@ public sealed class RecipeViewModel : ViewModelBase
     private void DoApplyLib()
     {
         if (_libPick is null) return;
+        Record();
         var copy = _libPick.Snapshot();
         Workspace.ChannelRecipes[_curCh] = copy;
         Workspace.LaneNames[_curCh] = copy.Name;
@@ -612,9 +691,58 @@ public sealed class RecipeViewModel : ViewModelBase
         var copy = Current.Snapshot();
         copy.Name = Workspace.LaneNames.TryGetValue(_curCh, out var n) ? n : copy.Name;
         Workspace.Library.Add(copy);
-        Library.Add(copy);
+        var option = new LibOption(copy);
+        Library.Add(option);
         Workspace.Store.SaveLibrary();     // 存进库就该落盘，不然关掉程序白存
-        LibPick = copy;
+        LibPick = option;
+    }
+
+    // ── 工具条：新建 / 撤销 / 重做 ───────────────────────────────────
+
+    /// <summary>
+    /// 记一笔当前样子，供撤销回退。改动**之前**调。
+    ///
+    /// coalesceKey 把连续的同类编辑合成一笔：在温度框里连按几下上下箭头是一次编辑
+    /// 意图，不该变成十次撤销。
+    /// </summary>
+    /// <summary>入栈一份**已经取好的**快照。改参数那条路用它——回调到手时原值已经被覆盖了。</summary>
+    private void RecordSnapshot(int channel, Recipe before, string coalesceKey)
+    {
+        _history.Record(channel, before, coalesceKey);
+        RaiseAll(nameof(CanUndo), nameof(CanRedo));
+    }
+
+    private void Record(int? channel = null, string? coalesceKey = null)
+    {
+        var ch = channel ?? _curCh;
+        if (!Workspace.ChannelRecipes.TryGetValue(ch, out var recipe)) return;
+        _history.Record(ch, recipe, coalesceKey);
+        RaiseAll(nameof(CanUndo), nameof(CanRedo));
+    }
+
+    /// <summary>新建：把当前通道清成一条空配方。名字保留——那是操作人起的。</summary>
+    private void DoNew()
+    {
+        if (NoLanes) return;
+        Record();
+        var name = Workspace.LaneNames.TryGetValue(_curCh, out var n) ? n : "新配方";
+        Workspace.ChannelRecipes[_curCh] = new Recipe { Name = name };
+        SelectedStep = null;
+        Workspace.Store.MarkDirty();
+        RefreshAll();
+    }
+
+    private void DoUndo() => Step(_history.Undo(_curCh, Current));
+    private void DoRedo() => Step(_history.Redo(_curCh, Current));
+
+    private void Step(Recipe? to)
+    {
+        if (to is null || NoLanes) return;
+        Workspace.ChannelRecipes[_curCh] = to;
+        Workspace.LaneNames[_curCh] = to.Name;
+        SelectedStep = null;
+        Workspace.Store.MarkDirty();
+        RefreshAll();
     }
 
     // ── 刷新 ─────────────────────────────────────────────────────────
@@ -648,7 +776,8 @@ public sealed class RecipeViewModel : ViewModelBase
         foreach (var i in RecipeValidator.Validate(Current, Workspace.Catalog, Workspace.ChannelOf(_curCh)))
             Issues.Add(i);
 
-        RaiseAll(nameof(CurName), nameof(ChannelStates), nameof(HasLanes), nameof(NoLanes), nameof(CurLane));
+        RaiseAll(nameof(CurName), nameof(ChannelStates), nameof(HasLanes), nameof(NoLanes), nameof(CurLane),
+                 nameof(CanUndo), nameof(CanRedo));
     }
 
     /// <summary>
@@ -691,29 +820,65 @@ public sealed class RecipeViewModel : ViewModelBase
             if (idx >= 0) Current.Steps[idx] = replaced;
             step = replaced;
         }
+        // 改参数的撤销粒度 = 一次「选中并编辑」。表单建起来时先留一份改之前的样子，
+        // 第一次改动时才入栈；同一步接着改多少个字段都合并进这一笔——
+        // 在温度框里连按几下上下箭头是一次编辑意图，不该变成十次撤销
+        var before = Current.Snapshot();
+        var key = $"{_curCh}/{step.StepId}";
         Form = new SchemaFormViewModel(d.Parameters, step.Parameters, rows,
                                        Workspace.ChannelOf(_curCh),
-                                       () => { Workspace.Store.MarkDirty(); RefreshAll(); });
+                                       () =>
+                                       {
+                                           RecordSnapshot(_curCh, before, key);
+                                           Workspace.Store.MarkDirty();
+                                           RefreshAll();
+                                       });
     }
 
     // ── 右栏通道状态（原型 chStateList）─────────────────────────────
 
+    /// <summary>
+    /// 右栏那张通道状态表。按台面上**全部**孔位列，不是只列有配方的那几个——
+    /// 「CH4 没建标签」本身就是要看的信息，漏掉它等于告诉操作人这台机器只有三个通道。
+    /// </summary>
     public IReadOnlyList<ChannelStateRow> ChannelStates
-        => Workspace.ChannelRecipes.Keys.OrderBy(x => x).Select(ch => new ChannelStateRow(
-            ch,
-            Workspace.LaneNames.TryGetValue(ch, out var n) ? n : "新配方",
-            Workspace.ChannelRecipes[ch].Steps.Count,
-            Workspace.ChannelOf(ch)?.Enabled ?? false)).ToList();
+        => Workspace.Channels.OrderBy(c => c.Number).Select(c =>
+        {
+            var hasLane = Workspace.ChannelRecipes.ContainsKey(c.Number);
+            var steps = hasLane ? Workspace.ChannelRecipes[c.Number].Steps.Count : 0;
+            return new ChannelStateRow(
+                c.Number,
+                hasLane && Workspace.LaneNames.TryGetValue(c.Number, out var n) ? n : "—",
+                LabelOf(c.Number),
+                steps, c.Enabled, hasLane);
+        }).ToList();
 }
 
-public sealed record ChannelStateRow(int Channel, string Name, int StepCount, bool Enabled)
+public sealed record ChannelStateRow(
+    int Channel, string Name, string ChannelLabel, int StepCount, bool Enabled, bool HasLane)
 {
-    public string ColorHex => Channel switch
-    {
-        1 => "#2f7ed8", 2 => "#2aa87a", 3 => "#c9772b", _ => "#8a63d2"
-    };
-    public string Label => $"CH{Channel} · {Name}";
-    public string State => StepCount == 0 ? "空" : $"{StepCount} 步";
+    public string ColorHex => HasLane
+        ? Channel switch { 1 => "#2f7ed8", 2 => "#2aa87a", 3 => "#c9772b", _ => "#8a63d2" }
+        : "#c2c2c2";
+
+    /// <summary>接在名称后面的灰字，比如「 · 机A · CH1」。</summary>
+    public string ChannelSuffix => $" · {ChannelLabel}";
+
+    /// <summary>亮灯 = 通道启用**且**建了泳道。两者缺一，这条通道这轮就不会跑。</summary>
+    public bool Lit => Enabled && HasLane;
+
+    public string State => !Enabled ? "已停用"
+        : !HasLane ? "未建标签"
+        : StepCount > 0 ? $"{StepCount} 步" : "空配方";
+}
+
+/// <summary>
+/// 「应用配方库」下拉的一项。带上步数——同名配方改过几版之后，
+/// 步数是下拉里唯一能一眼分辨的东西。
+/// </summary>
+public sealed record LibOption(Recipe Recipe)
+{
+    public string Label => $"{Recipe.Name}（{Recipe.Steps.Count} 步）";
 }
 
 /// <summary>「复制到」下拉的一项。用具名类型而不是裸 int：选项一度会是空的，

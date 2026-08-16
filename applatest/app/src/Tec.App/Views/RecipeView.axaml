@@ -74,9 +74,18 @@
               <DataTemplate><TextBlock Text="{Binding LaneName}" /></DataTemplate>
             </ComboBox.ItemTemplate>
           </ComboBox>
-          <Button Classes="tbtn sm" ToolTip.Tip="新建"><ctl:TecIcon Key="ui-bar-plus" /></Button>
-          <Button Classes="tbtn sm" ToolTip.Tip="撤销"><ctl:TecIcon Key="ui-bar-undo" /></Button>
-          <Button Classes="tbtn sm" ToolTip.Tip="重做"><ctl:TecIcon Key="ui-bar-redo" /></Button>
+          <Button Classes="tbtn sm" ToolTip.Tip="新建：把当前通道清成空配方"
+                  Command="{Binding NewRecipe}" IsEnabled="{Binding HasLanes}">
+            <ctl:TecIcon Key="ui-bar-plus" />
+          </Button>
+          <Button Classes="tbtn sm" ToolTip.Tip="撤销（当前通道）"
+                  Command="{Binding Undo}" IsEnabled="{Binding CanUndo}">
+            <ctl:TecIcon Key="ui-bar-undo" />
+          </Button>
+          <Button Classes="tbtn sm" ToolTip.Tip="重做（当前通道）"
+                  Command="{Binding Redo}" IsEnabled="{Binding CanRedo}">
+            <ctl:TecIcon Key="ui-bar-redo" />
+          </Button>
         </StackPanel>
       </Border>
 
@@ -254,13 +263,46 @@
     <!-- ══ 右：步骤属性 + 应用配方库 + 通道状态 ══ -->
     <Border Grid.Column="2" Background="#ececec" BorderBrush="#d2d2d2" BorderThickness="1,0,0,0">
       <ScrollViewer>
-        <StackPanel Margin="18,16" Spacing="6">
-          <TextBlock Text="{Binding SelectedTitle}" Classes="h2big" />
-          <TextBlock Text="{Binding SelectedTip}" Classes="intro"
-                     IsVisible="{Binding HasSelection}" />
-          <v:SchemaFormView DataContext="{Binding Form}" IsVisible="{Binding HasSelection}" />
+        <StackPanel Margin="18,14,18,12" Spacing="0">
+          <!-- 标题恒为「步骤属性」；选没选中步骤只改下面的内容 -->
+          <TextBlock Text="步骤属性" Classes="h2big" />
+          <TextBlock Classes="intro" IsVisible="{Binding NoSelection}"
+                     Text="点选画布中的步骤，在此查看与编辑其参数。" />
 
-          <Border Height="1" Background="#d5d5d5" Margin="0,10" />
+          <!-- prop-head：模块色块 + 指令名 + 它属于哪个通道 -->
+          <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,4,0,12"
+                      HorizontalAlignment="Center" IsVisible="{Binding HasSelection}">
+            <Border Width="12" Height="12" CornerRadius="3" VerticalAlignment="Center"
+                    Background="{Binding StepColor}" />
+            <TextBlock Text="{Binding StepName}" FontSize="21" FontWeight="Light"
+                       Foreground="#333333" VerticalAlignment="Center" />
+            <TextBlock Text="{Binding StepChannel}" FontSize="12" Foreground="#8d8d8d"
+                       VerticalAlignment="Center" />
+          </StackPanel>
+
+          <TextBlock IsVisible="{Binding NoParams}" Text="该指令无需设置参数。"
+                     FontSize="11.5" Foreground="#8d8d8d" Margin="0,2,0,8" />
+
+          <StackPanel IsVisible="{Binding HasSelection}">
+            <v:SchemaFormView DataContext="{Binding Form}" />
+          </StackPanel>
+
+          <!-- 执行选项：两个真会影响运行的开关 -->
+          <StackPanel IsVisible="{Binding HasSelection}" Margin="0,14,0,0" Spacing="6">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Border Width="16" Height="16" CornerRadius="8" BorderBrush="#6b6b6b" BorderThickness="1.3">
+                <ctl:TecIcon Key="ui-chev-down" Tint="#555555" Size="10"
+                             HorizontalAlignment="Center" VerticalAlignment="Center" />
+              </Border>
+              <TextBlock Text="执行选项" Classes="acc" VerticalAlignment="Center" />
+            </StackPanel>
+            <CheckBox Classes="chk2" Content="失败时暂停并报警"
+                      IsChecked="{Binding PauseOnFault, Mode=TwoWay}" />
+            <CheckBox Classes="chk2" Content="跳过该步骤（不执行、不计入排期）"
+                      IsChecked="{Binding StepSkipped, Mode=TwoWay}" />
+          </StackPanel>
+
+          <Border Height="1" Background="#d5d5d5" Margin="0,14" />
           <StackPanel Orientation="Horizontal" Spacing="8">
             <Border Width="16" Height="16" CornerRadius="8" BorderBrush="#6b6b6b" BorderThickness="1.3">
               <ctl:TecIcon Key="ui-chev-down" Tint="#555555" Size="10"
@@ -268,12 +310,12 @@
             </Border>
             <TextBlock Text="应用配方库" Classes="acc" VerticalAlignment="Center" />
           </StackPanel>
-          <StackPanel Orientation="Horizontal" Spacing="10">
+          <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,6,0,0">
             <TextBlock Text="配方" Classes="lbl" Width="40" />
             <ComboBox Classes="sel" Width="220" ItemsSource="{Binding Library}"
                       SelectedItem="{Binding LibPick, Mode=TwoWay}">
               <ComboBox.ItemTemplate>
-                <DataTemplate><TextBlock Text="{Binding Name}" /></DataTemplate>
+                <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
               </ComboBox.ItemTemplate>
             </ComboBox>
           </StackPanel>
@@ -281,8 +323,13 @@
             <Button Classes="btn primary" Content="应用到当前通道" Command="{Binding ApplyLib}" />
             <Button Classes="btn" Content="存入配方库" Command="{Binding SaveToLib}" />
           </StackPanel>
-          <TextBlock Classes="intro" Margin="0,8,0,0"
-                     Text="应用会替换当前通道的全部步骤。" />
+          <TextBlock FontSize="11.5" Foreground="#5a5a5a" LineHeight="18"
+                     TextWrapping="Wrap" Margin="0,8,0,0">
+            <Run Text="应用会替换当前通道的全部步骤。" />
+            <InlineUIContainer>
+              <Button Classes="linkbtn" Content="管理配方库 →" Command="{Binding ManageLibrary}" />
+            </InlineUIContainer>
+          </TextBlock>
 
           <Border Height="1" Background="#d5d5d5" Margin="0,10" />
           <StackPanel Orientation="Horizontal" Spacing="8">
@@ -297,17 +344,23 @@
               <ItemsControl.ItemTemplate>
                 <DataTemplate>
                   <Border BorderBrush="#eeeeee" BorderThickness="0,0,0,1" Padding="10,7">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                      <Border Width="9" Height="9" CornerRadius="5" VerticalAlignment="Center"
-                              Background="{Binding Enabled, Converter={x:Static v:Converters.LedBrush}}"
+                    <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+                      <Border Grid.Column="0" Width="9" Height="9" CornerRadius="5" Margin="0,0,8,0"
+                              VerticalAlignment="Center"
+                              Background="{Binding Lit, Converter={x:Static v:Converters.LedBrush}}"
                               BorderBrush="#a5a5a5" BorderThickness="1" />
-                      <Border Width="11" Height="11" CornerRadius="3" VerticalAlignment="Center"
-                              Background="{Binding ColorHex}" />
-                      <TextBlock Text="{Binding Label}" FontSize="12" Foreground="#2b2b2b"
-                                 VerticalAlignment="Center" />
-                      <TextBlock Text="{Binding State}" FontSize="11" Foreground="#8d8d8d"
-                                 VerticalAlignment="Center" />
-                    </StackPanel>
+                      <Border Grid.Column="1" Width="11" Height="11" CornerRadius="3" Margin="0,0,8,0"
+                              VerticalAlignment="Center" Background="{Binding ColorHex}" />
+                      <!-- 两个 TextBlock 而不是一个带 Run 的：Run 上挂 StringFormat 会和
+                           TextBlock 的 inlines 变更互相触发，转起来收不住（栈溢出） -->
+                      <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Name}" FontSize="12" Foreground="#2b2b2b"
+                                   TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding ChannelSuffix}" FontSize="12" Foreground="#9a9a9a" />
+                      </StackPanel>
+                      <TextBlock Grid.Column="3" Text="{Binding State}" FontSize="11"
+                                 Foreground="#8d8d8d" VerticalAlignment="Center" Margin="8,0,0,0" />
+                    </Grid>
                   </Border>
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
@@ -384,6 +437,26 @@
       <Setter Property="BorderBrush" Value="#1a7fc4" />
       <Setter Property="Background" Value="White" />
       <Setter Property="BoxShadow" Value="0 0 0 3 #381a7fc4, 0 2 10 0 #12000000" />
+    </Style>
+    <!-- .pf-row.bool：14px 方框 + 11.5px 文字，与台面属性同款 -->
+    <Style Selector="CheckBox.chk2">
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Foreground" Value="#3d3d3d" />
+      <Setter Property="MinHeight" Value="0" />
+    </Style>
+    <!-- 正文里的链接：看着是一句话的一部分，不是一个按钮 -->
+    <Style Selector="Button.linkbtn">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Foreground" Value="#1a7fc4" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.linkbtn:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="TextBlock.Foreground" Value="#12628f" />
     </Style>
     <Style Selector="Border.stepGhost">
       <Setter Property="Opacity" Value="0.42" />

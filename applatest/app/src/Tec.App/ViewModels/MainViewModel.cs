@@ -19,7 +19,7 @@ public sealed class MainViewModel : ViewModelBase
         Workspace = ws;
         Start = new StartViewModel(ws, this);
         Bench = new BenchViewModel(ws);
-        Recipe = new RecipeViewModel(ws);
+        Recipe = new RecipeViewModel(ws) { GoLibrary = () => Tab = TabLib };
         Library = new RecipeLibViewModel(ws, this);
         Compounds = new CompoundsViewModel();
         Run = new RunViewModel(ws);

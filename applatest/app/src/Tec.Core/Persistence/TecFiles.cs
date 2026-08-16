@@ -64,6 +64,7 @@ public static class TecFiles
                 Parameters = s.Parameters.Clone(),
                 Rows = s.Rows?.Select(x => x.Clone()).ToList(),
                 Enabled = s.Enabled,
+                PauseOnFault = s.PauseOnFault,
                 Comment = s.Comment
             });
         return doc;
@@ -147,6 +148,7 @@ public static class TecFiles
                 Parameters = s.Parameters.Clone(),
                 Rows = s.Rows?.Select(x => x.Clone()).ToList(),
                 Enabled = s.Enabled,
+                PauseOnFault = s.PauseOnFault,
                 Comment = s.Comment
             });
         }

@@ -277,8 +277,20 @@ public sealed class ChannelRunner
                 }
 
                 var iteration = loops.Count > 0 ? loops.Peek().Iteration : 1;
-                await ExecuteStepAsync(run, step, entry, planShift, iteration, ct).ConfigureAwait(false);
+                var done = await ExecuteStepAsync(run, step, entry, planShift, iteration, ct)
+                                 .ConfigureAwait(false);
                 pc++;
+
+                // 这一步没做成，接下来的步骤多半是建立在它做成了的前提上——
+                // 「升温失败了照样往下加料」是实打实的事故。默认停下来等人看一眼；
+                // 明确勾掉的（比如一条可有可无的采集）才继续跑
+                if (done.Status == StepStatus.Failed && step.PauseOnFault)
+                {
+                    Log(EventKind.Alarm,
+                        $"CH{Number} 第 {pc} 步「{done.Title}」失败，已暂停：{done.Note ?? "未说明原因"}",
+                        null);
+                    Pause();
+                }
             }
         }
         catch (OperationCanceledException)
@@ -345,8 +357,9 @@ public sealed class ChannelRunner
         };
     }
 
-    private async Task ExecuteStepAsync(ChannelRun run, Step step, ScheduleEntry? entry,
-                                        TimeSpan planShift, int iteration, CancellationToken ct)
+    /// <summary>跑一步，把这一步的记录还回去——主循环要按它的结果决定停不停。</summary>
+    private async Task<StepRecord> ExecuteStepAsync(ChannelRun run, Step step, ScheduleEntry? entry,
+                                                    TimeSpan planShift, int iteration, CancellationToken ct)
     {
         var known = _catalog.TryGet(step.CommandId, out var d);
         var input = new CommandInput(step.Parameters, step.Rows);
@@ -371,13 +384,13 @@ public sealed class ChannelRunner
         {
             _skipRequested = false;
             Finish(rec, EndReason.Skipped, StepStatus.Skipped);
-            return;
+            return rec;
         }
 
         if (!known)
         {
             Finish(rec, EndReason.Failed, StepStatus.Failed, "缺少驱动，已跳过");
-            return;
+            return rec;
         }
 
         // 2. 校验：参数是否仍在设备 Limits 内（设备可能被换过）
@@ -385,7 +398,7 @@ public sealed class ChannelRunner
         if (handler is null)
         {
             Finish(rec, EndReason.Failed, StepStatus.Failed, "该通道没有能执行此指令的设备");
-            return;
+            return rec;
         }
 
         // 3. 申请资源
@@ -401,7 +414,7 @@ public sealed class ChannelRunner
             if (lease is null)
             {
                 Finish(rec, EndReason.Failed, StepStatus.Failed, $"资源被占用：{need.ResourceId}");
-                return;
+                return rec;
             }
 
             var waited = _now() - waitBegan;
@@ -450,6 +463,7 @@ public sealed class ChannelRunner
         {
             lease?.Dispose();
         }
+        return rec;
     }
 
     private static StepStatus StatusOf(EndReason r) => r switch

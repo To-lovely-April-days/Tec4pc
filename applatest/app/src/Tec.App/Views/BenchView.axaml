@@ -129,7 +129,9 @@
     </Panel>
 
     <!-- 属性面板 -->
-    <Border Grid.Column="2" Background="{StaticResource ThemeGap}"
+    <!-- 属性面板底色 #ececec，与配方 / 配方库 / 导出的属性面板同一个值。
+         原型里这四处是同一套 .props 样式，白底会让它看着像另一个程序的窗口 -->
+    <Border Grid.Column="2" Background="#ececec"
             BorderBrush="#d2d2d2" BorderThickness="1,0,0,0">
       <DockPanel>
         <!-- 底部工具条：设备的动作都集中在这里，底色跟面板一致 -->
@@ -156,41 +158,9 @@
         <ScrollViewer>
           <StackPanel>
 
-            <!-- ===== Welcome 区：常驻，不随选中变化（GBG 的第一块） ===== -->
-            <Border Background="{StaticResource ThemeFill}" Padding="18,16,18,10">
-              <StackPanel>
-                <TextBlock Text="台面" FontSize="24" FontWeight="Light" Foreground="#333333"
-                           HorizontalAlignment="Center" Margin="0,0,0,8" />
-                <TextBlock Classes="intro" Margin="0,0,0,4"
-                           Text="从左侧设备库拖入设备组成台面。点选台面上的设备可编辑其连接与通道绑定；下表可独立启停每个通道。" />
-                <Button Classes="acc" Command="{Binding ToggleAdvanced}" Margin="0,6,0,0">
-                  <StackPanel Orientation="Horizontal" Spacing="8">
-                    <Border Classes="exp3" Classes.up="{Binding AdvancedOpen}">
-                      <ctl:TecIcon Key="ui-chev-down" Tint="#555555" />
-                    </Border>
-                    <TextBlock Text="高级设置" FontSize="11.5" Foreground="#3d3d3d" VerticalAlignment="Center" />
-                  </StackPanel>
-                </Button>
-                <StackPanel IsVisible="{Binding AdvancedOpen}" Margin="0,8,0,0">
-                  <Grid ColumnDefinitions="96,*,40" Margin="0,0,0,8">
-                    <TextBlock Grid.Column="0" Text="台面名称" FontSize="11.5" Foreground="#3d3d3d"
-                               VerticalAlignment="Center" Margin="0,0,10,0" />
-                    <TextBox Grid.Column="1" Classes="finput" Text="{Binding BenchName, Mode=TwoWay}" />
-                  </Grid>
-                  <Grid ColumnDefinitions="96,*,40">
-                    <TextBlock Grid.Column="0" Text="设备数" FontSize="11.5" Foreground="#3d3d3d"
-                               VerticalAlignment="Center" Margin="0,0,10,0" />
-                    <TextBox Grid.Column="1" Classes="finput" Text="{Binding DeviceCountText}" IsEnabled="False" />
-                  </Grid>
-                </StackPanel>
-              </StackPanel>
-            </Border>
-
-            <!-- Welcome 区与属性区之间是一道白缝，不是灰线 -->
-            <Panel Height="6" />
-
-            <!-- ===== 属性区 ===== -->
-            <Border Background="{StaticResource ThemeFill}" Padding="18,16,18,20">
+            <!-- 属性区。直接坐在 #ececec 上，不再套一层浅紫卡片——
+                 原型的属性面板是一整片平底，套卡片会让它看着像另一个程序的窗口 -->
+            <Border Background="Transparent" Padding="18,14,18,20">
             <StackPanel>
 
             <!-- h2：选中设备是「设备属性」，没选是「台面属性」（原型 renderProps 的两个分支） -->
@@ -200,6 +170,22 @@
             <TextBlock Text="台面属性" IsVisible="{Binding !HasSelection}"
                        FontSize="24" FontWeight="Light" Foreground="#333333"
                        HorizontalAlignment="Center" Margin="0,0,0,8" />
+
+            <!-- 没选设备时：台面自己的那点信息，直接摆出来 -->
+            <StackPanel IsVisible="{Binding !HasSelection}">
+              <TextBlock Classes="intro"
+                         Text="从左侧设备库拖入设备组成台面。点选台面上的设备可编辑其连接与通道绑定；下表可独立启停每个通道。" />
+              <Grid ColumnDefinitions="96,*" Margin="0,0,0,8">
+                <TextBlock Grid.Column="0" Text="台面名称" FontSize="11.5" Foreground="#3d3d3d"
+                           VerticalAlignment="Center" Margin="0,0,10,0" />
+                <TextBox Grid.Column="1" Classes="finput" Text="{Binding BenchName, Mode=TwoWay}" />
+              </Grid>
+              <Grid ColumnDefinitions="96,*" Margin="0,0,0,10">
+                <TextBlock Grid.Column="0" Text="设备数" FontSize="11.5" Foreground="#3d3d3d"
+                           VerticalAlignment="Center" Margin="0,0,10,0" />
+                <TextBox Grid.Column="1" Classes="finput" Text="{Binding DeviceCountText}" IsEnabled="False" />
+              </Grid>
+            </StackPanel>
 
             <!-- ===== 选中设备 ===== -->
             <StackPanel IsVisible="{Binding HasSelection}">

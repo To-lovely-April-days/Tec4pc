@@ -15,6 +15,12 @@ public sealed class Step
     /// <summary>多分段表：梯度控温、分段加料。</summary>
     public List<ParameterSet>? Rows { get; init; }
     public bool Enabled { get; set; } = true;
+    /// <summary>
+    /// 这一步失败了要不要停下来。默认停——后面的步骤多半建立在这一步做成了的前提上，
+    /// 「升温失败了照样往下加料」是实打实的事故。只有明确不要紧的步骤（一条可有可无的
+    /// 采集）才该关掉它。
+    /// </summary>
+    public bool PauseOnFault { get; set; } = true;
     public string? Comment { get; set; }
 
     public Step Clone() => new()
@@ -24,6 +30,7 @@ public sealed class Step
         Parameters = Parameters.Clone(),
         Rows = Rows?.Select(r => r.Clone()).ToList(),
         Enabled = Enabled,
+        PauseOnFault = PauseOnFault,
         Comment = Comment
     };
 }
@@ -75,6 +82,7 @@ public sealed class Recipe
                 Parameters = s.Parameters.Clone(),
                 Rows = s.Rows?.Select(x => x.Clone()).ToList(),
                 Enabled = s.Enabled,
+                PauseOnFault = s.PauseOnFault,
                 Comment = s.Comment
             });
         return r;
