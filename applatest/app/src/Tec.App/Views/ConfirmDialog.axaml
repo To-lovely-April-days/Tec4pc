@@ -1,0 +1,59 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Tec.App.Views.ConfirmDialog"
+        Width="500" SizeToContent="Height"
+        CanResize="False" ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="{StaticResource UiFont}" FontSize="12"
+        Foreground="#333333" Background="Transparent"
+        TransparencyLevelHint="Transparent"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaChromeHints="NoChrome"
+        ExtendClientAreaTitleBarHeightHint="-1"
+        KeyDown="OnKeyDown">
+
+  <!-- 与主窗口同一套外观：8px 圆角自绘 + 30px 深紫渐变标题栏 -->
+  <Border CornerRadius="8" ClipToBounds="True" Background="White"
+          BorderBrush="#c9c4d8" BorderThickness="1"
+          Margin="{Binding $parent[Window].OffScreenMargin}">
+    <DockPanel>
+
+      <Border DockPanel.Dock="Top" Height="30" PointerPressed="OnTitlebarPressed">
+        <Border.Background>
+          <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+            <GradientStop Color="#3c2d63" Offset="0" />
+            <GradientStop Color="#2f2350" Offset="1" />
+          </LinearGradientBrush>
+        </Border.Background>
+        <TextBlock Name="TitleText" Margin="14,0,0,0" VerticalAlignment="Center"
+                   Foreground="White" FontSize="12" Text="确认" />
+      </Border>
+
+      <!-- 底部按钮条：浅灰底 + 上细线，与导出页的操作条同款 -->
+      <Border DockPanel.Dock="Bottom" Background="#f4f4f4"
+              BorderBrush="#dcdcdc" BorderThickness="0,1,0,0" Padding="18,12">
+        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+          <Button Name="PrimaryBtn" Classes="btn primary" Click="OnPrimary" MinWidth="88" />
+          <Button Name="SecondaryBtn" Classes="btn" Click="OnSecondary" MinWidth="88" />
+          <Button Name="CancelBtn" Classes="btn" Click="OnCancel" MinWidth="88" />
+        </StackPanel>
+      </Border>
+
+      <StackPanel Orientation="Horizontal" Margin="24,22,24,22" Spacing="16">
+        <!-- 琥珀感叹号：不是报错，是提醒还有东西没存 -->
+        <Border Width="38" Height="38" CornerRadius="19" Background="#fdf3e2"
+                BorderBrush="#e8c98d" BorderThickness="1" VerticalAlignment="Top">
+          <TextBlock Text="!" FontSize="21" FontWeight="SemiBold" Foreground="#b8860b"
+                     HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Border>
+        <StackPanel Spacing="7" MaxWidth="388">
+          <TextBlock Name="MessageText" FontSize="14" Foreground="#2b2b2b"
+                     TextWrapping="Wrap" LineHeight="20" />
+          <TextBlock Name="DetailText" FontSize="11.5" Foreground="#7a7a7a"
+                     TextWrapping="Wrap" LineHeight="18" />
+        </StackPanel>
+      </StackPanel>
+
+    </DockPanel>
+  </Border>
+</Window>

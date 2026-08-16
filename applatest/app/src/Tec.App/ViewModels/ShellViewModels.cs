@@ -123,10 +123,11 @@ public sealed class StartViewModel : ViewModelBase
             Guarded(() => _store.ExportBench(path), $"台面已导出到 {path}");
         }));
 
+        // 走关窗那条路，不直接 Shutdown——否则绕开了「未保存的改动」这一问
         Quit = new RelayCommand(() =>
             (Avalonia.Application.Current?.ApplicationLifetime
                 as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime)
-                ?.Shutdown());
+                ?.MainWindow?.Close());
 
         OpenBench = new RelayCommand(() => shell.Tab = MainViewModel.TabBench);
         OpenExport = new RelayCommand(() => shell.Tab = MainViewModel.TabExport);
@@ -135,30 +136,40 @@ public sealed class StartViewModel : ViewModelBase
         Reload();
     }
 
-    private async Task SaveAsFlow()
+    private async Task<bool> SaveAsFlow()
     {
         var suggested = Workspace.ExperimentName;
-        if (await FileDialogs.SaveExperiment(suggested) is not { } path) return;
-        Guarded(() => _store.SaveAs(path), $"已保存到 {path}");
+        if (await FileDialogs.SaveExperiment(suggested) is not { } path) return false;
+        return Guarded(() => _store.SaveAs(path), $"已保存到 {path}");
+    }
+
+    /// <summary>
+    /// 退出前保存。返回 false 表示没存成（挑位置时取消了，或者写盘失败）——
+    /// 调用方看到 false 就该留在程序里，不能闷头关掉。
+    /// </summary>
+    public async Task<bool> SaveForExit()
+    {
+        if (_store.CurrentPath is null) return await SaveAsFlow();
+        return Guarded(_store.Save, $"已保存到 {_store.CurrentPath}");
     }
 
     /// <summary>
     /// 文件操作一律兜住异常，把 TecFileException 那句人话原样显示。
     /// 抛到 Avalonia 的默认处理里就是整个窗口挂掉。
     /// </summary>
-    private void Guarded(Action act, string okText)
+    private bool Guarded(Action act, string okText)
     {
-        try { act(); Status = okText; }
+        try { act(); Status = okText; return true; }
         catch (TecFileException ex) { Status = ex.Message; }
         catch (Exception ex) { Status = "出错了：" + ex.Message; }
+        return false;
     }
 
     /// <summary>
-    /// 打开 / 新建 / 导入台面要等驱动开完会话，全程 await——
-    /// 早先这里是阻塞等的，台面上已经有设备时会把界面线程和驱动的收尾
-    /// 互相锁住，点「打开」就整个卡死。
+    /// 打开 / 新建 / 导入台面要等驱动开完会话，全程 await——早先这里是阻塞等的，
+    /// 台面上已经有设备时会把界面线程和驱动的收尾互相锁住，点「打开」就整个卡死。
+    /// 返回 true 表示这一步真的成了；失败时不该继续往下跳视图。
     /// </summary>
-    /// <summary>返回 true 表示这一步真的成了。失败时不该继续往下跳视图。</summary>
     private async Task<bool> GuardedAsync(Func<Task> act, string okText)
     {
         try { await act(); Status = okText; return true; }
