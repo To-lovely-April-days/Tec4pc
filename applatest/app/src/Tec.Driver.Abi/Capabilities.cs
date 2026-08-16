@@ -53,6 +53,55 @@ public interface ITemperatureControl : ICapability
     IObservable<Sample> Temperature { get; }
 }
 
+/// <summary>自整定当前的状态。</summary>
+public enum TuningState { Idle, Running, Succeeded, Failed, Cancelled }
+
+/// <summary>一组 PID 参数。整定出来的、手填的，都是这个形状。</summary>
+public sealed record PidTuning(double Kp, double Ki, double Kd)
+{
+    public override string ToString() => $"Kp={Kp:F3} Ki={Ki:F4} Kd={Kd:F3}";
+}
+
+/// <summary>自整定的结果。失败时 Gains 为 null，Reason 说明为什么。</summary>
+public sealed record TuningOutcome(bool Success, PidTuning? Gains, string? Reason)
+{
+    /// <summary>整定时的工作点（℃）。同一台设备不同温度段的参数不一样，得记住是在哪儿整的。</summary>
+    public double? SetpointC { get; init; }
+    /// <summary>整的是釜内环（串级外环）还是夹套环。</summary>
+    public TempChannelKind Kind { get; init; } = TempChannelKind.Jacket;
+}
+
+/// <summary>
+/// PID 整定与控制策略。**它不是配方指令**——自整定要激起温度振荡，
+/// 是设备调试 / 维护动作，属于手动控制面板，不该出现在配方的步骤库里：
+/// 谁也不希望一条配方跑到一半自己去整定一遍。
+///
+/// 设备支持就实现，不支持就不提供这个能力，界面据此决定要不要显示整定入口（§3.2）。
+/// </summary>
+public interface ITemperatureTuning : ICapability
+{
+    /// <summary>釜内 Tr（串级）还是夹套 Tj（单环）。配方里的「釜内控温 / 夹套控温」也走它。</summary>
+    TempChannelKind Strategy { get; }
+    Task SetStrategyAsync(TempChannelKind kind, CancellationToken ct);
+
+    /// <summary>当前生效的参数。串级时 Kind=Reactor 取外环、Jacket 取内环。</summary>
+    PidTuning GetGains(TempChannelKind kind);
+    Task SetGainsAsync(TempChannelKind kind, PidTuning gains, CancellationToken ct);
+
+    TuningState TuningState { get; }
+    /// <summary>整定进度的粗略描述，给界面显示用（「正在寻找振荡」「第 3 个周期」…）。</summary>
+    string TuningNote { get; }
+    event EventHandler<TuningOutcome>? TuningFinished;
+
+    /// <summary>
+    /// 启动继电器法自整定。会在设定值附近激起小幅振荡——**必须由人在场发起**，
+    /// 所以只从控制面板调用，绝不由配方触发。
+    /// </summary>
+    Task StartTuningAsync(double setpointC, TempChannelKind kind, CancellationToken ct);
+
+    Task CancelTuningAsync(CancellationToken ct);
+}
+
 public interface IStirrer : ICapability
 {
     SpeedLimits Limits { get; }

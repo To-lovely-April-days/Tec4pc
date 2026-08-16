@@ -37,7 +37,7 @@ public sealed class Rd105TecDriver : IDeviceDriver
         SimulatorIncluded = false,
         IconKey = "reactor2",
         Description = "真机：RD105 ASCII 协议。一台温控器带一个反应通道——TC1 测釜内 Tr，TC2 测夹套 Tj。",
-        Capabilities = new[] { nameof(ITemperatureControl) }
+        Capabilities = new[] { nameof(ITemperatureControl), nameof(ITemperatureTuning) }
     };
 
     public ParameterSchema ConnectionSchema { get; } = new(new[]

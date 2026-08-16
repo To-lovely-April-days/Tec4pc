@@ -144,7 +144,9 @@ public sealed class Rd105TecDriverTests
         // TC1 与 TC2 是同一个反应通道的两个温度（釜内与夹套），不是两个反应通道
         Assert.Equal(1, driver.Info.ChannelsPerDevice);
         Assert.Equal(1, session.WellCount);
-        Assert.Single(session.CapabilitiesOf(0));
+        // 这一个孔位上挂着控温与整定两项能力
+        Assert.Single(session.CapabilitiesOf(0).OfType<ITemperatureControl>());
+        Assert.Single(session.CapabilitiesOf(0).OfType<ITemperatureTuning>());
         Assert.Empty(session.CapabilitiesOf(1));
     }
 
@@ -365,6 +367,100 @@ public sealed class Rd105TecDriverTests
 
         Assert.Equal(DeviceState.Ready, session.State);   // 停之前断言：StopAsync 会收回 Connected
         await session.StopAsync(CancellationToken.None);
+    }
+
+    // ── 自整定与控制策略 ────────────────────────────────────────────
+
+    private static ITemperatureTuning Tuning(IDeviceSession session)
+        => session.CapabilitiesOf(0).OfType<ITemperatureTuning>().Single();
+
+    [Fact]
+    public void 自整定不在配方指令库里()
+    {
+        var (driver, _) = Rig();
+
+        // 自整定要激起温度振荡，是调试 / 维护动作，必须有人在场发起。
+        // 它出现在配方步骤库里就意味着一条配方可能跑到一半自己去整定一遍
+        Assert.DoesNotContain(driver.Commands,
+            c => c.DisplayName.Contains("整定") || c.Id.Contains("tune"));
+        Assert.DoesNotContain(CommandSpecs.Temperature,
+            c => c.DisplayName.Contains("整定") || c.Id.Contains("tune"));
+    }
+
+    [Fact]
+    public async Task 整定能力作为设备能力暴露出来()
+    {
+        var (driver, _) = Rig();
+        await using var session = await driver.OpenAsync(Conn(), Ctx(), CancellationToken.None);
+
+        // 界面据此决定要不要显示整定入口：设备支持才有，不支持就没有
+        var tuning = Tuning(session);
+        Assert.Equal(1, tuning.Channel);
+        Assert.Equal(TuningState.Idle, tuning.TuningState);
+        Assert.Contains(nameof(ITemperatureTuning), driver.Info.Capabilities);
+    }
+
+    [Fact]
+    public async Task 釜内走串级夹套走单环()
+    {
+        var (driver, _) = Rig();
+        await using var session = await driver.OpenAsync(Conn(), Ctx(), CancellationToken.None);
+        var tuning = Tuning(session);
+
+        await tuning.SetStrategyAsync(TempChannelKind.Reactor, CancellationToken.None);
+        Assert.Equal(TempChannelKind.Reactor, tuning.Strategy);
+
+        await tuning.SetStrategyAsync(TempChannelKind.Jacket, CancellationToken.None);
+        Assert.Equal(TempChannelKind.Jacket, tuning.Strategy);
+    }
+
+    [Fact]
+    public async Task 整定进行中不许再启动一次()
+    {
+        var (driver, _) = Rig();
+        await using var session = await driver.OpenAsync(Conn(), Ctx(), CancellationToken.None);
+        var tuning = Tuning(session);
+
+        await tuning.StartTuningAsync(30, TempChannelKind.Jacket, CancellationToken.None);
+        Assert.Equal(TuningState.Running, tuning.TuningState);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => tuning.StartTuningAsync(40, TempChannelKind.Jacket, CancellationToken.None));
+
+        await tuning.CancelTuningAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task 取消整定回到可用并通知调用方()
+    {
+        var (driver, _) = Rig();
+        await using var session = await driver.OpenAsync(Conn(), Ctx(), CancellationToken.None);
+        var tuning = Tuning(session);
+
+        TuningOutcome? got = null;
+        tuning.TuningFinished += (_, o) => got = o;
+
+        await tuning.StartTuningAsync(30, TempChannelKind.Jacket, CancellationToken.None);
+        await tuning.CancelTuningAsync(CancellationToken.None);
+
+        Assert.Equal(TuningState.Cancelled, tuning.TuningState);
+        Assert.NotNull(got);
+        Assert.False(got!.Success);
+        Assert.Contains("取消", got.Reason!);
+    }
+
+    [Fact]
+    public async Task 手填的参数写得进去()
+    {
+        var (driver, _) = Rig();
+        await using var session = await driver.OpenAsync(Conn(), Ctx(), CancellationToken.None);
+        var tuning = Tuning(session);
+
+        // 整定不出来时得能手填——现场总有整定失败又必须开工的时候
+        await tuning.SetGainsAsync(TempChannelKind.Jacket, new PidTuning(2.5, 0.02, 12),
+                                   CancellationToken.None);
+        await tuning.SetGainsAsync(TempChannelKind.Reactor, new PidTuning(0.8, 0.001, 30),
+                                   CancellationToken.None);
     }
 
     private sealed class Collect(Action<Sample> onNext) : IObserver<Sample>

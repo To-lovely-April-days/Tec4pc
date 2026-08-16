@@ -1,3 +1,4 @@
+using TecControl.Core.Control;
 using TecControl.Core.Models;
 using TecControl.Core.Protocol;
 using Tec.Driver.Abi;
@@ -18,6 +19,8 @@ internal sealed class Rd105Session : IDeviceSession
     private readonly DriverContext _ctx;
     private readonly Broadcast<Sample> _out = new();
     private readonly Rd105TemperatureControl _temp;
+    private readonly HostControlLoop _loop;
+    private readonly Rd105Tuning _tuning;
     private readonly TimeSpan _period;
     private DeviceState _state = DeviceState.Connected;
     private TecErrorCode _fault = TecErrorCode.None;
@@ -31,6 +34,12 @@ internal sealed class Rd105Session : IDeviceSession
 
         var ch = ctx.ChannelNumbers.Count > 0 ? ctx.ChannelNumbers[0] : 0;
         _temp = new Rd105TemperatureControl(ch, link, ctx.Config, _out);
+
+        // 主机侧控制环：串级（Tr 外环 / Tj 内环）、继电器法自整定、增益调度都在它里面。
+        // 这里只建不启——控温照旧走温控器自己的 PID，只有整定与串级才用得上它，
+        // 免得没整定过的现场一上来就被主机环接管。
+        _loop = new HostControlLoop(link.Controller) { Period = _period };
+        _tuning = new Rd105Tuning(ch, _loop, (lvl, text) => ctx.Log?.Invoke(lvl, text));
 
         _link.Controller.SnapshotReceived += OnSnapshot;
         _link.Controller.ErrorCodeReceived += OnErrorCode;
@@ -75,7 +84,7 @@ internal sealed class Rd105Session : IDeviceSession
     };
 
     public IReadOnlyList<ICapability> CapabilitiesOf(int well)
-        => well == 0 ? new ICapability[] { _temp } : Array.Empty<ICapability>();
+        => well == 0 ? new ICapability[] { _temp, _tuning } : Array.Empty<ICapability>();
 
     public ICommandHandler? Resolve(string commandId) => _temp.Resolve(commandId);
 
@@ -170,6 +179,9 @@ internal sealed class Rd105Session : IDeviceSession
         _link.Controller.SnapshotReceived -= OnSnapshot;
         _link.Controller.ErrorCodeReceived -= OnErrorCode;
         _link.Controller.PollFaulted -= OnFaulted;
+        _tuning.Detach();
+        try { await _loop.ShutdownAsync().ConfigureAwait(false); } catch { }
+        _loop.Dispose();
         await StopAsync(CancellationToken.None).ConfigureAwait(false);
         _out.Complete();
         _link.Dispose();
