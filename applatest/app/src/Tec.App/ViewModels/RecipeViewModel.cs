@@ -3,6 +3,7 @@ using Tec.App.Services;
 using Tec.Core;
 using Tec.Core.Benches;
 using Tec.Core.Catalog;
+using Tec.Core.Persistence;
 using Tec.Core.Recipes;
 using Tec.Core.Scheduling;
 using Tec.Driver.Abi;
@@ -85,6 +86,19 @@ public sealed class StepViewModel : ViewModelBase
 
     public int Ordinal { get; }
     public Step Step { get; }
+
+    /// <summary>
+    /// 这一步套在几层循环里。循环开始 / 结束行自己算外层——
+    /// 卡片按它缩进，一眼看得出哪几步是循环体。
+    /// </summary>
+    public int Depth { get; init; }
+
+    /// <summary>每一层画一条竖线。0 层就是空表，版面跟原来一样。</summary>
+    public IReadOnlyList<int> Spines => Enumerable.Range(0, Depth).ToList();
+
+    /// <summary>卡片宽度让出缩进，泳道整体还是 270，四条泳道对得齐。</summary>
+    public double CardWidth => 270 - Depth * 14;
+
     public ScheduleEntry Entry { get; }
     public CommandDescriptor? Descriptor { get; }
 
@@ -261,6 +275,9 @@ public sealed class RecipeViewModel : ViewModelBase
         SaveToLib = new RelayCommand(DoSaveToLib);
         NewRecipe = new RelayCommand(DoNew);
         ManageLibrary = new RelayCommand(() => GoLibrary?.Invoke());
+        ImportRecipe = new RelayCommand(() => _ = DoImportAsync());
+        ExportRecipe = new RelayCommand(() => _ = DoExportAsync());
+        PickIssue = new RelayCommand(p => { if (p is IssueRow r) SelectIssue(r); });
         Undo = new RelayCommand(DoUndo);
         Redo = new RelayCommand(DoRedo);
 
@@ -331,6 +348,29 @@ public sealed class RecipeViewModel : ViewModelBase
     public ObservableCollection<CopyTargetOption> CopyTargets { get; } = new();
     public ObservableCollection<ValidationIssue> Issues { get; } = new();
 
+    /// <summary>
+    /// 校验结果里要摆到界面上的那些。Info 级的「预计总时长」不算问题，
+    /// 单独走 TotalNote——把它混进问题清单，操作人会以为配方有毛病。
+    /// </summary>
+    public ObservableCollection<IssueRow> Problems { get; } = new();
+
+    public bool HasProblems => Problems.Count > 0;
+
+    /// <summary>「2 个错误 · 1 个提醒」。错误一个都不能剩，提醒可以自己判断。</summary>
+    public string ProblemSummary
+    {
+        get
+        {
+            var err = Problems.Count(p => p.IsError);
+            var warn = Problems.Count - err;
+            if (err > 0 && warn > 0) return $"{err} 个错误 · {warn} 个提醒";
+            return err > 0 ? $"{err} 个错误" : $"{warn} 个提醒";
+        }
+    }
+
+    /// <summary>预计总时长那一句。没有问题时它就是这条配方唯一的"体检结论"。</summary>
+    public string TotalNote { get; private set; } = "";
+
     public RelayCommand AddStep { get; }
     public RelayCommand RemoveStep { get; }
     public RelayCommand CopyRecipe { get; }
@@ -338,6 +378,31 @@ public sealed class RecipeViewModel : ViewModelBase
     public RelayCommand SaveToLib { get; }
     public RelayCommand NewRecipe { get; }
     public RelayCommand ManageLibrary { get; }
+    public RelayCommand ImportRecipe { get; }
+    public RelayCommand ExportRecipe { get; }
+    public RelayCommand PickIssue { get; }
+
+    /// <summary>导入 / 导出的结果说给操作人听。由外壳接到开始页的状态行上。</summary>
+    public Action<string>? Say { get; set; }
+
+    /// <summary>
+    /// 同一句话也写在配方页的工具条右边——人在配方页操作，结果只写到开始页
+    /// 那条状态行上，他是看不见的。
+    /// </summary>
+    private string _note = "";
+    public string Note
+    {
+        get => _note;
+        private set { if (Set(ref _note, value)) Raise(nameof(HasNote)); }
+    }
+
+    public bool HasNote => _note.Length > 0;
+
+    private void Tell(string text)
+    {
+        Note = text;
+        Say?.Invoke(text);
+    }
 
     // 右栏三个可折叠小节。默认都展开——这是常用面板，一进来就该看得见
     public SectionViewModel ExecSection { get; } = new();
@@ -750,6 +815,56 @@ public sealed class RecipeViewModel : ViewModelBase
         RefreshAll();
     }
 
+    // ── 配方文件的导入 / 导出 ────────────────────────────────────────
+
+    /// <summary>
+    /// 导入一份 .tecrecipe 到当前通道。整份替换——「导入」不是「合并」，
+    /// 合并出来的步骤顺序没人说得清。替换前记一笔，撤销能拉回来。
+    /// </summary>
+    private async Task DoImportAsync()
+    {
+        if (NoLanes) { Tell("台面上还没有通道，先去「台面」摆一台反应器。"); return; }
+        if (await FileDialogs.OpenRecipe() is not { } path) return;
+        try
+        {
+            var recipe = TecFiles.LoadRecipe(path).ToModel(out var migrated);
+            Record();
+            Workspace.ChannelRecipes[_curCh] = recipe;
+            Workspace.LaneNames[_curCh] = recipe.Name;
+            SelectedStep = null;
+            Workspace.Store.MarkDirty();
+            RefreshAll();
+            var note = migrated.Count > 0 ? $"，其中 {migrated.Count} 步用的是旧指令，已转换" : "";
+            Tell($"已把「{recipe.Name}」导入 {LabelOf(_curCh)}（{recipe.Steps.Count} 步）{note}");
+        }
+        catch (TecFileException ex) { Tell(ex.Message); }
+        catch (Exception ex) { Tell("导入失败：" + ex.Message); }
+    }
+
+    private async Task DoExportAsync()
+    {
+        if (NoLanes) return;
+        var name = Workspace.LaneNames.TryGetValue(_curCh, out var n) ? n : "配方";
+        if (await FileDialogs.SaveRecipe(name) is not { } path) return;
+        try
+        {
+            var copy = Current.Snapshot();
+            copy.Name = name;
+            TecFiles.SaveRecipe(path, copy.ToDoc());
+            Tell($"配方已导出到 {path}");
+        }
+        catch (Exception ex) { Tell("导出失败：" + ex.Message); }
+    }
+
+    /// <summary>点校验条里的一条，跳到出问题的那一步。</summary>
+    private void SelectIssue(IssueRow row)
+    {
+        if (row.Issue.StepIndex is not { } i) return;
+        var lane = Lanes.FirstOrDefault(l => l.Channel == _curCh);
+        if (lane is null || i < 0 || i >= lane.Steps.Count) return;
+        SelectedStep = lane.Steps[i];
+    }
+
     // ── 刷新 ─────────────────────────────────────────────────────────
 
     public void RefreshAll()
@@ -763,10 +878,16 @@ public sealed class RecipeViewModel : ViewModelBase
             lane.Steps.Clear();
             if (!Workspace.ChannelRecipes.TryGetValue(lane.Channel, out var recipe)) continue;
             var plan = Schedule.Build(recipe, Workspace.Catalog);
+            var depth = 0;
             for (var i = 0; i < recipe.Steps.Count; i++)
             {
-                Workspace.Catalog.TryGet(recipe.Steps[i].CommandId, out var d);
-                lane.Steps.Add(new StepViewModel(i + 1, recipe.Steps[i], plan.Entries[i], d));
+                var step = recipe.Steps[i];
+                Workspace.Catalog.TryGet(step.CommandId, out var d);
+
+                // 循环结束行先退一层再画，它跟循环开始行才对得齐
+                if (BuiltinCommands.IsLoopEnd(step.CommandId)) depth = Math.Max(0, depth - 1);
+                lane.Steps.Add(new StepViewModel(i + 1, step, plan.Entries[i], d) { Depth = depth });
+                if (BuiltinCommands.IsLoopBegin(step.CommandId)) depth++;
             }
         }
 
@@ -778,11 +899,20 @@ public sealed class RecipeViewModel : ViewModelBase
         Raise(nameof(CopyTarget));
 
         Issues.Clear();
+        Problems.Clear();
+        TotalNote = "";
         foreach (var i in RecipeValidator.Validate(Current, Workspace.Catalog, Workspace.ChannelOf(_curCh)))
+        {
             Issues.Add(i);
+            // 「预计总时长」不是问题，别混进问题清单吓人
+            if (i.Code == "duration") { TotalNote = i.Message; continue; }
+            if (i.Level == IssueLevel.Info) continue;
+            Problems.Add(new IssueRow(i));
+        }
 
         RaiseAll(nameof(CurName), nameof(ChannelStates), nameof(HasLanes), nameof(NoLanes), nameof(CurLane),
-                 nameof(CanUndo), nameof(CanRedo));
+                 nameof(CanUndo), nameof(CanRedo), nameof(HasProblems), nameof(ProblemSummary),
+                 nameof(TotalNote));
     }
 
     /// <summary>
@@ -878,6 +1008,19 @@ public sealed record ChannelStateRow(
     public string State => !Enabled ? "已停用"
         : !HasLane ? "未建标签"
         : StepCount > 0 ? $"{StepCount} 步" : "空配方";
+}
+
+/// <summary>
+/// 校验条里的一行。校验器一直在跑，结果以前直接扔了——
+/// 「跑到一半才报错」正是它要避免的事，不显示等于白跑。
+/// </summary>
+public sealed record IssueRow(ValidationIssue Issue)
+{
+    public bool IsError => Issue.Level == IssueLevel.Error;
+    public string Text => Issue.Message;
+    public string Dot => IsError ? "#c62828" : "#c98a00";
+    /// <summary>能定位到具体某一步的才可点。</summary>
+    public bool CanGo => Issue.StepIndex is not null;
 }
 
 /// <summary>

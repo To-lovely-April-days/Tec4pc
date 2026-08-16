@@ -90,6 +90,18 @@
                   Command="{Binding Redo}" IsEnabled="{Binding CanRedo}">
             <ctl:TecIcon Key="ui-bar-redo" />
           </Button>
+          <Border Width="1" Height="20" Background="#dcdcdc" Margin="4,0" />
+          <Button Classes="tbtn sm" ToolTip.Tip="导入配方文件到当前通道（.tecrecipe）"
+                  Command="{Binding ImportRecipe}" IsEnabled="{Binding HasLanes}">
+            <ctl:TecIcon Key="ui-snav-import" />
+          </Button>
+          <Button Classes="tbtn sm" ToolTip.Tip="把当前通道的配方导出成文件（.tecrecipe）"
+                  Command="{Binding ExportRecipe}" IsEnabled="{Binding HasLanes}">
+            <ctl:TecIcon Key="ui-snav-export" />
+          </Button>
+          <TextBlock Text="{Binding Note}" IsVisible="{Binding HasNote}" FontSize="11"
+                     Foreground="#7a7a7a" VerticalAlignment="Center" Margin="6,0,0,0"
+                     TextTrimming="CharacterEllipsis" MaxWidth="360" />
         </StackPanel>
       </Border>
 
@@ -111,6 +123,35 @@
           <Button Classes="btn primary" Content="一键复制" Command="{Binding CopyRecipe}" />
           <TextBlock Text="各通道配方可独立编辑，互不影响" FontSize="12" Foreground="#9a9a9a"
                      VerticalAlignment="Center" />
+        </StackPanel>
+      </Border>
+
+      <!-- 校验条：有问题才出现。校验器一直在跑，以前结果直接扔了 -->
+      <Border DockPanel.Dock="Top" Background="#fdf6f5" BorderBrush="#f0d8d4"
+              BorderThickness="0,0,0,1" Padding="14,7" IsVisible="{Binding HasProblems}">
+        <StackPanel Spacing="4">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="配方校验" FontSize="11.5" Foreground="#3d3d3d" VerticalAlignment="Center" />
+            <TextBlock Text="{Binding ProblemSummary}" FontSize="11.5" FontWeight="SemiBold"
+                       Foreground="#c62828" VerticalAlignment="Center" />
+            <TextBlock Text="{Binding TotalNote}" FontSize="11" Foreground="#9a9a9a"
+                       VerticalAlignment="Center" />
+          </StackPanel>
+          <ItemsControl ItemsSource="{Binding Problems}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Button Classes="issue" Command="{Binding $parent[UserControl].DataContext.PickIssue}"
+                        CommandParameter="{Binding}" IsEnabled="{Binding CanGo}">
+                  <StackPanel Orientation="Horizontal" Spacing="7">
+                    <Border Width="7" Height="7" CornerRadius="4" VerticalAlignment="Center"
+                            Background="{Binding Dot}" />
+                    <TextBlock Text="{Binding Text}" FontSize="11.5" Foreground="#3d3d3d"
+                               TextWrapping="Wrap" />
+                  </StackPanel>
+                </Button>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
         </StackPanel>
       </Border>
 
@@ -186,8 +227,23 @@
                                         VerticalAlignment="Center"
                                         IsVisible="{Binding DropBefore}" />
                               </Panel>
+                              <!-- 循环体缩进：每套一层让出 14px，并在让出的位置画一条竖线。
+                                   泳道整体仍是 270 宽，四条泳道对得齐 -->
+                              <StackPanel Orientation="Horizontal" Width="270">
+                              <ItemsControl ItemsSource="{Binding Spines}">
+                                <ItemsControl.ItemsPanel>
+                                  <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                  <DataTemplate>
+                                    <Panel Width="14">
+                                      <Border Width="2" Background="#c9ced3" HorizontalAlignment="Center" />
+                                    </Panel>
+                                  </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                              </ItemsControl>
                               <!-- .step 卡片 -->
-                              <Border Width="270" Background="White" BorderBrush="#d3dae0"
+                              <Border Width="{Binding CardWidth}" Background="White" BorderBrush="#d3dae0"
                                       BorderThickness="1" CornerRadius="4" Cursor="Hand"
                                       Tag="stepcard"
                                       Classes.stepSel="{Binding IsSelected}"
@@ -228,6 +284,7 @@
                                   </Border>
                                 </StackPanel>
                               </Border>
+                              </StackPanel>
                             </StackPanel>
                           </DataTemplate>
                         </ItemsControl.ItemTemplate>
@@ -462,6 +519,24 @@
       <Setter Property="Background" Value="White" />
       <Setter Property="BoxShadow" Value="0 0 0 3 #381a7fc4, 0 2 10 0 #12000000" />
     </Style>
+    <!-- 校验条里的一条：整行可点，跳到出问题的那一步 -->
+    <Style Selector="Button.issue">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0,2" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Left" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.issue:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#f7e7e4" />
+    </Style>
+    <Style Selector="Button.issue:disabled">
+      <Setter Property="Cursor" Value="Arrow" />
+      <Setter Property="Opacity" Value="1" />
+    </Style>
+
     <!-- 圆圈箭头：展开朝上、收起朝下 -->
     <Style Selector="Border.exp3">
       <Setter Property="Width" Value="20" />

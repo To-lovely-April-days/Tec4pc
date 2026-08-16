@@ -20,6 +20,8 @@ public sealed class MainViewModel : ViewModelBase
         Start = new StartViewModel(ws, this);
         Bench = new BenchViewModel(ws);
         Recipe = new RecipeViewModel(ws) { GoLibrary = () => Tab = TabLib };
+        // 配方页的导入 / 导出结果说到开始页那条状态行上，与打开 / 保存实验同一个位置
+        Recipe.Say = text => Start.Status = text;
         Library = new RecipeLibViewModel(ws, this);
         Compounds = new CompoundsViewModel();
         Run = new RunViewModel(ws);
