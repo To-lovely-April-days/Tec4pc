@@ -14,6 +14,9 @@ public enum EventKind
     Resumed,
     ParameterChanged,
     StepSkipped,
+    /// <summary>中止收尾时驱动把设备收到安全态做的事（切加热、停泵…）。
+    /// 「停的那一刻机器被动了什么」必须留下，这是 GLP 追得到的一环。</summary>
+    SafeStop,
     /// <summary>通道被中止（操作人停的、安全层停的）。
     /// 从前它走 Note，界面把 Note 过滤掉了，于是「谁在什么时候停了这一路」
     /// 在执行记录里根本查不到——那正是 GLP 最该留下的一条。</summary>

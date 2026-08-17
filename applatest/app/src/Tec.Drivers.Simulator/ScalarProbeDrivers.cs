@@ -91,6 +91,15 @@ internal sealed class ScalarSession : SimSession
         .Add(CommandSpecs.Infrared, () => new SampleHandler("ir"));
 
     public override ICommandHandler? Resolve(string commandId) => Table.Resolve(commandId);
+
+    /// <summary>
+    /// 探头没有输出可关：它只是在读数。中止之后**照读不误**——
+    /// 釜里还是热的，停下来那段的 pH / 浊度正是最该留下的一段。
+    /// 返回空表（而不是 null）是在说「实现了，确实没什么可停的」，
+    /// 界面就不会为它写一句「输出保持原样」。
+    /// </summary>
+    public override ValueTask<IReadOnlyList<string>?> SafeStopAsync(int well, CancellationToken ct)
+        => ValueTask.FromResult<IReadOnlyList<string>?>(Array.Empty<string>());
 }
 
 internal sealed class ScalarImpl : IScalarSensor

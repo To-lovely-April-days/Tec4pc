@@ -86,4 +86,24 @@ public interface IDeviceSession : IAsyncDisposable
 
     Task StartAsync(CancellationToken ct);
     Task StopAsync(CancellationToken ct);
+
+    /// <summary>
+    /// 把这台设备在**这一路**上的输出收到安全态。通道被中止时调它——
+    /// 操作人按了停止、安全联锁触发、执行出错，都算。
+    ///
+    /// 中止本身只是取消配方的执行循环，机器不会因此停下来：温控器还守着最后
+    /// 那个设定值，泵还在打。**该关什么、能不能关，只有驱动自己知道**——
+    /// 一台反应器该切加热但多半要保住搅拌（热液不搅局部过热），一支 pH 探头
+    /// 压根没什么可停的。所以这件事归驱动，Core 不替它假定（§核心架构 §1）。
+    ///
+    /// 返回值进执行记录，GLP 要答得出「停的那一刻机器被动了什么」：
+    ///   · null   = 这个驱动没实现停机动作。界面照实说出来，不假装停干净了
+    ///   · 空表   = 实现了，但这台设备在这一路上确实没什么可停的
+    ///   · 有内容 = 逐条记下来（「已切断加热输出」「加料泵已停，本步已加 12.4 mL」）
+    ///
+    /// 只在**非正常结束**时调用。正常跑完不调：收尾状态是配方作者定的
+    /// （降温结晶跑完就该保持在 5 ℃ 过夜，替他关掉才是帮倒忙）。
+    /// </summary>
+    ValueTask<IReadOnlyList<string>?> SafeStopAsync(int well, CancellationToken ct)
+        => ValueTask.FromResult<IReadOnlyList<string>?>(null);
 }

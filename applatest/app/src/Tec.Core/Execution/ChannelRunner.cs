@@ -348,11 +348,56 @@ public sealed class ChannelRunner
             run.State = faulted ? ChannelRunState.Faulted
                 : _cts is { IsCancellationRequested: true } ? ChannelRunState.Aborted
                 : ChannelRunState.Completed;
+
+            // 非正常结束才把设备收到安全态。中止只取消了配方的执行循环，
+            // 机器不会因此停下来——温控器还守着最后那个设定值，泵还在打。
+            // 正常跑完不动它：收尾状态是配方作者定的（降温结晶跑完就该保持在 5 ℃）
+            if (run.State != ChannelRunState.Completed) await SafeStopAsync(run).ConfigureAwait(false);
+
             // 中止过的通道回到 Idle，好让操作人再起一趟（记录里是新的一条，不覆盖旧的）
             State = run.State == ChannelRunState.Aborted ? ChannelRunState.Idle : run.State;
             Log(EventKind.ChannelFinished,
                 $"结束：{RunStateWords.Of(run.State)}，用时 {Fmt.Hms(run.Elapsed(_now()))}", Operator);
             Raise();
+        }
+    }
+
+    /// <summary>停机收尾能等多久。真机不响应时不能把收尾卡死在这儿。</summary>
+    private static readonly TimeSpan SafeStopBudget = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// 挨个问这一路上的设备：把你在这一路的输出收到安全态。
+    /// **该关什么归驱动说**，Core 不认识具体设备（§核心架构 §1）。
+    /// 做了什么逐条进记录——GLP 要答得出「停的那一刻机器被动了什么」。
+    ///
+    /// 这里**不用** _cts：它刚刚才被 Cancel，拿它去停设备等于一条指令都发不出去。
+    /// 单开一个带预算的令牌，某台设备不响应也不能把别的几台拖住。
+    /// </summary>
+    private async Task SafeStopAsync(ChannelRun run)
+    {
+        using var cts = new CancellationTokenSource(SafeStopBudget);
+        foreach (var a in _channel.Attachments)
+        {
+            IReadOnlyList<string>? did;
+            try
+            {
+                did = await a.Session.SafeStopAsync(a.Well, cts.Token).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                // 停不下来是最该留痕的一种情况：机器还开着，而且没人知道
+                Log(EventKind.SafeStop, $"{a.Session.InstanceId} 停机失败：{ex.Message}", null);
+                continue;
+            }
+
+            if (did is null)
+            {
+                // 驱动没实现。不假装停干净了——现场得知道这台还开着
+                Log(EventKind.SafeStop, $"{a.Session.InstanceId} 未声明停机动作，输出保持原样", null);
+                continue;
+            }
+            foreach (var line in did)
+                Log(EventKind.SafeStop, $"{a.Session.InstanceId} {line}", null);
         }
     }
 

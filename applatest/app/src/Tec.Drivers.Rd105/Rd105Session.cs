@@ -112,6 +112,20 @@ internal sealed class Rd105Session : IDeviceSession
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// 中止收尾：**关加热输出，轮询照旧。**
+    ///
+    /// 关输出是这台温控器唯一该做也做得到的事——它只管温度，没有搅拌、没有泵。
+    /// 轮询不停：釜里还是热的，停下来之后那段自然降温曲线照样要记，
+    /// 不然记录在最需要它的那一刻断了。
+    /// </summary>
+    public async ValueTask<IReadOnlyList<string>?> SafeStopAsync(int well, CancellationToken ct)
+    {
+        if (well != 0) return Array.Empty<string>();
+        await _temp.StopAsync(ct).ConfigureAwait(false);
+        return new[] { $"已关闭加热输出（停在 {_temp.CurrentReactor:F1} ℃，此后自然冷却；采集不停）" };
+    }
+
     private void OnSnapshot(TecSnapshot s)
     {
         var at = DateTimeOffset.Now;

@@ -642,6 +642,29 @@ public sealed class RunViewModel : ViewModelBase
 
     private DateTimeOffset BatchStart => _ws.Engine.Record.FirstStart ?? _ws.Clock.Now;
 
+    /// <summary>
+    /// 时间轴上的「现在」。**全部结束之后停在最后一路收尾那一刻**，不再跟着墙钟走。
+    ///
+    /// 从前一律用墙钟：按了停止，红线照样往右爬、时间轴一路变长，
+    /// 整张图看着还在跑——而它其实早就停了。冻住之后柱子、红线、轴一起定格，
+    /// 「这一趟从几点到几点」一眼看得出。
+    /// </summary>
+    private DateTimeOffset ChartNow
+    {
+        get
+        {
+            var runs = _ws.Engine.Record.Channels;
+            if (runs.Count == 0) return _ws.Clock.Now;
+            if (_ws.Engine.Runners.Any(r => r.State is ChannelRunState.Running
+                                                    or ChannelRunState.Paused
+                                                    or ChannelRunState.Aborting))
+                return _ws.Clock.Now;
+            // 一路都没在跑了：定格在最后一条子记录的收尾时刻
+            var last = runs.Max(r => r.FinishedAt ?? _ws.Clock.Now);
+            return last > BatchStart ? last : _ws.Clock.Now;
+        }
+    }
+
     /// <summary>axisOf：墙钟 = 批次最早启动为 0；按通道 = 通道自身为 0。</summary>
     private double AxisOf(int ch, double rel)
     {
@@ -667,15 +690,19 @@ public sealed class RunViewModel : ViewModelBase
             return (0, Math.Max(600, tot));
         }
         if (started.Count == 0) return (0, 600);
-        var now = (_ws.Clock.Now - BatchStart).TotalSeconds;
+        var now = (ChartNow - BatchStart).TotalSeconds;
         var b = started.Max(r => (r.StartedAt - BatchStart).TotalSeconds + r.Baseline.Schedule.Total.TotalSeconds);
-        return (0, Math.Max(now + 600, b));
+        // 还在跑的时候右边留 10 分钟余量，好看得见接下来要跑什么；
+        // 全部结束了就收在这一趟真正的终点，不再为空白留地方
+        var live = ChartNow >= _ws.Clock.Now - TimeSpan.FromSeconds(1);
+        return (0, live ? Math.Max(now + 600, b) : Math.Max(now, 60));
     }
 
     private void BuildTrend()
     {
         var run = _ws.Engine.Record.Of(_trendCh);
-        var elapsed = run is null ? 0 : (_ws.Clock.Now - run.StartedAt).TotalSeconds;
+        // 这一路收尾之后右端就停在它的收尾时刻——曲线不该在没有新数据的地方继续拉长
+        var elapsed = run is null ? 0 : ((run.FinishedAt ?? ChartNow) - run.StartedAt).TotalSeconds;
         var win = _trendWinLabel switch
         {
             "全程（同甘特）" => 0.0,
@@ -739,7 +766,7 @@ public sealed class RunViewModel : ViewModelBase
         {
             AxisFrom = rg.A,
             AxisTo = rg.B,
-            NowSec = _alignWall ? (_ws.Clock.Now - BatchStart).TotalSeconds : null,
+            NowSec = _alignWall ? (ChartNow - BatchStart).TotalSeconds : null,
             Label = AxisLabel
         };
 
@@ -825,7 +852,7 @@ public sealed class RunViewModel : ViewModelBase
             // 按通道对齐时红线改为每通道一段短标记（原型 gnowch）
             if (!_alignWall)
             {
-                var elapsed = (_ws.Clock.Now - run.StartedAt).TotalSeconds;
+                var elapsed = ((run.FinishedAt ?? ChartNow) - run.StartedAt).TotalSeconds;
                 m.NowMarks.Add((elapsed, stepRowStart - 1, steps.Entries.Count + 1));
             }
         }
@@ -871,6 +898,7 @@ public sealed class RunViewModel : ViewModelBase
         EventKind.Paused => "暂停",
         EventKind.Resumed => "继续",
         EventKind.Aborted => "中止",
+        EventKind.SafeStop => "停机",
         EventKind.StepSkipped => "跳过",
         EventKind.Alarm or EventKind.SafetyAction => "报警",
         EventKind.DeviceFault => "设备故障",

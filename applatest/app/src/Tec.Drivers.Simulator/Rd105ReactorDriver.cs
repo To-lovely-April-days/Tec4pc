@@ -103,6 +103,31 @@ internal sealed class Rd105Session : SimSession
         .Add(CommandSpecs.Stir, () => new StirHandler());
 
     public override ICommandHandler? Resolve(string commandId) => Table.Resolve(commandId);
+
+    /// <summary>
+    /// 中止收尾：**切加热，保搅拌。**
+    ///
+    /// 加热必须切——中止只停了配方，温控器还守着最后那个设定值，
+    /// 一路烧到目标温度再稳住，操作人按下停止时想的绝不是这个。
+    ///
+    /// 搅拌**故意留着**：釜里多半是热的反应液，不搅容易局部过热、结块、暴沸。
+    /// 停搅拌比继续搅危险，所以这台设备的「安全态」就是「不加热、继续搅」。
+    /// 要停搅拌的话在配方末尾自己写一条转速 0，那是工艺决定，不是停机动作。
+    /// </summary>
+    public override async ValueTask<IReadOnlyList<string>?> SafeStopAsync(int well, CancellationToken ct)
+    {
+        if (well < 0 || well >= _wells.Length) return Array.Empty<string>();
+        var w = _wells[well];
+        var did = new List<string>();
+
+        await w.StopAsync(ct).ConfigureAwait(false);
+        did.Add($"已切断加热输出（停在 {w.CurrentReactor:F1} ℃，此后自然冷却）");
+
+        did.Add(w.Stirrer.CurrentRpm > 0
+            ? $"搅拌保持 {w.Stirrer.CurrentRpm:F0} rpm —— 热液不搅有局部过热风险，停搅拌要在配方里写"
+            : "搅拌本来就停着");
+        return did;
+    }
 }
 
 /// <summary>一个孔位。温度、搅拌、背景灯三项能力都由它提供。</summary>

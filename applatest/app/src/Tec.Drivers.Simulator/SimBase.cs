@@ -34,6 +34,14 @@ public abstract class SimSession : IDeviceSession
     public abstract IReadOnlyList<ICapability> CapabilitiesOf(int well);
     public abstract ICommandHandler? Resolve(string commandId);
 
+    /// <summary>
+    /// 中止收尾时把这一路的输出收到安全态。默认返回 null = 这个驱动没实现，
+    /// 界面会照实说「输出保持原样」——不假装停干净了。
+    /// 有输出的设备都该覆写它（见 IDeviceSession.SafeStopAsync 的说明）。
+    /// </summary>
+    public virtual ValueTask<IReadOnlyList<string>?> SafeStopAsync(int well, CancellationToken ct)
+        => ValueTask.FromResult<IReadOnlyList<string>?>(null);
+
     public DeviceState State
     {
         get => _state;

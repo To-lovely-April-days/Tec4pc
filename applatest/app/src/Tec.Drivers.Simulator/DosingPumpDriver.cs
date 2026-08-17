@@ -91,6 +91,19 @@ internal sealed class PumpSession : SimSession
         .Add(CommandSpecs.Dose, () => new DoseHandler());
 
     public override ICommandHandler? Resolve(string commandId) => Table.Resolve(commandId);
+
+    /// <summary>
+    /// 中止收尾：停泵，并把累计加了多少报出来。
+    /// 加料是不可逆的——停的那一刻已经进去多少，记录上必须查得到，
+    /// 不然这一釜料的配比就再也对不上账了。
+    /// </summary>
+    public override async ValueTask<IReadOnlyList<string>?> SafeStopAsync(int well, CancellationToken ct)
+    {
+        if (well < 0 || well >= _ports.Length) return Array.Empty<string>();
+        var p = _ports[well];
+        await p.StopAsync(ct).ConfigureAwait(false);
+        return new[] { $"加料泵已停，本趟累计加入 {p.TotalVolume:F2} mL（{p.Material}）" };
+    }
 }
 
 internal sealed class DosingImpl : IDosing
