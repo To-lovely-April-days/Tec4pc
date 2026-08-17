@@ -70,8 +70,14 @@ public sealed class ChannelRunner
     /// </summary>
     public ChannelRun Start(Recipe recipe, EstimationContext? seed = null, string? user = null)
     {
-        if (State is ChannelRunState.Running or ChannelRunState.Paused)
-            throw new InvalidOperationException($"CH{Number} 已在运行。");
+        if (!CanStart)
+            throw new InvalidOperationException(State switch
+            {
+                ChannelRunState.Running => $"CH{Number} 已在运行。",
+                ChannelRunState.Paused => $"CH{Number} 正暂停着，按「继续」而不是重新启动。",
+                ChannelRunState.Aborting => $"CH{Number} 正在停止，等它收完尾再启动。",
+                _ => $"CH{Number} 正在准备，稍候再启动。"
+            });
 
         State = ChannelRunState.Loading;
         Operator = user;
@@ -123,6 +129,23 @@ public sealed class ChannelRunner
     public Task Completion => _loop ?? Task.CompletedTask;
 
     public bool IsPaused => _pauseGate is not null;
+
+    /// <summary>
+    /// 这一路现在按「启动」会不会真的动起来。
+    ///
+    /// **界面按钮的可用性和 Start() 的拦截走同一个判据。** 两处各写一套的话，
+    /// 迟早出现「按钮亮着，按下去抛异常」——尤其是 Aborting 这种过渡态：
+    /// 按了急停但驱动还没收完尾，那几秒里通道既不是 Running 也不能重开，
+    /// 只排除 Running 的写法会在这几秒里放行，同一路上跑起两条执行循环。
+    ///
+    /// 暂停着的不在这里：那一路要的是「继续」（<see cref="CanResume"/>），不是重开一趟。
+    /// </summary>
+    public bool CanStart => State is ChannelRunState.Idle or ChannelRunState.Ready
+                                  or ChannelRunState.Completed or ChannelRunState.Faulted
+                                  or ChannelRunState.Aborted;
+
+    /// <summary>暂停着，按下去是继续。</summary>
+    public bool CanResume => State == ChannelRunState.Paused;
 
     public void Pause(string? user = null)
     {

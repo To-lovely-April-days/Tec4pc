@@ -173,12 +173,12 @@ public sealed class StatTileViewModel : ViewModelBase
 
     /// <summary>
     /// 没编排步骤的启不了——空跑一趟只会在记录里留一条什么都没干的子记录。
-    /// 跑完 / 出故障的可以再来一遍（记录里是新的一条，不覆盖旧的）；
-    /// 正在跑和正在收尾的不能重启。
+    /// 能不能开由执行器说了算（`ChannelRunner.CanStart`），界面不另立一套判据：
+    /// 两处各写一套迟早出现「按钮亮着，按下去抛异常」。
+    /// 暂停着的按下去是继续。
     /// </summary>
-    public bool CanStart => On && HasSteps && Runner?.State is null
-        or ChannelRunState.Idle or ChannelRunState.Ready
-        or ChannelRunState.Completed or ChannelRunState.Faulted or ChannelRunState.Paused;
+    public bool CanStart => On && (Runner is { CanResume: true }
+                                   || (HasSteps && (Runner is null || Runner.CanStart)));
 
     public bool CanPause => Runner?.State is ChannelRunState.Running or ChannelRunState.Paused;
     public bool CanStop => Runner?.State is ChannelRunState.Running or ChannelRunState.Paused;
@@ -628,7 +628,15 @@ public sealed class RunViewModel : ViewModelBase
                  nameof(NoChannels), nameof(DrawLast), nameof(DrawCnt), nameof(NoRows),
                  // 通道跑起来了「记一笔」才按得下去，通道状态一直在变
                  nameof(CanMark), nameof(SelectedLabel), nameof(HasSelection));
+
+        Ticked?.Invoke(this, EventArgs.Empty);
     }
+
+    /// <summary>
+    /// 每一跳都发一下。外壳那三颗运行控制圆钮的可用性也随通道状态变，
+    /// 让它搭这一趟车——各起一个 700ms 的表，两个表在界面线程上各跑各的没必要。
+    /// </summary>
+    public event EventHandler? Ticked;
 
     public void Stop() => _timer.Stop();
 

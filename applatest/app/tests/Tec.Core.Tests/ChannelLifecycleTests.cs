@@ -175,6 +175,84 @@ public class ChannelLifecycleTests
         Assert.Contains(run.Events, e => e.Kind == EventKind.Aborted);
     }
 
+    [Fact]
+    public async Task 收尾途中不许再开一趟()
+    {
+        // 按了急停但驱动还没收完尾，那几秒里通道既不是 Running 也不能重开。
+        // 判据只排除 Running 的话，这几秒里会放行——同一路上跑起两条执行循环，
+        // 两个 cts、两份记录，后一个的 finally 还会把前一个的状态盖掉
+        await using var h = new Harness(200);
+        await h.ReactorChannelAsync(1);
+        h.Engine.StartChannel(1, Waiting(), "张三");
+        await Task.Delay(200);
+
+        var runner = h.Engine.Runner(1)!;
+        runner.Pause("张三");            // 暂停着的也不许「重新启动」，那是「继续」
+        Assert.False(runner.CanStart);
+        Assert.True(runner.CanResume);
+        Assert.Throws<InvalidOperationException>(() => h.Engine.StartChannel(1, Waiting(), "张三"));
+
+        runner.Abort("张三");
+        await runner.Completion;
+        Assert.True(runner.CanStart);    // 收完尾就能再来一趟
+    }
+
+    [Fact]
+    public async Task 正在跑的时候按启动会被拦住()
+    {
+        await using var h = new Harness(200);
+        await h.ReactorChannelAsync(1);
+        h.Engine.StartChannel(1, Waiting(), "张三");
+        await Task.Delay(200);
+
+        var runner = h.Engine.Runner(1)!;
+        Assert.False(runner.CanStart);
+        Assert.False(runner.CanResume);
+        Assert.Throws<InvalidOperationException>(() => h.Engine.StartChannel(1, Waiting(), "张三"));
+
+        runner.Abort("测试员");
+        await runner.Completion;
+    }
+
+    [Fact]
+    public async Task 跑完与出故障之后都能再开一趟()
+    {
+        await using var h = new Harness(600);
+        await h.ReactorChannelAsync(1);
+        h.Engine.StartChannel(1, Waiting(1), "张三");
+        await h.Engine.Runner(1)!.Completion;
+
+        Assert.True(h.Engine.Runner(1)!.CanStart);
+        h.Engine.StartChannel(1, Waiting(1), "张三");   // 不抛
+        await h.Engine.Runner(1)!.Completion;
+        Assert.Equal(2, h.Engine.Record.Channels.Count);
+    }
+
+    [Fact]
+    public async Task 暂停中把泳道清空也还继续得了()
+    {
+        // 跑的是按下启动那一刻冻下来的快照，泳道后来被清空不影响它跑完。
+        // 界面判据要跟这一点对齐：先卡「有没有步骤」的写法会把这条通道锁死——
+        // 运行灰（0 步）、暂停也灰（它不是 Running），从菜单栏救不回来
+        await using var h = new Harness(200);
+        await h.ReactorChannelAsync(1);
+        var run = h.Engine.StartChannel(1, Waiting(), "张三");
+        await Task.Delay(200);
+
+        var runner = h.Engine.Runner(1)!;
+        runner.Pause("张三");
+        Assert.True(runner.CanResume);
+
+        // 配方页把这条泳道清空（「新建」就是整份换掉），基线不受影响
+        Assert.NotEmpty(run.Baseline.Recipe.Steps);
+
+        runner.Resume("张三");
+        Assert.Equal(ChannelRunState.Running, runner.State);
+
+        runner.Abort("测试员");
+        await runner.Completion;
+    }
+
     // ── 执行记录 ────────────────────────────────────────────────────
 
     [Fact]

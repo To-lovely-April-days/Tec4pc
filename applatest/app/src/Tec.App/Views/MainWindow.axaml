@@ -90,10 +90,17 @@
       <Border Background="#151515" CornerRadius="8" Height="48" Margin="0,2,150,0"
               HorizontalAlignment="Right" VerticalAlignment="Top" Padding="12,0">
         <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
-          <Button Classes="rbtn play" Command="{Binding SimRun}" ToolTip.Tip="运行"><ctl:TecIcon Key="ui-sim-play" /></Button>
-          <Button Classes="rbtn" Command="{Binding SimStop}" ToolTip.Tip="停止"><ctl:TecIcon Key="ui-sim-stop" /></Button>
-          <Button Classes="rbtn" Command="{Binding SimPause}" ToolTip.Tip="暂停"><ctl:TecIcon Key="ui-sim-pause" /></Button>
-          <Button Classes="rbtn" Command="{Binding SimStep}" ToolTip.Tip="单步"><ctl:TecIcon Key="ui-sim-step" /></Button>
+          <!-- 三颗都是「对全部已启用通道」。单路的启停在运行页的通道磁贴上。
+               原型那颗「单步」去掉了：跳步是看着这一路当前那一步临时决定的，
+               四路情况各不相同，一次全跳掉几乎不可能是人想要的，
+               而且跳掉的每一步都写进记录撤不回来 -->
+          <Button Classes="rbtn play" Command="{Binding SimRun}" IsEnabled="{Binding CanSimRun}"
+                  ToolTip.Tip="{Binding SimRunTip}"><ctl:TecIcon Key="ui-sim-play" /></Button>
+          <!-- 停止是急停，长得跟别的不一样：慌起来按错的代价太大 -->
+          <Button Classes="rbtn stop" Command="{Binding SimStop}" IsEnabled="{Binding CanSimStop}"
+                  ToolTip.Tip="停止全部通道"><ctl:TecIcon Key="ui-sim-stop" /></Button>
+          <Button Classes="rbtn" Command="{Binding SimPause}" IsEnabled="{Binding CanSimPause}"
+                  ToolTip.Tip="暂停全部正在跑的通道"><ctl:TecIcon Key="ui-sim-pause" /></Button>
         </StackPanel>
       </Border>
 
@@ -178,6 +185,34 @@
     </Style>
     <Style Selector="Button.rbtn.play">
       <Setter Property="Background" Value="#28b44a" />
+    </Style>
+    <!-- 急停：红底。四颗一个样的话，慌起来很容易把停止按成暂停 -->
+    <Style Selector="Button.rbtn.stop">
+      <Setter Property="Background" Value="#c8352b" />
+    </Style>
+    <!-- 按不了的时候暗下去。缺省禁用样式会把底色整个刷成一片灰，
+         三颗糊在一起分不出哪颗是哪颗——这里各自保住自己的颜色，只是整体压暗 -->
+    <Style Selector="Button.rbtn:disabled">
+      <Setter Property="Opacity" Value="0.32" />
+      <Setter Property="Cursor" Value="Arrow" />
+    </Style>
+    <!-- 三颗的底色钉死：Fluent 的缺省 :pointerover / :pressed / :disabled 都会去改
+         ContentPresenter 的 Background，鼠标一压上去急停就从红变灰，
+         看着像它自己失效了。原型这三颗本来就没有悬停效果 -->
+    <Style Selector="Button.rbtn:pointerover /template/ ContentPresenter,
+                     Button.rbtn:pressed /template/ ContentPresenter,
+                     Button.rbtn:disabled /template/ ContentPresenter">
+      <Setter Property="Background" Value="#4d4d4d" />
+    </Style>
+    <Style Selector="Button.rbtn.play:pointerover /template/ ContentPresenter,
+                     Button.rbtn.play:pressed /template/ ContentPresenter,
+                     Button.rbtn.play:disabled /template/ ContentPresenter">
+      <Setter Property="Background" Value="#28b44a" />
+    </Style>
+    <Style Selector="Button.rbtn.stop:pointerover /template/ ContentPresenter,
+                     Button.rbtn.stop:pressed /template/ ContentPresenter,
+                     Button.rbtn.stop:disabled /template/ ContentPresenter">
+      <Setter Property="Background" Value="#c8352b" />
     </Style>
   </Window.Styles>
 </Window>
