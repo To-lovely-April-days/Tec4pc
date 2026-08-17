@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -265,7 +266,10 @@ public sealed class ExportViewModel : ViewModelBase
         SetDays = new RelayCommand(p => { _days = Convert.ToString(p) ?? "all"; Rebuild(keepSel: true); });
         PickFmt = new RelayCommand(p =>
         {
-            if (p is not FmtViewModel { Ready: true } f) { Say(p is FmtViewModel x ? x.Tip : ""); return; }
+            // 点了写不出来的那三张卡：这也是一句坏消息，跟「导出尚未实现，先选 CSV」
+            // 是同一句话，得跟它一个颜色。漏了 bad 的话，它还会把上一条红色的
+            // 「导出失败」当场洗成绿的
+            if (p is not FmtViewModel { Ready: true } f) { Say(p is FmtViewModel x ? x.Tip : "", bad: true); return; }
             foreach (var y in Fmts) y.On = y == f;
             RaiseAll(nameof(FileNote), nameof(ReportEnabled), nameof(FormatHint), nameof(CanPreviewReport));
             Refresh();
@@ -275,8 +279,9 @@ public sealed class ExportViewModel : ViewModelBase
         SetDestUsb = new RelayCommand(() => Dest = "usb");
         DoExport = new RelayCommand(Export);
         DoReload = new RelayCommand(() => { Reload(); Say("记录列表已刷新"); });
+        OpenFolder = new RelayCommand(DoOpenFolder);
         PreviewReport = new RelayCommand(() =>
-            Say("报告排版（Word / PDF）尚未实现 —— 需要先做报告模板引擎"));
+            Say("报告排版（Word / PDF）尚未实现 —— 需要先做报告模板引擎", bad: true));
 
         Reload();
     }
@@ -309,8 +314,10 @@ public sealed class ExportViewModel : ViewModelBase
     public RelayCommand SetDestUsb { get; }
     public RelayCommand DoExport { get; }
     public RelayCommand PreviewReport { get; }
-    /// <summary>工具条上那颗圆形刷新钮。这一页的记录是进来时读的，中途又跑了一炉就按它。</summary>
+    /// <summary>页头那颗圆形刷新钮。这一页的记录是进来时读的，中途又跑了一炉就按它。</summary>
     public RelayCommand DoReload { get; }
+    /// <summary>页头那颗文件夹钮：在系统文件管理器里打开导出目录。</summary>
+    public RelayCommand OpenFolder { get; }
 
     /// <summary>全部批次（未过滤）。计数与筛选下拉都从它来。</summary>
     private readonly List<RunRowViewModel> _all = new();
@@ -505,10 +512,38 @@ public sealed class ExportViewModel : ViewModelBase
 
     public bool UsbReady => !UsbNote.StartsWith("未检测", StringComparison.Ordinal);
 
+    /// <summary>
+    /// 导出真正会落到哪个目录——跟着「导出目标」走。
+    /// USB 选着但没插盘就退回本地：那颗钮的本意是「让我看看文件」，
+    /// 因为没插盘就什么都不做，人只会以为按钮坏了。
+    /// </summary>
+    public string TargetDir => DestUsb ? UsbRoot() ?? LocalDir : LocalDir;
+
+    /// <summary>
+    /// 悬停提示。**选 USB 时不写具体路径。**
+    ///
+    /// U 盘是在程序外面插拔的，没有任何事件通知我们；而 ToolTip 的绑定值是
+    /// 上一次 PropertyChanged 推过去的，悬停时不会重算。于是提示里那条绝对路径
+    /// 会定格在插拔之前——按钮点下去开的是另一个目录（DoOpenFolder 现算的），
+    /// 提示和动作当场打架。界面上的每一句话都得有出处，写一条过期的绝对路径
+    /// 比不写更坏。
+    ///
+    /// 所以：本地那条路径永远不变，照写；USB 那条只说规则，具体开了哪儿
+    /// 由点完之后页脚那句现算的话负责（它不会过期）。
+    /// </summary>
+    public string OpenFolderTip => DestUsb
+        ? "在文件管理器里打开导出文件夹\n目标是 U 盘上的 TecStudio 目录；没插盘就退回本地"
+        : $"在文件管理器里打开导出文件夹\n{LocalDir}";
+
     public string Dest
     {
         get => _dest;
-        set { if (Set(ref _dest, value)) RaiseAll(nameof(DestLocal), nameof(DestUsb), nameof(TargetHint)); }
+        set
+        {
+            if (Set(ref _dest, value))
+                RaiseAll(nameof(DestLocal), nameof(DestUsb), nameof(TargetHint),
+                         nameof(TargetDir), nameof(OpenFolderTip));
+        }
     }
     public bool DestLocal => _dest == "local";
     public bool DestUsb => _dest == "usb";
@@ -519,6 +554,9 @@ public sealed class ExportViewModel : ViewModelBase
 
     public string Status { get; private set; } = "";
     public bool HasStatus => Status.Length > 0;
+    /// <summary>这一句是坏消息吗。失败照绿字印，读起来像「办成了」。</summary>
+    public bool StatusBad { get; private set; }
+    public string StatusColorHex => StatusBad ? "#c0392b" : "#2f8f49";
 
     public string Warn { get; private set; } = "";
     public bool HasWarn => Warn.Length > 0;
@@ -532,10 +570,11 @@ public sealed class ExportViewModel : ViewModelBase
     private IEnumerable<RunRowViewModel> Selected => _all.Where(r => r.IsChecked);
     private bool StepsOn => Groups.SelectMany(g => g.Items).FirstOrDefault(i => i.Key == "steps")?.On ?? false;
 
-    private void Say(string text)
+    private void Say(string text, bool bad = false)
     {
         Status = text;
-        RaiseAll(nameof(Status), nameof(HasStatus));
+        StatusBad = bad;
+        RaiseAll(nameof(Status), nameof(HasStatus), nameof(StatusBad), nameof(StatusColorHex));
     }
 
     // ── 重建 ────────────────────────────────────────────────────────
@@ -567,7 +606,11 @@ public sealed class ExportViewModel : ViewModelBase
         if (!RecipeOptions.Contains(_fRecipe)) _fRecipe = AllRecipes;
         if (!OpOptions.Contains(_fOp)) _fOp = AllOps;
         if (!StateOptions.Contains(_fState)) _fState = AllStates;
-        RaiseAll(nameof(FilterRecipe), nameof(FilterOp));
+        // U 盘是在程序外面插拔的，没有事件可听。刷新钮和切页是操作人唯一能
+        // 主动「让界面再看一眼」的时机，顺手把跟盘有关的几条一起对上——
+        // 右栏「USB 记忆盘」那行 UsbNote 从来没人发过通知，插了盘也一直写着没插
+        RaiseAll(nameof(FilterRecipe), nameof(FilterOp), nameof(FilterState),
+                 nameof(UsbNote), nameof(UsbReady), nameof(TargetDir), nameof(OpenFolderTip));
 
         _preview = _all.FirstOrDefault(r => r.Id == keepPrev)
                    ?? _all.LastOrDefault(r => r.IsChecked)
@@ -994,11 +1037,11 @@ public sealed class ExportViewModel : ViewModelBase
     private void Export()
     {
         var sel = Selected.ToList();
-        if (sel.Count == 0) { Say("请先在表里勾选一条或多条记录"); return; }
-        if (!CurFmtItem.Ready) { Say($"{CurFmtName} 导出尚未实现，先选 CSV"); return; }
+        if (sel.Count == 0) { Say("请先在表里勾选一条或多条记录", bad: true); return; }
+        if (!CurFmtItem.Ready) { Say($"{CurFmtName} 导出尚未实现，先选 CSV", bad: true); return; }
 
         var root = DestUsb ? UsbRoot() : LocalDir;
-        if (root is null) { Say("没有可写的可移动磁盘，改选本地文件夹"); return; }
+        if (root is null) { Say("没有可写的可移动磁盘，改选本地文件夹", bad: true); return; }
 
         var done = new List<string>();
         try
@@ -1044,7 +1087,7 @@ public sealed class ExportViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            Say("导出失败：" + ex.Message);
+            Say("导出失败：" + ex.Message, bad: true);
         }
     }
 
@@ -1057,6 +1100,35 @@ public sealed class ExportViewModel : ViewModelBase
         : $"{bytes:F0} B";
 
     private bool GlpOn(string key) => GlpItems.FirstOrDefault(g => g.Key == key)?.On ?? false;
+
+    /// <summary>
+    /// 在系统文件管理器里打开导出目录。
+    ///
+    /// 第一次导出之前那个目录还不存在——先建出来再打开，而不是弹一句
+    /// 「目录不存在」让人自己去猜要建在哪儿（导出时本来也会建它）。
+    ///
+    /// 三个平台三条命令：Windows 交给 shell 直接开目录，macOS 是 open，
+    /// Linux 是 xdg-open。开不起来就把路径写到页脚上，至少能复制走。
+    /// </summary>
+    private void DoOpenFolder()
+    {
+        var dir = TargetDir;
+        try
+        {
+            Directory.CreateDirectory(dir);
+            if (OperatingSystem.IsWindows())
+                Process.Start(new ProcessStartInfo(dir) { UseShellExecute = true });
+            else if (OperatingSystem.IsMacOS())
+                Process.Start("open", new[] { dir });
+            else
+                Process.Start("xdg-open", new[] { dir });
+            Say($"已打开 {dir}");
+        }
+        catch (Exception ex)
+        {
+            Say($"打不开文件夹（{ex.Message}）：{dir}", bad: true);
+        }
+    }
 
     private static string? UsbRoot()
     {

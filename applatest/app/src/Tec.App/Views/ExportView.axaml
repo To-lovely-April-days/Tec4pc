@@ -6,14 +6,30 @@
   <!-- 原型 tecstudio-export-v2：页头 → wrap（主区 ｜ 342 右栏）→ 52px 页脚 -->
   <DockPanel Background="White">
 
-    <!-- pghead -->
-    <Border DockPanel.Dock="Top" BorderBrush="#e3e3e3" BorderThickness="0,0,0,1" Padding="22,12,22,10">
-      <StackPanel Orientation="Horizontal" Spacing="14">
-        <TextBlock Text="数据导出" FontSize="23" FontWeight="Light" Foreground="#2b2b2b"
-                   VerticalAlignment="Bottom" />
-        <TextBlock Text="从实验记录中选取一条或多条，配置导出内容后生成归档文件"
-                   FontSize="11.5" Foreground="#9a9a9a" VerticalAlignment="Bottom" Margin="0,0,0,4" />
-      </StackPanel>
+    <!-- pghead。右边两颗圆钮是**这一页整体**的动作（跟某一条记录无关），
+         所以摆在页头而不是工具条里——工具条那一排是筛选，性质不一样 -->
+    <Border DockPanel.Dock="Top" BorderBrush="#e3e3e3" BorderThickness="0,0,0,1" Padding="22,10,22,10">
+      <Grid ColumnDefinitions="Auto,*,Auto">
+        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="14">
+          <TextBlock Text="数据导出" FontSize="23" FontWeight="Light" Foreground="#2b2b2b"
+                     VerticalAlignment="Bottom" />
+          <TextBlock Text="从实验记录中选取一条或多条，配置导出内容后生成归档文件"
+                     FontSize="11.5" Foreground="#9a9a9a" VerticalAlignment="Bottom" Margin="0,0,0,4" />
+        </StackPanel>
+
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
+          <!-- 刷新：这一页的记录是进来时读的，中途又跑了一炉就按它 -->
+          <Button Classes="tbtn sm" Command="{Binding DoReload}" ToolTip.Tip="刷新记录列表">
+            <ctl:TecIcon Key="ui-ex-refresh" />
+          </Button>
+          <!-- 打开导出文件夹：导出完只在页脚留一行路径，人还得自己去翻。
+               目录跟着「导出目标」走 -->
+          <Button Classes="tbtn sm" Command="{Binding OpenFolder}"
+                  ToolTip.Tip="{Binding OpenFolderTip}">
+            <ctl:TecIcon Key="ui-dest-local" Size="15" />
+          </Button>
+        </StackPanel>
+      </Grid>
     </Border>
 
     <!-- foot 52px -->
@@ -47,7 +63,7 @@
                        TextTrimming="CharacterEllipsis" />
           </Border>
           <TextBlock Text="{Binding Status}" IsVisible="{Binding HasStatus}" FontSize="11"
-                     Foreground="#2f8f49" VerticalAlignment="Center"
+                     Foreground="{Binding StatusColorHex}" VerticalAlignment="Center"
                      TextTrimming="CharacterEllipsis" />
         </StackPanel>
 
@@ -76,13 +92,6 @@
                 <ctl:TecIcon Key="ui-search" Tint="#9a9a9a" Size="13" Margin="7,0,0,0"
                              HorizontalAlignment="Left" VerticalAlignment="Center" IsHitTestVisible="False" />
               </Panel>
-
-              <!-- 刷新：这一页的记录是进来时读的，中途又跑了一炉就按它。
-                   圆钮，与台面 / 配方 / 配方库那几页的工具钮同款 -->
-              <Button Classes="tbtn sm" Margin="0,0,9,0" VerticalAlignment="Center"
-                      Command="{Binding DoReload}" ToolTip.Tip="刷新记录列表">
-                <ctl:TecIcon Key="ui-ex-refresh" />
-              </Button>
 
               <!-- 按日期筛选。原型是一条扁平的分段条，本程序的按钮语言是
                    描边圆角 + 悬停变蓝，这里跟着程序走 -->
