@@ -279,12 +279,16 @@
         </Panel>
       </DockPanel>
 
-      <!-- 右栏 342px -->
-      <Border Grid.Column="1" Background="White" BorderBrush="#e3e3e3" BorderThickness="1,0,0,0">
+      <!-- 右栏 342px。**白底面板 + 浅紫内容块**，与台面 / 配方 / 配方库的属性面板
+           同一套观感：块与块之间用白缝分隔（App.axaml 里 ThemeGap / ThemeFill 那两支笔） -->
+      <Border Grid.Column="1" Background="{StaticResource ThemeGap}"
+              BorderBrush="#d2d2d2" BorderThickness="1,0,0,0">
         <ScrollViewer>
-          <StackPanel Margin="16,12,16,24">
+          <StackPanel Margin="0,0,0,24">
 
             <!-- 导出格式 -->
+            <Border Classes="secbox">
+            <StackPanel>
             <Button Classes="sech" Command="{Binding FormatSection.Toggle}">
               <Grid ColumnDefinitions="Auto,Auto,*">
                 <Border Grid.Column="0" Classes="cir" Classes.cl="{Binding !FormatSection.Open}">
@@ -305,11 +309,13 @@
                             Margin="0,0,7,7" Cursor="Hand" ToolTip.Tip="{Binding Tip}"
                             PointerPressed="OnFmtPressed">
                       <StackPanel>
-                        <!-- 原型 .fi 那一格是大写文字；这里放原型提取出来的格式图标，
-                             占的是同一格 26px，不另画 -->
-                        <Panel Height="26">
-                          <ctl:TecIcon Key="{Binding IconKey}" HorizontalAlignment="Center"
-                                       VerticalAlignment="Center" />
+                        <!-- 原型 .fi 那一格是 26px 高的大写文字；这里放线描的格式图标。
+                             **图标自身 24×28**，之前塞进 26px 的格子里高出去两像素，
+                             正好压在下面那行字上 —— 格子按图标实际高度给 30px -->
+                        <Panel Height="30" Margin="0,0,0,4">
+                          <ctl:TecIcon Key="{Binding IconKey}" Size="23"
+                                       Tint="{Binding On, Converter={x:Static ctl:Is.FmtInk}}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Panel>
                         <TextBlock Text="{Binding Name}" FontSize="12" Foreground="#2b2b2b"
                                    TextAlignment="Center" />
@@ -324,6 +330,11 @@
             </StackPanel>
 
             <!-- 导出通道 -->
+            </StackPanel>
+            </Border>
+
+            <Border Classes="secbox">
+            <StackPanel>
             <Button Classes="sech" Command="{Binding ChannelsSection.Toggle}">
               <Grid ColumnDefinitions="Auto,Auto,*">
                 <Border Grid.Column="0" Classes="cir" Classes.cl="{Binding !ChannelsSection.Open}">
@@ -355,6 +366,11 @@
             </StackPanel>
 
             <!-- 数据项 -->
+            </StackPanel>
+            </Border>
+
+            <Border Classes="secbox">
+            <StackPanel>
             <Button Classes="sech" Command="{Binding ItemsSection.Toggle}">
               <Grid ColumnDefinitions="Auto,Auto,*">
                 <Border Grid.Column="0" Classes="cir" Classes.cl="{Binding !ItemsSection.Open}">
@@ -392,6 +408,11 @@
             </StackPanel>
 
             <!-- 时间范围与采样 -->
+            </StackPanel>
+            </Border>
+
+            <Border Classes="secbox">
+            <StackPanel>
             <Button Classes="sech" Command="{Binding RangeSection.Toggle}">
               <Grid ColumnDefinitions="Auto,Auto,*">
                 <Border Grid.Column="0" Classes="cir" Classes.cl="{Binding !RangeSection.Open}">
@@ -428,6 +449,11 @@
             </StackPanel>
 
             <!-- 报告内容 -->
+            </StackPanel>
+            </Border>
+
+            <Border Classes="secbox">
+            <StackPanel>
             <Button Classes="sech" Command="{Binding ReportSection.Toggle}">
               <Grid ColumnDefinitions="Auto,Auto,*">
                 <Border Grid.Column="0" Classes="cir" Classes.cl="{Binding !ReportSection.Open}">
@@ -451,6 +477,11 @@
             </StackPanel>
 
             <!-- 导出目标 -->
+            </StackPanel>
+            </Border>
+
+            <Border Classes="secbox">
+            <StackPanel>
             <Button Classes="sech" Command="{Binding TargetSection.Toggle}">
               <Grid ColumnDefinitions="Auto,Auto,*">
                 <Border Grid.Column="0" Classes="cir" Classes.cl="{Binding !TargetSection.Open}">
@@ -491,6 +522,11 @@
             </StackPanel>
 
             <!-- GLP 合规 -->
+            </StackPanel>
+            </Border>
+
+            <Border Classes="secbox">
+            <StackPanel>
             <Button Classes="sech" Command="{Binding GlpSection.Toggle}">
               <Grid ColumnDefinitions="Auto,Auto,*">
                 <Border Grid.Column="0" Classes="cir" Classes.cl="{Binding !GlpSection.Open}">
@@ -518,6 +554,8 @@
               <TextBlock Classes="tip"
                          Text="导出文件包含原始采样数据、配方参数、台面配置与操作记录，链式摘要让任何一行被改过都对不上。" />
             </StackPanel>
+            </StackPanel>
+            </Border>
 
           </StackPanel>
         </ScrollViewer>
@@ -548,6 +586,9 @@
       <Setter Property="Height" Value="24" />
       <Setter Property="MinWidth" Value="0" />
       <Setter Property="Padding" Value="11,0" />
+      <!-- 不写这两条，字会贴着上沿 —— Fluent 的 Button 默认不是居中对齐的 -->
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
       <Setter Property="FontSize" Value="11.5" />
       <Setter Property="Foreground" Value="#4a4a4a" />
       <Setter Property="Background" Value="White" />
@@ -661,6 +702,13 @@
     </Style>
 
     <!-- 右栏小节 -->
+    <!-- 一节 = 一个浅紫块，块之间留 7px 白缝 -->
+    <Style Selector="Border.secbox">
+      <Setter Property="Background" Value="{StaticResource ThemeFill}" />
+      <!-- 左右 18px 与台面 / 配方属性面板那一套对齐 -->
+      <Setter Property="Padding" Value="18,4,18,12" />
+      <Setter Property="Margin" Value="0,0,0,7" />
+    </Style>
     <Style Selector="Button.sech">
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderThickness" Value="0" />

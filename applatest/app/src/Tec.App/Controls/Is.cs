@@ -13,6 +13,10 @@ public static class Is
         new FuncValueConverter<bool, Color>(on => Color.Parse(on ? "#0b3760" : "#9a9a9a"));
     public static readonly IValueConverter SelFg =
         new FuncValueConverter<bool, IBrush>(on => new SolidColorBrush(Color.Parse(on ? "#0b3760" : "#2b2b2b")));
+    /// <summary>格式卡片上那个线描图标：选中的用主蓝，其余灰（原型 .fmt.on .fi）。</summary>
+    public static readonly IValueConverter FmtInk =
+        new FuncValueConverter<bool, Color>(on => Color.Parse(on ? "#1a7fc4" : "#8a8a8a"));
+
     public static readonly IValueConverter SelWeight =
         new FuncValueConverter<bool, FontWeight>(on => on ? FontWeight.SemiBold : FontWeight.Normal);
 }
