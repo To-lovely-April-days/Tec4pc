@@ -80,8 +80,9 @@
         <Button Classes="menu" Content="配方"        Command="{Binding Go}" CommandParameter="2" Classes.on="{Binding IsRecipe}" />
         <Button Classes="menu" Content="配方库"      Command="{Binding Go}" CommandParameter="3" Classes.on="{Binding IsLib}" />
         <Button Classes="menu" Content="化合物数据库" Command="{Binding Go}" CommandParameter="4" Classes.on="{Binding IsCompounds}" />
-        <Button Classes="menu" Content="运行"        Command="{Binding Go}" CommandParameter="5" Classes.on="{Binding IsRun}" />
-        <Button Classes="menu" Content="数据导出"    Command="{Binding Go}" CommandParameter="6" Classes.on="{Binding IsExport}" />
+        <Button Classes="menu" Content="配料表"      Command="{Binding Go}" CommandParameter="5" Classes.on="{Binding IsCharge}" />
+        <Button Classes="menu" Content="运行"        Command="{Binding Go}" CommandParameter="6" Classes.on="{Binding IsRun}" />
+        <Button Classes="menu" Content="数据导出"    Command="{Binding Go}" CommandParameter="7" Classes.on="{Binding IsExport}" />
       </StackPanel>
 
       <!-- 运行控制：黑色药丸 + 4 个圆钮（运行 / 停止 / 暂停 / 单步）。
@@ -130,6 +131,9 @@
       </ContentControl>
       <ContentControl IsVisible="{Binding IsCompounds}" Content="{Binding Compounds}">
         <ContentControl.ContentTemplate><DataTemplate><v:CompoundsView /></DataTemplate></ContentControl.ContentTemplate>
+      </ContentControl>
+      <ContentControl IsVisible="{Binding IsCharge}" Content="{Binding Charge}">
+        <ContentControl.ContentTemplate><DataTemplate><v:ChargeView /></DataTemplate></ContentControl.ContentTemplate>
       </ContentControl>
       <ContentControl IsVisible="{Binding IsRun}" Content="{Binding Run}">
         <ContentControl.ContentTemplate><DataTemplate><v:RunView /></DataTemplate></ContentControl.ContentTemplate>

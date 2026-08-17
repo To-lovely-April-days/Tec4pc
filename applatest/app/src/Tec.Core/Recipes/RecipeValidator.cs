@@ -1,5 +1,6 @@
 using Tec.Core.Benches;
 using Tec.Core.Catalog;
+using Tec.Core.Chemistry;
 using Tec.Core.Scheduling;
 using Tec.Driver.Abi;
 
@@ -20,7 +21,8 @@ public sealed record ValidationIssue(IssueLevel Level, string Code, string Messa
 public static class RecipeValidator
 {
     public static IReadOnlyList<ValidationIssue> Validate(
-        Recipe recipe, ICommandCatalog catalog, Channel? channel = null, EstimationContext? seed = null)
+        Recipe recipe, ICommandCatalog catalog, Channel? channel = null, EstimationContext? seed = null,
+        ChargeResult? charge = null)
     {
         var issues = new List<ValidationIssue>();
         var depth = 0;
@@ -90,8 +92,55 @@ public static class RecipeValidator
             ValidateDoseVolume(issues, recipe, catalog, channel);
         }
 
+        if (charge is not null) ValidateCharge(issues, recipe, catalog, charge);
+
         return issues;
     }
+
+    /// <summary>
+    /// 配料表和加料步骤对不对得上。
+    ///
+    /// 对得上但体积不一样、或者压根对不上——两种都得说。
+    /// **默默不联动最坏**：人以为加料体积会跟着配料表走，其实配方里还是手打的那个数，
+    /// 而这两个数一旦分家，报告上「计划加 30 mL」和配料表「应加 24.6 mL」会同时出现。
+    /// </summary>
+    private static void ValidateCharge(List<ValidationIssue> issues, Recipe recipe,
+                                       ICommandCatalog catalog, ChargeResult charge)
+    {
+        foreach (var p in charge.Problems)
+            issues.Add(new ValidationIssue(IssueLevel.Warning, "charge", "配料表：" + p));
+
+        var links = ChargeLink.Match(recipe, catalog, charge);
+        if (links.Count == 0) return;
+
+        foreach (var e in links)
+        {
+            if (!e.Matched)
+            {
+                // 配料表是空的就别唠叨——只跑温控曲线的场合不需要配料表
+                if (charge.Lines.Count == 0) continue;
+                issues.Add(new ValidationIssue(IssueLevel.Warning, "charge-unlinked",
+                    $"第 {e.StepIndex + 1} 步的料液「{Show(e.Liquid)}」在配料表里没有同名组分，"
+                    + "这一步的体积不会跟着配料表走") { StepIndex = e.StepIndex });
+                continue;
+            }
+            if (e.PlannedVolume is null)
+            {
+                var why = e.Line!.Missing.Count > 0 ? string.Join("、", e.Line.Missing) : "配料表里的量还没填全";
+                issues.Add(new ValidationIssue(IssueLevel.Warning, "charge-novolume",
+                    $"第 {e.StepIndex + 1} 步的料液「{Show(e.Liquid)}」算不出应加体积（{why}）")
+                { StepIndex = e.StepIndex });
+                continue;
+            }
+            if (e.Differs)
+                issues.Add(new ValidationIssue(IssueLevel.Warning, "charge-mismatch",
+                    $"第 {e.StepIndex + 1} 步加「{Show(e.Liquid)}」{Fmt.Num(e.StepVolume, 2)} mL，"
+                    + $"配料表算出来是 {Fmt.Num(e.PlannedVolume.Value, 2)} mL")
+                { StepIndex = e.StepIndex });
+        }
+    }
+
+    private static string Show(string s) => s.Length > 0 ? s : "（没填）";
 
     private static void ValidateAgainstChannel(List<ValidationIssue> issues, int i, Step s,
                                                CommandDescriptor d, Channel channel)

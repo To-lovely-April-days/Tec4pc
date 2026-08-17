@@ -133,10 +133,13 @@ public sealed class ExperimentStore
 
         _ws.ChannelRecipes.Clear();
         _ws.LaneNames.Clear();
+        _ws.ChannelCharges.Clear();
         foreach (var lane in doc.Lanes)
         {
             _ws.ChannelRecipes[lane.Channel] = lane.Recipe.ToModel(out var notes);
             _ws.LaneNames[lane.Channel] = lane.Name;
+            // 老文件里没有配料表这一项，读回来是 null，就是「这一路还没配料」
+            if (lane.Charge is { } charge) _ws.ChannelCharges[lane.Channel] = charge.ToModel();
             foreach (var n in notes) migrated.Add($"{lane.Name}·{n}");
         }
 
@@ -229,7 +232,9 @@ public sealed class ExperimentStore
             {
                 Channel = ch,
                 Name = _ws.LaneNames.TryGetValue(ch, out var n) ? n : "新配方",
-                Recipe = _ws.ChannelRecipes[ch].ToDoc()
+                Recipe = _ws.ChannelRecipes[ch].ToDoc(),
+                // 空表不写进文件：一份没配过料的实验不该带四张空表
+                Charge = _ws.ChannelCharges.TryGetValue(ch, out var t) && !t.IsEmpty ? t.ToDoc() : null
             });
         return doc;
     }

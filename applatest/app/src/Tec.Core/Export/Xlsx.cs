@@ -27,7 +27,9 @@ public enum XlStyle
     /// <summary>要人看见的那一行（仿真数据、已中止…）：红字。</summary>
     Bad = 8,
     /// <summary>六位小数。派生量和特征值有时很小，两位会全变成 0.00。</summary>
-    Num6 = 9
+    Num6 = 9,
+    /// <summary>四位小数。配料的质量走它：两位会把 0.0125 g 的催化剂圆成 0.01。</summary>
+    Num4 = 10
 }
 
 /// <summary>一个格子。文本和数字**分开存**——数字进了表还是数字，能排序能算。</summary>
@@ -208,11 +210,12 @@ public static class XlsxWriter
         var sb = new StringBuilder();
         sb.Append("<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">");
         // 自定义数字格式从 164 起（0–163 是内置的）
-        sb.Append("<numFmts count=\"4\">")
+        sb.Append("<numFmts count=\"5\">")
           .Append("<numFmt numFmtId=\"164\" formatCode=\"0.00\"/>")
           .Append("<numFmt numFmtId=\"165\" formatCode=\"yyyy\\-mm\\-dd\\ hh:mm:ss\"/>")
           .Append("<numFmt numFmtId=\"166\" formatCode=\"[h]:mm:ss\"/>")
           .Append("<numFmt numFmtId=\"167\" formatCode=\"0.000000\"/>")
+          .Append("<numFmt numFmtId=\"168\" formatCode=\"0.0000\"/>")
           .Append("</numFmts>");
 
         // 0 正文 1 粗 2 大粗 3 灰小 4 红
@@ -237,7 +240,7 @@ public static class XlsxWriter
 
         sb.Append("<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>");
 
-        sb.Append("<cellXfs count=\"10\">")
+        sb.Append("<cellXfs count=\"11\">")
           // 0 Text
           .Append("<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyAlignment=\"1\"><alignment vertical=\"center\"/></xf>")
           // 1 Head
@@ -258,6 +261,8 @@ public static class XlsxWriter
           .Append("<xf numFmtId=\"0\" fontId=\"4\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyFont=\"1\"/>")
           // 9 Num6
           .Append("<xf numFmtId=\"167\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>")
+          // 10 Num4
+          .Append("<xf numFmtId=\"168\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>")
           .Append("</cellXfs>");
 
         sb.Append("<cellStyles count=\"1\"><cellStyle name=\"常规\" xfId=\"0\" builtinId=\"0\"/></cellStyles>");

@@ -3,6 +3,7 @@ using Tec.App.Services;
 using Tec.Core;
 using Tec.Core.Benches;
 using Tec.Core.Catalog;
+using Tec.Core.Chemistry;
 using Tec.Core.Persistence;
 using Tec.Core.Recipes;
 using Tec.Core.Scheduling;
@@ -836,6 +837,20 @@ public sealed class RecipeViewModel : ViewModelBase
         RaiseAll(nameof(CanUndo), nameof(CanRedo));
     }
 
+    /// <summary>
+    /// 别的页改这一路配方的入口：**先记一笔快照，改完再刷新**。
+    ///
+    /// 配料表页那颗「应用到加料步骤」改的是配方参数——撤销栈和校验条都在这一页上，
+    /// 所以「快照 → 改 → 刷新」整套由这一页包住。
+    /// 只在改之前刷新是不够的：实测踩到过，配方页上那条校验还写着改之前的体积。
+    /// </summary>
+    public void EditExternally(int channel, string reason, Action edit)
+    {
+        Record(channel, reason);
+        edit();
+        RefreshAll();
+    }
+
     private void Record(int? channel = null, string? coalesceKey = null)
     {
         var ch = channel ?? _curCh;
@@ -957,7 +972,12 @@ public sealed class RecipeViewModel : ViewModelBase
         Issues.Clear();
         Problems.Clear();
         TotalNote = "";
-        foreach (var i in RecipeValidator.Validate(Current, Workspace.Catalog, Workspace.ChannelOf(_curCh)))
+        // 配料表也一起校：加料步骤的料液名对不上配料表、或者体积跟算出来的不一致，
+        // 都该在这条校验条上说，而不是等人切到配料表页才发现
+        var charge = Workspace.ChannelCharges.TryGetValue(_curCh, out var t) && !t.IsEmpty
+            ? Stoichiometry.Solve(t, Workspace.Compounds.ToList()) : null;
+        foreach (var i in RecipeValidator.Validate(Current, Workspace.Catalog,
+                                                   Workspace.ChannelOf(_curCh), charge: charge))
         {
             Issues.Add(i);
             // 「预计总时长」不是问题，别混进问题清单吓人

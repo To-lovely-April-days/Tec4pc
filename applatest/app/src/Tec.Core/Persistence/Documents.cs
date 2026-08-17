@@ -1,4 +1,5 @@
 using Tec.Core.Benches;
+using Tec.Core.Chemistry;
 using Tec.Core.Recipes;
 using Tec.Driver.Abi;
 
@@ -77,12 +78,48 @@ public sealed class RecipeDoc
     public List<StepDoc> Steps { get; set; } = new();
 }
 
-/// <summary>一条泳道：挂哪个通道、叫什么名、配方是什么。</summary>
+/// <summary>配料表里的一行。</summary>
+public sealed class ChargeItemDoc
+{
+    public string Id { get; set; } = "";
+    /// <summary>连化合物库的键。空 = 不连库，物性靠下面几项自己填。</summary>
+    public string Cas { get; set; } = "";
+    public string Name { get; set; } = "";
+    public ChargeRole Role { get; set; } = ChargeRole.Reagent;
+    public ChargeBasis Basis { get; set; } = ChargeBasis.Equivalents;
+    public double? Amount { get; set; }
+    public ChargeUnit Unit { get; set; } = ChargeUnit.Gram;
+    /// <summary>这一瓶自己的物性。空 = 用库里那条的。</summary>
+    public double? Mw { get; set; }
+    public double? Density { get; set; }
+    public double? Purity { get; set; }
+    public string Batch { get; set; } = "";
+    public string Supplier { get; set; } = "";
+    public double? ActualMass { get; set; }
+    public double? ActualVolume { get; set; }
+    public string Note { get; set; } = "";
+}
+
+/// <summary>
+/// 一个通道的配料表。
+///
+/// **只存输入，不存算出来的数**：mmol / 应称量 / 体积都是拿库里的物性现算的，
+/// 存下来的话库里改了密度，文件里那个体积还是老的——而人看不出它是老的。
+/// </summary>
+public sealed class ChargeTableDoc
+{
+    public List<ChargeItemDoc> Items { get; set; } = new();
+    public double? VesselVolume { get; set; }
+}
+
+/// <summary>一条泳道：挂哪个通道、叫什么名、配方是什么、配料表是什么。</summary>
 public sealed class LaneDoc
 {
     public int Channel { get; set; }
     public string Name { get; set; } = "新配方";
     public RecipeDoc Recipe { get; set; } = new();
+    /// <summary>配料表。老文件里没有这一项，读回来是 null，就是「这一路还没配料」。</summary>
+    public ChargeTableDoc? Charge { get; set; }
 }
 
 /// <summary>

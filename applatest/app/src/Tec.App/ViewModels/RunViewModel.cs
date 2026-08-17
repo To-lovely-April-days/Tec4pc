@@ -225,7 +225,7 @@ public sealed class StatTileViewModel : ViewModelBase
             if (!_ws.ChannelRecipes.TryGetValue(Channel, out var recipe)) return;
             try
             {
-                _ws.Engine.StartChannel(Channel, recipe, _ws.Operator);
+                _ws.Engine.StartChannel(Channel, recipe, _ws.Operator, charge: _ws.ChargeOf(Channel));
                 _say($"CH{Channel} 已启动（{recipe.Steps.Count} 步）");
             }
             catch (Exception ex) { _say($"CH{Channel} 启动失败：{ex.Message}"); }

@@ -4,13 +4,16 @@ using Tec.App.Services;
 namespace Tec.App.ViewModels;
 
 /// <summary>
-/// 外壳。菜单栏七项与原型 .menu-item 一一对应：
+/// 外壳。菜单栏前七项与原型 .menu-item 一一对应：
 /// 开始 · 台面 · 配方 · 配方库 · 化合物数据库 · 运行 · 数据导出。
+///
+/// **「配料表」是原型里没有的第八项**，插在化合物数据库后面——
+/// 它消费化合物库里的物性，产出加料步骤的体积，位置就在这两者之间。
 /// </summary>
 public sealed class MainViewModel : ViewModelBase
 {
     public const int TabStart = 0, TabBench = 1, TabRecipe = 2, TabLib = 3,
-                     TabCompounds = 4, TabRun = 5, TabExport = 6;
+                     TabCompounds = 4, TabCharge = 5, TabRun = 6, TabExport = 7;
 
     private int _tab = TabStart;
 
@@ -24,6 +27,11 @@ public sealed class MainViewModel : ViewModelBase
         Recipe.Say = text => Start.Status = text;
         Library = new RecipeLibViewModel(ws, this);
         Compounds = new CompoundsViewModel(ws);
+        Charge = new ChargeViewModel(ws)
+        {
+            // 「应用到加料步骤」改的是配方参数，得能在配方页撤回去，改完那一页也要跟着刷新
+            EditRecipe = (ch, why, edit) => Recipe.EditExternally(ch, why, edit)
+        };
         Run = new RunViewModel(ws);
         Export = new ExportViewModel(ws);
 
@@ -60,7 +68,7 @@ public sealed class MainViewModel : ViewModelBase
                 // 界面不另立一套（各写一套迟早「按钮亮着，按下去抛异常」）
                 if (runner is not null && !runner.CanStart) continue;
                 if (!ws.ChannelRecipes.TryGetValue(ch.Number, out var recipe) || recipe.Steps.Count == 0) continue;
-                try { ws.Engine.StartChannel(ch.Number, recipe, ws.Operator); } catch { }
+                try { ws.Engine.StartChannel(ch.Number, recipe, ws.Operator, charge: ws.ChargeOf(ch.Number)); } catch { }
             }
             Tab = TabRun;
             RefreshSim();
@@ -151,6 +159,7 @@ public sealed class MainViewModel : ViewModelBase
     public RecipeViewModel Recipe { get; }
     public RecipeLibViewModel Library { get; }
     public CompoundsViewModel Compounds { get; }
+    public ChargeViewModel Charge { get; }
     public RunViewModel Run { get; }
     public ExportViewModel Export { get; }
 
@@ -166,8 +175,14 @@ public sealed class MainViewModel : ViewModelBase
         {
             if (!Set(ref _tab, value)) return;
             if (value == TabExport) Export.Reload();
+            // 配料表算的是「库里的物性 × 配方里的加料」，两边都可能在别的页上改过，
+            // 切过来的时候重算一遍，别让人看着一张过时的表
+            if (value == TabCharge) Charge.Reload();
+            // 配方页那条校验条现在也看配料表。配料表在另一页上改，
+            // 切回来不重算的话，条上写的还是改之前那一版
+            if (value == TabRecipe) Recipe.RefreshAll();
             RaiseAll(nameof(IsStart), nameof(IsBench), nameof(IsRecipe), nameof(IsLib),
-                     nameof(IsCompounds), nameof(IsRun), nameof(IsExport));
+                     nameof(IsCompounds), nameof(IsCharge), nameof(IsRun), nameof(IsExport));
         }
     }
 
@@ -176,6 +191,7 @@ public sealed class MainViewModel : ViewModelBase
     public bool IsRecipe => _tab == TabRecipe;
     public bool IsLib => _tab == TabLib;
     public bool IsCompounds => _tab == TabCompounds;
+    public bool IsCharge => _tab == TabCharge;
     public bool IsRun => _tab == TabRun;
     public bool IsExport => _tab == TabExport;
 

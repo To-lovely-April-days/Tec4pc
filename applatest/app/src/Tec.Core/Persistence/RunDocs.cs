@@ -33,6 +33,8 @@ public sealed class BaselineDoc
     /// 算出来的「计划」就不再是当时冻结的那一份，GLP 上等于把基线改了。</summary>
     public List<SchedEntryDoc> Schedule { get; set; } = new();
     public List<string> Missing { get; set; } = new();
+    /// <summary>这一炉冻下来的配料表。老归档里没有，读回来是 null。</summary>
+    public ChargeTableDoc? Charge { get; set; }
 }
 
 public sealed class StepRecordDoc
@@ -135,7 +137,8 @@ public static class RunFiles
                 Recipe = ch.Baseline.Recipe.ToDoc(),
                 FrozenAt = ch.Baseline.FrozenAt,
                 ApprovedBy = ch.Baseline.ApprovedBy,
-                Missing = ch.Baseline.Schedule.MissingCommands.ToList()
+                Missing = ch.Baseline.Schedule.MissingCommands.ToList(),
+                Charge = ch.Baseline.Charge?.ToDoc()
             }
         };
         foreach (var e in ch.Baseline.Schedule.Entries)
@@ -202,7 +205,8 @@ public static class RunFiles
                 Recipe = doc.Baseline.Recipe.ToModel(),
                 Schedule = Schedule.FromEntries(entries, doc.Baseline.Missing),
                 FrozenAt = doc.Baseline.FrozenAt,
-                ApprovedBy = doc.Baseline.ApprovedBy
+                ApprovedBy = doc.Baseline.ApprovedBy,
+                Charge = doc.Baseline.Charge?.ToModel()
             }
         };
 

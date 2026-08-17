@@ -1,3 +1,4 @@
+using Tec.Core.Chemistry;
 using Tec.Core.Recipes;
 using Tec.Core.Scheduling;
 using Tec.Driver.Abi;
@@ -115,13 +116,21 @@ public sealed class EventRecord
     public string? After { get; init; }
 }
 
-/// <summary>启动那一刻冻结下来的配方 + 排期。这是 GLP 的前提（§7.2）。</summary>
+/// <summary>启动那一刻冻结下来的配方 + 排期 + 配料表。这是 GLP 的前提（§7.2）。</summary>
 public sealed class RunBaseline
 {
     public required Recipe Recipe { get; init; }
     public required Schedule Schedule { get; init; }
     public required DateTimeOffset FrozenAt { get; init; }
     public string? ApprovedBy { get; init; }
+
+    /// <summary>
+    /// 这一炉的配料表。null = 这一路没配料表（只跑温控曲线的场合很常见）。
+    ///
+    /// **冻的是一份副本**：启动之后有人在配料表页上改了当量，改的是下一炉的事，
+    /// 这一炉的记录不能跟着变——「用的是哪一批、按什么当量投的」正是 GLP 要问的。
+    /// </summary>
+    public ChargeTable? Charge { get; init; }
 }
 
 /// <summary>

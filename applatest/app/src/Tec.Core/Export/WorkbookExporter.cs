@@ -1,4 +1,5 @@
 using Tec.Core.Catalog;
+using Tec.Core.Chemistry;
 using Tec.Core.Data;
 using Tec.Core.Records;
 using Tec.Driver.Abi;
@@ -27,7 +28,79 @@ public static class WorkbookExporter
 
         if (opt.IncludeExecution) sheets.Add(Steps(rec, opt, catalog));
         if (opt.IncludeEvents) sheets.Add(Events(rec));
+        if (Charges(rec, opt) is { } charge) sheets.Add(charge);
         return sheets;
+    }
+
+    // ── 配料表 ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// 四路的配料表摞成一张平表（多一列「通道」）。
+    ///
+    /// 报告里是一路一张——那是给人读的；这里是给人拿去做透视和对比的，
+    /// 平表才筛得动。**数字以数字身份写进去**，不然一列 mmol 在 Excel 里排序会乱。
+    ///
+    /// 一路都没有配料表就不出这一页：空页比没有更让人以为「导漏了」。
+    /// </summary>
+    private static XlSheet? Charges(RunRecord rec, ExportOptions opt)
+    {
+        var channels = rec.Channels
+            .Where(c => c.Baseline.Charge is { IsEmpty: false })
+            .Where(c => opt.Channels.Count == 0 || opt.Channels.Contains(c.Channel))
+            .OrderBy(c => c.Channel)
+            .ToList();
+        if (channels.Count == 0) return null;
+
+        var s = new XlSheet("配料表") { Freeze = 1, FilterRow = 1 };
+        s.Widths.AddRange(new[] { 8.0, 26, 14, 12, 12, 10, 10, 10, 10, 12, 12, 12, 12, 12, 16, 16, 30 });
+        s.Head("通道", "组分", "CAS", "角色", "基准", "给定量", "单位", "当量",
+               "M g/mol", "密度 g/mL", "纯度 %", "mmol", "应称量 g", "应量取 mL",
+               "实投 g", "实取 mL", "缺什么 / 按什么假设算的");
+
+        foreach (var ch in channels)
+        {
+            var r = Stoichiometry.Solve(ch.Baseline.Charge!, opt.Library);
+            foreach (var l in r.Lines)
+            {
+                var isProduct = l.Item.Role == ChargeRole.Product;
+                s.Add(
+                    XlCell.S("CH" + ch.Channel),
+                    XlCell.S(l.Item.Name),
+                    XlCell.S(l.Item.Cas.Length > 0 && !l.Item.Cas.StartsWith('#') ? l.Item.Cas : ""),
+                    XlCell.S(ChargeWords.Of(l.Item.Role)),
+                    XlCell.S(ChargeWords.Of(l.Item.Basis)),
+                    XlCell.N(l.Item.Basis == ChargeBasis.Quantity ? l.Item.Amount : null, XlStyle.Num4),
+                    XlCell.S(l.Item.Basis == ChargeBasis.Quantity ? ChargeWords.Of(l.Item.Unit) : ""),
+                    XlCell.N(l.Equivalents, XlStyle.Num4),
+                    XlCell.N(l.MwUsed, XlStyle.Num2),
+                    XlCell.N(l.DensityUsed, XlStyle.Num4),
+                    XlCell.N(l.PurityUsed, XlStyle.Num2),
+                    XlCell.N(l.Moles, XlStyle.Num4),
+                    // 产物那一行「应称量」放的是理论产量——它不投料
+                    XlCell.N(isProduct ? l.TheoreticalMass : l.Mass, XlStyle.Num4),
+                    XlCell.N(l.Volume, XlStyle.Num4),
+                    XlCell.N(l.Item.ActualMass, XlStyle.Num4),
+                    XlCell.N(l.Item.ActualVolume, XlStyle.Num4),
+                    XlCell.S(string.Join("；", l.Missing.Concat(l.Assumptions))));
+            }
+
+            s.Blank();
+            s.Add(XlCell.S("CH" + ch.Channel + " 合计", XlStyle.Head), XlCell.S(""), XlCell.S(""),
+                  XlCell.S(""), XlCell.S(""), XlCell.S(""), XlCell.S(""), XlCell.S(""),
+                  XlCell.S(""), XlCell.S(""), XlCell.S(""), XlCell.S(""),
+                  XlCell.N(r.TotalMass, XlStyle.Num4), XlCell.N(r.TotalVolume, XlStyle.Num4));
+
+            foreach (var p in r.Problems) s.Add(XlCell.S("CH" + ch.Channel + " 提示"), XlCell.S(p));
+            foreach (var p in r.Lines.Where(x => x.Item.Role == ChargeRole.Product && x.Yield is not null))
+                s.Add(XlCell.S("CH" + ch.Channel + " 收率", XlStyle.Head), XlCell.S(p.Item.Name),
+                      XlCell.N(p.Yield, XlStyle.Num2), XlCell.S("%"));
+            s.Blank();
+        }
+
+        s.Add(XlCell.S("「应称量」已按纯度折算——料不纯就得多称一些才够那么多物质的量；"
+                       + "「实投」是操作人称完回填的实际值。空格子 = 没算出来或没填，不是 0。"
+                       + "配料表取自各通道启动那一刻冻结的基线。", XlStyle.Note));
+        return s;
     }
 
     // ── 概要 ────────────────────────────────────────────────────────

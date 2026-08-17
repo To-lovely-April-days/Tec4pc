@@ -3,6 +3,7 @@ using Avalonia.Threading;
 using Tec.Core;
 using Tec.Core.Benches;
 using Tec.Core.Catalog;
+using Tec.Core.Chemistry;
 using Tec.Core.Compounds;
 using Tec.Core.Data;
 using Tec.Core.Execution;
@@ -87,6 +88,20 @@ public sealed class Workspace
 
     /// <summary>每条泳道的配方名称（原型 laneName）。配方是空的，名字也就只能是「新配方」。</summary>
     public Dictionary<int, string> LaneNames { get; } = new();
+
+    /// <summary>
+    /// 每通道一张配料表。跟着实验走（存进 .tec），不像化合物库那样全局——
+    /// 四个通道跑四组不同的量，而苯甲酸的分子量在哪一路都是 122.12。
+    /// </summary>
+    public Dictionary<int, ChargeTable> ChannelCharges { get; } = new();
+
+    /// <summary>取这一路的配料表，没有就现建一张空的挂上去。</summary>
+    public ChargeTable ChargeOf(int channel)
+    {
+        if (!ChannelCharges.TryGetValue(channel, out var t))
+            ChannelCharges[channel] = t = new ChargeTable();
+        return t;
+    }
 
     /// <summary>
     /// 当前实验名。存盘 / 读取做出来之前一直是「未命名实验」——

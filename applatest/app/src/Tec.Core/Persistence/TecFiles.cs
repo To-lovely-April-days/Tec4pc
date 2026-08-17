@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using Tec.Core.Benches;
+using Tec.Core.Chemistry;
 using Tec.Core.Recipes;
 
 namespace Tec.Core.Persistence;
@@ -69,6 +70,40 @@ public static class TecFiles
                 Phase = s.Phase
             });
         return doc;
+    }
+
+    /// <summary>配料表 → 文档。**只写输入**：算出来的数由物性现算，见 ChargeTableDoc 的说明。</summary>
+    public static ChargeTableDoc ToDoc(this ChargeTable t)
+    {
+        var doc = new ChargeTableDoc { VesselVolume = t.VesselVolume };
+        foreach (var i in t.Items)
+            doc.Items.Add(new ChargeItemDoc
+            {
+                Id = i.Id, Cas = i.Cas, Name = i.Name, Role = i.Role, Basis = i.Basis,
+                Amount = i.Amount, Unit = i.Unit,
+                Mw = i.Mw, Density = i.Density, Purity = i.Purity,
+                Batch = i.Batch, Supplier = i.Supplier,
+                ActualMass = i.ActualMass, ActualVolume = i.ActualVolume, Note = i.Note
+            });
+        return doc;
+    }
+
+    public static ChargeTable ToModel(this ChargeTableDoc doc)
+    {
+        var t = new ChargeTable { VesselVolume = doc.VesselVolume };
+        foreach (var d in doc.Items)
+            t.Items.Add(new ChargeItem
+            {
+                // 老文件里可能没有 Id（这一版之前存的），补一个——
+                // Id 是界面认行的凭据，空着的话选中项会乱跳
+                Id = d.Id.Length > 0 ? d.Id : Guid.NewGuid().ToString("N")[..8],
+                Cas = d.Cas, Name = d.Name, Role = d.Role, Basis = d.Basis,
+                Amount = d.Amount, Unit = d.Unit,
+                Mw = d.Mw, Density = d.Density, Purity = d.Purity,
+                Batch = d.Batch, Supplier = d.Supplier,
+                ActualMass = d.ActualMass, ActualVolume = d.ActualVolume, Note = d.Note
+            });
+        return t;
     }
 
     // ── 文档 → 模型 ──────────────────────────────────────────────────

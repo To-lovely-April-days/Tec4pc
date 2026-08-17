@@ -273,7 +273,7 @@ public sealed class ExportViewModel : ViewModelBase
         {
             ("trend", "趋势曲线（Tr / Tj / Tr−Tj / pH）", true), ("steps", "步骤执行记录表", true),
             ("alarm", "报警与偏差记录", true), ("recipe", "配方参数与台面配置", true),
-            ("chem", "化合物物性数据", false)
+            ("charge", "配料表与化学计量", true), ("chem", "化合物物性数据", false)
         })
             ReportItems.Add(new ToggleViewModel { Key = k, Name = n, On = on });
 
@@ -1203,7 +1203,9 @@ public sealed class ExportViewModel : ViewModelBase
             TimeBase = _baseLabel == "相对通道启动" ? TimeBase.Channel : TimeBase.Wall,
             Shape = _baseLabel == "相对通道启动" ? TableShape.Long : TableShape.Wide,
             Grid = TimeSpan.FromSeconds(IntervalSeconds),
-            IncludeExecution = StepsOn
+            IncludeExecution = StepsOn,
+            // 配料表里存的是「哪个 CAS、几当量」，摩尔质量和密度得现从库里取
+            Library = _ws.Compounds.ToList()
         };
         // 这一炉跑了哪几路就导哪几路
         opt.Channels.AddRange(row.Chs);
@@ -1216,6 +1218,8 @@ public sealed class ExportViewModel : ViewModelBase
             Steps = ReportOn("steps"),
             Alarms = ReportOn("alarm"),
             RecipeAndBench = ReportOn("recipe"),
+            Charge = ReportOn("charge"),
+            Library = _ws.Compounds.ToList(),
             Chemicals = ReportOn("chem"),
             Audit = GlpOn("audit"),
             Checksum = GlpOn("sha"),

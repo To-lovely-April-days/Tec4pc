@@ -1,5 +1,6 @@
 using System.Globalization;
 using Tec.Core.Catalog;
+using Tec.Core.Chemistry;
 using Tec.Core.Data;
 using Tec.Core.Records;
 using Tec.Driver.Abi;
@@ -15,6 +16,11 @@ public sealed class ReportOptions
     public bool Alarms { get; set; } = true;
     public bool RecipeAndBench { get; set; } = true;
     public bool Chemicals { get; set; }
+    /// <summary>配料表与化学计量那一节。</summary>
+    public bool Charge { get; set; } = true;
+    /// <summary>算配料要用的化合物库。界面层传进来——Core 不去碰数据库。</summary>
+    public IReadOnlyList<Tec.Core.Compounds.Compound> Library { get; set; }
+        = Array.Empty<Tec.Core.Compounds.Compound>();
     /// <summary>GLP 那三个勾。</summary>
     public bool Audit { get; set; } = true;
     public bool Checksum { get; set; } = true;
@@ -25,6 +31,25 @@ public sealed class ReportOptions
     public List<(string Name, string Sha)> Files { get; } = new();
     /// <summary>化合物物性，界面层从化合物库里挑好传进来。</summary>
     public List<(string Name, string Cas, string Props)> Compounds { get; } = new();
+}
+
+/// <summary>
+/// 章号。**按实际排进去的节数往下数**，不是每处写死一个。
+///
+/// 写死的后果是：把「步骤执行记录」那个勾取消掉，报告目录就从「二」直接跳到「四」——
+/// 中间那一章去哪了，读报告的人无从得知，只能怀疑自己拿到的是残页。
+/// </summary>
+internal sealed class Chapters
+{
+    private static readonly string[] Cn = { "一", "二", "三", "四", "五", "六", "七", "八", "九", "十" };
+    private int _n;
+
+    public string Next(string title)
+    {
+        _n++;
+        var no = _n <= Cn.Length ? Cn[_n - 1] : _n.ToString(CultureInfo.InvariantCulture);
+        return no + "、" + title;
+    }
 }
 
 /// <summary>
@@ -66,16 +91,21 @@ public static class ReportBuilder
         if (meta.Signer.Length > 0 && opt.Signature) doc.Cover.Add(("签名人", meta.Signer));
         if (meta.Archived) doc.Cover.Add(("数据来源", "归档记录"));
 
-        Summary(doc, rec, samples, meta, t0, end);
+        var no = new Chapters();
+        Summary(doc, rec, samples, meta, t0, end, no);
+
+        // 配料表排在概要后面：这一炉「投了什么、投了多少」是读报告的人问的第一件事，
+        // 而且它是配方参数的前提——先知道加的是什么，那些体积才读得懂
+        if (opt.Charge) Charges(doc, rec, opt, no);
 
         if (opt.Trend && opt.Charts.Count > 0)
         {
-            doc.Blocks.Add(new HeadingBlock { Level = 1, Text = "二、趋势曲线" });
+            doc.Blocks.Add(new HeadingBlock { Level = 1, Text = no.Next("趋势曲线") });
             foreach (var chart in opt.Charts) doc.Blocks.Add(chart);
         }
         else if (opt.Trend)
         {
-            doc.Blocks.Add(new HeadingBlock { Level = 1, Text = "二、趋势曲线" });
+            doc.Blocks.Add(new HeadingBlock { Level = 1, Text = no.Next("趋势曲线") });
             doc.Blocks.Add(new ParaBlock
             {
                 Muted = true,
@@ -85,15 +115,15 @@ public static class ReportBuilder
 
         if (opt.Template == ReportTemplate.Summary)
         {
-            Deviations(doc, rec, catalog);
+            Deviations(doc, rec, catalog, no);
             Sign(doc, rec, meta, opt);
             return doc;
         }
 
-        if (opt.Steps) Steps(doc, rec, catalog);
-        if (opt.Alarms) Events(doc, rec, opt.Template == ReportTemplate.Glp || opt.Audit);
-        if (opt.RecipeAndBench) Recipes(doc, rec, catalog);
-        if (opt.Chemicals && opt.Compounds.Count > 0) Compounds(doc, opt);
+        if (opt.Steps) Steps(doc, rec, catalog, no);
+        if (opt.Alarms) Events(doc, rec, opt.Template == ReportTemplate.Glp || opt.Audit, no);
+        if (opt.RecipeAndBench) Recipes(doc, rec, catalog, no);
+        if (opt.Chemicals && opt.Compounds.Count > 0) Compounds(doc, opt, no);
         if (opt.Template == ReportTemplate.Glp) Glp(doc, rec, meta, opt);
         Sign(doc, rec, meta, opt);
         return doc;
@@ -102,10 +132,10 @@ public static class ReportBuilder
     // ── 一、实验概要 ────────────────────────────────────────────────
 
     private static void Summary(ReportDoc doc, RunRecord rec, ISampleSource samples,
-                                ExportMeta meta, DateTimeOffset t0, DateTimeOffset end)
+                                ExportMeta meta, DateTimeOffset t0, DateTimeOffset end, Chapters no)
     {
         doc.Blocks.Add(new PageBreakBlock());
-        doc.Blocks.Add(new HeadingBlock { Level = 1, Text = "一、实验概要" });
+        doc.Blocks.Add(new HeadingBlock { Level = 1, Text = no.Next("实验概要") });
 
         if (meta.SamplesTruncated)
             doc.Blocks.Add(new NoticeBlock
@@ -189,9 +219,9 @@ public static class ReportBuilder
 
     // ── 超差步骤（摘要模板专用）────────────────────────────────────
 
-    private static void Deviations(ReportDoc doc, RunRecord rec, CommandCatalog catalog)
+    private static void Deviations(ReportDoc doc, RunRecord rec, CommandCatalog catalog, Chapters no)
     {
-        doc.Blocks.Add(new HeadingBlock { Level = 1, Text = "三、超差与异常" });
+        doc.Blocks.Add(new HeadingBlock { Level = 1, Text = no.Next("超差与异常") });
 
         var rows = new List<string[]>();
         foreach (var ch in rec.Channels.OrderBy(c => c.Channel))
@@ -236,9 +266,9 @@ public static class ReportBuilder
 
     // ── 步骤执行记录 ────────────────────────────────────────────────
 
-    private static void Steps(ReportDoc doc, RunRecord rec, CommandCatalog catalog)
+    private static void Steps(ReportDoc doc, RunRecord rec, CommandCatalog catalog, Chapters no)
     {
-        doc.Blocks.Add(new HeadingBlock { Level = 1, Text = "三、步骤执行记录" });
+        doc.Blocks.Add(new HeadingBlock { Level = 1, Text = no.Next("步骤执行记录") });
         var phased = rec.Channels.Any(c => c.Steps.Any(s => !string.IsNullOrEmpty(s.Phase)));
         doc.Blocks.Add(new ParaBlock
         {
@@ -311,9 +341,9 @@ public static class ReportBuilder
 
     // ── 事件与报警 ──────────────────────────────────────────────────
 
-    private static void Events(ReportDoc doc, RunRecord rec, bool full)
+    private static void Events(ReportDoc doc, RunRecord rec, bool full, Chapters no)
     {
-        doc.Blocks.Add(new HeadingBlock { Level = 1, Text = "四、事件与报警" });
+        doc.Blocks.Add(new HeadingBlock { Level = 1, Text = no.Next("事件与报警") });
 
         var all = rec.Channels
             .SelectMany(c => c.Events.Select(e => (Ch: c.Channel, E: e)))
@@ -361,9 +391,9 @@ public static class ReportBuilder
 
     // ── 配方与台面 ──────────────────────────────────────────────────
 
-    private static void Recipes(ReportDoc doc, RunRecord rec, CommandCatalog catalog)
+    private static void Recipes(ReportDoc doc, RunRecord rec, CommandCatalog catalog, Chapters no)
     {
-        doc.Blocks.Add(new HeadingBlock { Level = 1, Text = "五、配方参数与台面" });
+        doc.Blocks.Add(new HeadingBlock { Level = 1, Text = no.Next("配方参数与台面") });
         doc.Blocks.Add(new ParaBlock
         {
             Muted = true,
@@ -412,9 +442,186 @@ public static class ReportBuilder
         }
     }
 
-    private static void Compounds(ReportDoc doc, ReportOptions opt)
+    // ── 配料表与化学计量 ────────────────────────────────────────────
+
+    /// <summary>
+    /// 每通道一张配料表。数据来自**启动那一刻冻结在基线里的那一份**，
+    /// 不是配料表页上现在这一份——跑完之后改了当量，这一页不该跟着变。
+    ///
+    /// 一路都没有配料表就整节不出现：只跑温控曲线的实验不需要它，
+    /// 硬摆一张空表进去，读报告的人会以为这一炉什么都没投。
+    /// </summary>
+    private static void Charges(ReportDoc doc, RunRecord rec, ReportOptions opt, Chapters no)
     {
-        doc.Blocks.Add(new HeadingBlock { Level = 1, Text = "六、化合物物性" });
+        var withCharge = rec.Channels
+            .Where(c => c.Baseline.Charge is { IsEmpty: false })
+            .OrderBy(c => c.Channel)
+            .ToList();
+        if (withCharge.Count == 0) return;
+
+        doc.Blocks.Add(new HeadingBlock { Level = 1, Text = no.Next("配料表与化学计量") });
+        doc.Blocks.Add(new ParaBlock
+        {
+            Muted = true,
+            Text = "「应称量」是按限制试剂定量、其余按当量算出来的、需要称取的量，"
+                 + "已按纯度折算——料不纯就得多称一些才够那么多物质的量。"
+                 + "「实投」是操作人称完回填的实际值，两者都在表里，差多少一眼看得见。"
+                 + "本节数据取自启动那一刻冻结的基线，实验跑完之后再改配料表也不影响它。"
+        });
+
+        foreach (var ch in withCharge)
+        {
+            var result = Stoichiometry.Solve(ch.Baseline.Charge!, opt.Library);
+            var rows = new List<string[]>();
+            var bad = new List<int>();
+
+            foreach (var l in result.Lines)
+            {
+                if (l.Missing.Count > 0) bad.Add(rows.Count);
+                rows.Add(new[]
+                {
+                    l.Item.Name.Length > 0 ? l.Item.Name : "（未命名）",
+                    ChargeWords.Of(l.Item.Role),
+                    Basis(l.Item),
+                    Q(l.Equivalents),
+                    Q(l.Moles),
+                    // 产物那一行放的是理论产量——它不投料，表脚里说明了这一点
+                    Q(l.Item.Role == ChargeRole.Product ? l.TheoreticalMass : l.Mass),
+                    Q(l.Volume),
+                    Q(l.Item.ActualMass),
+                    string.Join(" / ", new[] { l.Item.Batch, l.Item.Supplier }.Where(x => x.Length > 0))
+                });
+            }
+
+            doc.Blocks.Add(new TableBlock
+            {
+                Title = $"CH{ch.Channel}　·　{ch.Baseline.Recipe.Name}",
+                Columns = new[]
+                {
+                    // 列宽不是拍的：按内嵌字体实际量过，任何一格被掐都不接受
+                    // （见「配料表的数字列一个都不许被掐掉」那条回归）。
+                    // 计算用的物性没有做成一列——A4 竖排下九列已经到头，
+                    // 硬塞第十列的结果是 M 和纯度双双被掐成「198.13 9…」。
+                    // 它们改排在表脚：那一行是整页宽的，折得开
+                    new TableCol { Name = "组分", Weight = 1.74 },
+                    // 角色与基准是固定词表（「限制试剂」「给定 mmol」最长），
+                    // 一行放得下才行——折成「限制试 / 剂」那样看着就是排版没做完
+                    new TableCol { Name = "角色", Weight = 0.9 },
+                    new TableCol { Name = "基准", Weight = 0.96 },
+                    new TableCol { Name = "当量", Weight = 0.8, Right = true },
+                    new TableCol { Name = "mmol", Weight = 0.85, Right = true },
+                    new TableCol { Name = "应称量 g", Weight = 0.85, Right = true },
+                    new TableCol { Name = "体积 mL", Weight = 0.85, Right = true },
+                    new TableCol { Name = "实投 g", Weight = 0.8, Right = true },
+                    new TableCol { Name = "批号 / 供应商", Weight = 1.35 }
+                },
+                Rows = rows,
+                BadRows = bad,
+                MaxLines = 2,
+                Note = ChargeNote(ch.Baseline.Charge!, result)
+            });
+
+            foreach (var p in result.Problems)
+                doc.Blocks.Add(new NoticeBlock { Bad = true, Text = $"CH{ch.Channel} 配料表：{p}" });
+
+            // 缺物性的那几行单独点名。表里那一格已经标红了，但红行不说是缺什么
+            var missing = result.Lines.Where(l => l.Missing.Count > 0).ToList();
+            if (missing.Count > 0)
+                doc.Blocks.Add(new NoticeBlock
+                {
+                    Bad = true,
+                    Text = $"CH{ch.Channel} 有 {missing.Count} 个组分的量没能算全："
+                           + string.Join("；", missing.Select(l =>
+                               $"{(l.Item.Name.Length > 0 ? l.Item.Name : "（未命名）")}——"
+                               + string.Join("、", l.Missing)))
+                           + "。这几项在表里是空格，没有替它们填过任何数。"
+                });
+        }
+    }
+
+    /// <summary>表脚那一行：限制试剂是谁、合计多少、理论产量与收率。</summary>
+    private static string ChargeNote(ChargeTable table, ChargeResult r)
+    {
+        var parts = new List<string>();
+
+        if (r.Limiting is { } lim)
+        {
+            var text = $"限制试剂 {(lim.Item.Name.Length > 0 ? lim.Item.Name : "（未命名）")}";
+            if (lim.Moles is { } n) text += $" {Q(n)} mmol";
+            if (lim.Mass is { } m) text += $"（{Q(m)} g）";
+            parts.Add(text);
+        }
+        else parts.Add("未指定限制试剂");
+
+        if (r.TotalMass is { } tm) parts.Add($"投料合计 {tm.ToString("0.##", CultureInfo.InvariantCulture)} g");
+        if (r.TotalVolume is { } tv)
+        {
+            var text = $"合计体积 {tv.ToString("0.##", CultureInfo.InvariantCulture)} mL";
+            if (table.VesselVolume is { } cap)
+                text += $" / 釜容 {cap.ToString("0.#", CultureInfo.InvariantCulture)} mL";
+            // 混合后的体积不是各组分体积之和。拿它对釜容够用，但不能说成实测值
+            text += "（各组分体积相加的估计值，混合后实际体积会有出入）";
+            parts.Add(text);
+        }
+
+        foreach (var p in r.Lines.Where(l => l.Item.Role == ChargeRole.Product && l.TheoreticalMass is not null))
+        {
+            var text = $"目标产物「{(p.Item.Name.Length > 0 ? p.Item.Name : "（未命名）")}」那一行的"
+                       + $"「应称量」是理论产量 {Q(p.TheoreticalMass)} g";
+            text += p.Yield is { } y
+                ? $"，实际 {Q(p.Item.ActualMass)} g，收率 {y.ToString("0.#", CultureInfo.InvariantCulture)} %"
+                : "，实际产量未回填";
+            parts.Add(text);
+        }
+
+        // 复核的人要能拿这几个数把整张表重算一遍，所以算的时候用了什么就写什么。
+        // 它排在表脚而不是表里的一列：表脚是整页宽的，一列会被掐成「198.13 9…」
+        var props = new List<string>();
+        foreach (var l in r.Lines)
+        {
+            var one = new List<string>();
+            if (l.MwUsed is { } m) one.Add("M " + m.ToString("0.##", CultureInfo.InvariantCulture));
+            if (l.PurityUsed is { } p2) one.Add(p2.ToString("0.##", CultureInfo.InvariantCulture) + " %");
+            if (l.DensityUsed is { } d) one.Add("ρ " + d.ToString("0.###", CultureInfo.InvariantCulture));
+            if (one.Count == 0) continue;
+            props.Add($"{(l.Item.Name.Length > 0 ? l.Item.Name : "（未命名）")} {string.Join(" / ", one)}");
+        }
+        if (props.Count > 0) parts.Add("计算用物性：" + string.Join("；", props));
+
+        return string.Join("　·　", parts);
+    }
+
+    private static string Basis(ChargeItem i) => i.Basis switch
+    {
+        ChargeBasis.Equivalents => "按当量",
+        ChargeBasis.Volumes => "按倍量",
+        _ => "给定 " + ChargeWords.Of(i.Unit)
+    };
+
+    /// <summary>没算出来就是一个空格子。填 0 进去等于说「不用加」。</summary>
+    private static string N(double? v, string fmt)
+        => v is null ? "" : v.Value.ToString(fmt, CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// 配料的数按**有效位**给小数，不一律四位。
+    ///
+    /// 一律四位的话 11.4577 有七位字符，A4 竖排下那一列放不下就被掐成「11.4…」——
+    /// 一张写着「11.4…」的配料表没法拿去称量，而它存在的理由就是拿去称量。
+    /// 一律两位又会把 0.0125 g 的催化剂圆成 0.01（差两成）。所以按量级来：
+    /// 上千位保留一位，上十位两位，个位三位，小于 1 的四位——最长都是六个字符。
+    /// 溶剂动辄上千 mmol，四位整数再加两位小数就是七个字符，正好卡在放不下那一档。
+    /// </summary>
+    private static string Q(double? v)
+    {
+        if (v is not { } x) return "";
+        var a = Math.Abs(x);
+        var fmt = a >= 10000 ? "0" : a >= 1000 ? "0.#" : a >= 10 ? "0.##" : a >= 1 ? "0.###" : "0.####";
+        return x.ToString(fmt, CultureInfo.InvariantCulture);
+    }
+
+    private static void Compounds(ReportDoc doc, ReportOptions opt, Chapters no)
+    {
+        doc.Blocks.Add(new HeadingBlock { Level = 1, Text = no.Next("化合物物性") });
         doc.Blocks.Add(new TableBlock
         {
             Columns = new[]

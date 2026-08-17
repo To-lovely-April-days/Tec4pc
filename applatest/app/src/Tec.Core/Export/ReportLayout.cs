@@ -167,6 +167,32 @@ public sealed class TextMetrics
             var cw = Width(ch.ToString(), size);
             var cjk = IsCjk(ch);
 
+            // 避头：收尾的标点不许单独跑到下一行行首。中文排版里
+            // 「应称量 ↵ 」是理论产量」这种断法一眼就看得出是机器排的。
+            //
+            // 办法是把**上一个字符一起带到下一行**，而不是让这一行多挤一个——
+            // 多挤一个就顶出版心了（「没有一行字超出版心」那条回归当场逮住）
+            if (w + cw > maxWidth && line.Length > 1 && NoLineStart(ch))
+            {
+                // 往回退到第一个「能当行首的字」为止：行末可能已经堆了好几个
+                // 收尾符号（「…夹套）」后面又来一个「，」），只带一个下去，
+                // 下一行行首坐的还是标点
+                var cut = line.Length;
+                while (cut > 1 && NoLineStart(line[cut - 1])) cut--;
+                cut--;                                   // 连它前面那个正经字一起带走
+
+                // 退太多就等于把整行都搬下去，那还不如照常断
+                if (cut >= 1 && line.Length - cut <= 4 && line[cut] != ' ')
+                {
+                    var carry = line.ToString(cut, line.Length - cut);
+                    line.Length = cut;
+                    lines.Add(line.ToString());
+                    line.Clear().Append(carry);
+                    w = Width(carry, size);
+                    lastBreak = -1;
+                }
+            }
+
             if (w + cw > maxWidth && line.Length > 0)
             {
                 if (!cjk && lastBreak > 0 && lastBreak < line.Length)
@@ -198,6 +224,10 @@ public sealed class TextMetrics
 
     private static bool IsCjk(char c)
         => c >= 0x2E80 && c <= 0x9FFF || c >= 0xF900 && c <= 0xFAFF || c >= 0xFF00 && c <= 0xFFEF;
+
+    /// <summary>不许出现在行首的字符：句读和各种收尾的括号引号（中文排版的「避头」）。</summary>
+    private static bool NoLineStart(char c)
+        => "，。、；：？！）】》」』〉”’%,.;:?!)]}…—～".IndexOf(c) >= 0;
 
     /// <summary>掐到给定宽度以内，掐掉的用省略号收尾。表格里的长备注用它。</summary>
     public string Ellipsis(string s, double size, double maxWidth)

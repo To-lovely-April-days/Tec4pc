@@ -1,5 +1,6 @@
 using Tec.Core.Benches;
 using Tec.Core.Catalog;
+using Tec.Core.Chemistry;
 using Tec.Core.Data;
 using Tec.Core.Records;
 using Tec.Core.Recipes;
@@ -171,13 +172,14 @@ public sealed class RunEngine
         => _runners.TryGetValue(channel, out var r) ? r : null;
 
     /// <summary>启动一个通道。用户用几个就是几个。</summary>
-    public ChannelRun StartChannel(int channel, Recipe recipe, string? user = null, EstimationContext? seed = null)
+    public ChannelRun StartChannel(int channel, Recipe recipe, string? user = null,
+                                   EstimationContext? seed = null, ChargeTable? charge = null)
     {
         var r = _runners.TryGetValue(channel, out var found)
             ? found
             : throw new InvalidOperationException($"CH{channel} 不在台面上。");
         r.TimeScale = TimeScale;
-        var run = r.Start(recipe, seed ?? SeedFor(r.Channel), user);
+        var run = r.Start(recipe, seed ?? SeedFor(r.Channel), user, charge);
         Record.Append(run);
         Changed?.Invoke(this, EventArgs.Empty);
         return run;

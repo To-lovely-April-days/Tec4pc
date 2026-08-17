@@ -1,5 +1,6 @@
 using Tec.Core.Benches;
 using Tec.Core.Catalog;
+using Tec.Core.Chemistry;
 using Tec.Core.Records;
 using Tec.Core.Recipes;
 using Tec.Core.Scheduling;
@@ -68,7 +69,8 @@ public sealed class ChannelRunner
     /// 启动。按下的那一刻把配方 + 排期快照下来作为审计基线（§7.2）。
     /// 通道各自启动，谁先谁后由操作人决定。
     /// </summary>
-    public ChannelRun Start(Recipe recipe, EstimationContext? seed = null, string? user = null)
+    public ChannelRun Start(Recipe recipe, EstimationContext? seed = null, string? user = null,
+                            ChargeTable? charge = null)
     {
         if (!CanStart)
             throw new InvalidOperationException(State switch
@@ -98,7 +100,9 @@ public sealed class ChannelRunner
                 Recipe = frozenRecipe,
                 Schedule = frozenSchedule,
                 FrozenAt = startedAt,
-                ApprovedBy = user
+                ApprovedBy = user,
+                // 冻一份副本。启动之后配料表页上再改，改的是下一炉
+                Charge = charge is { IsEmpty: false } ? charge.Clone() : null
             }
         };
 

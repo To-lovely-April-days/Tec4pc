@@ -34,6 +34,9 @@ public sealed class ExportOptions
     public bool IncludeSamples { get; set; } = true;
     /// <summary>宽表的时间栅格。</summary>
     public TimeSpan Grid { get; set; } = TimeSpan.FromSeconds(5);
+    /// <summary>算配料要用的化合物库。界面层传进来——Core 不去碰数据库。</summary>
+    public IReadOnlyList<Tec.Core.Compounds.Compound> Library { get; set; }
+        = Array.Empty<Tec.Core.Compounds.Compound>();
 }
 
 /// <summary>
