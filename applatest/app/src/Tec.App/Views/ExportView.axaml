@@ -77,19 +77,26 @@
                              HorizontalAlignment="Left" VerticalAlignment="Center" IsHitTestVisible="False" />
               </Panel>
 
-              <!-- 日期段（原型 .seg 分段按钮） -->
-              <Border Classes="seg" Margin="0,0,9,0">
-                <StackPanel Orientation="Horizontal">
-                  <Button Classes="segb" Classes.on="{Binding DaysAll}" Content="全部"
-                          Command="{Binding SetDays}" CommandParameter="all" />
-                  <Button Classes="segb" Classes.on="{Binding Days7}" Content="近 7 天"
-                          Command="{Binding SetDays}" CommandParameter="7" />
-                  <Button Classes="segb" Classes.on="{Binding Days30}" Content="近 30 天"
-                          Command="{Binding SetDays}" CommandParameter="30" />
-                  <Button Classes="segb" Classes.on="{Binding Days90}" Content="近 90 天"
-                          Command="{Binding SetDays}" CommandParameter="90" />
-                </StackPanel>
-              </Border>
+              <!-- 刷新：这一页的记录是进来时读的，中途又跑了一炉就按它。
+                   圆钮，与台面 / 配方 / 配方库那几页的工具钮同款 -->
+              <Button Classes="tbtn sm" Margin="0,0,9,0" VerticalAlignment="Center"
+                      Command="{Binding DoReload}" ToolTip.Tip="刷新记录列表">
+                <ctl:TecIcon Key="ui-ex-refresh" />
+              </Button>
+
+              <!-- 按日期筛选。原型是一条扁平的分段条，本程序的按钮语言是
+                   描边圆角 + 悬停变蓝，这里跟着程序走 -->
+              <StackPanel Orientation="Horizontal" Spacing="5" Margin="0,0,12,0"
+                          VerticalAlignment="Center">
+                <Button Classes="pill" Classes.on="{Binding DaysAll}" Content="全部"
+                        Command="{Binding SetDays}" CommandParameter="all" />
+                <Button Classes="pill" Classes.on="{Binding Days7}" Content="近 7 天"
+                        Command="{Binding SetDays}" CommandParameter="7" />
+                <Button Classes="pill" Classes.on="{Binding Days30}" Content="近 30 天"
+                        Command="{Binding SetDays}" CommandParameter="30" />
+                <Button Classes="pill" Classes.on="{Binding Days90}" Content="近 90 天"
+                        Command="{Binding SetDays}" CommandParameter="90" />
+              </StackPanel>
 
               <ComboBox Classes="ftr" Width="150" Margin="0,0,9,0" ItemsSource="{Binding RecipeOptions}"
                         SelectedItem="{Binding FilterRecipe, Mode=TwoWay}" />
@@ -119,14 +126,12 @@
                            VerticalAlignment="Center" />
                 <TextBlock Grid.Column="1" Text="{Binding PrevWho}" FontSize="11" Foreground="#9a9a9a"
                            VerticalAlignment="Center" Margin="10,0,0,0" />
-                <Border Grid.Column="3" Classes="seg">
-                  <StackPanel Orientation="Horizontal">
-                    <Button Classes="segb" Classes.on="{Binding PrevData}" Content="采样数据"
-                            Command="{Binding SetPrev}" CommandParameter="data" />
-                    <Button Classes="segb" Classes.on="{Binding PrevStep}" Content="步骤记录"
-                            Command="{Binding SetPrev}" CommandParameter="step" />
-                  </StackPanel>
-                </Border>
+                <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="5">
+                  <Button Classes="pill" Classes.on="{Binding PrevData}" Content="采样数据"
+                          Command="{Binding SetPrev}" CommandParameter="data" />
+                  <Button Classes="pill" Classes.on="{Binding PrevStep}" Content="步骤记录"
+                          Command="{Binding SetPrev}" CommandParameter="step" />
+                </StackPanel>
               </Grid>
             </Border>
 
@@ -308,20 +313,27 @@
                     <Border Classes="fmt" Classes.on="{Binding On}" Classes.dis="{Binding !Ready}"
                             Margin="0,0,7,7" Cursor="Hand" ToolTip.Tip="{Binding Tip}"
                             PointerPressed="OnFmtPressed">
-                      <StackPanel>
-                        <!-- 原型 .fi 那一格是 26px 高的大写文字；这里放线描的格式图标。
-                             **图标自身 24×28**，之前塞进 26px 的格子里高出去两像素，
-                             正好压在下面那行字上 —— 格子按图标实际高度给 30px -->
-                        <Panel Height="30" Margin="0,0,0,4">
-                          <ctl:TecIcon Key="{Binding IconKey}" Size="23"
-                                       Tint="{Binding On, Converter={x:Static ctl:Is.FmtInk}}"
-                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
-                        </Panel>
-                        <TextBlock Text="{Binding Name}" FontSize="12" Foreground="#2b2b2b"
-                                   TextAlignment="Center" />
-                        <TextBlock Text="{Binding Desc}" FontSize="9.5" Foreground="#9a9a9a"
-                                   TextAlignment="Center" Margin="0,2,0,0" />
-                      </StackPanel>
+                      <Panel>
+                        <StackPanel>
+                          <!-- 图标自身 30×34，格子按它的实际高度给，别压到下面那行字上 -->
+                          <Panel Height="36">
+                            <ctl:TecIcon Key="{Binding IconKey}" HorizontalAlignment="Center"
+                                         VerticalAlignment="Center" />
+                          </Panel>
+                          <TextBlock Text="{Binding Name}" FontSize="12" Foreground="#2b2b2b"
+                                     TextAlignment="Center" Margin="0,3,0,0" />
+                          <TextBlock Text="{Binding Desc}" FontSize="9.5" Foreground="#9a9a9a"
+                                     TextAlignment="Center" Margin="0,2,0,0" />
+                        </StackPanel>
+                        <!-- 选中的角上一个对勾。四张卡都是浅色的，只靠边框颜色分辨
+                             要盯着看；一个勾隔着半米也认得出 -->
+                        <Border Width="18" Height="18" CornerRadius="9" Background="#1a7fc4"
+                                HorizontalAlignment="Right" VerticalAlignment="Top"
+                                Margin="0,-2,-2,0" IsVisible="{Binding On}">
+                          <Path Data="M4.4,9.2 L7.5,12.2 L13.2,5.8" Stroke="White" StrokeThickness="1.9"
+                                StrokeLineCap="Round" StrokeJoin="Round" />
+                        </Border>
+                      </Panel>
                     </Border>
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
@@ -330,42 +342,6 @@
             </StackPanel>
 
             <!-- 导出通道 -->
-            </StackPanel>
-            </Border>
-
-            <Border Classes="secbox">
-            <StackPanel>
-            <Button Classes="sech" Command="{Binding ChannelsSection.Toggle}">
-              <Grid ColumnDefinitions="Auto,Auto,*">
-                <Border Grid.Column="0" Classes="cir" Classes.cl="{Binding !ChannelsSection.Open}">
-                  <ctl:TecIcon Key="ui-chev-down" Tint="#666666" Size="9" />
-                </Border>
-                <TextBlock Grid.Column="1" Text="导出通道" Classes="sect" />
-                <TextBlock Grid.Column="2" Text="{Binding ChannelHint}" Classes="hint" />
-              </Grid>
-            </Button>
-            <StackPanel Classes="secb" IsVisible="{Binding ChannelsSection.Open}">
-              <ItemsControl ItemsSource="{Binding Chips}">
-                <ItemsControl.ItemsPanel>
-                  <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate>
-                    <Border Classes="chchip" Classes.on="{Binding On}" Classes.dis="{Binding !Available}"
-                            Margin="0,0,6,6" Cursor="Hand" ToolTip.Tip="{Binding Tip}"
-                            PointerPressed="OnChipPressed">
-                      <StackPanel Orientation="Horizontal" Spacing="6">
-                        <Ellipse Width="9" Height="9" Fill="{Binding ColorHex}" VerticalAlignment="Center" />
-                        <TextBlock Text="{Binding Label}" FontSize="11.5" VerticalAlignment="Center" />
-                      </StackPanel>
-                    </Border>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-              <TextBlock Text="{Binding ChannelTip}" IsVisible="{Binding HasChannelTip}" Classes="tip" />
-            </StackPanel>
-
-            <!-- 数据项 -->
             </StackPanel>
             </Border>
 
@@ -575,36 +551,32 @@
       <Setter Property="CornerRadius" Value="3" />
       <Setter Property="Background" Value="White" />
     </Style>
-    <Style Selector="Border.seg">
-      <Setter Property="BorderBrush" Value="#c4c4c4" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="CornerRadius" Value="3" />
-      <Setter Property="ClipToBounds" Value="True" />
-      <Setter Property="VerticalAlignment" Value="Center" />
-    </Style>
-    <Style Selector="Button.segb">
-      <Setter Property="Height" Value="24" />
+    <!-- 本程序的按钮语言：描边圆角 + 悬停变蓝。台面 / 配方那几页都是这一套，
+         导出页从前用的是原型那条扁平分段条，摆在一起像另一个程序 -->
+    <Style Selector="Button.pill">
+      <Setter Property="Height" Value="26" />
       <Setter Property="MinWidth" Value="0" />
-      <Setter Property="Padding" Value="11,0" />
-      <!-- 不写这两条，字会贴着上沿 —— Fluent 的 Button 默认不是居中对齐的 -->
+      <Setter Property="Padding" Value="13,0" />
       <Setter Property="HorizontalContentAlignment" Value="Center" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
       <Setter Property="FontSize" Value="11.5" />
-      <Setter Property="Foreground" Value="#4a4a4a" />
-      <Setter Property="Background" Value="White" />
-      <Setter Property="BorderBrush" Value="#dcdcdc" />
-      <Setter Property="BorderThickness" Value="0,0,1,0" />
-      <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="Foreground" Value="#333333" />
+      <Setter Property="Background" Value="#f7f7f7" />
+      <Setter Property="BorderBrush" Value="#8b8b8b" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="3" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
-    <Style Selector="Button.segb:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#f2f8fd" />
+    <Style Selector="Button.pill:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#e3f0f9" />
+      <Setter Property="BorderBrush" Value="#1a91d6" />
     </Style>
-    <!-- 选中态排在悬停后面：同权重后写的赢 -->
-    <Style Selector="Button.segb.on /template/ ContentPresenter">
+    <!-- 选中态排在悬停后面：同权重后写的赢，写前面一悬停就被盖掉 -->
+    <Style Selector="Button.pill.on /template/ ContentPresenter">
       <Setter Property="Background" Value="#e8f2fb" />
+      <Setter Property="BorderBrush" Value="#1a7fc4" />
     </Style>
-    <Style Selector="Button.segb.on">
+    <Style Selector="Button.pill.on">
       <Setter Property="Foreground" Value="#0b3760" />
       <Setter Property="FontWeight" Value="SemiBold" />
     </Style>

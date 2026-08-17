@@ -102,17 +102,6 @@ public sealed class MetaPair
     public required string V { get; init; }
 }
 
-public sealed class ExChipViewModel : ViewModelBase
-{
-    private bool _on;
-    public required int Ch { get; init; }
-    public required bool Available { get; init; }
-    public string? Tip { get; init; }
-    public string ColorHex => Available ? RunRowViewModel.ChColor(Ch) : "#d8d8d8";
-    public string Label => Available ? $"通道 {Ch}" : $"通道 {Ch}（未启动）";
-    public bool On { get => _on; set => Set(ref _on, value); }
-}
-
 public sealed class DataItemViewModel : ViewModelBase
 {
     private bool _on;
@@ -186,9 +175,8 @@ public sealed class ExportViewModel : ViewModelBase
 {
     private readonly Workspace _ws;
 
-    // 右栏七个小节
+    // 右栏六个小节
     public SectionViewModel FormatSection { get; } = new();
-    public SectionViewModel ChannelsSection { get; } = new();
     public SectionViewModel ItemsSection { get; } = new();
     public SectionViewModel RangeSection { get; } = new();
     public SectionViewModel ReportSection { get; } = new(false);
@@ -274,10 +262,6 @@ public sealed class ExportViewModel : ViewModelBase
             Rebuild(keepSel: true);
         });
         SetDays = new RelayCommand(p => { _days = Convert.ToString(p) ?? "all"; Rebuild(keepSel: true); });
-        ToggleCh = new RelayCommand(p =>
-        {
-            if (p is ExChipViewModel c && c.Available) { c.On = !c.On; Refresh(); }
-        });
         PickFmt = new RelayCommand(p =>
         {
             if (p is not FmtViewModel { Ready: true } f) { Say(p is FmtViewModel x ? x.Tip : ""); return; }
@@ -289,6 +273,7 @@ public sealed class ExportViewModel : ViewModelBase
         SetDestLocal = new RelayCommand(() => Dest = "local");
         SetDestUsb = new RelayCommand(() => Dest = "usb");
         DoExport = new RelayCommand(Export);
+        DoReload = new RelayCommand(() => { Reload(); Say("记录列表已刷新"); });
         PreviewReport = new RelayCommand(() =>
             Say("报告排版（Word / PDF）尚未实现 —— 需要先做报告模板引擎"));
 
@@ -304,7 +289,6 @@ public sealed class ExportViewModel : ViewModelBase
     public const string AllRecipes = "全部配方", AllOps = "全部操作人", AllStates = "全部状态";
     public ObservableCollection<string> StateOptions { get; } =
         new() { AllStates, "已完成", "运行中", "已中止" };
-    public ObservableCollection<ExChipViewModel> Chips { get; } = new();
     public ObservableCollection<DataGroupViewModel> Groups { get; } = new();
     public ObservableCollection<FmtViewModel> Fmts { get; } = new();
     public ObservableCollection<ToggleViewModel> ReportItems { get; } = new();
@@ -318,13 +302,14 @@ public sealed class ExportViewModel : ViewModelBase
     public RelayCommand ClearSel { get; }
     public RelayCommand SortBy { get; }
     public RelayCommand SetDays { get; }
-    public RelayCommand ToggleCh { get; }
     public RelayCommand PickFmt { get; }
     public RelayCommand SetPrev { get; }
     public RelayCommand SetDestLocal { get; }
     public RelayCommand SetDestUsb { get; }
     public RelayCommand DoExport { get; }
     public RelayCommand PreviewReport { get; }
+    /// <summary>工具条上那颗圆形刷新钮。这一页的记录是进来时读的，中途又跑了一炉就按它。</summary>
+    public RelayCommand DoReload { get; }
 
     /// <summary>全部批次（未过滤）。计数与筛选下拉都从它来。</summary>
     private readonly List<RunRowViewModel> _all = new();
@@ -428,14 +413,6 @@ public sealed class ExportViewModel : ViewModelBase
     public bool CanPreviewReport => ReportEnabled && SelCount > 0;
 
     public string FormatHint => CurFmtName;
-    public string ChannelHint
-    {
-        get
-        {
-            var avail = Chips.Count(c => c.Available);
-            return avail == 0 ? "—" : $"{Chips.Count(c => c.On && c.Available)} / {avail}";
-        }
-    }
     public string ItemHint => $"{Groups.SelectMany(g => g.Items).Count(i => i.On && i.Available)} 项";
     public string RangeHint => _interval;
     public string TargetHint => _dest == "usb" ? "USB" : "本地";
@@ -455,18 +432,6 @@ public sealed class ExportViewModel : ViewModelBase
         }
     }
 
-    /// <summary>选中的记录通道数不一致时说一句，别让人以为空列是 bug。</summary>
-    public string ChannelTip
-    {
-        get
-        {
-            var mixed = Selected.Select(r => r.Chs.Count).Distinct().OrderBy(x => x).ToList();
-            return mixed.Count > 1
-                ? $"所选记录的通道数不一致（{string.Join(" / ", mixed)}），缺的通道在文件里留空列。"
-                : "";
-        }
-    }
-    public bool HasChannelTip => ChannelTip.Length > 0;
 
     public string LocalDir => Path.Combine(AppContext.BaseDirectory, "exports");
 
@@ -646,11 +611,11 @@ public sealed class ExportViewModel : ViewModelBase
     /// <summary>选择变了：通道 / 数据项要跟着所选记录重算，页脚重算，预览重画。</summary>
     private void AfterSelection()
     {
-        BuildChipsAndItems();
+        BuildItems();
         Refresh();
         RaiseAll(nameof(CountText), nameof(SelCount), nameof(AllChecked), nameof(CanExport),
                  nameof(ExportTip), nameof(CanPreviewReport), nameof(PrevWho), nameof(HasPreview),
-                 nameof(Preview), nameof(ChannelTip), nameof(HasChannelTip));
+                 nameof(Preview));
     }
 
     // ── 由批次记录换算出一行 ────────────────────────────────────────
@@ -732,27 +697,17 @@ public sealed class ExportViewModel : ViewModelBase
 
     // ── 通道 / 数据项跟着所选记录走 ─────────────────────────────────
 
-    private void BuildChipsAndItems()
+    /// <summary>
+    /// 数据项跟着所选记录的台面走：没装那支探头，对应的项就勾不上。
+    ///
+    /// **通道没有挑的余地**——这一炉跑了哪几路，导出的就是哪几路。
+    /// 从前摆了一排通道格子，四个里两个永远是灰的（没启动过），
+    /// 剩下两个默认全勾，取消勾等于故意导出一份缺了半炉的记录：
+    /// 一份缺通道的实验记录在 GLP 上是残的，那不该是随手能点出来的东西。
+    /// </summary>
+    private void BuildItems()
     {
-        var sel = Selected.ToList();
-        var chs = sel.SelectMany(r => r.Chs).Distinct().OrderBy(x => x).ToList();
-        var probes = sel.SelectMany(r => r.Probes).Distinct().ToList();
-
-        // 通道格子固定四个（台面最多四路），选中的记录里没启动过的那几个是灰的
-        var wantOn = Chips.Where(c => c.On).Select(c => c.Ch).ToHashSet();
-        var fresh = Chips.Count == 0;
-        Chips.Clear();
-        for (var c = 1; c <= 4; c++)
-        {
-            var avail = chs.Contains(c);
-            Chips.Add(new ExChipViewModel
-            {
-                Ch = c,
-                Available = avail,
-                On = avail && (fresh || wantOn.Contains(c) || wantOn.Count == 0),
-                Tip = avail ? null : "所选记录里这一路没有启动过"
-            });
-        }
+        var probes = Selected.SelectMany(r => r.Probes).Distinct().ToList();
 
         var keepOff = Groups.SelectMany(g => g.Items).Where(i => !i.On).Select(i => i.Key).ToHashSet();
         var first = Groups.Count == 0;
@@ -782,7 +737,7 @@ public sealed class ExportViewModel : ViewModelBase
             }
             Groups.Add(group);
         }
-        RaiseAll(nameof(ChannelHint), nameof(ItemHint));
+        Raise(nameof(ItemHint));
     }
 
     private void OnItemChanged()
@@ -798,12 +753,11 @@ public sealed class ExportViewModel : ViewModelBase
         PrevHeader.Clear();
         PrevRows.Clear();
         BuildFooter();
-        RaiseAll(nameof(PrevWho), nameof(ChannelHint), nameof(ItemHint), nameof(GlpHint),
+        RaiseAll(nameof(PrevWho), nameof(ItemHint), nameof(GlpHint),
                  nameof(RangeHint), nameof(FormatHint), nameof(TargetHint));
 
         if (_preview is not { } run) return;
-        var chs = Chips.Where(c => c.On && c.Available).Select(c => c.Ch)
-                       .Where(c => run.Chs.Contains(c)).OrderBy(x => x).ToList();
+        var chs = run.Chs.OrderBy(x => x).ToList();
         var items = Groups.SelectMany(g => g.Items)
                           .Where(i => i.Key != "steps" && i.On && i.Available).ToList();
 
@@ -811,7 +765,7 @@ public sealed class ExportViewModel : ViewModelBase
 
         if (chs.Count == 0 || items.Count == 0)
         {
-            PrevRows.Add(Note(chs.Count == 0 ? "请至少选择一个导出通道" : "请至少选择一个数值数据项"));
+            PrevRows.Add(Note(chs.Count == 0 ? "这一炉没有启动过任何通道" : "请至少选择一个数值数据项"));
             return;
         }
 
@@ -911,7 +865,7 @@ public sealed class ExportViewModel : ViewModelBase
 
         if (chs.Count == 0)
         {
-            PrevRows.Add(Note("请至少选择一个导出通道"));
+            PrevRows.Add(Note("这一炉没有启动过任何通道"));
             return;
         }
         if (!StepsOn)
@@ -960,11 +914,7 @@ public sealed class ExportViewModel : ViewModelBase
         }
 
         long pts = 0;
-        foreach (var r in sel)
-        {
-            var chs = Chips.Count(c => c.On && c.Available && r.Chs.Contains(c.Ch));
-            pts += (long)Math.Max(1, r.DurSec / iv) * chs * nItem;
-        }
+        foreach (var r in sel) pts += (long)Math.Max(1, r.DurSec / iv) * r.Chs.Count * nItem;
         var factor = CurFmt switch { "pdf" => 1.9, "docx" => 1.6, "xlsx" => 1.3, _ => 1.05 };
         var bytes = pts * 9 * factor;
 
@@ -995,9 +945,6 @@ public sealed class ExportViewModel : ViewModelBase
         if (sel.Count == 0) { Say("请先在表里勾选一条或多条记录"); return; }
         if (!CurFmtItem.Ready) { Say($"{CurFmtName} 导出尚未实现，先选 CSV"); return; }
 
-        var chs = Chips.Where(c => c.On && c.Available).Select(c => c.Ch).ToList();
-        if (chs.Count == 0) { Say("请至少选择一个导出通道"); return; }
-
         var root = DestUsb ? UsbRoot() : LocalDir;
         if (root is null) { Say("没有可写的可移动磁盘，改选本地文件夹"); return; }
 
@@ -1015,7 +962,8 @@ public sealed class ExportViewModel : ViewModelBase
                     Shape = _baseLabel == "相对通道启动" ? TableShape.Long : TableShape.Wide,
                     Grid = TimeSpan.FromSeconds(IntervalSeconds)
                 };
-                opt.Channels.AddRange(chs.Where(c => row.Chs.Contains(c)));
+                // 这一炉跑了哪几路就导哪几路
+                opt.Channels.AddRange(row.Chs);
                 opt.Tags.AddRange(SelectedTags());
 
                 File.WriteAllText(Path.Combine(dir, "data.csv"),

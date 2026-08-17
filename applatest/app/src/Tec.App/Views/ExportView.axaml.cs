@@ -34,15 +34,6 @@ public partial class ExportView : UserControl
         return false;
     }
 
-    private void OnChipPressed(object? sender, PointerPressedEventArgs e)
-    {
-        if (Vm is { } vm && sender is Control { DataContext: ExChipViewModel c })
-        {
-            vm.ToggleCh.Execute(c);
-            e.Handled = true;
-        }
-    }
-
     private void OnFmtPressed(object? sender, PointerPressedEventArgs e)
     {
         if (Vm is { } vm && sender is Control { DataContext: FmtViewModel f }) vm.PickFmt.Execute(f);
