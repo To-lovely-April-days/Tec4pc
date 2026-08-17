@@ -23,6 +23,12 @@ public enum EventKind
     Aborted,
     Alarm,
     SafetyAction,
+    /// <summary>报警被人确认了。GLP 追的不只是「机器什么时候报的」，
+    /// 还有「谁在什么时候看见了它、当时怎么处理的」——后者只能由人来落。</summary>
+    AlarmAck,
+    /// <summary>报警条件不再成立（温度回到范围内、断掉的信号又回来了）。
+    /// 恢复本身也是一条事实：一条报警响了三秒还是响了三小时，读记录的人要分得出。</summary>
+    AlarmCleared,
     OperatorMark,
     Sampling,
     ResourceWait,
@@ -144,21 +150,34 @@ public sealed class ChannelRun
 
     private readonly List<StepRecord> _steps = new();
     private readonly List<EventRecord> _events = new();
+    private readonly object _gate = new();
 
-    public IReadOnlyList<StepRecord> Steps => _steps;
-    public IReadOnlyList<EventRecord> Events => _events;
+    /// <summary>
+    /// 读回的是快照，不是那两条活的表。
+    ///
+    /// **往这条链上追加的不止一个线程**：执行循环在线程池上跑，安全层在自己的
+    /// 定时器线程上求值，手动标记和报警确认来自界面线程；而读的几乎总是界面线程
+    /// （每 700 ms 把整张记录表重排一次）。裸 List 在这种组合下迟早在枚举中途
+    /// 被 Add 撞上——那是一个当场抛异常、复现全靠运气的崩溃。
+    /// 一趟运行几百条，复制的代价远小于把锁摊到调用方。
+    /// </summary>
+    public IReadOnlyList<StepRecord> Steps { get { lock (_gate) return _steps.ToArray(); } }
+    public IReadOnlyList<EventRecord> Events { get { lock (_gate) return _events.ToArray(); } }
 
     // 只追加，不允许更新或删除；修正走"追加一条更正事件"（§8.3）
-    public void Append(StepRecord s) => _steps.Add(s);
-    public void Append(EventRecord e) => _events.Add(e);
+    public void Append(StepRecord s) { lock (_gate) _steps.Add(s); }
+    public void Append(EventRecord e) { lock (_gate) _events.Add(e); }
 
     public StepRecord? Current
     {
         get
         {
-            for (var i = _steps.Count - 1; i >= 0; i--)
-                if (_steps[i].Status == StepStatus.Running) return _steps[i];
-            return null;
+            lock (_gate)
+            {
+                for (var i = _steps.Count - 1; i >= 0; i--)
+                    if (_steps[i].Status == StepStatus.Running) return _steps[i];
+                return null;
+            }
         }
     }
 
@@ -169,9 +188,10 @@ public sealed class ChannelRun
     public DateTimeOffset ProjectedFinish(DateTimeOffset now)
     {
         var drift = TimeSpan.Zero;
-        for (var i = _steps.Count - 1; i >= 0; i--)
+        var steps = Steps;
+        for (var i = steps.Count - 1; i >= 0; i--)
         {
-            var s = _steps[i];
+            var s = steps[i];
             if (s.Status == StepStatus.Running && s.ActualStartOffset is { } o)
             {
                 drift = o - s.PlanStart;

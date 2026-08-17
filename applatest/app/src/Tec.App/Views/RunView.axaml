@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ctl="clr-namespace:Tec.App.Controls"
+             xmlns:local="clr-namespace:Tec.App.Views"
              x:Class="Tec.App.Views.RunView">
 
   <!-- 原型 view-run：runtop 44px → runbody 三块 pane → 底部执行记录抽屉 -->
@@ -22,6 +23,75 @@
                  FontSize="11.5" Foreground="#2f8f49" VerticalAlignment="Center"
                  TextAlignment="Right" Margin="14,0,0,0" TextTrimming="CharacterEllipsis" />
     </Grid>
+
+    <!-- 报警带。一条都没有就整条不画——平时不占地方，有事才出现。
+         **刻意不做成弹框**：模态窗会把急停那颗钮挡在后面，
+         而报警恰恰是最需要人能马上按停的时候 -->
+    <StackPanel DockPanel.Dock="Top" IsVisible="{Binding Alarms.Any}" Margin="8,0,8,6">
+      <Border Background="{Binding Alarms.BarFillHex}" BorderBrush="{Binding Alarms.BarLineHex}"
+              BorderThickness="1" CornerRadius="3" Height="32" Padding="10,0">
+        <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+          <Border Grid.Column="0" Width="16" Height="16" CornerRadius="8" Margin="0,0,8,0"
+                  Background="{Binding Alarms.BarInkHex}" VerticalAlignment="Center">
+            <TextBlock Text="!" FontSize="11" FontWeight="Bold" Foreground="White"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+          <TextBlock Grid.Column="1" Text="{Binding Alarms.Text}" FontSize="12"
+                     Foreground="{Binding Alarms.BarInkHex}" VerticalAlignment="Center"
+                     TextTrimming="CharacterEllipsis" />
+          <Button Grid.Column="2" Classes="pill" Content="全部确认" Margin="8,0,6,0"
+                  Command="{Binding Alarms.AckAll}" IsEnabled="{Binding Alarms.CanAckAll}"
+                  ToolTip.Tip="确认不等于解除：条件还成立的仍然留在清单上" />
+          <Button Grid.Column="3" Classes="pill" Content="{Binding Alarms.ToggleText}"
+                  Command="{Binding Alarms.Toggle}" />
+        </Grid>
+      </Border>
+
+      <!-- 展开的清单。每一条都要答四件事：出了什么、机器做了什么、多久了、有没有人管 -->
+      <Border IsVisible="{Binding Alarms.Open}" Background="White" BorderBrush="#dcdcdc"
+              BorderThickness="1,0,1,1" CornerRadius="0,0,3,3" MaxHeight="182">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <ItemsControl ItemsSource="{Binding Alarms.Rows}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Border BorderBrush="#f0f0f0" BorderThickness="0,0,0,1" Padding="10,7">
+                  <Grid ColumnDefinitions="Auto,*,Auto">
+                    <Border Grid.Column="0" Width="8" Height="8" CornerRadius="2" Margin="0,4,8,0"
+                            Background="{Binding ChColorHex}" VerticalAlignment="Top" />
+                    <StackPanel Grid.Column="1" Spacing="3">
+                      <StackPanel Orientation="Horizontal" Spacing="7">
+                        <TextBlock Text="{Binding ChLabel}" FontSize="11.5" FontWeight="SemiBold"
+                                   Foreground="#3d3d3d" VerticalAlignment="Center" />
+                        <Border CornerRadius="8" Height="16" Padding="7,0"
+                                Background="{Binding StateFillHex}" VerticalAlignment="Center">
+                          <TextBlock Text="{Binding StateText}" FontSize="10.5"
+                                     Foreground="{Binding StateColorHex}" VerticalAlignment="Center" />
+                        </Border>
+                        <TextBlock Text="{Binding TimeText}" FontSize="10.5" Foreground="#8d8d8d"
+                                   VerticalAlignment="Center" />
+                      </StackPanel>
+                      <TextBlock Text="{Binding Message}" FontSize="12" Foreground="#2b2b2b"
+                                 TextWrapping="Wrap" />
+                      <TextBlock Text="{Binding DidText}" FontSize="10.5" Foreground="#7a7a7a"
+                                 TextWrapping="Wrap" />
+                      <TextBlock Text="{Binding AckText}" IsVisible="{Binding Acknowledged}"
+                                 FontSize="10.5" Foreground="#2f8f49" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6"
+                                IsVisible="{Binding CanAck}" VerticalAlignment="Top">
+                      <TextBox Classes="finput" Width="188" Height="24"
+                               Text="{Binding Note, Mode=TwoWay}"
+                               Watermark="处理说明（选填，进记录）" />
+                      <Button Classes="pill" Content="确认" Command="{Binding Ack}" />
+                    </StackPanel>
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </Border>
+    </StackPanel>
 
     <!-- 执行记录抽屉（原型 .rundraw，贴在底部） -->
     <Border DockPanel.Dock="Bottom" BorderBrush="#b9b9b9" BorderThickness="0,1,0,0" Background="White">
@@ -148,7 +218,7 @@
 
     <!-- runbody。列宽随折叠状态在 RunView.axaml.cs 里算——
          ColumnDefinition 不在可视树上，绑不了 DataContext -->
-    <Grid x:Name="Body" ColumnDefinitions="600,6,*,6,430" Margin="8,0,8,8">
+    <Grid x:Name="Body" ColumnDefinitions="600,6,*,6,430,Auto" Margin="8,0,8,8">
 
       <!-- pane 台面总览 -->
       <Border Grid.Column="0" Classes="pane">
@@ -299,8 +369,13 @@
                         SelectedItem="{Binding TrendChLabel, Mode=TwoWay}" />
               <TextBlock Text="窗口" FontSize="12" Foreground="#444444" VerticalAlignment="Center"
                          Margin="4,0,10,0" />
-              <ComboBox Classes="sel" Width="118" Margin="0,0,14,0" ItemsSource="{Binding TrendWins}"
+              <ComboBox Classes="sel" Width="118" Margin="0,0,10,0" ItemsSource="{Binding TrendWins}"
                         SelectedItem="{Binding TrendWinLabel, Mode=TwoWay}" />
+              <!-- 存 PNG。不是截屏：另排一份带实验名 / 通道 / 时间范围的图，
+                   图离开程序之后就只剩那几行字能解释它 -->
+              <Button Classes="pill" Content="导出图片" Margin="0,0,14,0" Command="{Binding ExportTrend}"
+                      IsEnabled="{Binding CanExportTrend}" ToolTip.Tip="{Binding ExportTrendTip}"
+                      VerticalAlignment="Center" />
               <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,0,12,0" VerticalAlignment="Center">
                 <Border Width="14" Height="3" CornerRadius="2" Background="#e02020" VerticalAlignment="Center" />
                 <TextBlock Text="Tr 釜内" FontSize="11" Foreground="#444444" />
@@ -347,6 +422,10 @@
               <CheckBox Content="显示时间" FontSize="12" Margin="0,0,10,0"
                         IsChecked="{Binding ShowTime, Mode=TwoWay}"
                         MinHeight="0" VerticalAlignment="Center" />
+              <!-- 运行中改参数：改的是选中那一路的**这一趟**，基线不动 -->
+              <Button Classes="pill" Content="改参数" Margin="0,0,10,0" Command="{Binding OpenEdit}"
+                      IsEnabled="{Binding CanEdit}" ToolTip.Tip="{Binding EditTip}"
+                      VerticalAlignment="Center" />
               <TextBlock Text="{Binding GTotal}" FontSize="11" Foreground="#5a5a5a"
                          Margin="0,0,10,0" VerticalAlignment="Center" />
               <TextBlock Text="淡 = 计划，实 = 实际" FontSize="11" Foreground="#9a9a9a"
@@ -361,6 +440,127 @@
                          Text="没有通道，也就没有进度可排。" />
             </Panel>
           </DockPanel>
+        </DockPanel>
+      </Border>
+
+      <!-- 运行中改参数（FR-5.5 / §7.6）。开着才占位置，关了整列收成 0。
+           改的是这一趟：基线不动、偏差照常按基线算，改动逐条进执行记录 -->
+      <Border Grid.Column="5" Classes="pane" Width="326" Margin="6,0,0,0"
+              IsVisible="{Binding Edit.Open}">
+        <DockPanel>
+          <Border DockPanel.Dock="Top" Background="{StaticResource ThemeFill}"
+                  BorderBrush="{StaticResource ThemeLine}" BorderThickness="0,0,0,1" Padding="12,9">
+            <Grid ColumnDefinitions="*,Auto">
+              <StackPanel Grid.Column="0" Spacing="2">
+                <TextBlock Text="{Binding Edit.Title}" FontSize="12.5" FontWeight="SemiBold"
+                           Foreground="#3d3d3d" />
+                <TextBlock Text="基线不动，偏差照常按基线算；改动进执行记录"
+                           FontSize="10.5" Foreground="#7a7a7a" />
+              </StackPanel>
+              <Button Grid.Column="1" Classes="collapse" Command="{Binding Edit.Close}"
+                      VerticalAlignment="Top" ToolTip.Tip="收起">
+                <ctl:TecIcon Key="ui-collapse" Tint="#555555" />
+              </Button>
+            </Grid>
+          </Border>
+
+          <!-- 底部：修改原因 + 应用。原因必填——一条没有理由的运行中改参数，
+               事后没有任何人能解释它，而审计要的正是那句话 -->
+          <Border DockPanel.Dock="Bottom" Background="{StaticResource ThemeFill}"
+                  BorderBrush="{StaticResource ThemeLine}" BorderThickness="0,1,0,0" Padding="12,9">
+            <StackPanel Spacing="7">
+              <TextBlock Text="修改原因（必填）" FontSize="11.5" Foreground="#3d3d3d" />
+              <TextBox Classes="finput" Height="24" Text="{Binding Edit.Reason, Mode=TwoWay}"
+                       Watermark="例如：实测放热偏大，降 5 ℃" />
+              <StackPanel Orientation="Horizontal" Spacing="7">
+                <Button Classes="btn primary" Content="应用" Height="26" MinWidth="0" Padding="18,0"
+                        Command="{Binding Edit.Apply}" IsEnabled="{Binding Edit.CanApply}"
+                        ToolTip.Tip="{Binding Edit.ApplyTip}" />
+                <Button Classes="btn" Content="还原" Height="26" MinWidth="0" Padding="14,0"
+                        Command="{Binding Edit.Revert}" ToolTip.Tip="把编辑框拨回现在实际在跑的那一份" />
+              </StackPanel>
+            </StackPanel>
+          </Border>
+
+          <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="12,10">
+
+              <!-- 挑一步。每一行都写清「改了什么时候生效」——同一个改动落在
+                   当前步、后面某一步、已经跑过的一步上，结果完全不同 -->
+              <TextBlock Text="本趟的步骤" FontSize="11.5" Foreground="#3d3d3d" Margin="0,0,0,6" />
+              <ItemsControl ItemsSource="{Binding Edit.Steps}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border Classes="hstep" Classes.sel="{Binding IsSelected}"
+                            Classes.no="{Binding !CanEdit}" Cursor="Hand"
+                            PointerPressed="OnHotStepPressed">
+                      <Grid ColumnDefinitions="4,22,*,Auto">
+                        <Border Grid.Column="0" Background="{Binding ColorHex}" CornerRadius="2"
+                                Margin="0,1,7,1" />
+                        <TextBlock Grid.Column="1" Text="{Binding Seq}" FontSize="11"
+                                   Foreground="#8d8d8d" VerticalAlignment="Center"
+                                   TextAlignment="Right" Margin="0,0,7,0" />
+                        <StackPanel Grid.Column="2" Spacing="1">
+                          <TextBlock Text="{Binding Title}" FontSize="11.5" Foreground="#2b2b2b"
+                                     TextTrimming="CharacterEllipsis" />
+                          <TextBlock Text="{Binding Effect}" FontSize="10" Foreground="#8d8d8d"
+                                     TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                        <Border Grid.Column="3" CornerRadius="7" Height="15" Padding="6,0"
+                                Margin="6,0,0,0" IsVisible="{Binding HasBadge}"
+                                Background="{Binding BadgeFillHex}" VerticalAlignment="Center">
+                          <TextBlock Text="{Binding Badge}" FontSize="10"
+                                     Foreground="{Binding BadgeInkHex}" VerticalAlignment="Center" />
+                        </Border>
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <TextBlock IsVisible="{Binding Edit.NoSteps}" FontSize="11.5" Foreground="#9a9a9a"
+                         TextWrapping="Wrap" Margin="0,6"
+                         Text="这一趟没有可改的步骤。" />
+
+              <!-- 选中那一步的参数表。表单由 schema 渲染，与配方页同一套 -->
+              <StackPanel IsVisible="{Binding Edit.HasSelection}" Margin="0,12,0,0">
+                <Border Height="1" Background="{StaticResource ThemeLine}" Margin="0,0,0,10" />
+
+                <Border Background="#fdf4f3" BorderBrush="#e0b4ad" BorderThickness="1" CornerRadius="3"
+                        Padding="9,7" Margin="0,0,0,9" IsVisible="{Binding Edit.IsBlocked}">
+                  <TextBlock Text="{Binding Edit.BlockedText}" FontSize="11" Foreground="#c0392b"
+                             TextWrapping="Wrap" LineHeight="17" />
+                </Border>
+
+                <Border Background="{StaticResource ThemeFill}" CornerRadius="3" Padding="9,7"
+                        Margin="0,0,0,10">
+                  <StackPanel Spacing="4">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <TextBlock Text="基线" Classes="hk" />
+                      <TextBlock Text="{Binding Edit.BaselineText}" Classes="hv" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding Edit.Amended}">
+                      <TextBlock Text="现行" Classes="hk" />
+                      <TextBlock Text="{Binding Edit.CurrentText}" Classes="hv" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <TextBlock Text="改为" Classes="hk" />
+                      <TextBlock Text="{Binding Edit.NextText}" Classes="hv" Foreground="#1f4e79" />
+                    </StackPanel>
+                  </StackPanel>
+                </Border>
+
+                <ContentControl Content="{Binding Edit.Form}">
+                  <ContentControl.ContentTemplate>
+                    <DataTemplate><local:SchemaFormView /></DataTemplate>
+                  </ContentControl.ContentTemplate>
+                </ContentControl>
+
+                <TextBlock IsVisible="{Binding Edit.HasTableNote}" Text="{Binding Edit.TableNote}"
+                           FontSize="10.5" Foreground="#8d8d8d" LineHeight="16"
+                           TextWrapping="Wrap" Margin="0,8,0,0" />
+              </StackPanel>
+            </StackPanel>
+          </ScrollViewer>
         </DockPanel>
       </Border>
     </Grid>
@@ -451,6 +651,41 @@
     <Style Selector="Button.chbtn:disabled">
       <Setter Property="Opacity" Value="0.5" />
       <Setter Property="Cursor" Value="Arrow" />
+    </Style>
+
+    <!-- 改参数面板：步骤行 + 基线/现行/改为三行 -->
+    <Style Selector="Border.hstep">
+      <Setter Property="Padding" Value="5,5" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderBrush" Value="#ececec" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Margin" Value="0,0,0,4" />
+    </Style>
+    <Style Selector="Border.hstep:pointerover">
+      <Setter Property="Background" Value="#f2f8fd" />
+    </Style>
+    <!-- 选中态排在 :pointerover 后面：同权重后写的赢，写前面一悬停就被盖掉 -->
+    <Style Selector="Border.hstep.sel, Border.hstep.sel:pointerover">
+      <Setter Property="Background" Value="#e8f2fb" />
+      <Setter Property="BorderBrush" Value="#1a7fc4" />
+    </Style>
+    <!-- 改不了的那几步淡下去，但仍然摆在表上：知道它在、知道为什么改不了，
+         比让它凭空消失强 -->
+    <Style Selector="Border.hstep.no">
+      <Setter Property="Opacity" Value="0.55" />
+    </Style>
+    <Style Selector="TextBlock.hk">
+      <Setter Property="FontSize" Value="10.5" />
+      <Setter Property="Foreground" Value="#8d8d8d" />
+      <Setter Property="MinWidth" Value="24" />
+      <Setter Property="VerticalAlignment" Value="Top" />
+    </Style>
+    <Style Selector="TextBlock.hv">
+      <Setter Property="FontSize" Value="10.5" />
+      <Setter Property="Foreground" Value="#3d3d3d" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="LineHeight" Value="15" />
     </Style>
 
     <Style Selector="TextBlock.statk">

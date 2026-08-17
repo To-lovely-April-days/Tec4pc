@@ -20,6 +20,9 @@ public static class FileDialogs
     private static readonly FilePickerFileType RecipeFile =
         new("TecStudio 配方") { Patterns = new[] { "*" + TecFiles.RecipeExt } };
 
+    private static readonly FilePickerFileType PngFile =
+        new("PNG 图片") { Patterns = new[] { "*.png" } };
+
     private static Window? MainWindow
         => (Avalonia.Application.Current?.ApplicationLifetime
             as IClassicDesktopStyleApplicationLifetime)?.MainWindow;
@@ -48,6 +51,11 @@ public static class FileDialogs
 
     public static Task<string?> SaveRecipe(string suggested)
         => Save("导出配方", RecipeFile, TecFiles.RecipeExt, suggested, ExperimentStore.DataDir);
+
+    /// <summary>趋势图导出。默认落到程序的 exports 目录，跟数据导出出来的东西放一处。</summary>
+    public static Task<string?> SaveImage(string suggested)
+        => Save("导出趋势图", PngFile, ".png", suggested,
+                Path.Combine(AppContext.BaseDirectory, "exports"));
 
     private static async Task<string?> Open(string title, FilePickerFileType type, string startIn)
     {

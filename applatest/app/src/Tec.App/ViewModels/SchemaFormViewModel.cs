@@ -190,7 +190,12 @@ public sealed class SchemaFormViewModel : ViewModelBase
     public ObservableCollection<FieldViewModel> Fields { get; } = new();
     public ObservableCollection<ObservableCollection<FieldViewModel>> RowForms { get; } = new();
 
-    public bool HasTable => Schema.Table is not null;
+    /// <summary>
+    /// 没给 rows 就不画那张分段表。表在、行的容器不在的话，界面上会摆出一张
+    /// 空表加一个按下去没反应的「＋ 添加一段」——运行中改参数就是这种场合
+    /// （分段表不支持热改，只放标量字段）。
+    /// </summary>
+    public bool HasTable => Schema.Table is not null && Rows is not null;
     public string TableLabel => Schema.Table?.Label ?? "";
 
     // ── 曲线预览 ─────────────────────────────────────────────────────

@@ -147,6 +147,16 @@ public sealed class ChannelRunner
     /// <summary>暂停着，按下去是继续。</summary>
     public bool CanResume => State == ChannelRunState.Paused;
 
+    /// <summary>
+    /// 运行中那一份配方的步骤（热改改的就是它）。基线在 <see cref="ChannelRun.Baseline"/> 里，
+    /// 一旦冻结永不变——两份分开摆才看得出「这一趟被改过什么」（§7.2）。
+    /// 返回快照：执行循环在另一个线程上读同一张表。
+    /// </summary>
+    public IReadOnlyList<Step> LiveSteps => _live?.Steps.ToArray() ?? Array.Empty<Step>();
+
+    /// <summary>现在能不能改参数。跑完了就不能改——那趟记录已经收口了。</summary>
+    public bool CanEdit => State is ChannelRunState.Running or ChannelRunState.Paused;
+
     public void Pause(string? user = null)
     {
         if (State != ChannelRunState.Running) return;
@@ -209,6 +219,11 @@ public sealed class ChannelRunner
     /// </summary>
     public HotEditResult ProposeEdit(string stepId, ParameterSet next, string? user, string? reason = null)
     {
+        // 跑完 / 被停掉之后 _live 还留着最后那一份，但那趟记录已经收口了。
+        // 让它照改会往一条结束了的记录链上再追一条「参数修改」——
+        // 读记录的人只能理解成"结束之后又有人动了参数"
+        if (!CanEdit)
+            return new HotEditResult(false, $"CH{Number} 没在运行，改参数请去「配方」页改下一趟。");
         if (_live is null) return new HotEditResult(false, "通道未在运行。");
         var step = _live.Steps.FirstOrDefault(s => s.StepId == stepId);
         if (step is null) return new HotEditResult(false, "找不到该步骤。");

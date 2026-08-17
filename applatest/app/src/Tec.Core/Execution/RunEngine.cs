@@ -28,6 +28,7 @@ public sealed class RunEngine
         Now = now ?? (() => DateTimeOffset.Now);
         Safety = new SafetyMonitor(pipeline, Now);
         Safety.Triggered += OnSafetyTriggered;
+        Safety.Cleared += OnSafetyCleared;
     }
 
     public ICommandCatalog Catalog { get; }
@@ -35,6 +36,8 @@ public sealed class RunEngine
     public IResourceArbiter Arbiter { get; }
     public DataPipeline Pipeline { get; }
     public SafetyMonitor Safety { get; }
+    /// <summary>报警本。安全层判断，它记「还有几条没人管」（§7.5）。</summary>
+    public AlarmBook Alarms { get; } = new();
     public Func<DateTimeOffset> Now { get; }
 
     public RunRecord Record { get; private set; } = new() { CreatedAt = DateTimeOffset.Now };
@@ -167,28 +170,172 @@ public sealed class RunEngine
         _subs.Add(session.Samples.SubscribeTo(s => Pipeline.Push(s)));
     }
 
+    // ── 报警 ─────────────────────────────────────────────────────────
+
+    /// <summary>安全动作要在几秒内落到设备上。串口不响应也不能把安全层卡住。</summary>
+    private static readonly TimeSpan ActBudget = TimeSpan.FromSeconds(5);
+
     private void OnSafetyTriggered(object? sender, SafetyEvent e)
     {
+        // 先动手，再记账：记录里那句「已切断加热输出」必须真的做过才写得出来
+        var did = ActOn(e);
+        Alarms.Raise(e, did, e.At);
+
         var run = Record.Of(e.Channel);
-        run?.Append(new EventRecord
+        if (run is not null)
+        {
+            run.Append(new EventRecord
+            {
+                At = e.At,
+                Channel = e.Channel,
+                Kind = EventKind.Alarm,
+                Text = e.Limit.Action == SafetyAction.Alarm
+                    ? e.Message
+                    : $"{e.Message} —— 动作：{ActionWord(e.Limit.Action)}"
+            });
+            foreach (var line in did)
+                run.Append(new EventRecord
+                {
+                    At = e.At,
+                    Channel = e.Channel,
+                    Kind = EventKind.SafetyAction,
+                    Text = line
+                });
+        }
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OnSafetyCleared(object? sender, SafetyEvent e)
+    {
+        if (Alarms.Resolve(SafetyMonitor.KeyOf(e.Limit), e.At) is not { } a) return;
+        Record.Of(e.Channel)?.Append(new EventRecord
         {
             At = e.At,
             Channel = e.Channel,
-            Kind = EventKind.SafetyAction,
-            Text = e.Message
+            Kind = EventKind.AlarmCleared,
+            Text = $"{e.Message}（持续 {Fmt.Hms(a.Duration(e.At))}）"
         });
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
 
+    private static string ActionWord(SafetyAction a) => a switch
+    {
+        SafetyAction.Alarm => "仅报警",
+        SafetyAction.StopDosing => "停加料",
+        SafetyAction.StopHeating => "停加热",
+        SafetyAction.AbortChannel => "中止本通道",
+        SafetyAction.StopAll => "中止全部通道",
+        _ => a.ToString()
+    };
+
+    /// <summary>
+    /// 照限值声明的动作真的去做，返回做了什么。
+    ///
+    /// **停加料 / 停加热从前落在 default 分支上什么也没做**——限值上写着
+    /// 「超限停加料」，超限了泵却照打，比没有这条限值更糟：现场以为有人兜着。
+    /// 走能力接口而不是认设备型号：上层只问「这一路能不能停加热」（§3.2）。
+    /// </summary>
+    private IReadOnlyList<string> ActOn(SafetyEvent e)
+    {
+        var caps = Runner(e.Channel)?.Channel.Capabilities;
         switch (e.Limit.Action)
         {
+            case SafetyAction.Alarm:
+                // 只报警。不动设备也是一种明确的处置，别偷偷替它做点什么
+                return Array.Empty<string>();
+
+            case SafetyAction.StopHeating:
+                return new[] { caps?.Get<ITemperatureControl>() is { } t
+                    ? Act("切断加热输出", ct => t.StopAsync(ct))
+                    : "这一路没有可停的控温设备，加热输出未动" };
+
+            case SafetyAction.StopDosing:
+                return new[] { caps?.Get<IDosing>() is { } d
+                    ? Act("停加料泵", ct => d.StopAsync(ct))
+                    : "这一路没有加料设备，无需停泵" };
+
             case SafetyAction.AbortChannel:
-                Runner(e.Channel)?.Abort(null, e.Message);
-                break;
+                if (Runner(e.Channel) is not { } r ||
+                    r.State is not (ChannelRunState.Running or ChannelRunState.Paused))
+                    return new[] { "该通道未在运行，无需中止" };
+                r.Abort(null, e.Message);
+                // 收安全态由 ChannelRunner 做，逐条另记（EventKind.SafeStop）
+                return new[] { "已中止本通道，设备转入安全态" };
+
             case SafetyAction.StopAll:
+                var live = Runners.Count(x => x.State is ChannelRunState.Running or ChannelRunState.Paused);
+                if (live == 0) return new[] { "没有正在运行的通道，无需中止" };
                 AbortAll(null, e.Message);
-                break;
+                return new[] { $"已中止全部 {live} 条运行中的通道" };
+
             default:
-                break;   // 报警 / 停加料 / 停升温由动作执行器处理
+                return Array.Empty<string>();
         }
+    }
+
+    private static string Act(string what, Func<CancellationToken, Task> go)
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(ActBudget);
+            var task = go(cts.Token);
+            if (!task.Wait(ActBudget)) return $"{what}：超时未响应，输出可能仍开着";
+            return $"已{what}";
+        }
+        catch (Exception ex)
+        {
+            // 安全动作没做成是最该留痕的一种：机器还开着，而且没人知道
+            return $"{what}失败：{(ex is AggregateException ag ? ag.InnerException?.Message ?? ag.Message : ex.Message)}";
+        }
+    }
+
+    /// <summary>
+    /// 有人确认了一条报警。**确认不等于解除**：条件还成立的话它继续挂在本上，
+    /// 只是记录里从此答得出「谁在什么时候看见了它」。
+    /// </summary>
+    public bool AckAlarm(string key, string? user, string? note = null)
+    {
+        if (Alarms.Ack(key, user, note, Now()) is not { } a) return false;
+        Record.Of(a.Channel)?.Append(new EventRecord
+        {
+            At = Now(),
+            Channel = a.Channel,
+            Kind = EventKind.AlarmAck,
+            // 「确认的那一刻条件还成不成立」是两回事：确认了但还在报，
+            // 和确认时早已恢复，事后追责起来完全不同。
+            // 不套 StateText——它自己带括号，套进来就成了「（报警中（已确认））」
+            Text = $"确认报警（{(a.Standing ? "条件仍成立" : "已恢复")}）：{a.Message}"
+                   + (a.AckNote is null ? "" : $" —— {a.AckNote}"),
+            User = user
+        });
+        Changed?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
+    /// <summary>一次确认全部。返回真的确认掉了几条。</summary>
+    public int AckAllAlarms(string? user, string? note = null)
+    {
+        var n = 0;
+        foreach (var a in Alarms.Live.Where(x => !x.Acknowledged).ToList())
+            if (AckAlarm(a.Key, user, note)) n++;
+        return n;
+    }
+
+    /// <summary>
+    /// 限值重设（台面重建）。正在报的那几条一并收尾——它们的限值马上就没了，
+    /// 留着只会等一个再也不会来的恢复。没确认过的仍留在本上等人确认。
+    /// </summary>
+    public void ResetSafety(string reason)
+    {
+        Safety.Clear();
+        foreach (var a in Alarms.ResolveAll(Now(), reason))
+            Record.Of(a.Channel)?.Append(new EventRecord
+            {
+                At = Now(),
+                Channel = a.Channel,
+                Kind = EventKind.AlarmCleared,
+                Text = $"{a.Message}（持续 {Fmt.Hms(a.Duration(Now()))}）"
+            });
         Changed?.Invoke(this, EventArgs.Empty);
     }
 

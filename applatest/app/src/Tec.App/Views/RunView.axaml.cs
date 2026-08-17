@@ -68,6 +68,8 @@ public partial class RunView : UserControl
         Body.ColumnDefinitions[2].Width = trend ? star : tab;
         Body.ColumnDefinitions[4].Width =
             !gantt ? tab : !trend ? star : new GridLength(430);
+        // 第 5 列是改参数面板，Auto：关着的时候它整个 IsVisible=false，
+        // 不参与测量，这一列自然收成 0，不用另算
     }
 
     private void OnTilePressed(object? sender, PointerPressedEventArgs e)
@@ -81,6 +83,15 @@ public partial class RunView : UserControl
 
     private void OnDrawHeadPressed(object? sender, PointerPressedEventArgs e)
         => (DataContext as RunViewModel)?.ToggleDraw.Execute(null);
+
+    private void OnHotStepPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (DataContext is RunViewModel vm && sender is Control { DataContext: HotStepViewModel step })
+        {
+            vm.Edit.Selected = step;
+            e.Handled = true;
+        }
+    }
 
     private void OnChipPressed(object? sender, PointerPressedEventArgs e)
     {

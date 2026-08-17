@@ -177,7 +177,7 @@ public sealed class Workspace
         }
         _sessions.Clear();
         _channels.Clear();
-        Engine.Safety.Clear();
+        Engine.ResetSafety("台面重建，限值已重设");
 
         // 1. 先按宿主设备开通道
         var number = 0;

@@ -331,6 +331,8 @@ public sealed class RunViewModel : ViewModelBase
 
         ToggleDraw = new RelayCommand(() => DrawOpen = !DrawOpen);
         ToggleChip = new RelayCommand(p => { if (p is DrawChipViewModel c) { c.On = !c.On; RebuildRows(); } });
+        Alarms = new AlarmBarViewModel(ws, Tell);
+        Edit = new HotEditViewModel(ws, Tell, () => RaiseAll(nameof(EditOpen), nameof(CanEdit), nameof(EditTip)));
         BuildCommands();
 
         foreach (var w in new[] { "已采集", "全程（同甘特）", "最近 30 min", "最近 2 h" }) TrendWins.Add(w);
@@ -397,7 +399,15 @@ public sealed class RunViewModel : ViewModelBase
             if (!Set(ref _selected, value)) return;
             if (old is not null) old.IsSelected = false;
             if (value is not null) value.IsSelected = true;
-            RaiseAll(nameof(HasSelection), nameof(SelectedLabel), nameof(CanMark));
+            // 改参数面板跟着选中的那一路走：换了一路还开着上一路的表单，
+            // 改下去就改到别人身上了
+            if (Edit.Open)
+            {
+                if (value is null || !HotEditViewModel.CanOpenFor(_ws, value.Channel)) Edit.Close.Execute(null);
+                else if (value.Channel != Edit.Channel) Edit.OpenFor(value.Channel);
+            }
+            RaiseAll(nameof(HasSelection), nameof(SelectedLabel), nameof(CanMark),
+                     nameof(CanEdit), nameof(EditOpen), nameof(EditTip));
         }
     }
 
@@ -453,7 +463,38 @@ public sealed class RunViewModel : ViewModelBase
             }
             else Tell($"CH{t.Channel} 还没启动，标记没有可挂的记录链。");
         });
+
+        OpenEdit = new RelayCommand(() =>
+        {
+            if (_selected is not { } t) { Tell("先在下面挑一块通道磁贴。"); return; }
+            if (!CanEdit) { Tell(EditTip); return; }
+            if (Edit.Open && Edit.Channel == t.Channel) Edit.Close.Execute(null);
+            else Edit.OpenFor(t.Channel);
+        });
+
+        ExportTrend = new RelayCommand(() => _ = ExportTrendAsync());
     }
+
+    // ── 运行中改参数 ────────────────────────────────────────────────
+    // 引擎的提案 → 校验 → 应用 → 审计（ChannelRunner.ProposeEdit）本来就有，
+    // 这里只是把入口摆出来。改的是这一趟，不是配方本身。
+
+    /// <summary>选中那一路的运行中改参数面板。</summary>
+    public HotEditViewModel Edit { get; }
+    public RelayCommand OpenEdit { get; private set; } = null!;
+    public bool EditOpen => Edit.Open;
+
+    public bool CanEdit => _selected is { } t && HotEditViewModel.CanOpenFor(_ws, t.Channel);
+
+    public string EditTip => _selected is not { } t ? "先挑一块通道磁贴"
+        : !CanEdit ? $"CH{t.Channel} 没在运行 —— 改参数请去「配方」页改下一趟"
+        : Edit.Open && Edit.Channel == t.Channel ? "收起改参数面板"
+        : $"改 CH{t.Channel} 本趟的步骤参数（基线不动，改动进记录）";
+
+    // ── 报警 ────────────────────────────────────────────────────────
+
+    /// <summary>报警带。一条都没有就整条不画，不占地方。</summary>
+    public AlarmBarViewModel Alarms { get; }
 
     public Workspace Workspace => _ws;
 
@@ -546,6 +587,53 @@ public sealed class RunViewModel : ViewModelBase
              ? $"通道 {_trendCh} 还没有启动。启动后这里实时画 Tr / Tj / Tr−Tj。"
              : "正在等第一批采样……";
 
+    // ── 趋势图导出图片 ──────────────────────────────────────────────
+
+    public RelayCommand ExportTrend { get; private set; } = null!;
+
+    /// <summary>空图导不出来——一张什么都没有的 PNG 贴进报告里比没有更糟。</summary>
+    public bool CanExportTrend => !TrendEmpty;
+
+    public string ExportTrendTip => CanExportTrend
+        ? "把这张曲线存成 PNG（带实验名、通道、时间范围）"
+        : "还没有可导的曲线";
+
+    /// <summary>
+    /// 存 PNG。不是截屏：另排一份离屏的图，把说明文字和图例一起写进去——
+    /// 图一旦离开程序，就只剩那几行字能解释它是谁的哪一路。
+    /// </summary>
+    private async Task ExportTrendAsync()
+    {
+        if (!CanExportTrend || Trend is not { } model) { Tell(ExportTrendTip); return; }
+
+        var run = _ws.Engine.Record.Of(_trendCh);
+        var pts = new[] { model.Tr, model.Tj, model.Dt, model.Ph }.Sum(s => s?.Points.Count ?? 0);
+        var cap = new TrendCaption
+        {
+            Experiment = ExperimentName,
+            Channel = $"CH{_trendCh}",
+            Well = WellLabel.Of(_ws, _trendCh),
+            Window = _trendWinLabel,
+            Range = $"{AxisLabel(model.AxisFrom)} – {AxisLabel(model.AxisTo)}",
+            Points = $"{pts} 点",
+            ExportedAt = _ws.Clock.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+            Operator = _ws.Operator,
+            Simulated = run?.Simulated ?? true,
+            HasPh = model.HasPh
+        };
+
+        var name = $"{FileDialogs.Sanitize(ExperimentName)}-CH{_trendCh}-趋势-{_ws.Clock.Now:yyyyMMdd-HHmmss}";
+        var path = await FileDialogs.SaveImage(name);
+        if (path is null) return;
+
+        try
+        {
+            TrendImage.Save(path, model, cap);
+            Tell($"趋势图已导出：{Path.GetFileName(path)}");
+        }
+        catch (Exception ex) { Tell($"导出失败：{ex.Message}"); }
+    }
+
     // ── 甘特 ────────────────────────────────────────────────────────
     public string AlignLabel
     {
@@ -620,14 +708,18 @@ public sealed class RunViewModel : ViewModelBase
         BuildTrend();
         BuildGantt();
         RebuildRows();
+        Alarms.Tick();
+        Edit.Tick();
         // ExperimentName 早先不在这一串里：视图第一次绑定时还没打开实验，
         // 于是运行页顶上一直写着「未命名实验」，标题栏却已经是打开的那份的名字
         RaiseAll(nameof(ExperimentName),
                  nameof(RunTop), nameof(Trend), nameof(Gantt), nameof(GTotal),
                  nameof(TrendHasPh), nameof(TrendEmpty), nameof(TrendEmptyText),
                  nameof(NoChannels), nameof(DrawLast), nameof(DrawCnt), nameof(NoRows),
-                 // 通道跑起来了「记一笔」才按得下去，通道状态一直在变
-                 nameof(CanMark), nameof(SelectedLabel), nameof(HasSelection));
+                 nameof(CanExportTrend), nameof(ExportTrendTip),
+                 // 通道跑起来了「记一笔」「改参数」才按得下去，通道状态一直在变
+                 nameof(CanMark), nameof(SelectedLabel), nameof(HasSelection),
+                 nameof(CanEdit), nameof(EditOpen), nameof(EditTip));
 
         Ticked?.Invoke(this, EventArgs.Empty);
     }
@@ -900,7 +992,10 @@ public sealed class RunViewModel : ViewModelBase
         EventKind.Aborted => "中止",
         EventKind.SafeStop => "停机",
         EventKind.StepSkipped => "跳过",
-        EventKind.Alarm or EventKind.SafetyAction => "报警",
+        EventKind.Alarm => "报警",
+        EventKind.SafetyAction => "安全动作",
+        EventKind.AlarmAck => "报警确认",
+        EventKind.AlarmCleared => "报警恢复",
         EventKind.DeviceFault => "设备故障",
         EventKind.ResourceWait => "等待资源",
         EventKind.Sampling => "取样",
@@ -950,6 +1045,8 @@ public sealed class RunViewModel : ViewModelBase
                 {
                     Ch = run.Channel,
                     IsEvent = true,
+                    // 恢复和确认不标红：它们是"这件事有人管了"，标成红的
+                    // 会让一屏红字里分不出哪几条还需要处理
                     IsAlarm = e.Kind is EventKind.Alarm or EventKind.SafetyAction or EventKind.DeviceFault,
                     Badge = EvLabel(e.Kind),
                     Name = e.Text,
