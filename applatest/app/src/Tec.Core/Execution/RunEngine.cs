@@ -43,6 +43,19 @@ public sealed class RunEngine
     public RunRecord Record { get; private set; } = new() { CreatedAt = DateTimeOffset.Now };
     public IReadOnlyCollection<ChannelRunner> Runners => _runners.Values;
 
+    private readonly List<RunRecord> _batches = new();
+
+    /// <summary>
+    /// 这一开机跑过的全部批次，新的在后面。<see cref="Record"/> 是其中最后一条。
+    ///
+    /// 从前开一个新批次就把上一个丢了：跑完一炉再起一炉，上一炉的执行记录当场
+    /// 从内存里消失，导出页也就再也找不到它。批次只占几百条记录，采样在管线里
+    /// 本来就还留着——丢掉它没有任何好处。
+    ///
+    /// **只是内存里的**：关掉程序就没了，跨次开机要等归档文件读取做出来。
+    /// </summary>
+    public IReadOnlyList<RunRecord> Batches => _batches.ToArray();
+
     public event EventHandler? Changed;
 
     /// <summary>共享资源的声明：某通道执行某条指令时要占用什么。台面知道，Core 不猜。</summary>
@@ -52,14 +65,52 @@ public sealed class RunEngine
 
     public void NewBatch(string name, string? op, string benchName)
     {
+        // 上一个批次一条通道都没跑过就把它丢掉——那是「按了运行又没启动成」
+        // 留下的空壳，摆进导出页的记录表里只会占一行，点进去什么都没有
+        if (_batches.Count > 0 && _batches[^1].Channels.Count == 0) _batches.RemoveAt(_batches.Count - 1);
+
+        var at = Now();
         Record = new RunRecord
         {
-            CreatedAt = Now(),
+            RunId = NextRunId(at),
+            CreatedAt = at,
             Name = name,
             Operator = op,
             BenchName = benchName
         };
+        _batches.Add(Record);
         Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// 启动之前叫一声：该开新批次就开，不该开就沿用当前这个。返回是不是开了新的。
+    ///
+    /// **批次 = 同一时段的那几路**（§7.1）。判据只有一条：还有没有通道在跑。
+    /// 有就归到这一炉里（先起 CH1、一分钟后再起 CH2，是同一炉）；
+    /// 全都停下来之后再按启动，那是下一炉——它该在导出页里单独占一行。
+    ///
+    /// 从前的判据是「记录里一条通道都没有」，于是**这一开机永远只有一个批次**：
+    /// 跑完一炉再跑一炉，两炉的子记录混在同一条记录里，导出时分不开。
+    /// </summary>
+    public bool EnsureBatch(string name, string? op, string benchName)
+    {
+        var live = _runners.Values.Any(r => r.State is ChannelRunState.Running
+                                                    or ChannelRunState.Paused
+                                                    or ChannelRunState.Aborting);
+        if (Record.Channels.Count > 0 && live) return false;
+        NewBatch(name, op, benchName);
+        return true;
+    }
+
+    /// <summary>
+    /// 记录编号 EXP-yyyyMMdd-nnn，当天第几炉就是几。序号按**已有的同日批次**数，
+    /// 不用时分秒——同一秒里连开两个批次会撞号，而记录编号是导出文件的文件名。
+    /// </summary>
+    private string NextRunId(DateTimeOffset at)
+    {
+        var day = at.ToString("yyyyMMdd");
+        var n = _batches.Count(b => b.RunId.StartsWith($"EXP-{day}-", StringComparison.Ordinal)) + 1;
+        return $"EXP-{day}-{n:D3}";
     }
 
     /// <summary>

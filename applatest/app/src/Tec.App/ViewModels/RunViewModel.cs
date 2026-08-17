@@ -197,9 +197,8 @@ public sealed class StatTileViewModel : ViewModelBase
     {
         if (!CanStart) { _say(StartTip); return; }
 
-        // 第一次启动要开批次，与菜单栏那四个钮同一套——记录里的批次名不能是空的
-        if (_ws.Engine.Record.Channels.Count == 0)
-            _ws.Engine.NewBatch(_ws.ExperimentName, _ws.Operator, _ws.Bench.Name);
+        // 该开新批次就开，与菜单栏那排圆钮同一套判据（§7.1）
+        _ws.Engine.EnsureBatch(_ws.ExperimentName, _ws.Operator, _ws.Bench.Name);
 
         if (Runner is { State: ChannelRunState.Paused } paused)
         {

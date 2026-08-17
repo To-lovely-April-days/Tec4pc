@@ -3,202 +3,133 @@
              xmlns:ctl="clr-namespace:Tec.App.Controls"
              x:Class="Tec.App.Views.ExportView">
 
-  <!-- 原型 view-export：实验记录 232 ｜ exmain ｜ 导出设置 342 -->
-  <Grid ColumnDefinitions="232,*,342">
+  <!-- 原型 tecstudio-export-v2：页头 → wrap（主区 ｜ 342 右栏）→ 52px 页脚 -->
+  <DockPanel Background="White">
 
-    <!-- 左：实验记录（.rrow.one 单行 + 圆底曲线图标 + 4px 左选中条） -->
-    <Border Grid.Column="0" Background="#f4f4f4" BorderBrush="#dcdcdc" BorderThickness="0,0,1,0">
-      <DockPanel>
-        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="14,12,14,8">
-          <TextBlock Text="实验记录" FontSize="20" FontWeight="Light" Foreground="#3b3b3b"
-                     VerticalAlignment="Center" />
-          <Button Classes="tbtn sm" ToolTip.Tip="刷新"><ctl:TecIcon Key="ui-ex-refresh" /></Button>
-          <Button Classes="tbtn sm" ToolTip.Tip="按日期筛选"><ctl:TecIcon Key="ui-ex-calendar" /></Button>
-        </StackPanel>
-        <ScrollViewer>
-          <StackPanel>
-          <TextBlock IsVisible="{Binding NoRun}" Margin="16,14,16,0" FontSize="11.5"
-                     Foreground="#9a9a9a" LineHeight="18" TextWrapping="Wrap"
-                     Text="还没有跑过实验。启动任一通道后，本次批次会出现在这里。" />
-          <ItemsControl ItemsSource="{Binding Runs}">
-            <ItemsControl.ItemTemplate>
-              <DataTemplate>
-                <Border Classes="rrow" Classes.sel="{Binding IsSel}" Cursor="Hand"
-                        ToolTip.Tip="{Binding Tip}" PointerPressed="OnRunPressed">
-                  <StackPanel Orientation="Horizontal" Spacing="11">
-                    <Border Classes="ri" Classes.sel="{Binding IsSel}">
-                      <ctl:TecIcon Key="ui-rrow-chart"
-                                   Tint="{Binding IsSel, Converter={x:Static ctl:Is.SelInk}}" />
-                    </Border>
-                    <TextBlock Text="{Binding Name}" FontSize="13.5" VerticalAlignment="Center"
-                               TextTrimming="CharacterEllipsis"
-                               Foreground="{Binding IsSel, Converter={x:Static ctl:Is.SelFg}}"
-                               FontWeight="{Binding IsSel, Converter={x:Static ctl:Is.SelWeight}}" />
-                  </StackPanel>
-                </Border>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-          </StackPanel>
-        </ScrollViewer>
-      </DockPanel>
+    <!-- pghead -->
+    <Border DockPanel.Dock="Top" BorderBrush="#e3e3e3" BorderThickness="0,0,0,1" Padding="22,12,22,10">
+      <StackPanel Orientation="Horizontal" Spacing="14">
+        <TextBlock Text="数据导出" FontSize="23" FontWeight="Light" Foreground="#2b2b2b"
+                   VerticalAlignment="Bottom" />
+        <TextBlock Text="从实验记录中选取一条或多条，配置导出内容后生成归档文件"
+                   FontSize="11.5" Foreground="#9a9a9a" VerticalAlignment="Bottom" Margin="0,0,0,4" />
+      </StackPanel>
     </Border>
 
-    <!-- 中：exhead + exbody -->
-    <DockPanel Grid.Column="1" Background="White">
-      <Border DockPanel.Dock="Top" BorderBrush="#e3e3e3" BorderThickness="0,0,0,1" Padding="22,12,22,10">
-        <StackPanel>
-          <TextBlock Text="{Binding ExName}" FontSize="23" FontWeight="Light" Foreground="#2b2b2b"
-                     Margin="0,0,0,7" />
-          <ItemsControl ItemsSource="{Binding Meta}">
-            <ItemsControl.ItemsPanel>
-              <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
-            </ItemsControl.ItemsPanel>
-            <ItemsControl.ItemTemplate>
-              <DataTemplate>
-                <StackPanel Orientation="Horizontal" Margin="0,0,20,6">
-                  <TextBlock Text="{Binding K}" FontSize="11.5" Foreground="#9a9a9a" Margin="0,0,5,0" />
-                  <TextBlock Text="{Binding V}" FontSize="11.5" Foreground="#5a5a5a" />
-                </StackPanel>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
+    <!-- foot 52px -->
+    <Border DockPanel.Dock="Bottom" Height="52" Background="#fafafa" BorderBrush="#e3e3e3"
+            BorderThickness="0,1,0,0" Padding="22,0,16,0">
+      <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+        <ItemsControl Grid.Column="0" ItemsSource="{Binding Stat}" VerticalAlignment="Center">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,0,18,0">
+                <TextBlock Text="{Binding K}" FontSize="11.5" Foreground="#5a5a5a" />
+                <TextBlock Text="{Binding V}" FontSize="11.5" FontWeight="SemiBold" Foreground="#2b2b2b"
+                           FontFamily="Segoe UI, Microsoft YaHei UI, Microsoft YaHei" />
+              </StackPanel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <TextBlock Grid.Column="0" IsVisible="{Binding !SelCount}" VerticalAlignment="Center"
+                   FontSize="11.5" Foreground="#a5a5a5"
+                   Text="未选择记录 —— 在左侧表格中勾选一条或多条后即可导出" />
+
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center"
+                    Margin="4,0,10,0">
+          <!-- 提醒条：运行中 / 已中止 / 采样已被顶掉，都是导出前该知道的 -->
+          <Border IsVisible="{Binding HasWarn}" Background="#fdf6e8" BorderBrush="#e9d9ae"
+                  BorderThickness="1" CornerRadius="3" Padding="10,5">
+            <TextBlock Text="{Binding Warn}" FontSize="11" Foreground="#7a5c14"
+                       TextTrimming="CharacterEllipsis" />
+          </Border>
+          <TextBlock Text="{Binding Status}" IsVisible="{Binding HasStatus}" FontSize="11"
+                     Foreground="#2f8f49" VerticalAlignment="Center"
+                     TextTrimming="CharacterEllipsis" />
         </StackPanel>
-      </Border>
 
-      <ScrollViewer>
-        <StackPanel Margin="22,14,22,30">
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <Button Classes="btn" Content="预览报告" Height="30" Command="{Binding PreviewReport}"
+                  IsEnabled="{Binding CanPreviewReport}" />
+          <Button Classes="btn primary" Content="导出" Height="30" Command="{Binding DoExport}"
+                  IsEnabled="{Binding CanExport}" ToolTip.Tip="{Binding ExportTip}" />
+        </StackPanel>
+      </Grid>
+    </Border>
 
-          <!-- 没有记录时不摆一堆勾不动的设置项，直接说清楚要先跑一次 -->
-          <StackPanel IsVisible="{Binding NoRun}" Spacing="7" Margin="0,6,0,0">
-            <TextBlock Text="还没有可以导出的数据" FontSize="15" Foreground="#6f6f6f" />
-            <TextBlock FontSize="12" Foreground="#9a9a9a" LineHeight="19" MaxWidth="560"
-                       TextWrapping="Wrap"
-                       Text="导出的是执行引擎记下来的真实数据。先在「台面」摆好设备、在「配方」写好步骤，用模拟模式的运行按钮启动通道，跑过之后这里就有内容了。" />
-          </StackPanel>
+    <!-- wrap -->
+    <Grid ColumnDefinitions="*,342">
 
-          <StackPanel IsVisible="{Binding HasRun}">
+      <!-- 主区：工具条 → 记录表 → 分隔条 → 预览 -->
+      <DockPanel Grid.Column="0" Background="White">
 
-          <Button Classes="secbtn" Command="{Binding ChannelsSection.Toggle}" Margin="0,0,0,4">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <Border Classes="exp3s" Classes.up="{Binding ChannelsSection.Open}">
-                <ctl:TecIcon Key="ui-chev-down" Tint="#555555" />
+        <!-- tools -->
+        <Border DockPanel.Dock="Top" BorderBrush="#ececec" BorderThickness="0,0,0,1" Padding="16,9">
+          <Grid ColumnDefinitions="Auto,*">
+            <WrapPanel Grid.Column="0" Orientation="Horizontal">
+              <Panel Margin="0,0,9,0">
+                <TextBox Classes="srch" Width="210" Text="{Binding Query, Mode=TwoWay}"
+                         Watermark="搜索名称或记录编号" />
+                <ctl:TecIcon Key="ui-search" Tint="#9a9a9a" Size="13" Margin="7,0,0,0"
+                             HorizontalAlignment="Left" VerticalAlignment="Center" IsHitTestVisible="False" />
+              </Panel>
+
+              <!-- 日期段（原型 .seg 分段按钮） -->
+              <Border Classes="seg" Margin="0,0,9,0">
+                <StackPanel Orientation="Horizontal">
+                  <Button Classes="segb" Classes.on="{Binding DaysAll}" Content="全部"
+                          Command="{Binding SetDays}" CommandParameter="all" />
+                  <Button Classes="segb" Classes.on="{Binding Days7}" Content="近 7 天"
+                          Command="{Binding SetDays}" CommandParameter="7" />
+                  <Button Classes="segb" Classes.on="{Binding Days30}" Content="近 30 天"
+                          Command="{Binding SetDays}" CommandParameter="30" />
+                  <Button Classes="segb" Classes.on="{Binding Days90}" Content="近 90 天"
+                          Command="{Binding SetDays}" CommandParameter="90" />
+                </StackPanel>
               </Border>
-              <TextBlock Text="导出通道" Classes="accs" />
+
+              <ComboBox Classes="ftr" Width="150" Margin="0,0,9,0" ItemsSource="{Binding RecipeOptions}"
+                        SelectedItem="{Binding FilterRecipe, Mode=TwoWay}" />
+              <ComboBox Classes="ftr" Width="118" Margin="0,0,9,0" ItemsSource="{Binding OpOptions}"
+                        SelectedItem="{Binding FilterOp, Mode=TwoWay}" />
+              <ComboBox Classes="ftr" Width="106" Margin="0,0,9,0" ItemsSource="{Binding StateOptions}"
+                        SelectedItem="{Binding FilterState, Mode=TwoWay}" />
+              <CheckBox Content="只看有报警" FontSize="11.5" MinHeight="0" VerticalAlignment="Center"
+                        IsChecked="{Binding OnlyAlarm, Mode=TwoWay}" />
+            </WrapPanel>
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12"
+                        HorizontalAlignment="Right" VerticalAlignment="Center">
+              <TextBlock Text="{Binding CountText}" FontSize="11.5" Foreground="#8a8a8a" />
+              <Button Classes="lnk" Content="清除选择" Command="{Binding ClearSel}" />
             </StackPanel>
-          </Button>
-          <StackPanel IsVisible="{Binding ChannelsSection.Open}">
-          <ItemsControl ItemsSource="{Binding Chips}" Margin="0,4,0,0">
-            <ItemsControl.ItemsPanel>
-              <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
-            </ItemsControl.ItemsPanel>
-            <ItemsControl.ItemTemplate>
-              <DataTemplate>
-                <Border Classes="chchip" Classes.on="{Binding On}" Classes.dis="{Binding !Available}"
-                        Margin="0,0,8,8" Cursor="Hand" ToolTip.Tip="{Binding Tip}"
-                        PointerPressed="OnChipPressed">
-                  <StackPanel Orientation="Horizontal" Spacing="6">
-                    <Ellipse Width="10" Height="10" Fill="{Binding ColorHex}" />
-                    <TextBlock Text="{Binding Label}" FontSize="11.5" VerticalAlignment="Center" />
+          </Grid>
+        </Border>
+
+        <!-- 预览贴最底，分隔条排在它上面。**顺序要紧**：DockPanel 里先 Dock 的
+             那个更靠边，反过来写分隔条会跑到预览下面去，拖着拖着人就找不着它了 -->
+        <Border DockPanel.Dock="Bottom" Height="{Binding PrevHeight}" Background="White">
+          <DockPanel>
+            <Border DockPanel.Dock="Top" BorderBrush="#ececec" BorderThickness="0,0,0,1" Padding="16,7">
+              <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+                <TextBlock Grid.Column="0" Text="数据预览" FontSize="12.5" Foreground="#3b3b3b"
+                           VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1" Text="{Binding PrevWho}" FontSize="11" Foreground="#9a9a9a"
+                           VerticalAlignment="Center" Margin="10,0,0,0" />
+                <Border Grid.Column="3" Classes="seg">
+                  <StackPanel Orientation="Horizontal">
+                    <Button Classes="segb" Classes.on="{Binding PrevData}" Content="采样数据"
+                            Command="{Binding SetPrev}" CommandParameter="data" />
+                    <Button Classes="segb" Classes.on="{Binding PrevStep}" Content="步骤记录"
+                            Command="{Binding SetPrev}" CommandParameter="step" />
                   </StackPanel>
                 </Border>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-          <Border Classes="chchip" Margin="0,0,8,8" Cursor="Hand" HorizontalAlignment="Left"
-                  PointerPressed="OnAllChPressed">
-            <TextBlock Text="全选 / 反选" FontSize="11.5" />
-          </Border>
-          </StackPanel>
+              </Grid>
+            </Border>
 
-          <Button Classes="secbtn" Command="{Binding ItemsSection.Toggle}" Margin="0,14,0,4">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <Border Classes="exp3s" Classes.up="{Binding ItemsSection.Open}">
-                <ctl:TecIcon Key="ui-chev-down" Tint="#555555" />
-              </Border>
-              <TextBlock Text="数据项" Classes="accs" />
-            </StackPanel>
-          </Button>
-          <StackPanel IsVisible="{Binding ItemsSection.Open}">
-          <ItemsControl ItemsSource="{Binding Groups}">
-            <ItemsControl.ItemTemplate>
-              <DataTemplate>
-                <StackPanel>
-                  <TextBlock Text="{Binding Name}" FontSize="11" Foreground="#9a9a9a" Margin="0,8,0,3" />
-                  <ItemsControl ItemsSource="{Binding Items}">
-                    <ItemsControl.ItemsPanel>
-                      <ItemsPanelTemplate><UniformGrid Columns="4" /></ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                      <DataTemplate>
-                        <CheckBox Classes="ditem" IsChecked="{Binding On, Mode=TwoWay}"
-                                  IsEnabled="{Binding Available}" ToolTip.Tip="{Binding Tip}"
-                                  MinHeight="0" Padding="6,0,0,0">
-                          <StackPanel Orientation="Horizontal" Spacing="4">
-                            <TextBlock Text="{Binding Name}" FontSize="11.5"
-                                       TextTrimming="CharacterEllipsis" />
-                            <TextBlock Text="{Binding Unit}" FontSize="10.5" Foreground="#9a9a9a"
-                                       IsVisible="{Binding HasUnit}" />
-                          </StackPanel>
-                        </CheckBox>
-                      </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                  </ItemsControl>
-                </StackPanel>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-          </StackPanel>
-
-          <Button Classes="secbtn" Command="{Binding RangeSection.Toggle}" Margin="0,14,0,4">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <Border Classes="exp3s" Classes.up="{Binding RangeSection.Open}">
-                <ctl:TecIcon Key="ui-chev-down" Tint="#555555" />
-              </Border>
-              <TextBlock Text="时间范围与采样" Classes="accs" />
-            </StackPanel>
-          </Button>
-          <StackPanel IsVisible="{Binding RangeSection.Open}">
-          <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,4,0,0">
-            <TextBlock Text="范围" FontSize="11.5" Foreground="#3d3d3d" VerticalAlignment="Center" />
-            <ComboBox Classes="sel" Width="110" Height="24" ItemsSource="{Binding RangeOptions}"
-                      SelectedItem="{Binding Range, Mode=TwoWay}" />
-            <TextBox Classes="finput" Width="130" Text="{Binding FromText, Mode=TwoWay}" />
-            <TextBlock Text="至" FontSize="11.5" Foreground="#9a9a9a" VerticalAlignment="Center" />
-            <TextBox Classes="finput" Width="130" Text="{Binding ToText, Mode=TwoWay}" />
-            <TextBlock Text="采样间隔" FontSize="11.5" Foreground="#3d3d3d" VerticalAlignment="Center"
-                       Margin="10,0,0,0" />
-            <ComboBox Classes="sel" Width="108" Height="24" ItemsSource="{Binding IntervalOptions}"
-                      SelectedItem="{Binding Interval, Mode=TwoWay}" />
-            <TextBlock Text="时间基准" FontSize="11.5" Foreground="#3d3d3d" VerticalAlignment="Center"
-                       Margin="10,0,0,0" />
-            <ComboBox Classes="sel" Width="132" Height="24" ItemsSource="{Binding BaseOptions}"
-                      SelectedItem="{Binding BaseLabel, Mode=TwoWay}" />
-          </StackPanel>
-          <TextBlock Text="{Binding BaseTip}" FontSize="10.5" Foreground="#9a9a9a" LineHeight="16"
-                     TextWrapping="Wrap" Margin="0,7,0,0" />
-          </StackPanel>
-
-          <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" Margin="0,14,0,4">
-            <Button Grid.Column="0" Classes="secbtn" Command="{Binding PreviewSection.Toggle}"
-                    Margin="0,0,8,0">
-              <Border Classes="exp3s" Classes.up="{Binding PreviewSection.Open}">
-                <ctl:TecIcon Key="ui-chev-down" Tint="#555555" />
-              </Border>
-            </Button>
-            <Button Grid.Column="1" Classes="secbtn" Command="{Binding PreviewSection.Toggle}">
-              <TextBlock Text="数据预览" Classes="accs" />
-            </Button>
-            <Button Grid.Column="3" Classes="ptab" Classes.on="{Binding PrevData}"
-                    Content="采样数据" Command="{Binding SetPrev}" CommandParameter="data" />
-            <Button Grid.Column="4" Classes="ptab" Classes.on="{Binding PrevStep}"
-                    Content="步骤记录" Command="{Binding SetPrev}" CommandParameter="step" Margin="2,0,0,0" />
-          </Grid>
-
-          <StackPanel IsVisible="{Binding PreviewSection.Open}">
-          <!-- dprev -->
-          <Border BorderBrush="#dcdcdc" BorderThickness="1" CornerRadius="3" Background="White"
-                  MaxHeight="220">
             <ScrollViewer HorizontalScrollBarVisibility="Auto">
               <StackPanel>
                 <ItemsControl ItemsSource="{Binding PrevHeader}" Background="#fafafa">
@@ -207,9 +138,9 @@
                   </ItemsControl.ItemsPanel>
                   <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                      <Border BorderBrush="#d5d5d5" BorderThickness="0,0,0,1" Padding="9,6" MinWidth="72">
-                        <TextBlock Text="{Binding}" FontSize="11" Foreground="#5a5a5a"
-                                   TextAlignment="Right" />
+                      <Border BorderBrush="#d5d5d5" BorderThickness="0,0,0,1" Padding="9,5" MinWidth="86">
+                        <TextBlock Text="{Binding Text}" FontSize="11" Foreground="#5a5a5a"
+                                   TextAlignment="{Binding Align}" />
                       </Border>
                     </DataTemplate>
                   </ItemsControl.ItemTemplate>
@@ -223,9 +154,9 @@
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                           <DataTemplate>
-                            <Border BorderBrush="#f2f2f2" BorderThickness="0,0,0,1" Padding="9,5" MinWidth="72">
-                              <TextBlock Text="{Binding}" FontSize="11" Foreground="#2b2b2b"
-                                         TextAlignment="Right" FontFamily="Consolas, Menlo, monospace" />
+                            <Border BorderBrush="#f4f4f4" BorderThickness="0,0,0,1" Padding="9,4" MinWidth="86">
+                              <TextBlock Text="{Binding Text}" FontSize="11" Foreground="#2b2b2b"
+                                         TextAlignment="{Binding Align}" FontFamily="{Binding Font}" />
                             </Border>
                           </DataTemplate>
                         </ItemsControl.ItemTemplate>
@@ -233,307 +164,657 @@
                     </DataTemplate>
                   </ItemsControl.ItemTemplate>
                 </ItemsControl>
+                <TextBlock IsVisible="{Binding !HasPreview}" Margin="0,40" TextAlignment="Center"
+                           FontSize="12" Foreground="#9a9a9a"
+                           Text="勾选一条实验记录后在此预览将要导出的内容" />
               </StackPanel>
             </ScrollViewer>
-          </Border>
-          </StackPanel>
-
-          <!-- dsum -->
-          <Border Background="#f7f9fa" BorderBrush="#e6e9eb" BorderThickness="1" CornerRadius="3"
-                  Padding="12,8" Margin="0,9,0,0">
-            <ItemsControl ItemsSource="{Binding Sum}">
-              <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
-              </ItemsControl.ItemsPanel>
-              <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                  <StackPanel Orientation="Horizontal" Margin="0,0,18,0">
-                    <TextBlock Text="{Binding K}" FontSize="11.5" Foreground="#5a5a5a" Margin="0,0,4,0" />
-                    <TextBlock Text="{Binding V}" FontSize="11.5" FontWeight="SemiBold" Foreground="#2b2b2b" />
-                  </StackPanel>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-          </Border>
-          </StackPanel>
-        </StackPanel>
-      </ScrollViewer>
-    </DockPanel>
-
-    <!-- 右：导出设置 -->
-    <Border Grid.Column="2" Background="#ececec" BorderBrush="#d2d2d2" BorderThickness="1,0,0,0">
-      <DockPanel>
-        <Border DockPanel.Dock="Bottom" BorderBrush="#d5d5d5" BorderThickness="0,1,0,0"
-                Padding="16,12,16,14">
-          <StackPanel Orientation="Horizontal" Spacing="8">
-            <Button Classes="btn primary" Content="导出" Command="{Binding DoExport}" Width="150" />
-            <Button Classes="btn" Content="预览报告" Width="150" />
-          </StackPanel>
+          </DockPanel>
         </Border>
+
+        <Border DockPanel.Dock="Bottom" Height="6" Background="#f4f4f4" Cursor="SizeNorthSouth"
+                BorderBrush="#e3e3e3" BorderThickness="0,1" Name="Splitter"
+                PointerPressed="OnSplitPressed" PointerMoved="OnSplitMoved"
+                PointerReleased="OnSplitReleased">
+          <Border Width="34" Height="2" Background="#c8c8c8" CornerRadius="1"
+                  HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Border>
+
+        <!-- 记录表 -->
+        <Panel>
+          <ScrollViewer HorizontalScrollBarVisibility="Auto" IsVisible="{Binding HasRows}">
+            <StackPanel>
+              <!-- 表头。可排序的那几列点了换升降序（原型 th.s） -->
+              <Grid Classes="rhdr" ColumnDefinitions="34,152,224,74,132,80,146,78,62,88,60,74"
+                    Background="#fafafa">
+                <CheckBox Grid.Column="0" MinHeight="0" Margin="9,0,0,0" VerticalAlignment="Center"
+                          IsChecked="{Binding AllChecked}" Command="{Binding ToggleAll}"
+                          ToolTip.Tip="全选 / 全不选" />
+                <Button Grid.Column="1" Classes="th" Command="{Binding SortBy}" CommandParameter="id">
+                  <StackPanel Orientation="Horizontal" Spacing="3">
+                    <TextBlock Text="记录编号" /><TextBlock Text="{Binding SortArrowId}" Foreground="#1a7fc4" />
+                  </StackPanel>
+                </Button>
+                <TextBlock Grid.Column="2" Classes="thx" Text="名称" />
+                <TextBlock Grid.Column="3" Classes="thx" Text="趋势" />
+                <Button Grid.Column="4" Classes="th" Command="{Binding SortBy}" CommandParameter="ts">
+                  <StackPanel Orientation="Horizontal" Spacing="3">
+                    <TextBlock Text="开始时间" /><TextBlock Text="{Binding SortArrowTs}" Foreground="#1a7fc4" />
+                  </StackPanel>
+                </Button>
+                <Button Grid.Column="5" Classes="th" Command="{Binding SortBy}" CommandParameter="dur">
+                  <StackPanel Orientation="Horizontal" Spacing="3">
+                    <TextBlock Text="时长" /><TextBlock Text="{Binding SortArrowDur}" Foreground="#1a7fc4" />
+                  </StackPanel>
+                </Button>
+                <TextBlock Grid.Column="6" Classes="thx" Text="配方" />
+                <TextBlock Grid.Column="7" Classes="thx" Text="操作人" />
+                <TextBlock Grid.Column="8" Classes="thx" Text="通道" />
+                <Button Grid.Column="9" Classes="th" Command="{Binding SortBy}" CommandParameter="pts">
+                  <StackPanel Orientation="Horizontal" Spacing="3">
+                    <TextBlock Text="数据点" /><TextBlock Text="{Binding SortArrowPts}" Foreground="#1a7fc4" />
+                  </StackPanel>
+                </Button>
+                <TextBlock Grid.Column="10" Classes="thx" Text="报警" />
+                <Button Grid.Column="11" Classes="th" Command="{Binding SortBy}" CommandParameter="mb">
+                  <StackPanel Orientation="Horizontal" Spacing="3">
+                    <TextBlock Text="体积" /><TextBlock Text="{Binding SortArrowMb}" Foreground="#1a7fc4" />
+                  </StackPanel>
+                </Button>
+              </Grid>
+
+              <ItemsControl ItemsSource="{Binding Rows}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border Classes="rrow" Classes.on="{Binding IsChecked}" Classes.pv="{Binding IsPreview}"
+                            Cursor="Hand" ToolTip.Tip="{Binding Tip}" PointerPressed="OnRowPressed">
+                      <Grid ColumnDefinitions="34,152,224,74,132,80,146,78,62,88,60,74">
+                        <CheckBox Grid.Column="0" MinHeight="0" Margin="9,0,0,0" VerticalAlignment="Center"
+                                  IsChecked="{Binding IsChecked, Mode=TwoWay}" />
+                        <TextBlock Grid.Column="1" Text="{Binding Id}" Classes="mut mono" />
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" Margin="9,0">
+                          <Ellipse Width="7" Height="7" VerticalAlignment="Center"
+                                   Fill="{Binding StateColorHex}" />
+                          <TextBlock Text="{Binding Name}" Classes="nm"
+                                     TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                        </StackPanel>
+                        <ctl:SparkView Grid.Column="3" Points="{Binding Spark}" Margin="9,0"
+                                       Stroke="{Binding SparkColorHex}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="4" Text="{Binding StartText}" Classes="mut mono num" />
+                        <TextBlock Grid.Column="5" Text="{Binding DurText}" Classes="mono num" />
+                        <TextBlock Grid.Column="6" Text="{Binding RecipeName}" Classes="mut"
+                                   TextTrimming="CharacterEllipsis" />
+                        <TextBlock Grid.Column="7" Text="{Binding User}" Classes="mut" />
+                        <ItemsControl Grid.Column="8" ItemsSource="{Binding ChBars}" Margin="9,0"
+                                      VerticalAlignment="Center">
+                          <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="2" /></ItemsPanelTemplate>
+                          </ItemsControl.ItemsPanel>
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                              <Border Width="5" Height="11" CornerRadius="1" Background="{Binding}" />
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Grid.Column="9" Text="{Binding PointsText}" Classes="mono num" />
+                        <TextBlock Grid.Column="10" Text="{Binding AlarmText}" Classes="mono num"
+                                   Classes.alm="{Binding HasAlarm}" Classes.mut="{Binding !HasAlarm}" />
+                        <TextBlock Grid.Column="11" Text="{Binding MbText}" Classes="mut mono num" />
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </ScrollViewer>
+
+          <!-- 空状态：一条记录都没有 / 筛没了，说法不一样 -->
+          <StackPanel IsVisible="{Binding NoRows}" HorizontalAlignment="Center"
+                      VerticalAlignment="Center" Spacing="8" MaxWidth="520">
+            <TextBlock Text="{Binding EmptyText}" FontSize="14" Foreground="#7a7a7a"
+                       TextAlignment="Center" />
+            <TextBlock Text="{Binding EmptySub}" FontSize="11.5" Foreground="#9a9a9a"
+                       TextAlignment="Center" TextWrapping="Wrap" LineHeight="19" />
+          </StackPanel>
+        </Panel>
+      </DockPanel>
+
+      <!-- 右栏 342px -->
+      <Border Grid.Column="1" Background="White" BorderBrush="#e3e3e3" BorderThickness="1,0,0,0">
         <ScrollViewer>
-          <StackPanel Margin="18,16">
-            <TextBlock Text="导出设置" FontSize="24" FontWeight="Light" Foreground="#333333"
-                       HorizontalAlignment="Center" />
-            <TextBlock Text="{Binding ExName}" FontSize="11.5" Foreground="#7a7a7a"
-                       HorizontalAlignment="Center" Margin="0,2,0,10" />
+          <StackPanel Margin="16,12,16,24">
 
-            <Button Classes="secbtn" Command="{Binding FormatSection.Toggle}" Margin="0,6,0,4">
-              <StackPanel Orientation="Horizontal" Spacing="8">
-                <Border Classes="exp3s" Classes.up="{Binding FormatSection.Open}">
-                  <ctl:TecIcon Key="ui-chev-down" Tint="#555555" />
+            <!-- 导出格式 -->
+            <Button Classes="sech" Command="{Binding FormatSection.Toggle}">
+              <Grid ColumnDefinitions="Auto,Auto,*">
+                <Border Grid.Column="0" Classes="cir" Classes.cl="{Binding !FormatSection.Open}">
+                  <ctl:TecIcon Key="ui-chev-down" Tint="#666666" Size="9" />
                 </Border>
-                <TextBlock Text="导出格式" Classes="accs" />
-              </StackPanel>
+                <TextBlock Grid.Column="1" Text="导出格式" Classes="sect" />
+                <TextBlock Grid.Column="2" Text="{Binding FormatHint}" Classes="hint" />
+              </Grid>
             </Button>
-            <StackPanel IsVisible="{Binding FormatSection.Open}">
-            <ItemsControl ItemsSource="{Binding Fmts}">
-              <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate><UniformGrid Columns="2" /></ItemsPanelTemplate>
-              </ItemsControl.ItemsPanel>
-              <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                  <Border Classes="fmt" Classes.on="{Binding On}" Margin="0,0,7,7" Cursor="Hand"
-                          PointerPressed="OnFmtPressed">
+            <StackPanel Classes="secb" IsVisible="{Binding FormatSection.Open}">
+              <ItemsControl ItemsSource="{Binding Fmts}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate><UniformGrid Columns="2" /></ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border Classes="fmt" Classes.on="{Binding On}" Classes.dis="{Binding !Ready}"
+                            Margin="0,0,7,7" Cursor="Hand" ToolTip.Tip="{Binding Tip}"
+                            PointerPressed="OnFmtPressed">
+                      <StackPanel>
+                        <!-- 原型 .fi 那一格是大写文字；这里放原型提取出来的格式图标，
+                             占的是同一格 26px，不另画 -->
+                        <Panel Height="26">
+                          <ctl:TecIcon Key="{Binding IconKey}" HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" />
+                        </Panel>
+                        <TextBlock Text="{Binding Name}" FontSize="12" Foreground="#2b2b2b"
+                                   TextAlignment="Center" />
+                        <TextBlock Text="{Binding Desc}" FontSize="9.5" Foreground="#9a9a9a"
+                                   TextAlignment="Center" Margin="0,2,0,0" />
+                      </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <TextBlock Text="{Binding FileNote}" Classes="tip" />
+            </StackPanel>
+
+            <!-- 导出通道 -->
+            <Button Classes="sech" Command="{Binding ChannelsSection.Toggle}">
+              <Grid ColumnDefinitions="Auto,Auto,*">
+                <Border Grid.Column="0" Classes="cir" Classes.cl="{Binding !ChannelsSection.Open}">
+                  <ctl:TecIcon Key="ui-chev-down" Tint="#666666" Size="9" />
+                </Border>
+                <TextBlock Grid.Column="1" Text="导出通道" Classes="sect" />
+                <TextBlock Grid.Column="2" Text="{Binding ChannelHint}" Classes="hint" />
+              </Grid>
+            </Button>
+            <StackPanel Classes="secb" IsVisible="{Binding ChannelsSection.Open}">
+              <ItemsControl ItemsSource="{Binding Chips}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border Classes="chchip" Classes.on="{Binding On}" Classes.dis="{Binding !Available}"
+                            Margin="0,0,6,6" Cursor="Hand" ToolTip.Tip="{Binding Tip}"
+                            PointerPressed="OnChipPressed">
+                      <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Ellipse Width="9" Height="9" Fill="{Binding ColorHex}" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding Label}" FontSize="11.5" VerticalAlignment="Center" />
+                      </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <TextBlock Text="{Binding ChannelTip}" IsVisible="{Binding HasChannelTip}" Classes="tip" />
+            </StackPanel>
+
+            <!-- 数据项 -->
+            <Button Classes="sech" Command="{Binding ItemsSection.Toggle}">
+              <Grid ColumnDefinitions="Auto,Auto,*">
+                <Border Grid.Column="0" Classes="cir" Classes.cl="{Binding !ItemsSection.Open}">
+                  <ctl:TecIcon Key="ui-chev-down" Tint="#666666" Size="9" />
+                </Border>
+                <TextBlock Grid.Column="1" Text="数据项" Classes="sect" />
+                <TextBlock Grid.Column="2" Text="{Binding ItemHint}" Classes="hint" />
+              </Grid>
+            </Button>
+            <StackPanel Classes="secb" IsVisible="{Binding ItemsSection.Open}">
+              <ItemsControl ItemsSource="{Binding Groups}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
                     <StackPanel>
-                      <Panel Height="36">
-                        <ctl:TecIcon Key="{Binding IconKey}" HorizontalAlignment="Center"
-                                     VerticalAlignment="Center" />
-                      </Panel>
-                      <TextBlock Text="{Binding Name}" FontSize="12" Foreground="#2b2b2b"
-                                 TextAlignment="Center" Margin="0,5,0,0" />
-                      <TextBlock Text="{Binding Desc}" FontSize="9.5" Foreground="#9a9a9a"
-                                 TextAlignment="Center" Margin="0,2,0,0" />
+                      <TextBlock Text="{Binding Name}" Classes="grpl" />
+                      <ItemsControl ItemsSource="{Binding Items}">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate>
+                            <CheckBox Classes="ditem" IsChecked="{Binding On, Mode=TwoWay}"
+                                      IsEnabled="{Binding Available}" ToolTip.Tip="{Binding Tip}"
+                                      MinHeight="0" Padding="6,0,0,0">
+                              <StackPanel Orientation="Horizontal" Spacing="4">
+                                <TextBlock Text="{Binding Name}" FontSize="11.5" />
+                                <TextBlock Text="{Binding Unit}" FontSize="10.5" Foreground="#9a9a9a"
+                                           IsVisible="{Binding HasUnit}" VerticalAlignment="Center" />
+                              </StackPanel>
+                            </CheckBox>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
                     </StackPanel>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+
+            <!-- 时间范围与采样 -->
+            <Button Classes="sech" Command="{Binding RangeSection.Toggle}">
+              <Grid ColumnDefinitions="Auto,Auto,*">
+                <Border Grid.Column="0" Classes="cir" Classes.cl="{Binding !RangeSection.Open}">
+                  <ctl:TecIcon Key="ui-chev-down" Tint="#666666" Size="9" />
+                </Border>
+                <TextBlock Grid.Column="1" Text="时间范围与采样" Classes="sect" />
+                <TextBlock Grid.Column="2" Text="{Binding RangeHint}" Classes="hint" />
+              </Grid>
+            </Button>
+            <StackPanel Classes="secb" IsVisible="{Binding RangeSection.Open}">
+              <Grid Classes="frow" ColumnDefinitions="62,*">
+                <TextBlock Grid.Column="0" Text="范围" Classes="flbl" />
+                <ComboBox Grid.Column="1" Classes="fin" ItemsSource="{Binding RangeOptions}"
+                          SelectedItem="{Binding Range, Mode=TwoWay}" />
+              </Grid>
+              <Grid Classes="frow" ColumnDefinitions="62,*,16,*" IsVisible="{Binding CustomRange}">
+                <TextBlock Grid.Column="0" Text="自" Classes="flbl" />
+                <TextBox Grid.Column="1" Classes="fin" Text="{Binding FromText, Mode=TwoWay}" />
+                <TextBlock Grid.Column="2" Text="至" FontSize="11.5" Foreground="#9a9a9a"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                <TextBox Grid.Column="3" Classes="fin" Text="{Binding ToText, Mode=TwoWay}" />
+              </Grid>
+              <Grid Classes="frow" ColumnDefinitions="62,*">
+                <TextBlock Grid.Column="0" Text="采样间隔" Classes="flbl" />
+                <ComboBox Grid.Column="1" Classes="fin" ItemsSource="{Binding IntervalOptions}"
+                          SelectedItem="{Binding Interval, Mode=TwoWay}" />
+              </Grid>
+              <Grid Classes="frow" ColumnDefinitions="62,*">
+                <TextBlock Grid.Column="0" Text="时间基准" Classes="flbl" />
+                <ComboBox Grid.Column="1" Classes="fin" ItemsSource="{Binding BaseOptions}"
+                          SelectedItem="{Binding BaseLabel, Mode=TwoWay}" />
+              </Grid>
+              <TextBlock Text="{Binding BaseTip}" Classes="tip" />
+            </StackPanel>
+
+            <!-- 报告内容 -->
+            <Button Classes="sech" Command="{Binding ReportSection.Toggle}">
+              <Grid ColumnDefinitions="Auto,Auto,*">
+                <Border Grid.Column="0" Classes="cir" Classes.cl="{Binding !ReportSection.Open}">
+                  <ctl:TecIcon Key="ui-chev-down" Tint="#666666" Size="9" />
+                </Border>
+                <TextBlock Grid.Column="1" Text="报告内容" Classes="sect" />
+                <TextBlock Grid.Column="2" Text="仅 Word / PDF" Classes="hint" />
+              </Grid>
+            </Button>
+            <StackPanel Classes="secb" IsVisible="{Binding ReportSection.Open}">
+              <ItemsControl ItemsSource="{Binding ReportItems}" IsEnabled="{Binding ReportEnabled}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <CheckBox Classes="ditem" IsChecked="{Binding On, Mode=TwoWay}" MinHeight="0"
+                              Padding="6,0,0,0">
+                      <TextBlock Text="{Binding Name}" FontSize="11.5" TextWrapping="Wrap" />
+                    </CheckBox>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+
+            <!-- 导出目标 -->
+            <Button Classes="sech" Command="{Binding TargetSection.Toggle}">
+              <Grid ColumnDefinitions="Auto,Auto,*">
+                <Border Grid.Column="0" Classes="cir" Classes.cl="{Binding !TargetSection.Open}">
+                  <ctl:TecIcon Key="ui-chev-down" Tint="#666666" Size="9" />
+                </Border>
+                <TextBlock Grid.Column="1" Text="导出目标" Classes="sect" />
+                <TextBlock Grid.Column="2" Text="{Binding TargetHint}" Classes="hint" />
+              </Grid>
+            </Button>
+            <StackPanel Classes="secb" IsVisible="{Binding TargetSection.Open}">
+              <Border Classes="dest" Classes.on="{Binding DestLocal}" Cursor="Hand"
+                      PointerPressed="OnDestLocal">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <Border Classes="rd" Classes.on="{Binding DestLocal}">
+                    <Ellipse Width="7" Height="7" Fill="#1a7fc4" IsVisible="{Binding DestLocal}" />
                   </Border>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-            <TextBlock Text="{Binding FileNote}" FontSize="10.5" Foreground="#9a9a9a" LineHeight="16"
-                       TextWrapping="Wrap" Margin="0,7,0,0" />
-            </StackPanel>
-
-            <Button Classes="secbtn" Command="{Binding ReportSection.Toggle}" Margin="0,14,0,4">
-              <StackPanel Orientation="Horizontal" Spacing="8">
-              <Border Classes="exp3s" Classes.up="{Binding ReportSection.Open}">
-                <ctl:TecIcon Key="ui-chev-down" Tint="#555555" />
+                  <StackPanel>
+                    <TextBlock Text="本地文件夹" FontSize="12" Foreground="#2b2b2b" />
+                    <TextBlock Text="{Binding LocalDir}" FontSize="10.5" Foreground="#9a9a9a"
+                               TextTrimming="CharacterEllipsis" MaxWidth="240"
+                               ToolTip.Tip="{Binding LocalDir}" Margin="0,2,0,0" />
+                  </StackPanel>
+                </StackPanel>
               </Border>
-              <TextBlock Text="报告内容" Classes="accs" />
-              <TextBlock Text="仅 Word / PDF" FontSize="10" Foreground="#9a9a9a" VerticalAlignment="Center" />
-              </StackPanel>
-            </Button>
-            <StackPanel IsVisible="{Binding ReportSection.Open}">
-            <StackPanel IsEnabled="{Binding ReportEnabled}" Spacing="6">
-              <StackPanel Orientation="Horizontal" Spacing="10">
-                <TextBlock Text="模板" FontSize="11.5" Foreground="#3d3d3d" VerticalAlignment="Center" />
-                <ComboBox Classes="sel" Width="200" Height="24" SelectedIndex="0">
-                  <ComboBoxItem Content="标准实验报告" />
-                  <ComboBoxItem Content="结晶工艺报告" />
-                  <ComboBoxItem Content="简要摘要" />
-                </ComboBox>
-              </StackPanel>
-              <CheckBox Content="趋势曲线（Tr / Tj / Tr−Tj / pH）" FontSize="11.5" IsChecked="True" MinHeight="0" />
-              <CheckBox Content="步骤执行记录表" FontSize="11.5" IsChecked="True" MinHeight="0" />
-              <CheckBox Content="报警与偏差记录" FontSize="11.5" IsChecked="True" MinHeight="0" />
-              <CheckBox Content="配方参数与台面配置" FontSize="11.5" IsChecked="True" MinHeight="0" />
-              <CheckBox Content="化合物物性数据" FontSize="11.5" MinHeight="0" />
-            </StackPanel>
+              <Border Classes="dest" Classes.on="{Binding DestUsb}" Cursor="Hand"
+                      PointerPressed="OnDestUsb">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <Border Classes="rd" Classes.on="{Binding DestUsb}">
+                    <Ellipse Width="7" Height="7" Fill="#1a7fc4" IsVisible="{Binding DestUsb}" />
+                  </Border>
+                  <StackPanel>
+                    <TextBlock Text="USB 记忆盘" FontSize="12" Foreground="#2b2b2b" />
+                    <TextBlock Text="{Binding UsbNote}" FontSize="10.5" Foreground="#9a9a9a"
+                               Margin="0,2,0,0" />
+                  </StackPanel>
+                </StackPanel>
+              </Border>
             </StackPanel>
 
-            <Button Classes="secbtn" Command="{Binding TargetSection.Toggle}" Margin="0,14,0,4">
-              <StackPanel Orientation="Horizontal" Spacing="8">
-                <Border Classes="exp3s" Classes.up="{Binding TargetSection.Open}">
-                  <ctl:TecIcon Key="ui-chev-down" Tint="#555555" />
+            <!-- GLP 合规 -->
+            <Button Classes="sech" Command="{Binding GlpSection.Toggle}">
+              <Grid ColumnDefinitions="Auto,Auto,*">
+                <Border Grid.Column="0" Classes="cir" Classes.cl="{Binding !GlpSection.Open}">
+                  <ctl:TecIcon Key="ui-chev-down" Tint="#666666" Size="9" />
                 </Border>
-                <TextBlock Text="导出目标" Classes="accs" />
-              </StackPanel>
+                <TextBlock Grid.Column="1" Text="GLP 合规" Classes="sect" />
+                <TextBlock Grid.Column="2" Text="{Binding GlpHint}" Classes="hint" />
+              </Grid>
             </Button>
-            <StackPanel IsVisible="{Binding TargetSection.Open}">
-            <Border Classes="dest" Classes.on="{Binding DestLocal}" Cursor="Hand"
-                    PointerPressed="OnDestLocal">
-              <StackPanel Orientation="Horizontal" Spacing="9">
-                <Border Classes="rd" Classes.on="{Binding DestLocal}">
-                  <Ellipse Width="7" Height="7" Fill="#1a7fc4" IsVisible="{Binding DestLocal}" />
-                </Border>
-                <ctl:TecIcon Key="ui-dest-local" Tint="#7a8791" VerticalAlignment="Center" />
-                <StackPanel>
-                  <TextBlock Text="本地文件夹" FontSize="12" Foreground="#2b2b2b" />
-                  <TextBlock Text="{Binding LocalDir}" FontSize="10.5" Foreground="#9a9a9a"
-                             TextTrimming="CharacterEllipsis" MaxWidth="210"
-                             ToolTip.Tip="{Binding LocalDir}" />
-                </StackPanel>
-              </StackPanel>
-            </Border>
-            <Border Classes="dest" Classes.on="{Binding DestUsb}" Cursor="Hand"
-                    PointerPressed="OnDestUsb">
-              <StackPanel Orientation="Horizontal" Spacing="9">
-                <Border Classes="rd" Classes.on="{Binding DestUsb}">
-                  <Ellipse Width="7" Height="7" Fill="#1a7fc4" IsVisible="{Binding DestUsb}" />
-                </Border>
-                <ctl:TecIcon Key="ui-dest-usb" Tint="#7a8791" VerticalAlignment="Center" />
-                <StackPanel>
-                  <TextBlock Text="USB 记忆盘" FontSize="12" Foreground="#2b2b2b" />
-                  <TextBlock Text="{Binding UsbNote}" FontSize="10.5" Foreground="#9a9a9a" />
-                </StackPanel>
-              </StackPanel>
-            </Border>
+            <StackPanel Classes="secb" IsVisible="{Binding GlpSection.Open}">
+              <ItemsControl ItemsSource="{Binding GlpItems}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <CheckBox Classes="ditem" IsChecked="{Binding On, Mode=TwoWay}" MinHeight="0"
+                              Padding="6,0,0,0">
+                      <TextBlock Text="{Binding Name}" FontSize="11.5" TextWrapping="Wrap" />
+                    </CheckBox>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <Grid Classes="frow" ColumnDefinitions="62,*" Margin="0,6,0,0">
+                <TextBlock Grid.Column="0" Text="签名人" Classes="flbl" />
+                <TextBox Grid.Column="1" Classes="fin" Text="{Binding Signer, Mode=TwoWay}" />
+              </Grid>
+              <TextBlock Classes="tip"
+                         Text="导出文件包含原始采样数据、配方参数、台面配置与操作记录，链式摘要让任何一行被改过都对不上。" />
             </StackPanel>
 
-            <Button Classes="secbtn" Command="{Binding GlpSection.Toggle}" Margin="0,14,0,4">
-              <StackPanel Orientation="Horizontal" Spacing="8">
-                <Border Classes="exp3s" Classes.up="{Binding GlpSection.Open}">
-                  <ctl:TecIcon Key="ui-chev-down" Tint="#555555" />
-                </Border>
-                <TextBlock Text="GLP 合规" Classes="accs" />
-              </StackPanel>
-            </Button>
-            <StackPanel IsVisible="{Binding GlpSection.Open}">
-            <Border Background="White" BorderBrush="#dcdcdc" BorderThickness="1" CornerRadius="4"
-                    Padding="11,9,11,4">
-              <StackPanel Spacing="8">
-                <CheckBox Content="附带审计追踪（操作与修改记录）" FontSize="11.5" IsChecked="True" MinHeight="0" />
-                <CheckBox Content="生成完整性校验码（SHA-256）" FontSize="11.5" IsChecked="True" MinHeight="0" />
-                <CheckBox Content="电子签名" FontSize="11.5" IsChecked="True" MinHeight="0" />
-                <StackPanel Orientation="Horizontal" Spacing="10">
-                  <TextBlock Text="签名人" FontSize="11.5" Foreground="#3d3d3d" Width="52"
-                             VerticalAlignment="Center" />
-                  <TextBox Classes="finput" Width="180" Text="{Binding Signer, Mode=TwoWay}" />
-                </StackPanel>
-                <CheckBox Content="本次导出写入系统日志" FontSize="11.5" IsChecked="True" MinHeight="0"
-                          Margin="0,0,0,6" />
-              </StackPanel>
-            </Border>
-            </StackPanel>
-            <TextBlock FontSize="10.5" Foreground="#9a9a9a" LineHeight="16" TextWrapping="Wrap"
-                       Margin="0,7,0,0"
-                       Text="导出文件包含原始采样数据、配方参数、台面配置与操作记录，满足实验记录完整可追溯的要求。" />
-            <TextBlock Text="{Binding Status}" FontSize="10.5" Foreground="#2f8f49" TextWrapping="Wrap"
-                       Margin="0,7,0,0" />
           </StackPanel>
         </ScrollViewer>
-      </DockPanel>
-    </Border>
-  </Grid>
+      </Border>
+    </Grid>
+  </DockPanel>
 
   <UserControl.Styles>
-    <Style Selector="Border.rrow">
-      <Setter Property="Background" Value="White" />
-      <Setter Property="BorderBrush" Value="#f0f0f0" />
-      <Setter Property="BorderThickness" Value="4,0,0,1" />
-      <Setter Property="Padding" Value="8,9,14,9" />
-    </Style>
-    <Style Selector="Border.rrow.sel">
-      <Setter Property="Background" Value="#e8f2fb" />
-      <Setter Property="BorderBrush" Value="#1a7fc4" />
-    </Style>
-    <Style Selector="Border.ri">
-      <Setter Property="Width" Value="30" />
-      <Setter Property="Height" Value="30" />
-      <Setter Property="CornerRadius" Value="15" />
-      <Setter Property="Background" Value="#f2f2f2" />
-      <Setter Property="HorizontalAlignment" Value="Center" />
-      <Setter Property="VerticalAlignment" Value="Center" />
-    </Style>
-    <Style Selector="Border.ri.sel">
-      <Setter Property="Background" Value="#d4e7f7" />
-    </Style>
-    <Style Selector="Border.ri > :is(Control)">
-      <Setter Property="HorizontalAlignment" Value="Center" />
-      <Setter Property="VerticalAlignment" Value="Center" />
-    </Style>
-
-    <Style Selector="TextBlock.accs">
+    <!-- 工具条 -->
+    <Style Selector="TextBox.srch">
+      <Setter Property="Height" Value="26" />
+      <Setter Property="MinHeight" Value="26" />
       <Setter Property="FontSize" Value="11.5" />
-      <Setter Property="Foreground" Value="#3d3d3d" />
-      <Setter Property="VerticalAlignment" Value="Center" />
-    </Style>
-    <Style Selector="Border.exp3s.up">
-      <Setter Property="RenderTransform">
-        <RotateTransform Angle="180" />
-      </Setter>
-    </Style>
-    <Style Selector="Button.secbtn">
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderThickness" Value="0" />
-      <Setter Property="Padding" Value="0,2" />
-      <Setter Property="MinHeight" Value="0" />
-      <Setter Property="HorizontalContentAlignment" Value="Left" />
-      <Setter Property="Cursor" Value="Hand" />
-    </Style>
-    <Style Selector="Button.secbtn:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="Transparent" />
-    </Style>
-    <Style Selector="Border.exp3s">
-      <Setter Property="Width" Value="16" />
-      <Setter Property="Height" Value="16" />
-      <Setter Property="CornerRadius" Value="8" />
-      <Setter Property="BorderBrush" Value="#6b6b6b" />
-      <Setter Property="BorderThickness" Value="1.3" />
-    </Style>
-    <Style Selector="Border.exp3s > :is(Control)">
-      <Setter Property="HorizontalAlignment" Value="Center" />
-      <Setter Property="VerticalAlignment" Value="Center" />
-    </Style>
-
-    <Style Selector="Border.chchip">
-      <Setter Property="BorderBrush" Value="#d5d5d5" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="CornerRadius" Value="14" />
-      <Setter Property="Padding" Value="8,5,12,5" />
+      <Setter Property="Padding" Value="27,0,8,0" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="BorderBrush" Value="#c4c4c4" />
+      <Setter Property="CornerRadius" Value="3" />
       <Setter Property="Background" Value="White" />
     </Style>
-    <Style Selector="Border.chchip.on">
-      <Setter Property="BorderBrush" Value="#1a7fc4" />
-      <Setter Property="Background" Value="#e8f2fb" />
-    </Style>
-    <Style Selector="Border.chchip.dis">
-      <Setter Property="Opacity" Value="0.4" />
-      <Setter Property="Background" Value="#fafafa" />
-    </Style>
-
-    <Style Selector="CheckBox.ditem">
-      <Setter Property="FontSize" Value="11.5" />
-    </Style>
-
-    <Style Selector="Button.ptab">
-      <Setter Property="Height" Value="22" />
-      <Setter Property="MinWidth" Value="0" />
-      <Setter Property="Padding" Value="12,0" />
-      <Setter Property="FontSize" Value="11" />
-      <Setter Property="Background" Value="White" />
-      <Setter Property="BorderBrush" Value="#d5d5d5" />
+    <Style Selector="Border.seg">
+      <Setter Property="BorderBrush" Value="#c4c4c4" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="CornerRadius" Value="3" />
-      <Setter Property="Foreground" Value="#3d3d3d" />
+      <Setter Property="ClipToBounds" Value="True" />
+      <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
-    <Style Selector="Button.ptab.on">
-      <Setter Property="BorderBrush" Value="#1a7fc4" />
+    <Style Selector="Button.segb">
+      <Setter Property="Height" Value="24" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="Padding" Value="11,0" />
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Foreground" Value="#4a4a4a" />
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderBrush" Value="#dcdcdc" />
+      <Setter Property="BorderThickness" Value="0,0,1,0" />
+      <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.segb:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#f2f8fd" />
+    </Style>
+    <!-- 选中态排在悬停后面：同权重后写的赢 -->
+    <Style Selector="Button.segb.on /template/ ContentPresenter">
       <Setter Property="Background" Value="#e8f2fb" />
+    </Style>
+    <Style Selector="Button.segb.on">
       <Setter Property="Foreground" Value="#0b3760" />
       <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="ComboBox.ftr">
+      <Setter Property="Height" Value="26" />
+      <Setter Property="MinHeight" Value="26" />
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Padding" Value="6,0" />
+      <Setter Property="BorderBrush" Value="#c4c4c4" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="Background" Value="White" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.lnk">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Foreground" Value="#1a7fc4" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.lnk:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+
+    <!-- 记录表 -->
+    <Style Selector="Grid.rhdr">
+      <Setter Property="Height" Value="30" />
+    </Style>
+    <Style Selector="Grid.rhdr > TextBlock.thx">
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Foreground" Value="#5a5a5a" />
+      <Setter Property="Padding" Value="9,0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.th">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="Padding" Value="9,0" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Foreground" Value="#5a5a5a" />
+      <Setter Property="HorizontalContentAlignment" Value="Left" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.th:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#f0f5f9" />
+    </Style>
+    <Style Selector="Button.th TextBlock">
+      <Setter Property="FontSize" Value="11.5" />
+    </Style>
+
+    <Style Selector="Border.rrow">
+      <Setter Property="Height" Value="30" />
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderBrush" Value="#f2f2f2" />
+      <Setter Property="BorderThickness" Value="3,0,0,1" />
+    </Style>
+    <Style Selector="Border.rrow:pointerover">
+      <Setter Property="Background" Value="#f2f8fd" />
+    </Style>
+    <Style Selector="Border.rrow.on, Border.rrow.on:pointerover">
+      <Setter Property="Background" Value="#e8f2fb" />
+    </Style>
+    <!-- 正在预览的那一条左边一道 3px 蓝条（原型 tr.pv） -->
+    <Style Selector="Border.rrow.pv">
+      <Setter Property="BorderBrush" Value="#1a7fc4" />
+    </Style>
+    <Style Selector="Border.rrow TextBlock">
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Foreground" Value="#2b2b2b" />
+      <Setter Property="Padding" Value="9,0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.rrow TextBlock.mut">
+      <Setter Property="Foreground" Value="#a5a5a5" />
+    </Style>
+    <Style Selector="Border.rrow TextBlock.alm">
+      <Setter Property="Foreground" Value="#c0392b" />
+    </Style>
+    <Style Selector="Border.rrow.on TextBlock.nm">
+      <Setter Property="Foreground" Value="#0b3760" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="TextBlock.mono">
+      <Setter Property="FontFamily" Value="Consolas, Menlo, monospace" />
+    </Style>
+    <Style Selector="TextBlock.num">
+      <Setter Property="TextAlignment" Value="Right" />
+    </Style>
+
+    <!-- 右栏小节 -->
+    <Style Selector="Button.sech">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0,7" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.sech:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="Border.cir">
+      <Setter Property="Width" Value="17" />
+      <Setter Property="Height" Value="17" />
+      <Setter Property="CornerRadius" Value="9" />
+      <Setter Property="BorderBrush" Value="#b6b6b6" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Margin" Value="0,0,8,0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.sech:pointerover Border.cir">
+      <Setter Property="BorderBrush" Value="#1a7fc4" />
+    </Style>
+    <Style Selector="Border.cir > :is(Control)">
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <!-- 收起来的时候箭头转 −90°（原型 .sec.cl .cir svg） -->
+    <Style Selector="Border.cir.cl">
+      <Setter Property="RenderTransform">
+        <RotateTransform Angle="-90" />
+      </Setter>
+    </Style>
+    <Style Selector="TextBlock.sect">
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="Foreground" Value="#2b2b2b" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TextBlock.hint">
+      <Setter Property="FontSize" Value="10.5" />
+      <Setter Property="Foreground" Value="#a5a5a5" />
+      <Setter Property="TextAlignment" Value="Right" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="StackPanel.secb">
+      <Setter Property="Margin" Value="25,2,0,12" />
+    </Style>
+    <Style Selector="TextBlock.grpl">
+      <Setter Property="FontSize" Value="10.5" />
+      <Setter Property="Foreground" Value="#9a9a9a" />
+      <Setter Property="Margin" Value="0,8,0,3" />
+    </Style>
+    <Style Selector="TextBlock.tip">
+      <Setter Property="FontSize" Value="10.5" />
+      <Setter Property="Foreground" Value="#9a9a9a" />
+      <Setter Property="LineHeight" Value="17" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="Margin" Value="0,4,0,0" />
+    </Style>
+    <Style Selector="Grid.frow">
+      <Setter Property="Margin" Value="0,0,0,7" />
+    </Style>
+    <Style Selector="TextBlock.flbl">
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Foreground" Value="#3d3d3d" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <!-- 两种控件分开写：VerticalContentAlignment 不在它们的公共基类上，
+         合成一条选择器编译期就挂了 -->
+    <Style Selector="ComboBox.fin">
+      <Setter Property="Height" Value="24" />
+      <Setter Property="MinHeight" Value="24" />
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Padding" Value="5,0" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="BorderBrush" Value="#a8a8a8" />
+      <Setter Property="CornerRadius" Value="2" />
+      <Setter Property="Background" Value="White" />
+    </Style>
+    <Style Selector="TextBox.fin">
+      <Setter Property="Height" Value="24" />
+      <Setter Property="MinHeight" Value="24" />
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Padding" Value="5,0" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="BorderBrush" Value="#a8a8a8" />
+      <Setter Property="CornerRadius" Value="2" />
+      <Setter Property="Background" Value="White" />
     </Style>
 
     <Style Selector="Border.fmt">
       <Setter Property="BorderBrush" Value="#d5d5d5" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="CornerRadius" Value="4" />
-      <Setter Property="Padding" Value="7,9,7,8" />
+      <Setter Property="Padding" Value="6,8,6,7" />
       <Setter Property="Background" Value="White" />
     </Style>
-    <Style Selector="Border.fmt.on">
+    <Style Selector="Border.fmt:pointerover">
+      <Setter Property="BorderBrush" Value="#1a7fc4" />
+      <Setter Property="Background" Value="#f2f8fd" />
+    </Style>
+    <Style Selector="Border.fmt.on, Border.fmt.on:pointerover">
       <Setter Property="BorderBrush" Value="#1a7fc4" />
       <Setter Property="Background" Value="#e8f2fb" />
       <Setter Property="BoxShadow" Value="0 0 0 2 #381a7fc4" />
+    </Style>
+    <!-- 写不出来的格式：摆在那儿但按不下去，不假装能导 -->
+    <Style Selector="Border.fmt.dis, Border.fmt.dis:pointerover">
+      <Setter Property="Opacity" Value="0.42" />
+      <Setter Property="Background" Value="#fafafa" />
+      <Setter Property="BorderBrush" Value="#d5d5d5" />
+      <Setter Property="Cursor" Value="Arrow" />
+    </Style>
+
+    <Style Selector="Border.chchip">
+      <Setter Property="BorderBrush" Value="#d5d5d5" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="14" />
+      <Setter Property="Padding" Value="8,4,11,4" />
+      <Setter Property="Background" Value="White" />
+    </Style>
+    <Style Selector="Border.chchip:pointerover">
+      <Setter Property="BorderBrush" Value="#1a7fc4" />
+      <Setter Property="Background" Value="#f2f8fd" />
+    </Style>
+    <Style Selector="Border.chchip.on, Border.chchip.on:pointerover">
+      <Setter Property="BorderBrush" Value="#1a7fc4" />
+      <Setter Property="Background" Value="#e8f2fb" />
+    </Style>
+    <Style Selector="Border.chchip.dis, Border.chchip.dis:pointerover">
+      <Setter Property="Opacity" Value="0.4" />
+      <Setter Property="Background" Value="#fafafa" />
+      <Setter Property="BorderBrush" Value="#d5d5d5" />
+      <Setter Property="Cursor" Value="Arrow" />
+    </Style>
+
+    <Style Selector="CheckBox.ditem">
+      <Setter Property="FontSize" Value="11.5" />
     </Style>
 
     <Style Selector="Border.dest">
       <Setter Property="BorderBrush" Value="#d5d5d5" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="CornerRadius" Value="4" />
-      <Setter Property="Padding" Value="10,9" />
+      <Setter Property="Padding" Value="10,8" />
       <Setter Property="Background" Value="White" />
-      <Setter Property="Margin" Value="0,0,0,7" />
+      <Setter Property="Margin" Value="0,0,0,6" />
     </Style>
-    <Style Selector="Border.dest.on">
+    <Style Selector="Border.dest:pointerover">
+      <Setter Property="BorderBrush" Value="#1a7fc4" />
+      <Setter Property="Background" Value="#f2f8fd" />
+    </Style>
+    <Style Selector="Border.dest.on, Border.dest.on:pointerover">
       <Setter Property="BorderBrush" Value="#1a7fc4" />
       <Setter Property="Background" Value="#e8f2fb" />
       <Setter Property="BoxShadow" Value="0 0 0 2 #381a7fc4" />
@@ -542,9 +823,10 @@
       <Setter Property="Width" Value="14" />
       <Setter Property="Height" Value="14" />
       <Setter Property="CornerRadius" Value="7" />
-      <Setter Property="BorderBrush" Value="#b5b5b5" />
-      <Setter Property="BorderThickness" Value="1.5" />
-      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="BorderBrush" Value="#9a9a9a" />
+      <Setter Property="BorderThickness" Value="1.4" />
+      <Setter Property="VerticalAlignment" Value="Top" />
+      <Setter Property="Margin" Value="0,2,0,0" />
     </Style>
     <Style Selector="Border.rd.on">
       <Setter Property="BorderBrush" Value="#1a7fc4" />

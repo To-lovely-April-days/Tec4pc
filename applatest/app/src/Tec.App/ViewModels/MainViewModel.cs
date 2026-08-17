@@ -44,10 +44,9 @@ public sealed class MainViewModel : ViewModelBase
         // 而且跳掉的每一步都写进记录撤不回来。那一颗留在磁贴上就够了
         SimRun = new RelayCommand(() =>
         {
-            // 第一次启动时开一个批次，名字取当前实验名——记录里的批次名不能是空的，
-            // 导出页整条记录都靠它认人
-            if (ws.Engine.Record.Channels.Count == 0)
-                ws.Engine.NewBatch(ws.ExperimentName, ws.Operator, ws.Bench.Name);
+            // 该开新批次就开：全都停下来之后再按启动，那是下一炉（§7.1）。
+            // 名字取当前实验名——记录里的批次名不能是空的，导出页整条记录都靠它认人
+            ws.Engine.EnsureBatch(ws.ExperimentName, ws.Operator, ws.Bench.Name);
 
             foreach (var ch in ws.Channels.Where(c => c.Enabled))
             {
