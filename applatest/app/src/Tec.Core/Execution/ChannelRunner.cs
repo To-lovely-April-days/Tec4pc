@@ -247,15 +247,9 @@ public sealed class ChannelRunner
         var before = Describe(d, step.Parameters);
         var applied = step.Parameters.Clone();
         foreach (var key in next.Keys) applied[key] = next[key];
-        var newStep = new Step
-        {
-            StepId = step.StepId,
-            CommandId = step.CommandId,
-            Parameters = applied,
-            Rows = step.Rows,
-            Enabled = step.Enabled,
-            Comment = step.Comment
-        };
+        // 除了参数，这一步的其它属性一律照搬。手抄字段清单抄漏过一次：
+        // 热改之后「失败时暂停并报警」退回默认的 true，操作人关掉的开关自己又开了
+        var newStep = step.CopyWith(parameters: applied);
         var idx = _live.Steps.IndexOf(step);
         _live.Steps[idx] = newStep;
 
@@ -453,8 +447,23 @@ public sealed class ChannelRunner
             PlanDuration = entry?.Duration ?? TimeSpan.Zero,
             ChannelStart = run.StartedAt,
             ActualStart = at,
-            Status = StepStatus.Running
+            Status = StepStatus.Running,
+            // 控温对象与工艺阶段跟着这一步一起冻下来。事后翻记录时，
+            // 「这一段按 Tr 还是按 Tj 控」决定了同一条 Tr−Tj 曲线该怎么读；
+            // 之后再改配方也不影响已经记下来的这一笔
+            ControlMode = Mode(step),
+            Phase = string.IsNullOrWhiteSpace(step.Phase) ? null : step.Phase
         };
+    }
+
+    /// <summary>
+    /// 这一步的控温对象。只有温度模块那几条指令有；别的指令返回 null——
+    /// 给「加料」标一个「釜内 Tr」是无中生有。
+    /// </summary>
+    private static string? Mode(Step step)
+    {
+        var obj = step.Parameters.Str("obj", "");
+        return obj.Length == 0 ? null : obj;
     }
 
     /// <summary>跑一步，把这一步的记录还回去——主循环要按它的结果决定停不停。</summary>

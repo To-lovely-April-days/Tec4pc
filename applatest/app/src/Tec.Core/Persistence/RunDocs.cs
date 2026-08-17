@@ -52,6 +52,8 @@ public sealed class StepRecordDoc
     public StepStatus Status { get; set; }
     public string? Note { get; set; }
     public DateTimeOffset ChannelStart { get; set; }
+    public string? ControlMode { get; set; }
+    public string? Phase { get; set; }
 }
 
 public sealed class EventRecordDoc
@@ -151,7 +153,8 @@ public static class RunFiles
                 Termination = s.Termination, Iteration = s.Iteration,
                 PlanStart = s.PlanStart, PlanDuration = s.PlanDuration,
                 ActualStart = s.ActualStart, ActualEnd = s.ActualEnd, ActualDuration = s.ActualDuration,
-                Reason = s.Reason, Status = s.Status, Note = s.Note, ChannelStart = s.ChannelStart
+                Reason = s.Reason, Status = s.Status, Note = s.Note, ChannelStart = s.ChannelStart,
+                ControlMode = s.ControlMode, Phase = s.Phase
             });
 
         foreach (var e in ch.Events)
@@ -210,7 +213,8 @@ public static class RunFiles
                 Termination = s.Termination, Iteration = s.Iteration,
                 PlanStart = s.PlanStart, PlanDuration = s.PlanDuration, ChannelStart = s.ChannelStart,
                 ActualStart = s.ActualStart, ActualEnd = s.ActualEnd, ActualDuration = s.ActualDuration,
-                Reason = s.Reason, Status = s.Status, Note = s.Note
+                Reason = s.Reason, Status = s.Status, Note = s.Note,
+                ControlMode = s.ControlMode, Phase = s.Phase
             });
 
         foreach (var e in doc.Events)

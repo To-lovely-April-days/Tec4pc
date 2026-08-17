@@ -239,11 +239,15 @@ public static class ReportBuilder
     private static void Steps(ReportDoc doc, RunRecord rec, CommandCatalog catalog)
     {
         doc.Blocks.Add(new HeadingBlock { Level = 1, Text = "三、步骤执行记录" });
+        var phased = rec.Channels.Any(c => c.Steps.Any(s => !string.IsNullOrEmpty(s.Phase)));
         doc.Blocks.Add(new ParaBlock
         {
             Muted = true,
             Text = "「计划」来自启动那一刻冻结的基线，之后再改配方也不影响它；"
                  + "「实际」来自运行记录。开始偏差 = 被前面的步骤拖累了多少，时长偏差 = 这一步自己跑得对不对，两者分列。"
+                 + "「控温」是这一步按哪一路控（Tr 釜内 / Tj 夹套），由设备决定——"
+                 + "同一条 Tr−Tj 曲线，按 Tj 控时反映的是热效应，按 Tr 控时反映的是控制器在使劲，读法完全不同。"
+                 + (phased ? "「阶段」是操作人在配方里标注的工艺阶段，不是设备回报的。" : "")
         });
 
         foreach (var ch in rec.Channels.OrderBy(c => c.Channel))
@@ -258,6 +262,8 @@ public static class ReportBuilder
                 {
                     (s.Index + 1).ToString(CultureInfo.InvariantCulture),
                     s.Iteration > 1 ? s.Iteration.ToString(CultureInfo.InvariantCulture) : "",
+                    s.Phase ?? "",
+                    Short(s.ControlMode),
                     s.Title,
                     Clock(ch.StartedAt + s.PlanStart),
                     s.ActualStart is { } a ? Clock(a) : "—",
@@ -274,25 +280,31 @@ public static class ReportBuilder
             {
                 Title = $"CH{ch.Channel}　·　{ch.Baseline.Recipe.Name}"
                         + (ch.Simulated ? "　（仿真运行）" : ""),
-                Columns = new[]
+                Columns = Trim(ref rows, new[]
                 {
-                    new TableCol { Name = "#", Weight = 0.34, Right = true },
-                    new TableCol { Name = "轮", Weight = 0.3, Right = true },
-                    new TableCol { Name = "步骤", Weight = 2.1 },
-                    new TableCol { Name = "计划开始", Weight = 1.05, Right = true },
-                    new TableCol { Name = "实际开始", Weight = 1.05, Right = true },
-                    new TableCol { Name = "开始偏差", Weight = 0.9, Right = true },
-                    new TableCol { Name = "计划时长", Weight = 0.9, Right = true },
-                    new TableCol { Name = "实际时长", Weight = 0.9, Right = true },
-                    new TableCol { Name = "时长偏差", Weight = 0.9, Right = true },
-                    new TableCol { Name = "结束原因", Weight = 1.15 },
-                    new TableCol { Name = "状态", Weight = 0.62 }
-                },
+                    // 多了「阶段」「控温」两列之后重新分过宽度：时刻列一旦被掐成
+                    // 「13:32:…」，这张表就没法拿来对时间了——它存在的理由就是对时间
+                    new TableCol { Name = "#", Weight = 0.32, Right = true },
+                    new TableCol { Name = "轮", Weight = 0.28, Right = true },
+                    new TableCol { Name = "阶段", Weight = 0.7 },
+                    new TableCol { Name = "控温", Weight = 0.5 },
+                    new TableCol { Name = "步骤", Weight = 1.45 },
+                    new TableCol { Name = "计划开始", Weight = 1.15, Right = true },
+                    new TableCol { Name = "实际开始", Weight = 1.15, Right = true },
+                    new TableCol { Name = "开始偏差", Weight = 1, Right = true },
+                    new TableCol { Name = "计划时长", Weight = 1, Right = true },
+                    new TableCol { Name = "实际时长", Weight = 1, Right = true },
+                    new TableCol { Name = "时长偏差", Weight = 1, Right = true },
+                    new TableCol { Name = "结束原因", Weight = 1.1 },
+                    new TableCol { Name = "状态", Weight = 0.6 }
+                }),
                 Rows = rows,
                 BadRows = bad,
                 // 步骤那一列写的是整句参数（「保持当前温度 2 min，允差 ±0 ℃」），
-                // 一行放不下就折第二行——那一列正是人要看的东西，掐掉等于没写
-                MaxLines = 2
+                // 放不下就往下折——那一列正是人要看的东西，掐掉等于没写。
+                // 十三列挤在 A4 竖排上，宽度得先保证数字一个不掐（那是这张表存在的理由），
+                // 剩下的给这一列，折三行也比掐掉强
+                MaxLines = 3
             });
         }
     }
@@ -497,6 +509,33 @@ public static class ReportBuilder
                  + "程序尚未接入身份认证系统，签名人是一个由操作人自行填写的字段——"
                  + "在接入之前，它不构成 21 CFR Part 11 意义上的电子签名。"
         });
+    }
+
+    /// <summary>「釜内 Tr」→「Tr」。窄列里塞不下四个字，而 Tr / Tj 本身就说得清。</summary>
+    private static string Short(string? mode) => mode switch
+    {
+        null or "" => "",
+        var m when m.Contains("Tj", StringComparison.Ordinal) => "Tj",
+        var m when m.Contains("Tr", StringComparison.Ordinal) => "Tr",
+        var m => m
+    };
+
+    /// <summary>
+    /// 把**每一行都空着**的列摘掉，行数据跟着删对应的格。
+    ///
+    /// A4 竖排一张十三列的表，宽度是抢出来的。没有循环的配方「轮」列全空、
+    /// 没标阶段的「阶段」列全空、纯加料配方「控温」列全空——留着它们
+    /// 等于让真正有内容的几列各挨一刀。空列不是信息，是版面开销。
+    /// </summary>
+    private static IReadOnlyList<TableCol> Trim(ref List<string[]> rows, IReadOnlyList<TableCol> cols)
+    {
+        var keep = new List<int>();
+        for (var i = 0; i < cols.Count; i++)
+            if (rows.Any(r => i < r.Length && r[i].Length > 0)) keep.Add(i);
+        if (keep.Count == cols.Count || keep.Count == 0) return cols;
+
+        rows = rows.Select(r => keep.Select(i => i < r.Length ? r[i] : "").ToArray()).ToList();
+        return keep.Select(i => cols[i]).ToList();
     }
 
     private static string Stamp(DateTimeOffset at) => at.ToString("yyyy-MM-dd HH:mm:ss");

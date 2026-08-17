@@ -366,6 +366,17 @@
                         IsChecked="{Binding PauseOnFault, Mode=TwoWay}" />
               <CheckBox Classes="chk2" Content="跳过该步骤（不执行、不计入排期）"
                         IsChecked="{Binding StepSkipped, Mode=TwoWay}" />
+              <!-- 工艺阶段：设备不知道这一段在结晶还是在蒸馏，只有人知道。
+                   标了就进记录、进报告，报告里注明是操作人标的 -->
+              <Grid ColumnDefinitions="62,*" Margin="0,4,0,0">
+                <TextBlock Grid.Column="0" Text="工艺阶段" FontSize="11.5" Foreground="#5a5a5a"
+                           VerticalAlignment="Center" />
+                <ComboBox Grid.Column="1" FontSize="11.5" Height="26" MinHeight="26"
+                          HorizontalAlignment="Stretch"
+                          ItemsSource="{Binding PhaseOptions}"
+                          SelectedItem="{Binding StepPhase, Mode=TwoWay}"
+                          ToolTip.Tip="事后看 Tr−Tj 曲线时，靠它才知道某一段在做什么。由操作人标注，不是设备回报" />
+              </Grid>
             </StackPanel>
           </StackPanel>
 

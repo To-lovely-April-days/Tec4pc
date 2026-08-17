@@ -61,6 +61,8 @@ public sealed class StepDoc
     /// <summary>老文件里没有这一项，缺省 true——与 Step 的默认一致。</summary>
     public bool PauseOnFault { get; set; } = true;
     public string? Comment { get; set; }
+    /// <summary>工艺阶段。老文件里没有，读回来是 null，就是「没标」。</summary>
+    public string? Phase { get; set; }
 }
 
 /// <summary>配方文件（.tecrecipe），也是实验文件与配方库里的一条。</summary>

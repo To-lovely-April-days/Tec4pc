@@ -475,7 +475,7 @@ public sealed class RecipeViewModel : ViewModelBase
             if (value is not null) value.IsSelected = true;
             RebuildForm();
             RaiseAll(nameof(HasSelection), nameof(NoSelection), nameof(StepName), nameof(StepColor),
-                     nameof(StepChannel), nameof(NoParams), nameof(PauseOnFault), nameof(StepSkipped));
+                     nameof(StepChannel), nameof(NoParams), nameof(PauseOnFault), nameof(StepSkipped), nameof(StepPhase));
         }
     }
 
@@ -496,6 +496,45 @@ public sealed class RecipeViewModel : ViewModelBase
     /// <summary>这条指令一个参数都没有（比如「循环结束」）。空着不说话会让人以为界面坏了。</summary>
     public bool NoParams => _selectedStep?.Descriptor is { } d
                             && d.Parameters.Fields.Count == 0 && d.Parameters.Table is null;
+
+    // ── 工艺阶段 ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// 可选的工艺阶段。**没有「未标注」以外的空项**——选了就是选了，
+    /// 想撤回就选回「未标注」。
+    /// </summary>
+    private static readonly string[] Phases =
+    {
+        NoPhase, "升温", "保温", "降温", "结晶", "溶解", "蒸馏", "加料", "反应", "淬灭", "后处理"
+    };
+
+    /// <summary>绑定用的是**实例**属性：反射绑定按 DataContext 的类型找实例成员，
+    /// 静态属性它看不见——下拉框会是一个空框。</summary>
+    public IReadOnlyList<string> PhaseOptions => Phases;
+
+    public const string NoPhase = "未标注";
+
+    /// <summary>
+    /// 这一步属于哪个工艺阶段。
+    ///
+    /// **这是操作人自己标的，机器不知道。**设备只知道自己在按 Tr 还是按 Tj 控温；
+    /// 「这一段在结晶」是人的判断。事后看 Tr−Tj 曲线，要读得懂靠的正是这一条，
+    /// 所以它进记录、进报告，并在报告里注明是操作人标注的。
+    /// </summary>
+    public string StepPhase
+    {
+        get => _selectedStep?.Step.Phase is { Length: > 0 } p ? p : NoPhase;
+        set
+        {
+            if (_selectedStep is not { } s) return;
+            var v = value == NoPhase || string.IsNullOrWhiteSpace(value) ? null : value;
+            if (s.Step.Phase == v) return;
+            Record();
+            s.Step.Phase = v;
+            Workspace.Store.MarkDirty();
+            Raise();
+        }
+    }
 
     // ── 执行选项：两个真的会影响运行的开关，不是摆设 ──────────────────
 

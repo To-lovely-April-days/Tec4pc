@@ -54,7 +54,7 @@ public static class RecordExporter
         sb.AppendLine("# 执行记录 " + record.Name + "  批次 " + record.RunId);
         sb.AppendLine("# 计划来自启动时冻结的基线；实际来自运行记录。两种偏差分列。");
         sb.AppendLine(string.Join(Sep,
-            "通道", "轮次", "序号", "步骤", "指令", "结束方式",
+            "通道", "轮次", "序号", "步骤", "工艺阶段", "控温对象", "指令", "结束方式",
             timeBase == TimeBase.Wall ? "计划开始(墙钟)" : "计划开始(通道)",
             timeBase == TimeBase.Wall ? "实际开始(墙钟)" : "实际开始(通道)",
             "开始偏差", "计划时长", "实际时长", "时长偏差", "结束原因", "状态", "备注", "数据来源"));
@@ -75,6 +75,8 @@ public static class RecordExporter
                     s.Iteration.ToString(CultureInfo.InvariantCulture),
                     (s.Index + 1).ToString(CultureInfo.InvariantCulture),
                     Esc(s.Title),
+                    Esc(s.Phase ?? ""),
+                    Esc(s.ControlMode ?? ""),
                     Esc(s.CommandId),
                     TerminationWords.Of(s.Termination),
                     planStart,

@@ -195,8 +195,8 @@ public static class WorkbookExporter
     private static XlSheet Steps(RunRecord rec, ExportOptions opt, CommandCatalog catalog)
     {
         var s = new XlSheet("步骤记录") { Freeze = 1, FilterRow = 1 };
-        s.Widths.AddRange(new[] { 7.0, 6, 6, 30, 16, 12, 12, 12, 11, 11, 11, 11, 14, 9, 20, 8 });
-        s.Head("通道", "轮次", "序号", "步骤", "指令", "结束方式",
+        s.Widths.AddRange(new[] { 7.0, 6, 6, 30, 10, 10, 16, 12, 12, 12, 11, 11, 11, 11, 14, 9, 20, 8 });
+        s.Head("通道", "轮次", "序号", "步骤", "工艺阶段", "控温对象", "指令", "结束方式",
                "计划开始", "实际开始", "开始偏差", "计划时长", "实际时长", "时长偏差",
                "结束原因", "状态", "备注", "数据来源");
 
@@ -208,6 +208,8 @@ public static class WorkbookExporter
                       XlCell.I(st.Iteration),
                       XlCell.I(st.Index + 1),
                       XlCell.S(st.Title),
+                      XlCell.S(st.Phase ?? ""),
+                      XlCell.S(st.ControlMode ?? ""),
                       XlCell.S(st.CommandId),
                       XlCell.S(TerminationWords.Of(st.Termination)),
                       XlCell.T(ch.StartedAt + st.PlanStart),

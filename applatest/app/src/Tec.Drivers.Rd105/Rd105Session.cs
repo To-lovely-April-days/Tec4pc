@@ -24,6 +24,11 @@ internal sealed class Rd105Session : IDeviceSession
     private readonly TimeSpan _period;
     private DeviceState _state = DeviceState.Connected;
     private TecErrorCode _fault = TecErrorCode.None;
+    private int _dutyBusy;
+    private long _dutyAt;
+
+    /// <summary>控温回路挂在温控器的 TC1 上（釜内 Tr），输出占空比也读它这一路。</summary>
+    private const int DutyTc = 1;
 
     public Rd105Session(Rd105Link link, DriverContext ctx, ParameterSet connection)
     {
@@ -76,6 +81,10 @@ internal sealed class Rd105Session : IDeviceSession
             { Nominal = new ValueRange(-60, 60) },
         new TagDescriptor("Tset", "设定温度", "℃", DataShape.Scalar)
             { Nominal = new ValueRange(-40, 150) },
+        // 控温输出（PWMDUTY，±100 %，正加热负制冷）。放大时最要紧的问题是
+        // 「夹套已经满功率还压不住放热」，没有这一路看不出来
+        new TagDescriptor("duty", "控温输出", "%", DataShape.Scalar)
+            { Nominal = new ValueRange(-100, 100) },
         // 设备告警字。安全层盯着它：非 0 即告警，> 0 就该动作。
         // 发成一路采样而不是另开一条通道，是因为安全层本来就是按采样求值的，
         // 顺带还能进记录、能画在时间轴上——告警什么时候出现的一目了然
@@ -143,6 +152,41 @@ internal sealed class Rd105Session : IDeviceSession
             Push("dT", s.Temp1C - s.Temp2C, at,
                  q1 == Quality.Good && q2 == Quality.Good ? Quality.Good : Quality.Bad);
         if (_temp.Setpoint is { } sp) Push("Tset", sp, at, Quality.Good);
+        ReadDuty();
+    }
+
+    /// <summary>
+    /// 读一次控温输出占空比。
+    ///
+    /// 它不在轮询快照里（快照只有两路温度和输出电压），得单独问一次 PWMDUTY，
+    /// 所以放在轮询回调后面顺手发一条查询、**不等它**——等的话整个采集线程
+    /// 会被串口往返卡住，温度那两路跟着一起晚。
+    ///
+    /// 上一拍还没回来就跳过这一拍：串口是独占的，堆着问只会越堆越多。
+    /// 读不到就什么都不发——曲线上断一截，比塞一个「上次那个值」诚实得多（§9.4）。
+    /// </summary>
+    private void ReadDuty()
+    {
+        // 最快一秒一次。轮询周期可以短到 200 ms，而输出占空比是个慢变量——
+        // 跟着每一拍问一次只是白占串口：那条链上还排着温度和告警字的查询，
+        // 多一条就把它们往后推一个来回
+        var now = Environment.TickCount64;
+        if (now - Interlocked.Read(ref _dutyAt) < 1000) return;
+        if (Interlocked.Exchange(ref _dutyBusy, 1) == 1) return;
+        Interlocked.Exchange(ref _dutyAt, now);
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var duty = await _link.Controller.ReadDutyPercentAsync(DutyTc).ConfigureAwait(false);
+                Push("duty", duty, DateTimeOffset.Now, Quality.Good);
+            }
+            catch (Exception ex)
+            {
+                _ctx.Log?.Invoke("warn", $"{InstanceId} 读控温输出失败：{ex.Message}");
+            }
+            finally { Interlocked.Exchange(ref _dutyBusy, 0); }
+        });
     }
 
     /// <summary>

@@ -307,14 +307,19 @@ public sealed class Rd105TecDriverTests
         var cn = ParameterSet.Of((Rd105TecDriver.FieldPort, "COM9"), (Rd105TecDriver.FieldPeriod, 200d));
         await using var session = await driver.OpenAsync(cn, Ctx(), CancellationToken.None);
 
-        var got = await PollWhile(session, g => g.Count(s => s.Tag == "Tr") >= 3);
+        var got = await PollWhile(session, g => g.Count(s => s.Tag == "Tr" && s.Quality == Quality.Bad) >= 3);
         var tr = got.Where(s => s.Tag == "Tr").ToList();
         var tj = got.Where(s => s.Tag == "Tj").ToList();
 
         Assert.NotEmpty(tr);
+        // 从**读到告警字那一刻起**算。第一拍快照有可能比第一拍告警字先到，
+        // 那时程序还没听说这一路越限了——那一条不该拿来考它。
+        // 保证是「一旦设备报了越限，这一路就是 Bad」，不是「连告警字都没读到就先知先觉」
+        var first = tr.FindIndex(s => s.Quality == Quality.Bad);
+        Assert.True(first >= 0, "越限之后一条 Bad 都没有");
         // 「读不到值当作正常」是最危险的失败模式：越限那一路必须是 Bad，
         // 安全层见 Bad 就触发；没越限的那一路照旧 Good，不要一起拖下水
-        Assert.All(tr, s => Assert.Equal(Quality.Bad, s.Quality));
+        Assert.All(tr.Skip(first), s => Assert.Equal(Quality.Bad, s.Quality));
         Assert.All(tj, s => Assert.Equal(Quality.Good, s.Quality));
     }
 

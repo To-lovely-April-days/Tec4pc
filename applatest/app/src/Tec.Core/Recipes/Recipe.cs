@@ -23,15 +23,36 @@ public sealed class Step
     public bool PauseOnFault { get; set; } = true;
     public string? Comment { get; set; }
 
-    public Step Clone() => new()
+    /// <summary>
+    /// 工艺阶段（升温 / 保温 / 结晶 / 蒸馏 / 淬灭…）。空 = 没标。
+    ///
+    /// **这是操作人自己标的，不是设备回报的。**事后看 Tr−Tj 曲线，
+    /// 「这一段在结晶还是在蒸馏」机器根本不知道——它只知道自己在按 Tr 还是按 Tj 控温。
+    /// 所以两件事分开记：控温对象从设备来（<see cref="Tec.Core.Records.StepRecord.ControlMode"/>），
+    /// 工艺阶段由人来标，报告里也照实注明是谁说的。
+    /// </summary>
+    public string? Phase { get; set; }
+
+    /// <summary>换一个新 Id 的副本（粘贴、复制到别的通道）。</summary>
+    public Step Clone() => CopyWith(Guid.NewGuid().ToString("N")[..8]);
+
+    /// <summary>
+    /// 整份复制，只让调用方换 Id 和参数这两样。
+    ///
+    /// **就这一处**。从前快照、热改各手抄一遍字段清单，结果热改之后
+    /// 「失败时暂停并报警」被悄悄抄丢、退回默认的 true——操作人明明关掉了它，
+    /// 改一次参数又自己打开了。加字段时只改这里一处，就不会再抄漏。
+    /// </summary>
+    public Step CopyWith(string? stepId = null, ParameterSet? parameters = null) => new()
     {
-        StepId = Guid.NewGuid().ToString("N")[..8],
+        StepId = stepId ?? StepId,
         CommandId = CommandId,
-        Parameters = Parameters.Clone(),
+        Parameters = parameters ?? Parameters.Clone(),
         Rows = Rows?.Select(r => r.Clone()).ToList(),
         Enabled = Enabled,
         PauseOnFault = PauseOnFault,
-        Comment = Comment
+        Comment = Comment,
+        Phase = Phase
     };
 }
 
@@ -94,17 +115,8 @@ public sealed class Recipe
             SchemaVersion = SchemaVersion,
             ModifiedAt = ModifiedAt
         };
-        foreach (var s in Steps)
-            r.Steps.Add(new Step
-            {
-                StepId = s.StepId,          // 快照要保住 StepId，记录才对得上
-                CommandId = s.CommandId,
-                Parameters = s.Parameters.Clone(),
-                Rows = s.Rows?.Select(x => x.Clone()).ToList(),
-                Enabled = s.Enabled,
-                PauseOnFault = s.PauseOnFault,
-                Comment = s.Comment
-            });
+        // 快照保住 StepId，记录才对得上
+        foreach (var s in Steps) r.Steps.Add(s.CopyWith());
         return r;
     }
 }

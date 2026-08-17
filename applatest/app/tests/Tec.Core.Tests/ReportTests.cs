@@ -13,10 +13,16 @@ public class ReportTests
         var h = new Harness(600);
         await h.ReactorChannelAsync(1);
         await h.ReactorChannelAsync(2);
-        var recipe = Harness.RecipeOf("降温结晶",
-            Harness.Mk(CommandSpecs.Control, ("target", 60d), ("rate", 8d)),
-            Harness.Mk(CommandSpecs.Hold, ("dur", 2d)),
-            Harness.Mk(CommandSpecs.Control, ("target", 20d), ("rate", 4d)));
+        // **标上工艺阶段**：这样步骤表是最宽的那一种（阶段 + 控温两列都在）。
+        // 不标的话空列会被摘掉，测出来的是一张比实际窄的表——
+        // 「时刻被掐成 13:32:…」那条就正好漏过去
+        var a = Harness.Mk(CommandSpecs.Control, ("target", 60d), ("rate", 8d));
+        a.Phase = "升温";
+        var b = Harness.Mk(CommandSpecs.Hold, ("dur", 2d));
+        b.Phase = "保温";
+        var c = Harness.Mk(CommandSpecs.Control, ("target", 20d), ("rate", 4d), ("obj", "夹套 Tj"));
+        c.Phase = "结晶";
+        var recipe = Harness.RecipeOf("降温结晶", a, b, c);
         h.Engine.StartChannel(1, recipe, "王工");
         await Task.Delay(120);
         h.Engine.StartChannel(2, recipe, "王工");
@@ -218,5 +224,37 @@ public class ReportTests
         Assert.Equal(block.PixelWidth, (png[16] << 24) | (png[17] << 16) | (png[18] << 8) | png[19]);
         Assert.Equal(block.PixelHeight, (png[20] << 24) | (png[21] << 16) | (png[22] << 8) | png[23]);
         Dump.Save("chart.png", png);
+    }
+
+    [Fact]
+    public async Task 步骤表里的时刻列不许被掐掉()
+    {
+        if (FontFinder.Find() is not { } font) return;
+        await using var h = await RunAsync();
+        var (doc, _) = Layout(h, ReportTemplate.Full, out var m);
+
+        // 概要页的通道一览里也有一列叫「步骤」（步数），按「结束原因」认步骤表
+        var table = doc.Blocks.OfType<TableBlock>().First(t => t.Columns.Any(c => c.Name == "结束原因"));
+        var widths = Widths(table);
+
+        for (var i = 0; i < table.Columns.Count; i++)
+        {
+            if (!table.Columns[i].Right) continue;      // 右对齐的都是时刻与偏差
+            foreach (var row in table.Rows)
+            {
+                var text = m.Sanitize(row[i]);
+                if (text.Length == 0) continue;
+                // 掐成「13:32:…」的表没法拿来对时间，而它存在的理由就是对时间
+                Assert.True(m.Width(text, 9) <= widths[i] - 8,
+                    $"「{table.Columns[i].Name}」列放不下「{text}」：需要 {m.Width(text, 9):F1}，只有 {widths[i] - 8:F1}");
+            }
+        }
+    }
+
+    private static double[] Widths(TableBlock t)
+    {
+        var st = new PageStyle();
+        var total = t.Columns.Sum(c => c.Weight);
+        return t.Columns.Select(c => st.ContentWidth * c.Weight / total).ToArray();
     }
 }

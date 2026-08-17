@@ -63,6 +63,19 @@ public sealed class StepRecord
     public StepStatus Status { get; set; } = StepStatus.Pending;
     public string? Note { get; set; }
 
+    /// <summary>
+    /// 这一步按什么控温：釜内 Tr 还是夹套 Tj。非温度步骤为 null。
+    ///
+    /// **事后分析必须知道某一段是什么控制方式**，否则 Tr−Tj 曲线没法解读：
+    /// 按 Tj 控时 Tr 跟着走、温差是热效应；按 Tr 控时夹套在追 Tr，温差是控制器在使劲。
+    /// 两种情况下同样一条 Tr−Tj 曲线说的是完全不同的事。
+    /// 值从启动那一刻冻结的配方参数里取，之后再改配方也不动它。
+    /// </summary>
+    public string? ControlMode { get; set; }
+
+    /// <summary>工艺阶段，操作人在配方里标的（升温 / 保温 / 结晶 / 蒸馏…）。没标就是 null。</summary>
+    public string? Phase { get; set; }
+
     /// <summary>该通道自己的 t0。通道各自启动，不能用批次时间。</summary>
     public DateTimeOffset ChannelStart { get; init; }
 

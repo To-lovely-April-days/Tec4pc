@@ -81,6 +81,21 @@ public sealed class StatTileViewModel : ViewModelBase
     public string PhText => HasPh ? Read("pH", "F2", "") : "—";
     public string RpmText => Started && _ws.Pipeline.TryLatest(Channel, "rpm", _ws.Clock.Now, out var s)
         ? $"{s.Value:F0} rpm" : "0 rpm";
+
+    /// <summary>
+    /// 控温输出。正加热负制冷，带正负号——「+100 %」和「−100 %」是完全相反的两件事，
+    /// 只印一个 100 % 等于没说。这一路是设备真的在出多少力，
+    /// 「夹套满功率还压不住」就靠它看出来。
+    /// </summary>
+    public string DutyText => Started && _ws.Pipeline.TryLatest(Channel, "duty", _ws.Clock.Now, out var d)
+        ? (d.Value >= 0 ? "+" : "−") + $"{Math.Abs(d.Value):F0} %" : "—";
+
+    /// <summary>出力到顶就标红：那是执行器余量用完了，再压不住的时刻。</summary>
+    public string DutyColorHex =>
+        Started && _ws.Pipeline.TryLatest(Channel, "duty", _ws.Clock.Now, out var d)
+        && Math.Abs(d.Value) >= 99 ? "#c0392b" : "#2b2b2b";
+
+    public bool HasDuty => _ws.Pipeline.Series(Channel, "duty") is { Count: > 0 };
     public bool HasPh => _ws.ChannelOf(Channel)?.Capabilities.Get<IScalarSensor>()
                               ?.Tags.Any(t => t.Tag == "pH") ?? false;
 
@@ -248,6 +263,7 @@ public sealed class StatTileViewModel : ViewModelBase
          : $"{(int)t.TotalSeconds} s";
 
     public void Tick() => RaiseAll(nameof(TrText), nameof(TjText), nameof(PhText), nameof(RpmText),
+                                   nameof(DutyText), nameof(DutyColorHex), nameof(HasDuty),
                                    nameof(StartLine), nameof(StepNow), nameof(NotStartedDot),
                                    nameof(Off), nameof(On), nameof(HostLabel), nameof(ColorHex),
                                    nameof(StateText), nameof(StateColorHex), nameof(StateFillHex),

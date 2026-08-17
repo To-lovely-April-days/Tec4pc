@@ -227,7 +227,7 @@ public sealed class ExportViewModel : ViewModelBase
     private int _archiveFailures;
 
     private static readonly string[] DefOn =
-        { "Tr", "Tj", "dT", "Tset", "pH", "rpm", "flow", "vol", "turb", "steps" };
+        { "Tr", "Tj", "dT", "Tset", "duty", "pH", "rpm", "flow", "vol", "turb", "steps" };
 
     /// <summary>探头驱动 → 数据项依赖的探头名。数据项能不能勾，看那一炉的台面上装了什么。</summary>
     private static readonly Dictionary<string, string> ProbeNames = new(StringComparer.Ordinal)
@@ -890,7 +890,8 @@ public sealed class ExportViewModel : ViewModelBase
         var groups = new (string G, (string K, string N, string U, string Needs)[] Items)[]
         {
             ("温度", new[] { ("Tr", "釜内温度", "℃", ""), ("Tj", "夹套温度", "℃", ""),
-                             ("dT", "Tr−Tj 温差", "℃", ""), ("Tset", "设定温度", "℃", "") }),
+                             ("dT", "Tr−Tj 温差", "℃", ""), ("Tset", "设定温度", "℃", ""),
+                             ("duty", "控温输出", "%", "") }),
             ("过程", new[] { ("pH", "pH 值", "", "pH"), ("rpm", "搅拌转速", "rpm", ""),
                              ("flow", "加料流量", "mL/min", ""), ("vol", "累计加料量", "mL", "") }),
             ("在线分析", new[] { ("raman", "拉曼特征峰", "a.u.", "拉曼"), ("ir", "红外特征峰", "a.u.", "红外"),

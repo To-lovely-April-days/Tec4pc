@@ -320,6 +320,13 @@
                                           <StackPanel Orientation="Horizontal" Spacing="5">
                                             <TextBlock Text="搅拌" Classes="statk" /><TextBlock Text="{Binding RpmText}" Classes="statv" />
                                           </StackPanel>
+                                          <!-- 控温输出：这一路没采到就整行不显示，不摆一行「—」 -->
+                                          <StackPanel Orientation="Horizontal" Spacing="5"
+                                                      IsVisible="{Binding HasDuty}">
+                                            <TextBlock Text="出力" Classes="statk" />
+                                            <TextBlock Text="{Binding DutyText}" Classes="statv"
+                                                       Foreground="{Binding DutyColorHex}" />
+                                          </StackPanel>
                                           <TextBlock Text="{Binding StartLine}" FontSize="10.5" Foreground="#8d8d8d" />
                                           <TextBlock Text="{Binding StepNow}" FontSize="10" Foreground="#2f8f49"
                                                      TextTrimming="CharacterEllipsis" />

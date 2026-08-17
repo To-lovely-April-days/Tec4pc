@@ -65,7 +65,8 @@ public static class TecFiles
                 Rows = s.Rows?.Select(x => x.Clone()).ToList(),
                 Enabled = s.Enabled,
                 PauseOnFault = s.PauseOnFault,
-                Comment = s.Comment
+                Comment = s.Comment,
+                Phase = s.Phase
             });
         return doc;
     }
@@ -149,7 +150,8 @@ public static class TecFiles
                 Rows = s.Rows?.Select(x => x.Clone()).ToList(),
                 Enabled = s.Enabled,
                 PauseOnFault = s.PauseOnFault,
-                Comment = s.Comment
+                Comment = s.Comment,
+                Phase = s.Phase
             });
         }
         migrated = RecipeMigration.Apply(r);

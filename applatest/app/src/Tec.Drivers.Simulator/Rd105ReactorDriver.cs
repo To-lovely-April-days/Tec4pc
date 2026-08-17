@@ -81,6 +81,10 @@ internal sealed class Rd105Session : SimSession
         // 控温目标值。只在控温期间有数据——停控（自然冷却）时本来就没有设定值
         new TagDescriptor("Tset", "设定温度", "℃", DataShape.Scalar)
             { Nominal = new ValueRange(-40, 180), Period = TimeSpan.FromSeconds(1) },
+        // 控温输出。放大时最要紧的问题是「夹套已经满功率还压不住放热」，
+        // 没有这一路看不出来。正值加热、负值制冷，±100 % 是执行器满出力
+        new TagDescriptor("duty", "控温输出", "%", DataShape.Scalar)
+            { Nominal = new ValueRange(-100, 100), Period = TimeSpan.FromSeconds(1) },
         new TagDescriptor("rpm", "搅拌转速", "rpm", DataShape.Scalar)
             { Nominal = new ValueRange(0, 1200), Period = TimeSpan.FromSeconds(1) }
     };
@@ -159,6 +163,8 @@ internal sealed class ReactorWell : ITemperatureControl
     public TempLimits Limits { get; } = new(-40, 180, 16);
     public double CurrentReactor { get; private set; } = 25;
     public double CurrentJacket { get; private set; } = 25;
+    /// <summary>控温输出占比 %，正加热负制冷。停控时为 0。</summary>
+    public double Duty { get; private set; }
     public IObservable<Sample> Temperature => _temp;
 
     public Task SetTargetAsync(TempTarget target, CancellationToken ct)
@@ -199,6 +205,10 @@ internal sealed class ReactorWell : ITemperatureControl
             move *= 1 - Math.Exp(-Math.Abs(err) / 3.0) * 0.35;
             CurrentReactor += move;
             CurrentJacket = CurrentReactor + (_target - CurrentReactor) * 1.8;
+            // 出力 = 这一拍用掉了多少「最大可用变温能力」，正加热负制冷。
+            // **它是模型自己算出来的那个量**，不是为了让曲线好看另编的一路：
+            // 上面那个 move 就是执行器这一拍干的活，除以 maxStep 正是占比
+            Duty = maxStep > 0 ? Math.Clamp(move / maxStep, -1, 1) * 100 : 0;
         }
         else
         {
@@ -207,6 +217,7 @@ internal sealed class ReactorWell : ITemperatureControl
             var step = 0.5 * dt / 60.0;
             CurrentReactor += Math.Clamp(toward, -step, step);
             CurrentJacket += (CurrentReactor - CurrentJacket) * 0.2;
+            Duty = 0;                       // 停控 = 输出真的切断了，不是「输出为零的控温」
         }
 
         CurrentReactor += noise;
@@ -215,6 +226,7 @@ internal sealed class ReactorWell : ITemperatureControl
         _emit(Channel, "Tr", Math.Round(CurrentReactor, 2));
         _emit(Channel, "Tj", Math.Round(CurrentJacket, 2));
         _emit(Channel, "dT", Math.Round(CurrentReactor - CurrentJacket, 2));
+        _emit(Channel, "duty", Math.Round(Duty, 1));
         // 设定温度只在控温时才存在：停控（自然冷却）没有设定值，
         // 这一路断掉比拿釜温顶替诚实——导出的是要签进记录的数据。
         if (_controlling) _emit(Channel, "Tset", Math.Round(_target, 2));
