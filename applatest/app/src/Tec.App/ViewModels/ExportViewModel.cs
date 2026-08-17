@@ -44,8 +44,6 @@ public sealed class RunRowViewModel : ViewModelBase
     public required int Marks { get; init; }
     /// <summary>这一炉在管线里**实际还留着**的采样点数。见 ExportViewModel.CountPoints。</summary>
     public required long Points { get; init; }
-    /// <summary>釜温降采样，画那条小曲线用。空 = 没采到，什么都不画。</summary>
-    public required IReadOnlyList<double> Spark { get; init; }
     /// <summary>还在跑。导出的是截至此刻的数据。</summary>
     public required bool Live { get; init; }
 
@@ -57,7 +55,7 @@ public sealed class RunRowViewModel : ViewModelBase
     public bool IsChecked
     {
         get => _checked;
-        set { if (Set(ref _checked, value)) { Raise(nameof(SparkColorHex)); Changed?.Invoke(); } }
+        set { if (Set(ref _checked, value)) Changed?.Invoke(); }
     }
     public bool IsPreview { get => _preview; set => Set(ref _preview, value); }
 
@@ -70,17 +68,9 @@ public sealed class RunRowViewModel : ViewModelBase
     public string AlarmText => Alarms > 0 ? $"{Alarms} 次" : "—";
     public bool HasAlarm => Alarms > 0;
 
-    /// <summary>整炉原始数据大概多大。页脚那个「预计体积」是按当前设置算的，两码事。</summary>
-    public double Mb => Points * 9 / 1048576.0;
-    public string MbText => Points * 9 >= 1048576 ? $"{Mb:F2} MB"
-        : Points * 9 >= 1024 ? $"{Points * 9 / 1024.0:F1} KB"
-        : $"{Points * 9} B";
-
     /// <summary>状态点：跑着的绿、中止红、跑完了灰。</summary>
     public string StateColorHex => State switch
     { "运行中" => "#2f8f49", "已中止" => "#c0392b", _ => "#b6b6b6" };
-
-    public string SparkColorHex => IsChecked ? "#1a7fc4" : "#9aa4ab";
 
     /// <summary>四格通道条。没启动的那一格是灰的（原型 .chn i）。</summary>
     public IReadOnlyList<string> ChBars =>
@@ -337,7 +327,7 @@ public sealed class ExportViewModel : ViewModelBase
         OpenLog = new RelayCommand(DoOpenLog);
         SetDestLocal = new RelayCommand(() => Dest = "local");
         SetDestUsb = new RelayCommand(() => Dest = "usb");
-        DoExport = new RelayCommand(Export);
+        DoExport = new RelayCommand(() => _ = ExportAsync());
         DoReload = new RelayCommand(() => { Reload(); Say("记录列表已刷新"); });
         OpenFolder = new RelayCommand(DoOpenFolder);
         PreviewReport = new RelayCommand(() => _ = DoPreviewAsync());
@@ -447,7 +437,6 @@ public sealed class ExportViewModel : ViewModelBase
     public string SortArrowTs => Arrow("ts");
     public string SortArrowDur => Arrow("dur");
     public string SortArrowPts => Arrow("pts");
-    public string SortArrowMb => Arrow("mb");
     private string Arrow(string k) => _sort == k ? (_dir > 0 ? "▲" : "▼") : "";
 
     public string CountText => $"共 {Rows.Count} 条 · 已选 {SelCount} 条";
@@ -758,7 +747,6 @@ public sealed class ExportViewModel : ViewModelBase
             "id" => string.CompareOrdinal(a.Id, b.Id),
             "dur" => a.DurSec.CompareTo(b.DurSec),
             "pts" => a.Points.CompareTo(b.Points),
-            "mb" => a.Mb.CompareTo(b.Mb),
             _ => a.StartedAt.CompareTo(b.StartedAt)
         }));
 
@@ -774,7 +762,7 @@ public sealed class ExportViewModel : ViewModelBase
         RaiseAll(nameof(NoRows), nameof(HasRows), nameof(EmptyText), nameof(EmptySub),
                  nameof(DaysAll), nameof(Days7), nameof(Days30), nameof(Days90),
                  nameof(SortArrowId), nameof(SortArrowTs), nameof(SortArrowDur),
-                 nameof(SortArrowPts), nameof(SortArrowMb));
+                 nameof(SortArrowPts));
     }
 
     /// <summary>
@@ -858,7 +846,6 @@ public sealed class ExportViewModel : ViewModelBase
             Alarms = rec.Channels.Sum(c => c.Events.Count(e => e.Kind == EventKind.Alarm)),
             Marks = rec.Channels.Sum(c => c.Events.Count(e => e.Kind == EventKind.OperatorMark)),
             Points = CountPoints(rec, samples, t0, end),
-            Spark = Spark(rec, samples, t0, end),
             Live = live
         };
     }
@@ -881,21 +868,6 @@ public sealed class ExportViewModel : ViewModelBase
                 if (sample.WallClock >= from && sample.WallClock <= to) n++;
         }
         return n;
-    }
-
-    /// <summary>那条小趋势曲线：第一个启动的通道的釜温，降采样到 ~28 个点。</summary>
-    private static IReadOnlyList<double> Spark(RunRecord rec, ISampleSource samples,
-                                               DateTimeOffset from, DateTimeOffset to)
-    {
-        var ch = rec.StartedChannels.FirstOrDefault();
-        if (ch == 0) return Array.Empty<double>();
-        var pts = samples.Snapshot(ch, "Tr").Where(x => x.WallClock >= from && x.WallClock <= to)
-                   .Select(x => x.Value).ToList();
-        if (pts.Count < 2) return Array.Empty<double>();
-        const int N = 28;
-        if (pts.Count <= N) return pts;
-        var step = pts.Count / (double)N;
-        return Enumerable.Range(0, N).Select(i => pts[Math.Min(pts.Count - 1, (int)(i * step))]).ToList();
     }
 
     // ── 通道 / 数据项跟着所选记录走 ─────────────────────────────────
@@ -1144,7 +1116,7 @@ public sealed class ExportViewModel : ViewModelBase
 
     // ── 导出 ────────────────────────────────────────────────────────
 
-    private void Export()
+    private async Task ExportAsync()
     {
         var sel = Selected.ToList();
         if (sel.Count == 0) { Say("请先在表里勾选一条或多条记录", bad: true); return; }
@@ -1154,13 +1126,16 @@ public sealed class ExportViewModel : ViewModelBase
         if (root is null) { Say("没有可写的可移动磁盘，改选本地文件夹", bad: true); return; }
 
         var done = new List<string>();
+        var written = new List<string>();
         var files = 0;
         try
         {
             foreach (var row in sel)
             {
                 var job = Job(row, Path.Combine(root, row.Id));
-                files += ExportRunner.Run(job).Count;
+                var names = ExportRunner.Run(job);
+                files += names.Count;
+                written.Add($"{row.Id}：{string.Join("、", names)}");
                 done.Add(row.Id);
             }
             Say($"已导出 {done.Count} 条（{files} 个文件）到 {root}：{string.Join("、", done)}");
@@ -1173,17 +1148,50 @@ public sealed class ExportViewModel : ViewModelBase
                 + (ReportEnabled ? $" · 模板 {CurTemplateItem.Name}" : "")
                 + $" · {files} 个文件",
                 _ws.Operator);
+
+            await ToldAsync("导出完成", $"已导出 {done.Count} 条记录，共 {files} 个文件。",
+                $"{root}\n\n" + string.Join("\n", written) + "\n\n本次导出已记入系统日志。",
+                DialogTone.Ok, primary: "打开文件夹", openDir: root);
         }
         catch (PdfWriter.NoFontException ex)
         {
             Say(ex.Message, bad: true);
             _ws.Log.Write("导出", "失败：" + ex.Message, _ws.Operator, LogLevel.Error);
+            await ToldAsync("导不出 PDF", "本机找不到可内嵌的中文字体。",
+                ex.Message + "\n\n换 Word 或 Excel 可以照常导出；PDF 要装一款中文字体后重开程序。",
+                DialogTone.Bad);
         }
         catch (Exception ex)
         {
             Say("导出失败：" + ex.Message, bad: true);
             _ws.Log.Write("导出", $"失败（{CurFmtName}）：{ex.Message}", _ws.Operator, LogLevel.Error);
+            await ToldAsync("导出失败", $"{CurFmtName} 导出没有完成。", Partial(done, ex),
+                            DialogTone.Bad);
         }
+    }
+
+    /// <summary>失败时把「已经写出去几条」说清楚：文件夹里躺着半份，比什么都不说危险。</summary>
+    private static string Partial(List<string> done, Exception ex)
+        => (done.Count > 0
+            ? $"已经写完的：{string.Join("、", done)}。它们的文件留在盘上，其余的没有写出。\n\n"
+            : "一个文件都没有写出。\n\n") + ex.Message;
+
+    /// <summary>
+    /// 弹一个「办完了 / 没办成」的框。
+    ///
+    /// 从前导完只在页脚印一行绿字——人按完导出多半已经把视线移开了，
+    /// 那行字亮一下就被下一次操作洗掉，事后谁也说不清到底导没导成。
+    /// </summary>
+    private async Task ToldAsync(string title, string message, string? detail, DialogTone tone,
+                                 string? primary = null, string? openDir = null)
+    {
+        if (FileDialogs.Owner is not { } owner) return;
+        var choice = primary is null
+            ? await ConfirmDialog.Tell(owner, title, message, detail, tone)
+            : await ConfirmDialog.Tell(owner, title, message, detail, tone, primary, "关闭");
+        if (choice != DialogChoice.Primary || openDir is null) return;
+        try { OpenWithShell(openDir); Say($"已打开 {openDir}"); }
+        catch (Exception ex) { Say($"打不开文件夹（{ex.Message}）：{openDir}", bad: true); }
     }
 
     /// <summary>把界面上的这一套选择拧成一个导出任务。预览与导出共用它，两边不会走岔。</summary>

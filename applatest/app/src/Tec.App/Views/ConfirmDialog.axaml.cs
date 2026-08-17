@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Media;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 
@@ -13,6 +14,17 @@ public enum DialogChoice
     Secondary,
     /// <summary>取消：什么都不做，回到原来的状态。关窗、Esc 都算这个。</summary>
     Cancel
+}
+
+/// <summary>消息的性质。决定圆牌的颜色和里面那个字。</summary>
+public enum DialogTone
+{
+    /// <summary>提醒：还有东西没存、这一步撤不回来。琥珀「!」。</summary>
+    Warn,
+    /// <summary>办成了。绿「✓」。</summary>
+    Ok,
+    /// <summary>没办成。红「✕」。</summary>
+    Bad
 }
 
 /// <summary>
@@ -31,9 +43,11 @@ public partial class ConfirmDialog : Window
     /// </summary>
     public static async Task<DialogChoice> Ask(Window owner, string title, string message,
                                                string? detail, string primary,
-                                               string? secondary, string cancel = "取消")
+                                               string? secondary, string? cancel = "取消",
+                                               DialogTone tone = DialogTone.Warn)
     {
         var dlg = new ConfirmDialog();
+        dlg.Tone(tone);
         dlg.TitleText.Text = title;
         dlg.Title = title;
         dlg.MessageText.Text = message;
@@ -42,9 +56,32 @@ public partial class ConfirmDialog : Window
         dlg.PrimaryBtn.Content = primary;
         dlg.SecondaryBtn.Content = secondary ?? "";
         dlg.SecondaryBtn.IsVisible = secondary is not null;
-        dlg.CancelBtn.Content = cancel;
+        // 报「办成了」时没有第三条路可走，就不摆一颗「取消」——
+        // 取消什么？事情已经做完了
+        dlg.CancelBtn.Content = cancel ?? "";
+        dlg.CancelBtn.IsVisible = cancel is not null;
         await dlg.ShowDialog(owner);
         return dlg._choice;
+    }
+
+    /// <summary>报一件已经做完（或已经失败）的事。只有一颗主按钮，回车 / Esc 都是关掉。</summary>
+    public static Task<DialogChoice> Tell(Window owner, string title, string message,
+                                          string? detail, DialogTone tone,
+                                          string primary = "知道了", string? secondary = null)
+        => Ask(owner, title, message, detail, primary, secondary, cancel: null, tone: tone);
+
+    private void Tone(DialogTone tone)
+    {
+        var (fill, line, ink, glyph) = tone switch
+        {
+            DialogTone.Ok => ("#e9f6ec", "#a6d8b3", "#2f8f49", "✓"),
+            DialogTone.Bad => ("#fbeae7", "#e0b4ad", "#c0392b", "✕"),
+            _ => ("#fdf3e2", "#e8c98d", "#b8860b", "!")
+        };
+        Badge.Background = new SolidColorBrush(Color.Parse(fill));
+        Badge.BorderBrush = new SolidColorBrush(Color.Parse(line));
+        BadgeText.Foreground = new SolidColorBrush(Color.Parse(ink));
+        BadgeText.Text = glyph;
     }
 
     private void Done(DialogChoice choice)

@@ -199,7 +199,7 @@
           <ScrollViewer HorizontalScrollBarVisibility="Auto" IsVisible="{Binding HasRows}">
             <StackPanel>
               <!-- 表头。可排序的那几列点了换升降序（原型 th.s） -->
-              <Grid Classes="rhdr" ColumnDefinitions="34,152,224,74,132,80,146,78,62,88,60,74"
+              <Grid Classes="rhdr" ColumnDefinitions="34,152,300,132,80,218,78,62,88,60"
                     Background="#fafafa">
                 <CheckBox Grid.Column="0" MinHeight="0" Margin="9,0,0,0" VerticalAlignment="Center"
                           IsChecked="{Binding AllChecked}" Command="{Binding ToggleAll}"
@@ -210,31 +210,25 @@
                   </StackPanel>
                 </Button>
                 <TextBlock Grid.Column="2" Classes="thx" Text="名称" />
-                <TextBlock Grid.Column="3" Classes="thx" Text="趋势" />
-                <Button Grid.Column="4" Classes="th" Command="{Binding SortBy}" CommandParameter="ts">
+                <Button Grid.Column="3" Classes="th" Command="{Binding SortBy}" CommandParameter="ts">
                   <StackPanel Orientation="Horizontal" Spacing="3">
                     <TextBlock Text="开始时间" /><TextBlock Text="{Binding SortArrowTs}" Foreground="#1a7fc4" />
                   </StackPanel>
                 </Button>
-                <Button Grid.Column="5" Classes="th" Command="{Binding SortBy}" CommandParameter="dur">
+                <Button Grid.Column="4" Classes="th" Command="{Binding SortBy}" CommandParameter="dur">
                   <StackPanel Orientation="Horizontal" Spacing="3">
                     <TextBlock Text="时长" /><TextBlock Text="{Binding SortArrowDur}" Foreground="#1a7fc4" />
                   </StackPanel>
                 </Button>
-                <TextBlock Grid.Column="6" Classes="thx" Text="配方" />
-                <TextBlock Grid.Column="7" Classes="thx" Text="操作人" />
-                <TextBlock Grid.Column="8" Classes="thx" Text="通道" />
-                <Button Grid.Column="9" Classes="th" Command="{Binding SortBy}" CommandParameter="pts">
+                <TextBlock Grid.Column="5" Classes="thx" Text="配方" />
+                <TextBlock Grid.Column="6" Classes="thx" Text="操作人" />
+                <TextBlock Grid.Column="7" Classes="thx" Text="通道" />
+                <Button Grid.Column="8" Classes="th" Command="{Binding SortBy}" CommandParameter="pts">
                   <StackPanel Orientation="Horizontal" Spacing="3">
                     <TextBlock Text="数据点" /><TextBlock Text="{Binding SortArrowPts}" Foreground="#1a7fc4" />
                   </StackPanel>
                 </Button>
-                <TextBlock Grid.Column="10" Classes="thx" Text="报警" />
-                <Button Grid.Column="11" Classes="th" Command="{Binding SortBy}" CommandParameter="mb">
-                  <StackPanel Orientation="Horizontal" Spacing="3">
-                    <TextBlock Text="体积" /><TextBlock Text="{Binding SortArrowMb}" Foreground="#1a7fc4" />
-                  </StackPanel>
-                </Button>
+                <TextBlock Grid.Column="9" Classes="thx" Text="报警" />
               </Grid>
 
               <ItemsControl ItemsSource="{Binding Rows}">
@@ -242,7 +236,7 @@
                   <DataTemplate>
                     <Border Classes="rrow" Classes.on="{Binding IsChecked}" Classes.pv="{Binding IsPreview}"
                             Cursor="Hand" ToolTip.Tip="{Binding Tip}" PointerPressed="OnRowPressed">
-                      <Grid ColumnDefinitions="34,152,224,74,132,80,146,78,62,88,60,74">
+                      <Grid ColumnDefinitions="34,152,300,132,80,218,78,62,88,60">
                         <CheckBox Grid.Column="0" MinHeight="0" Margin="9,0,0,0" VerticalAlignment="Center"
                                   IsChecked="{Binding IsChecked, Mode=TwoWay}" />
                         <TextBlock Grid.Column="1" Text="{Binding Id}" Classes="mut mono" />
@@ -252,14 +246,12 @@
                           <TextBlock Text="{Binding Name}" Classes="nm"
                                      TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                         </StackPanel>
-                        <ctl:SparkView Grid.Column="3" Points="{Binding Spark}" Margin="9,0"
-                                       Stroke="{Binding SparkColorHex}" VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="4" Text="{Binding StartText}" Classes="mut mono num" />
-                        <TextBlock Grid.Column="5" Text="{Binding DurText}" Classes="mono num" />
-                        <TextBlock Grid.Column="6" Text="{Binding RecipeName}" Classes="mut"
+                        <TextBlock Grid.Column="3" Text="{Binding StartText}" Classes="mut mono num" />
+                        <TextBlock Grid.Column="4" Text="{Binding DurText}" Classes="mono num" />
+                        <TextBlock Grid.Column="5" Text="{Binding RecipeName}" Classes="mut"
                                    TextTrimming="CharacterEllipsis" />
-                        <TextBlock Grid.Column="7" Text="{Binding User}" Classes="mut" />
-                        <ItemsControl Grid.Column="8" ItemsSource="{Binding ChBars}" Margin="9,0"
+                        <TextBlock Grid.Column="6" Text="{Binding User}" Classes="mut" />
+                        <ItemsControl Grid.Column="7" ItemsSource="{Binding ChBars}" Margin="9,0"
                                       VerticalAlignment="Center">
                           <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="2" /></ItemsPanelTemplate>
@@ -270,10 +262,9 @@
                             </DataTemplate>
                           </ItemsControl.ItemTemplate>
                         </ItemsControl>
-                        <TextBlock Grid.Column="9" Text="{Binding PointsText}" Classes="mono num" />
-                        <TextBlock Grid.Column="10" Text="{Binding AlarmText}" Classes="mono num"
+                        <TextBlock Grid.Column="8" Text="{Binding PointsText}" Classes="mono num" />
+                        <TextBlock Grid.Column="9" Text="{Binding AlarmText}" Classes="mono num"
                                    Classes.alm="{Binding HasAlarm}" Classes.mut="{Binding !HasAlarm}" />
-                        <TextBlock Grid.Column="11" Text="{Binding MbText}" Classes="mut mono num" />
                       </Grid>
                     </Border>
                   </DataTemplate>

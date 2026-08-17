@@ -40,10 +40,12 @@
       </Border>
 
       <StackPanel Orientation="Horizontal" Margin="24,22,24,22" Spacing="16">
-        <!-- 琥珀感叹号：不是报错，是提醒还有东西没存 -->
-        <Border Width="38" Height="38" CornerRadius="19" Background="#fdf3e2"
+        <!-- 圆牌。颜色与那个字由 Tone 决定：琥珀「!」是提醒（还有东西没存），
+             绿「✓」是办成了，红「✕」是没办成。三种消息长得一样的话，
+             一眼扫过去分不出「成了」和「砸了」 -->
+        <Border Name="Badge" Width="38" Height="38" CornerRadius="19" Background="#fdf3e2"
                 BorderBrush="#e8c98d" BorderThickness="1" VerticalAlignment="Top">
-          <TextBlock Text="!" FontSize="21" FontWeight="SemiBold" Foreground="#b8860b"
+          <TextBlock Name="BadgeText" Text="!" FontSize="21" FontWeight="SemiBold" Foreground="#b8860b"
                      HorizontalAlignment="Center" VerticalAlignment="Center" />
         </Border>
         <StackPanel Spacing="7" MaxWidth="388">
