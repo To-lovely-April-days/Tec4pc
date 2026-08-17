@@ -4,6 +4,7 @@ using Tec.App.Services;
 using Tec.Core.Chemistry;
 using Tec.Core.Compounds;
 using Tec.Core.Recipes;
+using Tec.Driver.Abi;
 
 namespace Tec.App.ViewModels;
 
@@ -236,6 +237,8 @@ public sealed class ChargeViewModel : ViewModelBase
         AddRow = new RelayCommand(DoAddRow);
         DeleteRow = new RelayCommand(DoDeleteRow);
         ApplyToRecipe = new RelayCommand(DoApply);
+        ReadBack = new RelayCommand(DoReadBack);
+        WriteSaturation = new RelayCommand(DoWriteSaturation);
 
         foreach (var r in ChargeWords.Roles) Roles.Add(ChargeWords.Of(r));
         foreach (var b in ChargeWords.Bases) Bases.Add(ChargeWords.Of(b));
@@ -249,6 +252,10 @@ public sealed class ChargeViewModel : ViewModelBase
     public RelayCommand AddRow { get; }
     public RelayCommand DeleteRow { get; }
     public RelayCommand ApplyToRecipe { get; }
+    /// <summary>从这一炉的运行记录把「实取」填回来。</summary>
+    public RelayCommand ReadBack { get; }
+    /// <summary>把饱和温度写进选中的那条控温步骤。</summary>
+    public RelayCommand WriteSaturation { get; }
 
     /// <summary>
     /// 改这一路配方的入口，外壳接到配方页上。
@@ -298,6 +305,56 @@ public sealed class ChargeViewModel : ViewModelBase
             RaiseAll(nameof(HasSelection), nameof(LibraryPick));
         }
     }
+
+    // ── 饱和温度 ────────────────────────────────────────────────────
+
+    private IReadOnlyList<SaturationCase> _sat = Array.Empty<SaturationCase>();
+    private string? _tempStepPick;
+    private double _margin;
+
+    /// <summary>能算饱和温度的那几条。一条都没有时这一块整个不出现。</summary>
+    public bool HasSaturation => _sat.Count > 0;
+
+    /// <summary>算出来的（或者算不出来的原因）。一行一句。</summary>
+    public ObservableCollection<string> SaturationLines { get; } = new();
+
+    /// <summary>算成了的第一条的温度。写进控温步骤用它。</summary>
+    private SaturationCase? Solved => _sat.FirstOrDefault(c => c.Ok);
+
+    public bool CanWriteSaturation => Solved is not null && TempSteps.Count > 0;
+
+    /// <summary>这一路配方里的控温步骤。恒温保持没有目标温度，写不进去，不列。</summary>
+    public ObservableCollection<string> TempSteps { get; } = new();
+
+    public string? TempStepPick
+    {
+        get => _tempStepPick;
+        set { if (Set(ref _tempStepPick, value)) Raise(nameof(CanWriteSaturation)); }
+    }
+
+    /// <summary>写进去的是饱和温度加这个余量。溶清常 +5 ~ +10，结晶终点是负的。</summary>
+    public string MarginEdit
+    {
+        get => _margin.ToString("0.##", CultureInfo.InvariantCulture);
+        set
+        {
+            var v = double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var x) ? x : 0;
+            if (Math.Abs(v - _margin) < 1e-9) return;
+            _margin = v;
+            RaiseAll(nameof(MarginEdit), nameof(TargetText));
+        }
+    }
+
+    /// <summary>要写进去的那个数，先摆出来给人看。</summary>
+    public string TargetText => Solved?.Result.Temperature is { } t
+        ? (t + _margin).ToString("0.#", CultureInfo.InvariantCulture) + " ℃" : "—";
+
+    /// <summary>每 1 g 产物需要多少限制试剂。只是个换算，不是「放大设计」。</summary>
+    public string ScaleHint => _result?.LimitingPerProductGram is { } r
+        ? $"每 1 g 目标产物需限制试剂 {r.ToString("0.###", CultureInfo.InvariantCulture)} g"
+          + "（理论收率 100 % 计）" : "";
+
+    public bool HasScaleHint => ScaleHint.Length > 0;
 
     public bool HasSelection => _selected is not null;
     /// <summary>表是空的。**台面上没通道的时候不算**——那时候该说的是「先去摆设备」，
@@ -472,6 +529,107 @@ public sealed class ChargeViewModel : ViewModelBase
     /// <summary>体积、质量在提示语里的写法。两位小数，泵的刻度到这儿就够。</summary>
     private static string Ml(double v) => v.ToString("0.##", CultureInfo.InvariantCulture);
 
+    /// <summary>
+    /// 从这一炉的运行记录把「实取」填回来。
+    ///
+    /// 泵的累计加料量一直在采，实投从前却只能人手填——计划与实际在物料这一侧
+    /// 本来就能闭环，缺的只是接上。读不出来的那几步照实说，不拿计划量顶。
+    /// </summary>
+    private void DoReadBack()
+    {
+        var run = _ws.Engine.Record.Channels.LastOrDefault(c => c.Channel == _channel);
+        if (run is null) { Say($"CH{_channel} 这一炉还没有运行记录", bad: true); return; }
+        if (_result is null || Table.IsEmpty) { Say("配料表是空的", bad: true); return; }
+
+        var read = DoseReadback.Of(run, _ws.Pipeline, _ws.Catalog);
+        if (read.Count == 0) { Say($"CH{_channel} 这一炉没有加料步骤", bad: true); return; }
+
+        var done = DoseReadback.Apply(Table, read, _result);
+        var stuck = read.Where(r => r.Problem is not null).ToList();
+
+        if (done.Count == 0)
+        {
+            var why = stuck.Count > 0
+                ? stuck[0].Problem!
+                : "加料步骤的料液名跟配料表里的组分对不上";
+            Say("没有回填任何一行：" + why, bad: true);
+            return;
+        }
+
+        Reload();
+        _ws.Store.MarkDirty();
+        var what = string.Join("、", done.Take(3).Select(d =>
+            $"{d.Name} {Ml(d.Volume)} mL" + (d.Mass is { } m ? $"（{Ml(m)} g）" : "")));
+        if (done.Count > 3) what += $" 等 {done.Count} 项";
+        var msg = $"已从运行记录回填 {done.Count} 行实取：{what}";
+        if (stuck.Count > 0) msg += $"；另有 {stuck.Count} 步读不出来（{stuck[0].Problem}）";
+        Say(msg, bad: stuck.Count > 0);
+        _ws.Log?.Write("配料表", $"CH{_channel} 从运行记录回填实取 {done.Count} 行：{what}", _ws.Operator);
+    }
+
+    /// <summary>
+    /// 把饱和温度写进选中的那条控温步骤。
+    ///
+    /// 跟「应用到加料步骤」同一个道理：**是一次明确的动作**，改了哪一步、
+    /// 从多少改成多少都说出来，配方页撤销得回去。
+    /// </summary>
+    private void DoWriteSaturation()
+    {
+        if (Solved is not { } sat || sat.Result.Temperature is not { } t)
+        { Say("现在没有算得出来的饱和温度", bad: true); return; }
+        if (!_ws.ChannelRecipes.TryGetValue(_channel, out var recipe))
+        { Say($"CH{_channel} 还没有配方", bad: true); return; }
+
+        var index = StepIndexOf(_tempStepPick);
+        if (index is not { } i || i >= recipe.Steps.Count)
+        { Say("先选一条控温步骤", bad: true); return; }
+
+        var target = Math.Round(t + _margin, 1);
+        var before = recipe.Steps[i].Parameters.Num("target");
+        if (Math.Abs(before - target) < 0.05) { Say("这一步的目标温度已经是这个数了"); return; }
+
+        if (EditRecipe is { } edit)
+            edit(_channel, "charge-saturation", () => recipe.Steps[i].Parameters["target"] = target);
+        else recipe.Steps[i].Parameters["target"] = target;
+
+        _ws.Store.MarkDirty();
+        var margin = _margin == 0 ? "" : $"（饱和温度 {F1(t)} ℃ {(_margin > 0 ? "+" : "−")} {F1(Math.Abs(_margin))}）";
+        Say($"第 {i + 1} 步的目标温度 {F1(before)} → {F1(target)} ℃{margin}");
+        _ws.Log?.Write("配料表",
+            $"CH{_channel} 第 {i + 1} 步目标温度按饱和温度改为 {F1(target)} ℃"
+            + $"（{sat.Basis}）", _ws.Operator);
+        RefreshTempSteps();
+    }
+
+    private static string F1(double v) => v.ToString("0.#", CultureInfo.InvariantCulture);
+
+    /// <summary>下拉里那一条对应配方里第几步。列表项形如「第 3 步 · 控温 至 60 ℃」。</summary>
+    private static int? StepIndexOf(string? label)
+    {
+        if (label is null) return null;
+        var a = label.IndexOf('第');
+        var b = label.IndexOf('步');
+        if (a < 0 || b <= a) return null;
+        return int.TryParse(label[(a + 1)..b].Trim(), out var n) ? n - 1 : null;
+    }
+
+    /// <summary>重建控温步骤下拉。恒温保持没有目标温度，写不进去，所以不列。</summary>
+    private void RefreshTempSteps()
+    {
+        var keep = _tempStepPick;
+        TempSteps.Clear();
+        if (_ws.ChannelRecipes.TryGetValue(_channel, out var recipe))
+            for (var i = 0; i < recipe.Steps.Count; i++)
+            {
+                var step = recipe.Steps[i];
+                if (step.CommandId != CommandSpecs.Control) continue;
+                TempSteps.Add($"第 {i + 1} 步 · 控温 至 "
+                              + F1(step.Parameters.Num("target")) + " ℃");
+            }
+        _tempStepPick = TempSteps.Contains(keep ?? "") ? keep : TempSteps.FirstOrDefault();
+        RaiseAll(nameof(TempStepPick), nameof(CanWriteSaturation));
+    }
+
     // ── 重建 ────────────────────────────────────────────────────────
 
     private void ReloadChannels()
@@ -538,9 +696,20 @@ public sealed class ChargeViewModel : ViewModelBase
         LibraryNames.Clear();
         foreach (var c in _ws.Compounds.OrderBy(c => c.Name, StringComparer.Ordinal)) LibraryNames.Add(c.Name);
 
+        // 饱和温度：能算的算，算不了的把原因摆出来——那句原因本身就是要给人看的
+        _sat = ChargeSaturation.Of(_result);
+        SaturationLines.Clear();
+        foreach (var c in _sat)
+            SaturationLines.Add(c.Ok
+                ? $"{c.Solute.Item.Name}：饱和温度 {F1(c.Result.Temperature!.Value)} ℃　·　{c.Basis}"
+                : $"{c.Solute.Item.Name}：{c.Result.Problem}");
+        RefreshTempSteps();
+
         RaiseAll(nameof(LimitingText), nameof(TotalMassText), nameof(TotalVolumeText),
                  nameof(VesselColorHex), nameof(YieldText), nameof(HasYield),
-                 nameof(HasProblems), nameof(LibraryPick));
+                 nameof(HasProblems), nameof(LibraryPick),
+                 nameof(HasSaturation), nameof(CanWriteSaturation), nameof(TargetText),
+                 nameof(ScaleHint), nameof(HasScaleHint));
     }
 
     private static string Show(string s) => s.Length > 0 ? s : "（没填）";

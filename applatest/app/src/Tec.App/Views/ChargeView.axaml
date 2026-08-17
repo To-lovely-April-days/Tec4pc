@@ -89,6 +89,10 @@
                   ToolTip.Tip="把算出来的体积填进这一路配方里同名的加料步骤。按料液名对应；改了哪几步会逐条说出来，配方页可以撤销">
             <ctl:TecIcon Key="ui-snav-export" />
           </Button>
+          <Button Classes="tbtn sm" Command="{Binding ReadBack}"
+                  ToolTip.Tip="从这一炉的运行记录把「实取」填回来——泵的累计加料量一直在采，不必手抄。读不出来的那几步会照实说，不拿计划量顶">
+            <ctl:TecIcon Key="ui-snav-import" />
+          </Button>
 
           <TextBlock Text="釜容：" FontSize="12" Foreground="#444444" VerticalAlignment="Center"
                      Margin="8,0,0,0" />
@@ -213,6 +217,51 @@
               </Grid>
               <TextBlock Text="{Binding YieldText}" IsVisible="{Binding HasYield}" FontSize="11.5"
                          Foreground="#2f8f49" TextWrapping="Wrap" Margin="0,4,0,0" />
+              <TextBlock Text="{Binding ScaleHint}" IsVisible="{Binding HasScaleHint}" FontSize="11"
+                         Foreground="#8d8d8d" TextWrapping="Wrap" Margin="0,2,0,0"
+                         ToolTip.Tip="放大批量本来就只是改限制试剂那一格的数——整张表都是相对它算的。这个数只是省一次除法，不是「放大设计」：传热面积与体积之比、搅拌、加料时长、放热速率都不随批量线性缩放" />
+            </StackPanel>
+          </Border>
+
+          <!-- 饱和温度：算得出来才出现，算不出来把原因摆出来 -->
+          <Border Background="{StaticResource ThemeFill}" Padding="18,14" Margin="0,0,0,3"
+                  IsVisible="{Binding HasSaturation}">
+            <StackPanel Spacing="6">
+              <TextBlock Text="溶解度与饱和温度" FontSize="15" FontWeight="Light" Foreground="#333333"
+                         HorizontalAlignment="Center" Margin="0,0,0,4" />
+              <TextBlock FontSize="11" Foreground="#8d8d8d" TextWrapping="Wrap" TextAlignment="Center"
+                         Margin="0,0,0,6"
+                         Text="库里那条曲线是水里的溶解度（g/100 mL 水）。溶剂不是水就不换算——拿水的曲线去算别的溶剂，会得到一个看着很合理的错温度。" />
+
+              <ItemsControl ItemsSource="{Binding SaturationLines}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <TextBlock Text="{Binding}" FontSize="11.5" Foreground="#2b2b2b"
+                               TextWrapping="Wrap" Margin="0,2" />
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+
+              <Border Height="1" Background="#d5d5d5" Margin="0,8" />
+
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <TextBlock Text="写入" Classes="frowk" Width="40" />
+                <ComboBox Classes="sel" Width="236" ItemsSource="{Binding TempSteps}"
+                          SelectedItem="{Binding TempStepPick, Mode=TwoWay}" />
+              </StackPanel>
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <TextBlock Text="余量" Classes="frowk" Width="40" />
+                <TextBox Classes="finput" Width="84"
+                         Text="{Binding MarginEdit, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                         ToolTip.Tip="写进去的是饱和温度加这个余量。溶清通常 +5 ~ +10 ℃，结晶终点是负的" />
+                <TextBlock Text="℃　→" Classes="unit" />
+                <TextBlock Text="{Binding TargetText}" FontSize="12" FontWeight="SemiBold"
+                           Foreground="#2b2b2b" VerticalAlignment="Center" />
+              </StackPanel>
+              <Button Classes="btn primary" Content="写入这条控温步骤"
+                      HorizontalAlignment="Center" Margin="0,8,0,0"
+                      Command="{Binding WriteSaturation}"
+                      IsEnabled="{Binding CanWriteSaturation}" />
             </StackPanel>
           </Border>
 

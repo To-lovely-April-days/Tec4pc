@@ -26,7 +26,12 @@ public sealed class MainViewModel : ViewModelBase
         // 配方页的导入 / 导出结果说到开始页那条状态行上，与打开 / 保存实验同一个位置
         Recipe.Say = text => Start.Status = text;
         Library = new RecipeLibViewModel(ws, this);
-        Compounds = new CompoundsViewModel(ws);
+        Compounds = new CompoundsViewModel(ws)
+        {
+            // 化合物库那颗「到配料表算饱和温度」：浓度 = 溶质质量 ÷ 溶剂体积，
+            // 那两个数只有配料表里才有，所以那颗钮把人带过去
+            GoChargePage = () => Tab = TabCharge
+        };
         Charge = new ChargeViewModel(ws)
         {
             // 「应用到加料步骤」改的是配方参数，得能在配方页撤回去，改完那一页也要跟着刷新

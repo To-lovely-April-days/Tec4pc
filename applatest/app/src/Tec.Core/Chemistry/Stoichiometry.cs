@@ -61,6 +61,16 @@ public sealed class ChargeResult
     /// <summary>总体积超过釜容。</summary>
     public bool OverVessel { get; set; }
 
+    /// <summary>
+    /// 每 1 g 目标产物需要多少 g 限制试剂（按理论收率 100 % 计）。
+    ///
+    /// 放大批量本来就只是改限制试剂那一格的数——整张表都是相对它算的，改完全表自动跟着走。
+    /// 这个数只是省掉那一次除法，**它不是「放大设计」**：传热面积与体积之比、搅拌雷诺数、
+    /// 加料时长、放热速率都不随批量线性缩放，那些得人来判断。
+    /// 空 = 没有目标产物行，或者缺摩尔质量。
+    /// </summary>
+    public double? LimitingPerProductGram { get; set; }
+
     /// <summary>一个数都没算出来（表是空的，或者基准立不起来）。</summary>
     public bool Any => Lines.Any(l => l.Moles is not null || l.Mass is not null || l.Volume is not null);
 }
@@ -162,6 +172,12 @@ public static class Stoichiometry
             if (line.Item.ActualMass is { } got && line.TheoreticalMass is > 0)
                 line.Yield = got / line.TheoreticalMass.Value * 100;
         }
+
+        // 每 1 g 产物需要多少限制试剂。放大批量时省一次除法——仅此而已
+        var prod = lines.FirstOrDefault(l => l.Item.Role == ChargeRole.Product
+                                             && l.TheoreticalMass is > 0);
+        if (prod is not null && limiting?.Mass is > 0)
+            result.LimitingPerProductGram = limiting.Mass.Value / prod.TheoreticalMass!.Value;
 
         // ── 合计。产物不算进去，它不投料 ────────────────────────────
         var charged = lines.Where(l => l.Item.Role != ChargeRole.Product).ToList();

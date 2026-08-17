@@ -766,6 +766,7 @@ public sealed class CompoundsViewModel : ViewModelBase
         Delete = new RelayCommand(DoDelete);
         Import = new RelayCommand(() => _ = DoImportAsync());
         Export = new RelayCommand(() => _ = DoExportAsync());
+        GoCharge = new RelayCommand(() => GoChargePage?.Invoke());
 
         // 化合物库是全局的，从 tecstudio.db 读；改一个字段写一条回去
         Reload();
@@ -776,6 +777,12 @@ public sealed class CompoundsViewModel : ViewModelBase
     public RelayCommand Delete { get; }
     public RelayCommand Import { get; }
     public RelayCommand Export { get; }
+
+    /// <summary>「到配料表算饱和温度」。外壳接上跳页——浓度只有那一页才知道。</summary>
+    public RelayCommand GoCharge { get; }
+
+    /// <summary>跳到配料表页。由外壳接上。</summary>
+    public Action? GoChargePage { get; set; }
 
     /// <summary>工具条下面那一行话。成了失败都写在这儿，不弹框打断正在跑的实验。</summary>
     public string Status { get; private set; } = "";

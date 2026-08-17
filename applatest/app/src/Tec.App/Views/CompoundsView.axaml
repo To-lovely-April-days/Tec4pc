@@ -281,10 +281,14 @@
             <ctl:SolubilityView Coefficients="{Binding Solubility}" />
           </Border>
 
-          <Button Classes="btn primary" Content="提取到配方参数"
-                  HorizontalAlignment="Center" Margin="0,14,0,0" />
+          <!-- 从前这里是一颗死按钮（没有 Command），下面还配着一句「可自动引用…」的承诺。
+               饱和温度要拿浓度才算得出来，而浓度 = 溶质质量 ÷ 溶剂体积——这两个数只有
+               配料表里才有，所以真正的换算在那一页上，这颗按钮把人带过去 -->
+          <Button Classes="btn primary" Content="到配料表算饱和温度 →"
+                  HorizontalAlignment="Center" Margin="0,14,0,0"
+                  Command="{Binding $parent[UserControl].DataContext.GoCharge}" />
           <TextBlock Classes="intro" Margin="0,10,0,0"
-                     Text="配方中的升温 / 恒温步骤可自动引用该化合物的饱和温度与溶解度数据（FR-5.9）。" />
+                     Text="饱和温度要按这一炉的浓度算（溶质质量 ÷ 溶剂体积），那两个数在配料表里。算出来可以直接写进控温步骤的目标温度（FR-5.9）。曲线是水中的溶解度，溶剂不是水就不换算。" />
         </StackPanel>
         </Border>
       </ScrollViewer>

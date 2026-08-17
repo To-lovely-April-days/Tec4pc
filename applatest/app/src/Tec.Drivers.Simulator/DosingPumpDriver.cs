@@ -114,6 +114,17 @@ internal sealed class DosingImpl : IDosing
     private double _commandedRate;
     private double _actualRate;
 
+    /// <summary>
+    /// 这一趟还欠多少 mL。定量泵自己知道要送多少，**送够就停**。
+    ///
+    /// 从前这里没有目标：Tick 闷头积分，靠上层轮询发现超了再喊停，
+    /// 两次轮询之间送出去多少全看节拍——命令 5 mL 实际送出 8 mL。
+    /// 真机上的定量泵不会这样（它按步进电机的步数走），而这个数会一路错到
+    /// 累计加料校验、配料表的实取、以及报告里的「计划 vs 实际」。
+    /// 正无穷 = 没有定量目标（pH 反馈加料那条路只给流量不给量）。
+    /// </summary>
+    private double _remaining = double.PositiveInfinity;
+
     public DosingImpl(int channel, Action<int, string, double> emit, double maxVolume,
                       CalibrationRecord? calibration, string material)
     {
@@ -141,19 +152,37 @@ internal sealed class DosingImpl : IDosing
     public Task StopAsync(CancellationToken ct)
     {
         _commandedRate = 0;
+        _remaining = double.PositiveInfinity;
         return Task.CompletedTask;
     }
 
-    /// <summary>加料本身由 handler 编排；这里只负责把命令流量变成真实流量与累计体积。</summary>
+    /// <summary>定量加料：记下这一趟要送多少，送够自己停。</summary>
     public Task DoseAsync(DoseRequest request, CancellationToken ct)
-        => SetRateAsync(request.RatePerMin, ct);
+    {
+        _remaining = request.Volume > 0 ? request.Volume : double.PositiveInfinity;
+        return SetRateAsync(request.RatePerMin, ct);
+    }
 
     public void Tick(double dt, double noise)
     {
         // 加料有滞后：泵起停有加速段，不然曲线一眼假
         _actualRate += (_commandedRate - _actualRate) * Math.Min(1, dt / 4.0);
-        var delivered = _actualRate * dt / 60.0;
-        if (delivered > 0) TotalVolume += delivered;
+        var delivered = Math.Max(0, _actualRate * dt / 60.0);
+
+        // 送够就停，这一拍只送还欠的那点。不截的话，一拍跨过目标就超量，
+        // 而超出去的部分是**真的进了釜**——记录、校验、配料表全跟着错
+        if (delivered > _remaining)
+        {
+            delivered = _remaining;
+            _commandedRate = 0;
+            _actualRate = 0;
+        }
+        if (delivered > 0)
+        {
+            TotalVolume += delivered;
+            if (!double.IsPositiveInfinity(_remaining)) _remaining -= delivered;
+        }
+
         _emit(Channel, "flow", Math.Round(Math.Max(0, _actualRate + noise), 3));
         _emit(Channel, "volume", Math.Round(TotalVolume, 3));
     }
