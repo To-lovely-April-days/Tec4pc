@@ -367,6 +367,14 @@ public sealed class ExperimentStore
         catch (Exception ex) { Console.WriteLine($"[warn] 化合物存盘失败：{ex.Message}"); }
     }
 
+    /// <summary>删一条。库里没了，界面上也就没了——删不掉时照实喊一声，不假装删了。</summary>
+    public bool DeleteCompound(string cas)
+    {
+        if (Db is null) return false;
+        try { Db.DeleteCompound(cas); return true; }
+        catch (Exception ex) { Console.WriteLine($"[warn] 化合物删除失败：{ex.Message}"); return false; }
+    }
+
     public void CloseDb()
     {
         Db?.Dispose();

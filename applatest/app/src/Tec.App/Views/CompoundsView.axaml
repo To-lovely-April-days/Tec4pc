@@ -104,22 +104,42 @@
           <TextBlock Text="类别：" FontSize="12" Foreground="#444444" VerticalAlignment="Center" />
           <ComboBox Classes="sel" Width="130" ItemsSource="{Binding Categories}"
                     SelectedItem="{Binding Category, Mode=TwoWay}" />
-          <Button Classes="tbtn sm" ToolTip.Tip="新增化合物"><ctl:TecIcon Key="ui-cmp-cmpnew" /></Button>
-          <Button Classes="tbtn sm" ToolTip.Tip="导入"><ctl:TecIcon Key="ui-cmp-cmpimport" /></Button>
+          <Button Classes="tbtn sm" Command="{Binding AddNew}"
+                  ToolTip.Tip="新增一条空白化合物（不预填任何物性——预填等于替人编数据）">
+            <ctl:TecIcon Key="ui-cmp-cmpnew" />
+          </Button>
+          <Button Classes="tbtn sm" Command="{Binding Import}"
+                  ToolTip.Tip="从 CSV 导入。按 CAS 合并：已有的更新，没有的新增；表里没填的列不会把库里原值清掉。表头认中文也认英文，顺序随便排">
+            <ctl:TecIcon Key="ui-cmp-cmpimport" />
+          </Button>
+          <Button Classes="tbtn sm" Command="{Binding Export}"
+                  ToolTip.Tip="把整库导成 CSV（带 BOM，Excel 双击打开不乱码）">
+            <ctl:TecIcon Key="ui-snav-export" />
+          </Button>
+          <Button Classes="tbtn sm" Command="{Binding Delete}" ToolTip.Tip="删除选中的这一条">
+            <ctl:TecIcon Key="ui-foot-trash2" />
+          </Button>
+
+          <TextBlock Text="{Binding Status}" IsVisible="{Binding HasStatus}"
+                     Foreground="{Binding StatusColorHex}" FontSize="11.5"
+                     VerticalAlignment="Center" Margin="6,0,0,0" MaxWidth="520"
+                     TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Status}" />
         </StackPanel>
       </Border>
 
       <!-- 表头（.crow.head）：常驻顶部 -->
       <Border DockPanel.Dock="Top" Background="#fafafa"
               BorderBrush="#d5d5d5" BorderThickness="0,0,0,1">
-        <Grid ColumnDefinitions="44,1.4*,1*,1*,76,76,100,1.2*">
+        <Grid ColumnDefinitions="44,1.3*,1*,0.9*,76,86,72,76,92,1*">
           <TextBlock Grid.Column="1" Text="名称" Classes="chd" />
           <TextBlock Grid.Column="2" Text="CAS 号" Classes="chd" />
           <TextBlock Grid.Column="3" Text="分子式" Classes="chd" />
           <TextBlock Grid.Column="4" Text="分子量" Classes="chd" />
-          <TextBlock Grid.Column="5" Text="熔点 ℃" Classes="chd" />
-          <TextBlock Grid.Column="6" Text="类别" Classes="chd" />
-          <TextBlock Grid.Column="7" Text="备注" Classes="chd" />
+          <TextBlock Grid.Column="5" Text="密度 g/mL" Classes="chd" />
+          <TextBlock Grid.Column="6" Text="纯度" Classes="chd" />
+          <TextBlock Grid.Column="7" Text="熔点 ℃" Classes="chd" />
+          <TextBlock Grid.Column="8" Text="类别" Classes="chd" />
+          <TextBlock Grid.Column="9" Text="备注" Classes="chd" />
         </Grid>
       </Border>
 
@@ -130,14 +150,16 @@
               <DataTemplate>
                 <Border Classes="crow" PointerPressed="OnRowPressed"
                         Classes.sel="{Binding IsSelected}">
-                  <Grid ColumnDefinitions="44,1.4*,1*,1*,76,76,100,1.2*">
+                  <Grid ColumnDefinitions="44,1.3*,1*,0.9*,76,86,72,76,92,1*">
                     <TextBlock Grid.Column="1" Text="{Binding Name}" />
-                    <TextBlock Grid.Column="2" Text="{Binding Cas}" />
+                    <TextBlock Grid.Column="2" Text="{Binding CasText}" />
                     <TextBlock Grid.Column="3" Text="{Binding Formula}" Classes="fx" />
                     <TextBlock Grid.Column="4" Text="{Binding MwText}" />
-                    <TextBlock Grid.Column="5" Text="{Binding MpText}" />
-                    <TextBlock Grid.Column="6" Text="{Binding Category}" />
-                    <TextBlock Grid.Column="7" Text="{Binding Note}" Classes="note" />
+                    <TextBlock Grid.Column="5" Text="{Binding DensityText}" />
+                    <TextBlock Grid.Column="6" Text="{Binding PurityText}" />
+                    <TextBlock Grid.Column="7" Text="{Binding MpText}" />
+                    <TextBlock Grid.Column="8" Text="{Binding Category}" />
+                    <TextBlock Grid.Column="9" Text="{Binding Note}" Classes="note" />
                   </Grid>
                 </Border>
               </DataTemplate>
@@ -170,31 +192,72 @@
           </Border>
 
           <StackPanel Spacing="7">
+            <!-- 名称也得能改：新增出来的那一条叫「新化合物」，没有这一格就改不了名 -->
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Text="名称" Classes="frowk" />
+              <TextBox Classes="finput" Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" Width="196" />
+            </StackPanel>
             <StackPanel Orientation="Horizontal">
               <TextBlock Text="CAS 号" Classes="frowk" />
-              <TextBox Classes="finput" Text="{Binding Cas, Mode=TwoWay}" Width="196" />
+              <TextBox Classes="finput" Text="{Binding CasEdit, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" Width="196"
+                       Watermark="没有就留空" />
             </StackPanel>
             <StackPanel Orientation="Horizontal">
               <TextBlock Text="分子式" Classes="frowk" />
-              <TextBox Classes="finput" Text="{Binding Formula, Mode=TwoWay}" Width="196" />
+              <TextBox Classes="finput" Text="{Binding Formula, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" Width="196" />
             </StackPanel>
             <StackPanel Orientation="Horizontal">
               <TextBlock Text="分子量" Classes="frowk" />
-              <TextBox Classes="finput" Text="{Binding MwEdit, Mode=TwoWay}" Width="152" />
+              <TextBox Classes="finput" Text="{Binding MwEdit, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" Width="152" Watermark="未填" />
               <TextBlock Text="g/mol" Classes="unit" />
             </StackPanel>
             <StackPanel Orientation="Horizontal">
+              <TextBlock Text="密度" Classes="frowk" />
+              <TextBox Classes="finput" Text="{Binding DensityEdit, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" Width="152"
+                       Watermark="未填"
+                       ToolTip.Tip="配料表把质量换成加料体积就靠它——泵下发的是体积。留空 = 没填，不是 0" />
+              <TextBlock Text="g/mL" Classes="unit" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Text="纯度" Classes="frowk" />
+              <TextBox Classes="finput" Text="{Binding PurityEdit, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" Width="152"
+                       Watermark="未填"
+                       ToolTip.Tip="当量计算要用：65 % 的硝酸和 100 % 的硝酸，同样称 10 g 差着三分之一的物质的量" />
+              <TextBlock Text="%" Classes="unit" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal">
               <TextBlock Text="熔点" Classes="frowk" />
-              <TextBox Classes="finput" Text="{Binding MpEdit, Mode=TwoWay}" Width="152" />
+              <TextBox Classes="finput" Text="{Binding MpEdit, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" Width="152" Watermark="未填"
+                       ToolTip.Tip="留空 = 没填，不能拿 0 顶：水的熔点就是 0 ℃" />
               <TextBlock Text="℃" Classes="unit" />
             </StackPanel>
             <StackPanel Orientation="Horizontal">
+              <TextBlock Text="沸点" Classes="frowk" />
+              <TextBox Classes="finput" Text="{Binding BpEdit, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" Width="152" Watermark="未填" />
+              <TextBlock Text="℃" Classes="unit" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Text="比热" Classes="frowk" />
+              <TextBox Classes="finput" Text="{Binding CpEdit, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" Width="152" Watermark="未填"
+                       ToolTip.Tip="量热要用。现在只存着，还没有地方消费它" />
+              <TextBlock Text="J/(g·K)" Classes="unit" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal">
               <TextBlock Text="常用溶剂" Classes="frowk" />
-              <TextBox Classes="finput" Text="{Binding Solvent, Mode=TwoWay}" Width="196" />
+              <TextBox Classes="finput" Text="{Binding Solvent, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" Width="196" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Text="批号" Classes="frowk" />
+              <TextBox Classes="finput" Text="{Binding Batch, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" Width="196"
+                       ToolTip.Tip="跟着这一瓶料走。GLP 要求记得出「用的是哪一批」" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Text="供应商" Classes="frowk" />
+              <TextBox Classes="finput" Text="{Binding Supplier, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" Width="196" />
             </StackPanel>
             <StackPanel Orientation="Horizontal">
               <TextBlock Text="备注" Classes="frowk" />
-              <TextBox Classes="finput" Text="{Binding Note, Mode=TwoWay}" Width="196" />
+              <TextBox Classes="finput" Text="{Binding Note, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" Width="196" />
             </StackPanel>
           </StackPanel>
 

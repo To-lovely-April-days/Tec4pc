@@ -12,17 +12,68 @@ namespace Tec.Core.Compounds;
 /// </summary>
 public sealed class Compound
 {
-    /// <summary>CAS 号。库里按它认人——名字会有别名，CAS 号是唯一的。</summary>
+    /// <summary>
+    /// CAS 号，同时是库里的主键——名字会有别名，CAS 号是唯一的。
+    ///
+    /// 但**这台装置真正跑的中间体多半没有 CAS**（内部代号，公开库里查不到）。
+    /// 那些条目主键位上坐着的是 <see cref="KeyOf"/> 造出来的内部键，不是 CAS，
+    /// 界面上不能把它摆在「CAS 号」那一列底下——先问 <see cref="HasCas"/>。
+    /// </summary>
     public string Cas { get; set; } = "";
+
+    /// <summary>内部键的前缀。真的 CAS 号只有数字和连字符，# 不会撞上。</summary>
+    public const char KeyMark = '#';
+
+    /// <summary>这一条到底有没有 CAS 号。没有的话 <see cref="Cas"/> 里是内部键。</summary>
+    public bool HasCas => Cas.Length > 0 && Cas[0] != KeyMark;
+
+    /// <summary>
+    /// 按名字造一个内部键。**要能重复算出同一个值**：同一份 CSV 导第二遍时，
+    /// 没有 CAS 的那几条得认回库里原来那一条去更新，而不是每导一次多一条。
+    /// </summary>
+    public static string KeyOf(string name) => KeyMark + name.Trim();
+
+    /// <summary>造一个谁都不会撞上的内部键。界面上新建空白条用。</summary>
+    public static string NewKey() => KeyMark + Guid.NewGuid().ToString("N")[..8];
 
     public string Name { get; set; } = "";
     public string Formula { get; set; } = "";
 
-    /// <summary>分子量 g/mol。</summary>
-    public double Mw { get; set; }
+    /// <summary>摩尔质量 g/mol。空 = 没填。</summary>
+    public double? Mw { get; set; }
 
-    /// <summary>熔点 ℃。</summary>
-    public double Mp { get; set; }
+    /// <summary>
+    /// 熔点 ℃。空 = 没填。
+    ///
+    /// **不能拿 0 当「没填」**：水的熔点就是 0 ℃。表格里显示成 0.0 等于替这条料
+    /// 断言了一个它没有的值，而这一列正是拿来判「这东西室温下是固体还是液体」的。
+    /// </summary>
+    public double? Mp { get; set; }
+
+    // ── 下面几项都用可空的 double：**「没填」和「填了 0」必须分得开**。
+    //    密度没填就把质量换算成体积会得到无穷大；当成 0 会得到「不用加」。
+    //    两种都是错的，而且错得不一样——所以宁可让它空着，用的地方照实说「缺密度」。
+
+    /// <summary>密度 g/mL（室温）。**配料表把质量换成加料体积就靠它**，泵下发的是体积。</summary>
+    public double? Density { get; set; }
+
+    /// <summary>沸点 ℃。</summary>
+    public double? Bp { get; set; }
+
+    /// <summary>
+    /// 纯度 %。当量计算要用：65 % 的硝酸和 100 % 的硝酸，同样称 10 g 差着三分之一的物质的量。
+    /// 空 = 没填，算的时候按 100 % 计并在结果里注明，不悄悄假设。
+    /// </summary>
+    public double? Purity { get; set; }
+
+    /// <summary>比热容 J/(g·K)。量热要用（FR-5.13）；现在只存着，还没有地方消费它。</summary>
+    public double? Cp { get; set; }
+
+    /// <summary>批号。跟着这一瓶料走，GLP 要求记得出「用的是哪一批」。</summary>
+    public string Batch { get; set; } = "";
+
+    /// <summary>供应商。</summary>
+    public string Supplier { get; set; } = "";
 
     public string Category { get; set; } = "";
     public string Solvent { get; set; } = "";
@@ -44,6 +95,12 @@ public sealed class Compound
         Formula = Formula,
         Mw = Mw,
         Mp = Mp,
+        Density = Density,
+        Bp = Bp,
+        Purity = Purity,
+        Cp = Cp,
+        Batch = Batch,
+        Supplier = Supplier,
         Category = Category,
         Solvent = Solvent,
         Note = Note,

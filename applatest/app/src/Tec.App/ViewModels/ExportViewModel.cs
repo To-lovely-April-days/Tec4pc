@@ -1224,7 +1224,9 @@ public sealed class ExportViewModel : ViewModelBase
         if (report.Trend) report.Charts.AddRange(ReportImages.Charts(row.Rec, row.Samples));
         if (report.Chemicals)
             foreach (var c in _ws.Compounds)
-                report.Compounds.Add((c.Name, c.Cas ?? "", CompoundProps(c)));
+                // 没有 CAS 的（内部代号）那一格留空。主键位上的内部键不是 CAS，
+                // 印进报告的「CAS」列里，这份报告就替它断言了一个不存在的登记号
+                report.Compounds.Add((c.Name, c.HasCas ? c.Cas : "", CompoundProps(c)));
 
         return new ExportJob
         {
@@ -1269,8 +1271,11 @@ public sealed class ExportViewModel : ViewModelBase
     {
         var parts = new List<string>();
         if (c.Formula.Length > 0) parts.Add(c.Formula);
-        if (c.Mw > 0) parts.Add($"M = {c.Mw:F2} g/mol");
-        if (c.Mp != 0) parts.Add($"熔点 {c.Mp:F1} ℃");
+        if (c.Mw is { } mw) parts.Add($"M = {mw:F2} g/mol");
+        if (c.Density is { } d) parts.Add($"ρ = {d:F3} g/mL");
+        if (c.Purity is { } pu) parts.Add($"纯度 {pu:F1} %");
+        if (c.Mp is { } mp) parts.Add($"熔点 {mp:F1} ℃");
+        if (c.Bp is { } bp) parts.Add($"沸点 {bp:F1} ℃");
         if (c.Solvent.Length > 0) parts.Add("常用溶剂 " + c.Solvent);
         if (c.Solubility.Length >= 3)
             parts.Add($"溶解度 {c.Solubility[0]:F2} + {c.Solubility[1]:F3}·T + {c.Solubility[2]:F5}·T² g/100 mL");

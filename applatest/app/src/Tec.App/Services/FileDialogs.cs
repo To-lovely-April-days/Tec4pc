@@ -23,6 +23,9 @@ public static class FileDialogs
     private static readonly FilePickerFileType PngFile =
         new("PNG 图片") { Patterns = new[] { "*.png" } };
 
+    private static readonly FilePickerFileType CsvFile =
+        new("CSV 表格") { Patterns = new[] { "*.csv", "*.txt" } };
+
     private static Window? MainWindow
         => (Avalonia.Application.Current?.ApplicationLifetime
             as IClassicDesktopStyleApplicationLifetime)?.MainWindow;
@@ -59,6 +62,12 @@ public static class FileDialogs
     public static Task<string?> SaveImage(string suggested)
         => Save("导出趋势图", PngFile, ".png", suggested,
                 Path.Combine(AppContext.BaseDirectory, "exports"));
+
+    /// <summary>化合物库的 CSV 进出。默认落在数据目录，跟库文件放一处。</summary>
+    public static Task<string?> OpenCsvAsync(string title) => Open(title, CsvFile, ExperimentStore.DataDir);
+
+    public static Task<string?> SaveCsvAsync(string title, string suggested)
+        => Save(title, CsvFile, ".csv", suggested, ExperimentStore.DataDir);
 
     private static async Task<string?> Open(string title, FilePickerFileType type, string startIn)
     {

@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.Text;
 using Tec.App.Controls;
 using Tec.App.Services;
 using Tec.Core;
@@ -545,10 +546,12 @@ public sealed class RecipeLibViewModel : ViewModelBase
 public sealed class CompoundViewModel : ViewModelBase
 {
     private readonly Compound _m;
-    private readonly Action<Compound> _save;
+    private readonly Func<Compound, string, bool> _save;
     private bool _sel;
 
-    public CompoundViewModel(Compound model, Action<Compound> save)
+    /// <param name="save">存这一条。第二个参数是**改之前的主键**——改了 CAS 就得换钥匙。
+    /// 返回 false = 新键跟别的条目撞了，这一改不算数。</param>
+    public CompoundViewModel(Compound model, Func<Compound, string, bool> save)
     {
         _m = model;
         _save = save;
@@ -567,10 +570,34 @@ public sealed class CompoundViewModel : ViewModelBase
         set => Edit(_m.Name, value, v => _m.Name = v);
     }
 
-    public string Cas
+    /// <summary>主键。筛选、认回选中项拿它，**不往界面上摆**——见 <see cref="CasText"/>。</summary>
+    public string Cas => _m.Cas;
+
+    /// <summary>
+    /// 表格里那一格。没有 CAS 的（内部代号、新建的空白条）是一条短横：
+    /// 主键位上坐着的内部键不是 CAS，摆在「CAS 号」那一列底下等于替它编了一个。
+    /// </summary>
+    public string CasText => _m.HasCas ? _m.Cas : "—";
+
+    /// <summary>
+    /// 右栏那个编辑框。**改它等于换钥匙**：库按 cas 认人，老那一行得删掉，
+    /// 否则改一次库里多一条改之前的孤儿（而且两条名字一样，看不出哪条是新的）。
+    ///
+    /// 清空 = 这一条没有 CAS，退回内部键，不是把主键抹成空串。
+    /// </summary>
+    public string CasEdit
     {
-        get => _m.Cas;
-        set => Edit(_m.Cas, value, v => _m.Cas = v);
+        get => _m.HasCas ? _m.Cas : "";
+        set
+        {
+            var v = (value ?? "").Trim();
+            if (string.Equals(v, CasEdit, StringComparison.Ordinal)) return;
+
+            var old = _m.Cas;
+            _m.Cas = v.Length == 0 ? Compound.KeyOf(_m.Name) : v;
+            if (!_save(_m, old)) _m.Cas = old;      // 撞车了：退回去，框里也退回去
+            RaiseAll(nameof(Cas), nameof(CasEdit), nameof(CasText));
+        }
     }
 
     public string Formula
@@ -597,16 +624,88 @@ public sealed class CompoundViewModel : ViewModelBase
         set => Edit(_m.Note, value, v => _m.Note = v);
     }
 
-    public double Mw
+    public double? Mw
     {
         get => _m.Mw;
         set => Edit(_m.Mw, value, v => _m.Mw = v, new[] { nameof(MwText), nameof(MwEdit) });
     }
 
-    public double Mp
+    public double? Mp
     {
         get => _m.Mp;
         set => Edit(_m.Mp, value, v => _m.Mp = v, new[] { nameof(MpText), nameof(MpEdit) });
+    }
+
+    // ── 可空的那几项 ────────────────────────────────────────────────
+    //
+    // 界面上「没填」就是一个空框，不是 0。密度写成 0 的话，配料表把质量换成体积
+    // 会得到「不用加」；写成无穷大会得到「加不完」。两种都是错的，所以让它空着，
+    // 用的地方照实说「缺密度」。
+
+    public double? Density
+    {
+        get => _m.Density;
+        set => Edit(_m.Density, value, v => _m.Density = v, new[] { nameof(DensityText), nameof(DensityEdit) });
+    }
+
+    public double? Bp
+    {
+        get => _m.Bp;
+        set => Edit(_m.Bp, value, v => _m.Bp = v, new[] { nameof(BpText), nameof(BpEdit) });
+    }
+
+    public double? Purity
+    {
+        get => _m.Purity;
+        set => Edit(_m.Purity, value, v => _m.Purity = v, new[] { nameof(PurityText), nameof(PurityEdit) });
+    }
+
+    public double? Cp
+    {
+        get => _m.Cp;
+        set => Edit(_m.Cp, value, v => _m.Cp = v, new[] { nameof(CpText), nameof(CpEdit) });
+    }
+
+    public string Batch
+    {
+        get => _m.Batch;
+        set => Edit(_m.Batch, value ?? "", v => _m.Batch = v);
+    }
+
+    public string Supplier
+    {
+        get => _m.Supplier;
+        set => Edit(_m.Supplier, value ?? "", v => _m.Supplier = v);
+    }
+
+    /// <summary>表格里的显示。没填就是一条短横，不是 0.00——0 和「不知道」是两回事。</summary>
+    public string DensityText => Show(Density, "F3");
+    public string BpText => Show(Bp, "F1");
+    public string PurityText => Purity is null ? "—" : Purity.Value.ToString("F1", CultureInfo.InvariantCulture) + " %";
+    public string CpText => Show(Cp, "F3");
+
+    public string DensityEdit { get => Raw(Density); set => Density = Parse(value); }
+    public string BpEdit { get => Raw(Bp); set => Bp = Parse(value); }
+    public string PurityEdit { get => Raw(Purity); set => Purity = Parse(value); }
+    public string CpEdit { get => Raw(Cp); set => Cp = Parse(value); }
+
+    private static string Show(double? v, string fmt)
+        => v is null ? "—" : v.Value.ToString(fmt, CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// 编辑框里「没填」是空串。放一条短横进去，人一按退格就变成了「—」这个名字。
+    ///
+    /// 填了的就把**存着的那个数**原样放进去，不用表格那份四舍五入的写法：
+    /// 密度 1.1371 按 F3 显示成 1.137，人点进去再 Tab 出来，库里那位小数就没了。
+    /// </summary>
+    private static string Raw(double? v)
+        => v?.ToString("0.##########", CultureInfo.InvariantCulture) ?? "";
+
+    /// <summary>清空 = 把这一项设回「没填」。填了读不出来的字就当没改，不静默清零。</summary>
+    private static double? Parse(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        return double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : null;
     }
 
     /// <summary>溶解度对温度的二次拟合系数 a + b·T + c·T²（g/100 mL 水）。</summary>
@@ -618,21 +717,12 @@ public sealed class CompoundViewModel : ViewModelBase
     /// <summary>离子对。没有骨架式的（无机盐）排这个。</summary>
     public string? IonText => _m.IonText;
 
-    /// <summary>分子量 / 熔点按原型的小数位显示：表格与编辑框用同一份格式，免得一个 342.30 一个 342.3。</summary>
-    public string MwText => Mw.ToString("F2", CultureInfo.InvariantCulture);
-    public string MpText => Mp.ToString("F1", CultureInfo.InvariantCulture);
+    /// <summary>摩尔质量 / 熔点按原型的小数位显示：表格与编辑框用同一份格式，免得一个 342.30 一个 342.3。</summary>
+    public string MwText => Show(Mw, "F2");
+    public string MpText => Show(Mp, "F1");
 
-    public string MwEdit
-    {
-        get => MwText;
-        set { if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var v)) Mw = v; }
-    }
-
-    public string MpEdit
-    {
-        get => MpText;
-        set { if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var v)) Mp = v; }
-    }
+    public string MwEdit { get => Raw(Mw); set => Mw = Parse(value); }
+    public string MpEdit { get => Raw(Mp); set => Mp = Parse(value); }
 
     /// <summary>原型 CATCOLOR。</summary>
     public string CategoryColor => Category switch
@@ -652,7 +742,7 @@ public sealed class CompoundViewModel : ViewModelBase
         set(value);
         Raise(name);
         if (also is not null) RaiseAll(also);
-        _save(_m);
+        _save(_m, _m.Cas);                          // 主键没动，照存
     }
 }
 
@@ -672,9 +762,160 @@ public sealed class CompoundsViewModel : ViewModelBase
         _ws = ws;
         foreach (var c in new[] { "全部", "有机酸", "药物", "氨基酸", "无机盐", "糖类" }) Categories.Add(c);
 
+        AddNew = new RelayCommand(DoAddNew);
+        Delete = new RelayCommand(DoDelete);
+        Import = new RelayCommand(() => _ = DoImportAsync());
+        Export = new RelayCommand(() => _ = DoExportAsync());
+
         // 化合物库是全局的，从 tecstudio.db 读；改一个字段写一条回去
         Reload();
         ws.Compounds.CollectionChanged += (_, _) => Reload();
+    }
+
+    public RelayCommand AddNew { get; }
+    public RelayCommand Delete { get; }
+    public RelayCommand Import { get; }
+    public RelayCommand Export { get; }
+
+    /// <summary>工具条下面那一行话。成了失败都写在这儿，不弹框打断正在跑的实验。</summary>
+    public string Status { get; private set; } = "";
+    public bool HasStatus => Status.Length > 0;
+    public bool StatusBad { get; private set; }
+    public string StatusColorHex => StatusBad ? "#c0392b" : "#2f8f49";
+
+    private void Say(string text, bool bad = false)
+    {
+        Status = text;
+        StatusBad = bad;
+        RaiseAll(nameof(Status), nameof(HasStatus), nameof(StatusBad), nameof(StatusColorHex));
+    }
+
+    /// <summary>
+    /// 存一条。<paramref name="oldCas"/> 是改之前的主键。
+    ///
+    /// **改了 CAS 等于换钥匙**：库按 cas 列认人，只 upsert 不删老的话，
+    /// 库里会留下一条改之前的孤儿——两条名字还一模一样，看不出哪条是新的。
+    /// </summary>
+    private bool SaveRow(Compound c, string oldCas)
+    {
+        if (!string.Equals(oldCas, c.Cas, StringComparison.Ordinal))
+        {
+            // 新键已经归别人了。硬存进去会把那一条整个盖掉，所以这一改不算数
+            if (_ws.Compounds.FirstOrDefault(x => !ReferenceEquals(x, c) && x.Cas == c.Cas) is { } dup)
+            {
+                Say($"CAS 号 {c.Cas} 已经是「{dup.Name}」的了，没有改", bad: true);
+                return false;
+            }
+            _ws.Store.DeleteCompound(oldCas);
+        }
+        _ws.Store.SaveCompound(c);
+        return true;
+    }
+
+    /// <summary>
+    /// 新增一条。**空白的一条**，不预填任何物性——预填等于替人编数据。
+    /// 主键先用一个内部键占住（库按 CAS 认人），人填上真的 CAS 就换过去。
+    /// </summary>
+    private void DoAddNew()
+    {
+        var c = new Compound { Cas = Compound.NewKey(), Name = "新化合物", Category = "" };
+        _ws.Compounds.Add(c);
+        _ws.Store.SaveCompound(c);
+        Selected = Rows.FirstOrDefault(r => r.Cas == c.Cas);
+        Say("已新增一条，请在右侧填写名称与 CAS 号");
+    }
+
+    private void DoDelete()
+    {
+        if (_selected is not { } row) { Say("先在表里选中一条", bad: true); return; }
+        var name = row.Name;
+        var cas = row.Cas;
+        _ws.Compounds.Remove(row.Model);
+        _ws.Store.DeleteCompound(cas);
+        Say(row.Model.HasCas ? $"已删除 {name}（{cas}）" : $"已删除 {name}");
+    }
+
+    /// <summary>
+    /// 从 CSV 导入。**按 CAS 合并**：已有的更新，没有的新增——
+    /// 整库替换会把操作人自己录的那些内部代号一次性抹掉。
+    /// </summary>
+    private async Task DoImportAsync()
+    {
+        var path = await FileDialogs.OpenCsvAsync("导入化合物");
+        if (path is null) return;
+        try
+        {
+            var result = CompoundCsv.Read(await File.ReadAllTextAsync(path, Encoding.UTF8));
+            if (!result.Ok)
+            {
+                Say("没有导入任何一条：" + string.Join(" ", result.Problems.Take(2)), bad: true);
+                return;
+            }
+
+            int added = 0, updated = 0;
+            foreach (var c in result.Items)
+            {
+                var old = _ws.Compounds.FirstOrDefault(x => x.Cas == c.Cas);
+                if (old is null) { _ws.Compounds.Add(c); added++; }
+                else
+                {
+                    // 就地改，不换对象：界面上那一行绑的是它，换掉的话选中项会跳走
+                    Merge(old, c);
+                    updated++;
+                }
+                _ws.Store.SaveCompound(old ?? c);
+            }
+
+            // 更新的那些是**就地改模型**，不经过行的属性设置器，谁都不会发通知——
+            // 表格上那一行还显示着旧值。实测踩到过：导进去了，界面上密度还是「—」。
+            // 整表重建一次最省事，选中项按 CAS 认回来
+            Reload();
+
+            var msg = $"已导入 {result.Items.Count} 条（新增 {added}、更新 {updated}）";
+            if (result.IgnoredColumns.Count > 0)
+                msg += "；忽略了认不出的列：" + string.Join("、", result.IgnoredColumns.Take(4));
+            if (result.Problems.Count > 0)
+                msg += $"；{result.Problems.Count} 处有问题：" + result.Problems[0];
+            Say(msg, bad: result.Problems.Count > 0);
+            _ws.Log?.Write("化合物", $"从 {path} 导入 {result.Items.Count} 条"
+                                     + $"（新增 {added}、更新 {updated}、问题 {result.Problems.Count}）", _ws.Operator);
+        }
+        catch (Exception ex) { Say("导入失败：" + ex.Message, bad: true); }
+    }
+
+    /// <summary>覆盖式合并：CSV 里填了的就覆盖，没填的**留着库里原来的值**——
+    /// 一份只有名称和密度的表不该把库里的分子量清空。</summary>
+    private static void Merge(Compound into, Compound from)
+    {
+        if (from.Name.Length > 0) into.Name = from.Name;
+        if (from.Formula.Length > 0) into.Formula = from.Formula;
+        if (from.Category.Length > 0) into.Category = from.Category;
+        if (from.Solvent.Length > 0) into.Solvent = from.Solvent;
+        if (from.Batch.Length > 0) into.Batch = from.Batch;
+        if (from.Supplier.Length > 0) into.Supplier = from.Supplier;
+        if (from.Note.Length > 0) into.Note = from.Note;
+        if (from.Mw is not null) into.Mw = from.Mw;
+        if (from.Mp is not null) into.Mp = from.Mp;
+        if (from.Density is not null) into.Density = from.Density;
+        if (from.Bp is not null) into.Bp = from.Bp;
+        if (from.Purity is not null) into.Purity = from.Purity;
+        if (from.Cp is not null) into.Cp = from.Cp;
+        if (from.Solubility.Length > 0) into.Solubility = from.Solubility;
+    }
+
+    private async Task DoExportAsync()
+    {
+        if (_ws.Compounds.Count == 0) { Say("库里一条都没有，没什么可导的", bad: true); return; }
+        var path = await FileDialogs.SaveCsvAsync("导出化合物", "化合物库");
+        if (path is null) return;
+        try
+        {
+            // 带 BOM：不带的话 Excel 双击打开是乱码，而这份表就是给人拿 Excel 改的
+            await File.WriteAllTextAsync(path, CompoundCsv.Write(_ws.Compounds), new UTF8Encoding(true));
+            Say($"已导出 {_ws.Compounds.Count} 条到 {path}");
+            _ws.Log?.Write("化合物", $"导出 {_ws.Compounds.Count} 条到 {path}", _ws.Operator);
+        }
+        catch (Exception ex) { Say("导出失败：" + ex.Message, bad: true); }
     }
 
     public ObservableCollection<CompoundViewModel> Rows { get; } = new();
@@ -724,7 +965,7 @@ public sealed class CompoundsViewModel : ViewModelBase
     {
         var keep = _selected?.Cas;
         _all.Clear();
-        foreach (var c in _ws.Compounds) _all.Add(new CompoundViewModel(c, _ws.Store.SaveCompound));
+        foreach (var c in _ws.Compounds) _all.Add(new CompoundViewModel(c, SaveRow));
         Apply();
         _selected = null;
         Selected = Rows.FirstOrDefault(r => r.Cas == keep) ?? Rows.FirstOrDefault();
@@ -739,7 +980,8 @@ public sealed class CompoundsViewModel : ViewModelBase
             if (_category != "全部" && c.Category != _category) continue;
             if (_search.Length > 0 &&
                 !c.Name.Contains(_search, StringComparison.OrdinalIgnoreCase) &&
-                !c.Cas.Contains(_search, StringComparison.OrdinalIgnoreCase) &&
+                // 按 CasText 找：内部键是我们自己的东西，人不会拿它来搜
+                !c.CasText.Contains(_search, StringComparison.OrdinalIgnoreCase) &&
                 !c.Formula.Contains(_search, StringComparison.OrdinalIgnoreCase)) continue;
             Rows.Add(c);
         }

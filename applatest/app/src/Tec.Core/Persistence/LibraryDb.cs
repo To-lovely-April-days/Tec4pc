@@ -23,7 +23,7 @@ namespace Tec.Core.Persistence;
 public sealed class LibraryDb : IDisposable
 {
     /// <summary>库结构版本。改表结构时 +1，并在 <see cref="Migrate"/> 里写升级步骤。</summary>
-    public const int CurrentSchema = 1;
+    public const int CurrentSchema = 2;
 
     private readonly SqliteConnection _cn;
     private readonly object _gate = new();
@@ -80,9 +80,32 @@ create table if not exists compound(
   ion        text,
   ord        integer not null default 0);");
 
-        var have = Meta("schema");
-        if (have is null) SetMeta("schema", CurrentSchema.ToString(CultureInfo.InvariantCulture));
-        // 将来加列就在这儿按 have 的值分支。现在只有版本 1，没有可升的
+        // 加列的升级**不看版本号，每次开库都跑一遍**：AddColumns 自己会先问表里有什么，
+        // 已经有的就不动。这样「新建的库」和「老库升上来」走的是同一条路——
+        // 按版本号分支的写法吃过亏：新库的版本号一上来就是最新的，于是跳过了升级，
+        // 而建表语句还停在老的列清单上，新列一个都没有，一写就是「no column named …」
+        AddColumns("compound",
+            ("density", "real"), ("bp", "real"), ("purity", "real"), ("cp", "real"),
+            ("batch", "text"), ("supplier", "text"));
+
+        SetMeta("schema", CurrentSchema.ToString(CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>
+    /// 缺哪列加哪列。SQLite 没有「add column if not exists」，所以先问表里现在有什么——
+    /// 硬加会在已经升过级的库上抛「duplicate column」，把程序挡在开机那一步。
+    /// </summary>
+    private void AddColumns(string table, params (string Name, string Type)[] columns)
+    {
+        var have = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        using (var cmd = _cn.CreateCommand())
+        {
+            cmd.CommandText = $"pragma table_info({table})";
+            using var r = cmd.ExecuteReader();
+            while (r.Read()) have.Add(r.GetString(1));
+        }
+        foreach (var (name, type) in columns)
+            if (!have.Contains(name)) Exec($"alter table {table} add column {name} {type}");
     }
 
     // ── 元信息 ──────────────────────────────────────────────────────
@@ -193,7 +216,8 @@ on conflict(id) do update set
         {
             using var cmd = _cn.CreateCommand();
             cmd.CommandText = @"select cas,name,formula,mw,mp,category,solvent,note,
-                                       solubility,structure,ion
+                                       solubility,structure,ion,
+                                       density,bp,purity,cp,batch,supplier
                                 from compound order by ord, rowid";
             using var r = cmd.ExecuteReader();
             while (r.Read())
@@ -202,14 +226,20 @@ on conflict(id) do update set
                     Cas = r.GetString(0),
                     Name = r.GetString(1),
                     Formula = Str(r, 2) ?? "",
-                    Mw = r.IsDBNull(3) ? 0 : r.GetDouble(3),
-                    Mp = r.IsDBNull(4) ? 0 : r.GetDouble(4),
+                    Mw = Num(r, 3),
+                    Mp = Num(r, 4),
                     Category = Str(r, 5) ?? "",
                     Solvent = Str(r, 6) ?? "",
                     Note = Str(r, 7) ?? "",
                     Solubility = ParseCoefficients(Str(r, 8)),
                     StructureKey = Str(r, 9),
-                    IonText = Str(r, 10)
+                    IonText = Str(r, 10),
+                    Density = Num(r, 11),
+                    Bp = Num(r, 12),
+                    Purity = Num(r, 13),
+                    Cp = Num(r, 14),
+                    Batch = Str(r, 15) ?? "",
+                    Supplier = Str(r, 16) ?? ""
                 });
         }
         return list;
@@ -266,16 +296,19 @@ on conflict(id) do update set
         using var cmd = _cn.CreateCommand();
         cmd.Transaction = tx;
         cmd.CommandText = @"
-insert into compound(cas,name,formula,mw,mp,category,solvent,note,solubility,structure,ion,ord)
-values($cas,$name,$fx,$mw,$mp,$cat,$sol,$note,$coef,$st,$ion,$ord)
+insert into compound(cas,name,formula,mw,mp,category,solvent,note,solubility,structure,ion,ord,
+                     density,bp,purity,cp,batch,supplier)
+values($cas,$name,$fx,$mw,$mp,$cat,$sol,$note,$coef,$st,$ion,$ord,
+       $den,$bp,$pur,$cp,$batch,$sup)
 on conflict(cas) do update set
   name=$name, formula=$fx, mw=$mw, mp=$mp, category=$cat, solvent=$sol,
-  note=$note, solubility=$coef, structure=$st, ion=$ion, ord=$ord";
+  note=$note, solubility=$coef, structure=$st, ion=$ion, ord=$ord,
+  density=$den, bp=$bp, purity=$pur, cp=$cp, batch=$batch, supplier=$sup";
         cmd.Parameters.AddWithValue("$cas", c.Cas);
         cmd.Parameters.AddWithValue("$name", c.Name);
         cmd.Parameters.AddWithValue("$fx", c.Formula);
-        cmd.Parameters.AddWithValue("$mw", c.Mw);
-        cmd.Parameters.AddWithValue("$mp", c.Mp);
+        cmd.Parameters.AddWithValue("$mw", (object?)c.Mw ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$mp", (object?)c.Mp ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$cat", c.Category);
         cmd.Parameters.AddWithValue("$sol", c.Solvent);
         cmd.Parameters.AddWithValue("$note", c.Note);
@@ -284,8 +317,17 @@ on conflict(cas) do update set
         cmd.Parameters.AddWithValue("$st", (object?)c.StructureKey ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$ion", (object?)c.IonText ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$ord", ord);
+        cmd.Parameters.AddWithValue("$den", (object?)c.Density ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$bp", (object?)c.Bp ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$pur", (object?)c.Purity ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$cp", (object?)c.Cp ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$batch", c.Batch);
+        cmd.Parameters.AddWithValue("$sup", c.Supplier);
         cmd.ExecuteNonQuery();
     }
+
+    /// <summary>可空的数。null 就是「没填」，不是 0——见 Compound 里那段说明。</summary>
+    private static double? Num(SqliteDataReader r, int i) => r.IsDBNull(i) ? null : r.GetDouble(i);
 
     private static double[] ParseCoefficients(string? text)
     {
