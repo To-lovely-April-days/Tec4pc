@@ -102,15 +102,34 @@ public sealed class RunEngine
         return true;
     }
 
+    private readonly HashSet<string> _usedIds = new(StringComparer.Ordinal);
+
     /// <summary>
-    /// 记录编号 EXP-yyyyMMdd-nnn，当天第几炉就是几。序号按**已有的同日批次**数，
+    /// 把归档里已经有的记录编号报进来，开机时叫一次。
+    ///
+    /// 不报的话，同一天里关掉程序再开，这一开机的第一炉又会拿到 -001——
+    /// 而编号是归档目录名和导出目录名，撞上就是**上午那一炉被下午这一炉盖掉**。
+    /// </summary>
+    public void ReserveRunIds(IEnumerable<string> ids)
+    {
+        foreach (var id in ids) _usedIds.Add(id);
+    }
+
+    /// <summary>
+    /// 记录编号 EXP-yyyyMMdd-nnn，当天第几炉就是几。序号往后找第一个没人用过的，
     /// 不用时分秒——同一秒里连开两个批次会撞号，而记录编号是导出文件的文件名。
     /// </summary>
     private string NextRunId(DateTimeOffset at)
     {
-        var day = at.ToString("yyyyMMdd");
-        var n = _batches.Count(b => b.RunId.StartsWith($"EXP-{day}-", StringComparison.Ordinal)) + 1;
-        return $"EXP-{day}-{n:D3}";
+        var prefix = $"EXP-{at:yyyyMMdd}-";
+        for (var n = 1; ; n++)
+        {
+            var id = prefix + n.ToString("D3");
+            if (_usedIds.Contains(id)) continue;
+            if (_batches.Any(b => b.RunId == id)) continue;
+            _usedIds.Add(id);
+            return id;
+        }
     }
 
     /// <summary>

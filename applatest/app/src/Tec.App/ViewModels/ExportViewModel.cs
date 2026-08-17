@@ -4,7 +4,9 @@ using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Tec.App.Services;
+using Tec.App.Views;
 using Tec.Core;
+using Tec.Core.Data;
 using Tec.Core.Export;
 using Tec.Core.Records;
 
@@ -20,6 +22,12 @@ public sealed class RunRowViewModel : ViewModelBase
     private bool _preview;
 
     public required RunRecord Rec { get; init; }
+    /// <summary>这一炉的采样从哪儿来：跑着的从管线，归档的从盘上读回来的那一份。</summary>
+    public required ISampleSource Samples { get; init; }
+    /// <summary>从归档读回来的（不是这一开机跑的）。</summary>
+    public bool Archived { get; init; }
+    /// <summary>归档时采样已经被环形缓冲顶掉过一截。</summary>
+    public bool Truncated { get; init; }
     public required string Id { get; init; }
     public required string Name { get; init; }
     public required DateTimeOffset StartedAt { get; init; }
@@ -92,6 +100,9 @@ public sealed class RunRowViewModel : ViewModelBase
                     : $"CH{c} 未启动");
             if (Probes.Count > 0) lines.Add("在线探头 " + string.Join(" / ", Probes));
             lines.Add($"报警 {Alarms} 次 · 标记 {Marks} 处");
+            if (Archived) lines.Add(Truncated
+                ? "归档记录 · 归档时早期采样已被缓冲区顶掉"
+                : "归档记录 · 跨次开机读回");
             return string.Join("\n", lines);
         }
     }
@@ -143,8 +154,21 @@ public sealed class FmtViewModel : ViewModelBase
     public required string Desc { get; init; }
     /// <summary>真的能写出这种文件吗。写不出就摆在那儿但按不下去，不假装能导。</summary>
     public required bool Ready { get; init; }
+    /// <summary>写不出的原因。空 = 还没做；有话说就把话说清楚。</summary>
+    public string NotReadyWhy { get; init; } = "";
     public string IconKey => "ui-fmt-" + Key;
-    public string Tip => Ready ? Desc : $"{Name} 导出尚未实现";
+    public string Tip => Ready ? Desc
+        : NotReadyWhy.Length > 0 ? NotReadyWhy : $"{Name} 导出尚未实现";
+    public bool On { get => _on; set => Set(ref _on, value); }
+}
+
+/// <summary>报告模板的一行。三选一，跟格式卡一样是单选。</summary>
+public sealed class TemplateViewModel : ViewModelBase
+{
+    private bool _on;
+    public required ReportTemplate Key { get; init; }
+    public required string Name { get; init; }
+    public required string Desc { get; init; }
     public bool On { get => _on; set => Set(ref _on, value); }
 }
 
@@ -170,8 +194,9 @@ public sealed class PrevRow
 /// 页头 ｜ 左主区（工具条 → 记录表 → 可拖拽的数据预览）｜ 右 342px 导出设置 ｜ 52px 页脚。
 ///
 /// 与上一版的区别是**记录从"一次选一条"变成"一张可搜索、可筛选、可多选的表"**。
-/// 表里只有这一开机真跑过的批次（<see cref="Tec.Core.Execution.RunEngine.Batches"/>）——
-/// 跨次开机的归档记录要等记录文件读取做出来，这里绝不摆样例行。
+/// 表里是这一开机跑过的批次（<see cref="Tec.Core.Execution.RunEngine.Batches"/>）
+/// 加上归档里读回来的历史批次（<see cref="Tec.Core.Records.RunArchive"/>）——
+/// 一条都没有时就照实说没有，绝不摆样例行。
 /// </summary>
 public sealed class ExportViewModel : ViewModelBase
 {
@@ -206,6 +231,10 @@ public sealed class ExportViewModel : ViewModelBase
     private string _signer = "管理员";
     private double _prevHeight = 250;
     private RunRowViewModel? _preview;
+    /// <summary>报告用的字体族名。预览与 PDF 用同一份，屏幕和纸上是同一套字形。</summary>
+    private readonly string _fontName;
+    private IReadOnlyList<ArchivedRun> _archive = Array.Empty<ArchivedRun>();
+    private int _archiveFailures;
 
     private static readonly string[] DefOn =
         { "Tr", "Tj", "dT", "Tset", "pH", "rpm", "flow", "vol", "turb", "steps" };
@@ -223,14 +252,32 @@ public sealed class ExportViewModel : ViewModelBase
     {
         _ws = ws;
 
-        // 四种格式照原型摆齐，但只有 CSV 真的写得出来。摆着能点、点了给你一个
-        // 改了扩展名的 CSV，比按不下去糟得多——那是拿假文件糊弄审计
+        // 四种格式都真的写得出来了。PDF 要内嵌中文字体，这台机器上一份都找不到时
+        // 它就是按不下去的——那时提示里会写清找过哪些路径，而不是导出一份满页方框的 PDF
+        var pdfFont = FontFinder.Find();
         foreach (var (k, n, d, ready) in new (string, string, string, bool)[]
         {
-            ("csv", "CSV", "逐点数据表", true), ("xlsx", "Excel", "每通道一页", false),
-            ("docx", "Word", "排版报告", false), ("pdf", "PDF", "含曲线与步骤", false)
+            ("csv", "CSV", "逐点数据表", true), ("xlsx", "Excel", "每通道一页", true),
+            ("docx", "Word", "排版报告", true), ("pdf", "PDF", "含曲线与步骤", pdfFont is not null)
         })
-            Fmts.Add(new FmtViewModel { Key = k, Name = n, Desc = d, Ready = ready, On = k == "csv" });
+            Fmts.Add(new FmtViewModel
+            {
+                Key = k, Name = n, Desc = d, Ready = ready, On = k == "csv",
+                NotReadyWhy = k == "pdf" && pdfFont is null
+                    ? "本机找不到可内嵌的中文字体，PDF 会印成一页方框。已找过："
+                      + string.Join("、", FontFinder.SearchedPaths)
+                    : ""
+            });
+        _fontName = pdfFont?.FamilyName ?? "Microsoft YaHei";
+
+        foreach (var t in ReportTemplates.All)
+            Templates.Add(new TemplateViewModel
+            {
+                Key = t,
+                Name = ReportTemplates.NameOf(t),
+                Desc = ReportTemplates.DescOf(t),
+                On = t == ReportTemplate.Full
+            });
 
         foreach (var (k, n, on) in new (string, string, bool)[]
         {
@@ -246,7 +293,12 @@ public sealed class ExportViewModel : ViewModelBase
             ("sha", "生成完整性校验码（SHA-256）", true),
             ("sign", "电子签名", true)
         })
-            GlpItems.Add(new ToggleViewModel { Key = k, Name = n, On = on, Changed = () => Raise(nameof(GlpHint)) });
+            GlpItems.Add(new ToggleViewModel
+            {
+                Key = k, Name = n, On = on,
+                // GLP 那三个勾会多写 run.glp 与 checksums.txt，「会写出哪几个文件」得跟着变
+                Changed = () => RaiseAll(nameof(GlpHint), nameof(FileNote))
+            });
 
         PickRow = new RelayCommand(p => { if (p is RunRowViewModel r) Toggle(r, false); });
         ToggleAll = new RelayCommand(SelectAllOrNone);
@@ -271,17 +323,24 @@ public sealed class ExportViewModel : ViewModelBase
             // 「导出失败」当场洗成绿的
             if (p is not FmtViewModel { Ready: true } f) { Say(p is FmtViewModel x ? x.Tip : "", bad: true); return; }
             foreach (var y in Fmts) y.On = y == f;
-            RaiseAll(nameof(FileNote), nameof(ReportEnabled), nameof(FormatHint), nameof(CanPreviewReport));
+            RaiseAll(nameof(FileNote), nameof(ReportEnabled), nameof(FormatHint),
+                     nameof(CanPreviewReport), nameof(TemplateHint));
             Refresh();
         });
+        PickTemplate = new RelayCommand(p =>
+        {
+            if (p is not TemplateViewModel t) return;
+            foreach (var y in Templates) y.On = y == t;
+            RaiseAll(nameof(TemplateHint), nameof(FileNote));
+        });
         SetPrev = new RelayCommand(p => PrevData = Convert.ToString(p) == "data");
+        OpenLog = new RelayCommand(DoOpenLog);
         SetDestLocal = new RelayCommand(() => Dest = "local");
         SetDestUsb = new RelayCommand(() => Dest = "usb");
         DoExport = new RelayCommand(Export);
         DoReload = new RelayCommand(() => { Reload(); Say("记录列表已刷新"); });
         OpenFolder = new RelayCommand(DoOpenFolder);
-        PreviewReport = new RelayCommand(() =>
-            Say("报告排版（Word / PDF）尚未实现 —— 需要先做报告模板引擎", bad: true));
+        PreviewReport = new RelayCommand(() => _ = DoPreviewAsync());
 
         Reload();
     }
@@ -297,6 +356,7 @@ public sealed class ExportViewModel : ViewModelBase
         new() { AllStates, "已完成", "运行中", "已中止" };
     public ObservableCollection<DataGroupViewModel> Groups { get; } = new();
     public ObservableCollection<FmtViewModel> Fmts { get; } = new();
+    public ObservableCollection<TemplateViewModel> Templates { get; } = new();
     public ObservableCollection<ToggleViewModel> ReportItems { get; } = new();
     public ObservableCollection<ToggleViewModel> GlpItems { get; } = new();
     public ObservableCollection<PrevRow> PrevRows { get; } = new();
@@ -309,7 +369,11 @@ public sealed class ExportViewModel : ViewModelBase
     public RelayCommand SortBy { get; }
     public RelayCommand SetDays { get; }
     public RelayCommand PickFmt { get; }
+    /// <summary>三种报告模板三选一。</summary>
+    public RelayCommand PickTemplate { get; }
     public RelayCommand SetPrev { get; }
+    /// <summary>在系统里打开这个月的系统日志文件。</summary>
+    public RelayCommand OpenLog { get; }
     public RelayCommand SetDestLocal { get; }
     public RelayCommand SetDestUsb { get; }
     public RelayCommand DoExport { get; }
@@ -471,23 +535,47 @@ public sealed class ExportViewModel : ViewModelBase
     public bool ReportEnabled => CurFmt is "docx" or "pdf";
     public bool CanPreviewReport => ReportEnabled && SelCount > 0;
 
+    public TemplateViewModel CurTemplateItem => Templates.FirstOrDefault(t => t.On) ?? Templates[0];
+    public ReportTemplate CurTemplate => CurTemplateItem.Key;
+    public string TemplateHint => ReportEnabled ? CurTemplateItem.Name : "仅 Word / PDF";
+
     public string FormatHint => CurFmtName;
     public string ItemHint => $"{Groups.SelectMany(g => g.Items).Count(i => i.On && i.Available)} 项";
     public string RangeHint => _interval;
     public string TargetHint => _dest == "usb" ? "USB" : "本地";
     public string GlpHint => $"{GlpItems.Count(g => g.On)} / {GlpItems.Count}";
 
+    /// <summary>
+    /// 「这一按会写出哪几个文件」。**照实数**——GLP 那三个勾会多写 run.glp 与
+    /// checksums.txt，不数进去的话，导完文件夹里比说好的多两个，人会以为哪儿不对。
+    /// </summary>
     public string FileNote
     {
         get
         {
-            if (!CurFmtItem.Ready)
-                return $"{CurFmtName} 导出尚未实现——需要先做{(CurFmt == "xlsx" ? "工作簿写出" : "报告模板引擎")}。"
-                       + "现在只有 CSV 能真的写出文件。";
-            var rec = StepsOn;
-            return rec
-                ? "将生成 2 个文件：…_data.csv（采样数据）与 …_steps.csv（步骤执行记录）。"
-                : "将生成 1 个文件：…_data.csv（采样数据）。";
+            if (!CurFmtItem.Ready) return CurFmtItem.Tip;
+
+            var files = new List<string>();
+            switch (CurFmt)
+            {
+                case "csv":
+                    files.Add("data.csv（采样数据）");
+                    if (StepsOn) files.Add("steps.csv（步骤执行记录）");
+                    break;
+                case "xlsx":
+                    files.Add("记录.xlsx（概要 + 每通道一页 + 步骤 + 事件）");
+                    break;
+                case "docx":
+                    files.Add($"报告.docx（{CurTemplateItem.Name}）");
+                    break;
+                default:
+                    files.Add($"报告.pdf（{CurTemplateItem.Name}）");
+                    break;
+            }
+            if (GlpOn("audit") || GlpOn("sha") || GlpOn("sign")) files.Add("run.glp（链式记录）");
+            if (GlpOn("sha")) files.Add("checksums.txt（SHA-256）");
+
+            return $"每条记录一个 {{记录编号}} 目录，里面 {files.Count} 个文件：" + string.Join("、", files) + "。";
         }
     }
 
@@ -564,7 +652,7 @@ public sealed class ExportViewModel : ViewModelBase
     public bool CanExport => SelCount > 0 && CurFmtItem.Ready;
 
     public string ExportTip => SelCount == 0 ? "先在表里勾选一条或多条记录"
-        : !CurFmtItem.Ready ? $"{CurFmtName} 导出尚未实现，先选 CSV"
+        : !CurFmtItem.Ready ? CurFmtItem.Tip
         : $"导出 {SelCount} 条记录到{(DestUsb ? " USB 记忆盘" : "本地文件夹")}";
 
     private IEnumerable<RunRowViewModel> Selected => _all.Where(r => r.IsChecked);
@@ -586,13 +674,29 @@ public sealed class ExportViewModel : ViewModelBase
         var keepPrev = _preview?.Id;
 
         _all.Clear();
-        foreach (var rec in _ws.Engine.Batches)
+
+        // 先把这一开机跑过的几炉写进归档，再连同以前几次开机的一起读出来。
+        // 顺序反了的话，刚跑完的那一炉要等下次进这一页才看得见归档里的自己
+        _ws.SyncArchive();
+        var live = _ws.Engine.Batches.Where(b => b.Channels.Count > 0).ToList();
+        var liveIds = live.Select(b => b.RunId).ToHashSet(StringComparer.Ordinal);
+
+        _archive = _ws.Archive.Load();
+        _archiveFailures = _ws.Archive.Failures.Count;
+        foreach (var a in _archive)
         {
-            if (rec.Channels.Count == 0) continue;      // 空壳批次不摆
-            var row = Row(rec);
+            // 同一炉又在内存里又在归档里（跑到一半归过档）：以内存里那份为准，它更新
+            if (liveIds.Contains(a.Record.RunId)) continue;
+            if (a.Record.Channels.Count == 0) continue;
+            _all.Add(Row(a.Record, a.Samples, archived: true, truncated: a.SamplesTruncated));
+        }
+        foreach (var rec in live) _all.Add(Row(rec, _ws.Pipeline, archived: false, truncated: false));
+
+        _all.Sort((a, b) => a.StartedAt.CompareTo(b.StartedAt));
+        foreach (var row in _all)
+        {
             row.IsChecked = keep.Contains(row.Id);
             row.Changed = OnRowChecked;
-            _all.Add(row);
         }
 
         // 头一回进来（还没人勾过）就替他勾上最近那一炉——十有八九就是要导它
@@ -715,7 +819,7 @@ public sealed class ExportViewModel : ViewModelBase
 
     // ── 由批次记录换算出一行 ────────────────────────────────────────
 
-    private RunRowViewModel Row(RunRecord rec)
+    private RunRowViewModel Row(RunRecord rec, ISampleSource samples, bool archived, bool truncated)
     {
         var now = _ws.Clock.Now;
         var t0 = rec.FirstStart ?? rec.CreatedAt;
@@ -738,6 +842,9 @@ public sealed class ExportViewModel : ViewModelBase
         return new RunRowViewModel
         {
             Rec = rec,
+            Samples = samples,
+            Archived = archived,
+            Truncated = truncated,
             Id = rec.RunId,
             Name = rec.Name,
             StartedAt = t0,
@@ -750,8 +857,8 @@ public sealed class ExportViewModel : ViewModelBase
             Probes = probes,
             Alarms = rec.Channels.Sum(c => c.Events.Count(e => e.Kind == EventKind.Alarm)),
             Marks = rec.Channels.Sum(c => c.Events.Count(e => e.Kind == EventKind.OperatorMark)),
-            Points = CountPoints(rec, t0, end),
-            Spark = Spark(rec, t0, end),
+            Points = CountPoints(rec, samples, t0, end),
+            Spark = Spark(rec, samples, t0, end),
             Live = live
         };
     }
@@ -763,25 +870,26 @@ public sealed class ExportViewModel : ViewModelBase
     /// 会被顶掉。估出来的数字会让人以为导得出一整炉，实际写出来只有零头。
     /// 数管线里真正还在的那些。
     /// </summary>
-    private long CountPoints(RunRecord rec, DateTimeOffset from, DateTimeOffset to)
+    private static long CountPoints(RunRecord rec, ISampleSource samples,
+                                    DateTimeOffset from, DateTimeOffset to)
     {
         long n = 0;
-        foreach (var key in _ws.Pipeline.Keys)
+        foreach (var key in samples.Keys)
         {
             if (!rec.StartedChannels.Contains(key.Channel)) continue;
-            if (_ws.Pipeline.Series(key.Channel, key.Tag) is not { } s) continue;
-            foreach (var sample in s.Snapshot())
+            foreach (var sample in samples.Snapshot(key.Channel, key.Tag))
                 if (sample.WallClock >= from && sample.WallClock <= to) n++;
         }
         return n;
     }
 
     /// <summary>那条小趋势曲线：第一个启动的通道的釜温，降采样到 ~28 个点。</summary>
-    private IReadOnlyList<double> Spark(RunRecord rec, DateTimeOffset from, DateTimeOffset to)
+    private static IReadOnlyList<double> Spark(RunRecord rec, ISampleSource samples,
+                                               DateTimeOffset from, DateTimeOffset to)
     {
         var ch = rec.StartedChannels.FirstOrDefault();
-        if (ch == 0 || _ws.Pipeline.Series(ch, "Tr") is not { } s) return Array.Empty<double>();
-        var pts = s.Snapshot().Where(x => x.WallClock >= from && x.WallClock <= to)
+        if (ch == 0) return Array.Empty<double>();
+        var pts = samples.Snapshot(ch, "Tr").Where(x => x.WallClock >= from && x.WallClock <= to)
                    .Select(x => x.Value).ToList();
         if (pts.Count < 2) return Array.Empty<double>();
         const int N = 28;
@@ -899,7 +1007,7 @@ public sealed class ExportViewModel : ViewModelBase
                         new() { Text = Fmt.Hms(at - chRun.StartedAt), Num = true },
                         new() { Text = $"CH{c}" }
                     };
-                    cells.AddRange(items.Select(i => new PrevCell { Text = Sample(c, i.Key, at), Num = true }));
+                    cells.AddRange(items.Select(i => new PrevCell { Text = Sample(run.Samples, c, i.Key, at), Num = true }));
                     PrevRows.Add(new PrevRow { Cells = cells });
                     rows++;
                 }
@@ -915,7 +1023,7 @@ public sealed class ExportViewModel : ViewModelBase
                 {
                     var chRun = rec.Of(c);
                     cells.AddRange(items.Select(i => new PrevCell
-                    { Text = chRun is null || at < chRun.StartedAt ? "" : Sample(c, i.Key, at), Num = true }));
+                    { Text = chRun is null || at < chRun.StartedAt ? "" : Sample(run.Samples, c, i.Key, at), Num = true }));
                 }
                 PrevRows.Add(new PrevRow { Cells = cells });
                 rows++;
@@ -939,11 +1047,10 @@ public sealed class ExportViewModel : ViewModelBase
                  .Where(i => i.Key != "steps" && i.On && i.Available)
                  .Select(i => TagOf(i.Key)).Distinct().ToList();
 
-    private string Sample(int ch, string key, DateTimeOffset at)
+    private static string Sample(ISampleSource samples, int ch, string key, DateTimeOffset at)
     {
-        var series = _ws.Pipeline.Series(ch, TagOf(key));
-        if (series is null) return "";
-        var snap = series.Snapshot();
+        var snap = samples.Snapshot(ch, TagOf(key));
+        if (snap.Length == 0) return "";
         var best = snap.LastOrDefault(s => s.WallClock <= at);
         return best.WallClock == default ? "" : best.Value.ToString("F2");
     }
@@ -1024,10 +1131,13 @@ public sealed class ExportViewModel : ViewModelBase
         var run = sel.Count(r => r.Live);
         var abt = sel.Count(r => r.State == "已中止");
         var thin = sel.Count(r => r.Points == 0);
+        var cut = sel.Count(r => r.Truncated);
         if (run > 0) msgs.Add($"{run} 条仍在运行，导出的是截至此刻的数据");
         if (abt > 0) msgs.Add($"{abt} 条为已中止实验，步骤记录不完整");
         // 采样环被后面几炉顶掉了是真会发生的事，别让人导出一个空文件才发现
         if (thin > 0) msgs.Add($"{thin} 条的采样已不在缓冲区内，只能导出步骤记录");
+        if (cut > 0) msgs.Add($"{cut} 条归档时早期采样已被顶掉，只有后半段");
+        if (_archiveFailures > 0) msgs.Add($"归档里有 {_archiveFailures} 份读不回来");
         Warn = string.Join("；", msgs);
         RaiseAll(nameof(Warn), nameof(HasWarn), nameof(CanExport), nameof(ExportTip));
     }
@@ -1038,56 +1148,184 @@ public sealed class ExportViewModel : ViewModelBase
     {
         var sel = Selected.ToList();
         if (sel.Count == 0) { Say("请先在表里勾选一条或多条记录", bad: true); return; }
-        if (!CurFmtItem.Ready) { Say($"{CurFmtName} 导出尚未实现，先选 CSV", bad: true); return; }
+        if (!CurFmtItem.Ready) { Say(CurFmtItem.Tip, bad: true); return; }
 
         var root = DestUsb ? UsbRoot() : LocalDir;
         if (root is null) { Say("没有可写的可移动磁盘，改选本地文件夹", bad: true); return; }
 
         var done = new List<string>();
+        var files = 0;
         try
         {
             foreach (var row in sel)
             {
-                var dir = Path.Combine(root, row.Id);
-                Directory.CreateDirectory(dir);
-
-                var opt = new ExportOptions
-                {
-                    TimeBase = _baseLabel == "相对通道启动" ? TimeBase.Channel : TimeBase.Wall,
-                    Shape = _baseLabel == "相对通道启动" ? TableShape.Long : TableShape.Wide,
-                    Grid = TimeSpan.FromSeconds(IntervalSeconds)
-                };
-                // 这一炉跑了哪几路就导哪几路
-                opt.Channels.AddRange(row.Chs);
-                opt.Tags.AddRange(SelectedTags());
-
-                File.WriteAllText(Path.Combine(dir, "data.csv"),
-                    RecordExporter.SamplesLongCsv(_ws.Pipeline, row.Rec, opt), new UTF8Encoding(true));
-                if (StepsOn)
-                    File.WriteAllText(Path.Combine(dir, "steps.csv"),
-                        RecordExporter.ExecutionCsv(row.Rec, opt.TimeBase, _ws.Catalog), new UTF8Encoding(true));
-
-                // 审计追踪与校验码是 GLP 那一节的两个勾。链式摘要本来就在 RecordStore 里，
-                // 勾掉「校验码」就不写这份文件，而不是写一份没有摘要的假 GLP 文件
-                if (GlpOn("audit") || GlpOn("sha") || GlpOn("sign"))
-                {
-                    using var store = new RecordStore(Path.Combine(dir, "run.glp"));
-                    foreach (var ch in row.Rec.Channels)
-                    {
-                        store.Write(ch);
-                        foreach (var s in ch.Steps) store.Write(ch.Channel, s);
-                        if (GlpOn("audit")) foreach (var e in ch.Events) store.Write(e);
-                    }
-                    if (GlpOn("sign"))
-                        store.Sign(_signer.Length > 0 ? _signer : row.User, "导出时签名");
-                }
+                var job = Job(row, Path.Combine(root, row.Id));
+                files += ExportRunner.Run(job).Count;
                 done.Add(row.Id);
             }
-            Say($"已导出 {done.Count} 条到 {root}：{string.Join("、", done)}");
+            Say($"已导出 {done.Count} 条（{files} 个文件）到 {root}：{string.Join("、", done)}");
+
+            // 系统日志记的是「这台机器上有人做了什么」：谁、什么时候、把哪几条导到哪儿去了。
+            // 实验记录里说不出「谁把它拷走了」，那正是这一条要回答的
+            _ws.Log.Write("导出",
+                $"{CurFmtName} · {done.Count} 条（{string.Join("、", done)}）→ {root}"
+                + $" · 采样间隔 {_interval} · 时间基准 {_baseLabel}"
+                + (ReportEnabled ? $" · 模板 {CurTemplateItem.Name}" : "")
+                + $" · {files} 个文件",
+                _ws.Operator);
+        }
+        catch (PdfWriter.NoFontException ex)
+        {
+            Say(ex.Message, bad: true);
+            _ws.Log.Write("导出", "失败：" + ex.Message, _ws.Operator, LogLevel.Error);
         }
         catch (Exception ex)
         {
             Say("导出失败：" + ex.Message, bad: true);
+            _ws.Log.Write("导出", $"失败（{CurFmtName}）：{ex.Message}", _ws.Operator, LogLevel.Error);
+        }
+    }
+
+    /// <summary>把界面上的这一套选择拧成一个导出任务。预览与导出共用它，两边不会走岔。</summary>
+    private ExportJob Job(RunRowViewModel row, string dir)
+    {
+        var opt = new ExportOptions
+        {
+            TimeBase = _baseLabel == "相对通道启动" ? TimeBase.Channel : TimeBase.Wall,
+            Shape = _baseLabel == "相对通道启动" ? TableShape.Long : TableShape.Wide,
+            Grid = TimeSpan.FromSeconds(IntervalSeconds),
+            IncludeExecution = StepsOn
+        };
+        // 这一炉跑了哪几路就导哪几路
+        opt.Channels.AddRange(row.Chs);
+        opt.Tags.AddRange(SelectedTags());
+
+        var report = new ReportOptions
+        {
+            Template = CurTemplate,
+            Trend = ReportOn("trend"),
+            Steps = ReportOn("steps"),
+            Alarms = ReportOn("alarm"),
+            RecipeAndBench = ReportOn("recipe"),
+            Chemicals = ReportOn("chem"),
+            Audit = GlpOn("audit"),
+            Checksum = GlpOn("sha"),
+            Signature = GlpOn("sign")
+        };
+        if (report.Trend) report.Charts.AddRange(ReportImages.Charts(row.Rec, row.Samples));
+        if (report.Chemicals)
+            foreach (var c in _ws.Compounds)
+                report.Compounds.Add((c.Name, c.Cas ?? "", CompoundProps(c)));
+
+        return new ExportJob
+        {
+            Record = row.Rec,
+            Samples = row.Samples,
+            Catalog = _ws.Catalog,
+            Dir = dir,
+            Format = CurFmt,
+            Options = opt,
+            Report = report,
+            Meta = Meta(row, dir),
+            Steps = StepsOn,
+            Audit = GlpOn("audit"),
+            Checksum = GlpOn("sha"),
+            Signature = GlpOn("sign"),
+            Signer = _signer
+        };
+    }
+
+    private ExportMeta Meta(RunRowViewModel row, string dir) => new()
+    {
+        // 报告说的是**这一条记录**，所以实验名取批次自己的那个，不是此刻打开的那份实验。
+        // 从归档导一炉上周的记录时，两者根本不是一回事——用后者会在封面上
+        // 写着「未命名实验」，而记录里明明写着它叫什么
+        Experiment = row.Rec.Name.Length > 0 ? row.Rec.Name : _ws.ExperimentName,
+        Operator = _ws.Operator,
+        ExportedAt = _ws.Clock.Now,
+        Signer = _signer,
+        BenchName = _ws.Bench.Name,
+        AppVersion = typeof(ExportViewModel).Assembly.GetName().Version?.ToString() ?? "",
+        Interval = _interval,
+        TimeBaseText = _baseLabel,
+        Archived = row.Archived,
+        SamplesTruncated = row.Truncated,
+        TargetDir = dir
+    };
+
+    private bool ReportOn(string key) => ReportItems.FirstOrDefault(r => r.Key == key)?.On ?? false;
+
+    /// <summary>化合物那一节写进报告的物性文字。只写库里真有的字段，缺的不编。</summary>
+    private static string CompoundProps(Tec.Core.Compounds.Compound c)
+    {
+        var parts = new List<string>();
+        if (c.Formula.Length > 0) parts.Add(c.Formula);
+        if (c.Mw > 0) parts.Add($"M = {c.Mw:F2} g/mol");
+        if (c.Mp != 0) parts.Add($"熔点 {c.Mp:F1} ℃");
+        if (c.Solvent.Length > 0) parts.Add("常用溶剂 " + c.Solvent);
+        if (c.Solubility.Length >= 3)
+            parts.Add($"溶解度 {c.Solubility[0]:F2} + {c.Solubility[1]:F3}·T + {c.Solubility[2]:F5}·T² g/100 mL");
+        if (c.Note.Length > 0) parts.Add(c.Note);
+        return parts.Count == 0 ? "（库中未填写物性数据）" : string.Join(" · ", parts);
+    }
+
+    // ── 预览报告 ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// 预览。**排的是导出时那一份排版**——同一个 ReportBuilder、同一个 ReportLayout，
+    /// 这里看到第几页在哪儿断，PDF 就在哪儿断。
+    ///
+    /// 预览里不写任何文件：校验码那一节因此列不出文件名，照实说「导出时生成」。
+    /// </summary>
+    private async Task DoPreviewAsync()
+    {
+        var row = Selected.LastOrDefault() ?? _preview;
+        if (row is null) { Say("先在表里勾选一条记录", bad: true); return; }
+        if (!ReportEnabled) { Say("报告预览只对 Word / PDF 有意义，先选这两种格式之一", bad: true); return; }
+        if (FontFinder.Find() is not { } font)
+        {
+            Say("本机找不到可内嵌的中文字体，排不出报告。已找过："
+                + string.Join("、", FontFinder.SearchedPaths), bad: true);
+            return;
+        }
+        if (FileDialogs.Owner is not { } owner) { Say("窗口还没准备好，稍后再试", bad: true); return; }
+
+        try
+        {
+            var job = Job(row, TargetDir);
+            var doc = ReportBuilder.Build(job.Record, job.Samples, job.Catalog, job.Meta, job.Report);
+            var style = new PageStyle();
+            var pages = ReportLayout.Paginate(doc, new TextMetrics(font), style);
+
+            var note = $"{row.Id} · 与导出的 {CurFmtName} 同一份排版"
+                       + (SelCount > 1 ? $"；另外 {SelCount - 1} 条结构相同，各自成一份" : "")
+                       + "。校验码在导出时才算得出，预览里那一节写的是「导出时生成」。";
+            await ReportPreviewWindow.Show(owner, doc, pages, style, font.FamilyName, note);
+            Say($"已预览 {row.Id}（{pages.Count} 页）");
+        }
+        catch (Exception ex)
+        {
+            Say("预览失败：" + ex.Message, bad: true);
+        }
+    }
+
+    /// <summary>在系统里打开这个月的系统日志。开不起来就把路径写到页脚上，至少能复制走。</summary>
+    private void DoOpenLog()
+    {
+        var path = _ws.Log.CurrentPath;
+        try
+        {
+            if (!File.Exists(path))
+            {
+                // 还没写过任何一条：先落一条「查看日志」本身，免得打开一个不存在的文件
+                _ws.Log.Write("日志", "打开系统日志", _ws.Operator);
+            }
+            OpenWithShell(path);
+            Say($"已打开 {path}");
+        }
+        catch (Exception ex)
+        {
+            Say($"打不开系统日志（{ex.Message}）：{path}", bad: true);
         }
     }
 
@@ -1116,18 +1354,24 @@ public sealed class ExportViewModel : ViewModelBase
         try
         {
             Directory.CreateDirectory(dir);
-            if (OperatingSystem.IsWindows())
-                Process.Start(new ProcessStartInfo(dir) { UseShellExecute = true });
-            else if (OperatingSystem.IsMacOS())
-                Process.Start("open", new[] { dir });
-            else
-                Process.Start("xdg-open", new[] { dir });
+            OpenWithShell(dir);
             Say($"已打开 {dir}");
         }
         catch (Exception ex)
         {
             Say($"打不开文件夹（{ex.Message}）：{dir}", bad: true);
         }
+    }
+
+    /// <summary>交给系统去开（文件夹或文件）。三个平台三条命令。</summary>
+    private static void OpenWithShell(string path)
+    {
+        if (OperatingSystem.IsWindows())
+            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+        else if (OperatingSystem.IsMacOS())
+            Process.Start("open", new[] { path });
+        else
+            Process.Start("xdg-open", new[] { path });
     }
 
     private static string? UsbRoot()

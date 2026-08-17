@@ -445,10 +445,33 @@
                   <ctl:TecIcon Key="ui-chev-down" Tint="#666666" Size="9" />
                 </Border>
                 <TextBlock Grid.Column="1" Text="报告内容" Classes="sect" />
-                <TextBlock Grid.Column="2" Text="仅 Word / PDF" Classes="hint" />
+                <TextBlock Grid.Column="2" Text="{Binding TemplateHint}" Classes="hint" />
               </Grid>
             </Button>
             <StackPanel Classes="secb" IsVisible="{Binding ReportSection.Open}">
+              <!-- 三种模板三选一。摆成一列带说明的行，不是下拉框——
+                   「完整」和「摘要」差的是里面有哪几节，光看名字选不明白 -->
+              <ItemsControl ItemsSource="{Binding Templates}" IsEnabled="{Binding ReportEnabled}"
+                            Margin="0,0,0,8">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border Classes="dest" Classes.on="{Binding On}" Cursor="Hand"
+                            PointerPressed="OnTemplatePressed">
+                      <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Border Classes="rd" Classes.on="{Binding On}">
+                          <Ellipse Width="7" Height="7" Fill="#1a7fc4" IsVisible="{Binding On}" />
+                        </Border>
+                        <StackPanel>
+                          <TextBlock Text="{Binding Name}" FontSize="12" Foreground="#2b2b2b" />
+                          <TextBlock Text="{Binding Desc}" FontSize="10.5" Foreground="#9a9a9a"
+                                     TextWrapping="Wrap" MaxWidth="250" Margin="0,2,0,0" />
+                        </StackPanel>
+                      </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+
               <ItemsControl ItemsSource="{Binding ReportItems}" IsEnabled="{Binding ReportEnabled}">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
@@ -538,6 +561,12 @@
               </Grid>
               <TextBlock Classes="tip"
                          Text="导出文件包含原始采样数据、配方参数、台面配置与操作记录，链式摘要让任何一行被改过都对不上。" />
+              <!-- 系统日志和 run.glp 是两回事：后者记「这一炉里发生了什么」，
+                   前者记「这台机器上有人做了什么」——谁在什么时候把哪几条导到哪儿去了。
+                   摆在 GLP 这一节里，因为找它的人是为了同一件事 -->
+              <Button Classes="lnk" Content="查看系统日志" Command="{Binding OpenLog}"
+                      HorizontalAlignment="Left" Margin="0,4,0,0"
+                      ToolTip.Tip="本次导出会记进系统日志；点这里用系统默认程序打开当月的日志文件" />
             </StackPanel>
             </StackPanel>
             </Border>

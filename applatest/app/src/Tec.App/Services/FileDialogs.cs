@@ -27,6 +27,9 @@ public static class FileDialogs
         => (Avalonia.Application.Current?.ApplicationLifetime
             as IClassicDesktopStyleApplicationLifetime)?.MainWindow;
 
+    /// <summary>弹自己的对话框（预览报告那种）时当宿主用。ViewModel 拿窗口只走这一处。</summary>
+    public static Window? Owner => MainWindow;
+
     private static async Task<IStorageFolder?> StartFolder(string path)
     {
         var top = MainWindow;

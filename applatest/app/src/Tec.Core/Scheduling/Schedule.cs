@@ -50,6 +50,17 @@ public sealed class Schedule
 
     public static readonly Schedule Empty = new(Array.Empty<ScheduleEntry>(), Array.Empty<string>());
 
+    /// <summary>
+    /// 从存下来的条目还原一份排期。**只给归档读回用。**
+    ///
+    /// 读回时不重新 <see cref="Build"/>：重算用的是今天的指令目录和今天的估算规则，
+    /// 算出来的「计划」就不再是启动那一刻冻结的那一份——那等于事后改了基线，
+    /// 而基线是 GLP 的前提（§7.2）。
+    /// </summary>
+    public static Schedule FromEntries(IReadOnlyList<ScheduleEntry> entries,
+                                       IReadOnlyList<string>? missingCommands = null)
+        => new(entries, missingCommands ?? Array.Empty<string>());
+
     public ScheduleEntry? ByStepId(string stepId)
     {
         foreach (var e in Entries) if (e.StepId == stepId) return e;

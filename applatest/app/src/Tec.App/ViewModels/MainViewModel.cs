@@ -46,7 +46,7 @@ public sealed class MainViewModel : ViewModelBase
         {
             // 该开新批次就开：全都停下来之后再按启动，那是下一炉（§7.1）。
             // 名字取当前实验名——记录里的批次名不能是空的，导出页整条记录都靠它认人
-            ws.Engine.EnsureBatch(ws.ExperimentName, ws.Operator, ws.Bench.Name);
+            ws.BeginBatch();
 
             foreach (var ch in ws.Channels.Where(c => c.Enabled))
             {

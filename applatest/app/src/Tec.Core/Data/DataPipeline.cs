@@ -54,7 +54,7 @@ public sealed class RingSeries
 /// 采样流 + 事件流两条流。断线时必须转 Bad 或 Stale，
 /// 绝不能拿最后一个旧值一直冒充新值——这是最容易犯也最危险的错（§9.4）。
 /// </summary>
-public sealed class DataPipeline
+public sealed class DataPipeline : ISampleSource
 {
     private readonly Dictionary<SeriesKey, RingSeries> _series = new();
     private readonly Dictionary<string, TagDescriptor> _tags = new(StringComparer.Ordinal);
@@ -104,6 +104,10 @@ public sealed class DataPipeline
     {
         get { lock (_gate) return _series.Keys.ToList(); }
     }
+
+    /// <summary>某一路的全部点。没有这一路就是空数组——调用方不必再判一次 null。</summary>
+    public Sample[] Snapshot(int channel, string tag)
+        => Series(channel, tag)?.Snapshot() ?? Array.Empty<Sample>();
 
     /// <summary>取最新值，超过 StaleAfter 自动降级为 Stale——不允许旧值冒充新值。</summary>
     public bool TryLatest(int channel, string tag, DateTimeOffset now, out Sample sample)

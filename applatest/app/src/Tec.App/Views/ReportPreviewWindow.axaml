@@ -1,0 +1,110 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ctl="clr-namespace:Tec.App.Controls"
+        x:Class="Tec.App.Views.ReportPreviewWindow"
+        Width="1000" Height="800" MinWidth="560" MinHeight="420"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="{StaticResource UiFont}" FontSize="12"
+        Foreground="#333333" Background="Transparent"
+        TransparencyLevelHint="Transparent"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaChromeHints="NoChrome"
+        ExtendClientAreaTitleBarHeightHint="-1"
+        KeyDown="OnKeyDown">
+
+  <!-- 与主窗口同一套外观：8px 圆角自绘 + 30px 深紫渐变标题栏 -->
+  <Border CornerRadius="8" ClipToBounds="True" Background="White"
+          BorderBrush="#c9c4d8" BorderThickness="1"
+          Margin="{Binding $parent[Window].OffScreenMargin}">
+    <DockPanel>
+
+      <Border DockPanel.Dock="Top" Height="30" PointerPressed="OnTitlebarPressed">
+        <Border.Background>
+          <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+            <GradientStop Color="#3c2d63" Offset="0" />
+            <GradientStop Color="#2f2350" Offset="1" />
+          </LinearGradientBrush>
+        </Border.Background>
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Name="TitleText" Margin="14,0,0,0" VerticalAlignment="Center"
+                     Foreground="White" FontSize="12" Text="预览报告" />
+          <Button Grid.Column="1" Classes="xbtn" Click="OnClose" Content="✕" />
+        </Grid>
+      </Border>
+
+      <!-- 工具条：模板 / 页数 / 缩放。这里**不放导出钮**——
+           导出用哪种格式、写到哪儿是页脚那一套的事，两处各一个开关只会让人搞混 -->
+      <Border DockPanel.Dock="Top" Background="#fafafa" BorderBrush="#e3e3e3"
+              BorderThickness="0,0,0,1" Padding="16,8">
+        <Grid ColumnDefinitions="Auto,*,Auto">
+          <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+            <TextBlock Name="TemplateText" FontSize="12.5" Foreground="#2b2b2b" VerticalAlignment="Center" />
+            <TextBlock Name="CountText" FontSize="11.5" Foreground="#8a8a8a" VerticalAlignment="Center" />
+          </StackPanel>
+          <TextBlock Name="NoteText" Grid.Column="1" FontSize="11" Foreground="#8a8a8a"
+                     VerticalAlignment="Center" Margin="16,0" TextTrimming="CharacterEllipsis" />
+          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+            <Button Classes="pill" Content="缩小" Click="OnZoomOut" />
+            <TextBlock Name="ZoomText" FontSize="11.5" Foreground="#5a5a5a" Width="46"
+                       TextAlignment="Center" VerticalAlignment="Center" />
+            <Button Classes="pill" Content="放大" Click="OnZoomIn" />
+            <Button Classes="pill" Content="适合宽度" Click="OnZoomFit" Margin="6,0,0,0" />
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <!-- 页：灰底上一叠白纸，和任何一个 PDF 阅读器一样 -->
+      <ScrollViewer Name="Scroll" Background="#6e6a7a" Padding="0,18">
+        <ItemsControl Name="Pages" HorizontalAlignment="Center">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Border Margin="0,0,0,18" Background="White" BoxShadow="0 2 10 0 #33000000">
+                <ctl:ReportPageView Page="{Binding Page}" FontName="{Binding FontName}"
+                                    PageWidth="{Binding W}" PageHeight="{Binding H}"
+                                    Zoom="{Binding Zoom}" />
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+
+    </DockPanel>
+  </Border>
+
+  <Window.Styles>
+    <Style Selector="Button.xbtn">
+      <Setter Property="Width" Value="42" />
+      <Setter Property="Height" Value="30" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="Foreground" Value="#e6e0f5" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.xbtn:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#c0392b" />
+      <Setter Property="TextBlock.Foreground" Value="White" />
+    </Style>
+
+    <Style Selector="Button.pill">
+      <Setter Property="Height" Value="26" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="Padding" Value="12,0" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderBrush" Value="#c4c4c4" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="Foreground" Value="#3b3b3b" />
+    </Style>
+    <Style Selector="Button.pill:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#eaf4fc" />
+      <Setter Property="BorderBrush" Value="#1a7fc4" />
+      <Setter Property="TextBlock.Foreground" Value="#1a7fc4" />
+    </Style>
+  </Window.Styles>
+</Window>

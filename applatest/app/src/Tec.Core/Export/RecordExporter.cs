@@ -76,7 +76,7 @@ public static class RecordExporter
                     (s.Index + 1).ToString(CultureInfo.InvariantCulture),
                     Esc(s.Title),
                     Esc(s.CommandId),
-                    Termination(s.Termination),
+                    TerminationWords.Of(s.Termination),
                     planStart,
                     actualStart,
                     s.StartDeviation is { } sd ? Fmt.Signed(sd) : "",
@@ -84,7 +84,7 @@ public static class RecordExporter
                     s.ActualDuration is { } ad ? Fmt.Hms(ad) : "",
                     s.DurationDeviation is { } dd ? Fmt.Signed(dd) : "",
                     EndBy.Text(s, catalog),
-                    Status(s.Status),
+                    StatusWords.Of(s.Status),
                     Esc(s.Note ?? ""),
                     source));
             }
@@ -103,7 +103,7 @@ public static class RecordExporter
                     "CH" + ch.Channel,
                     Fmt.Stamp(e.At),
                     Fmt.Hms(e.At - ch.StartedAt),
-                    e.Kind.ToString(),
+                    EventWords.Of(e.Kind),
                     Esc(e.Text),
                     Esc(e.Before ?? ""),
                     Esc(e.After ?? ""),
@@ -115,7 +115,7 @@ public static class RecordExporter
     /// 长表。原型上吃过亏：按批次时间迭代会让晚启动的通道在自己的零点前留一片空行，
     /// 正好把"通道各自启动"这件事抹掉。这里按每个通道自己的点逐条出（§13.4 同理）。
     /// </summary>
-    public static string SamplesLongCsv(DataPipeline pipeline, RunRecord record, ExportOptions opt)
+    public static string SamplesLongCsv(ISampleSource pipeline, RunRecord record, ExportOptions opt)
     {
         var sb = new StringBuilder();
         sb.AppendLine("# 采样长表");
@@ -129,9 +129,7 @@ public static class RecordExporter
             {
                 if (key.Channel != ch.Channel) continue;
                 if (opt.Tags.Count > 0 && !opt.Tags.Contains(key.Tag)) continue;
-                var series = pipeline.Series(key.Channel, key.Tag);
-                if (series is null) continue;
-                rows.AddRange(series.Snapshot().Where(s => s.WallClock >= ch.StartedAt
+                rows.AddRange(pipeline.Snapshot(key.Channel, key.Tag).Where(s => s.WallClock >= ch.StartedAt
                                                         && (ch.FinishedAt is null || s.WallClock <= ch.FinishedAt)));
             }
             foreach (var s in rows.OrderBy(s => s.WallClock).ThenBy(s => s.Tag, StringComparer.Ordinal))
@@ -155,7 +153,7 @@ public static class RecordExporter
     /// 宽表。墙钟基准出一张跨通道对齐的表；通道基准出多张，一张一个通道——
     /// 因为通道各自启动，硬塞进一张表必然是一半空格。
     /// </summary>
-    public static string SamplesWideCsv(DataPipeline pipeline, RunRecord record, ExportOptions opt)
+    public static string SamplesWideCsv(ISampleSource pipeline, RunRecord record, ExportOptions opt)
     {
         var sb = new StringBuilder();
         var channels = record.Channels
@@ -187,25 +185,25 @@ public static class RecordExporter
         return sb.ToString();
     }
 
-    private static List<SeriesKey> ColumnsOf(DataPipeline pipeline, List<int> channels, ExportOptions opt)
+    private static List<SeriesKey> ColumnsOf(ISampleSource pipeline, List<int> channels, ExportOptions opt)
         => pipeline.Keys
             .Where(k => channels.Contains(k.Channel))
             .Where(k => opt.Tags.Count == 0 || opt.Tags.Contains(k.Tag))
             .OrderBy(k => k.Channel).ThenBy(k => k.Tag, StringComparer.Ordinal)
             .ToList();
 
-    private static string Header(DataPipeline pipeline, string tag)
+    private static string Header(ISampleSource pipeline, string tag)
     {
         var td = pipeline.Tag(tag);
         return td is null ? tag : (string.IsNullOrEmpty(td.Unit) ? td.DisplayName : $"{td.DisplayName}({td.Unit})");
     }
 
-    private static void WriteGrid(StringBuilder sb, DataPipeline pipeline, List<SeriesKey> cols,
+    private static void WriteGrid(StringBuilder sb, ISampleSource pipeline, List<SeriesKey> cols,
                                   DateTimeOffset from, DateTimeOffset to, TimeSpan grid,
                                   Func<DateTimeOffset, string> stamp)
     {
         if (grid <= TimeSpan.Zero) grid = TimeSpan.FromSeconds(5);
-        var data = cols.Select(c => pipeline.Series(c.Channel, c.Tag)?.Snapshot() ?? Array.Empty<Sample>()).ToList();
+        var data = cols.Select(c => pipeline.Snapshot(c.Channel, c.Tag)).ToList();
         var cursor = new int[cols.Count];
         var last = new double?[cols.Count];
         var lastAt = new DateTimeOffset?[cols.Count];
@@ -230,28 +228,6 @@ public static class RecordExporter
             sb.AppendLine(string.Join(Sep, new[] { stamp(t) }.Concat(cells)));
         }
     }
-
-    private static string Termination(TerminationKind k) => k switch
-    {
-        TerminationKind.Setpoint => "到达目标",
-        TerminationKind.Timer => "计时到",
-        TerminationKind.Quantity => "加完设定量",
-        TerminationKind.Condition => "条件满足",
-        TerminationKind.Operator => "操作人",
-        TerminationKind.Alarm => "报警",
-        TerminationKind.Timeout => "超时",
-        _ => "立即"
-    };
-
-    private static string Status(StepStatus s) => s switch
-    {
-        StepStatus.Pending => "待执行",
-        StepStatus.Running => "执行中",
-        StepStatus.Done => "完成",
-        StepStatus.Skipped => "跳过",
-        StepStatus.Aborted => "中止",
-        _ => "失败"
-    };
 
     private static string Esc(string s)
     {

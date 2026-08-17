@@ -39,6 +39,11 @@ public partial class ExportView : UserControl
         if (Vm is { } vm && sender is Control { DataContext: FmtViewModel f }) vm.PickFmt.Execute(f);
     }
 
+    private void OnTemplatePressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (Vm is { } vm && sender is Control { DataContext: TemplateViewModel t }) vm.PickTemplate.Execute(t);
+    }
+
     private void OnDestLocal(object? sender, PointerPressedEventArgs e) { if (Vm is { } vm) vm.Dest = "local"; }
     private void OnDestUsb(object? sender, PointerPressedEventArgs e) { if (Vm is { } vm) vm.Dest = "usb"; }
 

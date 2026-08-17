@@ -89,7 +89,10 @@ public class ExportTests
         await using var h = await RunTwoChannelsAsync();
         var csv = RecordExporter.EventsCsv(h.Engine.Record, TimeBase.Channel);
         Assert.Contains("相对通道", csv);
-        Assert.Contains("ChannelStarted", csv);
+        // 事件类型写中文。一份交给审计的记录写着 ChannelStarted，
+        // 读的人得先会英文再会本程序
+        Assert.Contains("通道启动", csv);
+        Assert.DoesNotContain("ChannelStarted", csv);
     }
 
     [Fact]

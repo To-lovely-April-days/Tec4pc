@@ -198,7 +198,7 @@ public sealed class StatTileViewModel : ViewModelBase
         if (!CanStart) { _say(StartTip); return; }
 
         // 该开新批次就开，与菜单栏那排圆钮同一套判据（§7.1）
-        _ws.Engine.EnsureBatch(_ws.ExperimentName, _ws.Operator, _ws.Bench.Name);
+        _ws.BeginBatch();
 
         if (Runner is { State: ChannelRunState.Paused } paused)
         {

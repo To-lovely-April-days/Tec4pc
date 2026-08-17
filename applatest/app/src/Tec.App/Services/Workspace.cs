@@ -70,6 +70,15 @@ public sealed class Workspace
     /// <summary>打开 / 新建 / 保存实验。Boot() 里建好。</summary>
     public ExperimentStore Store { get; private set; } = null!;
 
+    /// <summary>批次归档。跑过的每一炉都落盘，关掉程序还导得出来。Boot() 里建好。</summary>
+    public RunArchive Archive { get; private set; } = null!;
+
+    /// <summary>系统日志。开关机、起停批次、导出都记一笔。Boot() 里建好。</summary>
+    public SystemLog Log { get; private set; } = null!;
+
+    /// <summary>已经写进归档的批次长什么样。内容没变就不重写一遍。</summary>
+    private readonly Dictionary<string, string> _archived = new(StringComparer.Ordinal);
+
     /// <summary>
     /// 每通道一条配方（原型 recipes = {1:…,2:…,3:…,4:[]}）。
     /// 配方视图编辑的就是它；运行视图启动某通道时用它的这一条。
@@ -127,6 +136,15 @@ public sealed class Workspace
         // 台面从空开始：设备由用户从设备库拖进来。要示例台面调 LoadSample()。
         // 配方也从空开始——预置几条「降温结晶」看着像已经配好了，其实一步没有。
         Store = new ExperimentStore(this);
+
+        var ver = typeof(Workspace).Assembly.GetName().Version?.ToString() ?? "";
+        Archive = new RunArchive(Path.Combine(ExperimentStore.DataDir, "Runs"), ver);
+        Log = new SystemLog(Path.Combine(ExperimentStore.DataDir, "Logs"), Clock.Func);
+
+        // 归档里已经有的编号先占住：同一天关掉再开，第一炉又会拿到 -001，
+        // 而编号就是归档目录名——撞上就是上午那一炉被下午这一炉盖掉
+        Engine.ReserveRunIds(Archive.KnownIds());
+        Log.Write("程序", $"启动 v{ver}", Operator);
 
         // 配方库读盘；读不到就是空的。**不预置示例配方**——
         // 界面上出现的每一条都得是操作人自己存进去的，凭空多出六条会让人
@@ -306,9 +324,82 @@ public sealed class Workspace
 
     public Channel? ChannelOf(int number) => _channels.FirstOrDefault(c => c.Number == number);
 
+    /// <summary>
+    /// 该开新批次就开，开了就往系统日志记一笔。两处启动入口（菜单栏圆钮、通道磁贴）共用，
+    /// 免得一处记了另一处漏了——日志上少一炉比没有日志更误导人。
+    /// </summary>
+    public bool BeginBatch()
+    {
+        var fresh = Engine.EnsureBatch(ExperimentName, Operator, Bench.Name);
+        if (fresh)
+            Log?.Write("批次", $"{Engine.Record.RunId} 开始 · {ExperimentName} · 台面 {Bench.Name}", Operator);
+        return fresh;
+    }
+
+    /// <summary>
+    /// 把内存里跑过的批次写进归档。切到导出页、关程序时各叫一次。
+    ///
+    /// 内容没变的不重写：一炉跑完之后每次切页都重压一遍几兆采样，
+    /// 除了磨硬盘没有别的用。返回这次真写了几炉。
+    /// </summary>
+    public int SyncArchive()
+    {
+        if (Archive is null) return 0;
+        var now = Clock.Now;
+        var n = 0;
+        foreach (var rec in Engine.Batches)
+        {
+            if (rec.Channels.Count == 0) continue;      // 空壳批次不归档
+            var sig = Signature(rec);
+            if (_archived.TryGetValue(rec.RunId, out var old) && old == sig) continue;
+            try
+            {
+                Archive.Save(rec, Pipeline, now, Truncated(rec));
+                _archived[rec.RunId] = sig;
+                n++;
+            }
+            catch (Exception ex)
+            {
+                Log?.Write("归档", $"{rec.RunId} 写归档失败：{ex.Message}", Operator, LogLevel.Error);
+            }
+        }
+        return n;
+    }
+
+    /// <summary>这一炉现在长什么样。步骤 / 事件只增不减，所以数一数就够认出「又变了」。</summary>
+    private static string Signature(RunRecord rec)
+        => string.Join('|', rec.Channels.Select(c =>
+            $"{c.Channel}:{c.State}:{c.Steps.Count}:{c.Events.Count}:{c.FinishedAt?.UtcTicks ?? 0}"));
+
+    /// <summary>
+    /// 这一炉的采样是不是已经被顶掉了一截。
+    ///
+    /// 判据是「环满了 **并且** 剩下的第一个点比通道启动还晚」。只看环满不行——
+    /// 环早就满了但这一炉是刚起的，一个点都没丢；只看首点晚也不行——
+    /// 探头是中途插上去的，那条线本来就没有前半段。
+    /// </summary>
+    private bool Truncated(RunRecord rec)
+    {
+        foreach (var ch in rec.Channels)
+            foreach (var key in Pipeline.Keys)
+            {
+                if (key.Channel != ch.Channel) continue;
+                var series = Pipeline.Series(key.Channel, key.Tag);
+                if (series is null || series.Count < series.Capacity) continue;
+                var snap = series.Snapshot();
+                if (snap.Length > 0 && snap[0].WallClock > ch.StartedAt + TimeSpan.FromSeconds(2)) return true;
+            }
+        return false;
+    }
+
     public void Shutdown()
     {
         _safetyTimer?.Dispose();
+        // 关机前把跑过的几炉写进归档。**排在 AbortAll 前面**——
+        // 中止会给每条通道补一条事件，等它写完再归档反而更全，
+        // 但中止里任何一步抛异常都会让归档整个错过，那是丢一整炉的数据
+        var n = SyncArchive();
+        Log?.Write("程序", n > 0 ? $"退出，{n} 炉写入归档" : "退出", Operator);
         Store?.SaveLibrary();          // 配方库改了就留在盘上，下次开机还在
         Store?.SaveRecent();
         Store?.CloseDb();              // 关掉数据库连接，WAL 才会合并回主文件

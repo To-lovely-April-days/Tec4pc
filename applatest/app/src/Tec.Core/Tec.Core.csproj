@@ -18,4 +18,12 @@
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.11" />
   </ItemGroup>
 
+  <!-- 导出器里有几处只该给自己人用的小工具（列号换算、页名消毒、字体子集），
+       它们不是对外接口，但**必须有测试**——一个列号换错整份工作簿就打不开。 -->
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Tec.Core.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
 </Project>
