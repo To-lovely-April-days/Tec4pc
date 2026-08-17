@@ -166,7 +166,8 @@ public sealed class HotEditViewModel : ViewModelBase
     public string Reason
     {
         get => _reason;
-        set { if (Set(ref _reason, value)) Raise(nameof(CanApply)); }
+        // 输入框清空时写回来的可能是 null，下一句 _reason.Trim() 就炸
+        set { if (Set(ref _reason, value ?? "")) Raise(nameof(CanApply)); }
     }
 
     /// <summary>

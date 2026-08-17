@@ -305,13 +305,11 @@ public sealed class LibRowViewModel : ViewModelBase
     public bool IsSelected
     {
         get => _sel;
-        set { if (Set(ref _sel, value)) Raise(nameof(InkHex)); }
+        set => Set(ref _sel, value);
     }
     public string Name => Recipe.Name;
     /// <summary>属性面板改名后由列表行自己刷新（名字两处显示，必须同步）。</summary>
     public void NameChanged() => RaiseAll(nameof(Name), nameof(Meta));
-    /// <summary>文档图标的描边色：选中转深蓝（原型 renderLibView 内联 SVG 的 stroke）。</summary>
-    public string InkHex => _sel ? "#0b3760" : "#9a9a9a";
     /// <summary>原型 rm2：「N 步 · 更新 MM/dd」。</summary>
     public string Meta => $"{Recipe.Steps.Count} 步 · 更新 {Recipe.ModifiedAt:MM/dd}";
 }

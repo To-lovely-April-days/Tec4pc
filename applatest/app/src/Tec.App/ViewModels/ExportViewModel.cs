@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Text;
 using Tec.App.Services;
 using Tec.Core;
@@ -316,12 +317,55 @@ public sealed class ExportViewModel : ViewModelBase
 
     // ── 工具条 ──────────────────────────────────────────────────────
 
-    public string Query { get => _q; set { if (Set(ref _q, value)) Rebuild(keepSel: true); } }
+    /// <summary>
+    /// **界面写回来的字符串可能是 null。**
+    ///
+    /// 下拉框的 SelectedItem 绑的是它自己：一旦 ItemsSource 被换掉（跑完一炉之后
+    /// 刷新记录、配方/操作人的选项跟着重排），它先把选中项清成 null 再重选，
+    /// 那个 null 顺着双向绑定灌回这里；下一句 `_fRecipe.Length` 就是
+    /// NullReferenceException。输入框清空时同理。
+    ///
+    /// 所以进门先兜一道底：下拉框的 null 当成「不筛」，输入框的 null 当成空串。
+    /// </summary>
+    private static string Or(string? v, string fallback) => string.IsNullOrEmpty(v) ? fallback : v;
+
+    /// <summary>
+    /// 兜完底还得把兜出来的值**推回界面**。
+    ///
+    /// 下拉框清空时写回 null，兜成「不筛」——可它本来就是「不筛」，
+    /// <c>Set</c> 一看没变就不发 PropertyChanged，下拉框那边仍然停在 null 上：
+    /// 界面上是一个空白的框，看着像没加载出来。兜过底就一定要发一次。
+    /// </summary>
+    private bool Coerce(ref string field, string? raw, string fallback, [CallerMemberName] string? name = null)
+    {
+        var v = Or(raw, fallback);
+        if (Set(ref field, v, name)) return true;
+        if (v != raw) Raise(name);        // 值没变，但界面上那个 null 得换回来
+        return false;
+    }
+
+    public string Query
+    {
+        get => _q;
+        set { if (Coerce(ref _q, value, "")) Rebuild(keepSel: true); }
+    }
     public bool OnlyAlarm { get => _onlyAlarm; set { if (Set(ref _onlyAlarm, value)) Rebuild(keepSel: true); } }
 
-    public string FilterRecipe { get => _fRecipe; set { if (Set(ref _fRecipe, value)) Rebuild(keepSel: true); } }
-    public string FilterOp { get => _fOp; set { if (Set(ref _fOp, value)) Rebuild(keepSel: true); } }
-    public string FilterState { get => _fState; set { if (Set(ref _fState, value)) Rebuild(keepSel: true); } }
+    public string FilterRecipe
+    {
+        get => _fRecipe;
+        set { if (Coerce(ref _fRecipe, value, AllRecipes)) Rebuild(keepSel: true); }
+    }
+    public string FilterOp
+    {
+        get => _fOp;
+        set { if (Coerce(ref _fOp, value, AllOps)) Rebuild(keepSel: true); }
+    }
+    public string FilterState
+    {
+        get => _fState;
+        set { if (Coerce(ref _fState, value, AllStates)) Rebuild(keepSel: true); }
+    }
 
     public bool DaysAll => _days == "all";
     public bool Days7 => _days == "7";
@@ -387,16 +431,24 @@ public sealed class ExportViewModel : ViewModelBase
     public ObservableCollection<string> IntervalOptions { get; } = new() { "原始（1 s）", "5 s", "10 s", "1 min" };
     public ObservableCollection<string> BaseOptions { get; } = new() { "绝对时间", "相对实验开始", "相对通道启动" };
 
-    public string Range { get => _range; set { if (Set(ref _range, value)) { Raise(nameof(CustomRange)); Refresh(); } } }
+    public string Range
+    {
+        get => _range;
+        set { if (Set(ref _range, Or(value, "全程"))) { Raise(nameof(CustomRange)); Refresh(); } }
+    }
     public bool CustomRange => _range == "自定义时段";
-    public string Interval { get => _interval; set { if (Set(ref _interval, value)) { Raise(nameof(RangeHint)); Refresh(); } } }
-    public string FromText { get => _from; set { if (Set(ref _from, value)) Refresh(); } }
-    public string ToText { get => _to; set { if (Set(ref _to, value)) Refresh(); } }
+    public string Interval
+    {
+        get => _interval;
+        set { if (Set(ref _interval, Or(value, "10 s"))) { Raise(nameof(RangeHint)); Refresh(); } }
+    }
+    public string FromText { get => _from; set { if (Set(ref _from, Or(value, ""))) Refresh(); } }
+    public string ToText { get => _to; set { if (Set(ref _to, Or(value, ""))) Refresh(); } }
 
     public string BaseLabel
     {
         get => _baseLabel;
-        set { if (Set(ref _baseLabel, value)) { Raise(nameof(BaseTip)); Refresh(); } }
+        set { if (Set(ref _baseLabel, Or(value, "绝对时间"))) { Raise(nameof(BaseTip)); Refresh(); } }
     }
 
     public string BaseTip => _baseLabel switch
@@ -461,7 +513,7 @@ public sealed class ExportViewModel : ViewModelBase
     public bool DestLocal => _dest == "local";
     public bool DestUsb => _dest == "usb";
 
-    public string Signer { get => _signer; set => Set(ref _signer, value); }
+    public string Signer { get => _signer; set => Set(ref _signer, Or(value, "")); }
 
     // ── 页脚 ────────────────────────────────────────────────────────
 
@@ -510,8 +562,11 @@ public sealed class ExportViewModel : ViewModelBase
         var recipes = _all.Select(r => r.RecipeName).Distinct().OrderBy(x => x).ToList();
         Fill(RecipeOptions, AllRecipes, recipes);
         Fill(OpOptions, AllOps, _all.Select(r => r.User).Distinct().OrderBy(x => x).ToList());
+        // 上一次筛的那条配方 / 操作人可能已经不在列表里了（记录被筛没了），
+        // 复位到「不筛」，否则表会莫名其妙空着
         if (!RecipeOptions.Contains(_fRecipe)) _fRecipe = AllRecipes;
         if (!OpOptions.Contains(_fOp)) _fOp = AllOps;
+        if (!StateOptions.Contains(_fState)) _fState = AllStates;
         RaiseAll(nameof(FilterRecipe), nameof(FilterOp));
 
         _preview = _all.FirstOrDefault(r => r.Id == keepPrev)
@@ -545,12 +600,9 @@ public sealed class ExportViewModel : ViewModelBase
         }
         if (_days != "all" && int.TryParse(_days, out var days))
             q = q.Where(r => (now - r.StartedAt).TotalDays <= days);
-        if (_fRecipe != AllRecipes && _fRecipe.Length > 0)
-            q = q.Where(r => r.RecipeName == _fRecipe);
-        if (_fOp != AllOps && _fOp.Length > 0)
-            q = q.Where(r => r.User == _fOp);
-        if (_fState != AllStates && _fState.Length > 0)
-            q = q.Where(r => r.State == _fState);
+        if (_fRecipe != AllRecipes) q = q.Where(r => r.RecipeName == _fRecipe);
+        if (_fOp != AllOps) q = q.Where(r => r.User == _fOp);
+        if (_fState != AllStates) q = q.Where(r => r.State == _fState);
         if (_onlyAlarm) q = q.Where(r => r.Alarms > 0);
 
         var list = q.ToList();

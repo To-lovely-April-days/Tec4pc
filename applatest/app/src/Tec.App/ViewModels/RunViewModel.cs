@@ -420,7 +420,8 @@ public sealed class RunViewModel : ViewModelBase
     public string MarkText
     {
         get => _markText;
-        set { if (Set(ref _markText, value)) Raise(nameof(CanMark)); }
+        // 输入框清空时写回来的可能是 null，下一句 _markText.Trim() 就炸
+        set { if (Set(ref _markText, value ?? "")) Raise(nameof(CanMark)); }
     }
     private string _markText = "";
 

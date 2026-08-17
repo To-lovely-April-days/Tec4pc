@@ -109,7 +109,11 @@
                 <Border Classes="rrow" Classes.sel="{Binding IsSelected}" PointerPressed="OnRowPressed">
                   <Grid ColumnDefinitions="Auto,*">
                     <Border Grid.Column="0" Classes="ri">
-                      <ctl:TecIcon Key="ui-lib-doc" Size="17" Tint="{Binding InkHex}"
+                      <!-- Tint 是 Color，不是字符串：直接绑一个 "#0b3760" 绑不上，
+                                 运行时只在输出窗口留一行 BindingError，图标默认灰，
+                                 界面上看不出来。走转换器 -->
+                            <ctl:TecIcon Key="ui-lib-doc" Size="17"
+                                         Tint="{Binding IsSelected, Converter={x:Static ctl:Is.SelInk}}"
                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
                     <StackPanel Grid.Column="1" Margin="11,0,0,0" VerticalAlignment="Center">
