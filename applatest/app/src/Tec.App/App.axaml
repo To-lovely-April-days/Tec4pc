@@ -27,7 +27,10 @@
     <SolidColorBrush x:Key="Line" Color="#dcdcdc" />
     <SolidColorBrush x:Key="Line2" Color="#e3e3e3" />
     <SolidColorBrush x:Key="LibBg" Color="#f4f4f4" />
-    <SolidColorBrush x:Key="PropsBg" Color="#ececec" />
+    <!-- 属性栏底色。原型写的是 #ececec，这里**有意调浅一档**到 #f4f4f4：
+         整栏铺满时 #ececec 压得偏重，浅一档跟左边设备库同色，两侧一样轻、
+         中间白台面自己立出来。两个键同色但角色不同，日后要分开调有地方改 -->
+    <SolidColorBrush x:Key="PropsBg" Color="#f4f4f4" />
     <SolidColorBrush x:Key="PropsLine" Color="#d2d2d2" />
     <SolidColorBrush x:Key="Divider" Color="#d5d5d5" />
     <SolidColorBrush x:Key="MenuBlue" Color="#1a91d6" />

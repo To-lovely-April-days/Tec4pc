@@ -10,11 +10,11 @@
     <!-- 设备库。原型 .lib：#f4f4f4 的窄栏，每台设备是一张白卡（.thumb），
          卡下面跟一行名字。之前那版把每台设备铺成一块浅紫、块间留白缝，
          整栏看着比台面还抢眼——设备库是取货架，不该压过台面本身 -->
-    <Border Grid.Column="0" Background="#f4f4f4"
+    <Border Grid.Column="0" Background="{StaticResource LibBg}"
             BorderBrush="#dcdcdc" BorderThickness="0,0,1,0">
       <DockPanel>
         <Border DockPanel.Dock="Top" Padding="0,6,0,8">
-          <TextBlock Text="设备库" FontSize="11" FontWeight="Bold" Foreground="#6a6a6a"
+          <TextBlock Text="设备库" FontSize="11" Foreground="#6a6a6a"
                      HorizontalAlignment="Center" />
         </Border>
         <ScrollViewer Padding="0,0,0,40">
@@ -30,7 +30,7 @@
                     <ctl:DeviceArtView ArtKey="{Binding ArtKey}" Fit="True"
                                        Width="108" Height="88" HorizontalAlignment="Center" />
                   </Border>
-                  <TextBlock Text="{Binding Name}" FontSize="11" FontWeight="Bold"
+                  <TextBlock Text="{Binding Name}" FontSize="11"
                              Foreground="#3d3d3d" Width="108"
                              TextAlignment="Center" TextWrapping="Wrap" Margin="0,4,0,0" />
                   <TextBlock Text="{Binding Problem}" IsVisible="{Binding HasProblem}" Width="108"
@@ -132,14 +132,7 @@
     <!-- 属性面板。原型 .props：整栏一块 #ececec，左边一条 #d2d2d2 的分界线，
          里面不再分块、不留白缝——白色留给真正要填东西的地方（输入框、通道总表），
          这样一眼就能看出哪儿能改 -->
-    <!--
-      整栏加粗。**必须是 Bold(700)，不能用 SemiBold(600)**：中文字体（微软雅黑 UI /
-      Noto Sans CJK）没有 600 这一档，Avalonia 匹配不到就退回 Regular，
-      于是同一行里英文数字粗了、汉字没粗——实测踩到过，一眼就看出来别扭。
-      写在面板根上让整块继承（FontWeight 是继承属性），比逐个元素标省事也不会漏
-    -->
     <Border Grid.Column="2" Background="{StaticResource PropsBg}"
-            TextElement.FontWeight="Bold"
             BorderBrush="#d2d2d2" BorderThickness="1,0,0,0">
       <DockPanel>
         <!-- 底部工具条：设备的动作都集中在这里，底色跟面板一致 -->
@@ -178,20 +171,22 @@
             <Border Padding="18,16,18,20">
             <StackPanel>
 
+            <!-- 原型 .props h2：24px / 300 / #333，细体。正文加粗、标题细，
+                 层次才拉得开；标题跟着一起加粗的话满栏一样重，反而没有重点 -->
             <TextBlock Text="台面属性"
-                       FontSize="24" FontWeight="Normal" Foreground="#333333"
+                       FontSize="24" FontWeight="Light" Foreground="#333333"
                        HorizontalAlignment="Center" Margin="0,0,0,8" />
 
             <StackPanel>
               <TextBlock Classes="intro"
                          Text="从左侧设备库拖入设备组成台面。点选台面上的设备可编辑其连接与通道绑定；下表可独立启停每个通道。" />
               <Grid ColumnDefinitions="96,*" Margin="0,0,0,8">
-                <TextBlock Grid.Column="0" Text="台面名称" FontSize="12" FontWeight="Bold" Foreground="#3d3d3d"
+                <TextBlock Grid.Column="0" Text="台面名称" FontSize="12" Foreground="#3d3d3d"
                            VerticalAlignment="Center" Margin="0,0,10,0" />
                 <TextBox Grid.Column="1" Classes="finput" Text="{Binding BenchName, Mode=TwoWay}" />
               </Grid>
               <Grid ColumnDefinitions="96,*" Margin="0,0,0,10">
-                <TextBlock Grid.Column="0" Text="设备数" FontSize="12" FontWeight="Bold" Foreground="#3d3d3d"
+                <TextBlock Grid.Column="0" Text="设备数" FontSize="12" Foreground="#3d3d3d"
                            VerticalAlignment="Center" Margin="0,0,10,0" />
                 <TextBox Grid.Column="1" Classes="finput" Text="{Binding DeviceCountText}" IsEnabled="False" />
               </Grid>
@@ -203,7 +198,7 @@
                 <Border Classes="exp3" Classes.up="{Binding ChTableOpen}">
                   <ctl:TecIcon Key="ui-chev-down" Tint="#555555" />
                 </Border>
-                <TextBlock Text="通道总表（勾选 = 启用）" FontSize="12" FontWeight="Bold" Foreground="#3d3d3d"
+                <TextBlock Text="通道总表（勾选 = 启用）" FontSize="12" Foreground="#3d3d3d"
                            VerticalAlignment="Center" />
               </StackPanel>
             </Button>
@@ -218,7 +213,7 @@
                       <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto">
                         <Border Grid.Column="0" Width="12" Height="12" CornerRadius="3"
                                 Background="{Binding ColorHex}" VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="12" FontWeight="Bold"
+                        <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="12" FontWeight="SemiBold"
                                    Foreground="#2b2b2b" Margin="8,0,0,0" VerticalAlignment="Center" />
                         <TextBlock Grid.Column="2" Text="{Binding Host}" FontSize="11" Foreground="#8d8d8d"
                                    Margin="8,0,0,0" VerticalAlignment="Center" />
@@ -259,17 +254,16 @@
             <Border Padding="18,16,18,20" IsVisible="{Binding HasSelection}">
             <StackPanel>
 
-            <TextBlock Text="设备属性"
-                       FontSize="24" FontWeight="Normal" Foreground="#333333"
-                       HorizontalAlignment="Center" Margin="0,0,0,8" />
-
             <StackPanel IsVisible="{Binding HasSelection}">
 
-              <!-- prop-head：21px 细体设备名 + 26px 圆形改名钮（GBG 的 hbtn） -->
+              <!-- prop-head（原型 .prop-head）：**只有设备名 + 圆形改名钮，没有
+                   「设备属性」这个抬头**。名字本身就是这一块的标题，上面再压一行
+                   「设备属性」是白说一遍。原型 .prop-head .t 是 21px / 300 / #333，
+                   细体——正文加粗、标题反而细，两者拉开层次才看得出主次 -->
               <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center"
                           Margin="0,0,0,12">
                 <TextBlock Text="{Binding SelectedTitle}" IsVisible="{Binding !Renaming}"
-                           FontSize="21" FontWeight="Normal" Foreground="#333333"
+                           FontSize="21" FontWeight="Light" Foreground="#333333"
                            VerticalAlignment="Center" />
                 <TextBox Classes="finput" Width="180" IsVisible="{Binding Renaming}"
                          Text="{Binding DeviceName, Mode=TwoWay}" />
@@ -285,7 +279,7 @@
 
               <!-- 探头要绑通道；反应器自带通道，没有这一行 -->
               <Grid ColumnDefinitions="96,*,40" Margin="0,0,0,8" IsVisible="{Binding IsProbe}">
-                <TextBlock Grid.Column="0" Text="绑定通道" FontSize="12" FontWeight="Bold" Foreground="#3d3d3d"
+                <TextBlock Grid.Column="0" Text="绑定通道" FontSize="12" Foreground="#3d3d3d"
                            VerticalAlignment="Center" Margin="0,0,10,0" />
                 <ComboBox Grid.Column="1" Classes="sel" Height="23" HorizontalAlignment="Stretch"
                           ItemsSource="{Binding BindTargets}"
@@ -301,7 +295,7 @@
                     <Border Classes="exp3" Classes.up="{Binding WellsOpen}">
                       <ctl:TecIcon Key="ui-chev-down" Tint="#555555" />
                     </Border>
-                    <TextBlock Text="通道启用（独立启停）" FontSize="12" FontWeight="Bold" Foreground="#3d3d3d"
+                    <TextBlock Text="通道启用（独立启停）" FontSize="12" Foreground="#3d3d3d"
                                VerticalAlignment="Center" />
                   </StackPanel>
                 </Button>
@@ -313,7 +307,7 @@
                                   VerticalAlignment="Center" />
                         <Border Width="12" Height="12" CornerRadius="3" Background="{Binding ColorHex}"
                                 VerticalAlignment="Center" />
-                        <TextBlock Text="{Binding Host}" FontSize="12" FontWeight="Bold" Foreground="#3d3d3d"
+                        <TextBlock Text="{Binding Host}" FontSize="12" Foreground="#3d3d3d"
                                    VerticalAlignment="Center" />
                       </StackPanel>
                     </DataTemplate>
@@ -378,7 +372,6 @@
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="CornerRadius" Value="3" />
       <Setter Property="FontSize" Value="12" />
-      <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="Foreground" Value="#333333" />
       <Setter Property="HorizontalContentAlignment" Value="Center" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
@@ -422,7 +415,6 @@
     <!-- .frow.chk2：14px 方框 + 11.5px 文字 -->
     <Style Selector="CheckBox.chk2">
       <Setter Property="FontSize" Value="12" />
-      <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="Foreground" Value="#3d3d3d" />
       <Setter Property="MinHeight" Value="0" />
       <Setter Property="Margin" Value="0,0,0,6" />
