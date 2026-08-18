@@ -52,10 +52,12 @@ public static class WorkbookExporter
         if (channels.Count == 0) return null;
 
         var s = new XlSheet("配料表") { Freeze = 1, FilterRow = 1 };
-        s.Widths.AddRange(new[] { 8.0, 26, 14, 12, 12, 10, 10, 10, 10, 12, 12, 12, 12, 12, 16, 16, 22, 30 });
+        s.Widths.AddRange(new[] { 8.0, 26, 14, 12, 12, 10, 10, 10, 10, 12, 12, 12, 12, 12,
+                                  16, 16, 12, 12, 12, 22, 30 });
         s.Head("通道", "组分", "CAS", "角色", "基准", "给定量", "单位", "当量",
                "M g/mol", "密度 g/mL", "纯度 %", "mmol", "应称量 g", "应量取 mL",
-               "实投 g", "实取 mL", "物性快照", "缺什么 / 按什么假设算的");
+               "实投 g", "实取 mL", "实投 mmol", "实际当量", "过量 %",
+               "物性快照", "缺什么 / 按什么假设算的");
 
         foreach (var ch in channels)
         {
@@ -83,6 +85,9 @@ public static class WorkbookExporter
                     XlCell.N(l.Volume, XlStyle.Num4),
                     XlCell.N(l.Item.ActualMass, XlStyle.Num4),
                     XlCell.N(l.Item.ActualVolume, XlStyle.Num4),
+                    XlCell.N(l.ActualMoles, XlStyle.Num4),
+                    XlCell.N(l.ActualEquivalents, XlStyle.Num4),
+                    XlCell.N(l.ExcessPercent, XlStyle.Num2),
                     XlCell.S(l.Item.SnapshotAt is { } t
                         ? $"库第 {l.Item.LibraryVersion} 版 · {t:yyyy-MM-dd HH:mm}"
                         : l.Item.Cas.Length > 0 ? "未快照（早于快照机制）" : ""),
@@ -103,7 +108,9 @@ public static class WorkbookExporter
         }
 
         s.Add(XlCell.S("「应称量」已按纯度折算——料不纯就得多称一些才够那么多物质的量；"
-                       + "「实投」是操作人称完回填的实际值。空格子 = 没算出来或没填，不是 0。"
+                       + "「实投」是操作人称完回填的实际值；「实投 mmol / 实际当量 / 过量 %」由实投"
+                       + "按同一套纯度折算反推，实际当量以限制试剂实投为基准（没回填则按计划）。"
+                       + "空格子 = 没算出来或没填，不是 0。"
                        + "配料表取自各通道启动那一刻冻结的基线；连库组分的物性是连库时刻的快照"
                        + "（见「物性快照」列），之后改化合物库不影响本表。"
                        + "标着「未快照」的行早于快照机制，物性取自导出时库的当前值，"

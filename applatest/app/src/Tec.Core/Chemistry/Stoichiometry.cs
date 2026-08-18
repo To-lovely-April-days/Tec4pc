@@ -44,6 +44,20 @@ public sealed class ChargeLine
     /// <summary>实投与应称量差了多少 %。两个都有才算。</summary>
     public double? MassDeviation => Mass is > 0 && Item.ActualMass is { } a
         ? (a - Mass.Value) / Mass.Value * 100 : null;
+
+    // ── 实投折算（CH-3.5）：称完回填之后反算回摩尔 ──────────────────
+
+    /// <summary>实投折算的物质的量 mmol（按行上纯度折算）。实投没填就没有。</summary>
+    public double? ActualMoles { get; set; }
+
+    /// <summary>
+    /// 实际当量：实投摩尔数相对**限制试剂实投**摩尔数（限制试剂没回填时相对计划量）。
+    /// 质量偏差答不了这个问题——限制试剂自己也称偏了的时候，相对量才是真相。
+    /// </summary>
+    public double? ActualEquivalents { get; set; }
+
+    /// <summary>相对计划当量的过量百分比：+3 = 摩尔上比计划多投了 3 %。</summary>
+    public double? ExcessPercent { get; set; }
 }
 
 public sealed class ChargeResult
@@ -76,6 +90,16 @@ public sealed class ChargeResult
     /// 空 = 没有目标产物行，或者缺摩尔质量。
     /// </summary>
     public double? LimitingPerProductGram { get; set; }
+
+    /// <summary>
+    /// 摩尔浓度 mol/L：限制试剂的物质的量 ÷ 溶剂总体积（CH-C7）。
+    /// 任何一个溶剂行算不出体积就不给数——按打了折的溶剂体积算浓度，
+    /// 得出的数偏高还看着可信，那比没有更糟。
+    /// </summary>
+    public double? Concentration { get; set; }
+
+    /// <summary>收率按什么基准算的（实投还是计划）。打印收率时必须连着这句话。</summary>
+    public string? YieldBasis { get; set; }
 
     /// <summary>一个数都没算出来（表是空的，或者基准立不起来）。</summary>
     public bool Any => Lines.Any(l => l.Moles is not null || l.Mass is not null || l.Volume is not null);
@@ -160,6 +184,28 @@ public static class Stoichiometry
                 line.Equivalents = n / nLim.Value;
         }
 
+        // ── 实投折算（CH-3.5）：称完回填之后，实际投了多少摩尔 ────────
+        foreach (var line in lines)
+        {
+            if (line.Item.Role == ChargeRole.Product) continue;
+            if (line.Item.ActualMass is not { } got || line.MwUsed is not > 0) continue;
+            // 与应称量同一套纯度折算：称出来那坨料里，纯物质只有 p % 那么多
+            line.ActualMoles = got * ((line.PurityUsed ?? 100) / 100) / line.MwUsed.Value * 1000;
+        }
+
+        // 实际当量的基准：限制试剂**实投**优先——它自己也称偏了的时候，
+        // 「相对它我到底投了几倍」才是化学上要回答的问题；没回填就退回计划量
+        var nLimActual = limiting?.ActualMoles;
+        if ((nLimActual ?? nLim) is { } nBase && nBase > 0)
+            foreach (var line in lines)
+            {
+                if (line.IsLimiting || line.Item.Role == ChargeRole.Product) continue;
+                if (line.ActualMoles is not { } an) continue;
+                line.ActualEquivalents = an / nBase;
+                if (line.Equivalents is > 0)
+                    line.ExcessPercent = (line.ActualEquivalents.Value / line.Equivalents.Value - 1) * 100;
+            }
+
         // ── 目标产物：理论产量与收率 ────────────────────────────────
         foreach (var line in lines.Where(l => l.Item.Role == ChargeRole.Product))
         {
@@ -177,10 +223,25 @@ public static class Stoichiometry
 
             line.Moles = eq * nLim.Value;
             line.Equivalents = eq;
+            // 理论产量按**计划**投料——它是排配料时的目标，印在「应称量」列
             line.TheoreticalMass = line.Moles.Value / 1000 * line.MwUsed.Value;
-            if (line.Item.ActualMass is { } got && line.TheoreticalMass is > 0)
-                line.Yield = got / line.TheoreticalMass.Value * 100;
+
+            // 收率的分母按限制试剂**实投**折算的摩尔数——限制试剂少称了 5 %，
+            // 理论上限就低 5 %，拿计划量当分母会把一炉好收率说成差的。
+            // 实投没回填只好按计划算，但必须把这层假设说出口
+            var denom = eq * (nLimActual ?? nLim.Value) / 1000 * line.MwUsed.Value;
+            if (line.Item.ActualMass is { } got && denom > 0)
+            {
+                line.Yield = got / denom * 100;
+                if (nLimActual is null)
+                    line.Assumptions.Add("限制试剂未回填实投，收率按计划投料量计");
+            }
         }
+
+        if (limiting is not null && nLim is not null)
+            result.YieldBasis = nLimActual is { } a
+                ? $"收率按限制试剂实投折算 {Num(a)} mmol 计"
+                : "收率按限制试剂计划投料计（实投未回填）";
 
         // 每 1 g 产物需要多少限制试剂。放大批量时省一次除法——仅此而已
         var prod = lines.FirstOrDefault(l => l.Item.Role == ChargeRole.Product
@@ -209,6 +270,36 @@ public static class Stoichiometry
             result.Problems.Add($"各组分体积加起来 {Num(v)} mL，超过釜容 "
                                 + $"{Num(table.VesselVolume.Value)} mL。");
         }
+
+        // ── 限制试剂的建议（CH-3.2）：**建议不代填**——替人改角色等于替人定工艺 ──
+        if (limits.Count == 0)
+        {
+            // 没有基准时按当量的行都算不出数，能比的只有直接给量的试剂行
+            var candidate = lines
+                .Where(l => l.Item.Role == ChargeRole.Reagent && l.Moles is > 0)
+                .OrderBy(l => l.Moles!.Value)
+                .FirstOrDefault();
+            if (candidate is not null)
+                result.Problems.Add($"按已给的量，「{Show(candidate.Item.Name)}」的摩尔数最小"
+                                    + $"（{Num(candidate.Moles!.Value)} mmol）——通常它就是限制试剂，"
+                                    + "把那一行的角色改成「限制试剂」即可。");
+        }
+        else
+        {
+            // 有基准、但某个试剂投得比基准还少（当量 < 1）：按定义限制试剂其实是它。
+            // 催化剂 / 淬灭那些当量天生小，不在此列
+            foreach (var line in lines.Where(l => l.Item.Role == ChargeRole.Reagent
+                                                  && l.Equivalents is { } e && e < 0.999))
+                result.Problems.Add($"「{Show(line.Item.Name)}」的当量 {Num(line.Equivalents!.Value)} 小于 1"
+                                    + "——按摩尔数它比标着「限制试剂」的那行还少，真正的限制试剂其实是它。"
+                                    + "欠量投料若是有意设计，可忽略这条。");
+        }
+
+        // ── 摩尔浓度（CH-C7）：限制试剂 ÷ 溶剂总体积 ────────────────
+        var solvents = lines.Where(l => l.Item.Role == ChargeRole.Solvent).ToList();
+        if (nLim is > 0 && solvents.Count > 0 && solvents.All(sv => sv.Volume is > 0))
+            result.Concentration = nLim.Value / solvents.Sum(sv => sv.Volume!.Value);
+            // mmol ÷ mL 正好就是 mol/L，不用再换
 
         return result;
     }

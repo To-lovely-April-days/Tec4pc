@@ -581,12 +581,30 @@ public static class ReportBuilder
         foreach (var p in r.Lines.Where(l => l.Item.Role == ChargeRole.Product && l.TheoreticalMass is not null))
         {
             var text = $"目标产物「{(p.Item.Name.Length > 0 ? p.Item.Name : "（未命名）")}」那一行的"
-                       + $"「应称量」是理论产量 {Q(p.TheoreticalMass)} g";
+                       + $"「应称量」是理论产量 {Q(p.TheoreticalMass)} g（按计划投料）";
+            // 收率的分母按限制试剂实投折算——跟上面那个理论产量不是同一个基准，
+            // 差在哪必须写出来，不然复核的人拿计算器一除对不上
             text += p.Yield is { } y
                 ? $"，实际 {Q(p.Item.ActualMass)} g，收率 {y.ToString("0.#", CultureInfo.InvariantCulture)} %"
+                  + (r.YieldBasis is { } basis ? $"（{basis}）" : "")
                 : "，实际产量未回填";
             parts.Add(text);
         }
+
+        // 摩尔浓度（CH-C7）。引擎不给（溶剂缺体积）就不写
+        if (r.Concentration is { } conc)
+            parts.Add($"摩尔浓度 {Q(conc)} mol/L（限制试剂 ÷ 溶剂总体积）");
+
+        // 实投折算（CH-3.5）：回填过实投的行，实际投了多少摩尔、相对计划过量几何
+        var acts = r.Lines.Where(l => l.ActualEquivalents is not null).ToList();
+        if (acts.Count > 0)
+            parts.Add("实投折算：" + string.Join("；", acts.Select(l =>
+                $"{(l.Item.Name.Length > 0 ? l.Item.Name : "（未命名）")} {Q(l.ActualMoles)} mmol"
+                + $"（实际当量 {Q(l.ActualEquivalents)}"
+                + (l.ExcessPercent is { } ex
+                    ? (ex >= 0 ? "，过量 +" : "，欠量 −")
+                      + Math.Abs(ex).ToString("0.#", CultureInfo.InvariantCulture) + " %"
+                    : "") + "）")));
 
         // 复核的人要能拿这几个数把整张表重算一遍，所以算的时候用了什么就写什么。
         // 它排在表脚而不是表里的一列：表脚是整页宽的，一列会被掐成「198.13 9…」

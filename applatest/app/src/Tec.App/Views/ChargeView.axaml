@@ -219,6 +219,11 @@
                            Foreground="{Binding VesselColorHex}"
                            ToolTip.Tip="各组分体积相加的估计值。混合后的实际体积会有出入——拿它跟釜容对一下够用，别当实测值" />
               </Grid>
+              <Grid ColumnDefinitions="72,*" IsVisible="{Binding HasConcentration}">
+                <TextBlock Grid.Column="0" Text="摩尔浓度" Classes="frowk" />
+                <TextBlock Grid.Column="1" Text="{Binding ConcentrationText}" FontSize="12" Foreground="#2b2b2b"
+                           ToolTip.Tip="限制试剂的物质的量 ÷ 溶剂总体积。有溶剂行算不出体积（缺密度）就不给这个数——按打了折的体积算浓度，得出的数偏高还看着可信" />
+              </Grid>
               <TextBlock Text="{Binding YieldText}" IsVisible="{Binding HasYield}" FontSize="11.5"
                          Foreground="#2f8f49" TextWrapping="Wrap" Margin="0,4,0,0" />
               <TextBlock Text="{Binding ScaleHint}" IsVisible="{Binding HasScaleHint}" FontSize="11"
@@ -378,6 +383,10 @@
                            Watermark="按体积量的填这个" />
                   <TextBlock Text="mL" Classes="unit" />
                 </StackPanel>
+                <!-- 实投折算（CH-3.5）：回填之后反算回摩尔，跟计划一比就是过量/欠量 -->
+                <TextBlock Text="{Binding ActualCalcText}" IsVisible="{Binding HasActualCalc}"
+                           FontSize="11" Foreground="#5a6b5e" TextWrapping="Wrap"
+                           ToolTip.Tip="实投按本行纯度折算成物质的量；实际当量以限制试剂实投为基准（没回填则按计划）；过量/欠量是相对计划当量而言" />
                 <StackPanel Orientation="Horizontal">
                   <TextBlock Text="备注" Classes="frowk" />
                   <TextBox Classes="finput" Width="196"

@@ -37,7 +37,8 @@ public sealed class ChargeRowViewModel : ViewModelBase
             _line = value;
             RaiseAll(nameof(MolesText), nameof(MassText), nameof(VolumeText), nameof(EqText),
                      nameof(Hint), nameof(HasHint), nameof(HintColorHex), nameof(RowNote),
-                     nameof(DeviationText), nameof(HasDeviation), nameof(DeviationColorHex));
+                     nameof(DeviationText), nameof(HasDeviation), nameof(DeviationColorHex),
+                     nameof(ActualCalcText), nameof(HasActualCalc));
         }
     }
 
@@ -144,6 +145,22 @@ public sealed class ChargeRowViewModel : ViewModelBase
     }
 
     public string ActualMassText => _m.ActualMass is null ? "—" : Raw(_m.ActualMass);
+
+    /// <summary>实投折算一句话（CH-3.5）：折合多少 mmol、实际当量几何、比计划过量还是欠量。</summary>
+    public string ActualCalcText
+    {
+        get
+        {
+            if (_line?.ActualMoles is not { } an) return "";
+            var parts = new List<string> { $"实投折合 {Show(an)} mmol" };
+            if (_line.ActualEquivalents is { } ae) parts.Add($"实际当量 {Show(ae)}");
+            if (_line.ExcessPercent is { } ex)
+                parts.Add((ex >= 0 ? "较计划过量 +" : "较计划欠量 −")
+                          + Math.Abs(ex).ToString("0.#", CultureInfo.InvariantCulture) + " %");
+            return string.Join("　·　", parts);
+        }
+    }
+    public bool HasActualCalc => ActualCalcText.Length > 0;
 
     /// <summary>连库的键。连上了就显示那条化合物的名字，好让人知道物性是从哪来的。</summary>
     public string Cas => _m.Cas;
@@ -443,14 +460,25 @@ public sealed class ChargeViewModel : ViewModelBase
                                                        && l.TheoreticalMass is not null);
             if (p is null) return "";
             var text = $"理论产量 {p.TheoreticalMass!.Value.ToString("0.###", CultureInfo.InvariantCulture)} g";
-            if (p.Yield is { } y) text += $"　实际 {p.Item.ActualMass!.Value.ToString("0.###", CultureInfo.InvariantCulture)} g"
-                                          + $"　收率 {y.ToString("0.#", CultureInfo.InvariantCulture)} %";
+            if (p.Yield is { } y)
+            {
+                text += $"　实际 {p.Item.ActualMass!.Value.ToString("0.###", CultureInfo.InvariantCulture)} g"
+                        + $"　收率 {y.ToString("0.#", CultureInfo.InvariantCulture)} %";
+                // 收率的分母按限制试剂实投还是计划，两个数能差好几个点——必须连着说
+                if (_result?.YieldBasis is { } basis) text += $"（{basis}）";
+            }
             else text += "　实际产量未回填";
             return text;
         }
     }
 
     public bool HasYield => YieldText.Length > 0;
+
+    /// <summary>摩尔浓度（CH-C7）。溶剂行有一个算不出体积就没有这个数——引擎不给就不显示。</summary>
+    public string ConcentrationText => _result?.Concentration is { } c
+        ? c.ToString(c >= 10 ? "0.#" : c >= 1 ? "0.##" : "0.###", CultureInfo.InvariantCulture) + " mol/L"
+        : "";
+    public bool HasConcentration => ConcentrationText.Length > 0;
 
     /// <summary>整张表的毛病 + 跟加料步骤对不上的地方。有一条就显示一条，不汇总成「有问题」。</summary>
     public ObservableCollection<string> Problems { get; } = new();
@@ -766,6 +794,7 @@ public sealed class ChargeViewModel : ViewModelBase
 
         RaiseAll(nameof(LimitingText), nameof(TotalMassText), nameof(TotalVolumeText),
                  nameof(VesselColorHex), nameof(YieldText), nameof(HasYield),
+                 nameof(ConcentrationText), nameof(HasConcentration),
                  nameof(HasProblems), nameof(LibraryPick),
                  nameof(HasSaturation), nameof(CanWriteSaturation), nameof(TargetText),
                  nameof(ScaleHint), nameof(HasScaleHint));
