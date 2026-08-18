@@ -180,12 +180,16 @@
             <StackPanel>
               <TextBlock Classes="intro"
                          Text="从左侧设备库拖入设备组成台面。点选台面上的设备可编辑其连接与通道绑定；下表可独立启停每个通道。" />
-              <Grid ColumnDefinitions="96,*" Margin="0,0,0,8">
+              <!-- 列宽 96,*,40 跟 SchemaFormView 的表单行一模一样（标签 96、
+                   输入自适应、右边 40 留给单位）。从前这两行写的是 96,*，
+                   输入框一直伸到最右，比下面那排设备参数宽出 40px，
+                   一列输入框长短不一，看着像没对齐——因为确实没对齐 -->
+              <Grid ColumnDefinitions="96,*,40" Margin="0,0,0,8">
                 <TextBlock Grid.Column="0" Text="台面名称" FontSize="12" Foreground="#3d3d3d"
                            VerticalAlignment="Center" Margin="0,0,10,0" />
                 <TextBox Grid.Column="1" Classes="finput" Text="{Binding BenchName, Mode=TwoWay}" />
               </Grid>
-              <Grid ColumnDefinitions="96,*" Margin="0,0,0,10">
+              <Grid ColumnDefinitions="96,*,40" Margin="0,0,0,10">
                 <TextBlock Grid.Column="0" Text="设备数" FontSize="12" Foreground="#3d3d3d"
                            VerticalAlignment="Center" Margin="0,0,10,0" />
                 <TextBox Grid.Column="1" Classes="finput" Text="{Binding DeviceCountText}" IsEnabled="False" />
@@ -260,18 +264,28 @@
                    「设备属性」这个抬头**。名字本身就是这一块的标题，上面再压一行
                    「设备属性」是白说一遍。原型 .prop-head .t 是 21px / 300 / #333，
                    细体——正文加粗、标题反而细，两者拉开层次才看得出主次 -->
+              <!-- 看的时候：名字居中，旁边一颗改名钮 -->
               <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center"
-                          Margin="0,0,0,12">
-                <TextBlock Text="{Binding SelectedTitle}" IsVisible="{Binding !Renaming}"
+                          Margin="0,0,0,12" IsVisible="{Binding !Renaming}">
+                <TextBlock Text="{Binding SelectedTitle}"
                            FontSize="21" FontWeight="Light" Foreground="#333333"
                            VerticalAlignment="Center" />
-                <TextBox Classes="finput" Width="180" IsVisible="{Binding Renaming}"
-                         Text="{Binding DeviceName, Mode=TwoWay}" />
-                <Button Classes="hbtn" ToolTip.Tip="重命名"
-                        Command="{Binding ToggleRename}">
+                <Button Classes="hbtn" ToolTip.Tip="重命名" Command="{Binding ToggleRename}">
                   <ctl:TecIcon Key="ui-pencil" Tint="#1f1f1f" />
                 </Button>
               </StackPanel>
+
+              <!-- 改的时候：输入框落进下面表单的同一列（96,*,40），
+                   左右两边都跟串口 / 波特率那排对齐。**输入框就该跟输入框一列**——
+                   从前它是居中浮着的固定 180px，跟下面哪一条边都对不上 -->
+              <Grid ColumnDefinitions="96,*,40" Margin="0,0,0,12" IsVisible="{Binding Renaming}">
+                <TextBox Grid.Column="1" Classes="finput"
+                         Text="{Binding DeviceName, Mode=TwoWay}" />
+                <Button Grid.Column="2" Classes="hbtn" ToolTip.Tip="改完" Margin="7,0,0,0"
+                        Command="{Binding ToggleRename}">
+                  <ctl:TecIcon Key="ui-pencil" Tint="#1f1f1f" />
+                </Button>
+              </Grid>
 
               <!-- 连接与设备参数：由驱动 schema 渲染，平铺成 frow，不再分节 -->
               <v:SchemaFormView DataContext="{Binding ConnectionForm}" />

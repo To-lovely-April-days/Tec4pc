@@ -153,9 +153,22 @@
       <Setter Property="Padding" Value="6,2" />
       <Setter Property="BorderBrush" Value="#a8a8a8" />
       <Setter Property="CornerRadius" Value="2" />
-      <!-- 输入框一律白底：面板底色是灰的（#ececec），不写死白的话输入框跟着灰，
+      <!-- 输入框一律白底：面板底色是灰的，不写死白的话输入框跟着灰，
            「哪儿能填」就看不出来了。原型 .finput 也是 background:#fff -->
       <Setter Property="Background" Value="White" />
+    </Style>
+    <!--
+      只读 / 不可改的那几个框（如「设备数」）也留白底，只把字调灰。
+      Avalonia 默认的禁用态会把整个框刷成一块实心灰（实测 rgb(195,195,195)），
+      在灰面板上就是一条突兀的深色板子；原型那一格是白底灰字（readonly），
+      看着仍是一个框，只是不让改
+    -->
+    <Style Selector="TextBox.finput:disabled /template/ Border#PART_BorderElement">
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderBrush" Value="#c8c8c8" />
+    </Style>
+    <Style Selector="TextBox.finput:disabled">
+      <Setter Property="Foreground" Value="#8d8d8d" />
     </Style>
 
     <!-- 面板小节头：原型统一用圆形箭头，不用细横线 -->
