@@ -131,17 +131,21 @@
                  HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="14" />
     </Panel>
 
-    <!-- 属性面板：整栏一块 #ececec，**跟画布之间不画分界线**（学 GBG）——
-         底色变了本身就是边界，再描一条线是重复说明。里面不分块不留缝，
-         白色留给真正要填东西的地方（输入框、通道总表） -->
-    <Border Grid.Column="2" Background="{StaticResource PropsBg}">
+    <!--
+      属性栏（学 GBG）：**栏本身不铺底色**，底色在每一「块」上——
+      台面块常驻，设备块与动作区只在选中设备时出现。什么都不选的时候，
+      台面块下面就是空白，不是一整条从头灰到尾的空面板。
+      跟画布之间也不画分界线：块的底色本身就是边界。
+    -->
+    <Border Grid.Column="2">
       <DockPanel>
-        <!-- 底部工具条：设备的动作都集中在这里，底色跟面板一致 -->
         <!-- 底部动作区：左边同样一条 6px 色条，跟设备块一条线上——
              这排按钮（保存 / 连接 / 初始化 / 删除、手动控制面板、测试连接）
-             干的都是「对这台设备」的事，跟设备块是同一段。
-             顶上那条细横线去掉：色条已经把这一段圈出来了 -->
+             干的都是「对这台设备」的事，所以**没选设备时整块不出现**（GBG 同）。
+             另存与保存在标题栏和开始页都有，不会因此够不着 -->
         <Border DockPanel.Dock="Bottom" Padding="18,10,18,14"
+                Background="{StaticResource PropsBg}"
+                IsVisible="{Binding HasSelection}"
                 BorderBrush="{StaticResource SelBd}" BorderThickness="6,0,0,0">
           <StackPanel>
             <TextBlock Text="{Binding SaveHint}" IsVisible="{Binding HasSaveHint}"
@@ -173,7 +177,7 @@
                  台面名称、设备数、通道总表是这张台面自己的属性，跟「当前点中了谁」
                  无关；从前它们跟设备属性二选一地换着显示，点一下设备台面信息就没了，
                  想看通道总表还得先去空白处点一下取消选中 -->
-            <Border Padding="18,16,18,20">
+            <Border Padding="18,16,18,20" Background="{StaticResource PropsBg}">
             <StackPanel>
 
             <!-- 原型 .props h2：24px / 300 / #333，细体。正文加粗、标题细，
@@ -255,15 +259,16 @@
             </StackPanel>
             </Border>
 
-            <!-- 两块之间留一道白缝（GBG 就是这么分块的）：底色是灰的，
-                 缝用白色才切得干净。只有选中设备时才有第二块，缝也跟着出现 -->
-            <Border Height="9" Background="White" IsVisible="{Binding HasSelection}" />
+            <!-- 块与块之间的缝。栏本身没有底色，这里空着就是画布的白，
+                 不用再刷一层白 -->
+            <Border Height="9" IsVisible="{Binding HasSelection}" />
 
             <!-- ===== 设备块：选中谁显示谁 =====
                  左边一条 4px 粗色条（学 GBG）：这一块讲的是「当前选中的那台设备」，
                  跟上面常驻的台面块不是一回事。色条比分割线说得更清楚——
                  它标的是「这一段属于谁」，而不只是「这里断开」 -->
             <Border Padding="18,16,18,20" IsVisible="{Binding HasSelection}"
+                    Background="{StaticResource PropsBg}"
                     BorderBrush="{StaticResource SelBd}" BorderThickness="6,0,0,0">
             <StackPanel>
 
