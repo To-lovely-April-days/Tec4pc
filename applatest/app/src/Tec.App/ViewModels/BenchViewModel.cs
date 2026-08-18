@@ -111,7 +111,6 @@ public sealed class BenchViewModel : ViewModelBase
         ZoomIn = new RelayCommand(() => Scale(1.25));
         ZoomOut = new RelayCommand(() => Scale(1 / 1.25));
         FitAll = new RelayCommand(Fit);
-        ToggleGrid = new RelayCommand(() => ShowGrid = !ShowGrid);
         ws.BenchChanged += (_, _) => Reload();
         Reload();
     }
@@ -142,11 +141,11 @@ public sealed class BenchViewModel : ViewModelBase
     public RelayCommand ZoomIn { get; }
     public RelayCommand ZoomOut { get; }
     public RelayCommand FitAll { get; }
-    public RelayCommand ToggleGrid { get; }
 
-    // ── 视图变换（左下角四个工具）──────────────────────────────────
+    // ── 视图变换（左下角三个工具：放大 / 缩小 / 适应）───────────────
+    // 原型台面底下铺着一层 28px 网格，连同一个开关一起去掉了：设备按落点
+    // 自由摆、不吸附网格，那些线对不齐任何东西，留着只是噪音
     private double _zoom = 1, _panX, _panY;
-    private bool _grid = true;
     private Size _stage = new(900, 700);
 
     public double Zoom
@@ -157,7 +156,6 @@ public sealed class BenchViewModel : ViewModelBase
 
     public double PanX { get => _panX; private set => Set(ref _panX, value); }
     public double PanY { get => _panY; private set => Set(ref _panY, value); }
-    public bool ShowGrid { get => _grid; private set => Set(ref _grid, value); }
     public string ZoomText => $"{Zoom * 100:F0}%";
 
     /// <summary>画布可视区尺寸，由视图在尺寸变化时告诉它——「适应」要用。</summary>

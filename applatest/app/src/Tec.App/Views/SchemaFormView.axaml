@@ -15,7 +15,7 @@
                一列输入框长短不一 -->
           <Grid ColumnDefinitions="96,*,40" Margin="0,0,0,8" IsVisible="{Binding IsVisible}">
             <TextBlock Grid.Column="0" Text="{Binding Label}" VerticalAlignment="Center"
-                       FontSize="11.5" Foreground="#3d3d3d" TextWrapping="Wrap" Margin="0,0,10,0" />
+                       FontSize="12" FontWeight="Bold" Foreground="#3d3d3d" TextWrapping="Wrap" Margin="0,0,10,0" />
 
             <TextBox Grid.Column="1" Classes="fin" Text="{Binding NumberText, Mode=TwoWay}"
                      IsVisible="{Binding IsNumber}" />
@@ -39,7 +39,7 @@
     <!-- 多分段表：梯度控温、分段加料 -->
     <StackPanel IsVisible="{Binding HasTable}">
       <Border Height="1" Background="#d5d5d5" Margin="0,10,0,10" />
-      <TextBlock Text="{Binding TableLabel}" FontSize="11.5" Foreground="#3d3d3d" Margin="0,0,0,6" />
+      <TextBlock Text="{Binding TableLabel}" FontSize="12" FontWeight="Bold" Foreground="#3d3d3d" Margin="0,0,0,6" />
 
       <!-- 曲线预览：一张三列的表读不出形状，画出来一眼看见斜多久、平多久。
            与下面的表格是同一份数据，改哪边另一边立刻跟着变 -->
