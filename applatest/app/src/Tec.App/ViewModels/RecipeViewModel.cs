@@ -49,8 +49,6 @@ public sealed class ModuleGroup : ViewModelBase
     public string Name { get; }
     public string Color { get; }
     public ObservableCollection<CommandItemViewModel> Commands { get; } = new();
-    /// <summary>通用组没有 grpbar，直接平铺（原型 misc 不带分组条）。</summary>
-    public bool HasBar => Name != "通用";
 
     public bool Open
     {
@@ -97,8 +95,15 @@ public sealed class StepViewModel : ViewModelBase
     /// <summary>每一层画一条竖线。0 层就是空表，版面跟原来一样。</summary>
     public IReadOnlyList<int> Spines => Enumerable.Range(0, Depth).ToList();
 
-    /// <summary>卡片宽度让出缩进，泳道整体还是 270，四条泳道对得齐。</summary>
-    public double CardWidth => 270 - Depth * 14;
+    /// <summary>卡片宽度让出缩进，泳道整体还是 200（原型 .step 宽），各条泳道对得齐。</summary>
+    public double CardWidth => 200 - Depth * 14;
+
+    /// <summary>
+    /// 卡片正文那一列的宽度：卡宽 − 2px 描边两条 − 11px 模块色条 − 18px 竖排模块名。
+    /// 算死而不是交给 Grid 的星号列去分：星号列量到的宽和最后排布的宽对不上，
+    /// 描述会按更宽的那个折行，右半截被卡片裁掉（"加入 10" 断成 "加入 1"）。
+    /// </summary>
+    public double BodyWidth => CardWidth - 4 - 11 - 18;
 
     public ScheduleEntry Entry { get; }
     public CommandDescriptor? Descriptor { get; }

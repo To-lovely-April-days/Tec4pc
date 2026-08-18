@@ -5,59 +5,68 @@
              x:Class="Tec.App.Views.RecipeView"
              Focusable="True" KeyDown="OnKeyDown">
 
-  <!-- 原型 view-recipe：工具箱 308 ｜ 中列 ｜ 属性 342 -->
-  <Grid ColumnDefinitions="308,*,342">
+  <!--
+    版式照 gbg-scheduler.html 的 Process 视图 1:1 搬：
+    步骤库 312 ｜ 流程区 ｜ 属性 342（原型脚本面板 352，这里跟台面属性对齐取 342）。
+    属性栏不照原型，按用户要求走台面页那一套：块用 PropsBg、块之间露白缝、
+    「当前选中的那一个」左边一条 6px 粗色条。
+  -->
+  <Grid ColumnDefinitions="312,*,342">
 
-    <!-- ══ 左：步骤工具箱 ══
-         与台面设备库同一套：一个模块 = 一块主题色，块之间留 3px 白缝 -->
-    <Border Grid.Column="0" Background="{StaticResource ThemeGap}"
-            BorderBrush="#dcdcdc" BorderThickness="0,0,1,0">
+    <!-- ══ 左：步骤库（原型 .devlist）══
+         一个模块 = 一块 #efefef，左边一条 14px 模块色条贯通整块（展开了也贯通），
+         块与块之间 2px 白缝。栏本身不铺底色、不画竖线——分界线在流程区那一侧 -->
+    <Border Grid.Column="0" Background="White" Padding="0,2,4,0">
       <ScrollViewer Padding="0,0,0,40">
         <ItemsControl ItemsSource="{Binding Groups}">
           <ItemsControl.ItemTemplate>
             <DataTemplate>
-              <Border Background="{StaticResource ThemeFill}" Margin="0,0,0,7">
-                <StackPanel>
-                  <!-- grpbar：圆形箭头 + 模块色块 + 组名（通用组没有条，直接平铺） -->
-                  <Border IsVisible="{Binding HasBar}" Background="Transparent"
-                          Padding="10,8" PointerPressed="OnGroupBarPressed" Cursor="Hand">
-                    <StackPanel Orientation="Horizontal" Spacing="9">
-                      <!-- 展开时箭头朝上，收起朝下。原来钉死成 ui-chev-up，
-                           点了内容收了、箭头没动，看着像没生效 -->
-                      <Border Classes="exp3" Classes.up="{Binding Open}">
-                        <ctl:TecIcon Key="ui-chev-down" Tint="#555555"
-                                     HorizontalAlignment="Center" VerticalAlignment="Center" />
-                      </Border>
-                      <Border Width="12" Height="12" CornerRadius="3"
-                              Background="{Binding Color}" VerticalAlignment="Center" />
-                      <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="Light"
-                                 Foreground="#3d3d3d" VerticalAlignment="Center" />
-                    </StackPanel>
-                  </Border>
+              <Border Classes="dev" Margin="0,0,0,2">
+                <Grid ColumnDefinitions="14,*">
+                  <!-- 色条贯通整块：收起时就是那 96px，展开了连指令格一起包 -->
+                  <Border Grid.Column="0" Background="{Binding Color}"
+                          CornerRadius="2,0,0,2" />
+                  <StackPanel Grid.Column="1">
+                    <!-- 组头：96 高，圆圈箭头 + 组名（原型 .dev，23px/300 拉丁；
+                         中文按同一套换算落到 20px——汉字占满字身框，
+                         照抄字号会比原型大出三分之一） -->
+                    <Border Height="96" Background="Transparent" Cursor="Hand"
+                            PointerPressed="OnGroupBarPressed">
+                      <StackPanel Orientation="Horizontal" Spacing="16"
+                                  Margin="14,0,0,0" VerticalAlignment="Center">
+                        <Border Classes="exp3" Classes.up="{Binding Open}">
+                          <ctl:TecIcon Key="ui-chev-down" Tint="#555555"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <TextBlock Text="{Binding Name}" FontSize="20" FontWeight="Light"
+                                   Foreground="#3d3d3d" VerticalAlignment="Center" />
+                      </StackPanel>
+                    </Border>
 
-                  <!-- cmdgrid：4 列 × 84 高，图标 + 指令名 -->
-                  <ItemsControl ItemsSource="{Binding Commands}" IsVisible="{Binding Open}"
-                                Margin="6,6,6,10">
-                    <ItemsControl.ItemsPanel>
-                      <ItemsPanelTemplate><UniformGrid Columns="4" /></ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                      <DataTemplate>
-                        <Button Classes="cmd" Command="{Binding $parent[UserControl].DataContext.AddStep}"
-                                CommandParameter="{Binding}">
-                          <StackPanel>
-                            <Panel Height="34">
-                              <ctl:TecIcon Key="{Binding IconKey}"
-                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
-                            </Panel>
-                            <TextBlock Text="{Binding Name}" FontSize="10" Foreground="#3a3a3a"
-                                       TextAlignment="Center" TextWrapping="Wrap" Margin="0,4,0,0" />
-                          </StackPanel>
-                        </Button>
-                      </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                  </ItemsControl>
-                </StackPanel>
+                    <!-- 指令格：4 列 × 84 高，图标 + 指令名 -->
+                    <ItemsControl ItemsSource="{Binding Commands}" IsVisible="{Binding Open}"
+                                  Margin="6,0,6,10">
+                      <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate><UniformGrid Columns="4" /></ItemsPanelTemplate>
+                      </ItemsControl.ItemsPanel>
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                          <Button Classes="cmd" Command="{Binding $parent[UserControl].DataContext.AddStep}"
+                                  CommandParameter="{Binding}">
+                            <StackPanel>
+                              <Panel Height="34">
+                                <ctl:TecIcon Key="{Binding IconKey}"
+                                             HorizontalAlignment="Center" VerticalAlignment="Center" />
+                              </Panel>
+                              <TextBlock Text="{Binding Name}" FontSize="10" Foreground="#3a3a3a"
+                                         TextAlignment="Center" TextWrapping="Wrap" Margin="0,4,0,0" />
+                            </StackPanel>
+                          </Button>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+                </Grid>
               </Border>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
@@ -65,48 +74,49 @@
       </ScrollViewer>
     </Border>
 
-    <!-- ══ 中：配方工具条 + 一键复制 + 泳道 ══ -->
+    <!-- ══ 中：工具条 + 一键复制 + 校验 + 泳道（原型 .procwrap）══ -->
     <DockPanel Grid.Column="1" Background="White">
 
-      <!-- advbar -->
-      <Border DockPanel.Dock="Top" Height="44" BorderBrush="#e3e3e3" BorderThickness="0,0,0,1">
-        <StackPanel Orientation="Horizontal" Spacing="8" Margin="12,0" VerticalAlignment="Center">
+      <!-- 原型 .proctool：58 高、#ededed 一条整的、34px 圆钮 -->
+      <Border DockPanel.Dock="Top" Height="58" Background="#ededed">
+        <StackPanel Orientation="Horizontal" Spacing="8" Margin="14,0" VerticalAlignment="Center">
           <TextBlock Text="配方：" Classes="lbl" />
-          <ComboBox Classes="sel" Width="220" ItemsSource="{Binding Lanes}"
+          <ComboBox Classes="sel" Width="246" ItemsSource="{Binding Lanes}"
                     SelectedItem="{Binding CurLane, Mode=TwoWay}">
             <ComboBox.ItemTemplate>
               <DataTemplate><TextBlock Text="{Binding LaneName}" /></DataTemplate>
             </ComboBox.ItemTemplate>
           </ComboBox>
-          <Button Classes="tbtn sm" ToolTip.Tip="新建：把当前通道清成空配方"
+          <Button Classes="tbtn" ToolTip.Tip="新建：把当前通道清成空配方"
                   Command="{Binding NewRecipe}" IsEnabled="{Binding HasLanes}">
             <ctl:TecIcon Key="ui-bar-plus" />
           </Button>
-          <Button Classes="tbtn sm" ToolTip.Tip="撤销（当前通道）"
+          <Button Classes="tbtn" ToolTip.Tip="撤销（当前通道）"
                   Command="{Binding Undo}" IsEnabled="{Binding CanUndo}">
             <ctl:TecIcon Key="ui-bar-undo" />
           </Button>
-          <Button Classes="tbtn sm" ToolTip.Tip="重做（当前通道）"
+          <Button Classes="tbtn" ToolTip.Tip="重做（当前通道）"
                   Command="{Binding Redo}" IsEnabled="{Binding CanRedo}">
             <ctl:TecIcon Key="ui-bar-redo" />
           </Button>
-          <Border Width="1" Height="20" Background="#dcdcdc" Margin="4,0" />
-          <Button Classes="tbtn sm" ToolTip.Tip="导入配方文件到当前通道（.tecrecipe）"
+          <Border Width="1" Height="22" Background="#cfcfcf" Margin="4,0" />
+          <Button Classes="tbtn" ToolTip.Tip="导入配方文件到当前通道（.tecrecipe）"
                   Command="{Binding ImportRecipe}" IsEnabled="{Binding HasLanes}">
             <ctl:TecIcon Key="ui-snav-import" />
           </Button>
-          <Button Classes="tbtn sm" ToolTip.Tip="把当前通道的配方导出成文件（.tecrecipe）"
+          <Button Classes="tbtn" ToolTip.Tip="把当前通道的配方导出成文件（.tecrecipe）"
                   Command="{Binding ExportRecipe}" IsEnabled="{Binding HasLanes}">
             <ctl:TecIcon Key="ui-snav-export" />
           </Button>
           <TextBlock Text="{Binding Note}" IsVisible="{Binding HasNote}" FontSize="11"
-                     Foreground="#7a7a7a" VerticalAlignment="Center" Margin="6,0,0,0"
-                     TextTrimming="CharacterEllipsis" MaxWidth="360" />
+                     Foreground="#6a6a6a" VerticalAlignment="Center" Margin="6,0,0,0"
+                     TextTrimming="CharacterEllipsis" MaxWidth="330" />
         </StackPanel>
       </Border>
 
-      <!-- copybar：没有通道就没得复制，整条收起来 -->
-      <Border DockPanel.Dock="Top" Background="#fafafa" BorderBrush="#e3e3e3"
+      <!-- copybar：原型没有这条，是我们自己的功能。压成白底一条细的，
+           让 #ededed 那条工具条仍然是画面上唯一的灰带 -->
+      <Border DockPanel.Dock="Top" Background="White" BorderBrush="#e3e3e3"
               IsVisible="{Binding HasLanes}"
               BorderThickness="0,0,0,1" Padding="14,8">
         <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
@@ -155,9 +165,8 @@
         </StackPanel>
       </Border>
 
-      <!-- lanes：网格底纹 + 泳道横排 -->
+      <!-- 画布：原型 .lanes 是纯白，没有网格底纹 -->
       <Panel>
-        <ctl:GridBackdrop LineBrush="#fbfbfb" />
         <StackPanel IsVisible="{Binding NoLanes}" Margin="30,26" Spacing="7"
                     HorizontalAlignment="Left" VerticalAlignment="Top">
           <TextBlock Text="还没有通道" FontSize="15" Foreground="#6f6f6f" />
@@ -166,55 +175,52 @@
                      Text="每台双通道反应器带来两条泳道。先去「台面」把反应器拖进来，这里就会出现对应的泳道。" />
         </StackPanel>
         <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
-          <ItemsControl ItemsSource="{Binding Lanes}" Margin="14,12,14,40">
+          <ItemsControl ItemsSource="{Binding Lanes}" Margin="8,14,0,40">
             <ItemsControl.ItemsPanel>
               <ItemsPanelTemplate>
-                <StackPanel Orientation="Horizontal" Spacing="12" />
+                <StackPanel Orientation="Horizontal" Spacing="14" />
               </ItemsPanelTemplate>
             </ItemsControl.ItemsPanel>
             <ItemsControl.ItemTemplate>
               <DataTemplate>
-                <!-- .lane：选中 = 蓝实线边 + 柔环 -->
-                <Border Width="300" Padding="4" CornerRadius="5" BorderThickness="1.6"
-                        Tag="lane"
+                <!-- 原型 .lane 是 200 宽。外面这圈 padding 留给「当前通道」的选中环 -->
+                <!-- 顶对齐（原型 .lanes{align-items:flex-start}）：不这么写的话
+                     泳道会被拉到画布满高，选中环就变成一个从头拖到底的长框 -->
+                <Border Width="212" Padding="5" CornerRadius="4" BorderThickness="1.6"
+                        Tag="lane" VerticalAlignment="Top"
                         BorderBrush="Transparent" Background="Transparent"
                         Classes.laneSel="{Binding IsCurrent}"
                         Classes.laneDrop="{Binding IsDropLane}"
                         PointerPressed="OnLanePressed" Cursor="Hand">
                   <StackPanel>
-                    <!-- lane-head：淡紫粉底 #efd9ec -->
-                    <Border Background="#efd9ec" CornerRadius="3" Padding="10,9">
-                      <StackPanel Spacing="7">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                          <TextBlock Text="名称：" FontSize="12" Width="42" VerticalAlignment="Center" />
-                          <TextBox Classes="finput" Width="150"
+                    <!-- 原型 .lane-head：#b5c4d4 一块，两行「标签 + 输入 + 圆钮」 -->
+                    <Border Background="#b5c4d4" CornerRadius="2" Padding="8,8,8,10">
+                      <StackPanel Spacing="8">
+                        <Grid ColumnDefinitions="38,*,26">
+                          <TextBlock Grid.Column="0" Text="名称" FontSize="12.5"
+                                     Foreground="#2b2b2b" VerticalAlignment="Center" />
+                          <TextBox Grid.Column="1" Classes="hin" Margin="6,0"
                                    Text="{Binding LaneName, Mode=TwoWay}" />
-                          <Button Classes="lhbtn" ToolTip.Tip="删除该通道标签"
+                          <Button Grid.Column="2" Classes="lhbtn" ToolTip.Tip="清空该通道的配方"
                                   Click="OnLaneRemove">
-                            <ctl:TecIcon Key="ui-lane-trash" Tint="#3a3a3a" />
+                            <ctl:TecIcon Key="ui-lane-trash" Tint="#1f1f1f" />
                           </Button>
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                          <TextBlock Text="通道：" FontSize="12" Width="42" VerticalAlignment="Center" />
-                          <ComboBox Classes="sel" Width="150" Height="26"
+                        </Grid>
+                        <Grid ColumnDefinitions="38,*,26">
+                          <TextBlock Grid.Column="0" Text="通道" FontSize="12.5"
+                                     Foreground="#2b2b2b" VerticalAlignment="Center" />
+                          <ComboBox Grid.Column="1" Classes="hsel" Margin="6,0"
                                     ItemsSource="{Binding ChannelOptions}"
                                     SelectedItem="{Binding ChannelPick, Mode=TwoWay}" />
-                          <Button Classes="lhbtn" ToolTip.Tip="通道属性（在台面中设置）">
-                            <ctl:TecIcon Key="ui-lane-pencil" Tint="#3a3a3a" />
+                          <Button Grid.Column="2" Classes="lhbtn sq" ToolTip.Tip="通道属性（在台面中设置）">
+                            <ctl:TecIcon Key="ui-lane-pencil" Tint="#1f1f1f" />
                           </Button>
-                        </StackPanel>
+                        </Grid>
                       </StackPanel>
                     </Border>
 
-                    <!-- lane-body：开始帽 → 步骤卡 → 落点 → 结束帽 -->
+                    <!-- 原型 .lane-body：步骤卡竖着排，卡之间一截 14px 的细线 -->
                     <StackPanel HorizontalAlignment="Center" Margin="0,10,0,0">
-                      <Border Width="270" Height="30" Background="#2eaa4e" CornerRadius="2" Padding="11,0">
-                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                          <ctl:TecIcon Key="ui-cap-begin" />
-                          <TextBlock Text="开始" Foreground="White" FontSize="12.5" />
-                        </StackPanel>
-                      </Border>
-
                       <ItemsControl ItemsSource="{Binding Steps}">
                         <ItemsControl.ItemTemplate>
                           <DataTemplate>
@@ -223,13 +229,13 @@
                               <Panel Height="14">
                                 <Border Width="1" Height="14" Background="#7a7a7a"
                                         HorizontalAlignment="Center" />
-                                <Border Width="270" Height="4" CornerRadius="2" Background="#1a7fc4"
+                                <Border Width="200" Height="4" CornerRadius="2" Background="#1a7fc4"
                                         VerticalAlignment="Center"
                                         IsVisible="{Binding DropBefore}" />
                               </Panel>
                               <!-- 循环体缩进：每套一层让出 14px，并在让出的位置画一条竖线。
-                                   泳道整体仍是 270 宽，四条泳道对得齐 -->
-                              <StackPanel Orientation="Horizontal" Width="270">
+                                   泳道整体仍是 200 宽，各条泳道对得齐 -->
+                              <StackPanel Orientation="Horizontal" Width="200">
                               <ItemsControl ItemsSource="{Binding Spines}">
                                 <ItemsControl.ItemsPanel>
                                   <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
@@ -242,47 +248,65 @@
                                   </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                               </ItemsControl>
-                              <!-- .step 卡片 -->
-                              <Border Width="{Binding CardWidth}" Background="White" BorderBrush="#d3dae0"
-                                      BorderThickness="1" CornerRadius="4" Cursor="Hand"
+
+                              <!-- 原型 .step：200×118 的青块，左边 11px 模块色条 +
+                                   竖排模块名，中间图标 + 整句描述，底下一行排期，
+                                   垃圾桶在右下角 -->
+                              <Border Classes="step" Width="{Binding CardWidth}"
                                       Tag="stepcard"
                                       Classes.stepSel="{Binding IsSelected}"
                                       Classes.stepGhost="{Binding Ghosted}"
                                       PointerPressed="OnStepPressed">
-                                <StackPanel>
-                                  <Grid ColumnDefinitions="Auto,*" Margin="9,8">
-                                    <Border Grid.Column="0" Width="44" Height="44" CornerRadius="5"
-                                            Background="{Binding ModuleColor}">
-                                      <ctl:TecIcon Key="{Binding IconKey}" White="True" Size="26"
-                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                    </Border>
-                                    <StackPanel Grid.Column="1" Margin="9,1,0,0">
-                                      <TextBlock Text="{Binding Desc}" FontSize="11.5" Foreground="#22303a"
-                                                 TextWrapping="Wrap" MaxLines="3" LineHeight="16" />
-                                      <TextBlock Text="{Binding ModLine}" FontSize="9.5" Foreground="#93a3ae"
-                                                 Margin="0,3,0,0" />
-                                    </StackPanel>
-                                  </Grid>
-                                  <!-- sfoot -->
-                                  <Border Background="#fafbfc" BorderBrush="#eef1f3" BorderThickness="0,1,0,0"
-                                          CornerRadius="0,0,4,4" Padding="9,4,9,5">
-                                    <Grid ColumnDefinitions="Auto,*,Auto,Auto">
-                                      <TextBlock Grid.Column="0" FontSize="10" Foreground="#8b98a2">
-                                        <Run Text="预计开始 " /><Run Text="{Binding PlanStart}"
-                                            FontWeight="SemiBold" Foreground="#4a5560" />
+                                <!-- 竖排模块名那一列写死 18：留 Auto 的话，Grid 量它时给的是无限宽，
+                                       算出来的余量跟最终排布的余量对不上，右边一列会超出卡片 -->
+                                  <Grid ColumnDefinitions="11,18,*">
+                                  <Border Grid.Column="0" Background="{Binding ModuleColor}"
+                                          CornerRadius="2,0,0,2" />
+                                  <!-- 竖排模块名（原型 writing-mode:vertical-rl） -->
+                                  <LayoutTransformControl Grid.Column="1" VerticalAlignment="Top"
+                                                          Margin="3,7,0,0">
+                                    <LayoutTransformControl.LayoutTransform>
+                                      <RotateTransform Angle="90" />
+                                    </LayoutTransformControl.LayoutTransform>
+                                    <TextBlock Text="{Binding Module}" FontSize="11.5"
+                                               Foreground="#2b2b2b" />
+                                  </LayoutTransformControl>
+
+                                  <DockPanel Grid.Column="2" Width="{Binding BodyWidth}" Margin="2,6,8,4">
+                                    <!-- 排期与删除：原型那一列 3 个白圈是 GBG 自己的功能，
+                                         我们没有，位置让给真有内容的预计开始 / 耗时。
+                                         这一条**必须能被压窄**（TextTrimming），否则它把
+                                         这一列撑得比卡片还宽，上面的描述就跟着按超出的宽度
+                                         折行，右半截被卡片裁掉 -->
+                                    <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,Auto,Auto"
+                                          Margin="0,3,0,0">
+                                      <TextBlock Grid.Column="0" FontSize="9" Foreground="#17454f"
+                                                 VerticalAlignment="Center"
+                                                 TextTrimming="CharacterEllipsis">
+                                        <Run Text="预计开始 " /><Run Text="{Binding PlanStart}" />
                                       </TextBlock>
-                                      <TextBlock Grid.Column="2" FontSize="10" Foreground="#a8b3bb"
-                                                 IsVisible="{Binding HasDuration}" Margin="0,0,8,0">
+                                      <TextBlock Grid.Column="1" FontSize="9" Foreground="#17454f"
+                                                 VerticalAlignment="Center" Margin="5,0,3,0"
+                                                 IsVisible="{Binding HasDuration}">
                                         <Run Text="耗时 " /><Run Text="{Binding PlanDuration}" />
                                       </TextBlock>
-                                      <Button Grid.Column="3" Classes="trash" ToolTip.Tip="删除该步骤"
+                                      <Button Grid.Column="2" Classes="trash" ToolTip.Tip="删除该步骤"
                                               Command="{Binding $parent[UserControl].DataContext.RemoveStep}"
                                               CommandParameter="{Binding}">
                                         <ctl:TecIcon Key="ui-trash-step" />
                                       </Button>
                                     </Grid>
-                                  </Border>
-                                </StackPanel>
+                                    <StackPanel VerticalAlignment="Center">
+                                      <ctl:TecIcon Key="{Binding IconKey}" Size="34"
+                                                   HorizontalAlignment="Center" />
+                                      <TextBlock Text="{Binding Desc}" FontSize="10.5"
+                                                 Foreground="#1f1f1f" LineHeight="14"
+                                                 TextAlignment="Center" TextWrapping="Wrap"
+                                                 MaxLines="3"
+                                                 Margin="0,4,0,0" />
+                                    </StackPanel>
+                                  </DockPanel>
+                                </Grid>
                               </Border>
                               </StackPanel>
                             </StackPanel>
@@ -292,10 +316,10 @@
 
                       <Panel Height="14">
                         <Border Width="1" Height="14" Background="#7a7a7a" HorizontalAlignment="Center" />
-                        <Border Width="270" Height="4" CornerRadius="2" Background="#1a7fc4"
+                        <Border Width="200" Height="4" CornerRadius="2" Background="#1a7fc4"
                                 VerticalAlignment="Center" IsVisible="{Binding DropAtEnd}" />
                       </Panel>
-                      <Panel Width="270" Height="64">
+                      <Panel Width="200" Height="64">
                         <Rectangle Fill="White" Stroke="#9a9a9a" StrokeThickness="1.5"
                                    StrokeDashArray="4,3" IsVisible="{Binding !DropAtEnd}" />
                         <Rectangle Fill="#eef7fd" Stroke="#1a7fc4" StrokeThickness="1.8"
@@ -304,13 +328,6 @@
                                    TextAlignment="Center" VerticalAlignment="Center"
                                    TextWrapping="Wrap" Margin="4" />
                       </Panel>
-                      <Border Width="1" Height="14" Background="#7a7a7a" HorizontalAlignment="Center" />
-                      <Border Width="270" Height="30" Background="#b8483c" CornerRadius="2" Padding="11,0">
-                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                          <ctl:TecIcon Key="ui-cap-end" />
-                          <TextBlock Text="结束" Foreground="White" FontSize="12.5" />
-                        </StackPanel>
-                      </Border>
                     </StackPanel>
                   </StackPanel>
                 </Border>
@@ -321,176 +338,184 @@
       </Panel>
     </DockPanel>
 
-    <!-- ══ 右：步骤属性 + 应用配方库 + 通道状态 ══ -->
-    <!-- 与台面属性同一套观感：白底面板 + 浅紫内容块 -->
-    <Border Grid.Column="2" Background="{StaticResource ThemeGap}"
-            BorderBrush="#d2d2d2" BorderThickness="1,0,0,0">
+    <!-- ══ 右：属性栏 ══
+         不照原型那块 #ececec 通栏，按台面页那一套：栏本身不铺底色、跟画布之间
+         不画分界线，底色下沉到块上；「当前选中的那一步」左边一条 6px 粗色条 -->
+    <Border Grid.Column="2">
       <ScrollViewer>
-        <Border Background="{StaticResource ThemeFill}" Padding="18,16,18,20">
-        <StackPanel Spacing="0">
-          <!-- 标题恒为「步骤属性」；选没选中步骤只改下面的内容 -->
-          <TextBlock Text="步骤属性" Classes="h2big" />
-          <TextBlock Classes="intro" IsVisible="{Binding NoSelection}"
-                     Text="点选画布中的步骤，在此查看与编辑其参数。" />
+        <StackPanel>
 
-          <!-- prop-head：模块色块 + 指令名 + 它属于哪个通道 -->
-          <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,4,0,12"
-                      HorizontalAlignment="Center" IsVisible="{Binding HasSelection}">
-            <Border Width="12" Height="12" CornerRadius="3" VerticalAlignment="Center"
-                    Background="{Binding StepColor}" />
-            <TextBlock Text="{Binding StepName}" FontSize="21" FontWeight="Light"
-                       Foreground="#333333" VerticalAlignment="Center" />
-            <TextBlock Text="{Binding StepChannel}" FontSize="12" Foreground="#8d8d8d"
-                       VerticalAlignment="Center" />
-          </StackPanel>
+          <!-- ═ 配方块：常驻。应用配方库、通道状态讲的是这条泳道自己的事，
+               跟「当前点中了哪一步」无关（台面页的台面块就是这么摆的）═ -->
+          <Border Padding="18,16,18,20" Background="{StaticResource PropsBg}">
+            <StackPanel>
+              <TextBlock Text="配方属性" FontSize="24" FontWeight="Light" Foreground="#333333"
+                         HorizontalAlignment="Center" Margin="0,0,0,8" />
+              <TextBlock Classes="intro"
+                         Text="从左侧步骤库拖进画布组成配方。点选画布中的步骤，在此查看与编辑其参数。" />
 
-          <TextBlock IsVisible="{Binding NoParams}" Text="该指令无需设置参数。"
-                     FontSize="11.5" Foreground="#8d8d8d" Margin="0,2,0,8" />
-
-          <StackPanel IsVisible="{Binding HasSelection}">
-            <v:SchemaFormView DataContext="{Binding Form}" />
-          </StackPanel>
-
-          <!-- 加料步骤连配料表（CH-4.1）：选一行建立引用，体积从此跟随计算 -->
-          <StackPanel IsVisible="{Binding IsDoseStep}" Margin="0,10,0,0" Spacing="5">
-            <Grid ColumnDefinitions="62,*">
-              <TextBlock Grid.Column="0" Text="连配料表" FontSize="11.5" Foreground="#5a5a5a"
-                         VerticalAlignment="Center" />
-              <ComboBox Grid.Column="1" FontSize="11.5" Height="26" MinHeight="26"
-                        HorizontalAlignment="Stretch"
-                        ItemsSource="{Binding ChargeRowNames}"
-                        SelectedItem="{Binding ChargeRowPick, Mode=TwoWay}"
-                        PlaceholderText="选一行建立引用"
-                        ToolTip.Tip="选中配料表里的一行就建立引用：加料体积改为跟随配料表的计算（改组分名也不断）。手改体积即脱离跟随，校验条会提示差多少" />
-            </Grid>
-            <TextBlock Text="{Binding ChargeLinkNote}" Foreground="{Binding ChargeLinkColorHex}"
-                       FontSize="11" TextWrapping="Wrap" />
-          </StackPanel>
-
-          <!-- 执行选项：两个真会影响运行的开关 -->
-          <StackPanel IsVisible="{Binding HasSelection}" Margin="0,14,0,0" Spacing="6">
-            <Button Classes="secbtn" Command="{Binding ExecSection.Toggle}">
-              <StackPanel Orientation="Horizontal" Spacing="8">
-                <Border Classes="exp3s" Classes.up="{Binding ExecSection.Open}">
-                  <ctl:TecIcon Key="ui-chev-down" Tint="#555555" Size="10" />
-                </Border>
-                <TextBlock Text="执行选项" Classes="acc" VerticalAlignment="Center" />
-              </StackPanel>
-            </Button>
-            <StackPanel IsVisible="{Binding ExecSection.Open}" Spacing="6">
-              <CheckBox Classes="chk2" Content="失败时暂停并报警"
-                        IsChecked="{Binding PauseOnFault, Mode=TwoWay}" />
-              <CheckBox Classes="chk2" Content="跳过该步骤（不执行、不计入排期）"
-                        IsChecked="{Binding StepSkipped, Mode=TwoWay}" />
-              <!-- 工艺阶段：设备不知道这一段在结晶还是在蒸馏，只有人知道。
-                   标了就进记录、进报告，报告里注明是操作人标的 -->
-              <Grid ColumnDefinitions="62,*" Margin="0,4,0,0">
-                <TextBlock Grid.Column="0" Text="工艺阶段" FontSize="11.5" Foreground="#5a5a5a"
-                           VerticalAlignment="Center" />
-                <ComboBox Grid.Column="1" FontSize="11.5" Height="26" MinHeight="26"
-                          HorizontalAlignment="Stretch"
-                          ItemsSource="{Binding PhaseOptions}"
-                          SelectedItem="{Binding StepPhase, Mode=TwoWay}"
-                          ToolTip.Tip="事后看 Tr−Tj 曲线时，靠它才知道某一段在做什么。由操作人标注，不是设备回报" />
-              </Grid>
-            </StackPanel>
-          </StackPanel>
-
-          <Border Height="1" Background="#d5d5d5" Margin="0,14" />
-          <Button Classes="secbtn" Command="{Binding LibSection.Toggle}">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <Border Classes="exp3s" Classes.up="{Binding LibSection.Open}">
-                <ctl:TecIcon Key="ui-chev-down" Tint="#555555" Size="10" />
-              </Border>
-              <TextBlock Text="应用配方库" Classes="acc" VerticalAlignment="Center" />
-            </StackPanel>
-          </Button>
-          <StackPanel IsVisible="{Binding LibSection.Open}">
-          <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,6,0,0">
-            <TextBlock Text="配方" Classes="lbl" Width="40" />
-            <ComboBox Classes="sel" Width="220" ItemsSource="{Binding Library}"
-                      SelectedItem="{Binding LibPick, Mode=TwoWay}">
-              <ComboBox.ItemTemplate>
-                <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
-              </ComboBox.ItemTemplate>
-            </ComboBox>
-          </StackPanel>
-          <!-- 圆圈图标 + 居中，与台面属性底部那排动作按钮同款 -->
-          <StackPanel Orientation="Horizontal" Spacing="14" Margin="0,12,0,8"
-                      HorizontalAlignment="Center">
-            <Button Classes="tbtn foot" ToolTip.Tip="应用到当前通道（替换全部步骤）"
-                    Command="{Binding ApplyLib}">
-              <ctl:TecIcon Key="ui-snav-import" />
-            </Button>
-            <Button Classes="tbtn foot" ToolTip.Tip="把当前通道的配方存入配方库"
-                    Command="{Binding SaveToLib}">
-              <ctl:TecIcon Key="ui-foot-save" />
-            </Button>
-          </StackPanel>
-          <!-- 说明左对齐（四行居中的话每行起点都不一样，眼睛要重新找行首），
-               跳转单独占一行：从前它接在句号后面，跟正文挤成一句读，
-               看着像话没说完 -->
-          <TextBlock FontSize="11.5" Foreground="#5a5a5a" LineHeight="18"
-                     TextWrapping="Wrap" Margin="0,2,0,0"
-                     Text="应用会替换当前通道的全部步骤；库里那条捎着配料表的，配料表也一起替换（引用才不断）。存入时配料表随配方入库，实投与批号不带——那是跟某一炉走的。" />
-          <Button Classes="linkbtn" Content="管理配方库 →" Command="{Binding ManageLibrary}"
-                  HorizontalAlignment="Right" Margin="0,4,0,0" />
-          </StackPanel>
-
-          <Border Height="1" Background="#d5d5d5" Margin="0,10" />
-          <Button Classes="secbtn" Command="{Binding StatesSection.Toggle}">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <Border Classes="exp3s" Classes.up="{Binding StatesSection.Open}">
-                <ctl:TecIcon Key="ui-chev-down" Tint="#555555" Size="10" />
-              </Border>
-              <TextBlock Text="通道状态" Classes="acc" VerticalAlignment="Center" />
-            </StackPanel>
-          </Button>
-          <Border Background="White" BorderBrush="#dcdcdc" BorderThickness="1" CornerRadius="3"
-                  IsVisible="{Binding StatesSection.Open}">
-            <ItemsControl ItemsSource="{Binding ChannelStates}">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                  <Border BorderBrush="#eeeeee" BorderThickness="0,0,0,1" Padding="10,7">
-                    <Grid ColumnDefinitions="Auto,Auto,*,Auto">
-                      <Border Grid.Column="0" Width="9" Height="9" CornerRadius="5" Margin="0,0,8,0"
-                              VerticalAlignment="Center"
-                              Background="{Binding Lit, Converter={x:Static v:Converters.LedBrush}}"
-                              BorderBrush="#a5a5a5" BorderThickness="1" />
-                      <Border Grid.Column="1" Width="11" Height="11" CornerRadius="3" Margin="0,0,8,0"
-                              VerticalAlignment="Center" Background="{Binding ColorHex}" />
-                      <!-- 两个 TextBlock 而不是一个带 Run 的：Run 上挂 StringFormat 会和
-                           TextBlock 的 inlines 变更互相触发，转起来收不住（栈溢出） -->
-                      <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding Name}" FontSize="12" Foreground="#2b2b2b"
-                                   TextTrimming="CharacterEllipsis" />
-                        <TextBlock Text="{Binding ChannelSuffix}" FontSize="12" Foreground="#9a9a9a" />
-                      </StackPanel>
-                      <TextBlock Grid.Column="3" Text="{Binding State}" FontSize="11"
-                                 Foreground="#8d8d8d" VerticalAlignment="Center" Margin="8,0,0,0" />
-                    </Grid>
+              <Border Height="1" Background="#d5d5d5" Margin="0,10,0,4" />
+              <Button Classes="secbtn" Command="{Binding LibSection.Toggle}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <Border Classes="exp3s" Classes.up="{Binding LibSection.Open}">
+                    <ctl:TecIcon Key="ui-chev-down" Tint="#555555" Size="10" />
                   </Border>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
+                  <TextBlock Text="应用配方库" Classes="acc" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+              <StackPanel IsVisible="{Binding LibSection.Open}">
+                <Grid ColumnDefinitions="96,*,40" Margin="0,6,0,0">
+                  <TextBlock Grid.Column="0" Text="配方" FontSize="12" Foreground="#3d3d3d"
+                             VerticalAlignment="Center" Margin="0,0,10,0" />
+                  <ComboBox Grid.Column="1" Classes="sel" HorizontalAlignment="Stretch"
+                            ItemsSource="{Binding Library}"
+                            SelectedItem="{Binding LibPick, Mode=TwoWay}">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                </Grid>
+                <!-- 圆圈图标 + 居中，与台面属性底部那排动作按钮同款 -->
+                <StackPanel Orientation="Horizontal" Spacing="14" Margin="0,12,0,8"
+                            HorizontalAlignment="Center">
+                  <Button Classes="tbtn foot" ToolTip.Tip="应用到当前通道（替换全部步骤）"
+                          Command="{Binding ApplyLib}">
+                    <ctl:TecIcon Key="ui-snav-import" />
+                  </Button>
+                  <Button Classes="tbtn foot" ToolTip.Tip="把当前通道的配方存入配方库"
+                          Command="{Binding SaveToLib}">
+                    <ctl:TecIcon Key="ui-foot-save" />
+                  </Button>
+                </StackPanel>
+                <TextBlock FontSize="11.5" Foreground="#5a5a5a" LineHeight="18"
+                           TextWrapping="Wrap" Margin="0,2,0,0"
+                           Text="应用会替换当前通道的全部步骤；库里那条捎着配料表的，配料表也一起替换（引用才不断）。存入时配料表随配方入库，实投与批号不带——那是跟某一炉走的。" />
+                <Button Classes="linkbtn" Content="管理配方库 →" Command="{Binding ManageLibrary}"
+                        HorizontalAlignment="Right" Margin="0,4,0,0" />
+              </StackPanel>
+
+              <Border Height="1" Background="#d5d5d5" Margin="0,10,0,4" />
+              <Button Classes="secbtn" Command="{Binding StatesSection.Toggle}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <Border Classes="exp3s" Classes.up="{Binding StatesSection.Open}">
+                    <ctl:TecIcon Key="ui-chev-down" Tint="#555555" Size="10" />
+                  </Border>
+                  <TextBlock Text="通道状态" Classes="acc" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+              <Border Background="White" BorderBrush="#dcdcdc" BorderThickness="1" CornerRadius="3"
+                      IsVisible="{Binding StatesSection.Open}">
+                <ItemsControl ItemsSource="{Binding ChannelStates}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Border BorderBrush="#eeeeee" BorderThickness="0,0,0,1" Padding="10,0" MinHeight="32">
+                        <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+                          <Border Grid.Column="0" Width="9" Height="9" CornerRadius="5" Margin="0,0,8,0"
+                                  VerticalAlignment="Center"
+                                  Background="{Binding Lit, Converter={x:Static v:Converters.LedBrush}}"
+                                  BorderBrush="#a5a5a5" BorderThickness="1" />
+                          <Border Grid.Column="1" Width="11" Height="11" CornerRadius="3" Margin="0,0,8,0"
+                                  VerticalAlignment="Center" Background="{Binding ColorHex}" />
+                          <!-- 两个 TextBlock 而不是一个带 Run 的：Run 上挂 StringFormat 会和
+                               TextBlock 的 inlines 变更互相触发，转起来收不住（栈溢出） -->
+                          <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Name}" FontSize="12" Foreground="#2b2b2b"
+                                       TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{Binding ChannelSuffix}" FontSize="12" Foreground="#9a9a9a" />
+                          </StackPanel>
+                          <TextBlock Grid.Column="3" Text="{Binding State}" FontSize="11"
+                                     Foreground="#8d8d8d" VerticalAlignment="Center" Margin="8,0,0,0" />
+                        </Grid>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </Border>
+            </StackPanel>
+          </Border>
+
+          <!-- 块与块之间的缝：栏本身没底色，这里空着就是画布的白 -->
+          <Border Height="9" IsVisible="{Binding HasSelection}" />
+
+          <!-- ═ 步骤块：选中哪一步显示哪一步，左边一条 6px 粗色条 ═ -->
+          <Border Padding="18,16,18,20" IsVisible="{Binding HasSelection}"
+                  Background="{StaticResource PropsBg}"
+                  BorderBrush="{StaticResource SelBd}" BorderThickness="6,0,0,0">
+            <StackPanel>
+              <!-- 指令名本身就是这一块的标题，上面不再压一行「步骤属性」 -->
+              <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,0,0,12"
+                          HorizontalAlignment="Center">
+                <Border Width="12" Height="12" CornerRadius="3" VerticalAlignment="Center"
+                        Background="{Binding StepColor}" />
+                <TextBlock Text="{Binding StepName}" FontSize="21" FontWeight="Light"
+                           Foreground="#333333" VerticalAlignment="Center" />
+                <TextBlock Text="{Binding StepChannel}" FontSize="12" Foreground="#8d8d8d"
+                           VerticalAlignment="Center" />
+              </StackPanel>
+
+              <TextBlock IsVisible="{Binding NoParams}" Text="该指令无需设置参数。"
+                         FontSize="11.5" Foreground="#8d8d8d" Margin="0,2,0,8" />
+
+              <v:SchemaFormView DataContext="{Binding Form}" />
+
+              <!-- 加料步骤连配料表（CH-4.1）：选一行建立引用，体积从此跟随计算 -->
+              <StackPanel IsVisible="{Binding IsDoseStep}" Margin="0,10,0,0" Spacing="5">
+                <Grid ColumnDefinitions="96,*,40">
+                  <TextBlock Grid.Column="0" Text="连配料表" FontSize="12" Foreground="#3d3d3d"
+                             VerticalAlignment="Center" Margin="0,0,10,0" />
+                  <ComboBox Grid.Column="1" Classes="sel" HorizontalAlignment="Stretch"
+                            ItemsSource="{Binding ChargeRowNames}"
+                            SelectedItem="{Binding ChargeRowPick, Mode=TwoWay}"
+                            PlaceholderText="选一行建立引用"
+                            ToolTip.Tip="选中配料表里的一行就建立引用：加料体积改为跟随配料表的计算（改组分名也不断）。手改体积即脱离跟随，校验条会提示差多少" />
+                </Grid>
+                <TextBlock Text="{Binding ChargeLinkNote}" Foreground="{Binding ChargeLinkColorHex}"
+                           FontSize="11" TextWrapping="Wrap" />
+              </StackPanel>
+
+              <!-- 执行选项：两个真会影响运行的开关 -->
+              <StackPanel Margin="0,14,0,0" Spacing="6">
+                <Button Classes="secbtn" Command="{Binding ExecSection.Toggle}">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Border Classes="exp3s" Classes.up="{Binding ExecSection.Open}">
+                      <ctl:TecIcon Key="ui-chev-down" Tint="#555555" Size="10" />
+                    </Border>
+                    <TextBlock Text="执行选项" Classes="acc" VerticalAlignment="Center" />
+                  </StackPanel>
+                </Button>
+                <StackPanel IsVisible="{Binding ExecSection.Open}" Spacing="6">
+                  <CheckBox Classes="chk2" Content="失败时暂停并报警"
+                            IsChecked="{Binding PauseOnFault, Mode=TwoWay}" />
+                  <CheckBox Classes="chk2" Content="跳过该步骤（不执行、不计入排期）"
+                            IsChecked="{Binding StepSkipped, Mode=TwoWay}" />
+                  <!-- 工艺阶段：设备不知道这一段在结晶还是在蒸馏，只有人知道。
+                       标了就进记录、进报告，报告里注明是操作人标的 -->
+                  <Grid ColumnDefinitions="96,*,40" Margin="0,4,0,0">
+                    <TextBlock Grid.Column="0" Text="工艺阶段" FontSize="12" Foreground="#3d3d3d"
+                               VerticalAlignment="Center" Margin="0,0,10,0" />
+                    <ComboBox Grid.Column="1" Classes="sel" HorizontalAlignment="Stretch"
+                              ItemsSource="{Binding PhaseOptions}"
+                              SelectedItem="{Binding StepPhase, Mode=TwoWay}"
+                              ToolTip.Tip="事后看 Tr−Tj 曲线时，靠它才知道某一段在做什么。由操作人标注，不是设备回报" />
+                  </Grid>
+                </StackPanel>
+              </StackPanel>
+            </StackPanel>
           </Border>
         </StackPanel>
-        </Border>
       </ScrollViewer>
     </Border>
+
     <!-- 跟手的幽灵卡。盖在三列之上、不吃事件，所以底下照样能命中泳道 -->
     <Canvas Grid.Column="0" Grid.ColumnSpan="3" IsHitTestVisible="False">
       <Border IsVisible="{Binding Dragging}"
               Canvas.Left="{Binding DragX}" Canvas.Top="{Binding DragY}"
-              Width="216" Background="White" BorderBrush="#1a7fc4" BorderThickness="1.5"
-              CornerRadius="4" Padding="8,6" Opacity="0.94"
+              Width="200" Background="#6ed3f0" BorderBrush="#1a7fc4" BorderThickness="1.5"
+              CornerRadius="2" Padding="8,6" Opacity="0.94"
               BoxShadow="0 5 16 0 #33000000">
         <StackPanel Orientation="Horizontal" Spacing="9">
-          <Border Width="30" Height="30" CornerRadius="4" Background="{Binding DragColor}">
-            <ctl:TecIcon Key="{Binding DragIcon}" White="True" Size="19"
-                         HorizontalAlignment="Center" VerticalAlignment="Center" />
-          </Border>
-          <TextBlock Text="{Binding DragTitle}" FontSize="12" Foreground="#22303a"
+          <ctl:TecIcon Key="{Binding DragIcon}" Size="24" VerticalAlignment="Center" />
+          <TextBlock Text="{Binding DragTitle}" FontSize="11.5" Foreground="#1f1f1f"
                      VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
         </StackPanel>
       </Border>
@@ -498,6 +523,16 @@
   </Grid>
 
   <UserControl.Styles>
+    <!-- 原型 .dev：96 高的一块 #efefef，悬停 #e6e6e6 -->
+    <Style Selector="Border.dev">
+      <Setter Property="Background" Value="#efefef" />
+      <Setter Property="CornerRadius" Value="2" />
+      <Setter Property="ClipToBounds" Value="True" />
+    </Style>
+    <Style Selector="Border.dev:pointerover">
+      <Setter Property="Background" Value="#e6e6e6" />
+    </Style>
+
     <Style Selector="Button.cmd">
       <Setter Property="Height" Value="84" />
       <Setter Property="Background" Value="Transparent" />
@@ -512,19 +547,61 @@
       <Setter Property="Background" Value="#e8f4fb" />
     </Style>
 
+    <!-- 原型 .step：200×118 的青块 -->
+    <Style Selector="Border.step">
+      <Setter Property="MinHeight" Value="118" />
+      <Setter Property="Background" Value="#6ed3f0" />
+      <Setter Property="CornerRadius" Value="2" />
+      <Setter Property="Cursor" Value="Hand" />
+      <!-- 描边常在、平时是透明的：选中时只换颜色，卡片内宽不变，
+           文字不会因为选中而重新折行 -->
+      <Setter Property="BorderThickness" Value="2" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="Border.step:pointerover">
+      <Setter Property="Background" Value="#82daf3" />
+    </Style>
+
+    <!-- 泳道头里的输入：原型 .hsel，22 高、白底、#8f9ba6 描边 -->
+    <Style Selector="TextBox.hin">
+      <Setter Property="Height" Value="22" />
+      <Setter Property="MinHeight" Value="22" />
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Padding" Value="5,1" />
+      <Setter Property="BorderBrush" Value="#8f9ba6" />
+      <Setter Property="CornerRadius" Value="2" />
+      <Setter Property="Background" Value="White" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="ComboBox.hsel">
+      <Setter Property="Height" Value="22" />
+      <Setter Property="MinHeight" Value="22" />
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Padding" Value="5,0" />
+      <Setter Property="BorderBrush" Value="#8f9ba6" />
+      <Setter Property="CornerRadius" Value="2" />
+      <Setter Property="Background" Value="White" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <!-- 原型 .hbtn：26px 圆钮，底色比泳道头深一档 -->
     <Style Selector="Button.lhbtn">
       <Setter Property="Width" Value="26" />
       <Setter Property="Height" Value="26" />
       <Setter Property="CornerRadius" Value="13" />
-      <Setter Property="Background" Value="White" />
-      <Setter Property="BorderBrush" Value="#8a6a86" />
-      <Setter Property="BorderThickness" Value="1.5" />
+      <Setter Property="Background" Value="#c5d2df" />
+      <Setter Property="BorderBrush" Value="#3a3a3a" />
+      <Setter Property="BorderThickness" Value="1.6" />
       <Setter Property="Padding" Value="0" />
       <Setter Property="HorizontalContentAlignment" Value="Center" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.lhbtn.sq">
+      <Setter Property="CornerRadius" Value="3" />
     </Style>
     <Style Selector="Button.lhbtn:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#e8f2fb" />
+      <Setter Property="Background" Value="#dbe6f1" />
       <Setter Property="BorderBrush" Value="#1a7fc4" />
     </Style>
 
@@ -539,13 +616,12 @@
       <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
     <Style Selector="Button.trash:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#fdecea" />
+      <Setter Property="Background" Value="#c8ecf8" />
     </Style>
 
     <Style Selector="Border.laneSel">
       <Setter Property="BorderBrush" Value="#1a7fc4" />
-      <Setter Property="Background" Value="White" />
-      <Setter Property="BoxShadow" Value="0 0 0 3 #381a7fc4, 0 2 10 0 #12000000" />
+      <Setter Property="BoxShadow" Value="0 0 0 3 #381a7fc4" />
     </Style>
     <!-- 校验条里的一条：整行可点，跳到出问题的那一步 -->
     <Style Selector="Button.issue">
@@ -565,13 +641,13 @@
       <Setter Property="Opacity" Value="1" />
     </Style>
 
-    <!-- 圆圈箭头：展开朝上、收起朝下 -->
+    <!-- 圆圈箭头：展开朝上、收起朝下。22px 是原型 .dev .exp 的尺寸 -->
     <Style Selector="Border.exp3">
-      <Setter Property="Width" Value="20" />
-      <Setter Property="Height" Value="20" />
-      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="Width" Value="22" />
+      <Setter Property="Height" Value="22" />
+      <Setter Property="CornerRadius" Value="11" />
       <Setter Property="BorderBrush" Value="#6b6b6b" />
-      <Setter Property="BorderThickness" Value="1.5" />
+      <Setter Property="BorderThickness" Value="1.6" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style Selector="Border.exp3s">
@@ -634,7 +710,7 @@
     </Style>
     <Style Selector="Border.stepSel">
       <Setter Property="BorderBrush" Value="#1a7fc4" />
-      <Setter Property="BoxShadow" Value="0 0 0 2 #1a7fc4, 0 0 0 5 #381a7fc4" />
+      <Setter Property="BoxShadow" Value="0 0 0 3 #381a7fc4" />
     </Style>
   </UserControl.Styles>
 </UserControl>
