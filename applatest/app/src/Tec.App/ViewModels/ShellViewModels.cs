@@ -780,8 +780,6 @@ public sealed class CompoundsViewModel : ViewModelBase
     public CompoundsViewModel(Workspace ws)
     {
         _ws = ws;
-        foreach (var c in new[] { "全部", "有机酸", "药物", "氨基酸", "无机盐", "糖类" }) Categories.Add(c);
-
         AddNew = new RelayCommand(DoAddNew);
         Delete = new RelayCommand(DoDelete);
         Import = new RelayCommand(() => _ = DoImportAsync());
@@ -840,6 +838,7 @@ public sealed class CompoundsViewModel : ViewModelBase
             return true;
         }
         Audit(c, _ws.Store.SaveCompound(c));
+        RebuildCategories();               // 人在详情里敲了个新类别，下拉得跟上
         return true;
     }
 
@@ -1009,10 +1008,29 @@ public sealed class CompoundsViewModel : ViewModelBase
         var keep = _selected?.Cas;
         _all.Clear();
         foreach (var c in _ws.Compounds) _all.Add(new CompoundViewModel(c, SaveRow));
+        RebuildCategories();
         Apply();
         _selected = null;
         Selected = Rows.FirstOrDefault(r => r.Cas == keep) ?? Rows.FirstOrDefault();
         Raise(nameof(IsEmpty));
+    }
+
+    /// <summary>
+    /// 类别下拉跟着库里实际有的走：导入一批「溶剂」，筛选里就得有「溶剂」——
+    /// 写死清单的话，人自己导的类别永远筛不出来。顺序按库里首次出现的先后。
+    /// 没变就不动集合：重建会把 ComboBox 的选中项打回去（库名下拉上踩过同款）。
+    /// 正在选的类别没了（那一类删光了）就退回「全部」，不留一个筛出空表的幽灵项。
+    /// </summary>
+    private void RebuildCategories()
+    {
+        var want = new List<string> { "全部" };
+        foreach (var c in _all)
+            if (c.Category.Length > 0 && !want.Contains(c.Category)) want.Add(c.Category);
+        if (want.SequenceEqual(Categories)) return;
+        Categories.Clear();
+        foreach (var c in want) Categories.Add(c);
+        if (!want.Contains(_category)) Category = "全部";
+        else Raise(nameof(Category));      // 集合重建后 ComboBox 得重挂选中项
     }
 
     private void Apply()

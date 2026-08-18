@@ -259,6 +259,48 @@ public class CompoundCsvTests
         Assert.Equal("2,4-二硝基苯甲醚", c.Name);
         Assert.Equal(198.13, c.Mw);
     }
+
+    [Fact]
+    public void 自带的常用溶剂酸碱表一行不少地读进来()
+    {
+        // docs/常用溶剂酸碱.csv 是发给用户导入的成品数据（约 60 条手册值），
+        // 跟模板一样必须有回归：一个问题都不能报——报了问题意味着某行某格被
+        // 悄悄留空，用户导完只会看到「61 条导入成功」，不会去数哪格丢了
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "docs", "常用溶剂酸碱.csv")))
+            dir = dir.Parent;
+        Assert.NotNull(dir);
+
+        var r = CompoundCsv.Read(File.ReadAllText(
+            Path.Combine(dir!.FullName, "docs", "常用溶剂酸碱.csv")));
+
+        Assert.Empty(r.Problems);
+        Assert.Empty(r.IgnoredColumns);
+        Assert.Equal(61, r.Items.Count);
+
+        // 每一条都有真 CAS、有相态；液体必有密度（配料表把质量换体积就靠它）
+        Assert.All(r.Items, c => Assert.True(c.HasCas, c.Name));
+        Assert.All(r.Items, c => Assert.True(c.Phase is "固" or "液", c.Name));
+        Assert.All(r.Items.Where(c => c.Phase == "液"), c => Assert.NotNull(c.Density));
+
+        // 不跟程序自带的 10 条种子撞 CAS：撞了的话导入会把种子那条覆盖掉
+        var seed = new[] { "65-85-0", "69-72-7", "77-92-9", "103-90-2", "15687-27-1",
+                           "56-40-6", "56-86-0", "7783-20-2", "7447-40-7", "57-50-1" };
+        Assert.Empty(r.Items.Where(c => seed.Contains(c.Cas)));
+
+        // 抽查几个手册值进来没走样
+        var ac2o = r.Items.Single(c => c.Name == "乙酸酐");
+        Assert.Equal(1.082, ac2o.Density);
+        Assert.Equal(139.8, ac2o.Bp);
+        var naoh = r.Items.Single(c => c.Name == "氢氧化钠");
+        Assert.Equal("固", naoh.Phase);
+        Assert.Equal(318, naoh.Mp);
+        var hcl = r.Items.Single(c => c.Cas == "7647-01-0");
+        Assert.Equal(37, hcl.Purity);                       // 溶液条目按市售浓品填纯度
+        // 名字里带 ASCII 逗号的行靠引号活着——引号丢了整行错位，上面 Problems 会先喊
+        Assert.Contains(r.Items, c => c.Name == "DBU（1,8-二氮杂二环[5.4.0]十一碳-7-烯）");
+        Assert.Contains(r.Items, c => c.Name == "N,N-二甲基甲酰胺");
+    }
 }
 
 public class CompoundFieldTests : IDisposable
