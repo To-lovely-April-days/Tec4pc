@@ -295,18 +295,34 @@ public static class Stoichiometry
     private static ChargeLine Start(ChargeItem item, Dictionary<string, Compound> lib)
     {
         var refc = item.Cas.Length > 0 && lib.TryGetValue(item.Cas, out var c) ? c : null;
+        // 盖过章的行是**自足**的：物性在连库那一刻已经拷在行上，空的字段就是
+        // 「快照时库里也没有」，不再回头看活库。不然日后有人往库里补一条密度，
+        // 这行又开始跟着库漂——快照就白盖了。要吃到库里的新值，走「刷新库值」。
+        var frozen = item.SnapshotAt is not null;
         var line = new ChargeLine
         {
             Item = item,
             Reference = refc,
             IsLimiting = item.Role == ChargeRole.Limiting,
             // 行上写了的赢：手里这瓶 65 % 的硝酸，不能因为库里那条写着 68 % 就按 68 % 算
-            MwUsed = item.Mw ?? refc?.Mw,
-            DensityUsed = item.Density ?? refc?.Density,
-            PurityUsed = item.Purity ?? refc?.Purity
+            MwUsed = item.Mw ?? (frozen ? null : refc?.Mw),
+            DensityUsed = item.Density ?? (frozen ? null : refc?.Density),
+            PurityUsed = item.Purity ?? (frozen ? null : refc?.Purity)
         };
         if (item.Cas.Length > 0 && refc is null)
             line.Missing.Add($"化合物库里找不到 {item.Cas}");
+
+        // 没盖章的连库行走到回退这条路（行上没有、从库里现取）的每一个数都要点名——
+        // 现取的值跟着库漂，历史记录里出现这种行就说明它早于快照机制，复核的人必须知道
+        if (!frozen)
+        {
+            if (item.Mw is null && refc?.Mw is not null)
+                line.Assumptions.Add("摩尔质量取自化合物库当前值（此行未快照）");
+            if (item.Density is null && refc?.Density is not null)
+                line.Assumptions.Add("密度取自化合物库当前值（此行未快照）");
+            if (item.Purity is null && refc?.Purity is not null)
+                line.Assumptions.Add("纯度取自化合物库当前值（此行未快照）");
+        }
         return line;
     }
 

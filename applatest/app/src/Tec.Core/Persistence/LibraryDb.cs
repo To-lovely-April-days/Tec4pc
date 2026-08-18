@@ -209,6 +209,25 @@ on conflict(id) do update set
 
     public int CompoundCount => Count("compound");
 
+    /// <summary>
+    /// 化合物库版本号：每一次写入（改一条、删一条、整批对齐各算一次）+1。
+    /// 配料行做物性快照时把它盖在行上（CH-D1），复核的人能指认「按哪一版库算的」。
+    /// 从没写过就是 0。
+    /// </summary>
+    public int CompoundVersion
+        => int.TryParse(Meta("compound_version"), NumberStyles.Integer,
+                        CultureInfo.InvariantCulture, out var v) ? v : 0;
+
+    /// <summary>版本 +1。必须跟那次写入同一个事务，写成了版本才算数。</summary>
+    private void BumpCompoundVersion(SqliteTransaction? tx)
+    {
+        using var cmd = _cn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = @"insert into meta(k,v) values('compound_version','1')
+                            on conflict(k) do update set v=cast(cast(v as integer)+1 as text)";
+        cmd.ExecuteNonQuery();
+    }
+
     public List<Compound> LoadCompounds()
     {
         var list = new List<Compound>();
@@ -253,6 +272,7 @@ on conflict(id) do update set
             using var tx = _cn.BeginTransaction();
             for (var i = 0; i < list.Count; i++) Upsert(tx, list[i], i);
             DeleteMissing(tx, "compound", "cas", list.Select(c => c.Cas));
+            BumpCompoundVersion(tx);
             tx.Commit();
         }
     }
@@ -269,7 +289,10 @@ on conflict(id) do update set
             cmd.CommandText = "select ord from compound where cas=$cas";
             cmd.Parameters.AddWithValue("$cas", c.Cas);
             var ord = cmd.ExecuteScalar() is long l ? (int)l : NextOrd();
-            Upsert(null, c, ord);
+            using var tx = _cn.BeginTransaction();
+            Upsert(tx, c, ord);
+            BumpCompoundVersion(tx);
+            tx.Commit();
         }
     }
 
@@ -277,10 +300,14 @@ on conflict(id) do update set
     {
         lock (_gate)
         {
+            using var tx = _cn.BeginTransaction();
             using var cmd = _cn.CreateCommand();
+            cmd.Transaction = tx;
             cmd.CommandText = "delete from compound where cas=$cas";
             cmd.Parameters.AddWithValue("$cas", cas);
-            cmd.ExecuteNonQuery();
+            // 没删着东西就不涨版本：版本号数的是「库真的变了几次」
+            if (cmd.ExecuteNonQuery() > 0) BumpCompoundVersion(tx);
+            tx.Commit();
         }
     }
 

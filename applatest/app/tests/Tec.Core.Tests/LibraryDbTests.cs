@@ -257,4 +257,38 @@ public sealed class LibraryDbTests : IDisposable
         Assert.Equal("1", db2.Meta("compounds_seeded"));
         Assert.Equal(LibraryDb.CurrentSchema.ToString(), db2.Meta("schema"));
     }
+
+    // ── 化合物库版本号（物性快照的凭据） ────────────────────────────
+
+    [Fact]
+    public void 库每写一次版本加一_整批对齐也只算一次()
+    {
+        using var db = Open();
+        Assert.Equal(0, db.CompoundVersion);         // 从没写过就是 0
+
+        db.SaveCompound(Benzoic());
+        Assert.Equal(1, db.CompoundVersion);
+
+        db.SaveCompounds(new[] { Benzoic() });       // 一批算一次，不按条数涨
+        Assert.Equal(2, db.CompoundVersion);
+
+        db.DeleteCompound("65-85-0");
+        Assert.Equal(3, db.CompoundVersion);
+    }
+
+    [Fact]
+    public void 没删着东西不涨版本()
+    {
+        using var db = Open();
+        db.DeleteCompound("999-99-9");
+        Assert.Equal(0, db.CompoundVersion);
+    }
+
+    [Fact]
+    public void 版本号重开库还在()
+    {
+        using (var db = Open()) db.SaveCompound(Benzoic());
+        using var db2 = Open();
+        Assert.Equal(1, db2.CompoundVersion);
+    }
 }

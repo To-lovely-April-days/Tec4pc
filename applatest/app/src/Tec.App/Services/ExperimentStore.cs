@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Tec.Core.Chemistry;
 using Tec.Core.Compounds;
 using Tec.Core.Persistence;
 using Tec.Core.Recipes;
@@ -130,6 +131,7 @@ public sealed class ExperimentStore
         doc.Bench.ApplyTo(_ws.Bench);
 
         var migrated = new List<string>();
+        var anyStamped = false;
 
         _ws.ChannelRecipes.Clear();
         _ws.LaneNames.Clear();
@@ -139,7 +141,22 @@ public sealed class ExperimentStore
             _ws.ChannelRecipes[lane.Channel] = lane.Recipe.ToModel(out var notes);
             _ws.LaneNames[lane.Channel] = lane.Name;
             // 老文件里没有配料表这一项，读回来是 null，就是「这一路还没配料」
-            if (lane.Charge is { } charge) _ws.ChannelCharges[lane.Channel] = charge.ToModel();
+            if (lane.Charge is { } charge)
+            {
+                var t = charge.ToModel();
+                _ws.ChannelCharges[lane.Channel] = t;
+                // 快照机制之前存的行没盖章，物性一直是打开时从库里现取的——
+                // 现在把现取的值落到行上、盖今天的章，从此不再跟着库漂。
+                // 这是行为变化，必须说一声，不能悄悄地把人的文件改了
+                var stamped = ChargeSnapshot.Migrate(t, _ws.Compounds.ToList(),
+                                                     CompoundVersion, DateTimeOffset.Now);
+                if (stamped.Count > 0)
+                {
+                    migrated.Add($"{lane.Name}·配料表 {stamped.Count} 行（{string.Join("、", stamped)}）"
+                                 + "的物性已按当前化合物库做了快照，之后改库不再影响这几行");
+                    anyStamped = true;
+                }
+            }
             foreach (var n in notes) migrated.Add($"{lane.Name}·{n}");
         }
 
@@ -159,6 +176,10 @@ public sealed class ExperimentStore
         // 但绝不会覆盖刚读进来的那几条——它只在缺的时候补
         await _ws.RebuildChannelsAsync();
         Dirty = false;                 // 同上：重建之后再抹
+
+        // 补了章的文件是**真的改了**：不标脏的话章只活在内存里，下次打开
+        // 又重盖一个新时刻——「快照」的时刻自己在漂，那就不叫快照了
+        if (anyStamped) MarkDirty();
 
         Remember(path, doc.Name);
         Changed?.Invoke(this, EventArgs.Empty);
@@ -363,6 +384,9 @@ public sealed class ExperimentStore
         }
         catch (Exception ex) { Console.WriteLine($"[warn] 化合物库读盘失败：{ex.Message}"); }
     }
+
+    /// <summary>化合物库版本号（每写一次 +1）。库开不起来时恒为 0——那时候本来也存不住。</summary>
+    public int CompoundVersion => Db?.CompoundVersion ?? 0;
 
     /// <summary>改一条化合物就写一条，不必把整张表重写。</summary>
     public void SaveCompound(Compound c)

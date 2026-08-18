@@ -380,6 +380,88 @@ public class ChargeReportTests
         Assert.DoesNotContain(sheets, s => s.Name == "配料表");
     }
 
+    // ── 物性快照（CH-D1）：改库改不动历史报告 ───────────────────────
+
+    /// <summary>盖过章的那张表——所有连库行的物性都拷在行上。</summary>
+    private static ChargeTable Stamped()
+    {
+        var t = Table();
+        var when = new DateTimeOffset(2026, 8, 17, 9, 0, 0, TimeSpan.FromHours(8));
+        Assert.Equal(3, ChargeSnapshot.Migrate(t, Lib, 5, when).Count);
+        return t;
+    }
+
+    [Fact]
+    public async Task 核心回归_归档之后改库报告里的数纹丝不动()
+    {
+        await using var h = await RunAsync(Stamped());
+
+        string VolumeOf(Compound[] lib)
+        {
+            var doc = ReportBuilder.Build(h.Engine.Record, h.Pipeline, h.Catalog, Meta(),
+                new ReportOptions { Trend = false, Library = lib });
+            // 硝酸那一行的「体积 mL」——密度被改的话最先漂的就是它
+            var cols = ChargeTableOf(doc).Columns.ToList();
+            var vol = cols.FindIndex(c => c.Name == "体积 mL");
+            return ChargeTableOf(doc).Rows.First(r => r[0] == "硝酸 65%")[vol];
+        }
+
+        var before = VolumeOf(Lib);
+
+        // 归档之后有人把库里硝酸的密度从 1.39 改成 1.50——历史报告不许跟着变
+        var edited = Lib.Select(c => new Compound
+        {
+            Cas = c.Cas, Name = c.Name, Mw = c.Mw,
+            Density = c.Cas == "7697-37-2" ? 1.50 : c.Density, Purity = c.Purity
+        }).ToArray();
+
+        Assert.Equal(before, VolumeOf(edited));
+        Assert.NotEqual("", before);               // 空对空的「不变」不算数
+    }
+
+    [Fact]
+    public async Task 盖过章的炉子报告不出早于快照那句话_表脚带上库版本()
+    {
+        await using var h = await RunAsync(Stamped());
+        var doc = Report(h);
+
+        Assert.DoesNotContain(doc.Blocks.OfType<NoticeBlock>(),
+                              n => n.Text.Contains("早于物性快照机制"));
+        Assert.Contains("化合物库第 5 版", ChargeTableOf(doc).Note);
+    }
+
+    [Fact]
+    public async Task 没盖章的老炉子报告把话挑明()
+    {
+        await using var h = await RunAsync(Table());   // 未盖章：快照机制之前的归档
+        var doc = Report(h);
+
+        var notice = Assert.Single(doc.Blocks.OfType<NoticeBlock>(),
+                                   n => n.Text.Contains("早于物性快照机制"));
+        Assert.Contains("CH1", notice.Text);
+        // 数照算——不能让老归档全变哑巴
+        var cols = ChargeTableOf(doc).Columns.ToList();
+        var mmol = cols.FindIndex(c => c.Name == "mmol");
+        Assert.NotEqual("", ChargeTableOf(doc).Rows[0][mmol]);
+    }
+
+    [Fact]
+    public async Task Excel里有物性快照一列_未盖章的行照实标()
+    {
+        await using var h = await RunAsync(Table());
+        var sheets = WorkbookExporter.Build(h.Engine.Record, h.Pipeline,
+            new ExportOptions { Library = Lib }, h.Catalog, Meta());
+        var sheet = Assert.Single(sheets, s => s.Name == "配料表");
+
+        var head = sheet.Rows[0].Select(c => c.Text).ToList();
+        var snap = head.IndexOf("物性快照");
+        Assert.True(snap >= 0);
+        Assert.Contains("未快照", sheet.Rows[1][snap].Text);
+        // 不连库的产物行没有「未快照」的帽子——它根本没有库可快照
+        var product = sheet.Rows.First(r => r.Length > 1 && r[1].Text == "产物（粗品）");
+        Assert.Equal("", product[snap].Text);
+    }
+
     [Fact]
     public async Task 归档读回来配料表还在报告照样出得来()
     {

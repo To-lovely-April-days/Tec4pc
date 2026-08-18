@@ -83,6 +83,7 @@ public static class TecFiles
                 Amount = i.Amount, Unit = i.Unit,
                 Mw = i.Mw, Density = i.Density, Purity = i.Purity,
                 Batch = i.Batch, Supplier = i.Supplier,
+                SnapshotAt = i.SnapshotAt, LibraryVersion = i.LibraryVersion,
                 ActualMass = i.ActualMass, ActualVolume = i.ActualVolume, Note = i.Note
             });
         return doc;
@@ -101,6 +102,7 @@ public static class TecFiles
                 Amount = d.Amount, Unit = d.Unit,
                 Mw = d.Mw, Density = d.Density, Purity = d.Purity,
                 Batch = d.Batch, Supplier = d.Supplier,
+                SnapshotAt = d.SnapshotAt, LibraryVersion = d.LibraryVersion,
                 ActualMass = d.ActualMass, ActualVolume = d.ActualVolume, Note = d.Note
             });
         return t;

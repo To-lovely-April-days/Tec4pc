@@ -175,7 +175,14 @@ public sealed class ChargeRowViewModel : ViewModelBase
         get
         {
             if (_line?.Reference is { } c)
-                return $"物性连着化合物库里的「{c.Name}」；下面填了的项以填的为准。";
+            {
+                if (_m.SnapshotAt is { } t)
+                    return $"物性于 {t:MM-dd HH:mm} 从「{c.Name}」快照（库第 {_m.LibraryVersion} 版）。"
+                         + "之后改库不影响本行，要同步请按「刷新库值」。";
+                // 连着库却没盖章：快照机制之前的行，值还在跟着库漂——这必须让人看见
+                return $"连着「{c.Name}」但还没做物性快照，空着的项在跟着库变。"
+                     + "按「刷新库值」可落下快照。";
+            }
             return _m.Cas.Length > 0
                 ? "化合物库里找不到这个键，物性只能靠下面自己填。"
                 : "这一行不连库，物性靠下面自己填。";
@@ -239,6 +246,7 @@ public sealed class ChargeViewModel : ViewModelBase
         ApplyToRecipe = new RelayCommand(DoApply);
         ReadBack = new RelayCommand(DoReadBack);
         WriteSaturation = new RelayCommand(DoWriteSaturation);
+        RefreshLibrary = new RelayCommand(DoRefreshLibrary);
 
         foreach (var r in ChargeWords.Roles) Roles.Add(ChargeWords.Of(r));
         foreach (var b in ChargeWords.Bases) Bases.Add(ChargeWords.Of(b));
@@ -256,6 +264,8 @@ public sealed class ChargeViewModel : ViewModelBase
     public RelayCommand ReadBack { get; }
     /// <summary>把饱和温度写进选中的那条控温步骤。</summary>
     public RelayCommand WriteSaturation { get; }
+    /// <summary>把连库行的物性改回库里的当前值（会覆盖行上手改的数，改了什么逐条报）。</summary>
+    public RelayCommand RefreshLibrary { get; }
 
     /// <summary>
     /// 改这一路配方的入口，外壳接到配方页上。
@@ -379,6 +389,9 @@ public sealed class ChargeViewModel : ViewModelBase
             // 名字也接过来：加料步骤是按名字对上配料表的，两边得叫同一个名
             if (_selected.Model.Name.Length == 0 || _selected.Model.Name == NewRowName)
                 _selected.Model.Name = c.Name;
+            // 连库即快照：库值拷进行里（空才填）并盖上版本与时刻，
+            // 之后库里怎么改都不影响这一行（CH-D1）
+            ChargeSnapshot.Link(_selected.Model, c, _ws.Store.CompoundVersion, DateTimeOffset.Now);
             _selected.Refresh();          // 绕过设置器改的模型，得叫一声
             Recompute();
             _ws.Store.MarkDirty();
@@ -543,6 +556,29 @@ public sealed class ChargeViewModel : ViewModelBase
     /// 泵的累计加料量一直在采，实投从前却只能人手填——计划与实际在物料这一侧
     /// 本来就能闭环，缺的只是接上。读不出来的那几步照实说，不拿计划量顶。
     /// </summary>
+    /// <summary>
+    /// 「刷新库值」：把本通道全部连库行的物性改回化合物库的**当前**值并重新盖章。
+    /// 这是快照机制里唯一一条「跟上库」的路，而且是人显式按出来的——
+    /// 改了什么逐条列在状态条上，盖掉了行上手改的数也看得见。
+    /// </summary>
+    private void DoRefreshLibrary()
+    {
+        var linked = Table.Items.Count(i => i.Cas.Length > 0);
+        if (linked == 0) { Say("这一路没有连库的行，没什么可刷新的", bad: true); return; }
+
+        var changes = ChargeSnapshot.Refresh(Table, _ws.Compounds.ToList(),
+                                             _ws.Store.CompoundVersion, DateTimeOffset.Now);
+        foreach (var r in Rows) r.Refresh();
+        Recompute();
+        _ws.Store.MarkDirty();
+
+        if (changes.Count == 0) { Say($"{linked} 个连库行与库一致，只更新了快照时刻"); return; }
+        // 状态条一行放不下十几条改动；报前几条，剩下的归个总数，别把话吞掉
+        var shown = string.Join("；", changes.Take(4));
+        Say(changes.Count <= 4 ? "已按库更新：" + shown
+                               : $"已按库更新：{shown}；等共 {changes.Count} 处");
+    }
+
     private void DoReadBack()
     {
         var run = _ws.Engine.Record.Channels.LastOrDefault(c => c.Channel == _channel);
@@ -702,8 +738,15 @@ public sealed class ChargeViewModel : ViewModelBase
                                  + $"配料表算出来是 {Ml(e.PlannedVolume!.Value)} mL");
             }
 
-        LibraryNames.Clear();
-        foreach (var c in _ws.Compounds.OrderBy(c => c.Name, StringComparer.Ordinal)) LibraryNames.Add(c.Name);
+        // 名单没变就不动它：每次重算都全清全建的话，ComboBox 的 ItemsSource 一抖，
+        // 「连到化合物库」的选中项就被打成空白（实测：随便改个给定量下拉就空了）
+        var names = _ws.Compounds.OrderBy(c => c.Name, StringComparer.Ordinal)
+                                 .Select(c => c.Name).ToList();
+        if (!names.SequenceEqual(LibraryNames))
+        {
+            LibraryNames.Clear();
+            foreach (var n in names) LibraryNames.Add(n);
+        }
 
         // 饱和温度：能算的算，算不了的把原因摆出来——那句原因本身就是要给人看的
         _sat = ChargeSaturation.Of(_result);

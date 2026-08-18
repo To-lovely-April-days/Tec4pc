@@ -466,12 +466,26 @@ public static class ReportBuilder
             Text = "「应称量」是按限制试剂定量、其余按当量算出来的、需要称取的量，"
                  + "已按纯度折算——料不纯就得多称一些才够那么多物质的量。"
                  + "「实投」是操作人称完回填的实际值，两者都在表里，差多少一眼看得见。"
-                 + "本节数据取自启动那一刻冻结的基线，实验跑完之后再改配料表也不影响它。"
+                 + "本节数据取自启动那一刻冻结的基线；连库组分的物性是连库时拷贝进表内的快照，"
+                 + "实验之后再改配料表或化合物库都不影响本节。"
         });
 
         foreach (var ch in withCharge)
         {
-            var result = Stoichiometry.Solve(ch.Baseline.Charge!, opt.Library);
+            // 已快照的基线自带全部物性，不给它活库——从机制上保证「今天改一条
+            // 化合物的密度，去年那炉报告里的应量取」不会跟着变（CH-D1）。
+            // 快照机制之前归档的炉没得选，只能按当前库现算，但必须把话挑明
+            var frozen = ChargeSnapshot.SelfContained(ch.Baseline.Charge!);
+            if (!frozen)
+                doc.Blocks.Add(new NoticeBlock
+                {
+                    Bad = true,
+                    Text = $"CH{ch.Channel} 本炉归档早于物性快照机制：连库组分的摩尔质量 / 密度 / 纯度"
+                         + "取自导出这份报告时化合物库的当前值，不是启动时刻的快照——"
+                         + "库在归档之后改过的话，表脚「计算用物性」里就是改过的数。"
+                });
+
+            var result = Stoichiometry.Solve(ch.Baseline.Charge!, frozen ? null : opt.Library);
             var rows = new List<string[]>();
             var bad = new List<int>();
 
@@ -587,6 +601,10 @@ public static class ReportBuilder
             props.Add($"{(l.Item.Name.Length > 0 ? l.Item.Name : "（未命名）")} {string.Join(" / ", one)}");
         }
         if (props.Count > 0) parts.Add("计算用物性：" + string.Join("；", props));
+
+        // 复核要能指认「按哪一版库、什么时刻的物性算的」（CH-6.3）。
+        // 没盖过章的表没有这句话——没做过的事不写
+        if (ChargeSnapshot.Describe(table) is { } snap) parts.Add(snap);
 
         return string.Join("　·　", parts);
     }

@@ -93,6 +93,10 @@
                   ToolTip.Tip="从这一炉的运行记录把「实取」填回来——泵的累计加料量一直在采，不必手抄。读不出来的那几步会照实说，不拿计划量顶">
             <ctl:TecIcon Key="ui-snav-import" />
           </Button>
+          <Button Classes="tbtn sm" Command="{Binding RefreshLibrary}" IsEnabled="{Binding HasChannels}"
+                  ToolTip.Tip="把连库行的物性改回化合物库的当前值并重新盖快照章。会覆盖行上手改的物性——改了什么逐条列出。平时不用按：连库行的物性是快照，不跟着库变，这正是历史记录不被追溯改动的保证">
+            <ctl:TecIcon Key="ui-ex-refresh" />
+          </Button>
 
           <TextBlock Text="釜容：" FontSize="12" Foreground="#444444" VerticalAlignment="Center"
                      Margin="8,0,0,0" />
@@ -319,20 +323,20 @@
                         SelectedItem="{Binding $parent[UserControl].DataContext.LibraryPick, Mode=TwoWay}"
                         ToolTip.Tip="连上之后摩尔质量 / 密度 / 纯度就跟着库走，库里改了这里也跟着变" />
 
-              <TextBlock Text="这一瓶自己的物性（填了的以填的为准）" Classes="sect" />
+              <TextBlock Text="这一瓶的物性（连库时从库里拷来，改动只落在本行）" Classes="sect" />
               <StackPanel Spacing="7">
                 <StackPanel Orientation="Horizontal">
                   <TextBlock Text="摩尔质量" Classes="frowk" />
                   <TextBox Classes="finput" Width="118"
                            Text="{Binding MwText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
-                           Watermark="用库里的" />
+                           Watermark="没有就空着" />
                   <TextBlock Text="g/mol" Classes="unit" />
                 </StackPanel>
                 <StackPanel Orientation="Horizontal">
                   <TextBlock Text="密度" Classes="frowk" />
                   <TextBox Classes="finput" Width="118"
                            Text="{Binding DensityText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
-                           Watermark="用库里的"
+                           Watermark="没有就空着"
                            ToolTip.Tip="把质量换成加料体积就靠它。没有它就算不出体积——那时表里是空的，不会拿 1 g/mL 顶" />
                   <TextBlock Text="g/mL" Classes="unit" />
                 </StackPanel>
@@ -340,7 +344,7 @@
                   <TextBlock Text="纯度" Classes="frowk" />
                   <TextBox Classes="finput" Width="118"
                            Text="{Binding PurityText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
-                           Watermark="用库里的"
+                           Watermark="没有就空着"
                            ToolTip.Tip="应称量按它折算：料只有 65 %，要拿到那么多物质的量就得多称。手里这瓶实测多少就填多少，库里那个是通用参考值" />
                   <TextBlock Text="%" Classes="unit" />
                 </StackPanel>

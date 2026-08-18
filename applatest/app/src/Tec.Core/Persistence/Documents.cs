@@ -89,12 +89,16 @@ public sealed class ChargeItemDoc
     public ChargeBasis Basis { get; set; } = ChargeBasis.Equivalents;
     public double? Amount { get; set; }
     public ChargeUnit Unit { get; set; } = ChargeUnit.Gram;
-    /// <summary>这一瓶自己的物性。空 = 用库里那条的。</summary>
+    /// <summary>这一瓶的物性。连库行在连库时从库里拷来（快照），不连库的行自己填。</summary>
     public double? Mw { get; set; }
     public double? Density { get; set; }
     public double? Purity { get; set; }
     public string Batch { get; set; } = "";
     public string Supplier { get; set; } = "";
+    /// <summary>物性从化合物库拷进来的时刻。空 = 没做过快照（快照机制之前存的老行）。</summary>
+    public DateTimeOffset? SnapshotAt { get; set; }
+    /// <summary>拷贝那一刻化合物库的版本号。</summary>
+    public int? LibraryVersion { get; set; }
     public double? ActualMass { get; set; }
     public double? ActualVolume { get; set; }
     public string Note { get; set; } = "";
@@ -103,8 +107,9 @@ public sealed class ChargeItemDoc
 /// <summary>
 /// 一个通道的配料表。
 ///
-/// **只存输入，不存算出来的数**：mmol / 应称量 / 体积都是拿库里的物性现算的，
-/// 存下来的话库里改了密度，文件里那个体积还是老的——而人看不出它是老的。
+/// **只存输入，不存算出来的数**：mmol / 应称量 / 体积都是拿行上的物性现算的，
+/// 存下来的话物性改了，文件里那个体积还是老的——而人看不出它是老的。
+/// 物性本身不算「算出来的数」：连库行的物性是连库时刻的**快照**，就该原样落盘。
 /// </summary>
 public sealed class ChargeTableDoc
 {

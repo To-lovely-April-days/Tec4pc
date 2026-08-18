@@ -81,10 +81,12 @@ public static class ChargeWords
 /// <summary>
 /// 配料表里的一行。
 ///
-/// **连库不抄库**：库里那条化合物的物性（摩尔质量 / 密度 / 纯度）由 <see cref="Cas"/>
-/// 现取，库里改了这里跟着变——那正是「库里的分子量和密度被加料任务实际消费」的意思。
-/// 但这一瓶料自己的数（实测纯度、这一批的批号）写在行上，**行上写了的赢**：
-/// 手里这瓶 65 % 的硝酸，不能因为库里那条写着 68 % 就按 68 % 算。
+/// **连库即快照**：连上库的那一刻，库里的物性（摩尔质量 / 密度 / 纯度）被
+/// **拷贝**进行里（见 <see cref="ChargeSnapshot"/>），之后库里怎么改都不影响这一行——
+/// 不然日后修一次库里的密度，历史实验「当时按什么算的」就被追溯性改掉了，
+/// 这在 GLP 场景是不可接受的。要跟上库里的新值，得人显式按「刷新库值」。
+/// 拷贝**只填空格**，**行上写了的赢**：手里这瓶 65 % 的硝酸，
+/// 不能因为库里那条写着 68 % 就按 68 % 算。
 /// </summary>
 public sealed class ChargeItem
 {
@@ -108,13 +110,19 @@ public sealed class ChargeItem
     /// <summary>直接给量时的单位。其余基准下不用。</summary>
     public ChargeUnit Unit { get; set; } = ChargeUnit.Gram;
 
-    // ── 这一瓶自己的数。空 = 用库里那条的 ──────────────────────────
+    // ── 这一瓶自己的数。连库行在连库时把库值拷进来，之后就全在行上 ──
 
     public double? Mw { get; set; }
     public double? Density { get; set; }
     public double? Purity { get; set; }
     public string Batch { get; set; } = "";
     public string Supplier { get; set; } = "";
+
+    /// <summary>物性从库里拷进来的时刻。空 = 这一行从没做过快照（不连库，或老文件还没补）。</summary>
+    public DateTimeOffset? SnapshotAt { get; set; }
+
+    /// <summary>拷贝那一刻化合物库的版本号（库每改一次 +1）。复核时可指认「按哪一版库算的」。</summary>
+    public int? LibraryVersion { get; set; }
 
     /// <summary>
     /// 实际投料量 g（产物行是实际产量）。称完回填——**算出来的是应称量，
@@ -132,6 +140,7 @@ public sealed class ChargeItem
         Id = Id, Cas = Cas, Name = Name, Role = Role, Basis = Basis,
         Amount = Amount, Unit = Unit, Mw = Mw, Density = Density, Purity = Purity,
         Batch = Batch, Supplier = Supplier,
+        SnapshotAt = SnapshotAt, LibraryVersion = LibraryVersion,
         ActualMass = ActualMass, ActualVolume = ActualVolume, Note = Note
     };
 }
