@@ -53,7 +53,8 @@ public sealed class ChargeRowViewModel : ViewModelBase
                                       nameof(UnitText), nameof(AmountEdit), nameof(AmountText),
                                       nameof(AmountUnitText), nameof(AmountLabel), nameof(ShowUnit),
                                       nameof(IsProduct), nameof(MwText), nameof(DensityText),
-                                      nameof(PurityText), nameof(Batch), nameof(Supplier), nameof(Note),
+                                      nameof(PurityText), nameof(PhaseText),
+                                      nameof(Batch), nameof(Supplier), nameof(Note),
                                       nameof(ActualMassEdit), nameof(ActualVolumeEdit), nameof(ActualMassText));
 
     // ── 人填的 ──────────────────────────────────────────────────────
@@ -125,6 +126,18 @@ public sealed class ChargeRowViewModel : ViewModelBase
     public bool IsProduct => _m.Role == ChargeRole.Product;
 
     public string MwText { get => Raw(_m.Mw); set => Edit(_m.Mw, Parse(value), v => _m.Mw = v); }
+
+    /// <summary>投料形态。「未填」是合法状态——不知道就不填，校验对没填的不拦也不猜。</summary>
+    public string PhaseText
+    {
+        get => _m.Phase.Length > 0 ? _m.Phase : "未填";
+        set
+        {
+            var v = value == "固" || value == "液" ? value : "";
+            Edit(_m.Phase, v, x => _m.Phase = x);
+        }
+    }
+    public static IReadOnlyList<string> PhaseOptions { get; } = new[] { "未填", "固", "液" };
     public string DensityText { get => Raw(_m.Density); set => Edit(_m.Density, Parse(value), v => _m.Density = v); }
     public string PurityText { get => Raw(_m.Purity); set => Edit(_m.Purity, Parse(value), v => _m.Purity = v); }
 

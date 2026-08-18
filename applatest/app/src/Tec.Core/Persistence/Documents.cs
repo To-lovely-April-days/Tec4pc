@@ -93,8 +93,12 @@ public sealed class ChargeItemDoc
     public double? Mw { get; set; }
     public double? Density { get; set; }
     public double? Purity { get; set; }
+    public double? Bp { get; set; }
+    public double? Mp { get; set; }
     public string Batch { get; set; } = "";
     public string Supplier { get; set; } = "";
+    /// <summary>投料形态：「固」「液」，空 = 没填。</summary>
+    public string Phase { get; set; } = "";
     /// <summary>物性从化合物库拷进来的时刻。空 = 没做过快照（快照机制之前存的老行）。</summary>
     public DateTimeOffset? SnapshotAt { get; set; }
     /// <summary>拷贝那一刻化合物库的版本号。</summary>

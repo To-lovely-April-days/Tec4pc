@@ -270,6 +270,13 @@ public static class Stoichiometry
             result.Problems.Add($"各组分体积加起来 {Num(v)} mL，超过釜容 "
                                 + $"{Num(table.VesselVolume.Value)} mL。");
         }
+        // CH-5.6：占到八成就提醒。搅拌旋涡、放热鼓泡、加料冲击都要余量
+        else if (table.VesselVolume is > 0 && result.TotalVolume is { } v8
+                 && v8 > table.VesselVolume * 0.8)
+            result.Problems.Add($"各组分体积加起来 {Num(v8)} mL，已占釜容 "
+                                + $"{Num(table.VesselVolume.Value)} mL 的 "
+                                + $"{v8 / table.VesselVolume.Value * 100:F0} %——超过 80 % 的经验红线，"
+                                + "留出搅拌与放热的余量。");
 
         // ── 限制试剂的建议（CH-3.2）：**建议不代填**——替人改角色等于替人定工艺 ──
         if (limits.Count == 0)

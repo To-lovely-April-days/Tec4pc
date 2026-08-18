@@ -69,6 +69,14 @@ public sealed class Compound
     /// <summary>比热容 J/(g·K)。量热要用（FR-5.13）；现在只存着，还没有地方消费它。</summary>
     public double? Cp { get; set; }
 
+    /// <summary>
+    /// 相态：「固」「液」，空 = 没填。**指纯品常温常压下的形态**，是参考数据——
+    /// 配料行上另有一个相态（这一炉以什么形态投料）：固体配成溶液就能走泵，
+    /// 所以行上那个才是校验用的，这里只做连库时的默认值。
+    /// 没填就不校验，**不从熔点瞎猜**：猜错一次拦一炉好工艺，代价不对等。
+    /// </summary>
+    public string Phase { get; set; } = "";
+
     /// <summary>批号。跟着这一瓶料走，GLP 要求记得出「用的是哪一批」。</summary>
     public string Batch { get; set; } = "";
 
@@ -99,6 +107,7 @@ public sealed class Compound
         Bp = Bp,
         Purity = Purity,
         Cp = Cp,
+        Phase = Phase,
         Batch = Batch,
         Supplier = Supplier,
         Category = Category,

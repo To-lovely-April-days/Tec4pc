@@ -82,7 +82,8 @@ public static class TecFiles
                 Id = i.Id, Cas = i.Cas, Name = i.Name, Role = i.Role, Basis = i.Basis,
                 Amount = i.Amount, Unit = i.Unit,
                 Mw = i.Mw, Density = i.Density, Purity = i.Purity,
-                Batch = i.Batch, Supplier = i.Supplier,
+                Bp = i.Bp, Mp = i.Mp,
+                Batch = i.Batch, Supplier = i.Supplier, Phase = i.Phase,
                 SnapshotAt = i.SnapshotAt, LibraryVersion = i.LibraryVersion,
                 ActualMass = i.ActualMass, ActualVolume = i.ActualVolume, Note = i.Note
             });
@@ -101,7 +102,8 @@ public static class TecFiles
                 Cas = d.Cas, Name = d.Name, Role = d.Role, Basis = d.Basis,
                 Amount = d.Amount, Unit = d.Unit,
                 Mw = d.Mw, Density = d.Density, Purity = d.Purity,
-                Batch = d.Batch, Supplier = d.Supplier,
+                Bp = d.Bp, Mp = d.Mp,
+                Batch = d.Batch, Supplier = d.Supplier, Phase = d.Phase,
                 SnapshotAt = d.SnapshotAt, LibraryVersion = d.LibraryVersion,
                 ActualMass = d.ActualMass, ActualVolume = d.ActualVolume, Note = d.Note
             });

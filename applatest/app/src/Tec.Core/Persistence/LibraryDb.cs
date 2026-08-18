@@ -86,7 +86,7 @@ create table if not exists compound(
         // 而建表语句还停在老的列清单上，新列一个都没有，一写就是「no column named …」
         AddColumns("compound",
             ("density", "real"), ("bp", "real"), ("purity", "real"), ("cp", "real"),
-            ("batch", "text"), ("supplier", "text"));
+            ("batch", "text"), ("supplier", "text"), ("phase", "text"));
 
         SetMeta("schema", CurrentSchema.ToString(CultureInfo.InvariantCulture));
     }
@@ -236,7 +236,7 @@ on conflict(id) do update set
             using var cmd = _cn.CreateCommand();
             cmd.CommandText = @"select cas,name,formula,mw,mp,category,solvent,note,
                                        solubility,structure,ion,
-                                       density,bp,purity,cp,batch,supplier
+                                       density,bp,purity,cp,batch,supplier,phase
                                 from compound order by ord, rowid";
             using var r = cmd.ExecuteReader();
             while (r.Read())
@@ -258,7 +258,8 @@ on conflict(id) do update set
                     Purity = Num(r, 13),
                     Cp = Num(r, 14),
                     Batch = Str(r, 15) ?? "",
-                    Supplier = Str(r, 16) ?? ""
+                    Supplier = Str(r, 16) ?? "",
+                    Phase = Str(r, 17) ?? ""
                 });
         }
         return list;
@@ -324,13 +325,13 @@ on conflict(id) do update set
         cmd.Transaction = tx;
         cmd.CommandText = @"
 insert into compound(cas,name,formula,mw,mp,category,solvent,note,solubility,structure,ion,ord,
-                     density,bp,purity,cp,batch,supplier)
+                     density,bp,purity,cp,batch,supplier,phase)
 values($cas,$name,$fx,$mw,$mp,$cat,$sol,$note,$coef,$st,$ion,$ord,
-       $den,$bp,$pur,$cp,$batch,$sup)
+       $den,$bp,$pur,$cp,$batch,$sup,$phase)
 on conflict(cas) do update set
   name=$name, formula=$fx, mw=$mw, mp=$mp, category=$cat, solvent=$sol,
   note=$note, solubility=$coef, structure=$st, ion=$ion, ord=$ord,
-  density=$den, bp=$bp, purity=$pur, cp=$cp, batch=$batch, supplier=$sup";
+  density=$den, bp=$bp, purity=$pur, cp=$cp, batch=$batch, supplier=$sup, phase=$phase";
         cmd.Parameters.AddWithValue("$cas", c.Cas);
         cmd.Parameters.AddWithValue("$name", c.Name);
         cmd.Parameters.AddWithValue("$fx", c.Formula);
@@ -350,6 +351,7 @@ on conflict(cas) do update set
         cmd.Parameters.AddWithValue("$cp", (object?)c.Cp ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$batch", c.Batch);
         cmd.Parameters.AddWithValue("$sup", c.Supplier);
+        cmd.Parameters.AddWithValue("$phase", c.Phase);
         cmd.ExecuteNonQuery();
     }
 

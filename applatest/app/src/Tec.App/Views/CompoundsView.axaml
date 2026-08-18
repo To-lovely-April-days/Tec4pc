@@ -243,6 +243,13 @@
               <TextBlock Text="J/(g·K)" Classes="unit" />
             </StackPanel>
             <StackPanel Orientation="Horizontal">
+              <TextBlock Text="相态" Classes="frowk" />
+              <ComboBox Classes="sel" Width="152" FontSize="11.5"
+                        ItemsSource="{Binding PhaseOptions}"
+                        SelectedItem="{Binding PhaseText, Mode=TwoWay}"
+                        ToolTip.Tip="纯品常温常压下的形态，参考数据。配料行连库时把它当默认值带过去；行上可以改——固体配成溶液走泵就把行上的改成「液」" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal">
               <TextBlock Text="常用溶剂" Classes="frowk" />
               <TextBox Classes="finput" Text="{Binding Solvent, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" Width="196" />
             </StackPanel>

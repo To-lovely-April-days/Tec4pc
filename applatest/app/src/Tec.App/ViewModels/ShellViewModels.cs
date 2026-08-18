@@ -666,6 +666,18 @@ public sealed class CompoundViewModel : ViewModelBase
         set => Edit(_m.Cp, value, v => _m.Cp = v, new[] { nameof(CpText), nameof(CpEdit) });
     }
 
+    /// <summary>相态（纯品常态）。「未填」是合法状态——不知道就不填，不从熔点瞎猜。</summary>
+    public string PhaseText
+    {
+        get => _m.Phase.Length > 0 ? _m.Phase : "未填";
+        set
+        {
+            var v = value == "固" || value == "液" ? value : "";
+            Edit(_m.Phase, v, x => _m.Phase = x);
+        }
+    }
+    public static IReadOnlyList<string> PhaseOptions { get; } = new[] { "未填", "固", "液" };
+
     public string Batch
     {
         get => _m.Batch;

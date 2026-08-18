@@ -47,6 +47,9 @@ public static class CompoundSeed
         {
             Name = name, Cas = cas, Formula = formula, Mw = mw, Mp = mp,
             Category = category, Solubility = sol, Solvent = solvent, Note = note,
-            StructureKey = structure, IonText = ion
+            StructureKey = structure, IonText = ion,
+            // 自带这十条全是室温固体（熔点最低的布洛芬也有 76 ℃），照实标上——
+            // 相态和熔点一样是公开物性，不算伪造
+            Phase = "固"
         };
 }

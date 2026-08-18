@@ -28,8 +28,13 @@ public static class ChargeSnapshot
         item.Mw ??= c.Mw;
         item.Density ??= c.Density;
         item.Purity ??= c.Purity;
+        item.Bp ??= c.Bp;
+        item.Mp ??= c.Mp;
         if (item.Batch.Length == 0) item.Batch = c.Batch;
         if (item.Supplier.Length == 0) item.Supplier = c.Supplier;
+        // 相态也是空才带：库里写的是纯品常态，行上写的是这一炉的投料形态——
+        // 固体配成溶液走泵时，行上那个「液」不能被库里的「固」盖掉
+        if (item.Phase.Length == 0) item.Phase = c.Phase;
         item.SnapshotAt = now;
         item.LibraryVersion = libraryVersion;
     }

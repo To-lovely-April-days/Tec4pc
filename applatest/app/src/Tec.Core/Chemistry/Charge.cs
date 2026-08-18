@@ -115,8 +115,19 @@ public sealed class ChargeItem
     public double? Mw { get; set; }
     public double? Density { get; set; }
     public double? Purity { get; set; }
+    /// <summary>沸点 ℃ / 熔点 ℃。连库时快照拷来，校验用（CH-5.1 / 5.2）——
+    /// 启动闸不吃活库，这两个数必须躺在行上才拦得住。</summary>
+    public double? Bp { get; set; }
+    public double? Mp { get; set; }
     public string Batch { get; set; } = "";
     public string Supplier { get; set; } = "";
+
+    /// <summary>
+    /// 这一行**以什么形态投料**：「固」「液」，空 = 没填。跟库里的相态不是一回事——
+    /// 库里写的是纯品常态，这里写的是这一炉的投料形态：苯甲酸是固体，
+    /// 配成乙醇溶液泵进去就是「液」。校验拿这个判「固体不能走泵」（CH-4.5）。
+    /// </summary>
+    public string Phase { get; set; } = "";
 
     /// <summary>物性从库里拷进来的时刻。空 = 这一行从没做过快照（不连库，或老文件还没补）。</summary>
     public DateTimeOffset? SnapshotAt { get; set; }
@@ -139,7 +150,8 @@ public sealed class ChargeItem
     {
         Id = Id, Cas = Cas, Name = Name, Role = Role, Basis = Basis,
         Amount = Amount, Unit = Unit, Mw = Mw, Density = Density, Purity = Purity,
-        Batch = Batch, Supplier = Supplier,
+        Bp = Bp, Mp = Mp,
+        Batch = Batch, Supplier = Supplier, Phase = Phase,
         SnapshotAt = SnapshotAt, LibraryVersion = LibraryVersion,
         ActualMass = ActualMass, ActualVolume = ActualVolume, Note = Note
     };

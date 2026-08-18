@@ -43,13 +43,14 @@ public static class CompoundCsv
         ("batch", new[] { "批号", "批次", "batch", "lot" }),
         ("supplier", new[] { "供应商", "厂家", "supplier", "vendor" }),
         ("note", new[] { "备注", "说明", "note", "remark" }),
-        ("solubility", new[] { "溶解度系数", "溶解度拟合", "solubility" })
+        ("solubility", new[] { "溶解度系数", "溶解度拟合", "solubility" }),
+        ("phase", new[] { "相态", "形态", "phase", "state" })
     };
 
     public static readonly string[] HeaderRow =
     {
         "名称", "CAS", "分子式", "摩尔质量", "密度", "纯度", "熔点", "沸点",
-        "比热", "类别", "常用溶剂", "批号", "供应商", "备注", "溶解度系数"
+        "比热", "相态", "类别", "常用溶剂", "批号", "供应商", "备注", "溶解度系数"
     };
 
     // ── 导入 ────────────────────────────────────────────────────────
@@ -144,6 +145,21 @@ public static class CompoundCsv
             Num("purity", "纯度", v => c.Purity = v, 0, 100);
             Num("cp", "比热", v => c.Cp = v, 0.001, 100);
 
+            // 相态只认「固」「液」两个字（英文 solid/liquid 也认）。别的写法照实报，
+            // 不猜——「s」到底是 solid 还是 solution，猜错的代价是拦错一炉料
+            var phase = Cell("phase");
+            if (phase.Length > 0)
+            {
+                c.Phase = phase.Trim().ToLowerInvariant() switch
+                {
+                    "固" or "固体" or "solid" or "s" => "固",
+                    "液" or "液体" or "liquid" or "l" => "液",
+                    _ => ""
+                };
+                if (c.Phase.Length == 0)
+                    result.Problems.Add($"第 {line} 行 {c.Name}：相态「{phase}」认不出（只认 固 / 液），这一项留空。");
+            }
+
             var coef = Cell("solubility");
             if (coef.Length > 0)
             {
@@ -207,6 +223,7 @@ public static class CompoundCsv
                 N(c.Mw, "0.####"),
                 N(c.Density, "0.####"), N(c.Purity, "0.##"),
                 N(c.Mp, "0.##"), N(c.Bp, "0.##"), N(c.Cp, "0.####"),
+                Esc(c.Phase),
                 Esc(c.Category), Esc(c.Solvent), Esc(c.Batch), Esc(c.Supplier), Esc(c.Note),
                 Esc(string.Join(";", c.Solubility.Select(v => v.ToString("R", CultureInfo.InvariantCulture)))))).Append("\r\n");
         return sb.ToString();

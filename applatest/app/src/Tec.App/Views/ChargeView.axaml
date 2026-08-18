@@ -353,6 +353,13 @@
                            ToolTip.Tip="应称量按它折算：料只有 65 %，要拿到那么多物质的量就得多称。手里这瓶实测多少就填多少，库里那个是通用参考值" />
                   <TextBlock Text="%" Classes="unit" />
                 </StackPanel>
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock Text="相态" Classes="frowk" />
+                  <ComboBox Classes="sel" Width="118" FontSize="11.5"
+                            ItemsSource="{Binding PhaseOptions}"
+                            SelectedItem="{Binding PhaseText, Mode=TwoWay}"
+                            ToolTip.Tip="这一炉以什么形态投料——不是纯品常态：苯甲酸是固体，配成乙醇溶液泵进去就选「液」。标「固」的行接到泵加料步骤会被拦（泵打不了固体）；没填就不拦也不猜" />
+                </StackPanel>
               </StackPanel>
 
               <TextBlock Text="这一瓶与实际投料" Classes="sect" />

@@ -95,7 +95,7 @@ public static class RecipeValidator
             ValidateDoseVolume(issues, recipe, catalog, channel);
         }
 
-        if (charge is not null) ValidateCharge(issues, recipe, catalog, charge);
+        if (charge is not null) ValidateCharge(issues, recipe, catalog, charge, schedule);
 
         return issues;
     }
@@ -108,13 +108,62 @@ public static class RecipeValidator
     /// 而这两个数一旦分家，报告上「计划加 30 mL」和配料表「应加 24.6 mL」会同时出现。
     /// </summary>
     private static void ValidateCharge(List<ValidationIssue> issues, Recipe recipe,
-                                       ICommandCatalog catalog, ChargeResult charge)
+                                       ICommandCatalog catalog, ChargeResult charge,
+                                       Scheduling.Schedule schedule)
     {
         foreach (var p in charge.Problems)
             issues.Add(new ValidationIssue(IssueLevel.Warning, "charge", "配料表：" + p));
 
+        // 熔点（CH-5.2，警告放行）：工艺会把釜冷到某个液体组分的熔点以下——
+        // 冰乙酸 16.6 ℃，冬天降到 10 ℃ 它就在釜里凝住。查**液体投料**的行：
+        // 相态标了「液」的，或没标但按体积给量的（按毫升量的多半是液体）。
+        // 固体行不查——固体本来就是固体，「低于熔点」对它是废话
+        var low = LowestTemp(recipe, schedule);
+        foreach (var l in charge.Lines)
+        {
+            if (l.Item.Role == ChargeRole.Product) continue;
+            var liquid = l.Item.Phase == "液"
+                         || (l.Item.Phase.Length == 0
+                             && (l.Item.Basis == ChargeBasis.Volumes
+                                 || (l.Item.Basis == ChargeBasis.Quantity
+                                     && l.Item.Unit == ChargeUnit.Milliliter)));
+            if (!liquid) continue;
+            var mp = l.Item.Mp ?? l.Reference?.Mp;
+            if (low is { } t && mp is { } m && t < m)
+                issues.Add(new ValidationIssue(IssueLevel.Warning, "charge-mp",
+                    $"配方最低温度约 {Fmt.Num(t)} ℃，低于「{Show(l.Item.Name)}」的熔点 {Fmt.Num(m)} ℃"
+                    + "——低温段它可能在釜里凝固。结晶 / 冷冻析出若正是设计意图，可忽略这条。"));
+        }
+
         var links = ChargeLink.Match(recipe, catalog, charge);
         if (links.Count == 0) return;
+
+        foreach (var e in links)
+        {
+            if (e.Line is not { } line) continue;
+            var stepId = recipe.Steps[e.StepIndex].StepId;
+
+            // 固体不走泵（CH-4.5，Error 阻断）：泵打不了固体
+            if (line.Item.Phase == "固")
+                issues.Add(new ValidationIssue(IssueLevel.Error, "charge-solid",
+                    $"第 {e.StepIndex + 1} 步想用泵加「{Show(e.Liquid)}」，而它的相态标着「固」"
+                    + "——泵打不了固体。以溶液投料请把配料行相态改成「液」；"
+                    + "固体直投改用「消息提示」步骤提醒人工投料。") { StepId = stepId });
+
+            // 沸点（CH-5.1，Error 阻断）：往热釜里泵低沸点液体会闪蒸喷溅。
+            // 温度取排期对这一步的估算（循环多轮取最热的那一轮）
+            var bp = line.Item.Bp ?? line.Reference?.Bp;
+            if (bp is { } b)
+            {
+                var at = schedule.Entries.Where(x => x.StepId == stepId)
+                                         .Select(x => (double?)x.StartTemp).Max();
+                if (at is { } temp && temp > b)
+                    issues.Add(new ValidationIssue(IssueLevel.Error, "charge-bp",
+                        $"第 {e.StepIndex + 1} 步在约 {Fmt.Num(temp)} ℃ 时泵入「{Show(e.Liquid)}」，"
+                        + $"超过其沸点 {Fmt.Num(b)} ℃——低沸点液体进热釜会闪蒸喷溅。"
+                        + "确要高温加料，请核对沸点数据或调整加料时机。") { StepId = stepId });
+            }
+        }
 
         foreach (var e in links)
         {
@@ -173,6 +222,27 @@ public static class RecipeValidator
     }
 
     private static string Show(string s) => s.Length > 0 ? s : "（没填）";
+
+    /// <summary>
+    /// 配方全程的最低温度估算：各步开始温度（排期链）与控温类步骤的目标温度
+    /// （含梯度控温分段表里的每一段）取最小。没有任何温度信息就是 null——不猜。
+    /// </summary>
+    private static double? LowestTemp(Recipe recipe, Scheduling.Schedule schedule)
+    {
+        double? low = null;
+        void Take(double v) => low = low is { } x ? Math.Min(x, v) : v;
+
+        foreach (var e in schedule.Entries) Take(e.StartTemp);
+        foreach (var st in recipe.Steps)
+        {
+            if (!st.CommandId.StartsWith("tec.temp.", StringComparison.Ordinal)) continue;
+            if (st.Parameters.Has("target")) Take(st.Parameters.Num("target"));
+            if (st.Rows is { } rows)
+                foreach (var row in rows)
+                    if (row.Has("target")) Take(row.Num("target"));
+        }
+        return low;
+    }
 
     private static void ValidateAgainstChannel(List<ValidationIssue> issues, int i, Step s,
                                                CommandDescriptor d, Channel channel)
@@ -234,6 +304,14 @@ public static class RecipeValidator
         if (total > 0 && total > dosing.Limits.MaxVolume)
             issues.Add(new ValidationIssue(IssueLevel.Error, "volume",
                 $"CH{channel.Number} 累计加料 {Fmt.Num(total)} mL 超过釜容 {Fmt.Num(dosing.Limits.MaxVolume)} mL")
+            { Channel = channel.Number });
+        // CH-5.6：超过 80 % 就该被看见——搅拌旋涡、放热鼓泡、加料冲击都要余量，
+        // 灌到九成的釜出事时没有退路。超 100 % 上面那条 Error 拦，这里只提醒
+        else if (total > 0 && total > dosing.Limits.MaxVolume * 0.8)
+            issues.Add(new ValidationIssue(IssueLevel.Warning, "volume-80",
+                $"CH{channel.Number} 累计加料 {Fmt.Num(total)} mL，已占釜容 "
+                + $"{Fmt.Num(dosing.Limits.MaxVolume)} mL 的 {total / dosing.Limits.MaxVolume * 100:F0} %"
+                + "——超过 80 % 的经验红线，留出搅拌与放热的余量。")
             { Channel = channel.Number });
     }
 
