@@ -5,6 +5,7 @@ using Tec.App.Controls;
 using Tec.App.Services;
 using Tec.Core;
 using Tec.Core.Catalog;
+using Tec.Core.Chemistry;
 using Tec.Core.Compounds;
 using Tec.Core.Recipes;
 using Tec.Core.Persistence;
@@ -311,8 +312,9 @@ public sealed class LibRowViewModel : ViewModelBase
     public string Name => Recipe.Name;
     /// <summary>属性面板改名后由列表行自己刷新（名字两处显示，必须同步）。</summary>
     public void NameChanged() => RaiseAll(nameof(Name), nameof(Meta));
-    /// <summary>原型 rm2：「N 步 · 更新 MM/dd」。</summary>
-    public string Meta => $"{Recipe.Steps.Count} 步 · 更新 {Recipe.ModifiedAt:MM/dd}";
+    /// <summary>原型 rm2：「N 步 · 更新 MM/dd」，捎着配料表的加一段。</summary>
+    public string Meta => $"{Recipe.Steps.Count} 步 · 更新 {Recipe.ModifiedAt:MM/dd}"
+        + (Recipe.Charge is { IsEmpty: false } c ? $" · 配料 {c.Items.Count} 组分" : "");
 }
 
 /// <summary>
@@ -361,6 +363,9 @@ public sealed class RecipeLibViewModel : ViewModelBase
             if (!ws.ChannelRecipes.TryGetValue(from, out var live)) return;
             var name = ws.LaneNames.TryGetValue(from, out var n) && n.Length > 0 ? n : live.Name;
             var copy = live.CopyAs(name, ws.Operator);
+            // 配料表捎上（清实投 / 批号）：加料步骤的 chemId 指着它，分开存就断了
+            var charge = ws.ChargeOf(from);
+            copy.Charge = charge.IsEmpty ? null : ChargeTemplate.Strip(charge);
             ws.Library.Add(copy);
             ws.Store.SaveLibrary();
             Selected = Rows.FirstOrDefault(r => ReferenceEquals(r.Recipe, copy));
@@ -526,8 +531,11 @@ public sealed class RecipeLibViewModel : ViewModelBase
 
         foreach (var c in targets)
         {
-            // 每个通道一份独立副本：同号配方在记录与导出里分不开
-            _ws.ChannelRecipes[c] = r.CopyAs(r.Name, r.Author);
+            // 每个通道一份独立副本：同号配方在记录与导出里分不开。
+            // CopyAs 连配料表一起克隆——每路落一份独立的，之后各改各的量
+            var copy = r.CopyAs(r.Name, r.Author);
+            _ws.AdoptCharge(c, copy);
+            _ws.ChannelRecipes[c] = copy;
             _ws.LaneNames[c] = r.Name;
         }
         _ws.Store.MarkDirty();

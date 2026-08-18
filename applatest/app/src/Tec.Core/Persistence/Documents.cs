@@ -76,6 +76,8 @@ public sealed class RecipeDoc
     public string? Notes { get; set; }
     public DateTimeOffset ModifiedAt { get; set; }
     public List<StepDoc> Steps { get; set; } = new();
+    /// <summary>随配方结伴的配料表模板。老文件没有，读回来是 null。</summary>
+    public ChargeTableDoc? Charge { get; set; }
 }
 
 /// <summary>配料表里的一行。</summary>

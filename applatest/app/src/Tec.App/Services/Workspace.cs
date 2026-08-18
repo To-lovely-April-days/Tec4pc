@@ -103,6 +103,28 @@ public sealed class Workspace
         return t;
     }
 
+    /// <summary>某一路的配料表被整张换掉了（应用配方库 / 导入配方捎来的）。
+    /// 配料表页订阅它重建界面——Store.Changed 只在第一次标脏时发，靠不住。</summary>
+    public event Action<int>? ChargeReplaced;
+
+    /// <summary>
+    /// 配方捎来的配料表落进通道（应用配方库 / 导入 .tecrecipe 都走这儿）。
+    /// 落地之后配方对象上那份就清掉——通道的配料表只有一个家
+    /// （ChannelCharges），配方对象再揣一份迟早两处对不上。
+    /// 返回给状态条的那半句话；配方没捎配料表就什么都不动、什么都不说。
+    /// </summary>
+    public string? AdoptCharge(int channel, Recipe recipe)
+    {
+        if (recipe.Charge is not { IsEmpty: false } charge) { recipe.Charge = null; return null; }
+        var had = ChannelCharges.TryGetValue(channel, out var old) && !old.IsEmpty;
+        ChannelCharges[channel] = charge;
+        recipe.Charge = null;
+        ChargeReplaced?.Invoke(channel);
+        return had
+            ? $"配料表 {charge.Items.Count} 组分一起落地（原配料表已被替换）"
+            : $"配料表 {charge.Items.Count} 组分一起落地";
+    }
+
     /// <summary>
     /// 当前实验名。存盘 / 读取做出来之前一直是「未命名实验」——
     /// 界面上不写死某个实验名，免得看着像已经打开了什么东西。

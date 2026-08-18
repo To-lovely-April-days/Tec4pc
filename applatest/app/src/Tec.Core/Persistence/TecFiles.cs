@@ -55,7 +55,8 @@ public static class TecFiles
             Name = r.Name,
             Author = r.Author,
             Notes = r.Notes,
-            ModifiedAt = r.ModifiedAt
+            ModifiedAt = r.ModifiedAt,
+            Charge = r.Charge?.ToDoc()
         };
         foreach (var s in r.Steps)
             doc.Steps.Add(new StepDoc
@@ -193,6 +194,7 @@ public static class TecFiles
                 Phase = s.Phase
             });
         }
+        r.Charge = doc.Charge?.ToModel();
         migrated = RecipeMigration.Apply(r);
         return r;
     }

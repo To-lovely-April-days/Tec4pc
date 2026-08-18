@@ -429,7 +429,7 @@
           </StackPanel>
           <TextBlock FontSize="11.5" Foreground="#5a5a5a" LineHeight="18"
                      TextWrapping="Wrap" TextAlignment="Center" Margin="0,2,0,0">
-            <Run Text="应用会替换当前通道的全部步骤。" />
+            <Run Text="应用会替换当前通道的全部步骤；库里那条捎着配料表的，配料表也一起替换（引用才不断）。存入时配料表随配方入库，实投与批号不带——那是跟某一炉走的。" />
             <InlineUIContainer>
               <Button Classes="linkbtn" Content="管理配方库 →" Command="{Binding ManageLibrary}" />
             </InlineUIContainer>

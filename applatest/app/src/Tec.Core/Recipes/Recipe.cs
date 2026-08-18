@@ -69,6 +69,16 @@ public sealed class Recipe
     public List<Step> Steps { get; } = new();
 
     /// <summary>
+    /// 随配方结伴走的配料表（模板）。**配方和配料表是连体的**：加料步骤持有
+    /// 配料行的 Id（chemId），只把步骤存进库、导出成文件，应用到别处时引用全断。
+    /// 所以存库 / 导出时把当前通道的配料表捎上（模板化清洗见 ChargeTemplate），
+    /// 应用 / 导入时一起落地——行 Id 原样保留，步骤引用天然成立，不用重映射。
+    /// 通道上的工作配方不带它（通道的配料表在 Workspace.ChannelCharges 里）；
+    /// 老文件没有这一项，读回来是 null。
+    /// </summary>
+    public Chemistry.ChargeTable? Charge { get; set; }
+
+    /// <summary>
     /// 由 Steps 推导，不单独存。通道能不能跑这条配方，就是问它的能力集合是否覆盖这里。
     /// </summary>
     public IReadOnlySet<Type> RequiredCapabilities(ICommandCatalog catalog)
@@ -117,6 +127,7 @@ public sealed class Recipe
         };
         // 快照保住 StepId，记录才对得上
         foreach (var s in Steps) r.Steps.Add(s.CopyWith());
+        r.Charge = Charge?.Clone();
         return r;
     }
 }

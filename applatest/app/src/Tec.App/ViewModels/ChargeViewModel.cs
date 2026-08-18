@@ -284,6 +284,9 @@ public sealed class ChargeViewModel : ViewModelBase
 
         ws.BenchChanged += (_, _) => ReloadChannels();
         ws.Store.Changed += (_, _) => Reload();
+        // 应用配方库 / 导入配方捎来的配料表整张换掉了通道那份——
+        // Store.Changed 只在第一次标脏时发，这里必须自己听
+        ws.ChargeReplaced += _ => Reload();
         ReloadChannels();
     }
 

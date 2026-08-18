@@ -799,12 +799,16 @@ public sealed class RecipeViewModel : ViewModelBase
         // CopyAs 而不是 Snapshot：泳道里这一份是独立的工作副本。沿用库里那条的 Id，
         // 应用到两个通道就成了两条同号配方，记录与导出都分不开
         var copy = _libPick.CopyAs(_libPick.Name, _libPick.Author);
+        // 库里这条捎着配料表就一起落地——加料步骤的 chemId 指着那些行，
+        // 只落步骤不落配料表，引用当场全断（charge-refgone 刷一排）
+        var adopted = Workspace.AdoptCharge(_curCh, copy);
         Workspace.ChannelRecipes[_curCh] = copy;
         Workspace.LaneNames[_curCh] = copy.Name;
         SelectedStep = null;
         Workspace.Store.MarkDirty();
         RefreshAll();
-        Tell($"已把「{copy.Name}」应用到 {LabelOf(_curCh)}（{copy.Steps.Count} 步）");
+        Tell($"已把「{copy.Name}」应用到 {LabelOf(_curCh)}（{copy.Steps.Count} 步）"
+             + (adopted is null ? "" : "，" + adopted));
     }
 
     private void DoSaveToLib()
@@ -816,10 +820,15 @@ public sealed class RecipeViewModel : ViewModelBase
         // 沿用原件的时间，库里「最近更新」会显示成它一直没动过；沿用 Id，
         // 存两次就有两条撞号的记录
         var copy = Current.CopyAs(name, Workspace.Operator);
+        // 配料表捎上（模板化清洗：实投 / 实取 / 批号是跟这一炉走的，不进模板）。
+        // 不捎的话，这条配方里加料步骤的 chemId 到了别的实验全是断引用
+        var charge = Workspace.ChargeOf(_curCh);
+        copy.Charge = charge.IsEmpty ? null : ChargeTemplate.Strip(charge);
         Workspace.Library.Add(copy);        // Library 是可观察集合，两个页面自己会跟上
         Workspace.Store.SaveLibrary();      // 存进库就该落盘，不然关掉程序白存
         LibPick = Library.FirstOrDefault(o => ReferenceEquals(o.Recipe, copy));
-        Tell($"「{name}」已存入配方库（{copy.Steps.Count} 步）");
+        Tell($"「{name}」已存入配方库（{copy.Steps.Count} 步"
+             + (copy.Charge is null ? "）" : $"，附配料表 {copy.Charge.Items.Count} 组分）"));
     }
 
     // ── 工具条：新建 / 撤销 / 重做 ───────────────────────────────────
@@ -900,13 +909,15 @@ public sealed class RecipeViewModel : ViewModelBase
             // 同一份文件导进两个通道，得是两条各自独立的配方
             var recipe = read.CopyAs(read.Name, read.Author);
             Record();
+            var adopted = Workspace.AdoptCharge(_curCh, recipe);
             Workspace.ChannelRecipes[_curCh] = recipe;
             Workspace.LaneNames[_curCh] = recipe.Name;
             SelectedStep = null;
             Workspace.Store.MarkDirty();
             RefreshAll();
             var note = migrated.Count > 0 ? $"，其中 {migrated.Count} 步用的是旧指令，已转换" : "";
-            Tell($"已把「{recipe.Name}」导入 {LabelOf(_curCh)}（{recipe.Steps.Count} 步）{note}");
+            Tell($"已把「{recipe.Name}」导入 {LabelOf(_curCh)}（{recipe.Steps.Count} 步）{note}"
+                 + (adopted is null ? "" : "，" + adopted));
         }
         catch (TecFileException ex) { Tell(ex.Message); }
         catch (Exception ex) { Tell("导入失败：" + ex.Message); }
@@ -921,8 +932,11 @@ public sealed class RecipeViewModel : ViewModelBase
         {
             var copy = Current.Snapshot();
             copy.Name = name;
+            var charge = Workspace.ChargeOf(_curCh);
+            copy.Charge = charge.IsEmpty ? null : ChargeTemplate.Strip(charge);
             TecFiles.SaveRecipe(path, copy.ToDoc());
-            Tell($"配方已导出到 {path}");
+            Tell(copy.Charge is null ? $"配方已导出到 {path}"
+                 : $"配方已导出到 {path}（附配料表 {copy.Charge.Items.Count} 组分）");
         }
         catch (Exception ex) { Tell("导出失败：" + ex.Message); }
     }
@@ -989,7 +1003,11 @@ public sealed class RecipeViewModel : ViewModelBase
 
         RaiseAll(nameof(CurName), nameof(ChannelStates), nameof(HasLanes), nameof(NoLanes), nameof(CurLane),
                  nameof(CanUndo), nameof(CanRedo), nameof(HasProblems), nameof(ProblemSummary),
-                 nameof(TotalNote));
+                 nameof(TotalNote),
+                 // 切通道 / 换配方后连配料表那一段要跟着当前选中走——不 Raise 的话
+                 // 上一个通道那条加料步骤的「已连乙醇」会一直挂在右栏（实测踩到）
+                 nameof(IsDoseStep), nameof(ChargeRowNames), nameof(ChargeRowPick),
+                 nameof(ChargeLinkNote), nameof(ChargeLinkColorHex));
     }
 
     /// <summary>
