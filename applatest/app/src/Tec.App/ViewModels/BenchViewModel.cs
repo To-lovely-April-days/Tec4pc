@@ -103,7 +103,6 @@ public sealed class BenchViewModel : ViewModelBase
         });
 
         Probe = new RelayCommand(async () => await ProbeAsync());
-        Rebuild = new RelayCommand(async () => await _ws.RebuildChannelsAsync());
         ToggleRename = new RelayCommand(() => Renaming = !Renaming);
         ToggleWells = new RelayCommand(() => WellsOpen = !WellsOpen);
         ToggleChTable = new RelayCommand(() => ChTableOpen = !ChTableOpen);
@@ -133,7 +132,6 @@ public sealed class BenchViewModel : ViewModelBase
     public bool HasSaveHint => _saveHint.Length > 0;
 
     public RelayCommand Probe { get; }
-    public RelayCommand Rebuild { get; }
     public RelayCommand ToggleRename { get; }
     public RelayCommand ToggleWells { get; }
     public RelayCommand ToggleChTable { get; }

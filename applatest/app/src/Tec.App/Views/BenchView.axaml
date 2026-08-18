@@ -164,7 +164,6 @@
                 <ctl:TecIcon Key="ui-foot-save" />
               </Button>
               <Button Classes="tbtn foot" ToolTip.Tip="连接" Command="{Binding Probe}"><ctl:TecIcon Key="ui-foot-link" /></Button>
-              <Button Classes="tbtn foot" ToolTip.Tip="初始化" Command="{Binding Rebuild}"><ctl:TecIcon Key="ui-foot-init" /></Button>
               <Button Classes="tbtn foot" ToolTip.Tip="删除选中设备" Command="{Binding DeleteSelected}"><ctl:TecIcon Key="ui-foot-trash" /></Button>
             </StackPanel>
           </StackPanel>
