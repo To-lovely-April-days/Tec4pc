@@ -258,7 +258,7 @@
 
               <CheckBox Content="模拟" Classes="chk2" IsChecked="{Binding DeviceSimulated, Mode=TwoWay}" />
 
-              <TextBlock Classes="intro" IsVisible="{Binding IsProbe}" Margin="0,10,0,0"
+              <TextBlock Classes="intro left" IsVisible="{Binding IsProbe}" Margin="0,10,0,0"
                          Text="绑定后，该设备的数据与命令归属所选通道；配方中的加料 / pH / 分析步骤将作用于此设备。" />
             </StackPanel>
 

@@ -215,7 +215,11 @@
                   <StackPanel Orientation="Horizontal">
                     <TextBlock Text="{Binding Name}" Width="150" FontSize="12" Foreground="#2b2b2b"
                                Margin="10,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                    <TextBlock Text="{Binding RoleText}" Width="84" FontSize="11.5" Foreground="#5a5a5a"
+                    <!-- 边距要跟表头的 chd（Margin 10,8）一样：少这 10px，
+                         下面整条通道列带就比 CH1 / CH2 那两个字左移 20px，
+                         格子和它头上的名字对不上 -->
+                    <TextBlock Text="{Binding RoleText}" Width="84" Margin="10,0"
+                               FontSize="11.5" Foreground="#5a5a5a"
                                VerticalAlignment="Center" />
                     <ItemsControl ItemsSource="{Binding Cells}">
                       <ItemsControl.ItemsPanel>
@@ -319,9 +323,11 @@
             <StackPanel Spacing="6">
               <TextBlock Text="溶解度与饱和温度" FontSize="15" FontWeight="Light" Foreground="#333333"
                          HorizontalAlignment="Center" Margin="0,0,0,4" />
-              <TextBlock FontSize="11" Foreground="#8d8d8d" TextWrapping="Wrap" TextAlignment="Center"
+              <!-- 只交代基准这一件事。**算不出来的缘由由下面逐条自己说**（那句话里
+                   带着这一炉真正的溶剂名），标题下再抄一遍就是同一段话讲两遍 -->
+              <TextBlock FontSize="11" Foreground="#8d8d8d" TextWrapping="Wrap"
                          Margin="0,0,0,6"
-                         Text="库里那条曲线是水里的溶解度（g/100 mL 水）。溶剂不是水就不换算——拿水的曲线去算别的溶剂，会得到一个看着很合理的错温度。" />
+                         Text="库里的溶解度曲线按纯水算（g/100 mL 水）。" />
 
               <ItemsControl ItemsSource="{Binding SaturationLines}">
                 <ItemsControl.ItemTemplate>
@@ -366,8 +372,10 @@
             <StackPanel DataContext="{Binding Selected}">
               <TextBlock Text="组分详情" FontSize="18" FontWeight="Light" Foreground="#333333"
                          HorizontalAlignment="Center" Margin="0,0,0,4" />
+              <!-- 正文左对齐：居中只适合一行的标题，三四行的说明居中之后
+                   每行起点都不一样，眼睛要重新找一次行首 -->
               <TextBlock Text="{Binding RowNote}" FontSize="11" Foreground="#8d8d8d"
-                         TextWrapping="Wrap" TextAlignment="Center" Margin="0,0,0,12" />
+                         TextWrapping="Wrap" Margin="0,0,0,12" />
 
               <StackPanel Spacing="7">
                 <StackPanel Orientation="Horizontal">

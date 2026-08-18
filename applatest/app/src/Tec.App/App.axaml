@@ -157,6 +157,7 @@
       <Setter Property="HorizontalAlignment" Value="Center" />
       <Setter Property="Margin" Value="0,0,0,8" />
     </Style>
+    <!-- 面板标题底下那句副标题：一两行、居中，压着标题的轴线 -->
     <Style Selector="TextBlock.intro">
       <Setter Property="FontSize" Value="11.5" />
       <Setter Property="Foreground" Value="#5a5a5a" />
@@ -164,6 +165,12 @@
       <Setter Property="TextAlignment" Value="Center" />
       <Setter Property="TextWrapping" Value="Wrap" />
       <Setter Property="Margin" Value="0,0,0,14" />
+    </Style>
+    <!-- 摆在控件下方的**说明正文**加上 left：三四行的段落居中之后，
+         每行起点都不一样，眼睛每读一行要重新找一次行首；
+         折行剩下的那两个字还会孤零零停在第二行正中 -->
+    <Style Selector="TextBlock.intro.left">
+      <Setter Property="TextAlignment" Value="Left" />
     </Style>
     <Style Selector="TextBlock.lbl">
       <Setter Property="FontSize" Value="12" />

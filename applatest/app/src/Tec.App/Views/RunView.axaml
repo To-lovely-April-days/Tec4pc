@@ -234,7 +234,9 @@
           <DockPanel IsVisible="{Binding BenchPane.Open}">
             <!-- statusrow：按宿主设备分组。一台 RD-105 = 两路，摆一个框里，
                  「这两路共用一台机器」一眼看得见；但每一路自己启停 -->
-            <Border DockPanel.Dock="Bottom" Height="178" BorderBrush="#dcdcdc" BorderThickness="0,1,0,0">
+            <!-- 高度按**跑起来的**磁贴算：药丸 + 数据行 + 起跑时刻 + 当前步 + 按钮，
+                 少一分按钮就被挤出去。留着余量，别让一条 pH 探头把版面顶破 -->
+            <Border DockPanel.Dock="Bottom" Height="196" BorderBrush="#dcdcdc" BorderThickness="0,1,0,0">
               <Panel>
                 <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
                   <ItemsControl ItemsSource="{Binding Groups}">
@@ -267,13 +269,23 @@
                                           Cursor="Hand" PointerPressed="OnTilePressed">
                                     <Grid ColumnDefinitions="12,Auto,*">
                                       <Border Grid.Column="0" Background="{Binding ColorHex}" />
-                                      <TextBlock Grid.Column="1" Text="{Binding NameVertical}" FontSize="13"
-                                                 FontWeight="Light" Foreground="#333333" Margin="2,8"
-                                                 LineHeight="14" TextAlignment="Center" />
+                                      <!-- 通道名竖着排（书脊那样整词旋转，不是一个字一行：
+                                           「C H 1」拆成三行读起来是三个东西，还白占一截高度） -->
+                                      <LayoutTransformControl Grid.Column="1" Margin="1,6"
+                                                              VerticalAlignment="Center">
+                                        <LayoutTransformControl.LayoutTransform>
+                                          <RotateTransform Angle="90" />
+                                        </LayoutTransformControl.LayoutTransform>
+                                        <TextBlock Text="{Binding Name}" FontSize="12.5"
+                                                   FontWeight="Light" Foreground="#333333" />
+                                      </LayoutTransformControl>
 
-                                      <DockPanel Grid.Column="2" Margin="6,6,6,4">
+                                      <!-- 行高不够时**先挤中间那块**：按钮排在自己的一行里，
+                                           数据行再多也压不到它身上（从前是 DockPanel，
+                                           内容一长就盖在按钮上，「待机」和启动钮叠成一团） -->
+                                      <Grid Grid.Column="2" Margin="6,6,6,4" RowDefinitions="Auto,*,Auto">
                                         <!-- 这一路自己的四个操作。整机启停在菜单栏那排圆钮上 -->
-                                        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal"
+                                        <StackPanel Grid.Row="2" Orientation="Horizontal"
                                                     Spacing="5" HorizontalAlignment="Center" Margin="0,4,0,0">
                                           <Button Classes="chbtn" Command="{Binding Start}"
                                                   IsEnabled="{Binding CanStart}" ToolTip.Tip="{Binding StartTip}">
@@ -294,7 +306,7 @@
                                         </StackPanel>
 
                                         <!-- 状态一个词说清：待机 / 运行中 / 已暂停 / 已完成 / 故障 -->
-                                        <Border DockPanel.Dock="Top" CornerRadius="9" Height="17" Padding="7,0"
+                                        <Border Grid.Row="0" CornerRadius="9" Height="17" Padding="7,0"
                                                 HorizontalAlignment="Left" Margin="0,0,0,4"
                                                 Background="{Binding StateFillHex}">
                                           <TextBlock Text="{Binding StateText}" FontSize="10.5"
@@ -303,18 +315,22 @@
                                         </Border>
 
                                         <!-- 停用：只写它是哪个孔（数据行留着全是「—」，看着像坏了） -->
-                                        <TextBlock IsVisible="{Binding Off}" Text="{Binding HostLabel}"
+                                        <TextBlock Grid.Row="1" IsVisible="{Binding Off}" Text="{Binding HostLabel}"
                                                    FontSize="11" Foreground="#b0b0b0"
                                                    TextTrimming="CharacterEllipsis" VerticalAlignment="Top" />
 
-                                        <StackPanel IsVisible="{Binding On}" Spacing="2" VerticalAlignment="Top">
+                                        <StackPanel Grid.Row="1" ClipToBounds="True"
+                                                    IsVisible="{Binding On}" Spacing="2" VerticalAlignment="Top">
                                           <StackPanel Orientation="Horizontal" Spacing="5">
                                             <TextBlock Text="Tr" Classes="statk" /><TextBlock Text="{Binding TrText}" Classes="statv" />
                                           </StackPanel>
                                           <StackPanel Orientation="Horizontal" Spacing="5">
                                             <TextBlock Text="Tj" Classes="statk" /><TextBlock Text="{Binding TjText}" Classes="statv" />
                                           </StackPanel>
-                                          <StackPanel Orientation="Horizontal" Spacing="5">
+                                          <!-- pH 同「出力」的规矩：这一路没有 pH 探头就整行不显示，
+                                               不摆一行「—」——空着的行看着像坏了 -->
+                                          <StackPanel Orientation="Horizontal" Spacing="5"
+                                                      IsVisible="{Binding HasPh}">
                                             <TextBlock Text="pH" Classes="statk" /><TextBlock Text="{Binding PhText}" Classes="statv" />
                                           </StackPanel>
                                           <StackPanel Orientation="Horizontal" Spacing="5">
@@ -327,11 +343,15 @@
                                             <TextBlock Text="{Binding DutyText}" Classes="statv"
                                                        Foreground="{Binding DutyColorHex}" />
                                           </StackPanel>
-                                          <TextBlock Text="{Binding StartLine}" FontSize="10.5" Foreground="#8d8d8d" />
+                                          <!-- 起跑时刻与当前步只有跑起来才有内容；没跑的时候
+                                               上面那颗药丸已经说了「待机 / 未编排」，这两行留空 -->
+                                          <TextBlock Text="{Binding StartLine}" FontSize="10.5" Foreground="#8d8d8d"
+                                                     IsVisible="{Binding Started}" />
                                           <TextBlock Text="{Binding StepNow}" FontSize="10" Foreground="#2f8f49"
+                                                     IsVisible="{Binding Started}"
                                                      TextTrimming="CharacterEllipsis" />
                                         </StackPanel>
-                                      </DockPanel>
+                                      </Grid>
                                     </Grid>
                                   </Border>
                                 </DataTemplate>

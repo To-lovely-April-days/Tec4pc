@@ -62,8 +62,12 @@ public sealed class StatTileViewModel : ViewModelBase
     public int Channel { get; }
     /// <summary>选中的那一路：手动标记记到它那条记录链上。</summary>
     public bool IsSelected { get => _sel; set => Set(ref _sel, value); }
-    /// <summary>竖排通道名：一行一个字符（CSS vertical-rl 的等价）。</summary>
-    public string NameVertical => string.Join("\n", $"CH{Channel}".ToCharArray());
+    /// <summary>
+    /// 通道名。磁贴左侧那条把它**整词旋转**着排（书脊那样），不是一个字一行——
+    /// 拆成「C / H / 1」三行读起来像三个东西，还白占一截高度，
+    /// 而磁贴的高度正是紧张的那一维。
+    /// </summary>
+    public string Name => $"CH{Channel}";
     public bool Off => !(_ws.ChannelOf(Channel)?.Enabled ?? false);
     public bool On => !Off;
     /// <summary>停用的通道只写「已停用」和它是哪个孔——数据行留着全是「—」，看着像坏了。</summary>
@@ -72,7 +76,13 @@ public sealed class StatTileViewModel : ViewModelBase
     { 1 => "#2f7ed8", 2 => "#2aa87a", 3 => "#c9772b", _ => "#8a63d2" };
 
     private ChannelRun? Run => _ws.Engine.Record.Of(Channel);
-    private bool Started => Run is not null;
+
+    /// <summary>
+    /// 这一路跑过没有。**没跑的时候「起跑时刻」和「当前步」两行不出现**：
+    /// 药丸上已经写着「待机 / 未编排」，再摆一行「未启动」、一行「▶ 待机（未启动）」，
+    /// 是同一件事说三遍——而磁贴那点高度是要留给真数据的。
+    /// </summary>
+    public bool Started => Run is not null;
 
     private string Read(string tag, string fmt, string unit)
     {
@@ -276,6 +286,7 @@ public sealed class StatTileViewModel : ViewModelBase
     public void Tick() => RaiseAll(nameof(TrText), nameof(TjText), nameof(PhText), nameof(RpmText),
                                    nameof(DutyText), nameof(DutyColorHex), nameof(HasDuty),
                                    nameof(StartLine), nameof(StepNow), nameof(NotStartedDot),
+                                   nameof(Started), nameof(HasPh),
                                    nameof(Off), nameof(On), nameof(HostLabel), nameof(ColorHex),
                                    nameof(StateText), nameof(StateColorHex), nameof(StateFillHex),
                                    nameof(CanStart), nameof(CanPause), nameof(CanStop), nameof(CanSkip),

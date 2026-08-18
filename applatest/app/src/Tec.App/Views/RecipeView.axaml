@@ -427,13 +427,14 @@
               <ctl:TecIcon Key="ui-foot-save" />
             </Button>
           </StackPanel>
+          <!-- 说明左对齐（四行居中的话每行起点都不一样，眼睛要重新找行首），
+               跳转单独占一行：从前它接在句号后面，跟正文挤成一句读，
+               看着像话没说完 -->
           <TextBlock FontSize="11.5" Foreground="#5a5a5a" LineHeight="18"
-                     TextWrapping="Wrap" TextAlignment="Center" Margin="0,2,0,0">
-            <Run Text="应用会替换当前通道的全部步骤；库里那条捎着配料表的，配料表也一起替换（引用才不断）。存入时配料表随配方入库，实投与批号不带——那是跟某一炉走的。" />
-            <InlineUIContainer>
-              <Button Classes="linkbtn" Content="管理配方库 →" Command="{Binding ManageLibrary}" />
-            </InlineUIContainer>
-          </TextBlock>
+                     TextWrapping="Wrap" Margin="0,2,0,0"
+                     Text="应用会替换当前通道的全部步骤；库里那条捎着配料表的，配料表也一起替换（引用才不断）。存入时配料表随配方入库，实投与批号不带——那是跟某一炉走的。" />
+          <Button Classes="linkbtn" Content="管理配方库 →" Command="{Binding ManageLibrary}"
+                  HorizontalAlignment="Right" Margin="0,4,0,0" />
           </StackPanel>
 
           <Border Height="1" Background="#d5d5d5" Margin="0,10" />

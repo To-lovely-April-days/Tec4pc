@@ -299,7 +299,7 @@
                 </Button>
               </StackPanel>
 
-              <TextBlock Classes="intro" TextAlignment="Center" Margin="0,2,0,0"
+              <TextBlock Classes="intro left" Margin="0,2,0,0"
                          Text="应用会替换目标通道当前的全部步骤，并跳转到配方编辑界面。" />
             </StackPanel>
             </StackPanel>

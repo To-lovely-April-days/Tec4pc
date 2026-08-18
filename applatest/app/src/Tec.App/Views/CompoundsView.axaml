@@ -294,7 +294,7 @@
           <Button Classes="btn primary" Content="到配料表算饱和温度 →"
                   HorizontalAlignment="Center" Margin="0,14,0,0"
                   Command="{Binding $parent[UserControl].DataContext.GoCharge}" />
-          <TextBlock Classes="intro" Margin="0,10,0,0"
+          <TextBlock Classes="intro left" Margin="0,10,0,0"
                      Text="饱和温度要按这一炉的浓度算（溶质质量 ÷ 溶剂体积），那两个数在配料表里。算出来可以直接写进控温步骤的目标温度（FR-5.9）。曲线是水中的溶解度，溶剂不是水就不换算。" />
         </StackPanel>
         </Border>

@@ -84,10 +84,12 @@
 
         <!-- tools -->
         <Border DockPanel.Dock="Top" BorderBrush="#ececec" BorderThickness="0,0,0,1" Padding="16,9">
-          <Grid ColumnDefinitions="Auto,*">
+          <!-- 左边一列 `*` 右边 `Auto`，**不能反过来**：Auto 给的是「要多少给多少」，
+               筛选那排就永远不折行，右边的计数与「清除选择」被顶出可视区切掉一半 -->
+          <Grid ColumnDefinitions="*,Auto">
             <WrapPanel Grid.Column="0" Orientation="Horizontal">
               <Panel Margin="0,0,9,0">
-                <TextBox Classes="srch" Width="210" Text="{Binding Query, Mode=TwoWay}"
+                <TextBox Classes="srch" Width="188" Text="{Binding Query, Mode=TwoWay}"
                          Watermark="搜索名称或记录编号" />
                 <ctl:TecIcon Key="ui-search" Tint="#9a9a9a" Size="13" Margin="7,0,0,0"
                              HorizontalAlignment="Left" VerticalAlignment="Center" IsHitTestVisible="False" />
@@ -107,14 +109,15 @@
                         Command="{Binding SetDays}" CommandParameter="90" />
               </StackPanel>
 
-              <ComboBox Classes="ftr" Width="150" Margin="0,0,9,0" ItemsSource="{Binding RecipeOptions}"
+              <!-- 宽度按里头最长的那条选项配，多出来的富余会把「只看有报警」挤到第二行 -->
+              <ComboBox Classes="ftr" Width="136" Margin="0,0,8,0" ItemsSource="{Binding RecipeOptions}"
                         SelectedItem="{Binding FilterRecipe, Mode=TwoWay}" />
-              <ComboBox Classes="ftr" Width="118" Margin="0,0,9,0" ItemsSource="{Binding OpOptions}"
+              <ComboBox Classes="ftr" Width="108" Margin="0,0,8,0" ItemsSource="{Binding OpOptions}"
                         SelectedItem="{Binding FilterOp, Mode=TwoWay}" />
-              <ComboBox Classes="ftr" Width="106" Margin="0,0,9,0" ItemsSource="{Binding StateOptions}"
+              <ComboBox Classes="ftr" Width="96" Margin="0,0,8,0" ItemsSource="{Binding StateOptions}"
                         SelectedItem="{Binding FilterState, Mode=TwoWay}" />
               <CheckBox Content="只看有报警" FontSize="11.5" MinHeight="0" VerticalAlignment="Center"
-                        IsChecked="{Binding OnlyAlarm, Mode=TwoWay}" />
+                        Margin="0,0,14,0" IsChecked="{Binding OnlyAlarm, Mode=TwoWay}" />
             </WrapPanel>
 
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12"
