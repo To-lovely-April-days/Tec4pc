@@ -251,19 +251,27 @@
 
                               <!-- 原型 .step：200×118 的青块，左边 11px 模块色条 +
                                    竖排模块名，中间图标 + 整句描述，底下一行排期，
-                                   垃圾桶在右下角 -->
+                                   垃圾桶在右上（原型是右侧那一列图标的位置）。
+
+                                   右边留出 29px 空档，跟左边「色条 11 + 竖排名 18」一样宽：
+                                   图标和描述是在这一列里居中的，左边有东西右边没有的话，
+                                   居中的结果就偏到卡片中线右侧去了。原型靠 .sbody 的
+                                   padding-right:24px 抵掉——那 24px 是给右侧三个白圈留的，
+                                   我们不搬那三个圈，但这个空档得留。 -->
                               <Border Classes="step" Width="{Binding CardWidth}"
                                       Tag="stepcard"
                                       Classes.stepSel="{Binding IsSelected}"
                                       Classes.stepGhost="{Binding Ghosted}"
                                       PointerPressed="OnStepPressed">
                                 <!-- 竖排模块名那一列写死 18：留 Auto 的话，Grid 量它时给的是无限宽，
-                                       算出来的余量跟最终排布的余量对不上，右边一列会超出卡片 -->
-                                  <Grid ColumnDefinitions="11,18,*">
-                                  <Border Grid.Column="0" Background="{Binding ModuleColor}"
+                                     算出来的余量跟最终排布的余量对不上，右边一列会超出卡片 -->
+                                <Grid ColumnDefinitions="11,18,*,29" RowDefinitions="*,Auto">
+                                  <Border Grid.Column="0" Grid.RowSpan="2"
+                                          Background="{Binding ModuleColor}"
                                           CornerRadius="2,0,0,2" />
                                   <!-- 竖排模块名（原型 writing-mode:vertical-rl） -->
-                                  <LayoutTransformControl Grid.Column="1" VerticalAlignment="Top"
+                                  <LayoutTransformControl Grid.Column="1" Grid.RowSpan="2"
+                                                          VerticalAlignment="Top"
                                                           Margin="3,7,0,0">
                                     <LayoutTransformControl.LayoutTransform>
                                       <RotateTransform Angle="90" />
@@ -272,40 +280,47 @@
                                                Foreground="#2b2b2b" />
                                   </LayoutTransformControl>
 
-                                  <DockPanel Grid.Column="2" Width="{Binding BodyWidth}" Margin="2,6,8,4">
-                                    <!-- 排期与删除：原型那一列 3 个白圈是 GBG 自己的功能，
-                                         我们没有，位置让给真有内容的预计开始 / 耗时。
-                                         这一条**必须能被压窄**（TextTrimming），否则它把
-                                         这一列撑得比卡片还宽，上面的描述就跟着按超出的宽度
-                                         折行，右半截被卡片裁掉 -->
-                                    <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,Auto,Auto"
-                                          Margin="0,3,0,0">
-                                      <TextBlock Grid.Column="0" FontSize="9" Foreground="#17454f"
-                                                 VerticalAlignment="Center"
-                                                 TextTrimming="CharacterEllipsis">
-                                        <Run Text="预计开始 " /><Run Text="{Binding PlanStart}" />
-                                      </TextBlock>
-                                      <TextBlock Grid.Column="1" FontSize="9" Foreground="#17454f"
-                                                 VerticalAlignment="Center" Margin="5,0,3,0"
-                                                 IsVisible="{Binding HasDuration}">
-                                        <Run Text="耗时 " /><Run Text="{Binding PlanDuration}" />
-                                      </TextBlock>
-                                      <Button Grid.Column="2" Classes="trash" ToolTip.Tip="删除该步骤"
-                                              Command="{Binding $parent[UserControl].DataContext.RemoveStep}"
-                                              CommandParameter="{Binding}">
-                                        <ctl:TecIcon Key="ui-trash-step" />
-                                      </Button>
-                                    </Grid>
-                                    <StackPanel VerticalAlignment="Center">
-                                      <ctl:TecIcon Key="{Binding IconKey}" Size="34"
-                                                   HorizontalAlignment="Center" />
-                                      <TextBlock Text="{Binding Desc}" FontSize="10.5"
-                                                 Foreground="#1f1f1f" LineHeight="14"
-                                                 TextAlignment="Center" TextWrapping="Wrap"
-                                                 MaxLines="3"
-                                                 Margin="0,4,0,0" />
-                                    </StackPanel>
-                                  </DockPanel>
+                                  <!-- 图标 + 描述：宽度算死（BodyWidth），不交给星号列去分 -->
+                                  <StackPanel Grid.Column="2" Grid.Row="0"
+                                              Width="{Binding BodyWidth}"
+                                              VerticalAlignment="Center" Margin="0,8,0,0">
+                                    <ctl:TecIcon Key="{Binding IconKey}" Size="34"
+                                                 HorizontalAlignment="Center" />
+                                    <!-- 左右各留 4px 空隙：字排到跟盒子一样宽时，
+                                         最后一个字的墨迹会比排版算出来的行宽多出一两个像素，
+                                         正好被盒子边缘切掉（"加入" 剩一撇）。留出这点余量，
+                                         多出来的墨迹有地方去 -->
+                                    <TextBlock Text="{Binding Desc}" FontSize="10.5"
+                                               Foreground="#1f1f1f" LineHeight="14"
+                                               TextAlignment="Center" TextWrapping="Wrap"
+                                               MaxLines="4" Margin="4,4,4,0" />
+                                  </StackPanel>
+
+                                  <!-- 垃圾桶占右边那个空档，贴右下角（原型 .step .trash 也在右下） -->
+                                  <Button Grid.Column="3" Grid.Row="0" Grid.RowSpan="2"
+                                          Classes="trash" Margin="0,0,0,5"
+                                          VerticalAlignment="Bottom" HorizontalAlignment="Center"
+                                          ToolTip.Tip="删除该步骤"
+                                          Command="{Binding $parent[UserControl].DataContext.RemoveStep}"
+                                          CommandParameter="{Binding}">
+                                    <ctl:TecIcon Key="ui-trash-step" />
+                                  </Button>
+
+                                  <!-- 排期这一行借一点右空档（138 宽塞不下两段），
+                                       但要在垃圾桶左边收住，不然「耗时」会被桶盖住 -->
+                                  <Grid Grid.Row="1" Grid.Column="2" Grid.ColumnSpan="2"
+                                        ColumnDefinitions="*,Auto" Margin="0,4,26,5">
+                                    <TextBlock Grid.Column="0" FontSize="9" Foreground="#17454f"
+                                               VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis">
+                                      <Run Text="预计开始 " /><Run Text="{Binding PlanStart}" />
+                                    </TextBlock>
+                                    <TextBlock Grid.Column="1" FontSize="9" Foreground="#17454f"
+                                               VerticalAlignment="Center" Margin="6,0,0,0"
+                                               IsVisible="{Binding HasDuration}">
+                                      <Run Text="耗时 " /><Run Text="{Binding PlanDuration}" />
+                                    </TextBlock>
+                                  </Grid>
                                 </Grid>
                               </Border>
                               </StackPanel>
