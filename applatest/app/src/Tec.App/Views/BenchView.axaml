@@ -213,7 +213,7 @@
               <ItemsControl ItemsSource="{Binding ChannelRows}">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
-                    <Border BorderBrush="#eeeeee" BorderThickness="0,0,0,1" Padding="10,7">
+                    <Border BorderBrush="#eeeeee" BorderThickness="0,0,0,1" Padding="10,0" MinHeight="32">
                       <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto">
                         <Border Grid.Column="0" Width="12" Height="12" CornerRadius="3"
                                 Background="{Binding ColorHex}" VerticalAlignment="Center" />
@@ -234,8 +234,8 @@
                             </DataTemplate>
                           </ItemsControl.ItemTemplate>
                         </ItemsControl>
-                        <CheckBox Grid.Column="4" IsChecked="{Binding Enabled, Mode=TwoWay}"
-                                  Margin="8,0,0,0" VerticalAlignment="Center" MinHeight="0" />
+                        <CheckBox Grid.Column="4" Classes="mini" IsChecked="{Binding Enabled, Mode=TwoWay}"
+                                  Margin="8,0,0,0" VerticalAlignment="Center" />
                       </Grid>
                     </Border>
                   </DataTemplate>
@@ -426,6 +426,20 @@
     <Style Selector="Button.hbtn:pointerover /template/ ContentPresenter">
       <Setter Property="Background" Value="#d9e4ef" />
     </Style>
+    <!-- 通道总表里的勾选框。Avalonia 的缺省 CheckBox 连边距一共占 32px 高，
+         一行就被它撑到 47px；原型那张表一行 32px，四条通道一屏放得下。
+         这里把它压到 18px：只是勾选框本身，不带文字 -->
+    <Style Selector="CheckBox.mini">
+      <!-- Avalonia 缺省的勾选框控件高 32px（主题写死的，MinHeight 压不动），
+           一行就被它撑到 33px。方框本身是 20×20，控件给到 24 刚好装下不裁；
+           压到 18 会把方框切成 20×14、勾号缺一角（试过）。
+           行高最终由行自己的 MinHeight 定 -->
+      <Setter Property="Height" Value="24" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="Padding" Value="0" />
+    </Style>
+
     <!-- .frow.chk2：14px 方框 + 11.5px 文字 -->
     <Style Selector="CheckBox.chk2">
       <Setter Property="FontSize" Value="12" />
