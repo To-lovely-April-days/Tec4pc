@@ -235,7 +235,7 @@
                           </ItemsControl.ItemTemplate>
                         </ItemsControl>
                         <CheckBox Grid.Column="4" Classes="mini" IsChecked="{Binding Enabled, Mode=TwoWay}"
-                                  Margin="8,0,0,0" VerticalAlignment="Center" />
+                                  VerticalAlignment="Center" />
                       </Grid>
                     </Border>
                   </DataTemplate>
@@ -429,15 +429,23 @@
     <!-- 通道总表里的勾选框。Avalonia 的缺省 CheckBox 连边距一共占 32px 高，
          一行就被它撑到 47px；原型那张表一行 32px，四条通道一屏放得下。
          这里把它压到 18px：只是勾选框本身，不带文字 -->
+    <!--
+      通道总表里的勾选框。Avalonia 缺省 CheckBox 要占 32px 高，一行就被撑到 33px。
+
+      **不能靠给控件写死 Height 来压**：那 32px 是模板*内层*元素的最小高，
+      外面把控件限到 24，内层照旧按 32 排版然后被裁掉底下一截——
+      勾上时看不出来（勾号在中间），没勾时方框直接少一条底边。
+      把内层的最小高一起放开，让它按方框本身（20×20）自然排才对。
+    -->
     <Style Selector="CheckBox.mini">
-      <!-- Avalonia 缺省的勾选框控件高 32px（主题写死的，MinHeight 压不动），
-           一行就被它撑到 33px。方框本身是 20×20，控件给到 24 刚好装下不裁；
-           压到 18 会把方框切成 20×14、勾号缺一角（试过）。
-           行高最终由行自己的 MinHeight 定 -->
-      <Setter Property="Height" Value="24" />
       <Setter Property="MinHeight" Value="0" />
       <Setter Property="MinWidth" Value="0" />
       <Setter Property="Padding" Value="0" />
+      <!-- 上下各 -6 的负边距：只把它在排版里占的位子从 32 收到 20，
+           **渲染照旧完整**（方框 20×20 画满，多出来的是透明空隙）。
+           写死 Height 是不行的——那 32px 在模板内层，外面限高只会把它裁掉，
+           没勾的时候方框直接少一条底边 -->
+      <Setter Property="Margin" Value="8,-6,0,-6" />
     </Style>
 
     <!-- .frow.chk2：14px 方框 + 11.5px 文字 -->
