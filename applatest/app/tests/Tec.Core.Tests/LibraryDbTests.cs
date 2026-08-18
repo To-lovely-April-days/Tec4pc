@@ -284,6 +284,45 @@ public sealed class LibraryDbTests : IDisposable
         Assert.Equal(0, db.CompoundVersion);
     }
 
+    // ── 编辑审计（CH-6.1）：写一条时报「改了什么」 ──────────────────
+
+    [Fact]
+    public void 改一条_报的是跟库里旧值比出来的差()
+    {
+        using var db = Open();
+        db.SaveCompound(Benzoic());
+
+        var c = Benzoic();
+        c.Density = 1.27;
+        Assert.Equal(new[] { "补上密度 1.27" }, db.SaveCompound(c));
+    }
+
+    [Fact]
+    public void 头一回写_报新增()
+    {
+        using var db = Open();
+        Assert.Equal(new[] { "新增" }, db.SaveCompound(Benzoic()));
+    }
+
+    [Fact]
+    public void 原样重存_报不出差来()
+    {
+        using var db = Open();
+        db.SaveCompound(Benzoic());
+        // 存进去再读出来再存回去，一圈下来一个字没变——差就得是空的，
+        // 中间要是被落盘格式偷改了（小数位、空串变 null），这条会当场喊出来
+        Assert.Empty(db.SaveCompound(db.LoadCompounds().Single()));
+    }
+
+    [Fact]
+    public void 删除报得出名字_没删着就是null()
+    {
+        using var db = Open();
+        db.SaveCompound(Benzoic());
+        Assert.Equal("苯甲酸", db.DeleteCompound("65-85-0"));
+        Assert.Null(db.DeleteCompound("65-85-0"));
+    }
+
     [Fact]
     public void 版本号重开库还在()
     {

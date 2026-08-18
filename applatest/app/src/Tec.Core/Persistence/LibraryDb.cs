@@ -228,41 +228,54 @@ on conflict(id) do update set
         cmd.ExecuteNonQuery();
     }
 
+    /// <summary>列清单与 <see cref="ReadCompound"/> 的下标一一对应——整库读和单条读共用一份。</summary>
+    private const string CompoundColumns = @"cas,name,formula,mw,mp,category,solvent,note,
+                                             solubility,structure,ion,
+                                             density,bp,purity,cp,batch,supplier,phase";
+
     public List<Compound> LoadCompounds()
     {
         var list = new List<Compound>();
         lock (_gate)
         {
             using var cmd = _cn.CreateCommand();
-            cmd.CommandText = @"select cas,name,formula,mw,mp,category,solvent,note,
-                                       solubility,structure,ion,
-                                       density,bp,purity,cp,batch,supplier,phase
-                                from compound order by ord, rowid";
+            cmd.CommandText = $"select {CompoundColumns} from compound order by ord, rowid";
             using var r = cmd.ExecuteReader();
-            while (r.Read())
-                list.Add(new Compound
-                {
-                    Cas = r.GetString(0),
-                    Name = r.GetString(1),
-                    Formula = Str(r, 2) ?? "",
-                    Mw = Num(r, 3),
-                    Mp = Num(r, 4),
-                    Category = Str(r, 5) ?? "",
-                    Solvent = Str(r, 6) ?? "",
-                    Note = Str(r, 7) ?? "",
-                    Solubility = ParseCoefficients(Str(r, 8)),
-                    StructureKey = Str(r, 9),
-                    IonText = Str(r, 10),
-                    Density = Num(r, 11),
-                    Bp = Num(r, 12),
-                    Purity = Num(r, 13),
-                    Cp = Num(r, 14),
-                    Batch = Str(r, 15) ?? "",
-                    Supplier = Str(r, 16) ?? "",
-                    Phase = Str(r, 17) ?? ""
-                });
+            while (r.Read()) list.Add(ReadCompound(r));
         }
         return list;
+    }
+
+    private static Compound ReadCompound(SqliteDataReader r) => new()
+    {
+        Cas = r.GetString(0),
+        Name = r.GetString(1),
+        Formula = Str(r, 2) ?? "",
+        Mw = Num(r, 3),
+        Mp = Num(r, 4),
+        Category = Str(r, 5) ?? "",
+        Solvent = Str(r, 6) ?? "",
+        Note = Str(r, 7) ?? "",
+        Solubility = ParseCoefficients(Str(r, 8)),
+        StructureKey = Str(r, 9),
+        IonText = Str(r, 10),
+        Density = Num(r, 11),
+        Bp = Num(r, 12),
+        Purity = Num(r, 13),
+        Cp = Num(r, 14),
+        Batch = Str(r, 15) ?? "",
+        Supplier = Str(r, 16) ?? "",
+        Phase = Str(r, 17) ?? ""
+    };
+
+    /// <summary>读一条。锁内调用，不自己上锁。</summary>
+    private Compound? LoadOne(string cas)
+    {
+        using var cmd = _cn.CreateCommand();
+        cmd.CommandText = $"select {CompoundColumns} from compound where cas=$cas";
+        cmd.Parameters.AddWithValue("$cas", cas);
+        using var r = cmd.ExecuteReader();
+        return r.Read() ? ReadCompound(r) : null;
     }
 
     /// <summary>整库对齐，同 <see cref="SaveRecipes"/>。</summary>
@@ -281,11 +294,16 @@ on conflict(id) do update set
     /// <summary>
     /// 只写一条。物性详情面板是逐个字段改的，改一个字就把整张表重写一遍没必要。
     /// 已有的按 CAS 号更新，没有的插在最后。
+    ///
+    /// 返回**这次写入相对库里旧值改了什么**（CH-6.1）：写盘前把旧行读出来，
+    /// 跟落着的版本比，不跟界面上的中间状态比。谁拿它写日志是调用方的事——
+    /// 开机灌种子那种程序自己的写入就不该留「有人改了库」的痕。
     /// </summary>
-    public void SaveCompound(Compound c)
+    public List<string> SaveCompound(Compound c)
     {
         lock (_gate)
         {
+            var old = LoadOne(c.Cas);
             using var cmd = _cn.CreateCommand();
             cmd.CommandText = "select ord from compound where cas=$cas";
             cmd.Parameters.AddWithValue("$cas", c.Cas);
@@ -294,21 +312,30 @@ on conflict(id) do update set
             Upsert(tx, c, ord);
             BumpCompoundVersion(tx);
             tx.Commit();
+            return CompoundAudit.Diff(old, c);
         }
     }
 
-    public void DeleteCompound(string cas)
+    /// <summary>删一条。返回被删条目的名字；库里本来就没有这条就返回 null（也不涨版本）。</summary>
+    public string? DeleteCompound(string cas)
     {
         lock (_gate)
         {
+            var old = LoadOne(cas);
             using var tx = _cn.BeginTransaction();
             using var cmd = _cn.CreateCommand();
             cmd.Transaction = tx;
             cmd.CommandText = "delete from compound where cas=$cas";
             cmd.Parameters.AddWithValue("$cas", cas);
             // 没删着东西就不涨版本：版本号数的是「库真的变了几次」
-            if (cmd.ExecuteNonQuery() > 0) BumpCompoundVersion(tx);
+            if (cmd.ExecuteNonQuery() > 0)
+            {
+                BumpCompoundVersion(tx);
+                tx.Commit();
+                return old?.Name;
+            }
             tx.Commit();
+            return null;
         }
     }
 

@@ -388,20 +388,28 @@ public sealed class ExperimentStore
     /// <summary>化合物库版本号（每写一次 +1）。库开不起来时恒为 0——那时候本来也存不住。</summary>
     public int CompoundVersion => Db?.CompoundVersion ?? 0;
 
-    /// <summary>改一条化合物就写一条，不必把整张表重写。</summary>
-    public void SaveCompound(Compound c)
+    /// <summary>
+    /// 改一条化合物就写一条，不必把整张表重写。
+    /// 返回相对库里旧值的变化清单（进系统日志用）；库开不起来就是空清单——
+    /// 没落盘的改动不该在日志里说成「库改了」。
+    /// </summary>
+    public List<string> SaveCompound(Compound c)
     {
-        if (Db is null) return;
-        try { Db.SaveCompound(c); }
-        catch (Exception ex) { Console.WriteLine($"[warn] 化合物存盘失败：{ex.Message}"); }
+        if (Db is null) return new List<string>();
+        try { return Db.SaveCompound(c); }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[warn] 化合物存盘失败：{ex.Message}");
+            return new List<string>();
+        }
     }
 
-    /// <summary>删一条。库里没了，界面上也就没了——删不掉时照实喊一声，不假装删了。</summary>
-    public bool DeleteCompound(string cas)
+    /// <summary>删一条。返回被删条目的名字；没删着（库里没有 / 库开不起来）就是 null，不假装删了。</summary>
+    public string? DeleteCompound(string cas)
     {
-        if (Db is null) return false;
-        try { Db.DeleteCompound(cas); return true; }
-        catch (Exception ex) { Console.WriteLine($"[warn] 化合物删除失败：{ex.Message}"); return false; }
+        if (Db is null) return null;
+        try { return Db.DeleteCompound(cas); }
+        catch (Exception ex) { Console.WriteLine($"[warn] 化合物删除失败：{ex.Message}"); return null; }
     }
 
     public void CloseDb()

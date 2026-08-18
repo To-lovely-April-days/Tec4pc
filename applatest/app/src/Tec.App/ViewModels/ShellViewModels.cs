@@ -834,9 +834,24 @@ public sealed class CompoundsViewModel : ViewModelBase
                 return false;
             }
             _ws.Store.DeleteCompound(oldCas);
+            _ws.Store.SaveCompound(c);
+            // 换键在库里是删旧插新两笔，拼出来的变化清单会说成「新增」——照实记成换键
+            Audit(c, new[] { $"键 {oldCas} → {c.Cas}" });
+            return true;
         }
-        _ws.Store.SaveCompound(c);
+        Audit(c, _ws.Store.SaveCompound(c));
         return true;
+    }
+
+    /// <summary>
+    /// 库真的变了才落一笔系统日志（CH-6.1 的库侧）：物性是算量和校验的输入，
+    /// 「谁把密度改了」得答得上来。变化清单是空的就一笔不落——
+    /// 界面上点了一圈没改成的操作不该在日志里刷存在感。
+    /// </summary>
+    private void Audit(Compound c, IReadOnlyList<string> changes)
+    {
+        if (changes.Count == 0) return;
+        _ws.Log?.Write("化合物", $"{CompoundAudit.Describe(c)}：{string.Join("；", changes)}", _ws.Operator);
     }
 
     /// <summary>
@@ -847,7 +862,7 @@ public sealed class CompoundsViewModel : ViewModelBase
     {
         var c = new Compound { Cas = Compound.NewKey(), Name = "新化合物", Category = "" };
         _ws.Compounds.Add(c);
-        _ws.Store.SaveCompound(c);
+        Audit(c, _ws.Store.SaveCompound(c));
         Selected = Rows.FirstOrDefault(r => r.Cas == c.Cas);
         Say("已新增一条，请在右侧填写名称与 CAS 号");
     }
@@ -858,7 +873,8 @@ public sealed class CompoundsViewModel : ViewModelBase
         var name = row.Name;
         var cas = row.Cas;
         _ws.Compounds.Remove(row.Model);
-        _ws.Store.DeleteCompound(cas);
+        if (_ws.Store.DeleteCompound(cas) is not null)
+            Audit(row.Model, new[] { "删除" });
         Say(row.Model.HasCas ? $"已删除 {name}（{cas}）" : $"已删除 {name}");
     }
 
