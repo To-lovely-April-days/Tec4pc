@@ -137,8 +137,12 @@
     <Border Grid.Column="2" Background="{StaticResource PropsBg}">
       <DockPanel>
         <!-- 底部工具条：设备的动作都集中在这里，底色跟面板一致 -->
-        <Border DockPanel.Dock="Bottom"
-                BorderBrush="#d5d5d5" BorderThickness="0,1,0,0" Padding="18,10,18,14">
+        <!-- 底部动作区：左边同样一条 6px 色条，跟设备块一条线上——
+             这排按钮（保存 / 连接 / 初始化 / 删除、手动控制面板、测试连接）
+             干的都是「对这台设备」的事，跟设备块是同一段。
+             顶上那条细横线去掉：色条已经把这一段圈出来了 -->
+        <Border DockPanel.Dock="Bottom" Padding="18,10,18,14"
+                BorderBrush="{StaticResource SelBd}" BorderThickness="6,0,0,0">
           <StackPanel>
             <TextBlock Text="{Binding SaveHint}" IsVisible="{Binding HasSaveHint}"
                        FontSize="10.5" Foreground="#7a7580" LineHeight="16" TextWrapping="Wrap"
@@ -260,7 +264,7 @@
                  跟上面常驻的台面块不是一回事。色条比分割线说得更清楚——
                  它标的是「这一段属于谁」，而不只是「这里断开」 -->
             <Border Padding="18,16,18,20" IsVisible="{Binding HasSelection}"
-                    BorderBrush="{StaticResource SelBd}" BorderThickness="4,0,0,0">
+                    BorderBrush="{StaticResource SelBd}" BorderThickness="6,0,0,0">
             <StackPanel>
 
             <StackPanel IsVisible="{Binding HasSelection}">
