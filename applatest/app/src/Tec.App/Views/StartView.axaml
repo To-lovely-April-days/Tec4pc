@@ -9,7 +9,14 @@
 
     <Border Grid.Column="0" Background="#fafafa" BorderBrush="#dcdcdc" BorderThickness="0,0,1,0">
       <ScrollViewer Width="268">
-        <StackPanel Margin="0,18">
+        <!--
+          左边让开 3px。原型里这排是贴着页面最左边画的（.snav 的 border-left 就在 x=0），
+          浏览器里左边什么都没有，那 3px 选中条看得清清楚楚；到了真窗口里，
+          它紧挨着窗框那条深线，两条竖线并排，选中条就像被啃掉一半。
+          让开的这 3px 是面板自己的底色，看着是「行从面板边缘缩进一点」，
+          选中条整根露出来
+        -->
+        <StackPanel Margin="3,18,0,18">
         <Button Classes="snav on" Command="{Binding OpenExperiment}">
           <StackPanel Orientation="Horizontal" Spacing="14">
             <Panel Width="22"><ctl:TecIcon Key="ui-snav-open" Tint="#0b3760"
