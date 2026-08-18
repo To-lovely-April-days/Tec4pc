@@ -107,10 +107,11 @@
 
       <StackPanel Orientation="Horizontal" Spacing="14" HorizontalAlignment="Right"
                   VerticalAlignment="Center" Margin="0,0,12,0">
-        <!-- 这台机器本身。原型摆的是个泛泛的「两个瓶子」，换成双通道反应工作站
-             正视图（设计稿原样，没有重画简化）。Size 只定宽，高度按 viewBox
-             比例走（176×140 → 42×33.4），占位与原来那颗 40×34 的一样，排版不动 -->
-        <ctl:TecIcon Key="ui-easymax102" Size="42" VerticalAlignment="Center" />
+        <!-- 这台机器本身。直接用设备库那份双通道反应器的图，不再另存一份图标：
+             同一台机器在顶栏、设备库、画布上就永远是同一张脸。新图是竖长的
+             （169.8×179.93），Fit 会等比缩进这个 44×40 的格子，整幅不裁 -->
+        <ctl:DeviceArtView ArtKey="reactor2" Fit="True" Width="44" Height="40"
+                           VerticalAlignment="Center" />
         <StackPanel>
           <ctl:TecIcon Key="ui-user" HorizontalAlignment="Center" />
           <TextBlock Text="管理员" FontSize="10" Foreground="#555555" HorizontalAlignment="Center" />

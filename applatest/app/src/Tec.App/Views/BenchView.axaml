@@ -54,8 +54,6 @@
             <TranslateTransform X="{Binding PanX}" Y="{Binding PanY}" />
           </TransformGroup>
         </Panel.RenderTransform>
-      <ctl:BenchLinks Links="{Binding Links}" />
-
       <ItemsControl ItemsSource="{Binding Devices}">
         <ItemsControl.ItemsPanel>
           <ItemsPanelTemplate><Canvas /></ItemsPanelTemplate>
@@ -82,6 +80,10 @@
           </DataTemplate>
         </ItemsControl.ItemTemplate>
       </ItemsControl>
+
+      <!-- 管路画在设备**之上**：接口开在釜盖那三个管口上，位置在图的中段，
+           画在设备下面的话最后一截会被机身挡住，管子看着像停在机器边上 -->
+      <ctl:BenchLinks Links="{Binding Links}" IsHitTestVisible="False" />
 
       <!-- 拖拽中：可插的口 + 跟手的幽灵设备 -->
       <ItemsControl ItemsSource="{Binding Ports}" IsHitTestVisible="False">

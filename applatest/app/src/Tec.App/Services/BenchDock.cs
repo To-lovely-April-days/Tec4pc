@@ -44,29 +44,40 @@ public sealed record BenchLink(string DeviceId, string HostId, string AnchorId, 
 public static class BenchDock
 {
     public const double NodePad = 7;
-    private const double ArtVw = 176, ArtVh = 140;
+    private const double ArtVw = 169.8, ArtVh = 179.93;
 
     /// <summary>
     /// 设备在画布上的显示宽度。反应器画得比原来大，是为了让釜体里的液体和
     /// 搅拌桨看得清——接口坐标按 ArtVw 等比换算，这里改宽度不会让管路错位。
     /// 三处（画布节点、拖拽幽灵、卡片缩略图）从前各写各的，现在只此一份。
     /// </summary>
-    public static double DisplayWidth(string artKey) => artKey == "reactor2" ? 240 : 120;
+    public static double DisplayWidth(string artKey) => artKey == "reactor2" ? 300 : 120;
 
-    /// <summary>反应器的 11 个接口：每通道 3 个上方管口，左右各 2 个侧口，1 个总线口。</summary>
+    /// <summary>
+    /// 反应器的 11 个接口。坐标是量出来的，不是估的：把设备图按 viewBox 宽 1:1
+    /// 渲染成 1018px（5.9953 px/单位），逐点找釜盖上那三个凸出的管口——
+    /// 左颈、中间那个套着搅拌轴的主口、右颈（带红帽的那个），再除回单位。
+    /// 两个通道的图完全一样，间距 80 单位（channel-mount 的 translate 差值）。
+    ///
+    /// 编号沿用旧图的 T1a/T1b/T1c，别改：已存盘的 .tec 里记的就是这些 id，
+    /// 改了名老台面上的探头就找不着自己插在哪儿了。
+    /// </summary>
     public static readonly IReadOnlyList<Anchor> Anchors = new[]
     {
-        new Anchor("T1a", PortKind.Top, 44.8, 9.6, "up", "通道1 · 管口 A") { Slot = 0 },
-        new Anchor("T1b", PortKind.Top, 57.0, 9.2, "up", "通道1 · 管口 B") { Slot = 0 },
-        new Anchor("T1c", PortKind.Top, 69.9, 4.6, "up", "通道1 · 主口") { Slot = 0 },
-        new Anchor("T2a", PortKind.Top, 102.1, 4.6, "up", "通道2 · 主口") { Slot = 1 },
-        new Anchor("T2b", PortKind.Top, 115.0, 9.2, "up", "通道2 · 管口 B") { Slot = 1 },
-        new Anchor("T2c", PortKind.Top, 127.2, 9.6, "up", "通道2 · 管口 A") { Slot = 1 },
-        new Anchor("L1", PortKind.Side, 4.9, 76, "left", "左侧口 · 通道1") { Slot = 0, Side = "L" },
-        new Anchor("L2", PortKind.Side, 4.9, 99, "left", "左侧口 · 通道2") { Slot = 1, Side = "L" },
-        new Anchor("R1", PortKind.Side, 168.1, 76, "right", "右侧口 · 通道1") { Slot = 0, Side = "R" },
-        new Anchor("R2", PortKind.Side, 168.1, 99, "right", "右侧口 · 通道2") { Slot = 1, Side = "R" },
-        new Anchor("BUS", PortKind.Bus, 86.5, 134.6, "down", "控制总线")
+        new Anchor("T1a", PortKind.Top, 29.4, 71.0, "up", "通道1 · 左管口") { Slot = 0 },
+        new Anchor("T1b", PortKind.Top, 41.7, 70.9, "up", "通道1 · 主口") { Slot = 0 },
+        new Anchor("T1c", PortKind.Top, 61.5, 65.1, "up", "通道1 · 右管口") { Slot = 0 },
+        new Anchor("T2a", PortKind.Top, 109.4, 71.0, "up", "通道2 · 左管口") { Slot = 1 },
+        new Anchor("T2b", PortKind.Top, 121.7, 70.9, "up", "通道2 · 主口") { Slot = 1 },
+        new Anchor("T2c", PortKind.Top, 141.5, 65.1, "up", "通道2 · 右管口") { Slot = 1 },
+        // 侧口开在机身外壁上，总线在底座下沿。x/y 取的是整幅图的**墨迹**边界
+        // （2.3..167.5 / 2.8..167.3），不是 viewBox 边界——这张图底下空了 12 个
+        // 单位，照 viewBox 摆总线会飘在机器外面
+        new Anchor("L1", PortKind.Side, 2.6, 112, "left", "左侧口 · 通道1") { Slot = 0, Side = "L" },
+        new Anchor("L2", PortKind.Side, 2.6, 132, "left", "左侧口 · 通道2") { Slot = 1, Side = "L" },
+        new Anchor("R1", PortKind.Side, 167.2, 112, "right", "右侧口 · 通道1") { Slot = 0, Side = "R" },
+        new Anchor("R2", PortKind.Side, 167.2, 132, "right", "右侧口 · 通道2") { Slot = 1, Side = "R" },
+        new Anchor("BUS", PortKind.Bus, 84.9, 166.5, "down", "控制总线")
     };
 
     /// <summary>各设备的插头位置与出线方向（原型 plug / plugL）。</summary>
@@ -81,7 +92,7 @@ public static class BenchDock
             ["pump"] = (new Plug(46, 124.6, "down"), null, PortKind.Side, LinkKind.Feed),
             ["sampler"] = (new Plug(30, 136, "down"), new Plug(138, 130, "right"), PortKind.Side, LinkKind.Sample),
             ["hplc"] = (new Plug(9, 136, "left"), new Plug(127, 136, "right"), PortKind.Side, LinkKind.Sample),
-            ["host"] = (new Plug(70, 8, "up"), null, PortKind.Bus, LinkKind.Signal)
+            ["host"] = (new Plug(84.9, 6, "up"), null, PortKind.Bus, LinkKind.Signal)
         };
 
     public static bool IsHost(string artKey) => artKey == "reactor2";

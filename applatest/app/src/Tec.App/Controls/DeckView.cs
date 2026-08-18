@@ -97,18 +97,7 @@ public sealed class DeckView : Control
 
         Point At(Point p) => new(ox + p.X * s, oy + p.Y * s);
 
-        // 1. 管路压在设备下面，与画布同一个叠放顺序；画法也是画布那一份
-        //    （BenchLinks.Draw），只是整体缩过、不画胶囊标签——
-        //    这一格太小，几个胶囊摞在一起就糊了
-        foreach (var link in BenchDock.LinksOf(ws))
-        {
-            var pts = BenchDock.Route(link.From, link.FromDir, link.To, link.ToDir,
-                                      link.Kind == LinkKind.Probe ? 18 : 24)
-                               .Select(At).ToList();
-            BenchLinks.Draw(ctx, link, pts, s, labels: false);
-        }
-
-        // 2. 设备。宿主在下、探头压上面，同画布
+        // 1. 设备。宿主在下、探头压上面，同画布
         foreach (var n in nodes.OrderBy(n => n.IsHost ? 0 : 1))
         {
             var at = At(new Point(n.Pos.X + BenchDock.NodePad, n.Pos.Y + BenchDock.NodePad));
@@ -135,6 +124,19 @@ public sealed class DeckView : Control
                 using var _ = ctx.PushTransform(Matrix.CreateTranslation(at.X, at.Y));
                 n.Art.Render(ctx, n.W * s / n.Art.ViewWidth, new SvgArt.Paint(c1, c2, r1, r2));
             }
+        }
+
+
+        // 2. 管路画在设备**之上**，与画布同一个叠放顺序：接口开在釜盖那三个管口上，
+        //    位置在设备图的中段，压在设备下面的话最后一截会被机身挡住。
+        //    画法用画布那一份（BenchLinks.Draw），只是整体缩过、不画胶囊标签——
+        //    这一格太小，几个胶囊摞在一起就糊了
+        foreach (var link in BenchDock.LinksOf(ws))
+        {
+            var pts = BenchDock.Route(link.From, link.FromDir, link.To, link.ToDir,
+                                      link.Kind == LinkKind.Probe ? 18 : 24)
+                               .Select(At).ToList();
+            BenchLinks.Draw(ctx, link, pts, s, labels: false);
         }
 
         // 3. 设备名。字号不跟着缩——缩到 6px 就没人看得见了，

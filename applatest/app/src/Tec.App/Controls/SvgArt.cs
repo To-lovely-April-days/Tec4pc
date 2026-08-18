@@ -7,8 +7,8 @@ namespace Tec.App.Controls;
 
 /// <summary>
 /// 只认我们自己那两套图用到的 SVG 子集：
-/// 设备线稿（rect/circle/ellipse/line/path/text + 渐变）与原型提取的界面图标
-/// （g 组继承、currentColor、stroke-dasharray、fill/stroke-opacity）。
+/// 设备线稿（rect/circle/ellipse/line/polygon/polyline/path/text + 渐变 + clipPath）
+/// 与原型提取的界面图标（g 组继承、currentColor、stroke-dasharray、fill/stroke-opacity）。
 /// 刻意不引第三方 SVG 库——图是我们自己的，形状可控。
 ///
 /// 设备图的两个约定来自导出脚本：
@@ -19,7 +19,12 @@ public sealed class SvgArt
 {
     private readonly XElement _root;
     private readonly Dictionary<string, XElement> _gradients = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, XElement> _clips = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _blurOnly = new(StringComparer.Ordinal);
 
+    /// <summary>viewBox 的左上角。不一定是 (0,0)——设计稿导出的图常带负的 min-y。</summary>
+    public double ViewX { get; }
+    public double ViewY { get; }
     public double ViewWidth { get; }
     public double ViewHeight { get; }
     /// <summary>svg 标签自带的 width/height（图标用它定显示尺寸）。</summary>
@@ -31,6 +36,8 @@ public sealed class SvgArt
         _root = root;
         var box = (root.Attribute("viewBox")?.Value ?? "0 0 100 100")
             .Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries);
+        ViewX = box.Length == 4 ? Dbl(box[0], 0) : 0;
+        ViewY = box.Length == 4 ? Dbl(box[1], 0) : 0;
         ViewWidth = box.Length == 4 ? Dbl(box[2], 100) : 100;
         ViewHeight = box.Length == 4 ? Dbl(box[3], 100) : 100;
         DeclaredWidth = Dbl(root.Attribute("width")?.Value, ViewWidth);
@@ -38,9 +45,13 @@ public sealed class SvgArt
 
         foreach (var g in root.Descendants())
         {
-            if (g.Name.LocalName is not ("linearGradient" or "radialGradient")) continue;
             var id = g.Attribute("id")?.Value;
-            if (id is not null) _gradients[id] = g;
+            if (id is null) continue;
+            if (g.Name.LocalName is "linearGradient" or "radialGradient") _gradients[id] = g;
+            else if (g.Name.LocalName == "clipPath") _clips[id] = g;
+            else if (g.Name.LocalName == "filter"
+                     && g.Elements().Any() && g.Elements().All(e => e.Name.LocalName == "feGaussianBlur"))
+                _blurOnly.Add(id);      // 纯高斯模糊 = 辉光 / 投影，见下
         }
     }
 
@@ -70,7 +81,9 @@ public sealed class SvgArt
 
     public void Render(DrawingContext ctx, double scale, Paint paint)
     {
-        using (ctx.PushTransform(Matrix.CreateScale(scale, scale)))
+        // 先按 viewBox 原点平移再缩放：min-x / min-y 不为 0 的图（设计稿导出的常见）
+        // 直接画会整幅偏出去
+        using (ctx.PushTransform(Matrix.CreateTranslation(-ViewX, -ViewY) * Matrix.CreateScale(scale, scale)))
         {
             var style = Merge(Style.Root, _root);   // 根 svg 上的 fill="none"、linecap 会继承下去
             foreach (var el in _root.Elements())
@@ -95,7 +108,14 @@ public sealed class SvgArt
     private void Draw(DrawingContext ctx, XElement el, Paint paint, Style inherited)
     {
         var name = el.Name.LocalName;
-        if (name is "defs" or "linearGradient" or "radialGradient" or "filter" or "title") return;
+        if (name is "defs" or "linearGradient" or "radialGradient" or "filter" or "title"
+                 or "clipPath" or "mask" or "pattern" or "marker" or "symbol" or "style" or "desc") return;
+
+        // 只做高斯模糊的滤镜，效果就是一团辉光或一片投影。我们画不了模糊，
+        // 照原样画出来是一块硬边的色斑（那片绿辉光会变成一枚绿叶子），
+        // 比不画难看得多——所以整枝跳过。别的滤镜照画，免得主体凭空消失
+        if (el.Attribute("filter")?.Value is { } fl && fl.StartsWith("url(#", StringComparison.Ordinal)
+            && _blurOnly.Contains(fl[5..].TrimEnd(')'))) return;
 
         // 运行辉光：通道没在跑就不画，而不是画成灰的
         var run = el.Attribute("data-run")?.Value;
@@ -110,6 +130,9 @@ public sealed class SvgArt
         IDisposable? pushedTransform = null;
         if (el.Attribute("transform")?.Value is { } tr && ParseTransform(tr) is { } m)
             pushedTransform = ctx.PushTransform(m);
+        // clip-path="url(#id)"：不裁的话液面那颗椭圆会整颗露在液面之上
+        IDisposable? pushedClip = null;
+        if (ClipOf(el) is { } clipGeo) pushedClip = ctx.PushGeometryClip(clipGeo);
 
         try
         {
@@ -166,6 +189,14 @@ public sealed class SvgArt
                     ctx.DrawGeometry(fill, pen, geo);
                     break;
                 }
+                case "polygon":
+                case "polyline":
+                {
+                    var pts = Points(el.Attribute("points")?.Value);
+                    if (pts.Count < 2) break;
+                    ctx.DrawGeometry(fill, pen, new PolylineGeometry(pts, name == "polygon"));
+                    break;
+                }
                 case "text":
                 {
                     var text = el.Value;
@@ -185,6 +216,7 @@ public sealed class SvgArt
         }
         finally
         {
+            pushedClip?.Dispose();
             pushedTransform?.Dispose();
             pushedOpacity?.Dispose();
         }
@@ -274,7 +306,7 @@ public sealed class SvgArt
             var color = Color.Parse(s.Attribute("stop-color")?.Value ?? "#000000");
             var alpha = Dbl(s.Attribute("stop-opacity")?.Value, 1);
             if (alpha < 1) color = new Color((byte)Math.Round(alpha * 255), color.R, color.G, color.B);
-            stops.Add(new GradientStop(color, Dbl(s.Attribute("offset")?.Value, 0)));
+            stops.Add(new GradientStop(color, Frac(s.Attribute("offset")?.Value, 0)));
         }
         if (stops.Count == 0) return null;
 
@@ -287,13 +319,90 @@ public sealed class SvgArt
 
         var brush = new LinearGradientBrush
         {
-            StartPoint = new RelativePoint(Dbl(g.Attribute("x1")?.Value, 0), Dbl(g.Attribute("y1")?.Value, 0),
+            StartPoint = new RelativePoint(Frac(g.Attribute("x1")?.Value, 0), Frac(g.Attribute("y1")?.Value, 0),
                                            RelativeUnit.Relative),
-            EndPoint = new RelativePoint(Dbl(g.Attribute("x2")?.Value, 1), Dbl(g.Attribute("y2")?.Value, 0),
+            EndPoint = new RelativePoint(Frac(g.Attribute("x2")?.Value, 1), Frac(g.Attribute("y2")?.Value, 0),
                                          RelativeUnit.Relative)
         };
         foreach (var s in stops) brush.GradientStops.Add(s);
         return brush;
+    }
+
+    /// <summary>
+    /// 渐变里的比例值：既可以写 0.38，也可以写 "37.796%"。设计稿导出的图几乎全是
+    /// 百分号写法（这份图 50 条线性渐变里 44 条、172 个 stop 里 145 个），
+    /// 按普通数字读会全部落回缺省值——整幅图的渐变方向和分段就都塌了。
+    /// </summary>
+    private static double Frac(string? text, double fallback)
+    {
+        if (text is null) return fallback;
+        text = text.Trim();
+        return text.EndsWith("%", StringComparison.Ordinal)
+            ? Dbl(text[..^1], fallback * 100) / 100
+            : Dbl(text, fallback);
+    }
+
+    /// <summary>points="x y x y …"（空格或逗号分隔都认）。</summary>
+    private static List<Point> Points(string? text)
+    {
+        var list = new List<Point>();
+        if (text is null) return list;
+        var n = text.Split(new[] { ' ', ',', '\n', '\r', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+        for (var i = 0; i + 1 < n.Length; i += 2) list.Add(new Point(Dbl(n[i], 0), Dbl(n[i + 1], 0)));
+        return list;
+    }
+
+    /// <summary>取形状本身的几何（给 clipPath 用，不管填色描边）。</summary>
+    private static Geometry? ShapeGeometry(XElement el)
+    {
+        Geometry? geo = el.Name.LocalName switch
+        {
+            "path" => el.Attribute("d")?.Value is { } d && !string.IsNullOrWhiteSpace(d)
+                ? Safe(d) : null,
+            "rect" => new RectangleGeometry(new Rect(
+                Dbl(el.Attribute("x")?.Value, 0), Dbl(el.Attribute("y")?.Value, 0),
+                Dbl(el.Attribute("width")?.Value, 0), Dbl(el.Attribute("height")?.Value, 0))),
+            "circle" => new EllipseGeometry(Circle(el)),
+            "ellipse" => new EllipseGeometry(Oval(el)),
+            "polygon" or "polyline" => Points(el.Attribute("points")?.Value) is { Count: > 1 } p
+                ? new PolylineGeometry(p, true) : null,
+            _ => null
+        };
+        if (geo is not null && el.Attribute("transform")?.Value is { } tr && ParseTransform(tr) is { } m)
+            geo.Transform = new MatrixTransform(m);
+        return geo;
+
+        static Geometry? Safe(string d)
+        {
+            try { return Geometry.Parse(d); }
+            catch { return null; }
+        }
+
+        static Rect Circle(XElement e)
+        {
+            var r = Dbl(e.Attribute("r")?.Value, 0);
+            return new Rect(Dbl(e.Attribute("cx")?.Value, 0) - r, Dbl(e.Attribute("cy")?.Value, 0) - r, r * 2, r * 2);
+        }
+
+        static Rect Oval(XElement e)
+        {
+            double rx = Dbl(e.Attribute("rx")?.Value, 0), ry = Dbl(e.Attribute("ry")?.Value, 0);
+            return new Rect(Dbl(e.Attribute("cx")?.Value, 0) - rx, Dbl(e.Attribute("cy")?.Value, 0) - ry, rx * 2, ry * 2);
+        }
+    }
+
+    /// <summary>clip-path="url(#id)" → 那个 clipPath 里所有形状的并集。</summary>
+    private Geometry? ClipOf(XElement el)
+    {
+        var v = el.Attribute("clip-path")?.Value;
+        if (v is null || !v.StartsWith("url(#", StringComparison.Ordinal)) return null;
+        var id = v[5..].TrimEnd(')');
+        if (!_clips.TryGetValue(id, out var def)) return null;
+
+        var group = new GeometryGroup();
+        foreach (var child in def.Elements())
+            if (ShapeGeometry(child) is { } g) group.Children.Add(g);
+        return group.Children.Count > 0 ? group : null;
     }
 
     private static Matrix? ParseTransform(string text)
