@@ -15,10 +15,8 @@
     -->
     <Border Grid.Column="0">
       <DockPanel>
-        <Border DockPanel.Dock="Top" Padding="0,6,0,8">
-          <TextBlock Text="设备库" FontSize="11" Foreground="#6a6a6a"
-                     HorizontalAlignment="Center" />
-        </Border>
+        <!-- 不写「设备库」这个抬头（GBG 也没有）：一列设备图摆在那儿，
+             本来就没人会认错成别的东西；一行标题占掉的是第一台设备的位置 -->
         <ScrollViewer Padding="0,0,0,40">
           <ItemsControl ItemsSource="{Binding Library}">
             <ItemsControl.ItemTemplate>
