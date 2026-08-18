@@ -73,7 +73,13 @@ public sealed class MainViewModel : ViewModelBase
                 // 界面不另立一套（各写一套迟早「按钮亮着，按下去抛异常」）
                 if (runner is not null && !runner.CanStart) continue;
                 if (!ws.ChannelRecipes.TryGetValue(ch.Number, out var recipe) || recipe.Steps.Count == 0) continue;
-                try { ws.Engine.StartChannel(ch.Number, recipe, ws.Operator, charge: ws.ChargeOf(ch.Number)); } catch { }
+                try { ws.Engine.StartChannel(ch.Number, recipe, ws.Operator, charge: ws.ChargeOf(ch.Number)); }
+                catch (Exception ex)
+                {
+                    // 整机启动时被拦下的通道不能无声无息——其余通道照常开，
+                    // 但哪一路没开、为什么没开，要在系统日志里留一笔
+                    ws.Log?.Write("运行", $"整机启动：{ex.Message}", ws.Operator, Tec.Core.Records.LogLevel.Warn);
+                }
             }
             Tab = TabRun;
             RefreshSim();

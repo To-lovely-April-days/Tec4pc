@@ -10,7 +10,10 @@ public enum IssueLevel { Info, Warning, Error }
 
 public sealed record ValidationIssue(IssueLevel Level, string Code, string Message)
 {
-    public int? StepIndex { get; init; }
+    /// <summary>出问题的那一步的稳定标识。**不是数组下标**：插一步、删一步之后
+    /// 下标整体错位，靠它指认的对象就全指歪了（CH-6.5 点名的正是这个）。
+    /// 提示文案里的「第 N 步」只是给人看的说法，机器认的是这个。</summary>
+    public string? StepId { get; init; }
     public int? Channel { get; init; }
 }
 
@@ -35,7 +38,7 @@ public static class RecipeValidator
             if (!catalog.TryGet(s.CommandId, out var d))
             {
                 issues.Add(new ValidationIssue(IssueLevel.Error, "missing-driver",
-                    $"第 {i + 1} 步引用了未安装的指令 {s.CommandId}") { StepIndex = i });
+                    $"第 {i + 1} 步引用了未安装的指令 {s.CommandId}") { StepId = s.StepId });
                 continue;
             }
 
@@ -46,7 +49,7 @@ public static class RecipeValidator
                 if (depth < 0)
                 {
                     issues.Add(new ValidationIssue(IssueLevel.Error, "loop-unbalanced",
-                        $"第 {i + 1} 步的循环结束没有对应的循环开始") { StepIndex = i });
+                        $"第 {i + 1} 步的循环结束没有对应的循环开始") { StepId = s.StepId });
                     depth = 0;
                 }
             }
@@ -59,24 +62,24 @@ public static class RecipeValidator
                 var v = s.Parameters.Num(f.Key);
                 if (f.Min is { } min && v < min)
                     issues.Add(new ValidationIssue(IssueLevel.Error, "out-of-range",
-                        $"第 {i + 1} 步 {f.Label} = {Fmt.Num(v)} 低于下限 {Fmt.Num(min)}") { StepIndex = i });
+                        $"第 {i + 1} 步 {f.Label} = {Fmt.Num(v)} 低于下限 {Fmt.Num(min)}") { StepId = s.StepId });
                 if (f.Max is { } max && v > max)
                     issues.Add(new ValidationIssue(IssueLevel.Error, "out-of-range",
-                        $"第 {i + 1} 步 {f.Label} = {Fmt.Num(v)} 高于上限 {Fmt.Num(max)}") { StepIndex = i });
+                        $"第 {i + 1} 步 {f.Label} = {Fmt.Num(v)} 高于上限 {Fmt.Num(max)}") { StepId = s.StepId });
             }
 
             // 超时保护：到不了的目标不能把通道永远挂住（§4.3）。
             // 只有声明了 timeout 字段的指令才查——原型的参数表里并非每条都有。
             if (d.RequiresTimeout && d.Parameters.Find("timeout") is not null && !s.Parameters.Has("timeout"))
                 issues.Add(new ValidationIssue(IssueLevel.Warning, "no-timeout",
-                    $"第 {i + 1} 步「{d.DisplayName}」按{Termination(d.Termination)}结束但没有设超时") { StepIndex = i });
+                    $"第 {i + 1} 步「{d.DisplayName}」按{Termination(d.Termination)}结束但没有设超时") { StepId = s.StepId });
 
             if (channel is not null) ValidateAgainstChannel(issues, i, s, d, channel);
         }
 
         if (depth > 0)
             issues.Add(new ValidationIssue(IssueLevel.Error, "loop-unbalanced",
-                $"第 {openAt + 1} 步的循环开始没有对应的循环结束") { StepIndex = openAt });
+                $"第 {openAt + 1} 步的循环开始没有对应的循环结束") { StepId = recipe.Steps[openAt].StepId });
 
         var schedule = Schedule.Build(recipe, catalog, seed);
         issues.Add(new ValidationIssue(IssueLevel.Info, "duration",
@@ -121,7 +124,7 @@ public static class RecipeValidator
                 if (charge.Lines.Count == 0) continue;
                 issues.Add(new ValidationIssue(IssueLevel.Warning, "charge-unlinked",
                     $"第 {e.StepIndex + 1} 步的料液「{Show(e.Liquid)}」在配料表里没有同名组分，"
-                    + "这一步的体积不会跟着配料表走") { StepIndex = e.StepIndex });
+                    + "这一步的体积不会跟着配料表走") { StepId = recipe.Steps[e.StepIndex].StepId });
                 continue;
             }
             if (e.PlannedVolume is null)
@@ -132,14 +135,14 @@ public static class RecipeValidator
                 var why = reasons.Count > 0 ? string.Join("、", reasons) : "配料表里的量还没填全";
                 issues.Add(new ValidationIssue(IssueLevel.Warning, "charge-novolume",
                     $"第 {e.StepIndex + 1} 步的料液「{Show(e.Liquid)}」算不出应加体积（{why}）")
-                { StepIndex = e.StepIndex });
+                { StepId = recipe.Steps[e.StepIndex].StepId });
                 continue;
             }
             if (e.Differs)
                 issues.Add(new ValidationIssue(IssueLevel.Warning, "charge-mismatch",
                     $"第 {e.StepIndex + 1} 步加「{Show(e.Liquid)}」{Fmt.Num(e.StepVolume, 2)} mL，"
                     + $"配料表算出来是 {Fmt.Num(e.PlannedVolume.Value, 2)} mL")
-                { StepIndex = e.StepIndex });
+                { StepId = recipe.Steps[e.StepIndex].StepId });
         }
     }
 
@@ -151,7 +154,7 @@ public static class RecipeValidator
         if (d.RequiredCapability is { } need && !channel.Capabilities.Has(need))
         {
             issues.Add(new ValidationIssue(IssueLevel.Error, "capability",
-                $"第 {i + 1} 步需要 {Friendly(need)}，CH{channel.Number} 没有") { StepIndex = i, Channel = channel.Number });
+                $"第 {i + 1} 步需要 {Friendly(need)}，CH{channel.Number} 没有") { StepId = s.StepId, Channel = channel.Number });
             return;
         }
 
@@ -159,7 +162,7 @@ public static class RecipeValidator
             if (!channel.Capabilities.Has(extra))
                 issues.Add(new ValidationIssue(IssueLevel.Error, "capability",
                     $"第 {i + 1} 步还需要 {Friendly(extra)}，CH{channel.Number} 没有")
-                { StepIndex = i, Channel = channel.Number });
+                { StepId = s.StepId, Channel = channel.Number });
 
         // 动态范围：LimitFrom 让参数上限跟着设备走（§4.2）
         foreach (var f in d.Parameters.Fields)
@@ -170,10 +173,10 @@ public static class RecipeValidator
             var v = s.Parameters.Num(f.Key);
             if (f.LimitFrom.EndsWith(".Max", StringComparison.Ordinal) && v > bound.Value)
                 issues.Add(new ValidationIssue(IssueLevel.Error, "device-limit",
-                    $"第 {i + 1} 步 {f.Label} = {Fmt.Num(v)} 超过设备上限 {Fmt.Num(bound.Value)}") { StepIndex = i });
+                    $"第 {i + 1} 步 {f.Label} = {Fmt.Num(v)} 超过设备上限 {Fmt.Num(bound.Value)}") { StepId = s.StepId });
             if (f.LimitFrom.EndsWith(".Min", StringComparison.Ordinal) && v < bound.Value)
                 issues.Add(new ValidationIssue(IssueLevel.Error, "device-limit",
-                    $"第 {i + 1} 步 {f.Label} = {Fmt.Num(v)} 低于设备下限 {Fmt.Num(bound.Value)}") { StepIndex = i });
+                    $"第 {i + 1} 步 {f.Label} = {Fmt.Num(v)} 低于设备下限 {Fmt.Num(bound.Value)}") { StepId = s.StepId });
         }
 
         // 标定：未标定或过期的设备，编排到配方里要拦下来（§10.3）
@@ -181,11 +184,11 @@ public static class RecipeValidator
         {
             if (dosing.Calibration is null)
                 issues.Add(new ValidationIssue(IssueLevel.Error, "calibration",
-                    $"第 {i + 1} 步用到加料，但该通道的泵未标定") { StepIndex = i, Channel = channel.Number });
+                    $"第 {i + 1} 步用到加料，但该通道的泵未标定") { StepId = s.StepId, Channel = channel.Number });
             else if (dosing.Calibration.IsExpired(DateTimeOffset.Now))
                 issues.Add(new ValidationIssue(IssueLevel.Warning, "calibration",
                     $"第 {i + 1} 步用到加料，泵的标定已于 {Fmt.Stamp(dosing.Calibration.ExpiresAt!.Value)} 过期")
-                { StepIndex = i, Channel = channel.Number });
+                { StepId = s.StepId, Channel = channel.Number });
         }
     }
 

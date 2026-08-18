@@ -81,6 +81,16 @@ public sealed class ChannelRunner
                 _ => $"CH{Number} 正在准备，稍候再启动。"
             });
 
+        // Error 级问题真的挡启动（CH-5「阻断下发」）。从前校验器只管把配方页的
+        // 提示条染红，启动路径看都不看——「错误」和「警告」的差别只剩颜色。
+        // 拦在这一层而不是界面上：能启动与否由执行器说了算，界面不另立判据，
+        // 谁来调（按钮、整机启动、将来的远程接口）都过同一道闸。
+        // 配料表不传库就解：盖过章的行自足，这正是快照语义买来的便宜
+        var blocked = RecipeValidator.Validate(recipe, _catalog, _channel,
+                          charge: charge is { IsEmpty: false } ? Stoichiometry.Solve(charge) : null)
+                      .Where(x => x.Level == IssueLevel.Error).ToList();
+        if (blocked.Count > 0) throw new RecipeRejectedException(Number, blocked);
+
         State = ChannelRunState.Loading;
         Operator = user;
 
@@ -264,7 +274,7 @@ public sealed class ChannelRunner
             Kind = EventKind.ParameterChanged,
             Text = reason is null ? $"参数修改：{d.DisplayName}" : $"参数修改：{d.DisplayName}（{reason}）",
             User = user,
-            StepIndex = idx,
+            StepId = newStep.StepId,
             Before = before,
             After = Describe(d, applied)
         });
@@ -542,7 +552,7 @@ public sealed class ChannelRunner
             }
             if (waited > TimeSpan.FromSeconds(1))
                 Log(EventKind.ResourceWait,
-                    $"等待 {need.ResourceId} {Fmt.Hms(waited)}", Operator, rec.Index);
+                    $"等待 {need.ResourceId} {Fmt.Hms(waited)}", Operator, rec.StepId);
         }
 
         try
@@ -553,7 +563,7 @@ public sealed class ChannelRunner
                 Capabilities = _channel.Capabilities,
                 Now = _now,
                 TimeScale = TimeScale,
-                Note = text => Log(EventKind.Note, text, Operator, rec.Index),
+                Note = text => Log(EventKind.Note, text, Operator, rec.StepId),
                 Progress = null
             };
 
@@ -631,7 +641,7 @@ public sealed class ChannelRunner
         await gate.Task.WaitAsync(ct).ConfigureAwait(false);
     }
 
-    private void Log(EventKind kind, string text, string? user, int? stepIndex = null)
+    private void Log(EventKind kind, string text, string? user, string? stepId = null)
     {
         var e = new EventRecord
         {
@@ -640,7 +650,7 @@ public sealed class ChannelRunner
             Kind = kind,
             Text = text,
             User = user,
-            StepIndex = stepIndex
+            StepId = stepId
         };
         Run?.Append(e);
         EventLogged?.Invoke(this, e);

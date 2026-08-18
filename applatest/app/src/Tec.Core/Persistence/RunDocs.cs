@@ -65,7 +65,10 @@ public sealed class EventRecordDoc
     public EventKind Kind { get; set; }
     public string Text { get; set; } = "";
     public string? User { get; set; }
+    /// <summary>老档案里的步骤下标。只在读老文件时用来换算回 StepId，新档案不再写它。</summary>
     public int? StepIndex { get; set; }
+    /// <summary>步骤的稳定标识（CH-6.5）。</summary>
+    public string? StepId { get; set; }
     public string? Before { get; set; }
     public string? After { get; set; }
 }
@@ -164,7 +167,7 @@ public static class RunFiles
             doc.Events.Add(new EventRecordDoc
             {
                 At = e.At, Channel = e.Channel, Kind = e.Kind, Text = e.Text,
-                User = e.User, StepIndex = e.StepIndex, Before = e.Before, After = e.After
+                User = e.User, StepId = e.StepId, Before = e.Before, After = e.After
             });
         return doc;
     }
@@ -225,8 +228,24 @@ public static class RunFiles
             run.Append(new EventRecord
             {
                 At = e.At, Channel = e.Channel, Kind = e.Kind, Text = e.Text,
-                User = e.User, StepIndex = e.StepIndex, Before = e.Before, After = e.After
+                User = e.User,
+                StepId = e.StepId ?? ResolveLegacyStep(e.StepIndex, doc),
+                Before = e.Before, After = e.After
             });
         return run;
+    }
+
+    /// <summary>
+    /// 老档案只存了步骤**下标**——CH-6.5 点名的那个毛病。尽力换算回稳定标识：
+    /// 手动标记当年记的是步骤记录的行号，先拿它对；参数修改记的是配方里的下标，
+    /// 没有循环展开时两套编号一致，有循环时对不上的就照实放空——
+    /// 猜一个挂上去比空着更糟，审计里指错对象是要命的事。
+    /// </summary>
+    private static string? ResolveLegacyStep(int? index, ChannelRunDoc doc)
+    {
+        if (index is not { } i) return null;
+        if (doc.Steps.FirstOrDefault(s => s.Index == i) is { } rec) return rec.StepId;
+        var steps = doc.Baseline.Recipe.Steps;
+        return i >= 0 && i < steps.Count ? steps[i].StepId : null;
     }
 }

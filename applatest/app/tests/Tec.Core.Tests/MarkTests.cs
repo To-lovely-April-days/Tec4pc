@@ -93,8 +93,8 @@ public class MarkTests
         Assert.NotNull(cur);
         h.Engine.Mark(1, "看到析晶", "张三");
 
-        // 导出时要答得出「这一笔是哪一步里出的事」
-        Assert.Equal(cur!.Index, run.Events.Single(e => e.Kind == EventKind.OperatorMark).StepIndex);
+        // 导出时要答得出「这一笔是哪一步里出的事」——认步骤的稳定标识，不是下标（CH-6.5）
+        Assert.Equal(cur!.StepId, run.Events.Single(e => e.Kind == EventKind.OperatorMark).StepId);
 
         h.Engine.Runner(1)!.Abort("测试员");
         await h.Engine.Runner(1)!.Completion;

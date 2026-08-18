@@ -219,7 +219,7 @@ public sealed class RunEngine
             Kind = EventKind.OperatorMark,
             Text = text.Trim(),
             User = user,
-            StepIndex = run.Current?.Index
+            StepId = run.Current?.StepId
         });
         Changed?.Invoke(this, EventArgs.Empty);
         return true;

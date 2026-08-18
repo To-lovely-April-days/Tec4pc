@@ -110,7 +110,10 @@ public sealed class EventRecord
     public required EventKind Kind { get; init; }
     public required string Text { get; init; }
     public string? User { get; init; }
-    public int? StepIndex { get; init; }
+    /// <summary>事件挂在哪一步上——用步骤的稳定标识，**不是数组下标**（CH-6.5）：
+    /// 下标在插步 / 删步之后整体错位，审计追踪就指不准被改的对象了。
+    /// 早年归档里存的是下标，读盘时按当时的步骤记录换算回来。</summary>
+    public string? StepId { get; init; }
     /// <summary>参数修改事件的改前/改后值，审计要能还原（§7.6）。</summary>
     public string? Before { get; init; }
     public string? After { get; init; }

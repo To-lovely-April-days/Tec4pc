@@ -4,6 +4,7 @@ using Avalonia.Threading;
 using Tec.App.Controls;
 using Tec.App.Services;
 using Tec.Core;
+using Tec.Core.Execution;
 using Tec.Core.Records;
 using Tec.Driver.Abi;
 
@@ -27,6 +28,9 @@ public static class WellLabel
     }
 }
 
+/// <summary>顶栏回话的签名：被拒 / 失败要标红，默认绿色。</summary>
+public delegate void SayFn(string text, bool bad = false);
+
 /// <summary>
 /// 通道磁贴（原型 .stat）：12px 色条 + 竖排 CHn + 状态 + 数据行 + 当前步 + 本路的四个操作。
 ///
@@ -38,10 +42,10 @@ public static class WellLabel
 public sealed class StatTileViewModel : ViewModelBase
 {
     private readonly Workspace _ws;
-    private readonly Action<string> _say;
+    private readonly SayFn _say;
     private readonly Action _changed;
 
-    public StatTileViewModel(Workspace ws, int channel, Action<string> say, Action changed)
+    public StatTileViewModel(Workspace ws, int channel, SayFn say, Action changed)
     {
         _ws = ws;
         Channel = channel;
@@ -228,7 +232,14 @@ public sealed class StatTileViewModel : ViewModelBase
                 _ws.Engine.StartChannel(Channel, recipe, _ws.Operator, charge: _ws.ChargeOf(Channel));
                 _say($"CH{Channel} 已启动（{recipe.Steps.Count} 步）");
             }
-            catch (Exception ex) { _say($"CH{Channel} 启动失败：{ex.Message}"); }
+            catch (RecipeRejectedException ex)
+            {
+                // 校验器拦下的启动。消息本身已经在念第一条错误；
+                // 拒绝也是一桩要留痕的事，进系统日志（谁按的、为什么没开）
+                _say(ex.Message, bad: true);
+                _ws.Log?.Write("运行", ex.Message, _ws.Operator);
+            }
+            catch (Exception ex) { _say($"CH{Channel} 启动失败：{ex.Message}", bad: true); }
         }
         _changed();
     }
@@ -346,8 +357,8 @@ public sealed class RunViewModel : ViewModelBase
 
         ToggleDraw = new RelayCommand(() => DrawOpen = !DrawOpen);
         ToggleChip = new RelayCommand(p => { if (p is DrawChipViewModel c) { c.On = !c.On; RebuildRows(); } });
-        Alarms = new AlarmBarViewModel(ws, Tell);
-        Edit = new HotEditViewModel(ws, Tell, () => RaiseAll(nameof(EditOpen), nameof(CanEdit), nameof(EditTip)));
+        Alarms = new AlarmBarViewModel(ws, t => Tell(t));
+        Edit = new HotEditViewModel(ws, t => Tell(t), () => RaiseAll(nameof(EditOpen), nameof(CanEdit), nameof(EditTip)));
         BuildCommands();
 
         foreach (var w in new[] { "已采集", "全程（同甘特）", "最近 30 min", "最近 2 h" }) TrendWins.Add(w);
@@ -449,11 +460,15 @@ public sealed class RunViewModel : ViewModelBase
     /// <summary>顶栏的一句回话（标记记下了没有）。</summary>
     public string Say { get; private set; } = "";
     public bool HasSay => Say.Length > 0;
+    /// <summary>被拒 / 失败是红的，正常回话是绿的——「CH2 不能启动」顶着一身成功色，
+    /// 扫一眼的人会当成「已启动」。</summary>
+    public string SayColorHex { get; private set; } = "#2f8f49";
 
-    private void Tell(string text)
+    private void Tell(string text, bool bad = false)
     {
         Say = text;
-        RaiseAll(nameof(Say), nameof(HasSay));
+        SayColorHex = bad ? "#c0392b" : "#2f8f49";
+        RaiseAll(nameof(Say), nameof(HasSay), nameof(SayColorHex));
         var stamp = ++_sayStamp;
         DispatcherTimer.RunOnce(() =>
         {

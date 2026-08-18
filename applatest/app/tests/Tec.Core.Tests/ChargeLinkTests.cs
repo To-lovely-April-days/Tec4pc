@@ -151,13 +151,15 @@ public class ChargeLinkTests
     public void 校验条上报出体积不一致()
     {
         var charge = Stoichiometry.Solve(Table(), Lib);
-        var issues = RecipeValidator.Validate(RecipeWith(("甲苯", 30)), Catalog(), charge: charge);
+        var recipe = RecipeWith(("甲苯", 30));
+        var issues = RecipeValidator.Validate(recipe, Catalog(), charge: charge);
 
         var one = Assert.Single(issues, i => i.Code == "charge-mismatch");
         Assert.Equal(IssueLevel.Warning, one.Level);
         Assert.Contains("30", one.Message);
         Assert.Contains("122.12", one.Message);
-        Assert.Equal(0, one.StepIndex);
+        // 校验条认步骤的稳定标识——插一步之后下标错位，Id 不会
+        Assert.Equal(recipe.Steps[0].StepId, one.StepId);
     }
 
     [Fact]

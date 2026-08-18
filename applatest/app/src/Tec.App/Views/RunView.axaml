@@ -20,7 +20,7 @@
       </StackPanel>
 
       <TextBlock Grid.Column="1" Text="{Binding Say}" IsVisible="{Binding HasSay}"
-                 FontSize="11.5" Foreground="#2f8f49" VerticalAlignment="Center"
+                 FontSize="11.5" Foreground="{Binding SayColorHex}" VerticalAlignment="Center"
                  TextAlignment="Right" Margin="14,0,0,0" TextTrimming="CharacterEllipsis" />
     </Grid>
 

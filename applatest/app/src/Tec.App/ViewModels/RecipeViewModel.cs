@@ -927,13 +927,14 @@ public sealed class RecipeViewModel : ViewModelBase
         catch (Exception ex) { Tell("导出失败：" + ex.Message); }
     }
 
-    /// <summary>点校验条里的一条，跳到出问题的那一步。</summary>
+    /// <summary>点校验条里的一条，跳到出问题的那一步。按 StepId 找，不按下标——
+    /// 校验结果显示在屏上这段时间里人可能已经插了一步，下标就指歪了。</summary>
     private void SelectIssue(IssueRow row)
     {
-        if (row.Issue.StepIndex is not { } i) return;
+        if (row.Issue.StepId is not { } id) return;
         var lane = Lanes.FirstOrDefault(l => l.Channel == _curCh);
-        if (lane is null || i < 0 || i >= lane.Steps.Count) return;
-        SelectedStep = lane.Steps[i];
+        var hit = lane?.Steps.FirstOrDefault(s => s.Step.StepId == id);
+        if (hit is not null) SelectedStep = hit;
     }
 
     // ── 刷新 ─────────────────────────────────────────────────────────
@@ -1096,7 +1097,7 @@ public sealed record IssueRow(ValidationIssue Issue)
     public string Text => Issue.Message;
     public string Dot => IsError ? "#c62828" : "#c98a00";
     /// <summary>能定位到具体某一步的才可点。</summary>
-    public bool CanGo => Issue.StepIndex is not null;
+    public bool CanGo => Issue.StepId is not null;
 }
 
 /// <summary>
