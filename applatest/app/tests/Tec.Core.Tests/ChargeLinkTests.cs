@@ -111,9 +111,9 @@ public class ChargeLinkTests
 
         var done = ChargeLink.Apply(links);
 
-        Assert.Equal(2, done.Count);
-        Assert.Equal(30, done[0].Before);
-        Assert.Equal(122.12, done[0].After);
+        Assert.Equal(2, done.Volumes.Count);
+        Assert.Equal(30, done.Volumes[0].Before);
+        Assert.Equal(122.12, done.Volumes[0].After);
         Assert.Equal(122.12, recipe.Steps[0].Parameters.Num("vol"));
         // 苯甲酸 12.212 g ÷ 1.266 g/mL = 9.6462… → 圆到 9.65，不往配方里塞一长串小数
         Assert.Equal(9.65, recipe.Steps[1].Parameters.Num("vol"));
@@ -124,7 +124,8 @@ public class ChargeLinkTests
     {
         var recipe = RecipeWith(("甲苯", 122.12));
         var links = ChargeLink.Match(recipe, Catalog(), Stoichiometry.Solve(Table(), Lib));
-        Assert.Empty(ChargeLink.Apply(links));
+        // 体积一致就不进体积改动清单；第一次按会建立引用，那是另一码事
+        Assert.Empty(ChargeLink.Apply(links).Volumes);
     }
 
     [Fact]
@@ -141,7 +142,7 @@ public class ChargeLinkTests
         var recipe = RecipeWith(("某固体", 12));
         var links = ChargeLink.Match(recipe, Catalog(), Stoichiometry.Solve(t, Lib));
 
-        Assert.Empty(ChargeLink.Apply(links));
+        Assert.Empty(ChargeLink.Apply(links).Volumes);
         Assert.Equal(12, recipe.Steps[0].Parameters.Num("vol"));
     }
 
@@ -208,6 +209,140 @@ public class ChargeLinkTests
         // 原因可能记在「缺什么」里也可能记在「按什么假设算的」里，两边都得看，
         // 否则这条警告只剩一句「量还没填全」的空话
         Assert.Contains("密度", one.Message);
+    }
+
+    // ── 引用链（CH-4.1 / 4.2）────────────────────────────────────────
+
+    [Fact]
+    public void 应用会建立引用_名字对齐到行名()
+    {
+        var charge = Stoichiometry.Solve(Table(), Lib);
+        var recipe = RecipeWith(("　甲苯 ", 30));           // 名字还带着全角空格
+        var done = ChargeLink.Apply(ChargeLink.Match(recipe, Catalog(), charge));
+
+        var linked = Assert.Single(done.NewLinks);
+        var p = recipe.Steps[0].Parameters;
+        Assert.Equal(charge.Lines[1].Item.Id, p.Str(ChargeLink.ChemKey));
+        Assert.True(p.Flag(ChargeLink.LinkedKey));
+        Assert.Equal("甲苯", p.Str(ChargeLink.LiquidKey));   // 引用建立后行名是权威
+        Assert.Equal(linked.Step, recipe.Steps[0]);
+    }
+
+    [Fact]
+    public void 再按一次不重复建引用()
+    {
+        var charge = Stoichiometry.Solve(Table(), Lib);
+        var recipe = RecipeWith(("甲苯", 30));
+        ChargeLink.Apply(ChargeLink.Match(recipe, Catalog(), charge));
+
+        var again = ChargeLink.Apply(ChargeLink.Match(recipe, Catalog(), charge));
+        Assert.Empty(again.NewLinks);
+        Assert.Empty(again.Volumes);
+    }
+
+    [Fact]
+    public void 建了引用之后改组分名也断不了()
+    {
+        var t = Table();
+        var recipe = RecipeWith(("甲苯", 30));
+        ChargeLink.Apply(ChargeLink.Match(recipe, Catalog(), Stoichiometry.Solve(t, Lib)));
+
+        t.Items[1].Name = "甲苯（回收）";                    // 配料表里改了名
+        var e = Assert.Single(ChargeLink.Match(recipe, Catalog(), Stoichiometry.Solve(t, Lib)));
+
+        Assert.True(e.MatchedById);
+        Assert.Equal("甲苯（回收）", e.Line!.Item.Name);
+    }
+
+    [Fact]
+    public void 引用的行删了就是断了_不退回按名对()
+    {
+        // 退回按名对的话，可能悄悄对上一个恰好同名的新行——比明说「断了」危险得多
+        var t = Table();
+        var recipe = RecipeWith(("甲苯", 30));
+        ChargeLink.Apply(ChargeLink.Match(recipe, Catalog(), Stoichiometry.Solve(t, Lib)));
+
+        t.Items.RemoveAt(1);
+        t.Items.Add(new ChargeItem
+        { Cas = "108-88-3", Name = "甲苯", Role = ChargeRole.Solvent,
+          Basis = ChargeBasis.Volumes, Amount = 5 });        // 同名的新行
+
+        var e = Assert.Single(ChargeLink.Match(recipe, Catalog(), Stoichiometry.Solve(t, Lib)));
+        Assert.True(e.RefGone);
+        Assert.False(e.Matched);
+
+        var issues = RecipeValidator.Validate(recipe, Catalog(),
+                                              charge: Stoichiometry.Solve(t, Lib));
+        Assert.Contains(issues, i => i.Code == "charge-refgone");
+    }
+
+    [Fact]
+    public void 跟随只动引用着的步骤()
+    {
+        var t = Table();
+        var recipe = RecipeWith(("甲苯", 30), ("苯甲酸", 1));
+        var links = ChargeLink.Match(recipe, Catalog(), Stoichiometry.Solve(t, Lib));
+        // 只给甲苯那步建引用；苯甲酸那步保持按名对
+        ChargeLink.Apply(new[] { links[0] });
+
+        t.Items[1].Amount = 5;                               // 倍量 10 → 5
+        var after = ChargeLink.Match(recipe, Catalog(), Stoichiometry.Solve(t, Lib));
+        var done = ChargeLink.Follow(after);
+
+        var one = Assert.Single(done);
+        Assert.Equal("甲苯", one.Entry.Liquid);
+        Assert.Equal(61.06, one.After);                      // 12.212 g × 5 mL/g
+        Assert.Equal(61.06, recipe.Steps[0].Parameters.Num("vol"));
+        Assert.Equal(1, recipe.Steps[1].Parameters.Num("vol"));   // 没引用的不动
+    }
+
+    [Fact]
+    public void 手改体积就脱离_跟随不再碰它()
+    {
+        var t = Table();
+        var recipe = RecipeWith(("甲苯", 30));
+        ChargeLink.Apply(ChargeLink.Match(recipe, Catalog(), Stoichiometry.Solve(t, Lib)));
+
+        // 操作人手动把体积改成 100 —— 编辑器同时清跟随标志
+        recipe.Steps[0].Parameters["vol"] = 100.0;
+        Assert.True(ChargeLink.Detach(recipe.Steps[0]));
+
+        var links = ChargeLink.Match(recipe, Catalog(), Stoichiometry.Solve(t, Lib));
+        Assert.Empty(ChargeLink.Follow(links));
+        Assert.Equal(100, recipe.Steps[0].Parameters.Num("vol"));
+
+        // 校验条把脱离状态喊出来，而不是当成普通的「不一致」
+        var issues = RecipeValidator.Validate(recipe, Catalog(),
+                                              charge: Stoichiometry.Solve(t, Lib));
+        Assert.Contains(issues, i => i.Code == "charge-detached");
+        Assert.DoesNotContain(issues, i => i.Code == "charge-mismatch");
+    }
+
+    [Fact]
+    public void 跟随着还没同步上的校验条说清会自动追平()
+    {
+        var t = Table();
+        var recipe = RecipeWith(("甲苯", 30));
+        ChargeLink.Apply(ChargeLink.Match(recipe, Catalog(), Stoichiometry.Solve(t, Lib)));
+
+        t.Items[1].Amount = 5;                               // 配料表变了，还没人打开配料表页
+        var issues = RecipeValidator.Validate(recipe, Catalog(),
+                                              charge: Stoichiometry.Solve(t, Lib));
+        var one = Assert.Single(issues, i => i.Code == "charge-follow");
+        Assert.Contains("自动同步", one.Message);
+    }
+
+    [Fact]
+    public void 脱离的步骤体积恰好一致就不唠叨()
+    {
+        var t = Table();
+        var recipe = RecipeWith(("甲苯", 30));
+        ChargeLink.Apply(ChargeLink.Match(recipe, Catalog(), Stoichiometry.Solve(t, Lib)));
+        ChargeLink.Detach(recipe.Steps[0]);                  // 脱离但没改数
+
+        var issues = RecipeValidator.Validate(recipe, Catalog(),
+                                              charge: Stoichiometry.Solve(t, Lib));
+        Assert.DoesNotContain(issues, i => i.Code is "charge-detached" or "charge-mismatch");
     }
 
     [Fact]

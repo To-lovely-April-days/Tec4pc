@@ -1047,8 +1047,114 @@ public sealed class RecipeViewModel : ViewModelBase
                                        },
                                        // 曲线从这一步开始时的温度起笔——排期已经把前面
                                        // 那些步骤走过一遍，那个温度就是这里的起点
-                                       _selectedStep.Entry.StartTemp);
+                                       _selectedStep.Entry.StartTemp,
+                                       // 手改加料体积 = 脱离配料表跟随（CH-4.2）。
+                                       // 引用还在，校验条会提示手填值与算出值差多少
+                                       fieldEdited: k =>
+                                       {
+                                           if (k != ChargeLink.VolumeKey) return;
+                                           if (d.RequiredCapability != typeof(IDosing)) return;
+                                           if (ChargeLink.Detach(step))
+                                               RaiseAll(nameof(ChargeLinkNote), nameof(ChargeLinkColorHex));
+                                       });
+        RaiseAll(nameof(IsDoseStep), nameof(ChargeRowNames), nameof(ChargeRowPick),
+                 nameof(ChargeLinkNote), nameof(ChargeLinkColorHex));
     }
+
+    // ── 加料步骤连配料表（CH-4.1 引用链） ───────────────────────────
+
+    /// <summary>选中的是一条加料步骤——右栏才摆「连配料表」这一段。</summary>
+    public bool IsDoseStep => _selectedStep?.Descriptor is { } d
+                              && d.RequiredCapability == typeof(IDosing)
+                              && d.Parameters.Find(ChargeLink.LiquidKey) is not null;
+
+    /// <summary>本通道配料表里可连的行（产物不投料，不在里面）。</summary>
+    public IReadOnlyList<string> ChargeRowNames
+        => Workspace.ChannelCharges.TryGetValue(_curCh, out var t)
+            ? t.Items.Where(i => i.Role != ChargeRole.Product && i.Name.Trim().Length > 0)
+                     .Select(i => i.Name).ToList()
+            : Array.Empty<string>();
+
+    /// <summary>
+    /// 「连配料表」下拉。选一行 = 建立引用：写入行 Id + 跟随标志，名字对齐到行名，
+    /// 算得出体积就把体积也填上。整套走快照，撤销拉得回来。
+    /// </summary>
+    public string? ChargeRowPick
+    {
+        get
+        {
+            if (_selectedStep?.Step is not { } step) return null;
+            var chemId = step.Parameters.Str(ChargeLink.ChemKey);
+            if (chemId.Length == 0) return null;
+            return Workspace.ChannelCharges.TryGetValue(_curCh, out var t)
+                ? t.Items.FirstOrDefault(i => i.Id == chemId)?.Name : null;
+        }
+        set
+        {
+            if (value is null || _selectedStep?.Step is not { } step || !IsDoseStep) return;
+            if (!Workspace.ChannelCharges.TryGetValue(_curCh, out var table)) return;
+            var row = table.Items.FirstOrDefault(i => i.Role != ChargeRole.Product && i.Name == value);
+            if (row is null || step.Parameters.Str(ChargeLink.ChemKey) == row.Id) return;
+
+            Record(_curCh, "charge-link");
+            step.Parameters[ChargeLink.LiquidKey] = row.Name;
+            step.Parameters[ChargeLink.ChemKey] = row.Id;
+            step.Parameters[ChargeLink.LinkedKey] = true;
+            var solved = Stoichiometry.Solve(table, Workspace.Compounds.ToList());
+            if (solved.Lines.FirstOrDefault(l => l.Item.Id == row.Id)?.Volume is { } want && want > 0)
+                step.Parameters[ChargeLink.VolumeKey] = Math.Round(want, 2);
+
+            Workspace.Store.MarkDirty();
+            RefreshAll();
+            RebuildForm();          // 料液名与体积都可能变了，表单里的框要跟上
+        }
+    }
+
+    /// <summary>连接状态一句话。绿 = 跟随中，琥珀 = 脱离 / 仅按名字，红 = 引用断了。</summary>
+    public string ChargeLinkNote
+    {
+        get
+        {
+            if (!IsDoseStep || _selectedStep?.Step is not { } step) return "";
+            var table = Workspace.ChannelCharges.TryGetValue(_curCh, out var t) ? t : null;
+            if (table is null || table.IsEmpty)
+                return "本通道还没有配料表。先去配料表页把组分建起来，这里才有可选的行。";
+
+            var chemId = step.Parameters.Str(ChargeLink.ChemKey);
+            if (chemId.Length > 0)
+            {
+                var row = table.Items.FirstOrDefault(i => i.Id == chemId);
+                if (row is null) return "引用的配料行已不在（可能被删了）。重选一行即可重新连接。";
+                return step.Parameters.Flag(ChargeLink.LinkedKey)
+                    ? $"已连配料表「{row.Name}」：体积跟随计算，手改体积即脱离。"
+                    : $"已连「{row.Name}」但已脱离计算：体积以手填为准。要恢复跟随，"
+                      + "在配料表页按「应用到加料步骤」。";
+            }
+
+            var liq = Norm(step.Parameters.Str(ChargeLink.LiquidKey));
+            var named = table.Items.FirstOrDefault(i =>
+                i.Role != ChargeRole.Product && Norm(i.Name).Equals(liq, StringComparison.OrdinalIgnoreCase));
+            return named is not null
+                ? $"按名字「{named.Name}」对上配料表，但没建正式引用——改名就断。选一行即可连接。"
+                : "未连配料表。从下拉选一行，加料体积就会引用配料表的计算。";
+        }
+    }
+
+    public string ChargeLinkColorHex
+    {
+        get
+        {
+            if (!IsDoseStep || _selectedStep?.Step is not { } step) return "#8d8d8d";
+            var table = Workspace.ChannelCharges.TryGetValue(_curCh, out var t) ? t : null;
+            if (table is null || table.IsEmpty) return "#8d8d8d";
+            var chemId = step.Parameters.Str(ChargeLink.ChemKey);
+            if (chemId.Length == 0) return "#8d8d8d";
+            if (table.Items.All(i => i.Id != chemId)) return "#c0392b";
+            return step.Parameters.Flag(ChargeLink.LinkedKey) ? "#2f8f49" : "#a8710a";
+        }
+    }
+
+    private static string Norm(string s) => s.Replace("　", " ").Trim();
 
     // ── 右栏通道状态（原型 chStateList）─────────────────────────────
 

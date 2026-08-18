@@ -118,6 +118,15 @@ public static class RecipeValidator
 
         foreach (var e in links)
         {
+            if (e.RefGone)
+            {
+                // 建过引用、行被删了——不退回按名对：可能悄悄对上一个恰好同名的新行
+                issues.Add(new ValidationIssue(IssueLevel.Warning, "charge-refgone",
+                    $"第 {e.StepIndex + 1} 步引用的配料行已不在（「{Show(e.Liquid)}」可能被删了），"
+                    + "这一步的体积不再跟随。在步骤属性里重选一行即可重新连接")
+                { StepId = recipe.Steps[e.StepIndex].StepId });
+                continue;
+            }
             if (!e.Matched)
             {
                 // 配料表是空的就别唠叨——只跑温控曲线的场合不需要配料表
@@ -138,11 +147,28 @@ public static class RecipeValidator
                 { StepId = recipe.Steps[e.StepIndex].StepId });
                 continue;
             }
-            if (e.Differs)
+            if (!e.Differs) continue;
+
+            // 差多少是同一句话，差的**性质**分三种：跟随着还没同步上（转瞬即逝，
+            // 打开配料表页就自动追平）、手改后脱离了计算（CH-4.2 点名要提示的状态）、
+            // 从没建过引用（老配方按名对上的）
+            var stepId = recipe.Steps[e.StepIndex].StepId;
+            if (ChargeLink.NeedsFollow(e))
+                issues.Add(new ValidationIssue(IssueLevel.Warning, "charge-follow",
+                    $"第 {e.StepIndex + 1} 步引用配料表的体积还没跟上（现 {Fmt.Num(e.StepVolume, 2)} mL，"
+                    + $"应 {Fmt.Num(e.PlannedVolume.Value, 2)} mL），打开配料表页即自动同步")
+                { StepId = stepId });
+            else if (e.MatchedById)
+                issues.Add(new ValidationIssue(IssueLevel.Warning, "charge-detached",
+                    $"第 {e.StepIndex + 1} 步已脱离计算：手填 {Fmt.Num(e.StepVolume, 2)} mL，"
+                    + $"配料表算出 {Fmt.Num(e.PlannedVolume.Value, 2)} mL。"
+                    + "要恢复跟随，在配料表页按「应用到加料步骤」")
+                { StepId = stepId });
+            else
                 issues.Add(new ValidationIssue(IssueLevel.Warning, "charge-mismatch",
                     $"第 {e.StepIndex + 1} 步加「{Show(e.Liquid)}」{Fmt.Num(e.StepVolume, 2)} mL，"
                     + $"配料表算出来是 {Fmt.Num(e.PlannedVolume.Value, 2)} mL")
-                { StepId = recipe.Steps[e.StepIndex].StepId });
+                { StepId = stepId });
         }
     }
 

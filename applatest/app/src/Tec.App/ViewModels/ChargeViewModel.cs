@@ -504,10 +504,10 @@ public sealed class ChargeViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// 把算出来的体积填进配方里对得上的加料步骤。
-    ///
-    /// **是一次明确的动作**：悄悄跟着配料表变，等于有人在操作人没看的时候改了工艺。
-    /// 改了哪几步、从多少改成多少，都说出来，并且撤销栈接得住。
+    /// 把算出来的体积填进配方里对得上的加料步骤，并给它们**建立引用**：
+    /// 从此这些步骤的体积跟随配料表（自动同步走快照 + 审计，撤销接得住），
+    /// 手改体积即脱离。「明确的动作」收缩成建立引用这一次——之后的跟随
+    /// 是引用语义本身，不再是「有人在操作人没看的时候改了工艺」。
     /// </summary>
     private void DoApply()
     {
@@ -525,25 +525,32 @@ public sealed class ChargeViewModel : ViewModelBase
             return;
         }
 
-        IReadOnlyList<(ChargeLinkEntry Entry, double Before, double After)> done =
-            Array.Empty<(ChargeLinkEntry, double, double)>();
+        ChargeApplyResult? done = null;
         if (EditRecipe is { } edit) edit(_channel, "charge-apply", () => done = ChargeLink.Apply(links));
         else done = ChargeLink.Apply(links);
-        if (done.Count == 0)
+        if (done is null || done.IsEmpty)
         {
             var why = links.All(l => !l.Matched)
                 ? "没有一步的料液名跟配料表里的组分对得上"
-                : "对得上的那几步体积已经是配料表算出来的值了";
+                : "对得上的那几步早已连着配料表，体积也一致";
             Say("没有改动任何步骤：" + why);
             return;
         }
 
         _ws.Store.MarkDirty();
-        var what = string.Join("、", done.Take(3).Select(d =>
-            $"第 {d.Entry.StepIndex + 1} 步 {d.Entry.Liquid} {Ml(d.Before)} → {Ml(d.After)} mL"));
-        if (done.Count > 3) what += $" 等 {done.Count} 处";
-        Say($"已按配料表填好 {done.Count} 步加料体积：{what}");
-        _ws.Log?.Write("配料表", $"CH{_channel} 按配料表更新加料体积 {done.Count} 处：{what}", _ws.Operator);
+        var parts = new List<string>();
+        if (done.Volumes.Count > 0)
+        {
+            var what = string.Join("、", done.Volumes.Take(3).Select(d =>
+                $"第 {d.Entry.StepIndex + 1} 步 {d.Entry.Liquid} {Ml(d.Before)} → {Ml(d.After)} mL"));
+            if (done.Volumes.Count > 3) what += $" 等 {done.Volumes.Count} 处";
+            parts.Add($"体积 {done.Volumes.Count} 处：{what}");
+        }
+        if (done.NewLinks.Count > 0)
+            parts.Add($"建立引用 {done.NewLinks.Count} 步（此后体积跟随配料表，手改即脱离）");
+        var said = string.Join("；", parts);
+        Say("已应用到加料步骤：" + said);
+        _ws.Log?.Write("配料表", $"CH{_channel} 应用到加料步骤：{said}", _ws.Operator);
         Recompute();
     }
 
@@ -762,6 +769,59 @@ public sealed class ChargeViewModel : ViewModelBase
                  nameof(HasProblems), nameof(LibraryPick),
                  nameof(HasSaturation), nameof(CanWriteSaturation), nameof(TargetText),
                  nameof(ScaleHint), nameof(HasScaleHint));
+
+        // 跟随改了配方的话，问题条里「体积不一致」那几条已经过时——整个再算一遍。
+        // _following 挡住递归：第二遍里跟随无事可做，必然收敛
+        if (FollowAll()) { Recompute(); return; }
+    }
+
+    private bool _following;
+
+    /// <summary>
+    /// 跟随（CH-4.2）：配料表一变，把 linked 加料步骤的体积同步成算出来的值。
+    /// 走 EditRecipe（快照 → 改 → 刷新），配方页撤销拉得回来；改了什么写系统日志。
+    /// **全部通道都查**，不只当前通道——只查当前的话，切到别的通道之前
+    /// 它的引用一直停在旧值上。只动建立过引用且在跟随的步骤；
+    /// 按名字对的、已脱离的、算不出体积的一概不碰。
+    /// </summary>
+    private bool FollowAll()
+    {
+        if (_following) return false;
+        _following = true;
+        try
+        {
+            var lib = _ws.Compounds.ToList();
+            var said = new List<string>();
+            foreach (var (ch, table) in _ws.ChannelCharges.ToList())
+            {
+                if (table.IsEmpty) continue;
+                if (!_ws.ChannelRecipes.TryGetValue(ch, out var recipe)) continue;
+                var solved = ch == _channel && _result is not null
+                    ? _result : Stoichiometry.Solve(table, lib);
+                var links = ChargeLink.Match(recipe, _ws.Catalog, solved);
+                if (!links.Any(ChargeLink.NeedsFollow)) continue;
+
+                IReadOnlyList<(ChargeLinkEntry Entry, double Before, double After)> done =
+                    Array.Empty<(ChargeLinkEntry, double, double)>();
+                if (EditRecipe is { } edit) edit(ch, "charge-follow", () => done = ChargeLink.Follow(links));
+                else done = ChargeLink.Follow(links);
+                if (done.Count == 0) continue;
+
+                var what = string.Join("、", done.Take(3).Select(d =>
+                    $"第 {d.Entry.StepIndex + 1} 步 {d.Entry.Liquid} {Ml(d.Before)} → {Ml(d.After)} mL"));
+                if (done.Count > 3) what += $" 等 {done.Count} 处";
+                said.Add($"CH{ch} {what}");
+                _ws.Log?.Write("配料表",
+                    $"CH{ch} 配料表变更，跟随更新加料体积 {done.Count} 处：{what}", _ws.Operator);
+            }
+            if (said.Count > 0)
+            {
+                _ws.Store.MarkDirty();
+                Say("已跟随配料表更新加料体积：" + string.Join("；", said));
+            }
+            return said.Count > 0;
+        }
+        finally { _following = false; }
     }
 
     private static string Show(string s) => s.Length > 0 ? s : "（没填）";

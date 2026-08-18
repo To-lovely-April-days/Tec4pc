@@ -166,7 +166,8 @@ public sealed class SchemaFormViewModel : ViewModelBase
 
     public SchemaFormViewModel(ParameterSchema schema, ParameterSet target,
                                List<ParameterSet>? rows = null, Channel? channel = null,
-                               Action? changed = null, double startTemp = 25)
+                               Action? changed = null, double startTemp = 25,
+                               Action<string>? fieldEdited = null)
     {
         Schema = schema;
         Target = target;
@@ -176,7 +177,14 @@ public sealed class SchemaFormViewModel : ViewModelBase
         StartTemp = startTemp;
 
         foreach (var f in schema.Fields)
-            Fields.Add(new FieldViewModel(f, target, channel, OnFieldChanged));
+        {
+            // fieldEdited 让外层知道**改的是哪个键**（值已写进 target）——
+            // 「手改加料体积就脱离配料表跟随」这种规则得认得出字段
+            var key = f.Key;
+            Fields.Add(new FieldViewModel(f, target, channel,
+                fieldEdited is null ? OnFieldChanged
+                                    : () => { fieldEdited(key); OnFieldChanged(); }));
+        }
 
         if (schema.Table is not null && rows is not null)
             foreach (var r in rows) RowForms.Add(BuildRow(r));

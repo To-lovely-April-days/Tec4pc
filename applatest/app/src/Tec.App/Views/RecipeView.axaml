@@ -351,6 +351,22 @@
             <v:SchemaFormView DataContext="{Binding Form}" />
           </StackPanel>
 
+          <!-- 加料步骤连配料表（CH-4.1）：选一行建立引用，体积从此跟随计算 -->
+          <StackPanel IsVisible="{Binding IsDoseStep}" Margin="0,10,0,0" Spacing="5">
+            <Grid ColumnDefinitions="62,*">
+              <TextBlock Grid.Column="0" Text="连配料表" FontSize="11.5" Foreground="#5a5a5a"
+                         VerticalAlignment="Center" />
+              <ComboBox Grid.Column="1" FontSize="11.5" Height="26" MinHeight="26"
+                        HorizontalAlignment="Stretch"
+                        ItemsSource="{Binding ChargeRowNames}"
+                        SelectedItem="{Binding ChargeRowPick, Mode=TwoWay}"
+                        PlaceholderText="选一行建立引用"
+                        ToolTip.Tip="选中配料表里的一行就建立引用：加料体积改为跟随配料表的计算（改组分名也不断）。手改体积即脱离跟随，校验条会提示差多少" />
+            </Grid>
+            <TextBlock Text="{Binding ChargeLinkNote}" Foreground="{Binding ChargeLinkColorHex}"
+                       FontSize="11" TextWrapping="Wrap" />
+          </StackPanel>
+
           <!-- 执行选项：两个真会影响运行的开关 -->
           <StackPanel IsVisible="{Binding HasSelection}" Margin="0,14,0,0" Spacing="6">
             <Button Classes="secbtn" Command="{Binding ExecSection.Toggle}">
