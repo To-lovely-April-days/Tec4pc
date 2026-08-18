@@ -98,9 +98,19 @@
 
         <!-- .hero：56px 绿圆标 + 36px 极细标题 -->
         <StackPanel Orientation="Horizontal" Spacing="16" Margin="0,0,0,6">
+          <!-- 原型是 align-items:flex-end，绿圆与文字底边对齐；但右边那摞字
+               （36px 标题 + 两行小字）比圆高，底对齐之后圆整个沉在下半截，
+               看着不在文字这一块的中间。改成竖向居中：圆心对着整摞字的中线 -->
           <Border Width="56" Height="56" CornerRadius="28" Background="#2f8f49"
-                  VerticalAlignment="Bottom">
-            <ctl:TecIcon Key="ui-mark" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                  VerticalAlignment="Center">
+            <!--
+              绿圆里放运行三角，跟顶栏那颗「运行」按钮同一个图形资源——
+              同一个意思在两处必须长得一模一样，各画一份迟早会走样。
+              三角在 16 的画布里占 x=4~14（中心 9，画布中心 8），本身就往右让了 1，
+              正好抵掉「右向三角形几何居中会显得偏左」那点视觉错位
+            -->
+            <ctl:TecIcon Key="ui-sim-play" Size="34"
+                         HorizontalAlignment="Center" VerticalAlignment="Center" />
           </Border>
           <StackPanel VerticalAlignment="Bottom">
             <TextBlock Text="TecStudio" FontSize="36" FontWeight="ExtraLight"
