@@ -323,6 +323,10 @@ public sealed class ChargeViewModel : ViewModelBase
 
     public bool CanWriteSaturation => Solved is not null && TempSteps.Count > 0;
 
+    /// <summary>这一路配方里有没有控温步骤。没有就别摆一个空下拉，直接说没有。</summary>
+    public bool HasTempSteps => TempSteps.Count > 0;
+    public bool NoTempSteps => TempSteps.Count == 0;
+
     /// <summary>这一路配方里的控温步骤。恒温保持没有目标温度，写不进去，不列。</summary>
     public ObservableCollection<string> TempSteps { get; } = new();
 
@@ -457,6 +461,10 @@ public sealed class ChargeViewModel : ViewModelBase
     /// <summary>加一行**空白的**。不预填任何物性——预填等于替人编数据。</summary>
     private void DoAddRow()
     {
+        // 台面上没有这一路的话，存盘时泳道压根不存在，加进去的行会被悄悄丢掉。
+        // 工具条上那几颗钮也是灰的，这里再兜一道
+        if (NoChannels) { Say("台面上还没有通道，先去「台面」把反应器拖进来", bad: true); return; }
+
         var item = new ChargeItem
         {
             Name = NewRowName,
@@ -627,7 +635,8 @@ public sealed class ChargeViewModel : ViewModelBase
                               + F1(step.Parameters.Num("target")) + " ℃");
             }
         _tempStepPick = TempSteps.Contains(keep ?? "") ? keep : TempSteps.FirstOrDefault();
-        RaiseAll(nameof(TempStepPick), nameof(CanWriteSaturation));
+        RaiseAll(nameof(TempStepPick), nameof(CanWriteSaturation),
+                 nameof(HasTempSteps), nameof(NoTempSteps));
     }
 
     // ── 重建 ────────────────────────────────────────────────────────

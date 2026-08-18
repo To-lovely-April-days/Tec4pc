@@ -78,18 +78,18 @@
                     SelectedItem="{Binding ChannelText, Mode=TwoWay}"
                     IsEnabled="{Binding HasChannels}" />
 
-          <Button Classes="tbtn sm" Command="{Binding AddRow}"
+          <Button Classes="tbtn sm" Command="{Binding AddRow}" IsEnabled="{Binding HasChannels}"
                   ToolTip.Tip="加一行空白组分（不预填任何物性——预填等于替人编数据）">
             <ctl:TecIcon Key="ui-cmp-cmpnew" />
           </Button>
-          <Button Classes="tbtn sm" Command="{Binding DeleteRow}" ToolTip.Tip="删除选中的这一行">
+          <Button Classes="tbtn sm" Command="{Binding DeleteRow}" IsEnabled="{Binding HasChannels}" ToolTip.Tip="删除选中的这一行">
             <ctl:TecIcon Key="ui-foot-trash2" />
           </Button>
-          <Button Classes="tbtn sm" Command="{Binding ApplyToRecipe}"
+          <Button Classes="tbtn sm" Command="{Binding ApplyToRecipe}" IsEnabled="{Binding HasChannels}"
                   ToolTip.Tip="把算出来的体积填进这一路配方里同名的加料步骤。按料液名对应；改了哪几步会逐条说出来，配方页可以撤销">
             <ctl:TecIcon Key="ui-snav-export" />
           </Button>
-          <Button Classes="tbtn sm" Command="{Binding ReadBack}"
+          <Button Classes="tbtn sm" Command="{Binding ReadBack}" IsEnabled="{Binding HasChannels}"
                   ToolTip.Tip="从这一炉的运行记录把「实取」填回来——泵的累计加料量一直在采，不必手抄。读不出来的那几步会照实说，不拿计划量顶">
             <ctl:TecIcon Key="ui-snav-import" />
           </Button>
@@ -244,12 +244,16 @@
 
               <Border Height="1" Background="#d5d5d5" Margin="0,8" />
 
-              <StackPanel Orientation="Horizontal" Spacing="6">
+              <!-- 这一路没有控温步骤时说一句，不摆一个空下拉在那儿让人点 -->
+              <TextBlock Text="这一路的配方里还没有「控温」步骤，加一条才写得进去。"
+                         IsVisible="{Binding NoTempSteps}" FontSize="11.5" Foreground="#8a6d1f"
+                         TextWrapping="Wrap" Margin="0,2" />
+              <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding HasTempSteps}">
                 <TextBlock Text="写入" Classes="frowk" Width="40" />
                 <ComboBox Classes="sel" Width="236" ItemsSource="{Binding TempSteps}"
                           SelectedItem="{Binding TempStepPick, Mode=TwoWay}" />
               </StackPanel>
-              <StackPanel Orientation="Horizontal" Spacing="6">
+              <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding HasTempSteps}">
                 <TextBlock Text="余量" Classes="frowk" Width="40" />
                 <TextBox Classes="finput" Width="84"
                          Text="{Binding MarginEdit, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
@@ -260,6 +264,7 @@
               </StackPanel>
               <Button Classes="btn primary" Content="写入这条控温步骤"
                       HorizontalAlignment="Center" Margin="0,8,0,0"
+                      IsVisible="{Binding HasTempSteps}"
                       Command="{Binding WriteSaturation}"
                       IsEnabled="{Binding CanWriteSaturation}" />
             </StackPanel>

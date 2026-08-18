@@ -126,7 +126,10 @@ public static class RecipeValidator
             }
             if (e.PlannedVolume is null)
             {
-                var why = e.Line!.Missing.Count > 0 ? string.Join("、", e.Line.Missing) : "配料表里的量还没填全";
+                // 原因可能记在「缺什么」里，也可能记在「按什么假设算的」里
+                // （按克称的固体没有密度就是后者）——两边都要看，不然只剩一句空话
+                var reasons = e.Line!.Missing.Concat(e.Line.Assumptions).ToList();
+                var why = reasons.Count > 0 ? string.Join("、", reasons) : "配料表里的量还没填全";
                 issues.Add(new ValidationIssue(IssueLevel.Warning, "charge-novolume",
                     $"第 {e.StepIndex + 1} 步的料液「{Show(e.Liquid)}」算不出应加体积（{why}）")
                 { StepIndex = e.StepIndex });

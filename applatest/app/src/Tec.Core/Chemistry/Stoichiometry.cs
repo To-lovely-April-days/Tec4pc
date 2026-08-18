@@ -62,6 +62,12 @@ public sealed class ChargeResult
     public bool OverVessel { get; set; }
 
     /// <summary>
+    /// 没进合计体积的那几行（没有密度，换不出体积）。
+    /// 合计体积少算了谁必须说得出来——不然拿它跟釜容一对，得出的「装得下」是假的。
+    /// </summary>
+    public List<string> VolumeExcluded { get; } = new();
+
+    /// <summary>
     /// 每 1 g 目标产物需要多少 g 限制试剂（按理论收率 100 % 计）。
     ///
     /// 放大批量本来就只是改限制试剂那一格的数——整张表都是相对它算的，改完全表自动跟着走。
@@ -85,7 +91,9 @@ public sealed class ChargeResult
 /// 1. **纯度校正**。65 % 的硝酸要拿到 10 mmol 的 HNO₃，得称 10 mmol 对应的质量
 ///    再除以 0.65。不校正的话每一步都少投三分之一。
 /// 2. **密度换体积**。泵下发的是体积，配料算出来的是质量，中间只有密度。
-///    密度没填就**算不出体积**——那时候照实说「缺密度」，不许拿 1 g/mL 顶。
+///    密度没填就**算不出体积**，照实说，不许拿 1 g/mL 顶。但要分清两种：
+///    按毫升 / 按倍量给量的行没有密度是**真挡住**（连应称量都算不出来），
+///    按克称的固体没有密度只是不进合计体积——后者不该标红，那是一条正常的投料行。
 /// 3. **缺什么就说缺什么**。摩尔质量空着，这一行的 mmol 和质量就都是空的。
 ///    随便填个数进去，人照着称，那是能出事的（§不伪造数据）。
 /// </summary>
@@ -161,6 +169,7 @@ public static class Stoichiometry
             line.Mass = null;
             line.Volume = null;
             line.Missing.RemoveAll(x => x.Contains("密度", StringComparison.Ordinal));
+            line.Assumptions.RemoveAll(x => x.Contains("密度", StringComparison.Ordinal));
 
             var eq = line.Item.Basis == ChargeBasis.Equivalents ? line.Item.Amount ?? 1 : 1;
             if (nLim is null) { Need(line, "限制试剂的物质的量"); continue; }
@@ -182,7 +191,17 @@ public static class Stoichiometry
         // ── 合计。产物不算进去，它不投料 ────────────────────────────
         var charged = lines.Where(l => l.Item.Role != ChargeRole.Product).ToList();
         if (charged.Any(l => l.Mass is not null)) result.TotalMass = charged.Sum(l => l.Mass ?? 0);
-        if (charged.Any(l => l.Volume is not null)) result.TotalVolume = charged.Sum(l => l.Volume ?? 0);
+        if (charged.Any(l => l.Volume is not null))
+        {
+            result.TotalVolume = charged.Sum(l => l.Volume ?? 0);
+            // 有量、却没换出体积的那几行：合计体积把它们漏掉了，说出来
+            foreach (var l in charged.Where(l => l.Volume is null && l.Mass is > 0))
+                result.VolumeExcluded.Add(l.Item.Name.Length > 0 ? l.Item.Name : "（未命名）");
+        }
+
+        if (result.VolumeExcluded.Count > 0)
+            result.Problems.Add("合计体积不含 " + string.Join("、", result.VolumeExcluded)
+                                + "（没有密度，换不出体积）——拿它跟釜容对照时要把这几项算进去。");
 
         if (table.VesselVolume is > 0 && result.TotalVolume is { } v && v > table.VesselVolume)
         {
@@ -213,7 +232,7 @@ public static class Stoichiometry
         {
             case ChargeUnit.Gram:
                 line.Mass = amount;
-                line.Volume = Div(amount, line.DensityUsed, line, "密度（换不出体积）");
+                line.Volume = Div(amount, line.DensityUsed, line);
                 line.Moles = Mol(amount, purity, line);
                 break;
 
@@ -233,7 +252,7 @@ public static class Stoichiometry
                 if (line.MwUsed is > 0)
                 {
                     line.Mass = amount / 1000 * line.MwUsed.Value / (purity / 100);
-                    line.Volume = Div(line.Mass.Value, line.DensityUsed, line, "密度（换不出体积）");
+                    line.Volume = Div(line.Mass.Value, line.DensityUsed, line);
                 }
                 else Need(line, "摩尔质量");
                 break;
@@ -253,7 +272,7 @@ public static class Stoichiometry
         line.Moles = eq * nLim.Value;
         // **这里就是纯度校正**：要 n mmol 纯的，料只有 p %，得称 n·M/p
         line.Mass = line.Moles.Value / 1000 * line.MwUsed.Value / (purity / 100);
-        line.Volume = Div(line.Mass.Value, line.DensityUsed, line, "密度（换不出体积）");
+        line.Volume = Div(line.Mass.Value, line.DensityUsed, line);
     }
 
     /// <summary>按倍量（V/W）：每 1 g 限制试剂用几 mL。溶剂的常规写法。</summary>
@@ -323,10 +342,18 @@ public static class Stoichiometry
         return grams * (purity / 100) / line.MwUsed.Value * 1000;
     }
 
-    private static double? Div(double grams, double? density, ChargeLine line, string what)
+    /// <summary>
+    /// 质量换体积。**换不出来不算缺东西**：按克称的固体本来就不需要密度，
+    /// 这一行的 mmol 和应称量一个不少，只是它不进合计体积。
+    ///
+    /// 从前这里记成「缺密度」并标红，于是一条正常的固体投料行看着像出了错——
+    /// 红字要留给真的挡住了计算的情况（按毫升给量、按倍量给量的行没有密度，
+    /// 那是连应称量都算不出来）。
+    /// </summary>
+    private static double? Div(double grams, double? density, ChargeLine line)
     {
         if (density is > 0) return grams / density.Value;
-        Need(line, what);
+        line.Assumptions.Add("没有密度，算不出体积，这一行不计入合计体积");
         return null;
     }
 

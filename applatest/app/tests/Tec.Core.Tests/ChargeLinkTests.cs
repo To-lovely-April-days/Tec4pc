@@ -203,6 +203,8 @@ public class ChargeLinkTests
         var issues = RecipeValidator.Validate(RecipeWith(("某固体", 12)), Catalog(),
                                               charge: Stoichiometry.Solve(t, Lib));
         var one = Assert.Single(issues, i => i.Code == "charge-novolume");
+        // 原因可能记在「缺什么」里也可能记在「按什么假设算的」里，两边都得看，
+        // 否则这条警告只剩一句「量还没填全」的空话
         Assert.Contains("密度", one.Message);
     }
 

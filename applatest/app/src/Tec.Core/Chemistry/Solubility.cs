@@ -169,6 +169,28 @@ public static class ChargeSaturation
             .ToList();
         if (solutes.Count == 0) return list;
 
+        // 一行溶剂都还没有：**闭嘴**。表刚填了第一行就摆出一块来说「没有溶剂」，
+        // 那不是问题，是表还没填完——而界面上一块红字会让人以为自己弄错了什么。
+        //
+        // 唯一的例外是「有一行看着就是水，只是角色没标成溶剂」：那是一个具体的、
+        // 改一下就好的疏漏，说出来是帮忙。
+        if (solvents.Count == 0)
+        {
+            var water = charge.Lines.FirstOrDefault(l => l.Item.Role != ChargeRole.Product
+                                                         && IsWater(l.Item));
+            if (water is null) return list;
+            return new[]
+            {
+                new SaturationCase
+                {
+                    Solute = solutes[0],
+                    Result = SaturationResult.No(
+                        $"「{water.Item.Name}」这一行的角色是「{ChargeWords.Of(water.Item.Role)}」，"
+                        + "改成「溶剂」就能按这一炉的浓度算饱和温度。")
+                }
+            };
+        }
+
         foreach (var solute in solutes)
         {
             var one = Evaluate(solute, solvents);
@@ -179,13 +201,6 @@ public static class ChargeSaturation
 
     private static SaturationCase? Evaluate(ChargeLine solute, IReadOnlyList<ChargeLine> solvents)
     {
-        if (solvents.Count == 0)
-            return new SaturationCase
-            {
-                Solute = solute,
-                Result = SaturationResult.No("配料表里没有标成「溶剂」的组分，算不出浓度。")
-            };
-
         // 混合溶剂：水的曲线只对纯水成立。两种溶剂一掺，曲线就不是这一条了
         var notWater = solvents.Where(s => !IsWater(s.Item)).ToList();
         if (notWater.Count > 0)

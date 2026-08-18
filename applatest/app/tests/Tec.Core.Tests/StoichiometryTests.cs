@@ -187,9 +187,50 @@ public class StoichiometryTests
         lim.Mw = 100;
         t.Items.Add(lim);
 
-        var line = Assert.Single(Stoichiometry.Solve(t, Lib).Lines);
+        var r = Stoichiometry.Solve(t, Lib);
+        var line = Assert.Single(r.Lines);
         Assert.Equal(10, line.Mass);
         Assert.Null(line.Volume);
+
+        // **按克称的固体没有密度不算「缺东西」**：mmol 和应称量一个不少，
+        // 它只是不进合计体积。标红会让一条正常的投料行看着像出了错（真机上见到的）
+        Assert.Empty(line.Missing);
+        Assert.Contains(line.Assumptions, a => a.Contains("不计入合计体积"));
+        // 一行体积都没有就压根没有合计体积（界面上是「—」），也就谈不上漏了谁
+        Assert.Null(r.TotalVolume);
+        Assert.Empty(r.VolumeExcluded);
+    }
+
+    [Fact]
+    public void 合计体积漏掉了谁必须说出来()
+    {
+        // 有溶剂的体积、固体那行没有——合计体积就是个不完整的数。
+        // 不说的话，拿它跟釜容一对，得出的「装得下」是假的
+        var t = new ChargeTable();
+        var lim = It("", "某固体", ChargeRole.Limiting, ChargeBasis.Quantity, 10);
+        lim.Mw = 100;
+        t.Items.Add(lim);
+        t.Items.Add(It("108-88-3", "甲苯", ChargeRole.Solvent, ChargeBasis.Volumes, 5));
+
+        var r = Stoichiometry.Solve(t, Lib);
+
+        Assert.Equal(50, r.TotalVolume!.Value, 4);          // 只有甲苯那 50 mL
+        Assert.Contains("某固体", r.VolumeExcluded);
+        Assert.Contains(r.Problems, p => p.Contains("合计体积不含") && p.Contains("某固体"));
+    }
+
+    [Fact]
+    public void 按毫升给量却没有密度是真挡住了要标出来()
+    {
+        // 这一种不一样：连应称量都算不出来，是实打实的缺东西
+        var t = new ChargeTable();
+        var lim = It("", "某液体", ChargeRole.Limiting, ChargeBasis.Quantity, 10, ChargeUnit.Milliliter);
+        lim.Mw = 100;
+        t.Items.Add(lim);
+
+        var line = Assert.Single(Stoichiometry.Solve(t, Lib).Lines);
+        Assert.Null(line.Mass);
+        Assert.Null(line.Moles);
         Assert.Contains(line.Missing, m => m.Contains("密度"));
     }
 

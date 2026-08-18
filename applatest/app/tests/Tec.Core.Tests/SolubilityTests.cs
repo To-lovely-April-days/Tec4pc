@@ -175,8 +175,10 @@ public class ChargeSaturationTests
     }
 
     [Fact]
-    public void 没有溶剂那一行就说算不出浓度()
+    public void 一行溶剂都还没有的时候闭嘴()
     {
+        // 表刚填了第一行就摆出一块来说「没有溶剂」，那不是问题，是表还没填完——
+        // 界面上一块红字会让人以为自己弄错了什么（真机上就是这么看着别扭的）
         var t = new ChargeTable();
         t.Items.Add(new ChargeItem
         {
@@ -184,9 +186,29 @@ public class ChargeSaturationTests
             Basis = ChargeBasis.Quantity, Amount = 5, Unit = ChargeUnit.Gram
         });
 
+        Assert.Empty(ChargeSaturation.Of(Stoichiometry.Solve(t, Lib)));
+    }
+
+    [Fact]
+    public void 有一行是水却没标成溶剂就点出来()
+    {
+        // 这个不一样：是一个具体的、改一下就好的疏漏，说出来是帮忙
+        var t = new ChargeTable();
+        t.Items.Add(new ChargeItem
+        {
+            Cas = "65-85-0", Name = "苯甲酸", Role = ChargeRole.Limiting,
+            Basis = ChargeBasis.Quantity, Amount = 5, Unit = ChargeUnit.Gram
+        });
+        t.Items.Add(new ChargeItem
+        {
+            Cas = "7732-18-5", Name = "水", Role = ChargeRole.Reagent,
+            Basis = ChargeBasis.Quantity, Amount = 200, Unit = ChargeUnit.Milliliter
+        });
+
         var one = One(t);
         Assert.False(one.Ok);
-        Assert.Contains("没有标成「溶剂」", one.Result.Problem!);
+        Assert.Contains("「水」这一行的角色是「试剂」", one.Result.Problem!);
+        Assert.Contains("改成「溶剂」", one.Result.Problem!);
     }
 
     [Fact]
