@@ -277,6 +277,8 @@ public sealed class ChargeViewModel : ViewModelBase
         ReadBack = new RelayCommand(DoReadBack);
         WriteSaturation = new RelayCommand(DoWriteSaturation);
         RefreshLibrary = new RelayCommand(DoRefreshLibrary);
+        CopyToOthers = new RelayCommand(DoCopyToOthers);
+        ToggleMatrix = new RelayCommand(() => IsMatrix = !IsMatrix);
 
         foreach (var r in ChargeWords.Roles) Roles.Add(ChargeWords.Of(r));
         foreach (var b in ChargeWords.Bases) Bases.Add(ChargeWords.Of(b));
@@ -740,6 +742,137 @@ public sealed class ChargeViewModel : ViewModelBase
         Reload();
     }
 
+    // ── 四通道对照矩阵（CH-3.6）────────────────────────────────────
+    //
+    // 数据模型不动：矩阵是把各通道互相独立的表按组分**对齐出来的视图**，
+    // 格子直接写那个通道自己的行。「共享」发生在复制那一下，不在存储里——
+    // 所以 CH1 跑起来冻结、CH3 还在编辑这种局面天然成立：运行中的列锁灰即可。
+
+    private bool _matrix;
+    private string _matrixMode = "给定量";
+
+    /// <summary>对照模式开关。开着的时候主表换成「组分 × 通道」矩阵。</summary>
+    public bool IsMatrix
+    {
+        get => _matrix;
+        set
+        {
+            if (!Set(ref _matrix, value)) return;
+            if (value) RebuildMatrix();
+            RaiseAll(nameof(IsSingle), nameof(HasMatrixRows), nameof(NoMatrixRows));
+        }
+    }
+    public bool IsSingle => !_matrix;
+
+    /// <summary>矩阵显示哪一层数：给定量（可编辑）/ 应称量（算出来的）/ 实投（可回填）。</summary>
+    public string MatrixMode
+    {
+        get => _matrixMode;
+        set
+        {
+            if (!Set(ref _matrixMode, value)) return;
+            RebuildMatrix();
+        }
+    }
+    public static IReadOnlyList<string> MatrixModes { get; } = new[] { "给定量", "应称量 g", "实投 g" };
+
+    public ObservableCollection<MatrixHeadViewModel> MatrixHeads { get; } = new();
+    public ObservableCollection<MatrixRowVm> MatrixRows { get; } = new();
+    public bool HasMatrixRows => MatrixRows.Count > 0;
+    public bool NoMatrixRows => MatrixRows.Count == 0 && HasChannels;
+
+    /// <summary>这一路正在跑（或暂停 / 收尾），矩阵里整列锁死只读。</summary>
+    private bool LockedCh(int ch) => _ws.Engine.Runner(ch)?.State
+        is Tec.Core.Records.ChannelRunState.Running or Tec.Core.Records.ChannelRunState.Paused
+        or Tec.Core.Records.ChannelRunState.Aborting;
+
+    /// <summary>矩阵重建：对齐 + 各通道各解一遍（应称量列要用）。编辑一格就整个重来——
+    /// 差异着色和算出来的数都会变，重建最不容易漏。</summary>
+    public void RebuildMatrix()
+    {
+        if (!_matrix) return;
+        var chans = _ws.Channels.Where(c => c.Enabled).Select(c => c.Number).OrderBy(x => x).ToList();
+        var tables = chans.Select(c => _ws.ChargeOf(c)).ToList();
+        var lib = _ws.Compounds.ToList();
+        var solved = tables.Select(t => Stoichiometry.Solve(t, lib)).ToList();
+
+        MatrixHeads.Clear();
+        for (var i = 0; i < chans.Count; i++)
+            MatrixHeads.Add(new MatrixHeadViewModel(chans[i], LockedCh(chans[i])));
+
+        MatrixRows.Clear();
+        foreach (var row in ChargeMatrix.Align(tables))
+        {
+            var cells = new List<MatrixCellVm>();
+            for (var i = 0; i < chans.Count; i++)
+            {
+                var item = row.Cells[i];
+                var line = item is null ? null
+                    : solved[i].Lines.FirstOrDefault(l => ReferenceEquals(l.Item, item));
+                cells.Add(new MatrixCellVm(chans[i], item, line, _matrixMode,
+                                           LockedCh(chans[i]), OnMatrixEdited));
+            }
+            // 行内差异：拿显示文本比（与人眼一致）。缺格本身算差异
+            var texts = cells.Where(c => !c.Missing).Select(c => c.Text).Distinct().Count();
+            var uneven = texts > 1 || cells.Any(c => c.Missing);
+            foreach (var c in cells) c.Uneven = uneven;
+
+            MatrixRows.Add(new MatrixRowVm
+            {
+                Name = row.Name,
+                RoleText = ChargeWords.Of(row.Role),
+                Uneven = uneven,
+                Cells = cells
+            });
+        }
+        RaiseAll(nameof(HasMatrixRows), nameof(NoMatrixRows));
+    }
+
+    private void OnMatrixEdited()
+    {
+        _ws.Store.MarkDirty();
+        Recompute();          // 当前通道的合计 / 问题条照常走，FollowAll 会扫全部通道
+        RebuildMatrix();
+    }
+
+    /// <summary>
+    /// 「复制到其余通道」：把当前通道的配料表整张克隆给其他启用通道。
+    /// **保留行 Id**——各通道的配方若是同一模板应用来的，加料步骤的引用
+    /// 靠这一点续上。运行中的通道不动（它的表已经冻进基线，改了也只影响下一炉，
+    /// 但整列锁灰的规矩得一致）。目标原有的表被顶掉，说一声。
+    /// </summary>
+    public RelayCommand CopyToOthers { get; private set; } = null!;
+
+    /// <summary>单表 ⇄ 四通道对照。</summary>
+    public RelayCommand ToggleMatrix { get; private set; } = null!;
+
+    private void DoCopyToOthers()
+    {
+        var src = _ws.ChargeOf(_channel);
+        if (src.IsEmpty) { Say($"CH{_channel} 的配料表是空的，没什么可复制的", bad: true); return; }
+
+        var done = new List<string>();
+        var skipped = new List<string>();
+        foreach (var c in _ws.Channels.Where(c => c.Enabled).Select(c => c.Number).OrderBy(x => x))
+        {
+            if (c == _channel) continue;
+            if (LockedCh(c)) { skipped.Add($"CH{c}（运行中）"); continue; }
+            var had = _ws.ChannelCharges.TryGetValue(c, out var old) && !old.IsEmpty;
+            _ws.ChannelCharges[c] = src.Clone();
+            done.Add("CH" + c + (had ? "（原表已替换）" : ""));
+        }
+        if (done.Count == 0 && skipped.Count == 0)
+        { Say("台面上没有别的通道可复制", bad: true); return; }
+
+        _ws.Store.MarkDirty();
+        Recompute();
+        RebuildMatrix();
+        var msg = $"已把 CH{_channel} 的配料表复制到 " + string.Join("、", done);
+        if (skipped.Count > 0) msg += $"；跳过 {string.Join("、", skipped)}";
+        Say(msg);
+        _ws.Log?.Write("配料表", msg, _ws.Operator);
+    }
+
     /// <summary>台面上一个通道都没有。这一页就没得配——照实说，不摆一张空表。</summary>
     public bool NoChannels => Channels.Count == 0;
     public bool HasChannels => Channels.Count > 0;
@@ -765,6 +898,7 @@ public sealed class ChargeViewModel : ViewModelBase
     {
         Recompute();
         _ws.Store.MarkDirty();
+        RebuildMatrix();
     }
 
     /// <summary>整表重算。算一遍很便宜，改一个字就重算，界面上永远是当前的数。</summary>
@@ -870,4 +1004,140 @@ public sealed class ChargeViewModel : ViewModelBase
     }
 
     private static string Show(string s) => s.Length > 0 ? s : "（没填）";
+}
+
+
+// ── 对照矩阵的三个小视图模型 ─────────────────────────────────────────
+
+/// <summary>矩阵列头：CHn + 运行中锁标。</summary>
+public sealed class MatrixHeadViewModel
+{
+    public MatrixHeadViewModel(int channel, bool locked)
+    {
+        Channel = channel;
+        Locked = locked;
+    }
+    public int Channel { get; }
+    public bool Locked { get; }
+    public string Text => "CH" + Channel;
+    public string Note => Locked ? "运行中 · 只读" : "";
+}
+
+/// <summary>矩阵的一行（视图侧）。</summary>
+public sealed class MatrixRowVm
+{
+    public required string Name { get; init; }
+    public required string RoleText { get; init; }
+    /// <summary>行内有差异（含缺格）——整行着色，筛差异靠扫颜色。</summary>
+    public required bool Uneven { get; init; }
+    public required IReadOnlyList<MatrixCellVm> Cells { get; init; }
+}
+
+/// <summary>
+/// 矩阵的一格：某组分在某通道的那一行的某一层数。
+/// 可编辑的两层直接写那个通道自己的 ChargeItem——矩阵没有自己的数据。
+/// </summary>
+public sealed class MatrixCellVm : ViewModelBase
+{
+    private readonly ChargeItem? _item;
+    private readonly ChargeLine? _line;
+    private readonly string _mode;
+    private readonly Action _edited;
+    private bool _uneven;
+
+    public MatrixCellVm(int channel, ChargeItem? item, ChargeLine? line, string mode,
+                        bool locked, Action edited)
+    {
+        Channel = channel;
+        _item = item;
+        _line = line;
+        _mode = mode;
+        Locked = locked;
+        _edited = edited;
+    }
+
+    public int Channel { get; }
+    public bool Locked { get; }
+    public bool Missing => _item is null;
+
+    /// <summary>行内差异，行建好后统一设置。</summary>
+    public bool Uneven
+    {
+        get => _uneven;
+        set { if (Set(ref _uneven, value)) Raise(nameof(BgHex)); }
+    }
+
+    /// <summary>应称量是算出来的不能改；缺格没东西可改；运行中的列锁死。</summary>
+    public bool Editable => !Missing && !Locked && _mode != "应称量 g";
+    public bool ReadOnlyCell => !Editable;
+
+    /// <summary>展示文本（带单位）。差异判定也拿它比——与人眼看到的一致。</summary>
+    public string Text
+    {
+        get
+        {
+            if (_item is null) return "—";
+            return _mode switch
+            {
+                "给定量" => _item.Amount is null ? "（没填）" : Num(_item.Amount.Value) + " " + Unit,
+                "应称量 g" => Fmt(_item.Role == ChargeRole.Product ? _line?.TheoreticalMass : _line?.Mass),
+                _ => _item.ActualMass is null ? "—" : Num(_item.ActualMass.Value)
+            };
+        }
+    }
+
+    /// <summary>编辑框里的裸数字。提交即写进那个通道的行。</summary>
+    public string EditText
+    {
+        get
+        {
+            if (_item is null) return "";
+            var v = _mode == "给定量" ? _item.Amount : _item.ActualMass;
+            return v?.ToString("0.##########", CultureInfo.InvariantCulture) ?? "";
+        }
+        set
+        {
+            if (_item is null || !Editable) return;
+            double? v = string.IsNullOrWhiteSpace(value) ? null
+                : double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var x) ? x : null;
+            if (_mode == "给定量")
+            {
+                if (_item.Amount == v) return;
+                _item.Amount = v;
+            }
+            else
+            {
+                if (_item.ActualMass == v) return;
+                _item.ActualMass = v;
+            }
+            _edited();
+        }
+    }
+
+    /// <summary>格子右侧的小单位。给定量按那一行的基准走，其余两层恒为 g。</summary>
+    public string Unit
+    {
+        get
+        {
+            if (_item is null) return "";
+            if (_mode != "给定量") return "g";
+            return _item.Basis switch
+            {
+                ChargeBasis.Equivalents => "eq",
+                ChargeBasis.Volumes => "mL/g",
+                _ => ChargeWords.Of(_item.Unit)
+            };
+        }
+    }
+
+    public string BgHex => Locked ? "#f0f0f0" : Missing || Uneven ? "#fdf3e4" : "#ffffff";
+
+    private static string Num(double v)
+    {
+        var a = Math.Abs(v);
+        var fmt = a >= 1000 ? "0.#" : a >= 10 ? "0.##" : a >= 1 ? "0.###" : "0.####";
+        return v.ToString(fmt, CultureInfo.InvariantCulture);
+    }
+
+    private static string Fmt(double? v) => v is { } x ? Num(x) : "—";
 }

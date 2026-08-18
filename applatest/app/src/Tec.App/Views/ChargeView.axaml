@@ -97,6 +97,18 @@
                   ToolTip.Tip="把连库行的物性改回化合物库的当前值并重新盖快照章。会覆盖行上手改的物性——改了什么逐条列出。平时不用按：连库行的物性是快照，不跟着库变，这正是历史记录不被追溯改动的保证">
             <ctl:TecIcon Key="ui-ex-refresh" />
           </Button>
+          <Button Classes="tbtn sm" Command="{Binding ToggleMatrix}" IsEnabled="{Binding HasChannels}"
+                  ToolTip.Tip="四通道对照：把各通道的配料表按组分对齐成一张矩阵，差异着色。格子直接改那个通道自己的行；数据仍是一路一张表，互不牵连">
+            <ctl:TecIcon Key="ui-tool-grid" />
+          </Button>
+          <ComboBox Classes="sel" Width="104" IsVisible="{Binding IsMatrix}"
+                    ItemsSource="{Binding MatrixModes}"
+                    SelectedItem="{Binding MatrixMode, Mode=TwoWay}"
+                    ToolTip.Tip="矩阵显示哪一层数：给定量（可改）/ 应称量（算出来的）/ 实投（可回填）" />
+          <Button Classes="tbtn sm" Command="{Binding CopyToOthers}" IsVisible="{Binding IsMatrix}"
+                  ToolTip.Tip="把当前通道的配料表整张复制到其余启用通道（保留行 Id，配方引用不断）。目标原有的表会被替换；运行中的通道跳过">
+            <ctl:TecIcon Key="ui-copybar" />
+          </Button>
 
           <TextBlock Text="釜容：" FontSize="12" Foreground="#444444" VerticalAlignment="Center"
                      Margin="8,0,0,0" />
@@ -125,9 +137,9 @@
         </ItemsControl>
       </Border>
 
-      <!-- 表头 -->
+      <!-- 表头（单表模式） -->
       <Border DockPanel.Dock="Top" Background="#fafafa"
-              BorderBrush="#d5d5d5" BorderThickness="0,0,0,1">
+              BorderBrush="#d5d5d5" BorderThickness="0,0,0,1" IsVisible="{Binding IsSingle}">
         <Grid ColumnDefinitions="1.5*,80,84,92,72,84,88,84,84,1.2*">
           <TextBlock Grid.Column="0" Text="组分" Classes="chd" />
           <TextBlock Grid.Column="1" Text="角色" Classes="chd" />
@@ -142,9 +154,32 @@
         </Grid>
       </Border>
 
+      <!-- 矩阵表头（对照模式）：组分 / 角色 + 每通道一列 -->
+      <Border DockPanel.Dock="Top" Background="#fafafa"
+              BorderBrush="#d5d5d5" BorderThickness="0,0,0,1" IsVisible="{Binding IsMatrix}">
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Text="组分" Classes="chd" Width="150" />
+          <TextBlock Text="角色" Classes="chd" Width="84" />
+          <ItemsControl ItemsSource="{Binding MatrixHeads}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <StackPanel Width="150">
+                  <TextBlock Text="{Binding Text}" Classes="chd" HorizontalAlignment="Center" Margin="0,4,0,0" />
+                  <TextBlock Text="{Binding Note}" FontSize="10" Foreground="#a8710a"
+                             HorizontalAlignment="Center" IsVisible="{Binding Locked}" Margin="0,0,0,4" />
+                </StackPanel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
+
       <ScrollViewer>
         <StackPanel>
-          <ItemsControl ItemsSource="{Binding Rows}">
+          <ItemsControl ItemsSource="{Binding Rows}" IsVisible="{Binding IsSingle}">
             <ItemsControl.ItemTemplate>
               <DataTemplate>
                 <Border Classes="grow" PointerPressed="OnRowPressed" Classes.sel="{Binding IsSelected}">
@@ -171,6 +206,52 @@
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
+
+          <!-- 对照矩阵（CH-3.6）：一行一个组分，一列一个通道，格子直接改那个通道的行 -->
+          <ItemsControl ItemsSource="{Binding MatrixRows}" IsVisible="{Binding IsMatrix}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Border BorderBrush="#ececec" BorderThickness="0,0,0,1">
+                  <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="{Binding Name}" Width="150" FontSize="12" Foreground="#2b2b2b"
+                               Margin="10,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding RoleText}" Width="84" FontSize="11.5" Foreground="#5a5a5a"
+                               VerticalAlignment="Center" />
+                    <ItemsControl ItemsSource="{Binding Cells}">
+                      <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                      </ItemsControl.ItemsPanel>
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                          <Border Width="150" Background="{Binding BgHex}" Padding="8,5"
+                                  BorderBrush="#f0f0f0" BorderThickness="1,0,0,0">
+                            <DockPanel>
+                              <TextBlock DockPanel.Dock="Right" Text="{Binding Unit}" Classes="unit"
+                                         IsVisible="{Binding Editable}" />
+                              <TextBox Classes="finput" IsVisible="{Binding Editable}"
+                                       Text="{Binding EditText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                                       HorizontalAlignment="Stretch" />
+                              <TextBlock Text="{Binding Text}" IsVisible="{Binding ReadOnlyCell}"
+                                         FontSize="12" FontFamily="Consolas,monospace" Foreground="#3d3d3d"
+                                         VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,4,0" />
+                            </DockPanel>
+                          </Border>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <!-- 对照模式的空态 -->
+          <StackPanel IsVisible="{Binding NoMatrixRows}" Margin="24,40" Spacing="8">
+            <TextBlock Text="各通道的配料表都还空着" FontSize="14" Foreground="#6b6b6b"
+                       HorizontalAlignment="Center" />
+            <TextBlock Text="先切回单表模式把某一路的组分建起来，再用「复制到其余通道」铺开，回到这里逐格改各路的量。"
+                       FontSize="11.5" Foreground="#8d8d8d" HorizontalAlignment="Center" TextWrapping="Wrap" />
+          </StackPanel>
 
           <!-- 空态：说清这一页要干什么，而不是摆一张空表 -->
           <StackPanel IsVisible="{Binding IsEmpty}" Margin="24,40" Spacing="8"
