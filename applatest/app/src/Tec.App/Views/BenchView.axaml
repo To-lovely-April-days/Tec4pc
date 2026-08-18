@@ -7,11 +7,13 @@
   <!-- 三栏宽度照原型：设备库 118 · 台面自适应 · 属性面板 342 -->
   <Grid ColumnDefinitions="118,*,342">
 
-    <!-- 设备库。原型 .lib：#f4f4f4 的窄栏，每台设备是一张白卡（.thumb），
-         卡下面跟一行名字。之前那版把每台设备铺成一块浅紫、块间留白缝，
-         整栏看着比台面还抢眼——设备库是取货架，不该压过台面本身 -->
-    <Border Grid.Column="0" Background="{StaticResource LibBg}"
-            BorderBrush="#dcdcdc" BorderThickness="0,0,1,0">
+    <!--
+      设备库（学 GBG）：**栏本身不铺底色、跟画布之间也不画分界线**，
+      底色下沉到每一个设备格子上——一格一块，格子之间露出画布的白。
+      整栏铺一层灰再划一条竖线，等于给「取货架」这件小事画了个边框；
+      GBG 的做法是让格子自己成块，栏不存在。
+    -->
+    <Border Grid.Column="0">
       <DockPanel>
         <Border DockPanel.Dock="Top" Padding="0,6,0,8">
           <TextBlock Text="设备库" FontSize="11" Foreground="#6a6a6a"
@@ -21,21 +23,21 @@
           <ItemsControl ItemsSource="{Binding Library}">
             <ItemsControl.ItemTemplate>
               <DataTemplate>
-                <StackPanel Margin="0,0,0,10" HorizontalAlignment="Center"
-                            PointerPressed="OnLibraryPressed">
-                  <!-- 统一 108×88 的格子，图等比缩进去。各设备图的高度本来就接近
-                       （138~150），按高度缩放出来的比例也就接近，看着是一样大的；
-                       宽的那两台（反应器 176、加料泵 172）由宽度兜住，整幅不裁 -->
-                  <Border Classes="thumb">
+                <!-- 一格 = 一块底色（图 + 名字都在块里），块与块之间是画布的白 -->
+                <Border Classes="cell" PointerPressed="OnLibraryPressed">
+                  <StackPanel HorizontalAlignment="Center">
+                    <!-- 统一 108×88 的格子，图等比缩进去。各设备图的高度本来就接近
+                         （138~150），按高度缩放出来的比例也就接近，看着是一样大的；
+                         宽的那两台（反应器 176、加料泵 172）由宽度兜住，整幅不裁 -->
                     <ctl:DeviceArtView ArtKey="{Binding ArtKey}" Fit="True"
                                        Width="108" Height="88" HorizontalAlignment="Center" />
-                  </Border>
-                  <TextBlock Text="{Binding Name}" FontSize="11"
-                             Foreground="#3d3d3d" Width="108"
-                             TextAlignment="Center" TextWrapping="Wrap" Margin="0,4,0,0" />
-                  <TextBlock Text="{Binding Problem}" IsVisible="{Binding HasProblem}" Width="108"
-                             FontSize="9.5" Foreground="#b3261e" TextAlignment="Center" TextWrapping="Wrap" />
-                </StackPanel>
+                    <TextBlock Text="{Binding Name}" FontSize="11"
+                               Foreground="#3d3d3d" Width="108"
+                               TextAlignment="Center" TextWrapping="Wrap" Margin="0,4,0,0" />
+                    <TextBlock Text="{Binding Problem}" IsVisible="{Binding HasProblem}" Width="108"
+                               FontSize="9.5" Foreground="#b3261e" TextAlignment="Center" TextWrapping="Wrap" />
+                  </StackPanel>
+                </Border>
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
@@ -129,11 +131,10 @@
                  HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="14" />
     </Panel>
 
-    <!-- 属性面板。原型 .props：整栏一块 #ececec，左边一条 #d2d2d2 的分界线，
-         里面不再分块、不留白缝——白色留给真正要填东西的地方（输入框、通道总表），
-         这样一眼就能看出哪儿能改 -->
-    <Border Grid.Column="2" Background="{StaticResource PropsBg}"
-            BorderBrush="#d2d2d2" BorderThickness="1,0,0,0">
+    <!-- 属性面板：整栏一块 #ececec，**跟画布之间不画分界线**（学 GBG）——
+         底色变了本身就是边界，再描一条线是重复说明。里面不分块不留缝，
+         白色留给真正要填东西的地方（输入框、通道总表） -->
+    <Border Grid.Column="2" Background="{StaticResource PropsBg}">
       <DockPanel>
         <!-- 底部工具条：设备的动作都集中在这里，底色跟面板一致 -->
         <Border DockPanel.Dock="Bottom"
@@ -254,8 +255,12 @@
                  缝用白色才切得干净。只有选中设备时才有第二块，缝也跟着出现 -->
             <Border Height="9" Background="White" IsVisible="{Binding HasSelection}" />
 
-            <!-- ===== 设备块：选中谁显示谁 ===== -->
-            <Border Padding="18,16,18,20" IsVisible="{Binding HasSelection}">
+            <!-- ===== 设备块：选中谁显示谁 =====
+                 左边一条 4px 粗色条（学 GBG）：这一块讲的是「当前选中的那台设备」，
+                 跟上面常驻的台面块不是一回事。色条比分割线说得更清楚——
+                 它标的是「这一段属于谁」，而不只是「这里断开」 -->
+            <Border Padding="18,16,18,20" IsVisible="{Binding HasSelection}"
+                    BorderBrush="{StaticResource SelBd}" BorderThickness="4,0,0,0">
             <StackPanel>
 
             <StackPanel IsVisible="{Binding HasSelection}">
@@ -363,18 +368,16 @@
   </Grid>
 
   <UserControl.Styles>
-    <!-- 设备库的白卡（原型 .lib-item .thumb）。悬停描蓝框加柔环，
-         跟台面上选中设备是同一套提示语言 -->
-    <Style Selector="Border.thumb">
-      <Setter Property="Background" Value="White" />
-      <Setter Property="BorderBrush" Value="#cfcfcf" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="CornerRadius" Value="3" />
+    <!-- 设备库的一格：整格一块底色（图 + 名字都在里面），格与格之间露画布的白。
+         悬停整格转浅蓝，跟台面上选中设备是同一套提示语言 -->
+    <Style Selector="Border.cell">
+      <Setter Property="Background" Value="{StaticResource LibBg}" />
+      <Setter Property="Padding" Value="0,8,0,7" />
+      <Setter Property="Margin" Value="0,0,0,6" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
-    <Style Selector="Border.thumb:pointerover">
-      <Setter Property="BorderBrush" Value="{StaticResource SelBd}" />
-      <Setter Property="BoxShadow" Value="0 0 0 2 #381a7fc4" />
+    <Style Selector="Border.cell:pointerover">
+      <Setter Property="Background" Value="{StaticResource SelBg}" />
     </Style>
 
     <Style Selector="Button.pill">
