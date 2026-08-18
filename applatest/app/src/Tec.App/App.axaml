@@ -51,7 +51,15 @@
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderThickness" Value="0" />
       <Setter Property="Padding" Value="11,0" />
-      <Setter Property="FontSize" Value="25" />
+      <!--
+        原型那排菜单是 25px 拉丁，大写字母实高 18px；同样 25px 的中文实高 24px——
+        汉字占满字身框，拉丁大写只占约 0.72，照抄字号中文就比原型大了三分之一，
+        看着又粗又挤。22px 的中文实高 21px，比拉丁略高一点点：
+        汉字笔画密，压到 18px 就该糊了，这一档是「看着一样大」又不牺牲可读的位置
+      -->
+      <Setter Property="FontSize" Value="22" />
+      <!-- 300。中文要落到细体得靠字体自己有 Light 这一档（Windows 上的
+           微软雅黑 UI 有）；没有 Light 的机器会退回 Regular，那是字体的事，不是这里 -->
       <Setter Property="FontWeight" Value="Light" />
       <Setter Property="Foreground" Value="#3b3b3b" />
       <Setter Property="VerticalAlignment" Value="Center" />
