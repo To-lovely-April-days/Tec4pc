@@ -57,23 +57,26 @@
                       </StackPanel>
                     </Border>
 
-                    <!-- 指令格：4 列 × 84 高，图标 + 指令名 -->
+                    <!-- 指令格：3 列 × 96 高，图标 48 + 指令名。
+                         栏宽 312 减去内边距和色条，指令区净 290，三列每格 96.7——
+                         图标 48 正好占半格，名字多数一行排得下（原来四列一格 72，
+                         图标只有 28，「pH 反馈加料」还得折两行） -->
                     <ItemsControl ItemsSource="{Binding Commands}" IsVisible="{Binding Open}"
                                   Margin="6,0,6,10">
                       <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate><UniformGrid Columns="4" /></ItemsPanelTemplate>
+                        <ItemsPanelTemplate><UniformGrid Columns="3" /></ItemsPanelTemplate>
                       </ItemsControl.ItemsPanel>
                       <ItemsControl.ItemTemplate>
                         <DataTemplate>
                           <Button Classes="cmd" Command="{Binding $parent[UserControl].DataContext.AddStep}"
                                   CommandParameter="{Binding}">
                             <StackPanel>
-                              <Panel Height="34">
-                                <ctl:TecIcon Key="{Binding IconKey}"
+                              <Panel Height="48">
+                                <ctl:TecIcon Key="{Binding IconKey}" Size="48"
                                              HorizontalAlignment="Center" VerticalAlignment="Center" />
                               </Panel>
-                              <TextBlock Text="{Binding Name}" FontSize="10" Foreground="#3a3a3a"
-                                         TextAlignment="Center" TextWrapping="Wrap" Margin="0,4,0,0" />
+                              <TextBlock Text="{Binding Name}" FontSize="11" Foreground="#3a3a3a"
+                                         TextAlignment="Center" TextWrapping="Wrap" Margin="0,5,0,0" />
                             </StackPanel>
                           </Button>
                         </DataTemplate>
@@ -301,7 +304,9 @@
                                   <StackPanel Grid.Column="2" Grid.Row="0"
                                               Width="{Binding BodyWidth}"
                                               VerticalAlignment="Center" Margin="0,8,0,0">
-                                    <ctl:TecIcon Key="{Binding IconKey}" Size="34"
+                                    <!-- 跟指令库同一个尺寸 48：同一张图在两处一样大，
+                                         从库里点进泳道不会「变小一号」 -->
+                                    <ctl:TecIcon Key="{Binding IconKey}" Size="48"
                                                  HorizontalAlignment="Center" />
                                     <!-- 左右各留 4px 空隙：字排到跟盒子一样宽时，
                                          最后一个字的墨迹会比排版算出来的行宽多出一两个像素，
@@ -570,7 +575,8 @@
     </Style>
 
     <Style Selector="Button.cmd">
-      <Setter Property="Height" Value="84" />
+      <!-- 8 上 + 图标 48 + 5 + 名字两行 30 + 4 下 = 95，取 96 -->
+      <Setter Property="Height" Value="96" />
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderThickness" Value="0" />
       <Setter Property="CornerRadius" Value="3" />
