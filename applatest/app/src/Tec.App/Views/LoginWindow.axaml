@@ -1,0 +1,51 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:v="clr-namespace:Tec.App.Views"
+        x:Class="Tec.App.Views.LoginWindow"
+        Title="登录 - TecStudio 平行合成工作站"
+        Width="840" Height="470" CanResize="False"
+        WindowStartupLocation="CenterScreen"
+        SystemDecorations="None" Background="White"
+        FontFamily="{StaticResource UiFont}" FontSize="12" Foreground="#333333">
+
+  <!--
+    开机只开这一扇窗（照设计稿：840 宽、1px #17102b 描边的登录窗）。
+    登录成功点「进入工作站」才开主窗口、关掉它。
+    无系统边框，顶上那条深紫条就是标题栏：可拖动，右侧最小化 / 关闭。
+  -->
+
+  <Window.Styles>
+    <Style Selector="Button.lwin">
+      <Setter Property="Width" Value="30" />
+      <Setter Property="Height" Value="24" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.lwin:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#2effffff" />
+    </Style>
+    <Style Selector="Button.lwin.close:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#e81123" />
+    </Style>
+  </Window.Styles>
+
+  <Border BorderBrush="#17102b" BorderThickness="1">
+    <Panel>
+      <v:LoginView />
+
+      <!-- 盖在登录页自带那条深紫条上：左边整段可拖动，右边两颗窗钮 -->
+      <Border Height="30" VerticalAlignment="Top" Background="Transparent"
+              Margin="0,0,64,0" PointerPressed="OnTitlebarPressed" />
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top"
+                  Margin="0,3,2,0">
+        <Button Classes="lwin" Content="—" Click="OnMinimize" />
+        <Button Classes="lwin close" Content="✕" Click="OnClose" />
+      </StackPanel>
+    </Panel>
+  </Border>
+</Window>

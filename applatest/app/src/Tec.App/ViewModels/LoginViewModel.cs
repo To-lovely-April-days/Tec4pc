@@ -45,16 +45,27 @@ public sealed class LoginViewModel : ViewModelBase
 
     private static Avalonia.Media.Imaging.Bitmap? LoadArt()
     {
+        // 现场放的文件优先于内置资源：换图不用重新出包
         foreach (var dir in new[] { AppContext.BaseDirectory, ExperimentStore.DataDir })
         foreach (var name in new[] { "login-visual.png", "login-visual.jpg" })
         {
             var path = Path.Combine(dir, name);
             if (!File.Exists(path)) continue;
             try { return new Avalonia.Media.Imaging.Bitmap(path); }
-            catch { /* 图坏了当没有，走占位 */ }
+            catch { /* 图坏了当没有，走下一级 */ }
         }
+        try
+        {
+            var uri = new Uri("avares://Tec.App/Assets/login-visual.png");
+            if (Avalonia.Platform.AssetLoader.Exists(uri))
+                return new Avalonia.Media.Imaging.Bitmap(Avalonia.Platform.AssetLoader.Open(uri));
+        }
+        catch { }
         return null;
     }
+
+    /// <summary>点了「进入工作站」。外壳靠它换窗口：关登录窗、开主窗。</summary>
+    public event EventHandler? EnteredWorkstation;
 
     /// <summary>登录成功、点「进入工作站」之后干什么（外壳收起这层）。</summary>
     public Action Entered { get; }
@@ -186,11 +197,12 @@ public sealed class LoginViewModel : ViewModelBase
         RaiseAll(nameof(User), nameof(Pass));
     }
 
-    /// <summary>进入工作站：收起登录层。</summary>
+    /// <summary>进入工作站：收起登录层，通知外壳换窗口。</summary>
     private void DoEnter()
     {
         Showing = false;
         Entered();
+        EnteredWorkstation?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>注销后（或外壳要求重新登录时）回到表单台面。</summary>
