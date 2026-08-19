@@ -15,12 +15,14 @@ public sealed class FieldViewModel : ViewModelBase
     private readonly ParameterSet _target;
     private readonly Action? _changed;
 
-    public FieldViewModel(FieldSpec spec, ParameterSet target, Channel? channel = null, Action? changed = null)
+    public FieldViewModel(FieldSpec spec, ParameterSet target, Channel? channel = null, Action? changed = null,
+                          IReadOnlyList<string>? dynamicChoices = null)
     {
         Spec = spec;
         _target = target;
         _changed = changed;
-        Choices = new ObservableCollection<string>(spec.Choices ?? Array.Empty<string>());
+        // 动态下拉（ChoicesFrom）：选项由编辑现场给，声明里那份只是兜底
+        Choices = new ObservableCollection<string>(dynamicChoices ?? spec.Choices ?? Array.Empty<string>());
 
         // 动态范围：LimitFrom 让参数上限跟着设备走（§4.2）
         var bound = channel is null ? null : ResolveLimit(channel, spec.LimitFrom);
@@ -167,7 +169,8 @@ public sealed class SchemaFormViewModel : ViewModelBase
     public SchemaFormViewModel(ParameterSchema schema, ParameterSet target,
                                List<ParameterSet>? rows = null, Channel? channel = null,
                                Action? changed = null, double startTemp = 25,
-                               Action<string>? fieldEdited = null)
+                               Action<string>? fieldEdited = null,
+                               Func<string, IReadOnlyList<string>?>? choicesOf = null)
     {
         Schema = schema;
         Target = target;
@@ -183,7 +186,8 @@ public sealed class SchemaFormViewModel : ViewModelBase
             var key = f.Key;
             Fields.Add(new FieldViewModel(f, target, channel,
                 fieldEdited is null ? OnFieldChanged
-                                    : () => { fieldEdited(key); OnFieldChanged(); }));
+                                    : () => { fieldEdited(key); OnFieldChanged(); },
+                f.ChoicesFrom is { } src ? choicesOf?.Invoke(src) : null));
         }
 
         if (schema.Table is not null && rows is not null)

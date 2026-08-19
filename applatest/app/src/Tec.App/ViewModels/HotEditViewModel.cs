@@ -340,7 +340,11 @@ public sealed class HotEditViewModel : ViewModelBase
         // 分段表不传（rows = null），它不走热改
         _draft = step.Parameters.Clone();
         Form = new SchemaFormViewModel(d.Parameters, _draft, null, _ws.ChannelOf(_channel),
-                                       () => RaiseAll(nameof(NextText), nameof(CanApply)));
+                                       () => RaiseAll(nameof(NextText), nameof(CanApply)),
+                                       // 运行中「设定变量」的变量下拉：选项 = 执行器手里那份变量表
+                                       choicesOf: key => key == BuiltinCommands.ChoicesFromRecipeVars
+                                           ? Runner?.LiveVariables.Keys.OrderBy(k => k, StringComparer.Ordinal).ToList()
+                                           : null);
     }
 
     private Step? LiveStep()

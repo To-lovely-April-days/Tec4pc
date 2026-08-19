@@ -69,6 +69,12 @@ public sealed class Recipe
     public List<Step> Steps { get; } = new();
 
     /// <summary>
+    /// 配方级变量。循环条件、条件等待里按名字读，「设定变量」步骤改；
+    /// 启动时随配方一起冻进基线——运行中改的是执行器里那一份，基线不动。
+    /// </summary>
+    public List<RecipeVariable> Variables { get; } = new();
+
+    /// <summary>
     /// 随配方结伴走的配料表（模板）。**配方和配料表是连体的**：加料步骤持有
     /// 配料行的 Id（chemId），只把步骤存进库、导出成文件，应用到别处时引用全断。
     /// 所以存库 / 导出时把当前通道的配料表捎上（模板化清洗见 ChargeTemplate），
@@ -127,6 +133,7 @@ public sealed class Recipe
         };
         // 快照保住 StepId，记录才对得上
         foreach (var s in Steps) r.Steps.Add(s.CopyWith());
+        foreach (var v in Variables) r.Variables.Add(v.Clone());
         r.Charge = Charge?.Clone();
         return r;
     }

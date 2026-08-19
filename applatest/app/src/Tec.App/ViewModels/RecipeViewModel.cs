@@ -346,6 +346,9 @@ public sealed class RecipeViewModel : ViewModelBase
         PickIssue = new RelayCommand(p => { if (p is IssueRow r) SelectIssue(r); });
         Undo = new RelayCommand(DoUndo);
         Redo = new RelayCommand(DoRedo);
+        ToggleVars = new RelayCommand(() => VarsOpen = !VarsOpen);
+        AddVar = new RelayCommand(DoAddVar);
+        RemoveVar = new RelayCommand(p => { if (p is VarRowViewModel r) DoRemoveVar(r); });
 
         // 台面变了通道就变了，泳道的通道下拉要跟着刷新
         ws.BenchChanged += (_, _) => RefreshAll();
@@ -1021,6 +1024,7 @@ public sealed class RecipeViewModel : ViewModelBase
     public void RefreshAll()
     {
         SyncLanes();
+        SyncVars();
         foreach (var lane in Lanes)
         {
             lane.IsCurrent = lane.Channel == _curCh;
@@ -1068,11 +1072,84 @@ public sealed class RecipeViewModel : ViewModelBase
 
         RaiseAll(nameof(CurName), nameof(ChannelStates), nameof(HasLanes), nameof(NoLanes), nameof(CurLane),
                  nameof(CanUndo), nameof(CanRedo), nameof(HasProblems), nameof(ProblemSummary),
-                 nameof(TotalNote),
+                 nameof(TotalNote), nameof(VarsBadge), nameof(HasVarsBadge), nameof(NoVars),
                  // 切通道 / 换配方后连配料表那一段要跟着当前选中走——不 Raise 的话
                  // 上一个通道那条加料步骤的「已连乙醇」会一直挂在右栏（实测踩到）
                  nameof(IsDoseStep), nameof(ChargeRowNames), nameof(ChargeRowPick),
                  nameof(ChargeLinkNote), nameof(ChargeLinkColorHex));
+    }
+
+    // ── 变量栏（对照 GBG Process 视图左缘的 Variables 折叠栏） ────────
+
+    public ObservableCollection<VarRowViewModel> VarRows { get; } = new();
+
+    public RelayCommand ToggleVars { get; }
+    public RelayCommand AddVar { get; }
+    public RelayCommand RemoveVar { get; }
+
+    private bool _varsOpen;
+    public bool VarsOpen
+    {
+        get => _varsOpen;
+        set { if (Set(ref _varsOpen, value)) Raise(nameof(VarsClosed)); }
+    }
+    public bool VarsClosed => !_varsOpen;
+
+    /// <summary>收起时竖条上那个数字：有几个变量。0 个不摆，免得一排「0」。</summary>
+    public string VarsBadge => Current.Variables.Count.ToString();
+    public bool HasVarsBadge => Current.Variables.Count > 0;
+    public bool NoVars => Current.Variables.Count == 0;
+
+    private void DoAddVar()
+    {
+        if (NoLanes) return;
+        Record();
+        // 起个不重样的短名，v1 v2 v3……操作人多半会当场改掉
+        var used = new HashSet<string>(Current.Variables.Select(v => v.Name), StringComparer.Ordinal);
+        var i = 1;
+        while (used.Contains($"v{i}")) i++;
+        Current.Variables.Add(new RecipeVariable { Name = $"v{i}" });
+        Current.ModifiedAt = DateTimeOffset.Now;
+        Workspace.Store.MarkDirty();
+        RefreshAll();
+    }
+
+    private void DoRemoveVar(VarRowViewModel row)
+    {
+        Record();
+        Current.Variables.Remove(row.Model);
+        Current.ModifiedAt = DateTimeOffset.Now;
+        Workspace.Store.MarkDirty();
+        RefreshAll();
+    }
+
+    /// <summary>
+    /// 一行编辑（名字 / 初值 / 单位 / 说明）走这里：快照 → 改 → 落盘标记 → 重校验。
+    /// coalesceKey 按行按字段合并——在初值框里连敲十个字符是一次编辑意图。
+    /// </summary>
+    internal void EditVar(RecipeVariable v, string field, Action apply)
+    {
+        Record(null, $"var/{v.Id}/{field}");
+        apply();
+        Current.ModifiedAt = DateTimeOffset.Now;
+        Workspace.Store.MarkDirty();
+        RefreshAll();
+    }
+
+    /// <summary>
+    /// 行集合跟着当前配方走。**模型没换就不重建**：正在名字框里打字时
+    /// 每敲一个键都会走 RefreshAll，这时把行拆了重摆，焦点就丢了。
+    /// </summary>
+    private void SyncVars()
+    {
+        var want = Current.Variables;
+        var same = VarRows.Count == want.Count;
+        if (same)
+            for (var i = 0; i < want.Count; i++)
+                if (!ReferenceEquals(VarRows[i].Model, want[i])) { same = false; break; }
+        if (same) return;
+        VarRows.Clear();
+        foreach (var v in want) VarRows.Add(new VarRowViewModel(this, v));
     }
 
     /// <summary>
@@ -1139,7 +1216,12 @@ public sealed class RecipeViewModel : ViewModelBase
                                            if (d.RequiredCapability != typeof(IDosing)) return;
                                            if (ChargeLink.Detach(step))
                                                RaiseAll(nameof(ChargeLinkNote), nameof(ChargeLinkColorHex));
-                                       });
+                                       },
+                                       // 「设定变量」的变量下拉：选项 = 这条配方的变量表
+                                       choicesOf: key => key == BuiltinCommands.ChoicesFromRecipeVars
+                                           ? Current.Variables.Select(v => v.Name)
+                                                 .Where(n => n.Trim().Length > 0).ToList()
+                                           : null);
         RaiseAll(nameof(IsDoseStep), nameof(ChargeRowNames), nameof(ChargeRowPick),
                  nameof(ChargeLinkNote), nameof(ChargeLinkColorHex));
     }
@@ -1303,4 +1385,69 @@ public sealed record LibOption(Recipe Recipe)
 public sealed record CopyTargetOption(int Channel)
 {
     public string Label => $"通道 {Channel}";
+}
+
+/// <summary>
+/// 变量栏里的一行。写回模型走 owner.EditVar——快照、落盘、重校验一处包办；
+/// 属性自己只负责「值没变就什么都不做」，不然打字光标会被无谓的刷新打断。
+/// </summary>
+public sealed class VarRowViewModel : ViewModelBase
+{
+    private readonly RecipeViewModel _owner;
+
+    public VarRowViewModel(RecipeViewModel owner, RecipeVariable model)
+    {
+        _owner = owner;
+        Model = model;
+    }
+
+    public RecipeVariable Model { get; }
+
+    public string Name
+    {
+        get => Model.Name;
+        set
+        {
+            var v = value.Trim();
+            if (Model.Name == v) return;
+            _owner.EditVar(Model, "name", () => Model.Name = v);
+            Raise();
+        }
+    }
+
+    public string InitText
+    {
+        get => Model.Init.ToString("0.####", CultureInfo.InvariantCulture);
+        set
+        {
+            if (!double.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var v)) return;
+            if (Math.Abs(Model.Init - v) < 1e-12) return;
+            _owner.EditVar(Model, "init", () => Model.Init = v);
+            Raise();
+        }
+    }
+
+    public string Unit
+    {
+        get => Model.Unit;
+        set
+        {
+            var v = value.Trim();
+            if (Model.Unit == v) return;
+            _owner.EditVar(Model, "unit", () => Model.Unit = v);
+            Raise();
+        }
+    }
+
+    public string NoteText
+    {
+        get => Model.Note ?? "";
+        set
+        {
+            var v = value.Trim();
+            if ((Model.Note ?? "") == v) return;
+            _owner.EditVar(Model, "note", () => Model.Note = v.Length == 0 ? null : v);
+            Raise();
+        }
+    }
 }

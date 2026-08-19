@@ -53,6 +53,13 @@ public partial class RecipeView : UserControl
         if (sender is Control { DataContext: ModuleGroup g }) g.Open = !g.Open;
     }
 
+    /// <summary>左缘「变量」竖栏：收起态点整条展开，展开态点圆圈收起。</summary>
+    private void OnVarsBarPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (Vm is { } vm) vm.VarsOpen = !vm.VarsOpen;
+        e.Handled = true;
+    }
+
     /// <summary>泳道头的垃圾桶：清空该通道的配方（原型 removeChannelTab）。</summary>
     private void OnLaneRemove(object? sender, RoutedEventArgs e)
     {

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"
+  viewBox="-56.25 -56.25 112.5 112.5">
+  <!-- 设定变量：x= 的紫色圆角卡。卡片几何、投影、顶部高光照用户那套
+       （cmd-temp-up 的卡）搬，紫色取搅拌图标里的 #5B62C4 一族 -->
+  <rect x="-41" y="-40" width="86" height="86" rx="11" fill="#000000" opacity="0.16"/>
+  <rect x="-44" y="-44" width="86" height="86" rx="11" fill="#5B62C4" stroke="#343B8E" stroke-width="2.5"/>
+  <path d="M -42,-33 A 10,10 0 0 1 -32,-43 L 30,-43 A 10,10 0 0 1 40,-33 L 40,-8 C 16,2 -18,2 -42,-8 Z" fill="#FFFFFF" opacity="0.32"/>
+  <g stroke="#FFFFFF" stroke-width="7" stroke-linecap="round">
+  <path d="M -26,-13 L -6,15"/>
+  <path d="M -6,-13 L -26,15"/>
+  <path d="M 8,-6 L 28,-6"/>
+  <path d="M 8,8 L 28,8"/>
+  </g>
+</svg>

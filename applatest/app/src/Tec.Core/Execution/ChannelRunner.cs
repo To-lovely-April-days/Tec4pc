@@ -29,6 +29,10 @@ public sealed class ChannelRunner
     private readonly Func<int, string, ResourceNeed?> _resourceOf;
 
     private Recipe? _live;                       // 运行中可热改的那一份，基线不动
+    // 配方变量的运行值。启动时按基线的 Init 装入，「设定变量」改，
+    // 循环条件 / 条件等待读。锁着访问：执行循环写，界面线程可能来读
+    private readonly object _varLock = new();
+    private Dictionary<string, double>? _vars;
     private CancellationTokenSource? _cts;
     private volatile TaskCompletionSource<bool>? _pauseGate;   // 非空 = 暂停中
     private volatile bool _skipRequested;
@@ -118,6 +122,12 @@ public sealed class ChannelRunner
 
         Run = run;
         _live = recipe.Snapshot();
+        lock (_varLock)
+        {
+            _vars = new Dictionary<string, double>(StringComparer.Ordinal);
+            foreach (var v in frozenRecipe.Variables)
+                if (v.Name.Length > 0) _vars[v.Name] = v.Init;
+        }
         _skipRequested = false;
         _pauseGate = null;
         _pending = null;
@@ -311,7 +321,23 @@ public sealed class ChannelRunner
                     var one = entry is null || repeats == 0
                         ? TimeSpan.Zero
                         : TimeSpan.FromTicks(entry.Span.Ticks / Math.Max(1, repeats));
-                    loops.Push(new RuntimeLoop(pc, repeats, one));
+                    var frame = new RuntimeLoop(pc, repeats, one);
+
+                    if (step.Parameters.Str("by", "按次数") == "按条件")
+                    {
+                        // 条件在进循环时解析一次，出错这一处报。校验器在启动前就拦
+                        // Error，这里只是最后一道防线（比如绕过界面直接喂配方）
+                        frame.Cond = Cond.Parse(step.Parameters.Str("cond"), out var perr);
+                        frame.CondText = step.Parameters.Str("cond");
+                        frame.MaxRounds = Math.Max(1, step.Parameters.Int("max", 100));
+                        frame.PauseOnFault = step.PauseOnFault;
+                        if (frame.Cond is null)
+                        {
+                            Log(EventKind.Alarm, $"循环条件写法不对：{perr}——循环体只跑 1 轮", null);
+                            if (step.PauseOnFault) Pause();
+                        }
+                    }
+                    loops.Push(frame);
                     pc++;
                     continue;
                 }
@@ -320,7 +346,7 @@ public sealed class ChannelRunner
                 {
                     if (loops.Count == 0) { pc++; continue; }
                     var frame = loops.Peek();
-                    if (frame.Iteration < frame.Repeats)
+                    if (KeepLooping(frame))
                     {
                         frame.Iteration++;
                         frame.Accumulated += frame.OneSpan;
@@ -516,8 +542,10 @@ public sealed class ChannelRunner
             return rec;
         }
 
-        // 2. 校验：参数是否仍在设备 Limits 内（设备可能被换过）
-        var handler = _builtins.Resolve(step.CommandId) ?? _channel.ResolveHandler(step.CommandId);
+        // 2. 校验：参数是否仍在设备 Limits 内（设备可能被换过）。
+        //    引擎指令（设定变量 / 条件等待）在这里截住——它们要碰变量表
+        var handler = EngineHandler(step.CommandId)
+                      ?? _builtins.Resolve(step.CommandId) ?? _channel.ResolveHandler(step.CommandId);
         if (handler is null)
         {
             Finish(rec, EndReason.Failed, StepStatus.Failed, "该通道没有能执行此指令的设备");
@@ -662,6 +690,196 @@ public sealed class ChannelRunner
         catch { return d.DisplayName; }
     }
 
+    /// <summary>循环结束时问一句：还回去再跑一轮吗。按条件的循环在这儿真的看条件。</summary>
+    private bool KeepLooping(RuntimeLoop frame)
+    {
+        // 按次数（含条件没解析成功那种退化情形：Repeats=1，跑一轮就走）
+        if (frame.Cond is null) return frame.Iteration < frame.Repeats;
+
+        var met = Cond.Eval(frame.Cond, Quantity, out var err);
+        if (err is not null)
+        {
+            // 「不知道满不满足」不是「不满足」：探头坏了还闷头转圈，
+            // 转到 max 轮全是白跑。报警、退出，按这一步的设置决定停不停
+            Log(EventKind.Alarm,
+                $"循环条件算不出来：{err}——循环在第 {frame.Iteration} 轮后退出", null);
+            if (frame.PauseOnFault) Pause();
+            return false;
+        }
+        if (met == true)
+        {
+            Log(EventKind.Note, $"循环条件满足（{frame.CondText}），共跑 {frame.Iteration} 轮", null);
+            return false;
+        }
+        if (frame.Iteration >= frame.MaxRounds)
+        {
+            Log(EventKind.Alarm,
+                $"循环已跑满最多轮次 {frame.MaxRounds}，条件仍未满足：{frame.CondText}", null);
+            if (frame.PauseOnFault) Pause();
+            return false;
+        }
+        return true;
+    }
+
+    // ── 变量与实时量 ─────────────────────────────────────────────────
+
+    /// <summary>运行值的快照，给界面与测试看。没在运行就是空表。</summary>
+    public IReadOnlyDictionary<string, double> LiveVariables
+    {
+        get { lock (_varLock) return _vars is null ? new Dictionary<string, double>() : new(_vars); }
+    }
+
+    /// <summary>
+    /// 条件里名字的解析：先查配方变量，再问设备。变量优先没有歧义——
+    /// 校验器不许变量叫 Tr / pH 这些保留名。读不到返回 null，让上层报警，不猜。
+    /// </summary>
+    internal double? Quantity(string id)
+    {
+        lock (_varLock)
+            if (_vars is { } vars && vars.TryGetValue(id, out var v)) return v;
+        return id switch
+        {
+            "Tr" => _channel.Capabilities.Get<ITemperatureControl>()?.CurrentReactor,
+            "Tj" => _channel.Capabilities.Get<ITemperatureControl>()?.CurrentJacket,
+            "rpm" => _channel.Capabilities.Get<IStirrer>()?.CurrentRpm,
+            "pH" => Scalar("pH"),
+            "浊度" => Scalar("turb"),
+            _ => null
+        };
+    }
+
+    /// <summary>
+    /// 从这一路的标量探头上读最新值。Stale / Bad 的数不要——
+    /// 拿一小时前的 pH 判「条件满足」比读不到更糟。
+    /// </summary>
+    private double? Scalar(string tag)
+    {
+        foreach (var c in _channel.Capabilities.All)
+            if (c is IScalarSensor s && s.TryReadLatest(tag, out var smp)
+                && smp.Quality is Quality.Good or Quality.Simulated)
+                return smp.Value;
+        return null;
+    }
+
+    private bool TryGetVar(string name, out double value)
+    {
+        lock (_varLock)
+        {
+            if (_vars is { } vars && vars.TryGetValue(name, out value)) return true;
+        }
+        value = 0;
+        return false;
+    }
+
+    private void SetVarValue(string name, double value)
+    {
+        lock (_varLock)
+        {
+            _vars ??= new Dictionary<string, double>(StringComparer.Ordinal);
+            _vars[name] = value;
+        }
+    }
+
+    /// <summary>
+    /// 引擎自己执行的指令：设定变量、条件等待。它们要碰变量表和实时量，
+    /// 这两样都在执行器手里，普通 handler 够不着——但记录、跳过、失败暂停
+    /// 那一整套还是走 ExecuteStepAsync，不另起炉灶。
+    /// </summary>
+    private ICommandHandler? EngineHandler(string commandId) => commandId switch
+    {
+        BuiltinCommands.SetVar => new SetVarHandler(this),
+        BuiltinCommands.WaitUntil => new WaitUntilHandler(this),
+        _ => null
+    };
+
+    private sealed class SetVarHandler : ICommandHandler
+    {
+        private readonly ChannelRunner _r;
+        public SetVarHandler(ChannelRunner r) => _r = r;
+
+        public Task<CommandOutcome> ExecuteAsync(CommandContext ctx, CommandInput p, CancellationToken ct)
+        {
+            var name = p.Str("var").Trim();
+            if (name.Length == 0)
+                return Task.FromResult(new CommandOutcome(EndReason.Failed, TimeSpan.Zero)
+                { Note = "没选变量" });
+            if (!_r.TryGetVar(name, out var cur))
+                return Task.FromResult(new CommandOutcome(EndReason.Failed, TimeSpan.Zero)
+                { Note = $"配方里没有变量「{name}」" });
+
+            double amount;
+            var src = p.Str("src", "数值");
+            if (BuiltinCommands.SensorOfSource(src) is { } key)
+            {
+                // 直接问设备，不走 Quantity——那条路变量优先，而这里要的就是读数
+                var q = _r.Quantity(key);
+                if (q is null)
+                    return Task.FromResult(new CommandOutcome(EndReason.Failed, TimeSpan.Zero)
+                    { Note = $"读不到{src}（探头不在或数据无效）" });
+                amount = q.Value;
+            }
+            else amount = p.Num("val");
+
+            var op = p.Str("op", "设为");
+            var value = op switch { "加上" => cur + amount, "减去" => cur - amount, _ => amount };
+            _r.SetVarValue(name, value);
+            // 变量变了要留痕：事后翻记录得答得出「第 3 轮时 n 是几」
+            ctx.Note?.Invoke($"变量 {name} = {Txt.Fx(value)}");
+            return Task.FromResult(CommandOutcome.Instant());
+        }
+    }
+
+    private sealed class WaitUntilHandler : ICommandHandler
+    {
+        private readonly ChannelRunner _r;
+        public WaitUntilHandler(ChannelRunner r) => _r = r;
+
+        public async Task<CommandOutcome> ExecuteAsync(CommandContext ctx, CommandInput p, CancellationToken ct)
+        {
+            var text = p.Str("cond");
+            var expr = Cond.Parse(text, out var perr);
+            if (expr is null)
+                return new CommandOutcome(EndReason.Failed, TimeSpan.Zero)
+                { Note = $"条件写法不对：{perr}" };
+
+            var began = ctx.Now();
+            var budget = TimeSpan.FromMinutes(Math.Max(0.1, p.Num("timeout", 60)));
+            var scale = ctx.TimeScale > 0 ? ctx.TimeScale : 1;
+            var poll = TimeSpan.FromTicks(Math.Max(TimeSpan.FromMilliseconds(20).Ticks,
+                                                   (long)(TimeSpan.FromSeconds(1).Ticks / scale)));
+            while (true)
+            {
+                var met = Cond.Eval(expr, _r.Quantity, out var err);
+                if (err is not null)
+                    return new CommandOutcome(EndReason.Failed, ctx.Now() - began)
+                    { Note = $"条件算不出来：{err}" };
+                if (met == true)
+                    return new CommandOutcome(EndReason.ConditionMet, ctx.Now() - began);
+
+                if (ctx.Now() - began >= budget)
+                {
+                    var elapsed = ctx.Now() - began;
+                    switch (p.Str("onTimeout", "暂停并报警"))
+                    {
+                        case "继续执行":
+                            return new CommandOutcome(EndReason.Timeout, elapsed)
+                            { Note = $"等了 {Fmt.Hms(budget)} 条件仍未满足，按设置继续" };
+                        case "按失败处理":
+                            return new CommandOutcome(EndReason.Failed, elapsed)
+                            { Note = $"等了 {Fmt.Hms(budget)} 条件仍未满足" };
+                        default:
+                            _r.Log(EventKind.Alarm,
+                                $"条件等待超时（{text}），已暂停等人处理", null);
+                            _r.Pause();
+                            return new CommandOutcome(EndReason.Timeout, elapsed)
+                            { Note = $"等了 {Fmt.Hms(budget)} 条件仍未满足，已暂停" };
+                    }
+                }
+                await Task.Delay(poll, ct).ConfigureAwait(false);
+            }
+        }
+    }
+
     private sealed class RuntimeLoop
     {
         public RuntimeLoop(int beginIndex, int repeats, TimeSpan oneSpan)
@@ -675,5 +893,11 @@ public sealed class ChannelRunner
         public TimeSpan OneSpan { get; }
         public int Iteration { get; set; } = 1;
         public TimeSpan Accumulated { get; set; }
+
+        // 按条件的循环多这几样。Cond 为 null = 按次数（或条件没解析成功的退化）
+        public Cond.Node? Cond { get; set; }
+        public string CondText { get; set; } = "";
+        public int MaxRounds { get; set; } = 100;
+        public bool PauseOnFault { get; set; } = true;
     }
 }

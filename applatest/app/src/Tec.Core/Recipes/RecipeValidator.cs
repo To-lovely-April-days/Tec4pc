@@ -31,9 +31,13 @@ public static class RecipeValidator
         var depth = 0;
         var openAt = -1;
 
+        var varNames = ValidateVariables(issues, recipe);
+
         for (var i = 0; i < recipe.Steps.Count; i++)
         {
             var s = recipe.Steps[i];
+
+            ValidateConditions(issues, i, s, varNames, channel);
 
             if (!catalog.TryGet(s.CommandId, out var d))
             {
@@ -222,6 +226,114 @@ public static class RecipeValidator
     }
 
     private static string Show(string s) => s.Length > 0 ? s : "（没填）";
+
+    // ── 变量与条件 ───────────────────────────────────────────────────
+
+    /// <summary>变量表自身的毛病：没名字、名字不合法、撞保留名、重名。返回可用的名字集合。</summary>
+    private static HashSet<string> ValidateVariables(List<ValidationIssue> issues, Recipe recipe)
+    {
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var v in recipe.Variables)
+        {
+            var name = v.Name.Trim();
+            if (name.Length == 0)
+            {
+                issues.Add(new ValidationIssue(IssueLevel.Error, "var-name", "变量表里有一行还没起名"));
+                continue;
+            }
+            if (!Cond.ValidName(name))
+            {
+                issues.Add(new ValidationIssue(IssueLevel.Error, "var-name",
+                    $"变量名「{name}」不合法——只能用字母、数字、下划线、汉字，且不能以数字开头"));
+                continue;
+            }
+            if (Cond.SensorKeys.Contains(name))
+            {
+                issues.Add(new ValidationIssue(IssueLevel.Error, "var-name",
+                    $"「{name}」是实时量的保留名，变量换一个名字"));
+                continue;
+            }
+            if (!names.Add(name))
+                issues.Add(new ValidationIssue(IssueLevel.Error, "var-name",
+                    $"变量「{name}」定义了两次"));
+        }
+        return names;
+    }
+
+    /// <summary>条件类步骤：循环「按条件」、条件等待、设定变量。</summary>
+    private static void ValidateConditions(List<ValidationIssue> issues, int i, Step s,
+                                           HashSet<string> varNames, Channel? channel)
+    {
+        if (BuiltinCommands.IsLoopBegin(s.CommandId) && s.Parameters.Str("by", "按次数") == "按条件")
+            CheckCond(issues, i, s, s.Parameters.Str("cond"), varNames, channel);
+
+        if (s.CommandId == BuiltinCommands.WaitUntil)
+            CheckCond(issues, i, s, s.Parameters.Str("cond"), varNames, channel);
+
+        if (s.CommandId == BuiltinCommands.SetVar)
+        {
+            var name = s.Parameters.Str("var").Trim();
+            if (name.Length == 0)
+                issues.Add(new ValidationIssue(IssueLevel.Error, "var-ref",
+                    $"第 {i + 1} 步还没选要设定哪个变量——先在配方页左侧「变量」栏里添加") { StepId = s.StepId });
+            else if (!varNames.Contains(name))
+                issues.Add(new ValidationIssue(IssueLevel.Error, "var-ref",
+                    $"第 {i + 1} 步要设定的变量「{name}」不在配方的变量表里") { StepId = s.StepId });
+
+            if (BuiltinCommands.SensorOfSource(s.Parameters.Str("src", "数值")) is { } key)
+                CheckSensor(issues, i, s, key, channel);
+        }
+    }
+
+    private static void CheckCond(List<ValidationIssue> issues, int i, Step s, string text,
+                                  HashSet<string> varNames, Channel? channel)
+    {
+        var expr = Cond.Parse(text, out var err);
+        if (expr is null)
+        {
+            issues.Add(new ValidationIssue(IssueLevel.Error, "cond",
+                $"第 {i + 1} 步条件写法不对：{err}（{Cond.Help}）") { StepId = s.StepId });
+            return;
+        }
+
+        var idents = new HashSet<string>(StringComparer.Ordinal);
+        Cond.CollectIdents(expr, idents);
+        foreach (var id in idents)
+        {
+            if (varNames.Contains(id)) continue;
+            if (Cond.SensorKeys.Contains(id)) { CheckSensor(issues, i, s, id, channel); continue; }
+            issues.Add(new ValidationIssue(IssueLevel.Error, "cond",
+                $"第 {i + 1} 步条件里的「{id}」既不是配方变量也不是实时量"
+                + "（实时量只有 Tr / Tj / pH / 浊度 / rpm）") { StepId = s.StepId });
+        }
+    }
+
+    /// <summary>条件引用了实时量：这一路上得真有能提供它的设备。</summary>
+    private static void CheckSensor(List<ValidationIssue> issues, int i, Step s, string key, Channel? channel)
+    {
+        if (channel is null) return;
+        var ok = key switch
+        {
+            "Tr" or "Tj" => channel.Capabilities.Has<ITemperatureControl>(),
+            "rpm" => channel.Capabilities.Has<IStirrer>(),
+            "pH" => HasScalarTag(channel, "pH"),
+            "浊度" => HasScalarTag(channel, "turb"),
+            _ => false
+        };
+        if (!ok)
+            issues.Add(new ValidationIssue(IssueLevel.Error, "cond-sensor",
+                $"第 {i + 1} 步用到实时量 {key}，但 CH{channel.Number} 上没有能提供它的设备")
+            { StepId = s.StepId, Channel = channel.Number });
+    }
+
+    private static bool HasScalarTag(Channel channel, string tag)
+    {
+        foreach (var c in channel.Capabilities.All)
+            if (c is IScalarSensor s)
+                foreach (var t in s.Tags)
+                    if (t.Tag == tag) return true;
+        return false;
+    }
 
     /// <summary>
     /// 配方全程的最低温度估算：各步开始温度（排期链）与控温类步骤的目标温度

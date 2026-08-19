@@ -1,3 +1,4 @@
+using Tec.Core.Recipes;
 using Tec.Driver.Abi;
 
 namespace Tec.Core.Catalog;
@@ -15,8 +16,10 @@ public static class BuiltinCommands
 {
     // Id 用 ASCII，便于存进配方文件；DisplayName 才是原型里的中文名
     public const string Wait = "tec.flow.wait";            // 等待
+    public const string WaitUntil = "tec.flow.waitUntil";  // 条件等待
     public const string LoopBegin = "tec.flow.loopBegin";  // 循环开始
     public const string LoopEnd = "tec.flow.loopEnd";      // 循环结束
+    public const string SetVar = "tec.flow.setVar";        // 设定变量
     public const string Message = "tec.flow.message";      // 消息提示
     public const string Mark = "tec.flow.mark";            // 标记事件
     public const string Sampling = "tec.flow.sampling";    // 采样提醒
@@ -35,6 +38,17 @@ public static class BuiltinCommands
     private static readonly string[] InterlockSources = { "釜内 Tr", "夹套 Tj", "pH", "浊度" };
     private static readonly string[] InterlockOps = { ">", "<" };
     private static readonly string[] InterlockActions = { "停止实验", "暂停实验", "停止加料", "仅报警" };
+    private static readonly string[] TimeoutActions = { "暂停并报警", "继续执行", "按失败处理" };
+
+    /// <summary>「设定变量」的取值来源。「数值」以外都是实时量，键与 Cond.SensorKeys 对应。</summary>
+    public static readonly string[] SetVarSources = { "数值", "当前 Tr", "当前 Tj", "当前 pH", "当前 浊度", "当前 rpm" };
+
+    /// <summary>来源选项 → 实时量的键。「数值」返回 null。</summary>
+    public static string? SensorOfSource(string src)
+        => src.StartsWith("当前", StringComparison.Ordinal) ? src[2..].Trim() : null;
+
+    /// <summary>FieldSpec.ChoicesFrom 的约定值：下拉项 = 当前配方的变量名。</summary>
+    public const string ChoicesFromRecipeVars = "recipe.vars";
 
     public static IReadOnlyList<CommandDescriptor> All { get; } = Attach(new[]
     {
@@ -45,12 +59,28 @@ public static class BuiltinCommands
             p => $"等待 {Txt.Fx(p.Num("dur"))} min")
         { IconKey = "wait", SupportsHotEdit = true },
 
+        new CommandDescriptor(WaitUntil, "条件等待", Module, null,
+            new ParameterSchema(new[]
+            {
+                Field.Text("cond", "等待条件", "浊度 > 50", Cond.Help),
+                Field.Num("timeout", "最长等待", 60, "min", 0.1, null, 0.1),
+                Field.Sel("onTimeout", "超时后", TimeoutActions, "暂停并报警")
+            }),
+            TerminationKind.Condition,
+            // 条件什么时候满足无法预知，与「消息提示」同一个处理：按 0 计入排期，
+            // 实际等的时间全部落进「开始偏差」
+            (_, _) => TimeSpan.Zero,
+            p => $"等待直到 {p.Str("cond")}（最长 {Txt.Fx(p.Num("timeout"))} min）")
+        { IconKey = "waituntil" },
+
         new CommandDescriptor(LoopBegin, "循环开始", Module, null,
             new ParameterSchema(new[]
             {
                 Field.Sel("by", "循环方式", new[] { "按次数", "按条件" }, "按次数"),
-                Field.Num("n", "循环次数", 3, "次", 1, null, 1),
-                Field.Text("cond", "结束条件", "浊度 > 50 NTU")
+                Field.Num("n", "循环次数", 3, "次", 1, null, 1) with { VisibleWhen = "by=按次数" },
+                Field.Text("cond", "结束条件", "浊度 > 50", Cond.Help) with { VisibleWhen = "by=按条件" },
+                // 到不了的条件不能让通道永远转圈——上限是护栏，不是目标
+                Field.Num("max", "最多轮次", 100, "次", 1, 10000, 1) with { VisibleWhen = "by=按条件" }
             }),
             TerminationKind.Immediate,
             (_, _) => TimeSpan.Zero,
@@ -65,6 +95,26 @@ public static class BuiltinCommands
             ParameterSchema.Empty, TerminationKind.Immediate,
             (_, _) => TimeSpan.Zero, _ => "循环结束")
         { IconKey = "loop-end" },
+
+        new CommandDescriptor(SetVar, "设定变量", Module, null,
+            new ParameterSchema(new[]
+            {
+                // 下拉的选项是**这条配方**的变量表，由界面在建表单时装进来
+                // （ChoicesFrom）——指令声明是静态的，不知道配方里有什么变量
+                new FieldSpec("var", "变量", FieldKind.Choice) { ChoicesFrom = ChoicesFromRecipeVars },
+                Field.Sel("op", "操作", new[] { "设为", "加上", "减去" }, "设为"),
+                Field.Sel("src", "取值", SetVarSources, "数值"),
+                Field.Num("val", "数值", 0, "", null, null, 0.01) with { VisibleWhen = "src=数值" }
+            }),
+            TerminationKind.Immediate,
+            (_, _) => TimeSpan.Zero,
+            p =>
+            {
+                var v = p.Str("var").Length > 0 ? p.Str("var") : "（没选变量）";
+                var what = p.Str("src", "数值") == "数值" ? Txt.Fx(p.Num("val")) : p.Str("src");
+                return $"变量 {v} {p.Str("op", "设为")} {what}";
+            })
+        { IconKey = "setvar" },
 
         new CommandDescriptor(Message, "消息提示", Module, null,
             new ParameterSchema(new[]
@@ -146,8 +196,11 @@ public static class BuiltinCommands
     public static string Summary(string commandId, CommandInput p) => commandId switch
     {
         Wait => $"等待 {Txt.Fx(p.Num("dur"))} min",
+        WaitUntil => $"等待直到 {p.Str("cond")}",
         LoopBegin => p.Str("by") == "按次数" ? $"循环 ×{Txt.Fx(p.Num("n"))}" : $"循环直到 {p.Str("cond")}",
         LoopEnd => "",
+        SetVar => $"{(p.Str("var").Length > 0 ? p.Str("var") : "变量")} {p.Str("op", "设为")} "
+                  + (p.Str("src", "数值") == "数值" ? Txt.Fx(p.Num("val")) : p.Str("src")),
         Message => p.Str("msg").Length > 0 ? p.Str("msg") : "消息提示",
         Mark => $"标记「{p.Str("tag")}」",
         Sampling => $"取样 {Txt.Fx(p.Num("vol"))} mL",

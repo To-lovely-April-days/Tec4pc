@@ -56,6 +56,9 @@ public static class TecFiles
             Author = r.Author,
             Notes = r.Notes,
             ModifiedAt = r.ModifiedAt,
+            Variables = r.Variables.Count == 0 ? null
+                : r.Variables.Select(v => new VariableDoc
+                  { Id = v.Id, Name = v.Name, Init = v.Init, Unit = v.Unit, Note = v.Note }).ToList(),
             Charge = r.Charge?.ToDoc()
         };
         foreach (var s in r.Steps)
@@ -194,6 +197,16 @@ public static class TecFiles
                 Phase = s.Phase
             });
         }
+        if (doc.Variables is { } vars)
+            foreach (var v in vars)
+                r.Variables.Add(new RecipeVariable
+                {
+                    Id = v.Id.Length > 0 ? v.Id : Guid.NewGuid().ToString("N")[..8],
+                    Name = v.Name,
+                    Init = v.Init,
+                    Unit = v.Unit,
+                    Note = v.Note
+                });
         r.Charge = doc.Charge?.ToModel();
         migrated = RecipeMigration.Apply(r);
         return r;

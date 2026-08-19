@@ -66,6 +66,16 @@ public sealed class StepDoc
     public string? Phase { get; set; }
 }
 
+/// <summary>配方级变量。</summary>
+public sealed class VariableDoc
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public double Init { get; set; }
+    public string Unit { get; set; } = "";
+    public string? Note { get; set; }
+}
+
 /// <summary>配方文件（.tecrecipe），也是实验文件与配方库里的一条。</summary>
 public sealed class RecipeDoc
 {
@@ -76,6 +86,8 @@ public sealed class RecipeDoc
     public string? Notes { get; set; }
     public DateTimeOffset ModifiedAt { get; set; }
     public List<StepDoc> Steps { get; set; } = new();
+    /// <summary>配方级变量。老文件没有，读回来是 null，就是「没定义变量」。</summary>
+    public List<VariableDoc>? Variables { get; set; }
     /// <summary>随配方结伴的配料表模板。老文件没有，读回来是 null。</summary>
     public ChargeTableDoc? Charge { get; set; }
 }

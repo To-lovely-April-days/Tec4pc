@@ -36,6 +36,14 @@ public sealed record FieldSpec(string Key, string Label, FieldKind Kind)
     /// <summary>条件显隐，形如 "结束方式=按时间"。</summary>
     public string? VisibleWhen { get; init; }
 
+    /// <summary>
+    /// 下拉项来自运行环境而不是这份声明，值是一个约定名（如 "recipe.vars"）。
+    /// 指令声明是静态的，可它有时要引用只有编辑现场才知道的东西——
+    /// 「设定变量」的变量下拉就是：选项 = 当前配方的变量表。
+    /// 界面建表单时按这个名字把选项装进来；没人装就是空下拉，不是错。
+    /// </summary>
+    public string? ChoicesFrom { get; init; }
+
     public string? Tip { get; init; }
 }
 
