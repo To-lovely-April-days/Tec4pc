@@ -30,6 +30,30 @@ public sealed class LoginViewModel : ViewModelBase
 
         _user = ws.Users.RememberedName;
         _remember = _user.Length > 0;
+        ArtImage = LoadArt();
+    }
+
+    /// <summary>
+    /// 左侧图位（原型 .lg-art 252×176）：一张位图，不是 SVG。按顺序找
+    /// 程序目录、数据目录下的 login-visual.png / .jpg，找到哪张用哪张；
+    /// 一张都没有就显示原型那种虚线占位，把该放哪写在占位里。
+    /// </summary>
+    public Avalonia.Media.Imaging.Bitmap? ArtImage { get; }
+    public bool HasArt => ArtImage is not null;
+    public string ArtHint =>
+        "login-visual.png\n252 × 176\n放进程序目录或数据目录即显示";
+
+    private static Avalonia.Media.Imaging.Bitmap? LoadArt()
+    {
+        foreach (var dir in new[] { AppContext.BaseDirectory, ExperimentStore.DataDir })
+        foreach (var name in new[] { "login-visual.png", "login-visual.jpg" })
+        {
+            var path = Path.Combine(dir, name);
+            if (!File.Exists(path)) continue;
+            try { return new Avalonia.Media.Imaging.Bitmap(path); }
+            catch { /* 图坏了当没有，走占位 */ }
+        }
+        return null;
     }
 
     /// <summary>登录成功、点「进入工作站」之后干什么（外壳收起这层）。</summary>
