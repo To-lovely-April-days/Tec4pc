@@ -57,30 +57,39 @@ public partial class MainWindow : Window
 
     private async Task AskThenClose(MainViewModel vm)
     {
+        if (!await ConfirmLeaveAsync(this, vm)) return;
+        _confirmed = true;
+        Close();
+    }
+
+    /// <summary>
+    /// 有未保存的改动就问一句，返回「可以走了吗」。
+    ///
+    /// 拎成静态的是因为**退出的口子不止一个**：主窗口的 ✕ 是一个，注销之后
+    /// 关掉那扇登录窗又是一个——两处得问同一句话、走同一套判断，
+    /// 不然从其中一个口子出去就能把没存的实验悄悄丢掉。
+    /// </summary>
+    public static async Task<bool> ConfirmLeaveAsync(Window owner, MainViewModel vm)
+    {
         var store = vm.Workspace.Store;
+        if (!store.Dirty) return true;
+
         var name = vm.Workspace.ExperimentName;
         var detail = store.CurrentPath is { } p
             ? $"上次保存的位置：{p}"
             : "这份实验还没有保存过。选「保存」会让你挑一个位置。";
 
-        var choice = await ConfirmDialog.Ask(this,
+        var choice = await ConfirmDialog.Ask(owner,
             "未保存的改动",
             $"「{name}」有改动还没有保存。关掉程序这些改动就没了。",
             detail, "保存并退出", "不保存，直接退出");
 
-        switch (choice)
+        return choice switch
         {
-            case DialogChoice.Primary:
-                // 存不成（挑位置时取消了、或者写盘失败）就留在程序里，不能闷头关掉
-                if (!await vm.Start.SaveForExit()) return;
-                break;
-            case DialogChoice.Secondary:
-                break;
-            default:
-                return;
-        }
-
-        _confirmed = true;
-        Close();
+            // 存不成（挑位置时取消了、或者写盘失败）就留在程序里，不能闷头关掉
+            DialogChoice.Primary => await vm.Start.SaveForExit(),
+            DialogChoice.Secondary => true,
+            _ => false
+        };
     }
 }

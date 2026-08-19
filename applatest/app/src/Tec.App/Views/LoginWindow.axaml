@@ -38,17 +38,18 @@
     <Panel>
       <v:LoginView />
 
-      <!-- 盖在登录页自带那条深紫条上：左边整段可拖动，右边两颗窗钮 -->
-      <Border Height="30" VerticalAlignment="Top" Background="Transparent"
-              Margin="0,0,64,0" PointerPressed="OnTitlebarPressed" />
+      <!-- 盖在登录页自带那条深紫条上，只占左半段：右半段留给语言按钮和窗钮，
+           那两处要能点，不能被这块拖动区吃掉事件 -->
+      <Border Height="30" VerticalAlignment="Top" HorizontalAlignment="Left" Width="420"
+              Background="Transparent" PointerPressed="OnTitlebarPressed" />
       <!-- 窗钮画成线条，不用字符：✕ — 这类符号在不同字体里粗细、大小、
            基线各不相同（有的字体还会拿彩色 emoji 去顶），画出来才稳 -->
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top"
                   Margin="0,3,2,0">
-        <Button Classes="lwin" Click="OnMinimize" ToolTip.Tip="最小化">
+        <Button Classes="lwin" Click="OnMinimize" ToolTip.Tip="{Binding T.Minimize}">
           <Path Data="M 0,0 H 11" Stroke="White" StrokeThickness="1.2" />
         </Button>
-        <Button Classes="lwin close" Click="OnClose" ToolTip.Tip="关闭">
+        <Button Classes="lwin close" Click="OnClose" ToolTip.Tip="{Binding T.Close}">
           <Path Data="M 0,0 L 9,9 M 9,0 L 0,9" Stroke="White" StrokeThickness="1.2" />
         </Button>
       </StackPanel>

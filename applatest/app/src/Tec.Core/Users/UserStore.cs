@@ -77,8 +77,55 @@ public sealed class UserStore
     /// <summary>这次 Load 是不是刚播的种（库文件不存在，建了默认管理员）。上层据此提示改密码。</summary>
     public bool SeededDefault { get; private set; }
 
-    /// <summary>记住的登录名（只记名字，不记密码——共用工作站上存密码等于没有密码）。</summary>
+    /// <summary>记住的登录名。</summary>
     public string RememberedName { get; set; } = "";
+
+    /// <summary>登录页的语言（"zh" / "en"）。这是工作站的偏好，跟账号无关。</summary>
+    public string Language { get; set; } = "zh";
+
+    /// <summary>
+    /// 记住的密码，加密后存。
+    ///
+    /// **说清楚这层保护有多厚**：密钥是从本机机器名 + 当前 Windows 账户推出来的，
+    /// 所以 users.json 被拷到别的机器上解不开；但在这台机器上、用这个账户跑的程序
+    /// 解得开——它挡的是「把文件翻出来直接看见密码」，不是「有心人拿不到」。
+    /// 共用工作站上勾这一项，等于承认坐到这台机器前的人都能用这个账号登录。
+    /// 不勾就一个字节都不存（勾掉时连旧的一起清）。
+    /// </summary>
+    public string RememberedSecret { get; set; } = "";
+
+    /// <summary>取出记住的密码；没记、或解不开（换了机器 / 换了账户）都返回空。</summary>
+    public string RecallPassword()
+    {
+        lock (_gate)
+        {
+            if (RememberedSecret.Length == 0) return "";
+            try { return LocalSecret.Unprotect(RememberedSecret); }
+            catch { return ""; }
+        }
+    }
+
+    /// <summary>记住 / 忘掉这一对。password 为空 = 忘掉。</summary>
+    public void Remember(string name, string password)
+    {
+        lock (_gate)
+        {
+            RememberedName = name;
+            RememberedSecret = name.Length > 0 && password.Length > 0
+                ? LocalSecret.Protect(password) : "";
+            Save();
+        }
+    }
+
+    public void ForgetRemembered()
+    {
+        lock (_gate)
+        {
+            RememberedName = "";
+            RememberedSecret = "";
+            Save();
+        }
+    }
 
     public IReadOnlyList<UserAccount> All
     {
@@ -207,6 +254,8 @@ public sealed class UserStore
     {
         public int Schema { get; set; } = 1;
         public string RememberedName { get; set; } = "";
+        public string RememberedSecret { get; set; } = "";
+        public string Language { get; set; } = "zh";
         public List<UserAccount> Users { get; set; } = new();
     }
 
@@ -219,6 +268,8 @@ public sealed class UserStore
                 var doc = TecJson.Read<Doc>(File.ReadAllText(_path));
                 _users = doc.Users;
                 RememberedName = doc.RememberedName;
+                RememberedSecret = doc.RememberedSecret;
+                Language = doc.Language.Length > 0 ? doc.Language : "zh";
                 return;
             }
             catch
@@ -250,7 +301,13 @@ public sealed class UserStore
         lock (_gate)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-            var text = TecJson.Write(new Doc { RememberedName = RememberedName, Users = _users });
+            var text = TecJson.Write(new Doc
+            {
+                RememberedName = RememberedName,
+                RememberedSecret = RememberedSecret,
+                Language = Language,
+                Users = _users
+            });
             var tmp = _path + ".tmp";
             File.WriteAllText(tmp, text);
             File.Move(tmp, _path, overwrite: true);

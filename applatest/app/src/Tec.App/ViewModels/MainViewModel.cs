@@ -40,12 +40,14 @@ public sealed class MainViewModel : ViewModelBase
         Run = new RunViewModel(ws);
         Export = new ExportViewModel(ws);
 
-        // 登录层。进入工作站后回开始页——每个班次从同一个地方开始
+        // 登录页。进入工作站后回开始页——每个班次从同一个地方开始
         Login = new LoginViewModel(ws, onEntered: () => Tab = TabStart);
+        // 注销：收起主窗口、开回那扇 840 的登录窗。窗怎么换归外壳管，
+        // 这里只负责把人注销掉再喊一声
         Logout = new RelayCommand(() =>
         {
             ws.SignOut();
-            Login.ShowForm();
+            SignedOut?.Invoke(this, EventArgs.Empty);
         });
         ws.UserChanged += (_, _) => RaiseAll(nameof(UserName), nameof(UserRoleName), nameof(IsAdmin));
 
@@ -184,6 +186,9 @@ public sealed class MainViewModel : ViewModelBase
     public ExportViewModel Export { get; }
     public LoginViewModel Login { get; }
     public RelayCommand Logout { get; }
+
+    /// <summary>操作人注销了。外壳据此收起主窗口、开回登录窗。</summary>
+    public event EventHandler? SignedOut;
 
     // 右上角用户区。没登录时登录层盖着整个界面，这几个值不会被看见，
     // 但也照实写「未登录」，不冒充任何人

@@ -132,4 +132,62 @@ public class UserStoreTests : IDisposable
         var second = s.TryLogin("zhang", "correct1");
         Assert.Equal(9, second.User!.LastLoginAt!.Value.Hour);            // 第二次：给 9 点那次
     }
+
+    [Fact]
+    public void 记住密码_下次开程序取得回来()
+    {
+        var s1 = new UserStore(PathOf());
+        s1.Add("zhang", "张三", UserRole.Operator, "correct1");
+        s1.Remember("zhang", "correct1");
+
+        var s2 = new UserStore(PathOf());
+        Assert.Equal("zhang", s2.RememberedName);
+        Assert.Equal("correct1", s2.RecallPassword());
+        // 取回来的那一份真能登进去
+        Assert.Equal(LoginOutcome.Ok, s2.TryLogin(s2.RememberedName, s2.RecallPassword()).Outcome);
+    }
+
+    [Fact]
+    public void 记住的密码不是明文躺在文件里()
+    {
+        var s = new UserStore(PathOf());
+        s.Add("zhang", "张三", UserRole.Operator, "秘密口令123");
+        s.Remember("zhang", "秘密口令123");
+        Assert.DoesNotContain("秘密口令123", File.ReadAllText(PathOf()));
+    }
+
+    [Fact]
+    public void 取消记住会把旧的一起清掉()
+    {
+        var s1 = new UserStore(PathOf());
+        s1.Add("zhang", "张三", UserRole.Operator, "correct1");
+        s1.Remember("zhang", "correct1");
+        s1.ForgetRemembered();
+
+        var s2 = new UserStore(PathOf());
+        Assert.Equal("", s2.RememberedName);
+        Assert.Equal("", s2.RecallPassword());
+    }
+
+    [Fact]
+    public void 密文被改过就当没记过_不返回乱码()
+    {
+        var s = new UserStore(PathOf());
+        s.Add("zhang", "张三", UserRole.Operator, "correct1");
+        s.Remember("zhang", "correct1");
+
+        var blob = Convert.FromBase64String(s.RememberedSecret);
+        blob[^1] ^= 0xFF;                       // 动一个字节
+        s.RememberedSecret = Convert.ToBase64String(blob);
+        Assert.Equal("", s.RecallPassword());   // 认证不过 = 没记过，不是一段乱码
+    }
+
+    [Fact]
+    public void 语言选择跟着存盘()
+    {
+        var s1 = new UserStore(PathOf());
+        s1.Language = "en";
+        s1.Save();
+        Assert.Equal("en", new UserStore(PathOf()).Language);
+    }
 }

@@ -181,9 +181,6 @@
       </ContentControl>
     </Panel>
     </DockPanel>
-
-    <!-- 登录层（照 gbglogin 设计稿）。登录成功点「进入工作站」才收起 -->
-    <v:LoginView DataContext="{Binding Login}" IsVisible="{Binding Showing}" />
     </Panel>
   </DockPanel>
   </Border>
