@@ -74,8 +74,12 @@
       </ScrollViewer>
     </Border>
 
-    <!-- ══ 中：工具条 + 一键复制 + 校验 + 泳道（原型 .procwrap）══ -->
-    <DockPanel Grid.Column="1" Background="White">
+    <!-- ══ 中：工具条 + 一键复制 + 校验 + 泳道（原型 .procwrap）══
+         右边留 6px 白：工具条那条 #ededed 的灰带一直铺到属性栏跟前，
+         而属性栏那块是 #ececec——差一级，眼睛看不出是两块，整条通到底。
+         左边靠步骤库那 4px 白缝分开，右边照样得有一条 -->
+    <Border Grid.Column="1" Background="White" Padding="0,0,6,0">
+    <DockPanel>
 
       <!-- 原型 .proctool：58 高、#ededed 一条整的、34px 圆钮 -->
       <Border DockPanel.Dock="Top" Height="58" Background="#ededed">
@@ -352,6 +356,7 @@
         </ScrollViewer>
       </Panel>
     </DockPanel>
+    </Border>
 
     <!-- ══ 右：属性栏 ══
          不照原型那块 #ececec 通栏，按台面页那一套：栏本身不铺底色、跟画布之间
