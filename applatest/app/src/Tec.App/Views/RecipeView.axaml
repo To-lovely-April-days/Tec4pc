@@ -589,8 +589,7 @@
               <!-- 指令名本身就是这一块的标题，上面不再压一行「步骤属性」 -->
               <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,0,0,12"
                           HorizontalAlignment="Center">
-                <Border Width="12" Height="12" CornerRadius="3" VerticalAlignment="Center"
-                        Background="{Binding StepColor}" />
+                <ctl:TecIcon Key="{Binding StepIcon}" Size="24" VerticalAlignment="Center" />
                 <TextBlock Text="{Binding StepName}" FontSize="21" FontWeight="Light"
                            Foreground="#333333" VerticalAlignment="Center" />
                 <TextBlock Text="{Binding StepChannel}" FontSize="12" Foreground="#8d8d8d"

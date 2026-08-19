@@ -436,8 +436,8 @@
               <StackPanel DataContext="{Binding SelStep}">
                 <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center"
                             Margin="0,0,0,12">
-                  <Border Width="12" Height="12" CornerRadius="3" VerticalAlignment="Center"
-                          Background="{Binding ModuleColor}" />
+                  <!-- 配方页属性栏同款：色块换成这一步自己的指令图标 -->
+                  <ctl:TecIcon Key="{Binding IconKey}" Size="24" VerticalAlignment="Center" />
                   <TextBlock Text="{Binding Name}" FontSize="21" FontWeight="Light"
                              Foreground="#333333" VerticalAlignment="Center" />
                   <TextBlock Text="{Binding Module}" FontSize="12" Foreground="#8d8d8d"

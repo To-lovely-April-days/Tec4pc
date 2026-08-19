@@ -543,7 +543,7 @@ public sealed class RecipeViewModel : ViewModelBase
             Set(ref _selectedStep, value);
             if (value is not null) value.IsSelected = true;
             RebuildForm();
-            RaiseAll(nameof(HasSelection), nameof(NoSelection), nameof(StepName), nameof(StepColor),
+            RaiseAll(nameof(HasSelection), nameof(NoSelection), nameof(StepName), nameof(StepIcon),
                      nameof(StepChannel), nameof(NoParams), nameof(PauseOnFault), nameof(StepSkipped), nameof(StepPhase));
         }
     }
@@ -557,9 +557,11 @@ public sealed class RecipeViewModel : ViewModelBase
     public bool HasSelection => _selectedStep is not null;
     public bool NoSelection => _selectedStep is null;
 
-    // prop-head：模块色块 + 指令名 + 它属于哪个通道
+    // prop-head：指令图标 + 指令名 + 它属于哪个通道。
+    // 从前是一个 12px 模块色块——同一个模块下的指令色块全一样，认不出是哪一条；
+    // 换成这一步自己的图标，跟步骤库和泳道卡上看到的是同一张
     public string StepName => _selectedStep?.Name ?? "";
-    public string StepColor => _selectedStep?.ModuleColor ?? "#9aa4ab";
+    public string StepIcon => _selectedStep?.IconKey ?? "cmd-wait";
     public string StepChannel => LabelOf(_curCh);
 
     /// <summary>这条指令一个参数都没有（比如「循环结束」）。空着不说话会让人以为界面坏了。</summary>
