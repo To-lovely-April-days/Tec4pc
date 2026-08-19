@@ -57,12 +57,14 @@ public static class BuiltinCommands
             p => p.Str("by") == "按次数"
                 ? $"循环开始，共 {Txt.Fx(p.Num("n"))} 次"
                 : $"循环开始，直到 {p.Str("cond")}")
-        { IconKey = "loop" },
+        // 开始和结束各有各的图（cmd-loop-begin / cmd-loop-end），
+        // 原先两条都写 "loop"，指向一张并不存在的 cmd-loop.svg，界面上两格是空的
+        { IconKey = "loop-begin" },
 
         new CommandDescriptor(LoopEnd, "循环结束", Module, null,
             ParameterSchema.Empty, TerminationKind.Immediate,
             (_, _) => TimeSpan.Zero, _ => "循环结束")
-        { IconKey = "loop" },
+        { IconKey = "loop-end" },
 
         new CommandDescriptor(Message, "消息提示", Module, null,
             new ParameterSchema(new[]

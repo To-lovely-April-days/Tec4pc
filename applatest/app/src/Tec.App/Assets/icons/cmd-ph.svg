@@ -1,5 +1,17 @@
-<svg width="28" height="28" viewBox="0 0 28 28" fill="none"
-  stroke-linecap="round" stroke-linejoin="round">
-  <g stroke="#4a5560" stroke-width="1.6"><path d="M11.2 3.4h5.6v13.4a2.8 2.8 0 01-5.6 0z"/><path d="M11.2 7.4h5.6M11.2 10.6h5.6"/>
-                   <path d="M3.5 21.4h21"/></g>
-  <g stroke="#2f8f49" stroke-width="1.7"><circle cx="14" cy="18.4" r="2.6"/><path d="M6 24.6c1.6-1.4 3.2-1.4 4.8 0M17.2 24.6c1.6-1.4 3.2-1.4 4.8 0"/></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"
+  viewBox="-56.25 -56.25 112.5 112.5">
+  <path d="M 38.5,3 A 36,36 0 1 1 -32.5,3 C -32.5,-11 -27,-17 -17,-18 C -5,-19.5 1,-26 11,-26 C 21,-26 27,-18 33,-10 C 36,-6 38.5,-2 38.5,3 Z" fill="#000000" opacity="0.15"/>
+  <circle cx="31" cy="-35" r="9.5" fill="#000000" opacity="0.15"/>
+  <path d="M 35.5,0 A 36,36 0 1 1 -35.5,0 C -35.5,-14 -30,-20 -20,-21 C -8,-22.5 -2,-29 8,-29 C 18,-29 24,-21 30,-13 C 33,-9 35.5,-5 35.5,0 Z" fill="#4CA463" stroke="#1F6B36" stroke-width="3"/>
+  <path d="M -35.5,0 C -35.5,-14 -30,-20 -20,-21 C -8,-22.5 -2,-29 8,-29 C 18,-29 24,-21 30,-13 C 33,-9 35.5,-5 35.5,0 C 20,-4 -20,-4 -35.5,0 Z" fill="#FFFFFF" opacity="0.2"/>
+  <g fill="#FFFFFF">
+  <path d="M -24,-9 H -11 A 8.5,8.5 0 0 1 -11,8 H -16 V 23 H -24 Z"/>
+  <rect x="2" y="-9" width="8" height="32"/>
+  <rect x="16" y="-9" width="8" height="32"/>
+  <rect x="2" y="3" width="22" height="7"/>
+  </g>
+  <path d="M -16,-2.5 H -10 A 3.5,3.5 0 0 1 -10,4.5 H -16 Z" fill="#4CA463"/>
+  <path d="M -33,-13 C -25,-21 -10,-25 2,-24 C -8,-18 -22,-14 -33,-13 Z" fill="#6FB6E8" stroke="#2A6FA8" stroke-width="2.5" stroke-linejoin="round"/>
+  <circle cx="28" cy="-38" r="9.5" fill="#6FB6E8" stroke="#2A6FA8" stroke-width="3"/>
+  <path d="M 23,-41 C 24,-44 27,-45 29,-44.5" stroke="#FFFFFF" stroke-width="2.5" opacity="0.75" fill="none" stroke-linecap="round"/>
+</svg>

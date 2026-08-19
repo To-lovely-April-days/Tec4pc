@@ -8,7 +8,8 @@ namespace Tec.App.Controls;
 /// <summary>
 /// 只认我们自己那两套图用到的 SVG 子集：
 /// 设备线稿（rect/circle/ellipse/line/polygon/polyline/path/text + 渐变 + clipPath）
-/// 与原型提取的界面图标（g 组继承、currentColor、stroke-dasharray、fill/stroke-opacity）。
+/// 与原型提取的界面图标（g 组继承、currentColor、stroke-dasharray、fill/stroke-opacity、
+/// translate/scale/rotate 变换）。
 /// 刻意不引第三方 SVG 库——图是我们自己的，形状可控。
 ///
 /// 设备图的两个约定来自导出脚本：
@@ -425,6 +426,17 @@ public sealed class SvgArt
             else if (op == "scale" && args.Length >= 1)
             {
                 m = Matrix.CreateScale(args[0], args.Length > 1 ? args[1] : args[0]) * m;
+                any = true;
+            }
+            // rotate(a) 绕原点，rotate(a cx cy) 绕指定点。指令图标里
+            // 搅拌桨、注射器、滴管都是斜着的，不转就全立正了
+            else if (op == "rotate" && args.Length >= 1)
+            {
+                var r = Matrix.CreateRotation(args[0] * Math.PI / 180);
+                if (args.Length >= 3)
+                    r = Matrix.CreateTranslation(-args[1], -args[2]) * r
+                        * Matrix.CreateTranslation(args[1], args[2]);
+                m = r * m;
                 any = true;
             }
         }

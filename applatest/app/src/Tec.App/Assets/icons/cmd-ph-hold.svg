@@ -1,6 +1,12 @@
-<svg width="28" height="28" viewBox="0 0 28 28" fill="none"
-  stroke-linecap="round" stroke-linejoin="round">
-  <g stroke="#4a5560" stroke-width="1.6"><rect x="3.4" y="10.6" width="21.2" height="6.8" rx="2"/><path d="M9.2 10.6v6.8M18.8 10.6v6.8"/></g>
-  <g stroke="#2f8f49" stroke-width="1.7"><path d="M14 2.6v4.8M11.7 5.1L14 7.4l2.3-2.3"/>
-                   <path d="M9.2 19.4v5.2M18.8 19.4v5.2" stroke-dasharray="2.8 2.2"/>
-                   <path d="M9.2 22h9.6" stroke-opacity=".55"/></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"
+  viewBox="-56.25 -56.25 112.5 112.5">
+  <rect x="-27" y="-46" width="56" height="18" rx="5" fill="#000000" opacity="0.15"/>
+  <rect x="-30" y="-49" width="56" height="18" rx="5" fill="#A9B1B8" stroke="#5A6168" stroke-width="2.5"/>
+  <path d="M -28,-47 L 24,-47 L 24,-40 C 10,-36 -14,-36 -28,-40 Z" fill="#FFFFFF" opacity="0.4"/>
+  <path d="M -9,-31 L 7,-31 L 3,-14 L -5,-14 Z" fill="#A9B1B8" stroke="#5A6168" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M -1,-8 C 5,-2 8,3 8,7 A 9,9 0 0 1 -10,7 C -10,3 -7,-2 -1,-8 Z" fill="#4CA463" stroke="#1F6B36" stroke-width="2.5"/>
+  <path d="M -5,0 C -7,3 -7.5,6 -6.5,8" stroke="#FFFFFF" stroke-width="2.5" opacity="0.75" fill="none" stroke-linecap="round"/>
+  <path d="M -26.5,20.2 A 30,30 0 0 0 31.2,25.3" fill="none" stroke="#000000" opacity="0.15" stroke-width="9" stroke-linecap="round"/>
+  <path d="M -29.5,17.2 A 30,30 0 0 0 28.2,22.3" fill="none" stroke="#4CA463" stroke-width="9" stroke-linecap="round"/>
+  <path d="M 33.7,7.3 L 37.6,25.7 L 18.8,18.9 Z" fill="#4CA463" stroke="#1F6B36" stroke-width="2" stroke-linejoin="round"/>
+</svg>

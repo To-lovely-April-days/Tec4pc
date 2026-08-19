@@ -1,4 +1,12 @@
-<svg width="28" height="28" viewBox="0 0 28 28" fill="none"
-  stroke-linecap="round" stroke-linejoin="round">
-  <g stroke="#4a5560" stroke-width="1.6"><path d="M4 6h20v12.5H12.5L7.5 23v-4.5H4z"/></g>
-  <g stroke="#5a6268" stroke-width="1.7"><path d="M14 9.4v4.2"/><path d="M14 16.2v.2"/></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"
+  viewBox="-56.25 -56.25 112.5 112.5">
+  <path d="M -9,17 L -27,47 L 11,19 Z" fill="#000000" opacity="0.14"/>
+  <rect x="-43" y="-41" width="92" height="60" rx="16" fill="#000000" opacity="0.14"/>
+  <path d="M -12,14 L -30,44 L 8,16 Z" fill="#F2F9FF" stroke="#3F7CB8" stroke-width="3" stroke-linejoin="round"/>
+  <rect x="-46" y="-44" width="92" height="60" rx="16" fill="#F2F9FF" stroke="#3F7CB8" stroke-width="3"/>
+  <rect x="-13" y="10" width="21" height="9" fill="#F2F9FF"/>
+  <path d="M -44,-30 A 14,14 0 0 1 -30,-42 L 30,-42 A 14,14 0 0 1 44,-30 L 44,-14 C 20,-4 -20,-4 -44,-14 Z" fill="#FFFFFF"/>
+  <path d="M -44,-2 C -20,8 20,8 44,-2 L 44,2 A 14,14 0 0 1 30,16 L -30,16 A 14,14 0 0 1 -44,2 Z" fill="#CFE7F8"/>
+  <rect x="-6.5" y="-32" width="13" height="28" rx="6.5" fill="#2E6FA8"/>
+  <circle cx="0" cy="6" r="6.5" fill="#2E6FA8"/>
+</svg>

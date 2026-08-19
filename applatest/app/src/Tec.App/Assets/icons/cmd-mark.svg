@@ -1,4 +1,9 @@
-<svg width="28" height="28" viewBox="0 0 28 28" fill="none"
-  stroke-linecap="round" stroke-linejoin="round">
-  <g stroke="#4a5560" stroke-width="1.6"><path d="M7 3.5v21"/></g>
-  <g stroke="#5a6268" stroke-width="1.7"><path d="M7 5.5h13l-2.6 4.2 2.6 4.2H7z"/></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"
+  viewBox="-56.25 -56.25 112.5 112.5">
+  <ellipse cx="-14" cy="47" rx="20" ry="5" fill="#000000" opacity="0.14"/>
+  <rect x="-21" y="-45" width="10" height="92" rx="5" fill="#8A939B" stroke="#5A6168" stroke-width="2.5"/>
+  <rect x="-18.5" y="-42" width="3" height="86" rx="1.5" fill="#C6CDD3"/>
+  <path d="M -8,-37 C 7,-43 23,-29 41,-35 L 41,-3 C 23,3 7,-11 -8,-5 Z" fill="#000000" opacity="0.15"/>
+  <path d="M -11,-40 C 4,-46 20,-32 38,-38 L 38,-6 C 20,0 4,-14 -11,-8 Z" fill="#D8453A" stroke="#8E2119" stroke-width="2.5"/>
+  <path d="M -11,-40 C 4,-46 20,-32 38,-38 L 38,-25 C 20,-19 4,-33 -11,-27 Z" fill="#FFFFFF" opacity="0.3"/>
+</svg>

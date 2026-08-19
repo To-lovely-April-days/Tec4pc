@@ -1,4 +1,6 @@
-<svg width="28" height="28" viewBox="0 0 28 28" fill="none"
-  stroke-linecap="round" stroke-linejoin="round">
-  <g stroke="#4a5560" stroke-width="1.6"><path d="M23.5 14a9.5 9.5 0 11-3-6.9"/></g>
-  <g stroke="#5a6268" stroke-width="1.7"><path d="M20.6 2.8v5.2h-5.2"/><path d="M11.8 10.8l5.4 3.2-5.4 3.2z"/></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"
+  viewBox="-56.25 -56.25 112.5 112.5">
+  <path d="M 29.96,-58.81 A 66,66 0 1 1 -30.99,-58.27 L -37.09,-69.75 L -6.04,-62.48 L -17.37,-32.67 L -23.48,-44.15 A 50,50 0 1 0 22.70,-44.55 Z" transform="scale(0.58) translate(6,6)" fill="#000000" opacity="0.15"/>
+  <path d="M 29.96,-58.81 A 66,66 0 1 1 -30.99,-58.27 L -37.09,-69.75 L -6.04,-62.48 L -17.37,-32.67 L -23.48,-44.15 A 50,50 0 1 0 22.70,-44.55 Z" transform="scale(0.58)" fill="#5CB63F" stroke="#2A6E1F" stroke-width="5"/>
+  <path d="M 28.1,-55.2 A 62,62 0 1 1 -29.1,-54.7" transform="scale(0.58)" fill="none" stroke="#A6E387" stroke-width="12" opacity="0.75" stroke-linecap="round"/>
+</svg>
