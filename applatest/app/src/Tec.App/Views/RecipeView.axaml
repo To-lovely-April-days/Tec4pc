@@ -29,8 +29,11 @@
          块与块之间 2px 白缝。栏本身不铺底色、不画竖线——分界线在流程区那一侧。
          原型这条是 14px，统一成 6px（见文件开头那段说明） -->
     <Border Grid.Column="0" Background="White" Padding="0,2,4,0">
-      <ScrollViewer Padding="0,0,0,40">
-        <ItemsControl ItemsSource="{Binding Groups}">
+      <!-- 底部那截留白写在内容的 Margin 上，不写 ScrollViewer 的 Padding：
+           Padding 是从可视区里扣的，不进滚动范围——最后一组的图标名字会卡在
+           下边缘，滚到底也露不出来 -->
+      <ScrollViewer>
+        <ItemsControl ItemsSource="{Binding Groups}" Margin="0,0,0,40">
           <ItemsControl.ItemTemplate>
             <DataTemplate>
               <Border Classes="dev" Margin="0,0,0,2">

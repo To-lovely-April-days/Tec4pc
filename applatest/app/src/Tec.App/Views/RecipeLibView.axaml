@@ -159,8 +159,9 @@
           </StackPanel>
         </Border>
 
-        <ScrollViewer Padding="8,8,8,40">
-          <StackPanel>
+        <!-- 底部留白同上：Padding 只留左右上，底下那截写在内容的 Margin 上 -->
+        <ScrollViewer Padding="8,8,8,0">
+          <StackPanel Margin="0,0,0,40">
             <StackPanel IsVisible="{Binding IsEmpty}" Margin="4,8" Spacing="7">
               <TextBlock Text="没有配方" FontSize="13" Foreground="#6f6f6f" />
               <TextBlock FontSize="11.5" Foreground="#9a9a9a" LineHeight="19" TextWrapping="Wrap"

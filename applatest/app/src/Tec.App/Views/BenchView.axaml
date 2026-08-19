@@ -17,8 +17,9 @@
       <DockPanel>
         <!-- 不写「设备库」这个抬头（GBG 也没有）：一列设备图摆在那儿，
              本来就没人会认错成别的东西；一行标题占掉的是第一台设备的位置 -->
-        <ScrollViewer Padding="0,0,0,40">
-          <ItemsControl ItemsSource="{Binding Library}">
+        <!-- 底部留白同配方页：写内容的 Margin，不写 ScrollViewer 的 Padding -->
+        <ScrollViewer>
+          <ItemsControl ItemsSource="{Binding Library}" Margin="0,0,0,40">
             <ItemsControl.ItemTemplate>
               <DataTemplate>
                 <!-- 一格 = 一块底色（图 + 名字都在块里），块与块之间是画布的白 -->
