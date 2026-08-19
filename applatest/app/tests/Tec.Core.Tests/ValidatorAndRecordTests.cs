@@ -49,16 +49,17 @@ public class ValidatorTests
     }
 
     [Fact]
-    public void 二十二条指令一条不多一条不少()
+    public void 二十一条指令一条不多一条不少()
     {
         var c = Catalog();
         c.Register(new TurbidityProbeDriver().Commands);
         c.Register(new RamanProbeDriver().Commands);
         c.Register(new InfraredProbeDriver().Commands);
 
-        // 通用 10（原型 8 条 + 条件等待、设定变量）· 温度 4 · 搅拌 1 · 加料 1 · pH 2 · 在线分析 4
-        Assert.Equal(22, c.All.Count);
-        Assert.Equal(10, c.InModule("通用").Count);
+        // 通用 9（原型 8 条 + 设定变量；按条件的等待并在「等待」里）
+        // · 温度 4 · 搅拌 1 · 加料 1 · pH 2 · 在线分析 4
+        Assert.Equal(21, c.All.Count);
+        Assert.Equal(9, c.InModule("通用").Count);
         Assert.Equal(4, c.InModule("温度模块").Count);
         Assert.Single(c.InModule("搅拌"));
         Assert.Single(c.InModule("加料"));

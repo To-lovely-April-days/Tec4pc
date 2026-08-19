@@ -145,7 +145,7 @@ public class VariableRunTests
         await using var h = new Harness(600);
         await h.ReactorChannelAsync(1);
         var recipe = WithVars(Harness.RecipeOf("即时",
-            Harness.Mk(BuiltinCommands.WaitUntil, ("cond", "t = 5"), ("timeout", 1d))), ("t", 5));
+            Harness.Mk(BuiltinCommands.Wait, ("by", "按条件"), ("cond", "t = 5"), ("timeout", 1d))), ("t", 5));
 
         var run = h.Engine.StartChannel(1, recipe, "测试员");
         await h.Engine.Runner(1)!.Completion;
@@ -160,8 +160,8 @@ public class VariableRunTests
     {
         await using var h = new Harness(600);
         await h.ReactorChannelAsync(1);
-        var wait = Harness.Mk(BuiltinCommands.WaitUntil,
-            ("cond", "t > 10"), ("timeout", 0.5d), ("onTimeout", "按失败处理"));
+        var wait = Harness.Mk(BuiltinCommands.Wait,
+            ("by", "按条件"), ("cond", "t > 10"), ("timeout", 0.5d), ("onTimeout", "按失败处理"));
         wait.PauseOnFault = false;
         var recipe = WithVars(Harness.RecipeOf("等不到", wait), ("t", 5));
 
@@ -178,8 +178,8 @@ public class VariableRunTests
         await using var h = new Harness(600);
         await h.ReactorChannelAsync(1);
         var recipe = WithVars(Harness.RecipeOf("继续",
-            Harness.Mk(BuiltinCommands.WaitUntil,
-                ("cond", "t > 10"), ("timeout", 0.5d), ("onTimeout", "继续执行")),
+            Harness.Mk(BuiltinCommands.Wait,
+                ("by", "按条件"), ("cond", "t > 10"), ("timeout", 0.5d), ("onTimeout", "继续执行")),
             Harness.Mk(BuiltinCommands.Mark, ("tag", "到这了"))), ("t", 5));
 
         var run = h.Engine.StartChannel(1, recipe, "测试员");
@@ -255,7 +255,7 @@ public class VariableValidatorTests
     public void 条件里的名字要么是变量要么是实时量()
     {
         var r = Harness.RecipeOf("未知名",
-            Harness.Mk(BuiltinCommands.WaitUntil, ("cond", "咕咕 > 1"), ("timeout", 1d)));
+            Harness.Mk(BuiltinCommands.Wait, ("by", "按条件"), ("cond", "咕咕 > 1"), ("timeout", 1d)));
         Assert.Contains(Check(r), i => i.Level == IssueLevel.Error && i.Message.Contains("咕咕"));
 
         r.Variables.Add(new RecipeVariable { Name = "咕咕" });
@@ -273,6 +273,43 @@ public class VariableValidatorTests
         r.Variables.Add(new RecipeVariable { Name = "" });           // 没起名
         var bad = Check(r).Where(i => i.Code == "var-name").ToList();
         Assert.Equal(4, bad.Count);
+    }
+
+    [Fact]
+    public void 老的条件等待Id读档时并入等待()
+    {
+        var r = Harness.RecipeOf("老文件");
+        var step = Harness.Mk(BuiltinCommands.WaitUntil,
+            ("cond", "浊度 > 50"), ("timeout", 30d), ("onTimeout", "继续执行"));
+        step.PauseOnFault = false;
+        step.Phase = "结晶";
+        r.Steps.Add(step);
+
+        var notes = RecipeMigration.Apply(r);
+
+        Assert.Single(notes);
+        var moved = r.Steps.Single();
+        Assert.Equal(BuiltinCommands.Wait, moved.CommandId);
+        Assert.Equal("按条件", moved.Parameters.Str("by"));
+        Assert.Equal("浊度 > 50", moved.Parameters.Str("cond"));
+        Assert.Equal(30, moved.Parameters.Num("timeout"));
+        // 翻译只换说法，这一步的其它设置一样都不能丢
+        Assert.False(moved.PauseOnFault);
+        Assert.Equal("结晶", moved.Phase);
+    }
+
+    [Fact]
+    public void 等待的结束方式随参数说真话()
+    {
+        var timed = Harness.RecipeOf("计时", Harness.Mk(BuiltinCommands.Wait, ("dur", 5d)));
+        var cond = Harness.RecipeOf("条件",
+            Harness.Mk(BuiltinCommands.Wait, ("by", "按条件"), ("cond", "v > 1"), ("timeout", 1d)));
+        cond.Variables.Add(new RecipeVariable { Name = "v" });
+
+        Assert.Equal(TerminationKind.Timer,
+            Scheduling.Schedule.Build(timed, Catalog).Entries[0].Termination);
+        Assert.Equal(TerminationKind.Condition,
+            Scheduling.Schedule.Build(cond, Catalog).Entries[0].Termination);
     }
 
     [Fact]

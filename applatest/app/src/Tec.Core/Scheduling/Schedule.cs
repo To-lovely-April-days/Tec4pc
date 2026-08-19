@@ -87,7 +87,8 @@ public sealed class Schedule
 
             var input = new CommandInput(s.Parameters, s.Rows);
             var title = known ? SafeDescribe(d, input) : $"缺少驱动：{s.CommandId}";
-            var kind = known ? d.Termination : TerminationKind.Immediate;
+            // 结束方式随参数变的指令（等待按时间 / 按条件）按参数问
+            var kind = known ? d.TerminationOf(input) : TerminationKind.Immediate;
 
             if (!s.Enabled)
             {

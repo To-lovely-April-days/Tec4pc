@@ -15,8 +15,10 @@ namespace Tec.Core.Catalog;
 public static class BuiltinCommands
 {
     // Id 用 ASCII，便于存进配方文件；DisplayName 才是原型里的中文名
-    public const string Wait = "tec.flow.wait";            // 等待
-    public const string WaitUntil = "tec.flow.waitUntil";  // 条件等待
+    public const string Wait = "tec.flow.wait";            // 等待（按时间 / 按条件）
+    /// <summary>老 Id。「条件等待」短暂地当过一条独立指令，现在是「等待」的一种方式；
+    /// 存过盘的配方靠 RecipeMigration 翻译回来。</summary>
+    public const string WaitUntil = "tec.flow.waitUntil";
     public const string LoopBegin = "tec.flow.loopBegin";  // 循环开始
     public const string LoopEnd = "tec.flow.loopEnd";      // 循环结束
     public const string SetVar = "tec.flow.setVar";        // 设定变量
@@ -50,28 +52,32 @@ public static class BuiltinCommands
     /// <summary>FieldSpec.ChoicesFrom 的约定值：下拉项 = 当前配方的变量名。</summary>
     public const string ChoicesFromRecipeVars = "recipe.vars";
 
+    /// <summary>这一步等待是不是「按条件」。执行器、排期、描述三处同一个判据。</summary>
+    public static bool IsCondWait(CommandInput p) => p.Str("by", "按时间") == "按条件";
+
     public static IReadOnlyList<CommandDescriptor> All { get; } = Attach(new[]
     {
+        // 等待的两种方式在属性里选（与循环开始「按次数 / 按条件」同一个做法），
+        // 库里只占一格一张图
         new CommandDescriptor(Wait, "等待", Module, null,
-            new ParameterSchema(new[] { Field.Num("dur", "等待时长", 10, "min", 0.1, null, 0.1) }),
-            TerminationKind.Timer,
-            (p, _) => TimeSpan.FromSeconds(Math.Max(0, p.Num("dur") * 60)),
-            p => $"等待 {Txt.Fx(p.Num("dur"))} min")
-        { IconKey = "wait", SupportsHotEdit = true },
-
-        new CommandDescriptor(WaitUntil, "条件等待", Module, null,
             new ParameterSchema(new[]
             {
-                Field.Text("cond", "等待条件", "浊度 > 50", Cond.Help),
-                Field.Num("timeout", "最长等待", 60, "min", 0.1, null, 0.1),
-                Field.Sel("onTimeout", "超时后", TimeoutActions, "暂停并报警")
+                Field.Sel("by", "等待方式", new[] { "按时间", "按条件" }, "按时间"),
+                Field.Num("dur", "等待时长", 10, "min", 0.1, null, 0.1) with { VisibleWhen = "by=按时间" },
+                Field.Text("cond", "等待条件", "浊度 > 50", Cond.Help) with { VisibleWhen = "by=按条件" },
+                Field.Num("timeout", "最长等待", 60, "min", 0.1, null, 0.1) with { VisibleWhen = "by=按条件" },
+                Field.Sel("onTimeout", "超时后", TimeoutActions, "暂停并报警") with { VisibleWhen = "by=按条件" }
             }),
-            TerminationKind.Condition,
-            // 条件什么时候满足无法预知，与「消息提示」同一个处理：按 0 计入排期，
-            // 实际等的时间全部落进「开始偏差」
-            (_, _) => TimeSpan.Zero,
-            p => $"等待直到 {p.Str("cond")}（最长 {Txt.Fx(p.Num("timeout"))} min）")
-        { IconKey = "waituntil" },
+            TerminationKind.Timer,
+            // 按条件的等待什么时候满足无法预知，与「消息提示」同一个处理：
+            // 按 0 计入排期，实际等的时间全部落进「开始偏差」
+            (p, _) => IsCondWait(p) ? TimeSpan.Zero
+                                    : TimeSpan.FromSeconds(Math.Max(0, p.Num("dur") * 60)),
+            p => IsCondWait(p)
+                ? $"等待直到 {p.Str("cond")}（最长 {Txt.Fx(p.Num("timeout"))} min）"
+                : $"等待 {Txt.Fx(p.Num("dur"))} min")
+        { IconKey = "wait", SupportsHotEdit = true,
+          TerminationBy = p => IsCondWait(p) ? TerminationKind.Condition : TerminationKind.Timer },
 
         new CommandDescriptor(LoopBegin, "循环开始", Module, null,
             new ParameterSchema(new[]
@@ -195,8 +201,7 @@ public static class BuiltinCommands
     /// <summary>步骤卡上的一行摘要，对应原型 PSPEC[name].sum。</summary>
     public static string Summary(string commandId, CommandInput p) => commandId switch
     {
-        Wait => $"等待 {Txt.Fx(p.Num("dur"))} min",
-        WaitUntil => $"等待直到 {p.Str("cond")}",
+        Wait => IsCondWait(p) ? $"等待直到 {p.Str("cond")}" : $"等待 {Txt.Fx(p.Num("dur"))} min",
         LoopBegin => p.Str("by") == "按次数" ? $"循环 ×{Txt.Fx(p.Num("n"))}" : $"循环直到 {p.Str("cond")}",
         LoopEnd => "",
         SetVar => $"{(p.Str("var").Length > 0 ? p.Str("var") : "变量")} {p.Str("op", "设为")} "

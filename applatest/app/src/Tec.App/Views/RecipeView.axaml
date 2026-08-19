@@ -247,7 +247,7 @@
               <Button Classes="btn" Content="＋ 添加变量" Command="{Binding AddVar}"
                       IsEnabled="{Binding HasLanes}" HorizontalAlignment="Left" />
               <TextBlock FontSize="11" Foreground="#9a9a9a" LineHeight="16" TextWrapping="Wrap"
-                         Text="变量用在：循环开始「按条件」的结束条件、条件等待、设定变量。条件里还能读实时量 Tr / Tj / pH / 浊度 / rpm。" />
+                         Text="变量用在：循环开始与等待的「按条件」、设定变量。条件里还能读实时量 Tr / Tj / pH / 浊度 / rpm。" />
             </StackPanel>
 
             <ScrollViewer>

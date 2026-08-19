@@ -74,9 +74,12 @@ public static class RecipeValidator
 
             // 超时保护：到不了的目标不能把通道永远挂住（§4.3）。
             // 只有声明了 timeout 字段的指令才查——原型的参数表里并非每条都有。
-            if (d.RequiresTimeout && d.Parameters.Find("timeout") is not null && !s.Parameters.Has("timeout"))
+            // 结束方式按参数问：等待只有「按条件」那一种才要超时
+            var term = d.TerminationOf(new CommandInput(s.Parameters, s.Rows));
+            if (term is TerminationKind.Setpoint or TerminationKind.Condition
+                && d.Parameters.Find("timeout") is not null && !s.Parameters.Has("timeout"))
                 issues.Add(new ValidationIssue(IssueLevel.Warning, "no-timeout",
-                    $"第 {i + 1} 步「{d.DisplayName}」按{Termination(d.Termination)}结束但没有设超时") { StepId = s.StepId });
+                    $"第 {i + 1} 步「{d.DisplayName}」按{Termination(term)}结束但没有设超时") { StepId = s.StepId });
 
             if (channel is not null) ValidateAgainstChannel(issues, i, s, d, channel);
         }
@@ -267,7 +270,7 @@ public static class RecipeValidator
         if (BuiltinCommands.IsLoopBegin(s.CommandId) && s.Parameters.Str("by", "按次数") == "按条件")
             CheckCond(issues, i, s, s.Parameters.Str("cond"), varNames, channel);
 
-        if (s.CommandId == BuiltinCommands.WaitUntil)
+        if (s.CommandId == BuiltinCommands.Wait && BuiltinCommands.IsCondWait(s.Parameters))
             CheckCond(issues, i, s, s.Parameters.Str("cond"), varNames, channel);
 
         if (s.CommandId == BuiltinCommands.SetVar)

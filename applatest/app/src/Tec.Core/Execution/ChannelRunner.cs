@@ -474,14 +474,15 @@ public sealed class ChannelRunner
                                  TimeSpan planShift, int iteration, DateTimeOffset at)
     {
         var known = _catalog.TryGet(step.CommandId, out var d);
+        var input = new CommandInput(step.Parameters, step.Rows);
         return new StepRecord
         {
             Index = entry?.Index ?? run.Steps.Count,
             StepId = step.StepId,
             CommandId = step.CommandId,
-            Title = known ? Describe(d, new CommandInput(step.Parameters, step.Rows))
-                          : $"缺少驱动：{step.CommandId}",
-            Termination = known ? d.Termination : TerminationKind.Immediate,
+            Title = known ? Describe(d, input) : $"缺少驱动：{step.CommandId}",
+            // 结束方式按参数问（TerminationOf）：按条件的等待要记「条件满足」，不是「计时到」
+            Termination = known ? d.TerminationOf(input) : TerminationKind.Immediate,
             Iteration = iteration,
             PlanStart = (entry?.Start ?? TimeSpan.Zero) + planShift,
             PlanDuration = entry?.Duration ?? TimeSpan.Zero,
@@ -543,8 +544,8 @@ public sealed class ChannelRunner
         }
 
         // 2. 校验：参数是否仍在设备 Limits 内（设备可能被换过）。
-        //    引擎指令（设定变量 / 条件等待）在这里截住——它们要碰变量表
-        var handler = EngineHandler(step.CommandId)
+        //    引擎指令（设定变量 / 按条件的等待）在这里截住——它们要碰变量表
+        var handler = EngineHandler(step)
                       ?? _builtins.Resolve(step.CommandId) ?? _channel.ResolveHandler(step.CommandId);
         if (handler is null)
         {
@@ -781,14 +782,16 @@ public sealed class ChannelRunner
     }
 
     /// <summary>
-    /// 引擎自己执行的指令：设定变量、条件等待。它们要碰变量表和实时量，
+    /// 引擎自己执行的指令：设定变量、按条件的等待。它们要碰变量表和实时量，
     /// 这两样都在执行器手里，普通 handler 够不着——但记录、跳过、失败暂停
     /// 那一整套还是走 ExecuteStepAsync，不另起炉灶。
+    /// 按时间的等待不在此列，照旧走 BuiltinCommandProvider 的 WaitHandler。
     /// </summary>
-    private ICommandHandler? EngineHandler(string commandId) => commandId switch
+    private ICommandHandler? EngineHandler(Step step) => step.CommandId switch
     {
         BuiltinCommands.SetVar => new SetVarHandler(this),
-        BuiltinCommands.WaitUntil => new WaitUntilHandler(this),
+        BuiltinCommands.Wait when BuiltinCommands.IsCondWait(step.Parameters)
+            => new WaitUntilHandler(this),
         _ => null
     };
 

@@ -129,6 +129,20 @@ public sealed record CommandDescriptor(
     public bool SupportsHotEdit { get; init; }
     /// <summary>Setpoint / Condition 指令必须有超时保护，否则到不了的目标会把通道永远挂住。</summary>
     public bool RequiresTimeout => Termination is TerminationKind.Setpoint or TerminationKind.Condition;
+
+    /// <summary>
+    /// 结束方式随参数变的指令用这个（等待：按时间 = 计时到，按条件 = 条件满足）。
+    /// 不给就用上面那个静态的 Termination。记录和排期都该显示真话——
+    /// 一条按条件的等待写着「计时到」，读记录的人会去找根本不存在的时长。
+    /// </summary>
+    public Func<CommandInput, TerminationKind>? TerminationBy { get; init; }
+
+    public TerminationKind TerminationOf(CommandInput input)
+    {
+        if (TerminationBy is null) return Termination;
+        try { return TerminationBy(input); }
+        catch { return Termination; }
+    }
     public string? Tip { get; init; }
 
     public string SummaryOf(CommandInput input)

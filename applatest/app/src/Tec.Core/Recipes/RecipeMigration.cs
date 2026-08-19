@@ -103,6 +103,12 @@ public static class RecipeMigration
                 how = "「pH 反馈加料」并入 pH 模块";
                 return With(step, CommandSpecs.PhHold, p);
 
+            // 条件等待 → 等待（等待方式 = 按条件）。cond / timeout / onTimeout 键原样通用
+            case Catalog.BuiltinCommands.WaitUntil:
+                p["by"] = "按条件";
+                how = "「条件等待」→「等待」（等待方式 = 按条件）";
+                return With(step, Catalog.BuiltinCommands.Wait, p);
+
             default:
                 return null;
         }
@@ -115,6 +121,10 @@ public static class RecipeMigration
         Parameters = parameters,
         Rows = step.Rows?.Select(r => r.Clone()).ToList(),
         Enabled = step.Enabled,
-        Comment = step.Comment
+        Comment = step.Comment,
+        // 这两项从前抄漏了：翻译一步，操作人关掉的「失败时暂停」自己又开回默认、
+        // 标好的工艺阶段消失。翻译只换说法，不改这一步的其它任何设置
+        PauseOnFault = step.PauseOnFault,
+        Phase = step.Phase
     };
 }
