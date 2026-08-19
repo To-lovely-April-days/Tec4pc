@@ -80,9 +80,14 @@
           </LinearGradientBrush>
         </Border.Background>
         <StackPanel Orientation="Horizontal" Spacing="10" Margin="8,0" VerticalAlignment="Center">
-          <Ellipse Width="16" Height="16" Fill="#8ec63f" />
-          <Path Data="M 6,4.5 L 11,8 L 6,11.5 Z" Fill="White" Margin="-23,0,0,0"
-                VerticalAlignment="Center" />
+          <!-- 小播放标（原型 titlebar 那枚 16×16 的 svg）。整幅画进 Viewbox：
+               圆和三角在同一个坐标系里，三角的位置由图自己定，不靠对齐去凑 -->
+          <Viewbox Width="16" Height="16" VerticalAlignment="Center">
+            <Canvas Width="16" Height="16">
+              <Ellipse Canvas.Left="1" Canvas.Top="1" Width="14" Height="14" Fill="#8ec63f" />
+              <Path Data="M 6,4.5 L 11,8 L 6,11.5 Z" Fill="White" />
+            </Canvas>
+          </Viewbox>
           <TextBlock Text="登录 - TecStudio 平行合成工作站" Foreground="White" FontSize="12"
                      VerticalAlignment="Center" />
         </StackPanel>
@@ -96,10 +101,20 @@
                 Padding="24,26,24,20">
           <DockPanel>
             <StackPanel DockPanel.Dock="Top">
+              <!-- 品牌标：绿圆 + 白三角。三角画在原型那个 26×26 的画布里
+                   （Viewbox 缩到 24 居中）——直接把 Path 丢进圆里对齐是不行的：
+                   Path 量到的是「原点到几何右下角」那个盒子，把这个盒子居中，
+                   等于把三角连同它左上那片空白一起居中，看着就偏右下了。
+                   顺带，三角在原型里本就不是正中：它比几何中心右 1.4px，
+                   补的是尖头造成的左重——这份偏移由图自己带着，不是我们加的 -->
               <Border Width="52" Height="52" CornerRadius="26" Background="#2f8f49"
                       HorizontalAlignment="Left" Margin="0,0,0,14">
-                <Path Data="M 8,5 L 21,13 L 8,21 Z" Fill="White"
-                      HorizontalAlignment="Center" VerticalAlignment="Center" />
+                <Viewbox Width="24" Height="24"
+                         HorizontalAlignment="Center" VerticalAlignment="Center">
+                  <Canvas Width="26" Height="26">
+                    <Path Data="M 8,5 L 21,13 L 8,21 Z" Fill="White" />
+                  </Canvas>
+                </Viewbox>
               </Border>
               <TextBlock Text="TecStudio" FontSize="28" FontWeight="Light" Foreground="#2b2b2b" />
               <TextBlock Text="平行合成工作站 · PSW-4" FontSize="12" Foreground="#7a7a7a"
@@ -114,9 +129,11 @@
                   <Border Background="#f4f4f4" CornerRadius="2" />
                   <Rectangle Stroke="#c2c2c2" StrokeThickness="1" StrokeDashArray="4,3"
                              RadiusX="2" RadiusY="2" />
-                  <TextBlock Text="{Binding ArtHint}" FontSize="10.5" Foreground="#a2a2a2"
-                             TextAlignment="Center" LineHeight="18"
-                             HorizontalAlignment="Center" VerticalAlignment="Center" />
+                  <!-- 路径可能很长，得能折行：不折的话尾巴会被占位框裁掉，
+                       而被裁掉的恰好是「放在哪」那一段 -->
+                  <TextBlock Text="{Binding ArtHint}" FontSize="10" Foreground="#a2a2a2"
+                             TextAlignment="Center" LineHeight="16" TextWrapping="Wrap"
+                             Margin="10,0" HorizontalAlignment="Center" VerticalAlignment="Center" />
                 </Panel>
               </Panel>
             </StackPanel>
@@ -215,10 +232,16 @@
         <StackPanel Grid.Column="1" IsVisible="{Binding IsDone}" VerticalAlignment="Center"
                     HorizontalAlignment="Left" MaxWidth="620" MinWidth="480" Margin="40,26">
           <StackPanel Orientation="Horizontal" Spacing="14">
+            <!-- 对勾同理：画在原型那个 24×24 的画布里，Viewbox 缩到 22 居中 -->
             <Border Width="46" Height="46" CornerRadius="23" Background="#2f8f49">
-              <Path Data="M 4.5,12.5 L 9.5,17.5 L 19.5,6.5" Stroke="White"
-                    StrokeThickness="2.6" Fill="Transparent"
-                    HorizontalAlignment="Center" VerticalAlignment="Center" />
+              <Viewbox Width="22" Height="22"
+                       HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Canvas Width="24" Height="24">
+                  <Path Data="M 4.5,12.5 L 9.5,17.5 L 19.5,6.5" Stroke="White"
+                        StrokeThickness="2.6" StrokeLineCap="Round" StrokeJoin="Round"
+                        Fill="Transparent" />
+                </Canvas>
+              </Viewbox>
             </Border>
             <StackPanel VerticalAlignment="Center">
               <TextBlock Text="{Binding DoneTitle}" FontSize="20" FontWeight="Light"

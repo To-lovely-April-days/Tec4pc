@@ -33,34 +33,28 @@ public sealed class LoginViewModel : ViewModelBase
         ArtImage = LoadArt();
     }
 
+    /// <summary>现场资源目录：程序运行目录下的 Resources\（exe 旁边，见其中的说明.txt）。</summary>
+    public static string ResourceDir => Path.Combine(AppContext.BaseDirectory, "Resources");
+
     /// <summary>
-    /// 左侧图位（原型 .lg-art 252×176）：一张位图，不是 SVG。按顺序找
-    /// 程序目录、数据目录下的 login-visual.png / .jpg，找到哪张用哪张；
-    /// 一张都没有就显示原型那种虚线占位，把该放哪写在占位里。
+    /// 左侧图位（原型 .lg-art 252×176）：一张位图，不是 SVG。**只认一个地方**——
+    /// 程序运行目录下的 Resources\login-visual.png（也认 .jpg）。换图不用重新出包，
+    /// 换掉文件重启即可。没有这个文件时显示虚线占位，把完整路径写在占位里。
     /// </summary>
     public Avalonia.Media.Imaging.Bitmap? ArtImage { get; }
     public bool HasArt => ArtImage is not null;
-    public string ArtHint =>
-        "login-visual.png\n252 × 176\n放进程序目录或数据目录即显示";
+    /// <summary>占位框里的话。完整路径也给出来——照着这一行就知道图该放哪。</summary>
+    public string ArtHint => $"login-visual.png · 252 × 176\n放进程序目录的 Resources 文件夹：\n{ResourceDir}";
 
     private static Avalonia.Media.Imaging.Bitmap? LoadArt()
     {
-        // 现场放的文件优先于内置资源：换图不用重新出包
-        foreach (var dir in new[] { AppContext.BaseDirectory, ExperimentStore.DataDir })
         foreach (var name in new[] { "login-visual.png", "login-visual.jpg" })
         {
-            var path = Path.Combine(dir, name);
+            var path = Path.Combine(ResourceDir, name);
             if (!File.Exists(path)) continue;
             try { return new Avalonia.Media.Imaging.Bitmap(path); }
-            catch { /* 图坏了当没有，走下一级 */ }
+            catch { /* 图坏了当没有，显示占位框，别让登录页开不出来 */ }
         }
-        try
-        {
-            var uri = new Uri("avares://Tec.App/Assets/login-visual.png");
-            if (Avalonia.Platform.AssetLoader.Exists(uri))
-                return new Avalonia.Media.Imaging.Bitmap(Avalonia.Platform.AssetLoader.Open(uri));
-        }
-        catch { }
         return null;
     }
 

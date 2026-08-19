@@ -1,0 +1,20 @@
+TecStudio 现场资源目录
+======================
+
+这个文件夹会原样拷到程序运行目录（Tec.App.exe 旁边的 Resources\）。
+放在这里的文件不用重新编译、不用重新出包，换掉文件重启程序就生效。
+
+目前认这些文件：
+
+  login-visual.png      登录页左侧那张图。252 × 176 像素（其它尺寸会等比缩放
+                        进这个框，不裁切）。也认 login-visual.jpg。
+                        这个文件不在时，登录页那一块显示虚线占位框，
+                        上面写着该放哪个文件。
+
+完整路径示例（Windows）：
+
+  C:\Program Files\TecStudio\Resources\login-visual.png
+
+调试运行时是：
+
+  app\src\Tec.App\bin\Debug\net8.0\Resources\login-visual.png
