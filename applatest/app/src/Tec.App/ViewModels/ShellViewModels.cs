@@ -317,9 +317,29 @@ public sealed class LibRowViewModel : ViewModelBase
         + (Recipe.Charge is { IsEmpty: false } c ? $" · 配料 {c.Items.Count} 组分" : "");
 }
 
+/// <summary>步骤表里的一个工艺阶段分组。没标阶段的步骤归到一个无名组，组头不出现。</summary>
+public sealed class LibPhaseGroup
+{
+    public required string Name { get; init; }
+    public bool HasName => Name.Length > 0;
+    /// <summary>这一组的合计时长。组是边扫边攒的，扫完才知道多长，所以可写。</summary>
+    public string DurationText { get; set; } = "";
+    public List<StepViewModel> Steps { get; } = new();
+}
+
+/// <summary>物料表里的一行（配方捎着的配料表，只读）。</summary>
+public sealed class LibMatRow
+{
+    public required string Name { get; init; }
+    public required string Cas { get; init; }
+    public required string Role { get; init; }
+    public required string Amount { get; init; }
+    public required string Phase { get; init; }
+}
+
 /// <summary>
-/// 配方库（原型 renderLibView 的 1:1）：左 312px 列表（圆图标 + 名称 + 元信息 + 模块色带），
-/// 中间只读流程预览（与配方页同一种步骤卡），右侧配方属性 + 应用到通道。
+/// 配方库（版式照 gbg-recipes.html）：左 280px 库列表（搜索 + 卡片行），
+/// 中间「步骤 / 物料」两张表（步骤表按工艺阶段分组），右侧属性走我们自己那套。
 /// </summary>
 public sealed class RecipeLibViewModel : ViewModelBase
 {
@@ -337,6 +357,10 @@ public sealed class RecipeLibViewModel : ViewModelBase
         _shell = shell;
         Reload();
         Selected = Rows.FirstOrDefault();
+
+        PickStep = new RelayCommand(o => SelStep = o as StepViewModel);
+        ShowSteps = new RelayCommand(() => Tab = 0);
+        ShowMaterials = new RelayCommand(() => Tab = 1);
 
         Duplicate = new RelayCommand(() =>
         {
@@ -386,7 +410,64 @@ public sealed class RecipeLibViewModel : ViewModelBase
 
     public ObservableCollection<LibRowViewModel> Rows { get; } = new();
     public ObservableCollection<StepViewModel> Flow { get; } = new();
+    /// <summary>步骤表：按工艺阶段分组。没人标阶段就是一个无名组，表看起来是平的。</summary>
+    public ObservableCollection<LibPhaseGroup> Phases { get; } = new();
+    /// <summary>物料表：配方捎着的配料表，没有就是空表。</summary>
+    public ObservableCollection<LibMatRow> Materials { get; } = new();
     public ObservableCollection<string> ApplyTargets { get; } = new();
+
+    /// <summary>库里全部行（未过滤）。搜索框只挑 Rows 显示，不动这一份。</summary>
+    private readonly List<LibRowViewModel> _all = new();
+
+    private string _query = "";
+    /// <summary>搜索：按名字挑。空串 = 全都要。</summary>
+    public string Query
+    {
+        get => _query;
+        set
+        {
+            if (!Set(ref _query, value ?? "")) return;
+            ApplyFilter();
+        }
+    }
+
+    private int _tab;
+    /// <summary>0 = 步骤表，1 = 物料表。</summary>
+    public int Tab
+    {
+        get => _tab;
+        set
+        {
+            if (!Set(ref _tab, value)) return;
+            RaiseAll(nameof(IsStepsTab), nameof(IsMatTab));
+        }
+    }
+
+    public bool IsStepsTab => _tab == 0;
+    public bool IsMatTab => _tab == 1;
+
+    private StepViewModel? _selStep;
+    /// <summary>表上点中的那一步。右栏那块「步骤属性」跟着它走。</summary>
+    public StepViewModel? SelStep
+    {
+        get => _selStep;
+        set
+        {
+            var old = _selStep;
+            if (!Set(ref _selStep, value)) return;
+            if (old is not null) old.IsSelected = false;
+            if (value is not null) value.IsSelected = true;
+            RaiseAll(nameof(HasStepSel), nameof(StepChips));
+        }
+    }
+
+    public bool HasStepSel => _selStep is not null;
+    public IReadOnlyList<ParamChip> StepChips => _selStep?.Chips ?? Array.Empty<ParamChip>();
+
+    /// <summary>点表上的一行；两个标签页的切换。</summary>
+    public RelayCommand PickStep { get; }
+    public RelayCommand ShowSteps { get; }
+    public RelayCommand ShowMaterials { get; }
 
     public RelayCommand Duplicate { get; }
     public RelayCommand Delete { get; }
@@ -464,12 +545,31 @@ public sealed class RecipeLibViewModel : ViewModelBase
 
     private void Reload()
     {
-        Rows.Clear();
+        _all.Clear();
         foreach (var r in _ws.Library)
-            Rows.Add(new LibRowViewModel { Recipe = r, Mix = MixOf(r) });
+            _all.Add(new LibRowViewModel { Recipe = r, Mix = MixOf(r) });
+        ApplyFilter();
         if (Rows.Count == 0) Selected = null;
-        RaiseAll(nameof(IsEmpty), nameof(HasAny));
     }
+
+    /// <summary>搜索框只挑显示哪几行，库本身不动。名字对不上就一条不留（含空状态）。</summary>
+    private void ApplyFilter()
+    {
+        var q = _query.Trim();
+        Rows.Clear();
+        foreach (var r in _all)
+            if (q.Length == 0 || r.Name.Contains(q, StringComparison.OrdinalIgnoreCase))
+                Rows.Add(r);
+        // 选中项被过滤掉了就把选中挪到还看得见的第一条：右栏跟着列表走，
+        // 否则会出现「列表里没有这条，右边还在编辑它」
+        if (_selected is not null && !Rows.Contains(_selected)) Selected = Rows.FirstOrDefault();
+        RaiseAll(nameof(IsEmpty), nameof(HasAny), nameof(LibCountText));
+    }
+
+    /// <summary>库里有几条（搜索时报「筛出 N / 共 M」）。</summary>
+    public string LibCountText => _query.Trim().Length == 0
+        ? $"{_all.Count} 条"
+        : $"{Rows.Count} / {_all.Count} 条";
 
     /// <summary>把一份 .tecrecipe 收进库。与配方页那个导入是同一套读盘 + 老指令翻译。</summary>
     private async Task ImportAsync()
@@ -497,7 +597,11 @@ public sealed class RecipeLibViewModel : ViewModelBase
     private void Refresh()
     {
         Flow.Clear();
+        Phases.Clear();
+        Materials.Clear();
+        SelStep = null;
         var r = Current;
+        var total = TimeSpan.Zero;
         if (r is not null)
         {
             var plan = Schedule.Build(r, _ws.Catalog);
@@ -507,7 +611,39 @@ public sealed class RecipeLibViewModel : ViewModelBase
                 _ws.Catalog.TryGet(r.Steps[i].CommandId, out var d);
                 Flow.Add(new StepViewModel(i + 1, r.Steps[i], plan.Entries[i], d));
             }
+            foreach (var v in Flow) total += v.Entry.Extent;
+
+            // 按工艺阶段分组：连着的同阶段并成一组，隔开又标回来的算两组
+            // （工序上它就是两段，合起来那段时长会骗人）
+            LibPhaseGroup? cur = null;
+            var span = TimeSpan.Zero;
+            foreach (var v in Flow)
+            {
+                if (cur is null || cur.Name != v.PhaseText)
+                {
+                    Flush(cur, span);
+                    cur = new LibPhaseGroup { Name = v.PhaseText };
+                    span = TimeSpan.Zero;
+                }
+                cur.Steps.Add(v);
+                span += v.Entry.Extent;
+            }
+            Flush(cur, span);
+
+            foreach (var it in r.Charge?.Items ?? new List<ChargeItem>())
+                Materials.Add(new LibMatRow
+                {
+                    Name = it.Name.Length > 0 ? it.Name : "—",
+                    Cas = it.Cas,
+                    Role = ChargeWords.Of(it.Role),
+                    Amount = it.Amount is { } a
+                        ? a.ToString("0.####") + " " + ChargeWords.Of(it.Unit)
+                        : "",
+                    Phase = it.Phase
+                });
         }
+
+        EstTotal = total;
 
         var chs = _ws.Channels.Where(c => c.Enabled).Select(c => c.Number).OrderBy(x => x).ToList();
         ApplyTargets.Clear();
@@ -516,7 +652,45 @@ public sealed class RecipeLibViewModel : ViewModelBase
 
         RaiseAll(nameof(Name), nameof(Desc), nameof(StepCountText), nameof(UpdatedText),
                  nameof(ApplyTarget), nameof(HasTargets), nameof(Current),
-                 nameof(IsEmpty), nameof(HasAny), nameof(HasSelection));
+                 nameof(IsEmpty), nameof(HasAny), nameof(HasSelection),
+                 nameof(HeaderMeta), nameof(HasMaterials), nameof(NoMaterials),
+                 nameof(AuthorText), nameof(HasStepSel));
+        return;
+
+        // 组的时长在这儿补：新开一组时才知道上一组有多长
+        void Flush(LibPhaseGroup? g, TimeSpan span)
+        {
+            if (g is null || g.Steps.Count == 0) return;
+            g.DurationText = Fmt.Hms(span);
+            Phases.Add(g);
+        }
+    }
+
+    /// <summary>整条配方的预计总时长。表头那行「预计 …」用它。</summary>
+    public TimeSpan EstTotal { get; private set; }
+
+    public bool HasMaterials => Materials.Count > 0;
+    public bool NoMaterials => Materials.Count == 0;
+    public string AuthorText => Current?.Author is { Length: > 0 } a ? a : "—";
+
+    /// <summary>
+    /// 标题下那行元信息：步数 · 预计时长 · 阶段数 · 更新时间 · 作者。
+    /// 每一段都是库里真有的东西——没有版本号、没有发布状态，那两样我们不记。
+    /// </summary>
+    public string HeaderMeta
+    {
+        get
+        {
+            if (Current is not { } r) return "";
+            var parts = new List<string> { $"{Flow.Count} 步" };
+            if (EstTotal > TimeSpan.Zero) parts.Add("预计 " + Fmt.Hms(EstTotal));
+            var named = Phases.Count(p => p.HasName);
+            if (named > 0) parts.Add($"{named} 个阶段");
+            parts.Add("更新 " + r.ModifiedAt.ToString("MM/dd HH:mm"));
+            if (r.Author is { Length: > 0 } au) parts.Add(au);
+            if (r.Charge is { IsEmpty: false } c) parts.Add($"配料 {c.Items.Count} 组分");
+            return string.Join("  ·  ", parts);
+        }
     }
 
     /// <summary>应用会替换目标通道的全部步骤，并跳到配方页（原型 libApplyTo）。</summary>

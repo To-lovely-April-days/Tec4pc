@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using Tec.App.Services;
 using Tec.Core;
 using Tec.Core.Benches;
@@ -72,6 +73,9 @@ public static class TerminationText
     };
 }
 
+/// <summary>步骤表里的一个参数小标签：「目标温度」「60.0 ℃」。</summary>
+public sealed record ParamChip(string Label, string Value);
+
 /// <summary>一张步骤卡（原型 .step）：模块色图标块 + 整句描述 + 预计开始 / 耗时。</summary>
 public sealed class StepViewModel : ViewModelBase
 {
@@ -120,6 +124,51 @@ public sealed class StepViewModel : ViewModelBase
         ? "缺少驱动"
         : Descriptor.SummaryOf(new CommandInput(Step.Parameters, Step.Rows));
     public string ModLine => $"{Module} · {Name}";
+
+    /// <summary>配方库那张步骤表用的：序号、结束条件、工艺阶段、参数小标签。</summary>
+    public int Seq => Ordinal;
+    public string EndText => TerminationText.Of(Entry.Termination);
+    public string PhaseText => Step.Phase ?? "";
+
+    /// <summary>
+    /// 参数小标签：「标签 值 单位」。标签和单位取自指令自己的 ParameterSchema，
+    /// 不在这儿另写一份——加一个参数字段，表上自然就多一个标签。
+    /// 分段表（梯度控温那种）不摊开，只报一句有几段。
+    /// </summary>
+    public IReadOnlyList<ParamChip> Chips
+    {
+        get
+        {
+            var list = new List<ParamChip>();
+            if (Descriptor is null) return list;
+            foreach (var f in Descriptor.Parameters.Fields)
+            {
+                if (!Step.Parameters.Has(f.Key)) continue;
+                var v = Step.Parameters[f.Key];
+                if (v is null) continue;
+                string text;
+                switch (f.Kind)
+                {
+                    case FieldKind.Number:
+                        var d = Step.Parameters.Num(f.Key);
+                        text = d.ToString("F" + f.Decimals, CultureInfo.InvariantCulture);
+                        if (!string.IsNullOrEmpty(f.Unit)) text += " " + f.Unit;
+                        break;
+                    case FieldKind.Toggle:
+                        if (v is not true) continue;      // 关着的开关不占位置
+                        text = "是";
+                        break;
+                    default:
+                        text = v.ToString() ?? "";
+                        break;
+                }
+                if (text.Length > 0) list.Add(new ParamChip(f.Label, text));
+            }
+            if (Step.Rows is { Count: > 0 } rows)
+                list.Add(new ParamChip("分段", rows.Count + " 段"));
+            return list;
+        }
+    }
 
     public string PlanStart => Fmt.Offset(Entry.Start);
     public string PlanDuration => Fmt.Hms(Entry.Extent);

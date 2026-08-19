@@ -17,6 +17,14 @@ public static class Is
     public static readonly IValueConverter FmtInk =
         new FuncValueConverter<bool, Color>(on => Color.Parse(on ? "#1a7fc4" : "#8a8a8a"));
 
+    /// <summary>
+    /// 那条 6px 选中色条：选中上主色，没选中透明。
+    /// 用一列常在的 Border 而不是左边框——写成边框的话选中时内容会横跳 6px。
+    /// </summary>
+    public static readonly IValueConverter SelBar =
+        new FuncValueConverter<bool, IBrush>(on =>
+            on ? new SolidColorBrush(Color.Parse("#1a7fc4")) : Brushes.Transparent);
+
     public static readonly IValueConverter SelWeight =
         new FuncValueConverter<bool, FontWeight>(on => on ? FontWeight.SemiBold : FontWeight.Normal);
 }
