@@ -110,6 +110,16 @@ public sealed class StepViewModel : ViewModelBase
     /// </summary>
     public double BodyWidth => CardWidth - 4 - 24 - 24;
 
+    /// <summary>
+    /// 描述那行文字的盒子宽度。写死在 TextBlock 上，再配上它自己 6px 的左右
+    /// 内边距——两件事缺一不可：
+    ///   · 宽度写死，排版和排布用的是同一个数；
+    ///   · 内边距让**排版宽比盒子窄 12px**，一行排到头时最后那个字的墨迹
+    ///     比排版算出来的行宽多出来的一点有地方去。只写宽度不留内边距，
+    ///     那点墨迹会被 TextBlock 自己的边界切掉（"加入" 只剩一撇）。
+    /// </summary>
+    public double LabelWidth => BodyWidth - 8;
+
     public ScheduleEntry Entry { get; }
     public CommandDescriptor? Descriptor { get; }
 

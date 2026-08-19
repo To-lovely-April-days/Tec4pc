@@ -522,8 +522,7 @@
                             Classes.no="{Binding !CanEdit}" Cursor="Hand"
                             PointerPressed="OnHotStepPressed">
                       <Grid ColumnDefinitions="6,22,*,Auto">
-                        <Border Grid.Column="0" Background="{Binding ColorHex}" CornerRadius="2"
-                                Margin="0,1,7,1" />
+                        <Border Grid.Column="0" Background="{Binding ColorHex}" Margin="0,1,7,1" />
                         <TextBlock Grid.Column="1" Text="{Binding Seq}" FontSize="11"
                                    Foreground="#8d8d8d" VerticalAlignment="Center"
                                    TextAlignment="Right" Margin="0,0,7,0" />

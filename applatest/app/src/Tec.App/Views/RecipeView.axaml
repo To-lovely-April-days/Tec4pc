@@ -36,8 +36,7 @@
               <Border Classes="dev" Margin="0,0,0,2">
                 <Grid ColumnDefinitions="6,*">
                   <!-- 色条贯通整块：收起时就是那 96px，展开了连指令格一起包 -->
-                  <Border Grid.Column="0" Background="{Binding Color}"
-                          CornerRadius="2,0,0,2" />
+                  <Border Grid.Column="0" Background="{Binding Color}" />
                   <StackPanel Grid.Column="1">
                     <!-- 组头：96 高，圆圈箭头 + 组名（原型 .dev，23px/300 拉丁；
                          中文按同一套换算落到 20px——汉字占满字身框，
@@ -283,8 +282,7 @@
                                      算出来的余量跟最终排布的余量对不上，右边一列会超出卡片 -->
                                 <Grid ColumnDefinitions="6,18,*,24" RowDefinitions="*,Auto">
                                   <Border Grid.Column="0" Grid.RowSpan="2"
-                                          Background="{Binding ModuleColor}"
-                                          CornerRadius="2,0,0,2" />
+                                          Background="{Binding ModuleColor}" />
                                   <!-- 竖排模块名（原型 writing-mode:vertical-rl） -->
                                   <LayoutTransformControl Grid.Column="1" Grid.RowSpan="2"
                                                           VerticalAlignment="Top"
@@ -307,9 +305,11 @@
                                          正好被盒子边缘切掉（"加入" 剩一撇）。留出这点余量，
                                          多出来的墨迹有地方去 -->
                                     <TextBlock Text="{Binding Desc}" FontSize="10.5"
+                                               Width="{Binding LabelWidth}"
                                                Foreground="#1f1f1f" LineHeight="14"
                                                TextAlignment="Center" TextWrapping="Wrap"
-                                               MaxLines="4" Margin="4,4,4,0" />
+                                               MaxLines="4" Margin="0,4,0,0"
+                                               Padding="6,0" />
                                   </StackPanel>
 
                                   <!-- 垃圾桶占右边那个空档，贴右下角（原型 .step .trash 也在右下） -->
@@ -558,7 +558,8 @@
     <!-- 原型 .dev：96 高的一块 #efefef，悬停 #e6e6e6 -->
     <Style Selector="Border.dev">
       <Setter Property="Background" Value="#efefef" />
-      <Setter Property="CornerRadius" Value="2" />
+      <!-- 左边不倒角：色条是方的，块跟着方，色条才贴得平 -->
+      <Setter Property="CornerRadius" Value="0,2,2,0" />
       <Setter Property="ClipToBounds" Value="True" />
     </Style>
     <Style Selector="Border.dev:pointerover">
@@ -583,7 +584,8 @@
     <Style Selector="Border.step">
       <Setter Property="MinHeight" Value="118" />
       <Setter Property="Background" Value="#6ed3f0" />
-      <Setter Property="CornerRadius" Value="2" />
+      <!-- 左边不倒角，同上 -->
+      <Setter Property="CornerRadius" Value="0,2,2,0" />
       <Setter Property="Cursor" Value="Hand" />
       <!-- 描边常在、平时是透明的：选中时只换颜色，卡片内宽不变，
            文字不会因为选中而重新折行 -->

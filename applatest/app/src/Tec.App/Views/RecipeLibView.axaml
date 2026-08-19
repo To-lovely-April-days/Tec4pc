@@ -19,7 +19,8 @@
       <Setter Property="Background" Value="White" />
       <Setter Property="BorderBrush" Value="#e6e6e6" />
       <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="CornerRadius" Value="3" />
+      <!-- 左边不倒角：那 6px 色条是方的，卡片跟着方，色条才贴得平 -->
+      <Setter Property="CornerRadius" Value="0,3,3,0" />
       <Setter Property="Margin" Value="0,0,0,3" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
@@ -172,7 +173,7 @@
                          >
                     <!-- 6px 那一列常在，选中才上色：内容不会因为选中横跳 -->
                     <Grid ColumnDefinitions="6,*">
-                      <Border Grid.Column="0" CornerRadius="2,0,0,2"
+                      <Border Grid.Column="0"
                               Background="{Binding IsSelected, Converter={x:Static ctl:Is.SelBar}}" />
                       <StackPanel Grid.Column="1" Margin="9,7,9,8">
                         <TextBlock Text="{Binding Name}" Classes="rn" />
