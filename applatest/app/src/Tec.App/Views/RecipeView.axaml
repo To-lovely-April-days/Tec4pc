@@ -10,19 +10,31 @@
     步骤库 312 ｜ 流程区 ｜ 属性 342（原型脚本面板 352，这里跟台面属性对齐取 342）。
     属性栏不照原型，按用户要求走台面页那一套：块用 PropsBg、块之间露白缝、
     「当前选中的那一个」左边一条 6px 粗色条。
+
+    左侧色条一律 6px。全程序用到这条「左边一道色条 = 这一块属于谁」的地方
+    一共五处，从前各写各的（14 / 12 / 11 / 6 / 4），同一个说法五个粗细：
+      · 配方页 步骤库分组块（原型 .dev .bar 14）
+      · 配方页 步骤卡（原型 .step .sbar 11）
+      · 配方页 / 台面页 属性块          ← 6，基准就是它
+      · 运行页 通道磁贴（12）
+      · 运行页 热编辑步骤行（4）
+    原型那两个数字（14 / 11）不再照抄：原型自己也没统一，而一个界面里
+    同一个记号只该有一个粗细。旁边那些 12×12 的小色块是另一回事（色卡，
+    不是色条），不在此列。
   -->
   <Grid ColumnDefinitions="312,*,342">
 
     <!-- ══ 左：步骤库（原型 .devlist）══
-         一个模块 = 一块 #efefef，左边一条 14px 模块色条贯通整块（展开了也贯通），
-         块与块之间 2px 白缝。栏本身不铺底色、不画竖线——分界线在流程区那一侧 -->
+         一个模块 = 一块 #efefef，左边一条 6px 模块色条贯通整块（展开了也贯通），
+         块与块之间 2px 白缝。栏本身不铺底色、不画竖线——分界线在流程区那一侧。
+         原型这条是 14px，统一成 6px（见文件开头那段说明） -->
     <Border Grid.Column="0" Background="White" Padding="0,2,4,0">
       <ScrollViewer Padding="0,0,0,40">
         <ItemsControl ItemsSource="{Binding Groups}">
           <ItemsControl.ItemTemplate>
             <DataTemplate>
               <Border Classes="dev" Margin="0,0,0,2">
-                <Grid ColumnDefinitions="14,*">
+                <Grid ColumnDefinitions="6,*">
                   <!-- 色条贯通整块：收起时就是那 96px，展开了连指令格一起包 -->
                   <Border Grid.Column="0" Background="{Binding Color}"
                           CornerRadius="2,0,0,2" />
@@ -257,7 +269,7 @@
                                    竖排模块名，中间图标 + 整句描述，底下一行排期，
                                    垃圾桶在右上（原型是右侧那一列图标的位置）。
 
-                                   右边留出 29px 空档，跟左边「色条 11 + 竖排名 18」一样宽：
+                                   右边留出 24px 空档，跟左边「色条 6 + 竖排名 18」一样宽：
                                    图标和描述是在这一列里居中的，左边有东西右边没有的话，
                                    居中的结果就偏到卡片中线右侧去了。原型靠 .sbody 的
                                    padding-right:24px 抵掉——那 24px 是给右侧三个白圈留的，
@@ -269,7 +281,7 @@
                                       PointerPressed="OnStepPressed">
                                 <!-- 竖排模块名那一列写死 18：留 Auto 的话，Grid 量它时给的是无限宽，
                                      算出来的余量跟最终排布的余量对不上，右边一列会超出卡片 -->
-                                <Grid ColumnDefinitions="11,18,*,29" RowDefinitions="*,Auto">
+                                <Grid ColumnDefinitions="6,18,*,24" RowDefinitions="*,Auto">
                                   <Border Grid.Column="0" Grid.RowSpan="2"
                                           Background="{Binding ModuleColor}"
                                           CornerRadius="2,0,0,2" />

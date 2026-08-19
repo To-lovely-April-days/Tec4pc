@@ -99,12 +99,12 @@ public sealed class StepViewModel : ViewModelBase
     public double CardWidth => 200 - Depth * 14;
 
     /// <summary>
-    /// 卡片正文那一列的宽度：卡宽 − 2px 描边两条 − 左边（11px 色条 + 18px 竖排名）
-    /// − 右边同样宽的 29px 空档。左右一样宽，图标和描述才真的落在卡片中线上。
+    /// 卡片正文那一列的宽度：卡宽 − 2px 描边两条 − 左边（6px 色条 + 18px 竖排名）
+    /// − 右边同样宽的 24px 空档。左右一样宽，图标和描述才真的落在卡片中线上。
     /// 算死而不是交给 Grid 的星号列去分：星号列量到的宽和最后排布的宽对不上，
     /// 描述会按更宽的那个折行，右半截被卡片裁掉（"加入 10" 断成 "加入 1"）。
     /// </summary>
-    public double BodyWidth => CardWidth - 4 - 29 - 29;
+    public double BodyWidth => CardWidth - 4 - 24 - 24;
 
     public ScheduleEntry Entry { get; }
     public CommandDescriptor? Descriptor { get; }

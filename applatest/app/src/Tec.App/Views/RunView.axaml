@@ -267,7 +267,7 @@
                                   <Border Classes="stat" Classes.off="{Binding Off}"
                                           Classes.sel="{Binding IsSelected}" Width="140"
                                           Cursor="Hand" PointerPressed="OnTilePressed">
-                                    <Grid ColumnDefinitions="12,Auto,*">
+                                    <Grid ColumnDefinitions="6,Auto,*">
                                       <Border Grid.Column="0" Background="{Binding ColorHex}" />
                                       <!-- 通道名竖着排（书脊那样整词旋转，不是一个字一行：
                                            「C H 1」拆成三行读起来是三个东西，还白占一截高度） -->
@@ -521,7 +521,7 @@
                     <Border Classes="hstep" Classes.sel="{Binding IsSelected}"
                             Classes.no="{Binding !CanEdit}" Cursor="Hand"
                             PointerPressed="OnHotStepPressed">
-                      <Grid ColumnDefinitions="4,22,*,Auto">
+                      <Grid ColumnDefinitions="6,22,*,Auto">
                         <Border Grid.Column="0" Background="{Binding ColorHex}" CornerRadius="2"
                                 Margin="0,1,7,1" />
                         <TextBlock Grid.Column="1" Text="{Binding Seq}" FontSize="11"
