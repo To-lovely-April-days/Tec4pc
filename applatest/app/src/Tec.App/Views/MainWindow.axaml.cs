@@ -25,6 +25,20 @@ public partial class MainWindow : Window
 
     private void OnClose(object? sender, RoutedEventArgs e) => Close();
 
+    // ── 用户区下拉 ───────────────────────────────────────────────────
+
+    private void OnChangePassword(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm) return;
+        _ = new ChangePasswordWindow(vm.Workspace).ShowDialog(this);
+    }
+
+    private void OnManageUsers(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm || !vm.IsAdmin) return;
+        _ = new UserAdminWindow(vm.Workspace).ShowDialog(this);
+    }
+
     /// <summary>
     /// 有未保存的改动就先问一句。Closing 不能等异步结果，所以先把这次关窗拦下来，
     /// 问完再自己调一次 Close()——标准做法。

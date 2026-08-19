@@ -40,6 +40,15 @@ public sealed class MainViewModel : ViewModelBase
         Run = new RunViewModel(ws);
         Export = new ExportViewModel(ws);
 
+        // 登录层。进入工作站后回开始页——每个班次从同一个地方开始
+        Login = new LoginViewModel(ws, onEntered: () => Tab = TabStart);
+        Logout = new RelayCommand(() =>
+        {
+            ws.SignOut();
+            Login.ShowForm();
+        });
+        ws.UserChanged += (_, _) => RaiseAll(nameof(UserName), nameof(UserRoleName), nameof(IsAdmin));
+
         ws.Store.Changed += (_, _) => Raise(nameof(DocTitle));
 
         Go = new RelayCommand(p =>
@@ -173,6 +182,14 @@ public sealed class MainViewModel : ViewModelBase
     public ChargeViewModel Charge { get; }
     public RunViewModel Run { get; }
     public ExportViewModel Export { get; }
+    public LoginViewModel Login { get; }
+    public RelayCommand Logout { get; }
+
+    // 右上角用户区。没登录时登录层盖着整个界面，这几个值不会被看见，
+    // 但也照实写「未登录」，不冒充任何人
+    public string UserName => Workspace.CurrentUser?.Display ?? "未登录";
+    public string UserRoleName => Workspace.CurrentUser?.RoleName ?? "";
+    public bool IsAdmin => Workspace.IsAdmin;
 
     public RelayCommand Go { get; }
     public RelayCommand SimRun { get; }

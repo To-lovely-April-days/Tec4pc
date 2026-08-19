@@ -10,6 +10,7 @@ using Tec.Core.Execution;
 using Tec.Core.Recipes;
 using Tec.Core.Records;
 using Tec.Core.Safety;
+using Tec.Core.Users;
 using Tec.Driver.Abi;
 using Tec.DriverHost;
 using Tec.Drivers.Simulator;
@@ -64,9 +65,44 @@ public sealed class Workspace
 
     /// <summary>
     /// 当前操作人。存配方、开批次、写记录都署这个名。
-    /// 现在只有一个固定值——登录还没做；先集中到一处，将来接上登录只改这一行。
+    /// 由登录页写入（CurrentUser.Display）；还没登录时是「未登录」——
+    /// 万一有代码在登录前写了记录，署名也照实说没人登录，不冒充管理员。
     /// </summary>
-    public string Operator { get; set; } = "管理员";
+    public string Operator { get; set; } = "未登录";
+
+    /// <summary>账号库（users.json，跟 tecstudio.db 同目录）。Boot() 里建好。</summary>
+    public UserStore Users { get; private set; } = null!;
+
+    /// <summary>登录着的账号。null = 登录页还挡在前面。</summary>
+    public UserAccount? CurrentUser { get; private set; }
+
+    /// <summary>本次会话建立的时刻（开始页、审计里都用它）。</summary>
+    public DateTimeOffset? LoginAt { get; private set; }
+
+    public bool IsAdmin => CurrentUser?.Role == UserRole.Admin;
+
+    public event EventHandler? UserChanged;
+
+    /// <summary>登录成功后由登录页调。写审计、换署名，界面靠 UserChanged 刷新。</summary>
+    public void SignIn(UserAccount user)
+    {
+        CurrentUser = user;
+        LoginAt = Clock.Now;
+        Operator = user.Display;
+        Log.Write("登录", $"登录成功（{user.Name} · {user.RoleName} · 工作站 {Environment.MachineName}）", user.Display);
+        UserChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>注销回到登录页。通道该跑还在跑——注销的是人，不是机器；照实记一笔。</summary>
+    public void SignOut()
+    {
+        if (CurrentUser is { } u)
+            Log.Write("登录", $"注销（{u.Name}）", u.Display);
+        CurrentUser = null;
+        LoginAt = null;
+        Operator = "未登录";
+        UserChanged?.Invoke(this, EventArgs.Empty);
+    }
 
     /// <summary>打开 / 新建 / 保存实验。Boot() 里建好。</summary>
     public ExperimentStore Store { get; private set; } = null!;
@@ -177,6 +213,11 @@ public sealed class Workspace
         var ver = typeof(Workspace).Assembly.GetName().Version?.ToString() ?? "";
         Archive = new RunArchive(Path.Combine(ExperimentStore.DataDir, "Runs"), ver);
         Log = new SystemLog(Path.Combine(ExperimentStore.DataDir, "Logs"), Clock.Func);
+
+        // 账号库。首次开机播默认管理员（admin / admin，登录页上明说）——这一笔要留痕
+        Users = new UserStore(Path.Combine(ExperimentStore.DataDir, "users.json"), Clock.Func);
+        if (Users.SeededDefault)
+            Log.Write("登录", $"首次启动，创建默认管理员账号 {UserStore.DefaultAdmin}（初始密码待修改）", "系统");
 
         // 归档里已经有的编号先占住：同一天关掉再开，第一炉又会拿到 -001，
         // 而编号就是归档目录名——撞上就是上午那一炉被下午这一炉盖掉

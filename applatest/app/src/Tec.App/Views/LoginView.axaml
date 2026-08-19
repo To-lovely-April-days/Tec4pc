@@ -1,0 +1,296 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctl="clr-namespace:Tec.App.Controls"
+             x:Class="Tec.App.Views.LoginView"
+             Focusable="True" KeyDown="OnKeyDown">
+
+  <!--
+    登录页，照 gbglogin 设计稿：深紫桌面（44px 网格 + 中央光晕）+ 居中一张
+    840 宽的登录窗。品牌区换成我们自己的：绿圆播放标 + TecStudio 字标 +
+    双通道反应器线稿（跟顶栏、设备库同一张图）。
+    设计稿里没搬的三样（都在 LoginViewModel 的注释里说了理由）：
+    四步进度动画（没有真实过程）、记住密码（落成记住用户名）、语言切换。
+  -->
+
+  <UserControl.Styles>
+    <Style Selector="TextBox.lgin">
+      <Setter Property="Height" Value="30" />
+      <Setter Property="MinHeight" Value="30" />
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="Padding" Value="9,0" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderBrush" Value="#a8a8a8" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="2" />
+    </Style>
+    <Style Selector="TextBox.lgin:focus /template/ Border#PART_BorderElement">
+      <Setter Property="BorderBrush" Value="#1a91d6" />
+    </Style>
+
+    <Style Selector="Button.lgbtn">
+      <Setter Property="Height" Value="32" />
+      <Setter Property="MinWidth" Value="104" />
+      <Setter Property="Padding" Value="18,0" />
+      <Setter Property="CornerRadius" Value="2" />
+      <Setter Property="FontSize" Value="12.5" />
+      <Setter Property="Background" Value="#f2f2f2" />
+      <Setter Property="Foreground" Value="#333333" />
+      <Setter Property="BorderBrush" Value="#8b8b8b" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.lgbtn:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#e3f0f9" />
+      <Setter Property="BorderBrush" Value="#1a91d6" />
+    </Style>
+    <Style Selector="Button.lgbtn.primary">
+      <Setter Property="Background" Value="#2f8f49" />
+      <Setter Property="BorderBrush" Value="#28803f" />
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Button.lgbtn.primary:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#28803f" />
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+
+    <Style Selector="ToggleButton.lgeye">
+      <Setter Property="Width" Value="32" />
+      <Setter Property="Background" Value="#fafafa" />
+      <Setter Property="BorderBrush" Value="#e2e2e2" />
+      <Setter Property="BorderThickness" Value="1,0,0,0" />
+      <Setter Property="CornerRadius" Value="0,2,2,0" />
+      <Setter Property="Foreground" Value="#7a7a7a" />
+    </Style>
+    <Style Selector="ToggleButton.lgeye:checked /template/ ContentPresenter">
+      <Setter Property="Background" Value="#eaf6fd" />
+    </Style>
+  </UserControl.Styles>
+
+  <!-- ══ 桌面 ══ -->
+  <Panel Background="#241b3f">
+
+    <!-- 44px 网格线（原型 .lg-desk::before） -->
+    <Panel>
+      <Panel.Background>
+        <VisualBrush TileMode="Tile" Stretch="None"
+                     SourceRect="0,0,44,44" DestinationRect="0,0,44,44">
+          <VisualBrush.Visual>
+            <Canvas Width="44" Height="44" Background="Transparent">
+              <Rectangle Canvas.Left="0" Canvas.Top="0" Width="44" Height="1" Fill="#07FFFFFF" />
+              <Rectangle Canvas.Left="0" Canvas.Top="0" Width="1" Height="44" Fill="#07FFFFFF" />
+            </Canvas>
+          </VisualBrush.Visual>
+        </VisualBrush>
+      </Panel.Background>
+    </Panel>
+
+    <!-- 中央光晕（原型 .lg-desk::after 的 radial-gradient） -->
+    <Panel>
+      <Panel.Background>
+        <RadialGradientBrush Center="50%,44%" GradientOrigin="50%,44%" RadiusX="45%" RadiusY="55%">
+          <GradientStop Color="#0EFFFFFF" Offset="0" />
+          <GradientStop Color="#00FFFFFF" Offset="0.7" />
+        </RadialGradientBrush>
+      </Panel.Background>
+    </Panel>
+
+    <!-- 左下：工作站一行；右下：时钟 -->
+    <TextBlock Text="{Binding VersionLine}" Foreground="#9086b4" FontSize="11"
+               HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="18,0,0,16" />
+    <StackPanel HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,20,16"
+                Spacing="2">
+      <TextBlock Name="ClockTime" Text="--:--" Foreground="#cfc6e6" FontSize="22"
+                 FontWeight="Light" HorizontalAlignment="Right" />
+      <TextBlock Name="ClockDate" Foreground="#9086b4" FontSize="11" HorizontalAlignment="Right" />
+    </StackPanel>
+
+    <!-- ══ 登录窗 ══ -->
+    <Border Width="840" HorizontalAlignment="Center" VerticalAlignment="Center"
+            Background="White" BorderBrush="#17102b" BorderThickness="1"
+            BoxShadow="0 26 70 0 #73000000">
+      <DockPanel>
+
+        <!-- 窗标题条：跟主程序同一条深紫渐变 -->
+        <Border DockPanel.Dock="Top" Height="30">
+          <Border.Background>
+            <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+              <GradientStop Color="#3c2d63" Offset="0" />
+              <GradientStop Color="#2f2350" Offset="1" />
+            </LinearGradientBrush>
+          </Border.Background>
+          <StackPanel Orientation="Horizontal" Spacing="10" Margin="8,0" VerticalAlignment="Center">
+            <Ellipse Width="16" Height="16" Fill="#8ec63f" />
+            <Path Data="M 6,4.5 L 11,8 L 6,11.5 Z" Fill="White" Margin="-23,0,0,0"
+                  VerticalAlignment="Center" />
+            <TextBlock Text="登录 - TecStudio 平行合成工作站" Foreground="White" FontSize="12"
+                       VerticalAlignment="Center" />
+          </StackPanel>
+        </Border>
+
+        <Grid ColumnDefinitions="300,*" MinHeight="388">
+
+          <!-- ═ 左：品牌 ═ -->
+          <Border Grid.Column="0" Background="#ececec"
+                  BorderBrush="#d2d2d2" BorderThickness="0,0,1,0"
+                  Padding="24,26,24,20">
+            <DockPanel>
+              <StackPanel DockPanel.Dock="Top">
+                <Border Width="52" Height="52" CornerRadius="26" Background="#2f8f49"
+                        HorizontalAlignment="Left" Margin="0,0,0,14">
+                  <Path Data="M 8,5 L 21,13 L 8,21 Z" Fill="White"
+                        HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <TextBlock Text="TecStudio" FontSize="28" FontWeight="Light" Foreground="#2b2b2b" />
+                <TextBlock Text="平行合成工作站 · PSW-4" FontSize="12" Foreground="#7a7a7a"
+                           Margin="0,6,0,0" />
+                <Border Height="1" Background="#d5d5d5" Margin="0,18,0,16" />
+                <!-- 图位（原型 252×176）：放这台机器自己的线稿，
+                     跟顶栏、设备库、画布上永远是同一张脸 -->
+                <Panel Width="252" Height="176" HorizontalAlignment="Left">
+                  <ctl:DeviceArtView ArtKey="reactor2" Fit="True" Width="170" Height="176"
+                                     HorizontalAlignment="Center" />
+                </Panel>
+              </StackPanel>
+              <TextBlock DockPanel.Dock="Bottom" Text="{Binding VersionLine}" FontSize="10.5"
+                         Foreground="#9a9a9a" VerticalAlignment="Bottom" LineHeight="17" />
+              <Panel />
+            </DockPanel>
+          </Border>
+
+          <!-- ═ 右：表单台面 ═ -->
+          <Border Grid.Column="1" Padding="40,26,40,24" IsVisible="{Binding IsForm}">
+            <DockPanel>
+              <StackPanel DockPanel.Dock="Top">
+                <TextBlock Text="登录" FontSize="26" FontWeight="Light" Foreground="#3b3b3b" />
+                <TextBlock Text="请输入账号与密码以打开工作站。" FontSize="11.5"
+                           Foreground="#7a7a7a" Margin="0,6,0,0" />
+
+                <!-- 首次启动的提示（黄条）：初始密码是公开值，明说 -->
+                <Border Margin="0,16,0,0" Background="#fdf8ec" BorderBrush="#e8d6a8"
+                        BorderThickness="1" CornerRadius="2" IsVisible="{Binding ShowSeedNote}">
+                  <Grid ColumnDefinitions="3,*">
+                    <Border Grid.Column="0" Background="#dba32c" />
+                    <TextBlock Grid.Column="1" Text="{Binding SeedNote}" FontSize="11.5"
+                               Foreground="#8a6a1f" LineHeight="17" TextWrapping="Wrap"
+                               Margin="9,8" />
+                  </Grid>
+                </Border>
+
+                <!-- 错误条（红条） -->
+                <Border Margin="0,14,0,0" Background="#fdf2f2" BorderBrush="#f0c9c9"
+                        BorderThickness="1" CornerRadius="2" IsVisible="{Binding HasError}">
+                  <Grid ColumnDefinitions="3,*">
+                    <Border Grid.Column="0" Background="#e02020" />
+                    <TextBlock Grid.Column="1" Text="{Binding Error}" FontSize="11.5"
+                               Foreground="#8d2b2b" LineHeight="17" TextWrapping="Wrap"
+                               Margin="9,8" />
+                  </Grid>
+                </Border>
+
+                <!-- 用户名 / 密码 -->
+                <Grid ColumnDefinitions="68,*" Margin="0,20,0,11">
+                  <TextBlock Grid.Column="0" Text="用户名" FontSize="12" Foreground="#3d3d3d"
+                             VerticalAlignment="Center" />
+                  <TextBox Grid.Column="1" Name="UserBox" Classes="lgin" Watermark="例如 zhang"
+                           Text="{Binding User, Mode=TwoWay}" />
+                </Grid>
+                <Grid ColumnDefinitions="68,*" Margin="0,0,0,10">
+                  <TextBlock Grid.Column="0" Text="密码" FontSize="12" Foreground="#3d3d3d"
+                             VerticalAlignment="Center" />
+                  <Panel Grid.Column="1">
+                    <TextBox Classes="lgin" Name="PassBox" PasswordChar="●" Padding="9,0,38,0"
+                             RevealPassword="{Binding Reveal}"
+                             Text="{Binding Pass, Mode=TwoWay}" />
+                    <ToggleButton Classes="lgeye" IsChecked="{Binding Reveal, Mode=TwoWay}"
+                                  HorizontalAlignment="Right" VerticalAlignment="Stretch"
+                                  Margin="0,1,1,1" ToolTip.Tip="显示密码">
+                      <Path Data="M 1,8 C 1,8 3.6,3.8 8,3.8 C 12.4,3.8 15,8 15,8 C 15,8 12.4,12.2 8,12.2 C 3.6,12.2 1,8 1,8 Z M 8,10.1 A 2.1,2.1 0 1 0 8,5.9 A 2.1,2.1 0 0 0 8,10.1 Z"
+                            Stroke="#7a7a7a" StrokeThickness="1.3" Fill="Transparent"
+                            HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </ToggleButton>
+                  </Panel>
+                </Grid>
+
+                <!-- 记住用户名 + 忘记密码 -->
+                <StackPanel Orientation="Horizontal" Spacing="18" Margin="80,0,0,0">
+                  <CheckBox FontSize="11.5" Foreground="#333333"
+                            IsChecked="{Binding Remember, Mode=TwoWay}">记住用户名</CheckBox>
+                  <Button Background="Transparent" BorderThickness="0" Padding="0"
+                          VerticalAlignment="Center" Cursor="Hand"
+                          Command="{Binding ToggleReset}">
+                    <TextBlock Text="忘记密码？" FontSize="11" Foreground="#1a91d6" />
+                  </Button>
+                </StackPanel>
+
+                <!-- 忘记密码的说明（黄条，点上面那个链接开关） -->
+                <Border Margin="0,12,0,0" Background="#fdf8ec" BorderBrush="#e8d6a8"
+                        BorderThickness="1" CornerRadius="2" IsVisible="{Binding ShowReset}">
+                  <Grid ColumnDefinitions="3,*">
+                    <Border Grid.Column="0" Background="#dba32c" />
+                    <TextBlock Grid.Column="1" Text="{Binding ResetNote}" FontSize="11.5"
+                               Foreground="#8a6a1f" LineHeight="17" TextWrapping="Wrap"
+                               Margin="9,8" />
+                  </Grid>
+                </Border>
+              </StackPanel>
+
+              <!-- 底部：动作 + 审计一行 -->
+              <StackPanel DockPanel.Dock="Bottom">
+                <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Right"
+                            Margin="0,18,0,0">
+                  <Button Classes="lgbtn" Content="取消" Command="{Binding Cancel}" />
+                  <Button Classes="lgbtn primary" Content="登录" Command="{Binding Submit}" />
+                </StackPanel>
+                <Border Height="1" Background="#e3e3e3" Margin="0,16,0,0" />
+                <TextBlock Text="{Binding FootNote}" FontSize="10.5" Foreground="#9a9a9a"
+                           LineHeight="17" TextWrapping="Wrap" Margin="0,11,0,0" />
+              </StackPanel>
+              <Panel />
+            </DockPanel>
+          </Border>
+
+          <!-- ═ 右：登录成功台面（数据都是真的） ═ -->
+          <Border Grid.Column="1" Padding="40,26,40,24" IsVisible="{Binding IsDone}">
+            <DockPanel>
+              <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="10"
+                          HorizontalAlignment="Right" Margin="0,18,0,0">
+                <Button Classes="lgbtn" Content="注销" Command="{Binding BackToForm}" />
+                <Button Classes="lgbtn primary" Content="进入工作站" Command="{Binding Enter}" />
+              </StackPanel>
+              <StackPanel VerticalAlignment="Center">
+                <StackPanel Orientation="Horizontal" Spacing="14">
+                  <Border Width="46" Height="46" CornerRadius="23" Background="#2f8f49">
+                    <Path Data="M 4.5,12.5 L 9.5,17.5 L 19.5,6.5" Stroke="White"
+                          StrokeThickness="2.6" Fill="Transparent"
+                          HorizontalAlignment="Center" VerticalAlignment="Center" />
+                  </Border>
+                  <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="{Binding DoneTitle}" FontSize="20" FontWeight="Light"
+                               Foreground="#3b3b3b" />
+                    <TextBlock Text="{Binding DoneSub}" FontSize="11.5" Foreground="#7a7a7a"
+                               Margin="0,3,0,0" />
+                  </StackPanel>
+                </StackPanel>
+                <Border Height="1" Background="#d5d5d5" Margin="0,22,0,16" />
+                <Grid ColumnDefinitions="*,Auto" Margin="0,4">
+                  <TextBlock Text="会话开始" FontSize="12" Foreground="#333333" />
+                  <TextBlock Grid.Column="1" Text="{Binding DoneSession}" FontSize="12" Foreground="#5a5a5a" />
+                </Grid>
+                <Grid ColumnDefinitions="*,Auto" Margin="0,4">
+                  <TextBlock Text="工作站" FontSize="12" Foreground="#333333" />
+                  <TextBlock Grid.Column="1" Text="{Binding DoneStation}" FontSize="12" Foreground="#5a5a5a" />
+                </Grid>
+                <Grid ColumnDefinitions="*,Auto" Margin="0,4">
+                  <TextBlock Text="上次登录" FontSize="12" Foreground="#333333" />
+                  <TextBlock Grid.Column="1" Text="{Binding DonePrev}" FontSize="12" Foreground="#5a5a5a" />
+                </Grid>
+              </StackPanel>
+            </DockPanel>
+          </Border>
+
+        </Grid>
+      </DockPanel>
+    </Border>
+  </Panel>
+</UserControl>

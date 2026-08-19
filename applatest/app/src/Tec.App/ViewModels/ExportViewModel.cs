@@ -218,7 +218,9 @@ public sealed class ExportViewModel : ViewModelBase
     private string _dest = "local";
     private string _from = "00:00:00";
     private string _to = "00:00:00";
-    private string _signer = "管理员";
+    // 报告签名人默认跟着登录人走（ctor 里取当前会话；框里可以改成别人——
+    // 复核签字的常常不是做实验的那位）
+    private string _signer = "";
     private double _prevHeight = 250;
     private RunRowViewModel? _preview;
     /// <summary>报告用的字体族名。预览与 PDF 用同一份，屏幕和纸上是同一套字形。</summary>
@@ -241,6 +243,14 @@ public sealed class ExportViewModel : ViewModelBase
     public ExportViewModel(Workspace ws)
     {
         _ws = ws;
+        _signer = ws.Operator;
+        // 换了人登录，签名框还空着（或还是上一位）就跟着换成新登录的人；
+        // 操作人自己改过的不动
+        var lastAuto = _signer;
+        ws.UserChanged += (_, _) =>
+        {
+            if (_signer == lastAuto) { Signer = ws.Operator; lastAuto = _signer; }
+        };
 
         // 四种格式都真的写得出来了。PDF 要内嵌中文字体，这台机器上一份都找不到时
         // 它就是按不下去的——那时提示里会写清找过哪些路径，而不是导出一份满页方框的 PDF
