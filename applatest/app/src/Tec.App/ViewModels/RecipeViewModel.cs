@@ -217,6 +217,20 @@ public sealed class StepViewModel : ViewModelBase
         get => _ghosted;
         set => Set(ref _ghosted, value);
     }
+
+    /// <summary>
+    /// 这一步身上有没有 Error 级问题。卡片据此描红边、右上角亮一颗感叹号。
+    /// **标在卡片上而不是只列在清单里**：清单要点开才看得见，
+    /// 而出问题的是画布上这一张——错在哪儿得在原地就能看见。
+    /// </summary>
+    private string? _errorTip;
+    public string? ErrorTip
+    {
+        get => _errorTip;
+        set { if (Set(ref _errorTip, value)) Raise(nameof(HasError)); }
+    }
+
+    public bool HasError => _errorTip is not null;
 }
 
 /// <summary>一条泳道 = 一个通道的配方（原型 .lane）。</summary>
@@ -293,6 +307,21 @@ public sealed class LaneViewModel : ViewModelBase
         set => Set(ref _isCurrent, value);
     }
 
+    /// <summary>
+    /// 这条泳道上的 Error 数。角标钉在泳道右上角——四条泳道并排时，
+    /// 「哪一路不能跑」要在扫一眼的距离上就分得出来，不该等人挨个点开看。
+    /// 提醒（Warning）不上角标：它不挡启动，摆上去只会让四条泳道全挂着红点。
+    /// </summary>
+    private int _errors;
+    public int Errors
+    {
+        get => _errors;
+        set { if (Set(ref _errors, value)) RaiseAll(nameof(HasErrors), nameof(ErrorBadge)); }
+    }
+
+    public bool HasErrors => _errors > 0;
+    public string ErrorBadge => $"{_errors} 错误";
+
     /// <summary>落点在这条泳道的末尾（拖到虚线框上）。</summary>
     private bool _dropAtEnd;
     public bool DropAtEnd
@@ -354,6 +383,10 @@ public sealed class RecipeViewModel : ViewModelBase
         ImportRecipe = new RelayCommand(() => _ = DoImportAsync());
         ExportRecipe = new RelayCommand(() => _ = DoExportAsync());
         PickIssue = new RelayCommand(p => { if (p is IssueRow r) SelectIssue(r); });
+        TogglePanel = new RelayCommand(() => PanelOpen = !PanelOpen);
+        ClosePanel = new RelayCommand(() => PanelOpen = false);
+        ShowAll = new RelayCommand(() => OnlyErrors = false);
+        ShowOnlyErrors = new RelayCommand(() => OnlyErrors = true);
         Undo = new RelayCommand(DoUndo);
         Redo = new RelayCommand(DoRedo);
         ToggleVars = new RelayCommand(() => VarsOpen = !VarsOpen);
@@ -437,17 +470,61 @@ public sealed class RecipeViewModel : ViewModelBase
 
     public bool HasProblems => Problems.Count > 0;
 
-    /// <summary>「2 个错误 · 1 个提醒」。错误一个都不能剩，提醒可以自己判断。</summary>
-    public string ProblemSummary
+    /// <summary>面板里当下显示的那几行（受「仅错误」开关过滤）。</summary>
+    public ObservableCollection<IssueRow> PanelRows { get; } = new();
+
+    public int ErrorCount => Problems.Count(p => p.IsError);
+    public int WarnCount => Problems.Count - ErrorCount;
+    public bool HasErrors => ErrorCount > 0;
+    public bool HasWarns => WarnCount > 0;
+    public string ErrorText => $"{ErrorCount} 错误";
+    public string WarnText => $"{WarnCount} 提醒";
+
+    /// <summary>汇总条右半段：「0:20:00 · 3 步」。跟问题分开，中间一条竖线隔着。</summary>
+    public string ScaleText
     {
         get
         {
-            var err = Problems.Count(p => p.IsError);
-            var warn = Problems.Count - err;
-            if (err > 0 && warn > 0) return $"{err} 个错误 · {warn} 个提醒";
-            return err > 0 ? $"{err} 个错误" : $"{warn} 个提醒";
+            if (NoLanes) return "";
+            var plan = Schedule.Build(Current, Workspace.Catalog);
+            var n = Current.Steps.Count(x => x.CommandId != BuiltinCommands.Finish);
+            return $"{Fmt.Hms(plan.Total)} · {n} 步";
         }
     }
+
+    private bool _panelOpen;
+    /// <summary>校验面板展开着没有。默认收着——没问题的时候它不该占地方。</summary>
+    public bool PanelOpen
+    {
+        get => _panelOpen;
+        set { if (Set(ref _panelOpen, value)) Raise(nameof(PanelArrow)); }
+    }
+
+    public string PanelArrow => _panelOpen ? "▾" : "▴";
+
+    private bool _onlyErrors;
+    /// <summary>面板上的「仅错误」。提醒多起来的时候，先把真挡启动的挑出来看。</summary>
+    public bool OnlyErrors
+    {
+        get => _onlyErrors;
+        set { if (Set(ref _onlyErrors, value)) FillPanel(); }
+    }
+
+    public bool AllTab => !_onlyErrors;
+
+    private void FillPanel()
+    {
+        PanelRows.Clear();
+        foreach (var r in Problems)
+            if (!_onlyErrors || r.IsError) PanelRows.Add(r);
+        // 一条问题都没有了就自己收起来：改完最后一处还挂着一块空面板，
+        // 人会以为它没刷新。这也让下面那句空态话只可能出现在「仅错误」筛下
+        if (Problems.Count == 0) PanelOpen = false;
+        RaiseAll(nameof(AllTab), nameof(PanelEmpty));
+    }
+
+    /// <summary>「仅错误」筛完一条不剩：说一句，别留一块空白让人以为没加载出来。</summary>
+    public bool PanelEmpty => PanelRows.Count == 0;
 
     /// <summary>预计总时长那一句。没有问题时它就是这条配方唯一的"体检结论"。</summary>
     public string TotalNote { get; private set; } = "";
@@ -462,6 +539,10 @@ public sealed class RecipeViewModel : ViewModelBase
     public RelayCommand ImportRecipe { get; }
     public RelayCommand ExportRecipe { get; }
     public RelayCommand PickIssue { get; }
+    public RelayCommand TogglePanel { get; }
+    public RelayCommand ClosePanel { get; }
+    public RelayCommand ShowAll { get; }
+    public RelayCommand ShowOnlyErrors { get; }
 
     /// <summary>导入 / 导出的结果说给操作人听。由外壳接到开始页的状态行上。</summary>
     public Action<string>? Say { get; set; }
@@ -929,7 +1010,7 @@ public sealed class RecipeViewModel : ViewModelBase
     /// <summary>
     /// 别的页改这一路配方的入口：**先记一笔快照，改完再刷新**。
     ///
-    /// 配料表页那颗「应用到加料步骤」改的是配方参数——撤销栈和校验条都在这一页上，
+    /// 配料表页那颗「应用到加料步骤」改的是配方参数——撤销栈和校验面板都在这一页上，
     /// 所以「快照 → 改 → 刷新」整套由这一页包住。
     /// 只在改之前刷新是不够的：实测踩到过，配方页上那条校验还写着改之前的体积。
     /// </summary>
@@ -1021,12 +1102,14 @@ public sealed class RecipeViewModel : ViewModelBase
         catch (Exception ex) { Tell("导出失败：" + ex.Message); }
     }
 
-    /// <summary>点校验条里的一条，跳到出问题的那一步。按 StepId 找，不按下标——
-    /// 校验结果显示在屏上这段时间里人可能已经插了一步，下标就指歪了。</summary>
+    /// <summary>点面板里的一条，跳到出问题的那一步。按 StepId 找，不按下标——
+    /// 校验结果显示在屏上这段时间里人可能已经插了一步，下标就指歪了。
+    /// 不是当前通道的先切过去：面板列的是四条泳道的事，点了哪条就该到哪条。</summary>
     private void SelectIssue(IssueRow row)
     {
         if (row.Issue.StepId is not { } id) return;
-        var lane = Lanes.FirstOrDefault(l => l.Channel == _curCh);
+        CurCh = row.Channel;                            // 已经是当前通道的话，Set 会拦下，不白刷一遍
+        var lane = Lanes.FirstOrDefault(l => l.Channel == row.Channel);
         var hit = lane?.Steps.FirstOrDefault(s => s.Step.StepId == id);
         if (hit is not null) SelectedStep = hit;
     }
@@ -1068,22 +1151,46 @@ public sealed class RecipeViewModel : ViewModelBase
         Issues.Clear();
         Problems.Clear();
         TotalNote = "";
-        // 配料表也一起校：加料步骤的料液名对不上配料表、或者体积跟算出来的不一致，
-        // 都该在这条校验条上说，而不是等人切到配料表页才发现
-        var charge = Workspace.ChannelCharges.TryGetValue(_curCh, out var t) && !t.IsEmpty
-            ? Stoichiometry.Solve(t, Workspace.Compounds.ToList()) : null;
-        foreach (var i in RecipeValidator.Validate(Current, Workspace.Catalog,
-                                                   Workspace.ChannelOf(_curCh), charge: charge))
+        // 四条泳道一起校，不只校当前这条。四通道并排跑的时候，「哪一路不能跑」
+        // 要在切过去之前就知道——按下运行才发现另一路挡着，前面排的队就白排了。
+        // 每一行因此都记着自己是哪条通道的事（面板右侧那枚「机A · CH1」）。
+        var rows = new List<IssueRow>();
+        foreach (var lane in Lanes)
         {
-            Issues.Add(i);
-            // 「预计总时长」不是问题，别混进问题清单吓人
-            if (i.Code == "duration") { TotalNote = i.Message; continue; }
-            if (i.Level == IssueLevel.Info) continue;
-            Problems.Add(new IssueRow(i));
+            if (!Workspace.ChannelRecipes.TryGetValue(lane.Channel, out var recipe)) continue;
+            var cur = lane.Channel == _curCh;
+            // 配料表也一起校：加料步骤的料液名对不上配料表、或者体积跟算出来的不一致，
+            // 都该在这里说，而不是等人切到配料表页才发现
+            var charge = Workspace.ChannelCharges.TryGetValue(lane.Channel, out var t) && !t.IsEmpty
+                ? Stoichiometry.Solve(t, Workspace.Compounds.ToList()) : null;
+            var errs = 0;
+            foreach (var i in RecipeValidator.Validate(recipe, Workspace.Catalog,
+                                                       Workspace.ChannelOf(lane.Channel), charge: charge))
+            {
+                if (cur) Issues.Add(i);
+                // 「预计总时长」不是问题，别混进问题清单吓人
+                if (i.Code == "duration") { if (cur) TotalNote = i.Message; continue; }
+                if (i.Level == IssueLevel.Info) continue;
+                rows.Add(new IssueRow(i, lane.Channel, lane.ChannelLabel));
+                if (i.Level != IssueLevel.Error) continue;
+                errs++;
+                // 红框钉到具体那一步上。按 StepId 找而不是下标：校验结果算出来到
+                // 画到屏上这段时间里人可能已经插了一步，下标就指歪了
+                if (i.StepId is not { } sid) continue;
+                if (lane.Steps.FirstOrDefault(x => x.Step.StepId == sid) is not { } hit) continue;
+                hit.ErrorTip = hit.ErrorTip is null ? i.Message : hit.ErrorTip + "\n" + i.Message;
+            }
+            lane.Errors = errs;
         }
+        // 错误排在提醒前面：挡启动的那些先看。OrderBy 是稳定排序，
+        // 同一级里仍按通道、按步骤的原顺序，不会每次刷新跳来跳去
+        foreach (var r in rows.OrderBy(r => r.IsError ? 0 : 1)) Problems.Add(r);
+        FillPanel();
 
         RaiseAll(nameof(CurName), nameof(ChannelStates), nameof(HasLanes), nameof(NoLanes), nameof(CurLane),
-                 nameof(CanUndo), nameof(CanRedo), nameof(HasProblems), nameof(ProblemSummary),
+                 nameof(CanUndo), nameof(CanRedo), nameof(HasProblems),
+                 nameof(ErrorCount), nameof(WarnCount), nameof(HasErrors), nameof(HasWarns),
+                 nameof(ErrorText), nameof(WarnText), nameof(ScaleText),
                  nameof(TotalNote), nameof(VarsBadge), nameof(HasVarsBadge), nameof(NoVars),
                  // 切通道 / 换配方后连配料表那一段要跟着当前选中走——不 Raise 的话
                  // 上一个通道那条加料步骤的「已连乙醇」会一直挂在右栏（实测踩到）
@@ -1221,7 +1328,7 @@ public sealed class RecipeViewModel : ViewModelBase
                                        // 那些步骤走过一遍，那个温度就是这里的起点
                                        _selectedStep.Entry.StartTemp,
                                        // 手改加料体积 = 脱离配料表跟随（CH-4.2）。
-                                       // 引用还在，校验条会提示手填值与算出值差多少
+                                       // 引用还在，校验面板会提示手填值与算出值差多少
                                        fieldEdited: k =>
                                        {
                                            if (k != ChargeLink.VolumeKey) return;
@@ -1371,14 +1478,21 @@ public sealed record ChannelStateRow(
 }
 
 /// <summary>
-/// 校验条里的一行。校验器一直在跑，结果以前直接扔了——
-/// 「跑到一半才报错」正是它要避免的事，不显示等于白跑。
+/// 校验面板里的一行：一个圆点 + 哪儿不对 + 怎么办 + 是哪条通道的事。
+///
+/// 校验器一直在跑，结果以前直接扔了——「跑到一半才报错」正是它要避免的事，
+/// 不显示等于白跑。
+///
+/// 「怎么办」那句来自 IssueHints（按 Code 查），跟问题本身分开写——
+/// 上面那句一眼扫过，下面那句只有真要动手的人才读。
 /// </summary>
-public sealed record IssueRow(ValidationIssue Issue)
+public sealed record IssueRow(ValidationIssue Issue, int Channel, string ChannelLabel)
 {
     public bool IsError => Issue.Level == IssueLevel.Error;
     public string Text => Issue.Message;
-    public string Dot => IsError ? "#c62828" : "#c98a00";
+    public string Dot => IsError ? "#c62828" : "#dba32c";
+    public string? Hint => IssueHints.Of(Issue.Code);
+    public bool HasHint => Hint is not null;
     /// <summary>能定位到具体某一步的才可点。</summary>
     public bool CanGo => Issue.StepId is not null;
 }

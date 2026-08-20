@@ -65,7 +65,7 @@ public sealed class ChargeApplyResult
 ///
 /// **引用了就跟随**（CH-4.2）：linked 步骤的体积随配料表变（<see cref="Follow"/>，
 /// 走快照与审计，撤销拉得回来）；人手改体积即脱离（<see cref="Detach"/>），
-/// 脱离状态由校验条喊出来。步骤里始终存显式数值——下发执行的那个数
+/// 脱离状态由校验面板喊出来。步骤里始终存显式数值——下发执行的那个数
 /// 必须明晃晃躺在步骤里，绝不做「运行时才去配料表取数」的隐式引用。
 /// </summary>
 public static class ChargeLink
@@ -193,7 +193,7 @@ public static class ChargeLink
 
     /// <summary>
     /// 人手改了加料体积：跟随标志清掉（已脱离计算）。引用还在——
-    /// 校验条会提示手填值与算出值差多少，要恢复跟随再按一次「应用到加料步骤」。
+    /// 校验面板会提示手填值与算出值差多少，要恢复跟随再按一次「应用到加料步骤」。
     /// 返回 false = 本来就没在跟随，什么也没改。
     /// </summary>
     public static bool Detach(Step step)

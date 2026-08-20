@@ -157,35 +157,44 @@
         </StackPanel>
       </Border>
 
-      <!-- 校验条：有问题才出现。校验器一直在跑，以前结果直接扔了 -->
-      <Border DockPanel.Dock="Top" Background="#fdf6f5" BorderBrush="#f0d8d4"
-              BorderThickness="0,0,0,1" Padding="14,7" IsVisible="{Binding HasProblems}">
-        <StackPanel Spacing="4">
-          <StackPanel Orientation="Horizontal" Spacing="8">
-            <TextBlock Text="配方校验" FontSize="11.5" Foreground="#3d3d3d" VerticalAlignment="Center" />
-            <TextBlock Text="{Binding ProblemSummary}" FontSize="11.5" FontWeight="SemiBold"
-                       Foreground="#c62828" VerticalAlignment="Center" />
-            <TextBlock Text="{Binding TotalNote}" FontSize="11" Foreground="#9a9a9a"
+      <!-- ══ 汇总条：钉在画布底边的一条状态行 ══
+           校验条从前摊在画布上头，问题一多就把泳道往下顶，越是有问题越看不见配方。
+           压成底边一条：平常只报「多久 · 几步」，出了事才在左边点上红黄两枚圆点，
+           点开才展开清单。放底下还有一层意思——它跟运行按钮讲的是同一件事
+           （有错误就不给跑），离得近，两句话对得上。 -->
+      <Border DockPanel.Dock="Bottom" Background="White" BorderBrush="#e3e3e3"
+              BorderThickness="0,1,0,0" IsVisible="{Binding HasLanes}">
+        <Button Classes="sumbar" Command="{Binding TogglePanel}" IsEnabled="{Binding HasProblems}">
+          <StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
+            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
+                        IsVisible="{Binding HasErrors}">
+              <Border Width="7" Height="7" CornerRadius="4" Background="#c62828"
+                      VerticalAlignment="Center" />
+              <TextBlock Text="{Binding ErrorText}" FontSize="11.5" FontWeight="SemiBold"
+                         Foreground="#c62828" VerticalAlignment="Center" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
+                        IsVisible="{Binding HasWarns}">
+              <Border Width="7" Height="7" CornerRadius="4" Background="#dba32c"
+                      VerticalAlignment="Center" />
+              <TextBlock Text="{Binding WarnText}" FontSize="11.5" Foreground="#8a6a12"
+                         VerticalAlignment="Center" />
+            </StackPanel>
+            <Border Width="1" Height="12" Background="#d9d9d9" VerticalAlignment="Center"
+                    IsVisible="{Binding HasProblems}" />
+            <!-- 右半段是「这条配方多大」：跟问题无关，所以隔一条竖线。
+                 没问题的时候整条就只剩这一句，仍然有用 -->
+            <TextBlock Text="{Binding ScaleText}" FontSize="11.5" Foreground="#6a6a6a"
                        VerticalAlignment="Center" />
+            <TextBlock Text="{Binding PanelArrow}" FontSize="11" Foreground="#8a8a8a"
+                       VerticalAlignment="Center" IsVisible="{Binding HasProblems}" />
           </StackPanel>
-          <ItemsControl ItemsSource="{Binding Problems}">
-            <ItemsControl.ItemTemplate>
-              <DataTemplate>
-                <Button Classes="issue" Command="{Binding $parent[UserControl].DataContext.PickIssue}"
-                        CommandParameter="{Binding}" IsEnabled="{Binding CanGo}">
-                  <StackPanel Orientation="Horizontal" Spacing="7">
-                    <Border Width="7" Height="7" CornerRadius="4" VerticalAlignment="Center"
-                            Background="{Binding Dot}" />
-                    <TextBlock Text="{Binding Text}" FontSize="11.5" Foreground="#3d3d3d"
-                               TextWrapping="Wrap" />
-                  </StackPanel>
-                </Button>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-        </StackPanel>
+        </Button>
       </Border>
 
+      <!-- 画布 + 浮在画布上的校验面板。面板浮着不占位：它一展开就把泳道挤扁的话，
+           人一边看清单一边找那一步，找的过程里版面又变一次 -->
+      <Panel>
       <!-- 画布行（原型 .canvasrow）：左缘一条「变量」竖栏 + 泳道区。
            原型 Process 视图左缘是三条竖栏（Variables / Startup / Shutdown），
            我们要的只有变量这一件事，就一条。样式照 .vcol：64 宽、#f2f2f2、
@@ -317,6 +326,26 @@
                         Classes.laneDrop="{Binding IsDropLane}"
                         PointerPressed="OnLanePressed" Cursor="Hand">
                   <StackPanel>
+                    <!-- 泳道角标：这一路有几条错误。四条泳道并排的时候，
+                         「哪一路不能跑」要在扫一眼的距离上就分得出来，
+                         不该等人挨条点开看。提醒不上角标——它不挡启动，
+                         摆上去只会让四条泳道全挂着红点，红点就不值钱了。
+                         这 18px 空着也留：有错的那条泳道要是把头往下顶一截，
+                         四条泳道的头就对不齐了 -->
+                    <Panel Height="18">
+                      <Border Background="#fdecea" BorderBrush="#e8b4ae" BorderThickness="1"
+                              CornerRadius="9" Padding="7,1,8,1"
+                              HorizontalAlignment="Right" VerticalAlignment="Center"
+                              IsVisible="{Binding HasErrors}">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                          <TextBlock Text="⚠" FontSize="10" Foreground="#c62828"
+                                     VerticalAlignment="Center" />
+                          <TextBlock Text="{Binding ErrorBadge}" FontSize="10.5"
+                                     FontWeight="SemiBold" Foreground="#c62828"
+                                     VerticalAlignment="Center" />
+                        </StackPanel>
+                      </Border>
+                    </Panel>
                     <!-- 原型 .lane-head：#b5c4d4 一块，两行「标签 + 输入 + 圆钮」 -->
                     <Border Background="#b5c4d4" CornerRadius="2" Padding="8,8,8,10">
                       <StackPanel Spacing="8">
@@ -385,6 +414,7 @@
                               <Border Classes="step" Width="{Binding CardWidth}"
                                       Tag="stepcard"
                                       Classes.stepSel="{Binding IsSelected}"
+                                      Classes.stepErr="{Binding HasError}"
                                       Classes.stepGhost="{Binding Ghosted}"
                                       PointerPressed="OnStepPressed">
                                 <!-- 竖排模块名那一列写死 18：留 Auto 的话，Grid 量它时给的是无限宽，
@@ -422,6 +452,19 @@
                                                MaxLines="4" Margin="0,4,0,0"
                                                Padding="6,0" />
                                   </StackPanel>
+
+                                  <!-- 错误徽记占右空档的上端，垃圾桶在下端，一列两头分开。
+                                       悬停能读到具体哪儿不对——红框只说「这一步有事」，
+                                       是什么事得说得出来，不然人还得回底下那个面板里对 -->
+                                  <Border Grid.Column="3" Grid.Row="0" Width="16" Height="16"
+                                          CornerRadius="8" Background="#c62828"
+                                          VerticalAlignment="Top" HorizontalAlignment="Center"
+                                          Margin="0,6,0,0" IsVisible="{Binding HasError}"
+                                          ToolTip.Tip="{Binding ErrorTip}">
+                                    <TextBlock Text="!" FontSize="11" FontWeight="Bold"
+                                               Foreground="White" HorizontalAlignment="Center"
+                                               VerticalAlignment="Center" />
+                                  </Border>
 
                                   <!-- 垃圾桶占右边那个空档，贴右下角（原型 .step .trash 也在右下） -->
                                   <Button Grid.Column="3" Grid.Row="0" Grid.RowSpan="2"
@@ -479,6 +522,85 @@
         </ScrollViewer>
       </Panel>
       </Grid>
+
+      <!-- ══ 校验面板：从汇总条上方弹出来 ══
+           一条问题两句话：上面说哪儿不对，下面灰的那句说去哪儿改。分成两行是因为
+           读的时机不同——扫一眼的人只读上面那句，真要动手的才读下面那句；
+           摞成一段长文案，两件事都读不快。
+           右边那枚「机A · CH1」标出是哪条通道：面板列的是四条泳道的事，
+           不写清楚就得挨条点进去认。 -->
+      <Border VerticalAlignment="Bottom" HorizontalAlignment="Left" Width="452"
+              Margin="14,0,0,0" IsVisible="{Binding PanelOpen}"
+              Background="White" BorderBrush="#dcdcdc" BorderThickness="1"
+              CornerRadius="4" BoxShadow="0 6 18 0 #26000000">
+        <DockPanel>
+          <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,*,Auto,Auto"
+                Margin="12,10,8,8">
+            <TextBlock Grid.Column="0" Text="配方校验" FontSize="12.5" FontWeight="SemiBold"
+                       Foreground="#2b2b2b" VerticalAlignment="Center" />
+            <!-- 全部 / 仅错误：提醒多起来的时候，先把真挡启动的那几条挑出来 -->
+            <Border Grid.Column="2" CornerRadius="3" BorderBrush="#d5d5d5" BorderThickness="1"
+                    Background="#f4f4f4" Margin="0,0,8,0">
+              <StackPanel Orientation="Horizontal">
+                <Button Classes="segb" Classes.on="{Binding AllTab}" Content="全部"
+                        Command="{Binding ShowAll}" />
+                <Border Width="1" Background="#d5d5d5" />
+                <Button Classes="segb" Classes.on="{Binding OnlyErrors}" Content="仅错误"
+                        Command="{Binding ShowOnlyErrors}" />
+              </StackPanel>
+            </Border>
+            <Button Grid.Column="3" Classes="xbtn"
+                    Command="{Binding ClosePanel}" ToolTip.Tip="收起">
+              <TextBlock Text="✕" FontSize="12" Foreground="#6a6a6a"
+                         HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Button>
+          </Grid>
+
+          <!-- 脚注常在：不是提示，是这个面板的读法说明——两种圆点后果不一样 -->
+          <Border DockPanel.Dock="Bottom" BorderBrush="#ededed" BorderThickness="0,1,0,0"
+                  Padding="12,8">
+            <TextBlock FontSize="11" Foreground="#9a9a9a" LineHeight="17" TextWrapping="Wrap"
+                       Text="存在错误时「运行」不可用；提醒不阻止运行，但结果可能不是你预期的。" />
+          </Border>
+
+          <ScrollViewer MaxHeight="288" VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="0,0,0,4">
+              <TextBlock Text="没有错误，只有提醒。" FontSize="11.5" Foreground="#9a9a9a"
+                         Margin="12,2,12,10" IsVisible="{Binding PanelEmpty}" />
+              <ItemsControl ItemsSource="{Binding PanelRows}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Button Classes="issue" IsEnabled="{Binding CanGo}"
+                            Command="{Binding $parent[UserControl].DataContext.PickIssue}"
+                            CommandParameter="{Binding}">
+                      <!-- 圆点顶对齐第一行，不是整块居中：标题折成两行的时候，
+                           居中的圆点会掉到两行中间，看着不像在标那一条 -->
+                      <Grid ColumnDefinitions="15,*,9,Auto" Margin="12,5,12,5">
+                        <Border Grid.Column="0" Width="7" Height="7" CornerRadius="4"
+                                HorizontalAlignment="Left" VerticalAlignment="Top"
+                                Margin="0,5,0,0" Background="{Binding Dot}" />
+                        <StackPanel Grid.Column="1">
+                          <TextBlock Text="{Binding Text}" FontSize="12" Foreground="#2b2b2b"
+                                     LineHeight="17" TextWrapping="Wrap" />
+                          <TextBlock Text="{Binding Hint}" FontSize="11" Foreground="#8a8a8a"
+                                     LineHeight="16" TextWrapping="Wrap" Margin="0,2,0,0"
+                                     IsVisible="{Binding HasHint}" />
+                        </StackPanel>
+                        <Border Grid.Column="3" CornerRadius="9" Background="#f0f0f0"
+                                Padding="7,2" VerticalAlignment="Top" Margin="0,2,0,0">
+                          <TextBlock Text="{Binding ChannelLabel}" FontSize="10.5"
+                                     Foreground="#6a6a6a" />
+                        </Border>
+                      </Grid>
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </ScrollViewer>
+        </DockPanel>
+      </Border>
+      </Panel>
     </DockPanel>
     </Border>
 
@@ -610,7 +732,7 @@
                             ItemsSource="{Binding ChargeRowNames}"
                             SelectedItem="{Binding ChargeRowPick, Mode=TwoWay}"
                             PlaceholderText="选一行建立引用"
-                            ToolTip.Tip="选中配料表里的一行就建立引用：加料体积改为跟随配料表的计算（改组分名也不断）。手改体积即脱离跟随，校验条会提示差多少" />
+                            ToolTip.Tip="选中配料表里的一行就建立引用：加料体积改为跟随配料表的计算（改组分名也不断）。手改体积即脱离跟随，校验面板会提示差多少" />
                 </Grid>
                 <TextBlock Text="{Binding ChargeLinkNote}" Foreground="{Binding ChargeLinkColorHex}"
                            FontSize="11" TextWrapping="Wrap" />
@@ -769,22 +891,94 @@
       <Setter Property="BorderBrush" Value="#1a7fc4" />
       <Setter Property="BoxShadow" Value="0 0 0 3 #381a7fc4" />
     </Style>
-    <!-- 校验条里的一条：整行可点，跳到出问题的那一步 -->
+    <!-- 校验面板里的一条：整行可点，跳到出问题的那一步 -->
     <Style Selector="Button.issue">
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderThickness" Value="0" />
-      <Setter Property="Padding" Value="0,2" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.issue:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#f4f4f4" />
+    </Style>
+    <!-- 不可点的那些行照常是白的：默认主题给 disabled 按钮铺一块灰底，
+         摆在这儿会变成「一条灰杠」，看着像被禁用的整块面板 -->
+    <Style Selector="Button.issue:disabled">
+      <Setter Property="Cursor" Value="Arrow" />
+      <Setter Property="Opacity" Value="1" />
+    </Style>
+    <Style Selector="Button.issue:disabled /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+
+    <!-- 底边那条汇总条：整条可点，展开 / 收起校验面板 -->
+    <Style Selector="Button.sumbar">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="Padding" Value="14,0" />
+      <Setter Property="Height" Value="30" />
       <Setter Property="MinHeight" Value="0" />
       <Setter Property="HorizontalAlignment" Value="Stretch" />
       <Setter Property="HorizontalContentAlignment" Value="Left" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
-    <Style Selector="Button.issue:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#f7e7e4" />
+    <Style Selector="Button.sumbar:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#f4f4f4" />
     </Style>
-    <Style Selector="Button.issue:disabled">
+    <!-- 没问题的时候整条不可点（没什么可展开的），但那句「多久 · 几步」照读，
+         所以不许它按 disabled 的老规矩把自己整条变淡 -->
+    <Style Selector="Button.sumbar:disabled">
       <Setter Property="Cursor" Value="Arrow" />
       <Setter Property="Opacity" Value="1" />
+    </Style>
+    <Style Selector="Button.sumbar:disabled /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+
+    <!-- 面板头上那对「全部 / 仅错误」：连体两格，选中的那格反白 -->
+    <Style Selector="Button.segb">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="#6a6a6a" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="Padding" Value="10,3" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.segb:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#e8e8e8" />
+    </Style>
+    <!-- 选中那格：字色字重写在 Button 自己身上，不写在 /template/ 的
+         ContentPresenter 上——那条路只改得动背景，字色字重传不下去，
+         结果两格长得一模一样，看不出选的是哪个（实测踩到） -->
+    <Style Selector="Button.segb.on">
+      <Setter Property="Foreground" Value="#1a7fc4" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Button.segb.on /template/ ContentPresenter">
+      <Setter Property="Background" Value="White" />
+    </Style>
+
+    <!-- 面板右上那个收起叉：中性灰底，别蹭步骤卡那套青色 -->
+    <Style Selector="Button.xbtn">
+      <Setter Property="Width" Value="20" />
+      <Setter Property="Height" Value="20" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.xbtn:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#ececec" />
     </Style>
 
     <!-- 圆圈箭头：展开朝上、收起朝下。22px 是原型 .dev .exp 的尺寸 -->
@@ -868,6 +1062,12 @@
     <Style Selector="Border.stepSel">
       <Setter Property="BorderBrush" Value="#1a7fc4" />
       <Setter Property="BoxShadow" Value="0 0 0 3 #381a7fc4" />
+    </Style>
+    <!-- 排在 stepSel 后面是有意的：点了面板里那一条会选中这一步，
+         描边要是跟着变蓝，人刚找到的那张红卡就在点中它的一瞬间不红了。
+         描边归错误，选中改由外面那圈蓝光表示，两件事各占一个记号 -->
+    <Style Selector="Border.stepErr">
+      <Setter Property="BorderBrush" Value="#c62828" />
     </Style>
   </UserControl.Styles>
 </UserControl>

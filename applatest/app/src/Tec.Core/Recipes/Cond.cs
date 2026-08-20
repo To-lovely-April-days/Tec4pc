@@ -35,7 +35,7 @@ public static class Cond
 
     // ── 解析 ─────────────────────────────────────────────────────────
 
-    /// <summary>解析失败返回 null，原因放在 error 里（给校验条直接显示）。</summary>
+    /// <summary>解析失败返回 null，原因放在 error 里（给校验面板直接显示）。</summary>
     public static Node? Parse(string? text, out string? error)
     {
         error = null;
