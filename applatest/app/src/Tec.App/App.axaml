@@ -48,6 +48,111 @@
   <Application.Styles>
     <FluentTheme />
 
+    <!--
+      ══ 滚动条：全程序一套 ══
+
+      照原型那段 CSS 写死：槽 14px #f0f0f0，滑块 #cdcdcd 四周内缩 3px（露出来 8px 宽）、
+      圆头，悬停 #a6a6a6、按下再深一档。
+
+      **Fluent 自带那套伸缩滚动条不要。**它平时是一条几像素的细线，指针一碰
+      就整条变粗、上下还长出两个箭头按钮——同一条滚动条两副样子，
+      而且宽度一变旁边的内容跟着重排一次。设备库那一列尤其明显：
+      滑块从细线变成粗条的那一下，整栏图标横着跳一格。
+
+      自动隐藏也一并关掉（AllowAutoHide=False）：滚动条是「这里还有东西没看见」
+      的唯一提示，让它自己淡掉，等于把这句话藏起来——列表长不长要靠试着滚一下才知道。
+      代价是它一直占着 14px 宽，这正是原型里那条滚动条的做法。
+
+      模板自己写而不是改 Fluent 的：那套模板的粗细分散在 :expanded / :pointerover
+      好几个状态里，逐个压平比重写一份还长，而且下次升级 Avalonia 又得重找一遍。
+      部件名（PART_Track / PART_PageUpButton / PART_PageDownButton）照 Avalonia
+      的约定给，翻页点击照常走。
+    -->
+    <Style Selector="ScrollViewer">
+      <Setter Property="ScrollViewer.AllowAutoHide" Value="False" />
+    </Style>
+
+    <Style Selector="ScrollBar">
+      <Setter Property="Background" Value="#f0f0f0" />
+      <Setter Property="Cursor" Value="Arrow" />
+    </Style>
+
+    <Style Selector="ScrollBar:vertical">
+      <Setter Property="Width" Value="14" />
+      <Setter Property="MinWidth" Value="14" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Background="{TemplateBinding Background}">
+            <Track Name="PART_Track" Orientation="Vertical" IsDirectionReversed="True"
+                   Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}"
+                   Value="{TemplateBinding Value, Mode=TwoWay}"
+                   ViewportSize="{TemplateBinding ViewportSize}">
+              <Track.DecreaseButton>
+                <RepeatButton Name="PART_PageUpButton" Classes="sbpage" />
+              </Track.DecreaseButton>
+              <Track.IncreaseButton>
+                <RepeatButton Name="PART_PageDownButton" Classes="sbpage" />
+              </Track.IncreaseButton>
+              <!-- 内容再长滑块也不小于这么高：短到只剩几像素就抓不住了 -->
+              <Thumb Classes="sbthumb" MinHeight="28" />
+            </Track>
+          </Border>
+        </ControlTemplate>
+      </Setter>
+    </Style>
+
+    <Style Selector="ScrollBar:horizontal">
+      <Setter Property="Height" Value="14" />
+      <Setter Property="MinHeight" Value="14" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Background="{TemplateBinding Background}">
+            <Track Name="PART_Track" Orientation="Horizontal"
+                   Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}"
+                   Value="{TemplateBinding Value, Mode=TwoWay}"
+                   ViewportSize="{TemplateBinding ViewportSize}">
+              <Track.DecreaseButton>
+                <RepeatButton Name="PART_PageUpButton" Classes="sbpage" />
+              </Track.DecreaseButton>
+              <Track.IncreaseButton>
+                <RepeatButton Name="PART_PageDownButton" Classes="sbpage" />
+              </Track.IncreaseButton>
+              <Thumb Classes="sbthumb" MinWidth="28" />
+            </Track>
+          </Border>
+        </ControlTemplate>
+      </Setter>
+    </Style>
+
+    <!-- 滑块。内缩 3px 靠模板里这圈 Margin，槽的底色从后面透出来当边距 -->
+    <Style Selector="Thumb.sbthumb">
+      <Setter Property="Background" Value="#cdcdcd" />
+      <Setter Property="Cursor" Value="Arrow" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Background="{TemplateBinding Background}" CornerRadius="4" Margin="3" />
+        </ControlTemplate>
+      </Setter>
+    </Style>
+    <Style Selector="Thumb.sbthumb:pointerover">
+      <Setter Property="Background" Value="#a6a6a6" />
+    </Style>
+    <Style Selector="Thumb.sbthumb:pressed">
+      <Setter Property="Background" Value="#8f8f8f" />
+    </Style>
+
+    <!-- 滑块两侧的空槽：点一下翻一页。透明但要能收指针，所以底色写 Transparent -->
+    <Style Selector="RepeatButton.sbpage">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Cursor" Value="Arrow" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Background="{TemplateBinding Background}" />
+        </ControlTemplate>
+      </Setter>
+    </Style>
+
     <!-- 主菜单项：25px 细体，悬停 #0a84c8，选中 #1a91d6 -->
     <Style Selector="Button.menu">
       <Setter Property="Background" Value="Transparent" />
