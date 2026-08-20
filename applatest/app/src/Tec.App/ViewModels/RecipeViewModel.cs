@@ -103,8 +103,12 @@ public sealed class StepViewModel : ViewModelBase
     /// <summary>每一层画一条竖线。0 层就是空表，版面跟原来一样。</summary>
     public IReadOnlyList<int> Spines => Enumerable.Range(0, Depth).ToList();
 
-    /// <summary>卡片宽度让出缩进，泳道整体还是 200（原型 .step 宽），各条泳道对得齐。</summary>
-    public double CardWidth => 200 - Depth * 14;
+    /// <summary>
+    /// 卡片宽度让出缩进，泳道整体还是 246（原型 .col 宽），各条泳道对得齐。
+    /// 从 200 加到 246 是跟着卡片里的字一起放大的：字号 10.5 → 12.5 之后，
+    /// 200 宽装不下「预计开始 00:17:35 · 耗时 0:17:30」那一行，会截成「00:...」。
+    /// </summary>
+    public double CardWidth => 246 - Depth * 14;
 
     /// <summary>
     /// 卡片正文那一列的宽度：卡宽 − 2px 描边两条 − 左边（6px 色条 + 18px 竖排名）
@@ -219,18 +223,29 @@ public sealed class StepViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// 这一步身上有没有 Error 级问题。卡片据此描红边、右上角亮一颗感叹号。
+    /// 这一步身上挂着的问题。卡片据此在右上角亮一颗感叹号，Error 还要描红边。
     /// **标在卡片上而不是只列在清单里**：清单要点开才看得见，
     /// 而出问题的是画布上这一张——错在哪儿得在原地就能看见。
     /// </summary>
-    private string? _errorTip;
-    public string? ErrorTip
+    private string? _issueTip;
+    private bool _issueIsError;
+
+    public string? IssueTip
     {
-        get => _errorTip;
-        set { if (Set(ref _errorTip, value)) Raise(nameof(HasError)); }
+        get => _issueTip;
+        set { if (Set(ref _issueTip, value)) RaiseAll(nameof(HasIssue), nameof(IssueWarn), nameof(HasStepError)); }
     }
 
-    public bool HasError => _errorTip is not null;
+    /// <summary>挂着的问题里有 Error。只有提醒的那些不描红边——它不挡启动。</summary>
+    public bool IssueIsError
+    {
+        get => _issueIsError;
+        set { if (Set(ref _issueIsError, value)) RaiseAll(nameof(IssueWarn), nameof(HasStepError)); }
+    }
+
+    public bool HasIssue => _issueTip is not null;
+    public bool IssueWarn => HasIssue && !_issueIsError;
+    public bool HasStepError => HasIssue && _issueIsError;
 }
 
 /// <summary>一条泳道 = 一个通道的配方（原型 .lane）。</summary>
@@ -308,19 +323,44 @@ public sealed class LaneViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// 这条泳道上的 Error 数。角标钉在泳道右上角——四条泳道并排时，
+    /// 这条泳道上的问题数。角标钉在泳道头右上角、探出去一半——四条泳道并排时，
     /// 「哪一路不能跑」要在扫一眼的距离上就分得出来，不该等人挨个点开看。
-    /// 提醒（Warning）不上角标：它不挡启动，摆上去只会让四条泳道全挂着红点。
+    ///
+    /// 有错误就报错误、只有提醒才报提醒（转琥珀）：两件事的后果不一样，
+    /// 一枚角标只说一件——把「1 错误 1 提醒」并排塞进角标，最要紧的那半句会被稀释。
     /// </summary>
     private int _errors;
+    private int _warns;
+    private string _badgeTip = "";
+
     public int Errors
     {
         get => _errors;
-        set { if (Set(ref _errors, value)) RaiseAll(nameof(HasErrors), nameof(ErrorBadge)); }
+        set { if (Set(ref _errors, value)) RaiseBadge(); }
     }
 
+    public int Warns
+    {
+        get => _warns;
+        set { if (Set(ref _warns, value)) RaiseBadge(); }
+    }
+
+    /// <summary>角标的悬停文本：这条泳道上那几条问题挨行列出来。</summary>
+    public string BadgeTip
+    {
+        get => _badgeTip;
+        set => Set(ref _badgeTip, value);
+    }
+
+    private void RaiseBadge() =>
+        RaiseAll(nameof(HasErrors), nameof(HasBadge), nameof(BadgeWarn), nameof(BadgeText));
+
+    /// <summary>泳道头描红只看错误——提醒不挡启动，不该把整条泳道标成「坏的」。</summary>
     public bool HasErrors => _errors > 0;
-    public string ErrorBadge => $"{_errors} 错误";
+
+    public bool HasBadge => _errors > 0 || _warns > 0;
+    public bool BadgeWarn => _errors == 0 && _warns > 0;
+    public string BadgeText => _errors > 0 ? $"{_errors} 错误" : $"{_warns} 提醒";
 
     /// <summary>落点在这条泳道的末尾（拖到虚线框上）。</summary>
     private bool _dropAtEnd;
@@ -385,6 +425,9 @@ public sealed class RecipeViewModel : ViewModelBase
         PickIssue = new RelayCommand(p => { if (p is IssueRow r) SelectIssue(r); });
         TogglePanel = new RelayCommand(() => PanelOpen = !PanelOpen);
         ClosePanel = new RelayCommand(() => PanelOpen = false);
+        // 泳道角标 / 步骤徽记点了就展开面板：角标只说「这儿有 N 条」，
+        // 是哪 N 条得有地方读；两处指向同一块内容，不另开一套弹窗
+        OpenPanel = new RelayCommand(() => { if (HasProblems) PanelOpen = true; });
         ShowAll = new RelayCommand(() => OnlyErrors = false);
         ShowOnlyErrors = new RelayCommand(() => OnlyErrors = true);
         Undo = new RelayCommand(DoUndo);
@@ -500,7 +543,7 @@ public sealed class RecipeViewModel : ViewModelBase
         set { if (Set(ref _panelOpen, value)) Raise(nameof(PanelArrow)); }
     }
 
-    public string PanelArrow => _panelOpen ? "▾" : "▴";
+    public string PanelArrow => _panelOpen ? "▲" : "▼";
 
     private bool _onlyErrors;
     /// <summary>面板上的「仅错误」。提醒多起来的时候，先把真挡启动的挑出来看。</summary>
@@ -512,6 +555,15 @@ public sealed class RecipeViewModel : ViewModelBase
 
     public bool AllTab => !_onlyErrors;
 
+    /// <summary>
+    /// 一条问题都没有。chip 这时亮一枚绿灯说「校验通过」——
+    /// 「没报错」和「没校验」不是一回事，chip 空着说不清是哪一种。
+    /// </summary>
+    public bool PanelEmptyAll => Problems.Count == 0;
+
+    /// <summary>空态那句话得说清是哪种空：全都没有，还是筛掉提醒之后没有。</summary>
+    public string PanelEmptyText => _onlyErrors ? "没有错误" : "没有问题";
+
     private void FillPanel()
     {
         PanelRows.Clear();
@@ -520,7 +572,8 @@ public sealed class RecipeViewModel : ViewModelBase
         // 一条问题都没有了就自己收起来：改完最后一处还挂着一块空面板，
         // 人会以为它没刷新。这也让下面那句空态话只可能出现在「仅错误」筛下
         if (Problems.Count == 0) PanelOpen = false;
-        RaiseAll(nameof(AllTab), nameof(PanelEmpty));
+        RaiseAll(nameof(AllTab), nameof(OnlyErrors), nameof(PanelEmpty),
+                 nameof(PanelEmptyAll), nameof(PanelEmptyText));
     }
 
     /// <summary>「仅错误」筛完一条不剩：说一句，别留一块空白让人以为没加载出来。</summary>
@@ -541,6 +594,7 @@ public sealed class RecipeViewModel : ViewModelBase
     public RelayCommand PickIssue { get; }
     public RelayCommand TogglePanel { get; }
     public RelayCommand ClosePanel { get; }
+    public RelayCommand OpenPanel { get; }
     public RelayCommand ShowAll { get; }
     public RelayCommand ShowOnlyErrors { get; }
 
@@ -1164,6 +1218,8 @@ public sealed class RecipeViewModel : ViewModelBase
             var charge = Workspace.ChannelCharges.TryGetValue(lane.Channel, out var t) && !t.IsEmpty
                 ? Stoichiometry.Solve(t, Workspace.Compounds.ToList()) : null;
             var errs = 0;
+            var warns = 0;
+            var tip = new List<string>();
             foreach (var i in RecipeValidator.Validate(recipe, Workspace.Catalog,
                                                        Workspace.ChannelOf(lane.Channel), charge: charge))
             {
@@ -1171,16 +1227,20 @@ public sealed class RecipeViewModel : ViewModelBase
                 // 「预计总时长」不是问题，别混进问题清单吓人
                 if (i.Code == "duration") { if (cur) TotalNote = i.Message; continue; }
                 if (i.Level == IssueLevel.Info) continue;
+                var err = i.Level == IssueLevel.Error;
                 rows.Add(new IssueRow(i, lane.Channel, lane.ChannelLabel));
-                if (i.Level != IssueLevel.Error) continue;
-                errs++;
-                // 红框钉到具体那一步上。按 StepId 找而不是下标：校验结果算出来到
+                if (err) errs++; else warns++;
+                tip.Add(i.Message);
+                // 徽记钉到具体那一步上。按 StepId 找而不是下标：校验结果算出来到
                 // 画到屏上这段时间里人可能已经插了一步，下标就指歪了
                 if (i.StepId is not { } sid) continue;
                 if (lane.Steps.FirstOrDefault(x => x.Step.StepId == sid) is not { } hit) continue;
-                hit.ErrorTip = hit.ErrorTip is null ? i.Message : hit.ErrorTip + "\n" + i.Message;
+                hit.IssueTip = hit.IssueTip is null ? i.Message : hit.IssueTip + "\n" + i.Message;
+                if (err) hit.IssueIsError = true;
             }
             lane.Errors = errs;
+            lane.Warns = warns;
+            lane.BadgeTip = string.Join("\n", tip);
         }
         // 错误排在提醒前面：挡启动的那些先看。OrderBy 是稳定排序，
         // 同一级里仍按通道、按步骤的原顺序，不会每次刷新跳来跳去
@@ -1190,7 +1250,7 @@ public sealed class RecipeViewModel : ViewModelBase
         RaiseAll(nameof(CurName), nameof(ChannelStates), nameof(HasLanes), nameof(NoLanes), nameof(CurLane),
                  nameof(CanUndo), nameof(CanRedo), nameof(HasProblems),
                  nameof(ErrorCount), nameof(WarnCount), nameof(HasErrors), nameof(HasWarns),
-                 nameof(ErrorText), nameof(WarnText), nameof(ScaleText),
+                 nameof(ErrorText), nameof(WarnText), nameof(ScaleText), nameof(PanelEmptyAll),
                  nameof(TotalNote), nameof(VarsBadge), nameof(HasVarsBadge), nameof(NoVars),
                  // 切通道 / 换配方后连配料表那一段要跟着当前选中走——不 Raise 的话
                  // 上一个通道那条加料步骤的「已连乙醇」会一直挂在右栏（实测踩到）

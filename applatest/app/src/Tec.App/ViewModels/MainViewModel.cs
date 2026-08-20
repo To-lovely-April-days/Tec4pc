@@ -218,7 +218,7 @@ public sealed class MainViewModel : ViewModelBase
             // 配料表算的是「库里的物性 × 配方里的加料」，两边都可能在别的页上改过，
             // 切过来的时候重算一遍，别让人看着一张过时的表
             if (value == TabCharge) Charge.Reload();
-            // 配方页那条汇总条现在也看配料表。配料表在另一页上改，
+            // 配方页那枚校验 chip 现在也看配料表。配料表在另一页上改，
             // 切回来不重算的话，条上写的还是改之前那一版
             if (value == TabRecipe) Recipe.RefreshAll();
             RaiseAll(nameof(IsStart), nameof(IsBench), nameof(IsRecipe), nameof(IsLib),

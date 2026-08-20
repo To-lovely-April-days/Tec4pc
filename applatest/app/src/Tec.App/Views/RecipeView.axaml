@@ -135,61 +135,68 @@
         </StackPanel>
       </Border>
 
-      <!-- copybar：原型没有这条，是我们自己的功能。压成白底一条细的，
-           让 #ededed 那条工具条仍然是画面上唯一的灰带 -->
-      <Border DockPanel.Dock="Top" Background="White" BorderBrush="#e3e3e3"
+      <!-- copybar（原型 .bar2）：左边一键复制，右端一枚校验 chip。
+           #f5f5f5 比工具条那条 #ededed 浅一档——两条灰带分得出层次，
+           chip 的 hover / 展开态才有白底可反白（白条上反白等于没反应）。
+
+           校验并进这一行、不另立一条：它不是一块常驻内容，是一枚状态灯。
+           从前那条校验条摊在画布上头，问题一多就把泳道往下顶，
+           越是有问题越看不见配方——正好跟它的目的相反 -->
+      <Border DockPanel.Dock="Top" Background="#f5f5f5" BorderBrush="#e3e3e3"
               IsVisible="{Binding HasLanes}"
               BorderThickness="0,0,0,1" Padding="14,8">
-        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-          <ctl:TecIcon Key="ui-copybar" />
-          <TextBlock Classes="lbl">
-            <Run Text="把 " /><Run Text="{Binding CurName}" FontWeight="SemiBold" /><Run Text=" 的配方复制到" />
-          </TextBlock>
-          <ComboBox Classes="sel" Width="130" ItemsSource="{Binding CopyTargets}"
-                    SelectedItem="{Binding CopyTarget, Mode=TwoWay}">
-            <ComboBox.ItemTemplate>
-              <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
-            </ComboBox.ItemTemplate>
-          </ComboBox>
-          <Button Classes="btn primary" Content="一键复制" Command="{Binding CopyRecipe}" />
-          <TextBlock Text="各通道配方可独立编辑，互不影响" FontSize="12" Foreground="#9a9a9a"
-                     VerticalAlignment="Center" />
-        </StackPanel>
-      </Border>
+        <Grid ColumnDefinitions="Auto,*,Auto">
+          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <ctl:TecIcon Key="ui-copybar" />
+            <TextBlock Classes="lbl">
+              <Run Text="把 " /><Run Text="{Binding CurName}" FontWeight="SemiBold" /><Run Text=" 的配方复制到" />
+            </TextBlock>
+            <ComboBox Classes="sel" Width="130" ItemsSource="{Binding CopyTargets}"
+                      SelectedItem="{Binding CopyTarget, Mode=TwoWay}">
+              <ComboBox.ItemTemplate>
+                <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+            <Button Classes="btn primary" Content="一键复制" Command="{Binding CopyRecipe}" />
+            <TextBlock Text="各通道配方可独立编辑，互不影响" FontSize="12" Foreground="#8d8d8d"
+                       VerticalAlignment="Center" />
+          </StackPanel>
 
-      <!-- ══ 汇总条：钉在画布底边的一条状态行 ══
-           校验条从前摊在画布上头，问题一多就把泳道往下顶，越是有问题越看不见配方。
-           压成底边一条：平常只报「多久 · 几步」，出了事才在左边点上红黄两枚圆点，
-           点开才展开清单。放底下还有一层意思——它跟运行按钮讲的是同一件事
-           （有错误就不给跑），离得近，两句话对得上。 -->
-      <Border DockPanel.Dock="Bottom" Background="White" BorderBrush="#e3e3e3"
-              BorderThickness="0,1,0,0" IsVisible="{Binding HasLanes}">
-        <Button Classes="sumbar" Command="{Binding TogglePanel}" IsEnabled="{Binding HasProblems}">
-          <StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
-            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                        IsVisible="{Binding HasErrors}">
-              <Border Width="7" Height="7" CornerRadius="4" Background="#c62828"
-                      VerticalAlignment="Center" />
-              <TextBlock Text="{Binding ErrorText}" FontSize="11.5" FontWeight="SemiBold"
-                         Foreground="#c62828" VerticalAlignment="Center" />
-            </StackPanel>
-            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                        IsVisible="{Binding HasWarns}">
-              <Border Width="7" Height="7" CornerRadius="4" Background="#dba32c"
-                      VerticalAlignment="Center" />
-              <TextBlock Text="{Binding WarnText}" FontSize="11.5" Foreground="#8a6a12"
+          <!-- 校验 chip（原型 .vchip）：没问题时是一枚绿灯，也照常摆着——
+               「没报错」和「没校验」不是一回事，空着说不清是哪种 -->
+          <Button Grid.Column="2" Classes="vchip" Classes.open="{Binding PanelOpen}"
+                  Command="{Binding TogglePanel}" IsEnabled="{Binding HasProblems}">
+            <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
+              <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center"
+                          IsVisible="{Binding PanelEmptyAll}">
+                <Border Width="8" Height="8" CornerRadius="4" Background="#3fbf5f"
+                        VerticalAlignment="Center" />
+                <TextBlock Text="校验通过" FontSize="12.5" Foreground="#2f8f49"
+                           VerticalAlignment="Center" />
+              </StackPanel>
+              <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center"
+                          IsVisible="{Binding HasErrors}">
+                <Border Width="8" Height="8" CornerRadius="4" Background="#e02020"
+                        VerticalAlignment="Center" />
+                <TextBlock Text="{Binding ErrorText}" FontSize="12.5" Foreground="#c0392b"
+                           VerticalAlignment="Center" />
+              </StackPanel>
+              <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center"
+                          IsVisible="{Binding HasWarns}">
+                <Border Width="8" Height="8" CornerRadius="4" Background="#e8a33d"
+                        VerticalAlignment="Center" />
+                <TextBlock Text="{Binding WarnText}" FontSize="12.5" Foreground="#a8781f"
+                           VerticalAlignment="Center" />
+              </StackPanel>
+              <!-- 「多久 · 几步」跟问题无关，隔一条竖线自己占一段 -->
+              <Border Width="1" Height="14" Background="#dcdcdc" VerticalAlignment="Center" />
+              <TextBlock Text="{Binding ScaleText}" FontSize="12" Foreground="#8d8d8d"
+                         VerticalAlignment="Center" />
+              <TextBlock Text="{Binding PanelArrow}" FontSize="9" Foreground="#8d8d8d"
                          VerticalAlignment="Center" />
             </StackPanel>
-            <Border Width="1" Height="12" Background="#d9d9d9" VerticalAlignment="Center"
-                    IsVisible="{Binding HasProblems}" />
-            <!-- 右半段是「这条配方多大」：跟问题无关，所以隔一条竖线。
-                 没问题的时候整条就只剩这一句，仍然有用 -->
-            <TextBlock Text="{Binding ScaleText}" FontSize="11.5" Foreground="#6a6a6a"
-                       VerticalAlignment="Center" />
-            <TextBlock Text="{Binding PanelArrow}" FontSize="11" Foreground="#8a8a8a"
-                       VerticalAlignment="Center" IsVisible="{Binding HasProblems}" />
-          </StackPanel>
-        </Button>
+          </Button>
+        </Grid>
       </Border>
 
       <!-- 画布 + 浮在画布上的校验面板。面板浮着不占位：它一展开就把泳道挤扁的话，
@@ -316,38 +323,28 @@
             </ItemsControl.ItemsPanel>
             <ItemsControl.ItemTemplate>
               <DataTemplate>
-                <!-- 原型 .lane 是 200 宽。外面这圈 padding 留给「当前通道」的选中环 -->
+                <!-- 原型 .col 是 246 宽（卡片里的字放大到 12.5 之后，200 装不下排期那一行）。
+                     外面这圈 padding 留给「当前通道」的选中环 -->
                 <!-- 顶对齐（原型 .lanes{align-items:flex-start}）：不这么写的话
                      泳道会被拉到画布满高，选中环就变成一个从头拖到底的长框 -->
-                <Border Width="212" Padding="5" CornerRadius="4" BorderThickness="1.6"
+                <Border Width="258" Padding="5" CornerRadius="4" BorderThickness="1.6"
                         Tag="lane" VerticalAlignment="Top"
                         BorderBrush="Transparent" Background="Transparent"
                         Classes.laneSel="{Binding IsCurrent}"
                         Classes.laneDrop="{Binding IsDropLane}"
                         PointerPressed="OnLanePressed" Cursor="Hand">
                   <StackPanel>
-                    <!-- 泳道角标：这一路有几条错误。四条泳道并排的时候，
-                         「哪一路不能跑」要在扫一眼的距离上就分得出来，
-                         不该等人挨条点开看。提醒不上角标——它不挡启动，
-                         摆上去只会让四条泳道全挂着红点，红点就不值钱了。
-                         这 18px 空着也留：有错的那条泳道要是把头往下顶一截，
-                         四条泳道的头就对不齐了 -->
-                    <Panel Height="18">
-                      <Border Background="#fdecea" BorderBrush="#e8b4ae" BorderThickness="1"
-                              CornerRadius="9" Padding="7,1,8,1"
-                              HorizontalAlignment="Right" VerticalAlignment="Center"
-                              IsVisible="{Binding HasErrors}">
-                        <StackPanel Orientation="Horizontal" Spacing="4">
-                          <TextBlock Text="⚠" FontSize="10" Foreground="#c62828"
-                                     VerticalAlignment="Center" />
-                          <TextBlock Text="{Binding ErrorBadge}" FontSize="10.5"
-                                     FontWeight="SemiBold" Foreground="#c62828"
-                                     VerticalAlignment="Center" />
-                        </StackPanel>
-                      </Border>
-                    </Panel>
-                    <!-- 原型 .lane-head：#b5c4d4 一块，两行「标签 + 输入 + 圆钮」 -->
-                    <Border Background="#b5c4d4" CornerRadius="2" Padding="8,8,8,10">
+                    <!-- 原型 .lane-head：#b5c4d4 一块，两行「标签 + 输入 + 圆钮」。
+                         有错的时候描一圈红（原型是把整块染成 #fbeeee，我们这块是
+                         蓝灰的实心底，染红只会脏，而且要跟蓝色选中环抢眼睛）。
+                         角标钉在这块的右上角、探出去一半（原型 .cbadge top/right -8） -->
+                    <Panel>
+                    <!-- 描边常在、平时不着色（BorderBrush 不写死成 Transparent：
+                         内联值压得过样式，那样 laneHeadErr 永远上不了色，实测踩到）。
+                         粗细恒为 1.4，出不出错都不改版 -->
+                    <Border Background="#b5c4d4" CornerRadius="2" Padding="8,8,8,10"
+                            BorderThickness="1.4"
+                            Classes.laneHeadErr="{Binding HasErrors}">
                       <StackPanel Spacing="8">
                         <Grid ColumnDefinitions="38,*,26">
                           <TextBlock Grid.Column="0" Text="名称" FontSize="12.5"
@@ -372,6 +369,24 @@
                       </StackPanel>
                     </Border>
 
+                    <!-- 角标（原型 .cbadge）：实心胶囊，探出泳道头右上角。
+                         四条泳道并排的时候，「哪一路不能跑」要在扫一眼的距离上
+                         就分得出来，不该等人挨条点开看。点它展开校验面板。
+                         只有提醒没有错误时转琥珀——两种后果不一样，颜色得跟着分 -->
+                    <Button Classes="cbadge" Classes.warn="{Binding BadgeWarn}"
+                            HorizontalAlignment="Right" VerticalAlignment="Top"
+                            Margin="0,-8,-8,0" IsVisible="{Binding HasBadge}"
+                            ToolTip.Tip="{Binding BadgeTip}"
+                            Command="{Binding $parent[UserControl].DataContext.OpenPanel}">
+                      <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                        <TextBlock Text="⚠" FontSize="10.5" Foreground="White"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding BadgeText}" FontSize="11" Foreground="White"
+                                   VerticalAlignment="Center" />
+                      </StackPanel>
+                    </Button>
+                    </Panel>
+
                     <!-- 原型 .lane-body：步骤卡竖着排，卡之间一截 14px 的细线 -->
                     <StackPanel HorizontalAlignment="Center" Margin="0,10,0,0">
                       <ItemsControl ItemsSource="{Binding Steps}">
@@ -382,13 +397,13 @@
                               <Panel Height="14">
                                 <Border Width="1" Height="14" Background="#7a7a7a"
                                         HorizontalAlignment="Center" />
-                                <Border Width="200" Height="4" CornerRadius="2" Background="#1a7fc4"
+                                <Border Width="246" Height="4" CornerRadius="2" Background="#1a7fc4"
                                         VerticalAlignment="Center"
                                         IsVisible="{Binding DropBefore}" />
                               </Panel>
                               <!-- 循环体缩进：每套一层让出 14px，并在让出的位置画一条竖线。
-                                   泳道整体仍是 200 宽，各条泳道对得齐 -->
-                              <StackPanel Orientation="Horizontal" Width="200">
+                                   泳道整体仍是 246 宽，各条泳道对得齐 -->
+                              <StackPanel Orientation="Horizontal" Width="246">
                               <ItemsControl ItemsSource="{Binding Spines}">
                                 <ItemsControl.ItemsPanel>
                                   <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
@@ -402,7 +417,7 @@
                                 </ItemsControl.ItemTemplate>
                               </ItemsControl>
 
-                              <!-- 原型 .step：200×118 的青块，左边 11px 模块色条 +
+                              <!-- 原型 .step：246 宽的青块，左边 11px 模块色条 +
                                    竖排模块名，中间图标 + 整句描述，底下一行排期，
                                    垃圾桶在右上（原型是右侧那一列图标的位置）。
 
@@ -414,7 +429,7 @@
                               <Border Classes="step" Width="{Binding CardWidth}"
                                       Tag="stepcard"
                                       Classes.stepSel="{Binding IsSelected}"
-                                      Classes.stepErr="{Binding HasError}"
+                                      Classes.stepErr="{Binding HasStepError}"
                                       Classes.stepGhost="{Binding Ghosted}"
                                       PointerPressed="OnStepPressed">
                                 <!-- 竖排模块名那一列写死 18：留 Auto 的话，Grid 量它时给的是无限宽，
@@ -445,22 +460,24 @@
                                          最后一个字的墨迹会比排版算出来的行宽多出一两个像素，
                                          正好被盒子边缘切掉（"加入" 剩一撇）。留出这点余量，
                                          多出来的墨迹有地方去 -->
-                                    <TextBlock Text="{Binding Desc}" FontSize="10.5"
+                                    <TextBlock Text="{Binding Desc}" FontSize="12.5"
                                                Width="{Binding LabelWidth}"
-                                               Foreground="#1f1f1f" LineHeight="14"
+                                               Foreground="#1b3f4d" LineHeight="19"
                                                TextAlignment="Center" TextWrapping="Wrap"
-                                               MaxLines="4" Margin="0,4,0,0"
+                                               MaxLines="4" Margin="0,5,0,0"
                                                Padding="6,0" />
                                   </StackPanel>
 
-                                  <!-- 错误徽记占右空档的上端，垃圾桶在下端，一列两头分开。
-                                       悬停能读到具体哪儿不对——红框只说「这一步有事」，
-                                       是什么事得说得出来，不然人还得回底下那个面板里对 -->
-                                  <Border Grid.Column="3" Grid.Row="0" Width="16" Height="16"
-                                          CornerRadius="8" Background="#c62828"
+                                  <!-- 徽记（原型 .sbadge）占右空档的上端，垃圾桶在下端，
+                                       一列两头分开。悬停能读到具体哪儿不对——红框只说
+                                       「这一步有事」，是什么事得说得出来，
+                                       不然人还得回面板里对 -->
+                                  <Border Grid.Column="3" Grid.Row="0" Width="17" Height="17"
+                                          CornerRadius="9" Classes="sbadge"
+                                          Classes.warn="{Binding IssueWarn}"
                                           VerticalAlignment="Top" HorizontalAlignment="Center"
-                                          Margin="0,6,0,0" IsVisible="{Binding HasError}"
-                                          ToolTip.Tip="{Binding ErrorTip}">
+                                          Margin="0,6,0,0" IsVisible="{Binding HasIssue}"
+                                          ToolTip.Tip="{Binding IssueTip}">
                                     <TextBlock Text="!" FontSize="11" FontWeight="Bold"
                                                Foreground="White" HorizontalAlignment="Center"
                                                VerticalAlignment="Center" />
@@ -479,13 +496,13 @@
                                   <!-- 排期这一行借一点右空档（138 宽塞不下两段），
                                        但要在垃圾桶左边收住，不然「耗时」会被桶盖住 -->
                                   <Grid Grid.Row="1" Grid.Column="2" Grid.ColumnSpan="2"
-                                        ColumnDefinitions="*,Auto" Margin="0,4,26,5">
-                                    <TextBlock Grid.Column="0" FontSize="9" Foreground="#17454f"
+                                        ColumnDefinitions="*,Auto" Margin="0,6,26,5">
+                                    <TextBlock Grid.Column="0" FontSize="11" Foreground="#3d6b7d"
                                                VerticalAlignment="Center"
                                                TextTrimming="CharacterEllipsis">
                                       <Run Text="预计开始 " /><Run Text="{Binding PlanStart}" />
                                     </TextBlock>
-                                    <TextBlock Grid.Column="1" FontSize="9" Foreground="#17454f"
+                                    <TextBlock Grid.Column="1" FontSize="11" Foreground="#3d6b7d"
                                                VerticalAlignment="Center" Margin="6,0,0,0"
                                                IsVisible="{Binding HasDuration}">
                                       <Run Text="耗时 " /><Run Text="{Binding PlanDuration}" />
@@ -501,10 +518,10 @@
 
                       <Panel Height="14">
                         <Border Width="1" Height="14" Background="#7a7a7a" HorizontalAlignment="Center" />
-                        <Border Width="200" Height="4" CornerRadius="2" Background="#1a7fc4"
+                        <Border Width="246" Height="4" CornerRadius="2" Background="#1a7fc4"
                                 VerticalAlignment="Center" IsVisible="{Binding DropAtEnd}" />
                       </Panel>
-                      <Panel Width="200" Height="64">
+                      <Panel Width="246" Height="64">
                         <Rectangle Fill="White" Stroke="#9a9a9a" StrokeThickness="1.5"
                                    StrokeDashArray="4,3" IsVisible="{Binding !DropAtEnd}" />
                         <Rectangle Fill="#eef7fd" Stroke="#1a7fc4" StrokeThickness="1.8"
@@ -523,75 +540,92 @@
       </Panel>
       </Grid>
 
-      <!-- ══ 校验面板：从汇总条上方弹出来 ══
+      <!-- ══ 校验面板（原型 .vpop）：从 chip 底下垂下来，浮在画布上不撑开布局 ══
+           它一展开就把泳道挤扁的话，人一边看清单一边找那一步，
+           找的过程里版面又变一次。
+
            一条问题两句话：上面说哪儿不对，下面灰的那句说去哪儿改。分成两行是因为
            读的时机不同——扫一眼的人只读上面那句，真要动手的才读下面那句；
            摞成一段长文案，两件事都读不快。
            右边那枚「机A · CH1」标出是哪条通道：面板列的是四条泳道的事，
            不写清楚就得挨条点进去认。 -->
-      <Border VerticalAlignment="Bottom" HorizontalAlignment="Left" Width="452"
-              Margin="14,0,0,0" IsVisible="{Binding PanelOpen}"
-              Background="White" BorderBrush="#dcdcdc" BorderThickness="1"
-              CornerRadius="4" BoxShadow="0 6 18 0 #26000000">
+      <Border VerticalAlignment="Top" HorizontalAlignment="Right" Width="472"
+              Margin="0,0,16,0" IsVisible="{Binding PanelOpen}"
+              Background="White" BorderBrush="#b5b5b5" BorderThickness="1"
+              CornerRadius="5" BoxShadow="0 10 30 0 #33000000">
         <DockPanel>
-          <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,*,Auto,Auto"
-                Margin="12,10,8,8">
-            <TextBlock Grid.Column="0" Text="配方校验" FontSize="12.5" FontWeight="SemiBold"
-                       Foreground="#2b2b2b" VerticalAlignment="Center" />
+          <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,Auto,*,Auto"
+                Background="#fafafa" Margin="0" >
+            <Border Grid.ColumnSpan="4" BorderBrush="#ececec" BorderThickness="0,0,0,1" />
+            <TextBlock Grid.Column="0" Text="配方校验" FontSize="12.5"
+                       Foreground="#333333" VerticalAlignment="Center" Margin="12,10,10,10" />
             <!-- 全部 / 仅错误：提醒多起来的时候，先把真挡启动的那几条挑出来 -->
-            <Border Grid.Column="2" CornerRadius="3" BorderBrush="#d5d5d5" BorderThickness="1"
-                    Background="#f4f4f4" Margin="0,0,8,0">
+            <Border Grid.Column="1" CornerRadius="4" BorderBrush="#c8c8c8" BorderThickness="1"
+                    VerticalAlignment="Center" ClipToBounds="True">
               <StackPanel Orientation="Horizontal">
                 <Button Classes="segb" Classes.on="{Binding AllTab}" Content="全部"
                         Command="{Binding ShowAll}" />
-                <Border Width="1" Background="#d5d5d5" />
+                <Border Width="1" Background="#dcdcdc" />
                 <Button Classes="segb" Classes.on="{Binding OnlyErrors}" Content="仅错误"
                         Command="{Binding ShowOnlyErrors}" />
               </StackPanel>
             </Border>
-            <Button Grid.Column="3" Classes="xbtn"
+            <Button Grid.Column="3" Classes="xbtn" Margin="0,0,10,0"
                     Command="{Binding ClosePanel}" ToolTip.Tip="收起">
-              <TextBlock Text="✕" FontSize="12" Foreground="#6a6a6a"
+              <TextBlock Text="✕" FontSize="11" Foreground="#8d8d8d"
                          HorizontalAlignment="Center" VerticalAlignment="Center" />
             </Button>
           </Grid>
 
-          <!-- 脚注常在：不是提示，是这个面板的读法说明——两种圆点后果不一样 -->
-          <Border DockPanel.Dock="Bottom" BorderBrush="#ededed" BorderThickness="0,1,0,0"
-                  Padding="12,8">
-            <TextBlock FontSize="11" Foreground="#9a9a9a" LineHeight="17" TextWrapping="Wrap"
-                       Text="存在错误时「运行」不可用；提醒不阻止运行，但结果可能不是你预期的。" />
+          <!-- 脚注常在：不是提示，是这个面板的读法说明——两种圆点后果不一样。
+               「错误」「提醒」加粗，是因为这句话的全部意思就在这两个词的分别上 -->
+          <Border DockPanel.Dock="Bottom" Background="#fafafa"
+                  BorderBrush="#ececec" BorderThickness="0,1,0,0" Padding="12,9">
+            <TextBlock FontSize="11.5" Foreground="#8d8d8d" LineHeight="18" TextWrapping="Wrap">
+              <Run Text="存在" /><Run Text="错误" FontWeight="SemiBold" /><Run
+                Text="时「运行」不可用；" /><Run Text="提醒" FontWeight="SemiBold" /><Run
+                Text="不阻止运行，但结果可能不是你预期的。" />
+            </TextBlock>
           </Border>
 
-          <ScrollViewer MaxHeight="288" VerticalScrollBarVisibility="Auto">
-            <StackPanel Margin="0,0,0,4">
-              <TextBlock Text="没有错误，只有提醒。" FontSize="11.5" Foreground="#9a9a9a"
-                         Margin="12,2,12,10" IsVisible="{Binding PanelEmpty}" />
+          <ScrollViewer MaxHeight="250" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+              <TextBlock Text="{Binding PanelEmptyText}" FontSize="12.5" Foreground="#9a9a9a"
+                         TextAlignment="Center" Margin="12,26" IsVisible="{Binding PanelEmpty}" />
               <ItemsControl ItemsSource="{Binding PanelRows}">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
                     <Button Classes="issue" IsEnabled="{Binding CanGo}"
                             Command="{Binding $parent[UserControl].DataContext.PickIssue}"
                             CommandParameter="{Binding}">
-                      <!-- 圆点顶对齐第一行，不是整块居中：标题折成两行的时候，
-                           居中的圆点会掉到两行中间，看着不像在标那一条 -->
-                      <Grid ColumnDefinitions="15,*,9,Auto" Margin="12,5,12,5">
-                        <Border Grid.Column="0" Width="7" Height="7" CornerRadius="4"
-                                HorizontalAlignment="Left" VerticalAlignment="Top"
-                                Margin="0,5,0,0" Background="{Binding Dot}" />
-                        <StackPanel Grid.Column="1">
-                          <TextBlock Text="{Binding Text}" FontSize="12" Foreground="#2b2b2b"
-                                     LineHeight="17" TextWrapping="Wrap" />
-                          <TextBlock Text="{Binding Hint}" FontSize="11" Foreground="#8a8a8a"
-                                     LineHeight="16" TextWrapping="Wrap" Margin="0,2,0,0"
-                                     IsVisible="{Binding HasHint}" />
-                        </StackPanel>
-                        <Border Grid.Column="3" CornerRadius="9" Background="#f0f0f0"
-                                Padding="7,2" VerticalAlignment="Top" Margin="0,2,0,0">
-                          <TextBlock Text="{Binding ChannelLabel}" FontSize="10.5"
-                                     Foreground="#6a6a6a" />
-                        </Border>
-                      </Grid>
+                      <Border BorderBrush="#f2f2f2" BorderThickness="0,0,0,1">
+                        <!-- 圆点顶对齐第一行，不是整块居中：标题折成两行的时候，
+                             居中的圆点会掉到两行中间，看着不像在标那一条 -->
+                        <Grid ColumnDefinitions="18,*,10,Auto" Margin="12,9">
+                          <Border Grid.Column="0" Width="8" Height="8" CornerRadius="4"
+                                  HorizontalAlignment="Left" VerticalAlignment="Top"
+                                  Margin="0,5,0,0" Background="{Binding Dot}" />
+                          <StackPanel Grid.Column="1">
+                            <TextBlock Text="{Binding Text}" FontSize="12.5" Foreground="#2b2b2b"
+                                       LineHeight="19" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding Hint}" FontSize="11.5" Foreground="#8d8d8d"
+                                       LineHeight="17" TextWrapping="Wrap" Margin="0,3,0,0"
+                                       IsVisible="{Binding HasHint}" />
+                          </StackPanel>
+                          <!-- 通道牌 + 「定位 →」。后者只在指得到具体某一步时才留位置：
+                               指不到的那几条（整条通道缺能力）点了也没地方去 -->
+                          <StackPanel Grid.Column="3" Spacing="4" HorizontalAlignment="Right">
+                            <Border CornerRadius="3" Background="#f2f2f2" Padding="7,2"
+                                    HorizontalAlignment="Right">
+                              <TextBlock Text="{Binding ChannelLabel}" FontSize="11"
+                                         Foreground="#6f6f6f" />
+                            </Border>
+                            <TextBlock Classes="goto" Text="定位 →" FontSize="11"
+                                       Foreground="#2196d9" HorizontalAlignment="Right"
+                                       IsVisible="{Binding CanGo}" />
+                          </StackPanel>
+                        </Grid>
+                      </Border>
                     </Button>
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
@@ -775,7 +809,7 @@
     <Canvas Grid.Column="0" Grid.ColumnSpan="3" IsHitTestVisible="False">
       <Border IsVisible="{Binding Dragging}"
               Canvas.Left="{Binding DragX}" Canvas.Top="{Binding DragY}"
-              Width="200" Background="#6ed3f0" BorderBrush="#1a7fc4" BorderThickness="1.5"
+              Width="246" Background="#6ed3f0" BorderBrush="#1a7fc4" BorderThickness="1.5"
               CornerRadius="2" Padding="8,6" Opacity="0.94"
               BoxShadow="0 5 16 0 #33000000">
         <StackPanel Orientation="Horizontal" Spacing="9">
@@ -814,7 +848,7 @@
       <Setter Property="Background" Value="#e8f4fb" />
     </Style>
 
-    <!-- 原型 .step：200×118 的青块 -->
+    <!-- 原型 .step：246 宽的青块 -->
     <Style Selector="Border.step">
       <Setter Property="MinHeight" Value="118" />
       <Setter Property="Background" Value="#6ed3f0" />
@@ -903,7 +937,7 @@
       <Setter Property="Cursor" Value="Hand" />
     </Style>
     <Style Selector="Button.issue:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#f4f4f4" />
+      <Setter Property="Background" Value="#eaf6fd" />
     </Style>
     <!-- 不可点的那些行照常是白的：默认主题给 disabled 按钮铺一块灰底，
          摆在这儿会变成「一条灰杠」，看着像被禁用的整块面板 -->
@@ -914,55 +948,116 @@
     <Style Selector="Button.issue:disabled /template/ ContentPresenter">
       <Setter Property="Background" Value="Transparent" />
     </Style>
+    <!-- 「定位 →」平时不占眼睛，指到这一行才显出来（原型 .go visibility）。
+         位置照常留着，显不显都不挪版 -->
+    <Style Selector="Button.issue TextBlock.goto">
+      <Setter Property="Opacity" Value="0" />
+    </Style>
+    <Style Selector="Button.issue:pointerover TextBlock.goto">
+      <Setter Property="Opacity" Value="1" />
+    </Style>
 
-    <!-- 底边那条汇总条：整条可点，展开 / 收起校验面板 -->
-    <Style Selector="Button.sumbar">
+    <!-- 校验 chip（原型 .vchip）：并进工具行的一枚状态灯，平时无框，
+         指上去 / 展开时才浮出一块白底 -->
+    <Style Selector="Button.vchip">
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderThickness" Value="0" />
-      <Setter Property="CornerRadius" Value="0" />
-      <Setter Property="Padding" Value="14,0" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="Padding" Value="10,0,9,0" />
       <Setter Property="Height" Value="30" />
       <Setter Property="MinHeight" Value="0" />
-      <Setter Property="HorizontalAlignment" Value="Stretch" />
-      <Setter Property="HorizontalContentAlignment" Value="Left" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
-    <Style Selector="Button.sumbar:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#f4f4f4" />
+    <Style Selector="Button.vchip /template/ ContentPresenter">
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="CornerRadius" Value="4" />
     </Style>
-    <!-- 没问题的时候整条不可点（没什么可展开的），但那句「多久 · 几步」照读，
-         所以不许它按 disabled 的老规矩把自己整条变淡 -->
-    <Style Selector="Button.sumbar:disabled">
+    <Style Selector="Button.vchip:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderBrush" Value="#d5d5d5" />
+    </Style>
+    <Style Selector="Button.vchip.open /template/ ContentPresenter">
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderBrush" Value="#c2c2c2" />
+    </Style>
+    <!-- 校验通过时不可点（没什么可展开的），但那枚绿灯和「多久 · 几步」照读，
+         所以不许它按 disabled 的老规矩把自己整枚变淡 -->
+    <Style Selector="Button.vchip:disabled">
       <Setter Property="Cursor" Value="Arrow" />
       <Setter Property="Opacity" Value="1" />
     </Style>
-    <Style Selector="Button.sumbar:disabled /template/ ContentPresenter">
+    <Style Selector="Button.vchip:disabled /template/ ContentPresenter">
       <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
     </Style>
 
-    <!-- 面板头上那对「全部 / 仅错误」：连体两格，选中的那格反白 -->
-    <Style Selector="Button.segb">
+    <!-- 泳道角标（原型 .cbadge）：实心胶囊 + 一圈同色的软阴影，
+         探出泳道头右上角。默认红，只有提醒时琥珀 -->
+    <!-- 底色 / 圆角 / 投影都写在 /template/ ContentPresenter 上：
+         Button 自己没有 BoxShadow 这个属性（只有 Border 和 ContentPresenter 有） -->
+    <Style Selector="Button.cbadge">
+      <Setter Property="Height" Value="20" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Padding" Value="8,0" />
+      <Setter Property="CornerRadius" Value="10" />
       <Setter Property="Background" Value="Transparent" />
-      <Setter Property="Foreground" Value="#6a6a6a" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.cbadge /template/ ContentPresenter">
+      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="Background" Value="#e02020" />
+      <Setter Property="BoxShadow" Value="0 2 6 0 #59e02020" />
+    </Style>
+    <Style Selector="Button.cbadge:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#c0392b" />
+    </Style>
+    <Style Selector="Button.cbadge.warn /template/ ContentPresenter">
+      <Setter Property="Background" Value="#e8a33d" />
+      <Setter Property="BoxShadow" Value="0 2 6 0 #59e8a33d" />
+    </Style>
+    <Style Selector="Button.cbadge.warn:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#cf8f2c" />
+    </Style>
+
+    <!-- 步骤卡上那枚「!」（原型 .sbadge） -->
+    <Style Selector="Border.sbadge">
+      <Setter Property="Background" Value="#e02020" />
+    </Style>
+    <Style Selector="Border.sbadge.warn">
+      <Setter Property="Background" Value="#e8a33d" />
+    </Style>
+
+    <!-- 有错的那条泳道，头上描一圈红。原型是把整块染成 #fbeeee——
+         我们这块是 #b5c4d4 的实心底，染红只会脏，而且要跟蓝色选中环抢眼睛 -->
+    <Style Selector="Border.laneHeadErr">
+      <Setter Property="BorderBrush" Value="#e02020" />
+    </Style>
+
+    <!-- 面板头上那对「全部 / 仅错误」：连体两格，选中的那格淡蓝 -->
+    <Style Selector="Button.segb">
+      <Setter Property="Background" Value="White" />
+      <Setter Property="Foreground" Value="#555555" />
       <Setter Property="BorderThickness" Value="0" />
       <Setter Property="CornerRadius" Value="0" />
-      <Setter Property="Padding" Value="10,3" />
+      <Setter Property="Padding" Value="10,0" />
+      <Setter Property="Height" Value="23" />
       <Setter Property="MinHeight" Value="0" />
-      <Setter Property="FontSize" Value="11" />
+      <Setter Property="FontSize" Value="12" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
     <Style Selector="Button.segb:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#e8e8e8" />
+      <Setter Property="Background" Value="#f0f0f0" />
     </Style>
-    <!-- 选中那格：字色字重写在 Button 自己身上，不写在 /template/ 的
-         ContentPresenter 上——那条路只改得动背景，字色字重传不下去，
+    <!-- 选中那格：字色写在 Button 自己身上，不写在 /template/ 的
+         ContentPresenter 上——那条路只改得动背景，字色传不下去，
          结果两格长得一模一样，看不出选的是哪个（实测踩到） -->
     <Style Selector="Button.segb.on">
-      <Setter Property="Foreground" Value="#1a7fc4" />
-      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="#2196d9" />
     </Style>
     <Style Selector="Button.segb.on /template/ ContentPresenter">
-      <Setter Property="Background" Value="White" />
+      <Setter Property="Background" Value="#e3f0f9" />
     </Style>
 
     <!-- 面板右上那个收起叉：中性灰底，别蹭步骤卡那套青色 -->
@@ -979,6 +1074,9 @@
     </Style>
     <Style Selector="Button.xbtn:pointerover /template/ ContentPresenter">
       <Setter Property="Background" Value="#ececec" />
+    </Style>
+    <Style Selector="Button.xbtn:pointerover">
+      <Setter Property="Foreground" Value="#333333" />
     </Style>
 
     <!-- 圆圈箭头：展开朝上、收起朝下。22px 是原型 .dev .exp 的尺寸 -->
@@ -1067,7 +1165,7 @@
          描边要是跟着变蓝，人刚找到的那张红卡就在点中它的一瞬间不红了。
          描边归错误，选中改由外面那圈蓝光表示，两件事各占一个记号 -->
     <Style Selector="Border.stepErr">
-      <Setter Property="BorderBrush" Value="#c62828" />
+      <Setter Property="BorderBrush" Value="#e02020" />
     </Style>
   </UserControl.Styles>
 </UserControl>
