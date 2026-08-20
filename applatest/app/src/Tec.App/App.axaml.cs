@@ -138,6 +138,8 @@ public partial class App : Application
                 _main.Position = target;    // 画好了，这才让它落到屏幕正中
                 _main.Activate();
                 closing?.Dismiss();
+                // 「下次登录必须修改密码」的账号，进门第一件事就是改密码
+                _ = _main.ForceChangePasswordIfNeeded();
             }
 
             _main.RequestAnimationFrame(_ =>

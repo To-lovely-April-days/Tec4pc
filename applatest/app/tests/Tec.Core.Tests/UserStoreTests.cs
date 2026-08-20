@@ -190,4 +190,90 @@ public class UserStoreTests : IDisposable
         s1.Save();
         Assert.Equal("en", new UserStore(PathOf()).Language);
     }
+
+    // ── 密码策略 / 到期 / 首次必改（0112）─────────────────────────────
+
+    [Fact]
+    public void 密码规则四条各拦各的()
+    {
+        Assert.Equal("至少 8 位", PasswordPolicy.FirstProblem("abc123"));
+        Assert.Equal("同时包含字母和数字", PasswordPolicy.FirstProblem("abcdefgh"));
+        Assert.Equal("同时包含字母和数字", PasswordPolicy.FirstProblem("12345678"));
+        Assert.Equal("与旧密码不同", PasswordPolicy.FirstProblem("abcd1234", "abcd1234"));
+        Assert.Null(PasswordPolicy.FirstProblem("abcd1234", "old12345"));
+    }
+
+    [Fact]
+    public void 随机密码自己过得了自己那关()
+    {
+        for (var i = 0; i < 50; i++)
+        {
+            var p = PasswordPolicy.Generate();
+            Assert.Null(PasswordPolicy.FirstProblem(p));
+            Assert.DoesNotContain(p, c => c is '0' or 'O' or '1' or 'l' or 'I');
+        }
+    }
+
+    [Fact]
+    public void 新建账号默认要求下次登录改密码_自己改过就不再要求()
+    {
+        var s = new UserStore(PathOf());
+        s.Add("zhang", "张三", UserRole.Operator, "abcd1234");
+        Assert.True(s.Find("zhang")!.MustChangePassword);
+
+        s.SetPassword("zhang", "wxyz9876");      // 本人改，默认不再要求
+        Assert.False(s.Find("zhang")!.MustChangePassword);
+
+        s.SetPassword("zhang", "qrst5432", mustChangeNext: true);   // 管理员重置
+        Assert.True(s.Find("zhang")!.MustChangePassword);
+    }
+
+    [Fact]
+    public void 重置密码可以不解锁()
+    {
+        var now = new DateTimeOffset(2026, 8, 20, 9, 0, 0, TimeSpan.Zero);
+        var s = new UserStore(PathOf(), () => now);
+        s.Add("zhang", "张三", UserRole.Operator, "abcd1234");
+        for (var i = 0; i < UserStore.MaxTries; i++) s.TryLogin("zhang", "错的");
+        Assert.True(s.Find("zhang")!.Locked);
+
+        s.SetPassword("zhang", "wxyz9876", unlock: false);
+        Assert.True(s.Find("zhang")!.Locked);                       // 换了把打不开的钥匙
+        Assert.Equal(LoginOutcome.Locked, s.TryLogin("zhang", "wxyz9876").Outcome);
+
+        s.SetPassword("zhang", "qrst5432");                         // 默认连带解锁
+        Assert.Equal(LoginOutcome.Ok, s.TryLogin("zhang", "qrst5432").Outcome);
+    }
+
+    [Fact]
+    public void 密码到期天数从设密码那天算_停用的不谈到期()
+    {
+        var day0 = new DateTimeOffset(2026, 1, 1, 8, 0, 0, TimeSpan.Zero);
+        var now = day0;
+        var s = new UserStore(PathOf(), () => now);
+        s.Add("zhang", "张三", UserRole.Operator, "abcd1234");
+
+        Assert.Equal(UserStore.PasswordMaxAgeDays, s.Find("zhang")!.ExpiresInDays(now));
+        now = day0.AddDays(85);
+        Assert.Equal(5, s.Find("zhang")!.ExpiresInDays(now));
+        now = day0.AddDays(200);
+        Assert.Equal(0, s.Find("zhang")!.ExpiresInDays(now));        // 过期了就是 0，不给负数
+
+        s.SetDisabled("zhang", true);
+        Assert.Null(s.Find("zhang")!.ExpiresInDays(now));            // 停用的账号不谈到期
+    }
+
+    [Fact]
+    public void 改角色改的是那一个账号()
+    {
+        var s = new UserStore(PathOf());
+        s.Add("zhang", "张三", UserRole.Operator, "abcd1234");
+        s.Add("li", "李四", UserRole.Operator, "abcd1234");
+
+        Assert.True(s.SetRole("zhang", UserRole.Supervisor));
+        Assert.Equal(UserRole.Supervisor, s.Find("zhang")!.Role);
+        Assert.Equal("主管", s.Find("zhang")!.RoleName);
+        Assert.Equal(UserRole.Operator, s.Find("li")!.Role);
+        Assert.False(s.SetRole("wang", UserRole.Admin));             // 没这个人
+    }
 }

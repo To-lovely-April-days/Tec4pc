@@ -27,16 +27,54 @@ public partial class MainWindow : Window
 
     // ── 用户区下拉 ───────────────────────────────────────────────────
 
+    /// <summary>
+    /// 选完一项就把账户菜单收起来。Avalonia 的 Flyout 只认「点到别处」这一种关法，
+    /// 点里面的按钮它自己不关——不收的话，弹出来的窗前面还浮着一块菜单。
+    /// </summary>
+    private void CloseUserMenu() => (UserZone.Flyout as Flyout)?.Hide();
+
     private void OnChangePassword(object? sender, RoutedEventArgs e)
     {
+        CloseUserMenu();
         if (DataContext is not MainViewModel vm) return;
         _ = new ChangePasswordWindow(vm.Workspace).ShowDialog(this);
     }
 
     private void OnManageUsers(object? sender, RoutedEventArgs e)
     {
+        CloseUserMenu();
         if (DataContext is not MainViewModel vm || !vm.IsAdmin) return;
         _ = new UserAdminWindow(vm.Workspace).ShowDialog(this);
+    }
+
+    private void OnLogout(object? sender, RoutedEventArgs e)
+    {
+        CloseUserMenu();
+        if (DataContext is MainViewModel vm && vm.Logout.CanExecute(null)) vm.Logout.Execute(null);
+    }
+
+    /// <summary>锁屏。通道不动——锁的是人，不是台面（见 LockWindow 顶上那段）。</summary>
+    private async void OnLockScreen(object? sender, RoutedEventArgs e)
+    {
+        CloseUserMenu();
+        if (DataContext is not MainViewModel vm || vm.Workspace.CurrentUser is null) return;
+        vm.Workspace.Log.Write("登录", $"锁定屏幕（{vm.Workspace.CurrentUser.Name}）", vm.Workspace.Operator);
+
+        var win = new LockWindow(vm.Workspace);
+        await win.ShowDialog(this);
+        if (win.SwitchUser && vm.Logout.CanExecute(null)) vm.Logout.Execute(null);
+    }
+
+    /// <summary>
+    /// 「下次登录必须修改密码」的账号，进了工作站先把这件事办了。
+    /// 初始密码是别人定的，本人没改过之前，记录上那个署名站不住脚——
+    /// 所以这扇对话框关不掉（见 ChangePasswordWindow 的 forced）。
+    /// </summary>
+    public async Task ForceChangePasswordIfNeeded()
+    {
+        if (DataContext is not MainViewModel vm) return;
+        if (vm.Workspace.CurrentUser is not { MustChangePassword: true }) return;
+        await new ChangePasswordWindow(vm.Workspace, forced: true).ShowDialog(this);
     }
 
     /// <summary>

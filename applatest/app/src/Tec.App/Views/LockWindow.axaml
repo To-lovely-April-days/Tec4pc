@@ -1,0 +1,72 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Tec.App.Views.LockWindow"
+        Title="屏幕已锁定" CanResize="False" ShowInTaskbar="False"
+        Width="640" Height="480" WindowStartupLocation="Manual"
+        SystemDecorations="None" Topmost="True" Background="#1c1533"
+        FontFamily="{StaticResource UiFont}" FontSize="12" Foreground="#e8e4f3">
+
+  <!--
+    锁定屏幕。**通道该跑还在跑**——锁的是坐在这台机器前的人，不是台面上的实验：
+    真停下来，反应就废了，谁也不会为了离开工位五分钟去毁一炉料。
+    所以这扇窗只挡输入，不碰 Engine 一根手指。
+  -->
+
+  <Panel>
+    <Border Width="420" HorizontalAlignment="Center" VerticalAlignment="Center"
+            Background="#241c42" BorderBrush="#3c2d63" BorderThickness="1" CornerRadius="4"
+            Padding="34,30,34,26">
+      <StackPanel Spacing="0">
+
+        <Border Width="64" Height="64" CornerRadius="32" Background="#3c2d63"
+                HorizontalAlignment="Center">
+          <Viewbox Width="34" Height="34" HorizontalAlignment="Center" VerticalAlignment="Center">
+            <Canvas Width="26" Height="26">
+              <Ellipse Canvas.Left="8" Canvas.Top="3" Width="10" Height="10" Fill="#e8e4f3" />
+              <Path Data="M 3,25 C 3,19 7.5,16 13,16 C 18.5,16 23,19 23,25 Z" Fill="#e8e4f3" />
+            </Canvas>
+          </Viewbox>
+        </Border>
+
+        <TextBlock Text="屏幕已锁定" FontSize="24" FontWeight="Light" Foreground="#ffffff"
+                   HorizontalAlignment="Center" Margin="0,16,0,0" />
+        <TextBlock Name="WhoLine" FontSize="11.5" Foreground="#a79ec6"
+                   HorizontalAlignment="Center" Margin="0,7,0,0" TextAlignment="Center"
+                   TextWrapping="Wrap" />
+
+        <Grid ColumnDefinitions="*,8,Auto" Margin="0,20,0,0">
+          <TextBox Name="PassBox" Classes="dlgin" PasswordChar="●" Padding="9,0"
+                   Watermark="输入密码解锁" />
+          <Button Grid.Column="2" Classes="dlgbtn primary" MinWidth="76" Content="解锁"
+                  Click="OnUnlock" />
+        </Grid>
+
+        <TextBlock Name="ErrText" FontSize="11" Foreground="#ff9d92" IsVisible="False"
+                   Margin="0,8,0,0" TextWrapping="Wrap" />
+
+        <Border Background="#2c2350" CornerRadius="2" Padding="11,9" Margin="0,18,0,0">
+          <TextBlock FontSize="11" Foreground="#a79ec6" LineHeight="17" TextWrapping="Wrap"
+                     Text="锁定期间通道照常运行、数据照常记录——锁住的是这台机器前的人，不是台面上的实验。" />
+        </Border>
+
+        <Button Name="SwitchBtn" Classes="link" Content="换个人登录（注销）" Click="OnSwitchUser"
+                HorizontalAlignment="Center" Margin="0,14,0,0" />
+      </StackPanel>
+    </Border>
+  </Panel>
+
+  <Window.Styles>
+    <Style Selector="Button.link">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="6,3" />
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Foreground" Value="#8f85b4" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.link:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="TextBlock.Foreground" Value="#c9c1e4" />
+    </Style>
+  </Window.Styles>
+</Window>

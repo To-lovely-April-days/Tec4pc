@@ -126,26 +126,103 @@
              （169.8×179.93），Fit 会等比缩进这个 44×40 的格子，整幅不裁 -->
         <ctl:DeviceArtView ArtKey="reactor2" Fit="True" Width="44" Height="40"
                            VerticalAlignment="Center" />
-        <!-- 用户区：登录着谁显示谁。点开有 修改密码 / 用户管理（管理员）/ 注销 -->
-        <Button Background="Transparent" BorderThickness="0" Padding="4,2" CornerRadius="4"
-                VerticalAlignment="Center" Cursor="Hand">
+        <!-- 用户区（照 gbg-account 原型 .um-anchor / .um-menu 重做）：
+             头像 + 署名，点开 252 宽的账户菜单——头部是「谁在用这台机器」，
+             下面四条带图标的菜单项 -->
+        <Button Name="UserZone" Classes="userzone" VerticalAlignment="Center" Cursor="Hand">
           <StackPanel>
             <ctl:TecIcon Key="ui-user" HorizontalAlignment="Center" />
             <TextBlock Text="{Binding UserName}" FontSize="10" Foreground="#555555"
-                       HorizontalAlignment="Center" />
+                       HorizontalAlignment="Center" Margin="0,-2,0,0" />
           </StackPanel>
           <Button.Flyout>
-            <Flyout Placement="BottomEdgeAlignedRight">
-              <StackPanel Width="180" Spacing="2">
-                <TextBlock FontSize="12" Foreground="#3d3d3d" Margin="8,6,8,2">
-                  <Run Text="{Binding UserName}" FontWeight="SemiBold" /><Run Text="  " /><Run Text="{Binding UserRoleName}" Foreground="#8d8d8d" />
-                </TextBlock>
-                <Border Height="1" Background="#e3e3e3" Margin="4,4" />
-                <Button Classes="umenu" Content="修改密码" Click="OnChangePassword" />
-                <Button Classes="umenu" Content="用户管理" Click="OnManageUsers"
-                        IsVisible="{Binding IsAdmin}" />
-                <Border Height="1" Background="#e3e3e3" Margin="4,4" />
-                <Button Classes="umenu" Content="注销" Command="{Binding Logout}" />
+            <Flyout Placement="BottomEdgeAlignedRight" HorizontalOffset="4">
+              <StackPanel Width="252">
+                <!-- 菜单头：登录名 + 角色标签 / 署名 / 本次会话起于何时、哪台机器 -->
+                <Border Background="#fafafa" BorderBrush="#ececec" BorderThickness="0,0,0,1"
+                        Padding="14,13,14,12">
+                  <StackPanel Orientation="Horizontal" Spacing="11">
+                    <Border Width="34" Height="34" CornerRadius="17" Background="#4a4a4a"
+                            VerticalAlignment="Top">
+                      <Viewbox Width="18" Height="18" HorizontalAlignment="Center"
+                               VerticalAlignment="Center">
+                        <Canvas Width="26" Height="26">
+                          <Ellipse Canvas.Left="8" Canvas.Top="3" Width="10" Height="10" Fill="White" />
+                          <Path Data="M 3,25 C 3,19 7.5,16 13,16 C 18.5,16 23,19 23,25 Z" Fill="White" />
+                        </Canvas>
+                      </Viewbox>
+                    </Border>
+                    <StackPanel>
+                      <StackPanel Orientation="Horizontal" Spacing="5">
+                        <TextBlock Text="{Binding UserLogin}" FontSize="14" FontWeight="Light"
+                                   Foreground="#2b2b2b" VerticalAlignment="Center" />
+                        <Border Background="#f2fbf4" BorderBrush="#a9d3b4" BorderThickness="1"
+                                CornerRadius="9" Padding="7,1" VerticalAlignment="Center">
+                          <TextBlock Text="{Binding UserRoleName}" FontSize="10" Foreground="#2f8f49" />
+                        </Border>
+                      </StackPanel>
+                      <TextBlock Text="{Binding UserSignLine}" FontSize="11" Foreground="#6f6f6f"
+                                 Margin="0,3,0,0" />
+                      <TextBlock Text="{Binding SessionLine}" FontSize="10.5" Foreground="#a2a2a2"
+                                 Margin="0,4,0,0" />
+                    </StackPanel>
+                  </StackPanel>
+                </Border>
+
+                <!-- 图标都装在 Viewbox+Canvas 里：Path 自己量出来的大小是
+                     「原点到几何右下角」，左上那块空白也算进去，直接 Center
+                     会连空白一起居中（登录页那两个圆圈踩过） -->
+                <Button Classes="umenu" Click="OnChangePassword">
+                  <Grid ColumnDefinitions="15,9,*,Auto">
+                    <Viewbox Grid.Column="0" Width="14" Height="14" VerticalAlignment="Center">
+                      <Canvas Width="16" Height="16">
+                        <Path Data="M 5.6,5.2 A 2.8,2.8 0 1 0 5.6,10.8 A 2.8,2.8 0 1 0 5.6,5.2 M 8.4,8 H 14 M 12,8 V 10.6 M 10.2,8 V 10"
+                              Stroke="#5a5a5a" StrokeThickness="1.4" />
+                      </Canvas>
+                    </Viewbox>
+                    <TextBlock Grid.Column="2" Text="修改密码" VerticalAlignment="Center" />
+                  </Grid>
+                </Button>
+                <Button Classes="umenu" Click="OnManageUsers" IsVisible="{Binding IsAdmin}">
+                  <Grid ColumnDefinitions="15,9,*,Auto">
+                    <Viewbox Grid.Column="0" Width="14" Height="14" VerticalAlignment="Center">
+                      <Canvas Width="16" Height="16">
+                        <Path Data="M 6,3 A 2.6,2.6 0 1 0 6,8.2 A 2.6,2.6 0 1 0 6,3 M 1.6,13.4 C 1.6,10.8 3.6,9.4 6,9.4 C 8.4,9.4 10.4,10.8 10.4,13.4 M 11,4.2 A 2.4,2.4 0 0 1 11,8.6 M 12.4,13.4 C 12.4,11.6 11.9,10.5 11,9.8"
+                              Stroke="#5a5a5a" StrokeThickness="1.4" />
+                      </Canvas>
+                    </Viewbox>
+                    <TextBlock Grid.Column="2" Text="用户管理" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="3" Text="仅管理员" FontSize="10" Foreground="#a2a2a2"
+                               VerticalAlignment="Center" />
+                  </Grid>
+                </Button>
+
+                <Border Height="1" Background="#ececec" Margin="0,4" />
+
+                <Button Classes="umenu" Click="OnLockScreen">
+                  <Grid ColumnDefinitions="15,9,*,Auto">
+                    <Viewbox Grid.Column="0" Width="14" Height="14" VerticalAlignment="Center">
+                      <Canvas Width="16" Height="16">
+                        <Path Data="M 3.4,7 H 12.6 V 14 H 3.4 Z M 5.6,7 V 5.2 A 2.4,2.4 0 0 1 10.4,5.2 V 7"
+                              Stroke="#5a5a5a" StrokeThickness="1.4" />
+                      </Canvas>
+                    </Viewbox>
+                    <TextBlock Grid.Column="2" Text="锁定屏幕" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="3" Text="运行不中断" FontSize="10" Foreground="#a2a2a2"
+                               VerticalAlignment="Center" />
+                  </Grid>
+                </Button>
+                <Button Classes="umenu" Click="OnLogout">
+                  <Grid ColumnDefinitions="15,9,*,Auto">
+                    <Viewbox Grid.Column="0" Width="14" Height="14" VerticalAlignment="Center">
+                      <Canvas Width="16" Height="16">
+                        <Path Data="M 6.4,2.6 H 3 V 13.4 H 6.4 M 9,5.4 L 11.6,8 L 9,10.6 M 11.6,8 H 6"
+                              Stroke="#5a5a5a" StrokeThickness="1.4" />
+                      </Canvas>
+                    </Viewbox>
+                    <TextBlock Grid.Column="2" Text="注销" VerticalAlignment="Center" />
+                  </Grid>
+                </Button>
               </StackPanel>
             </Flyout>
           </Button.Flyout>
@@ -198,15 +275,29 @@
       <Setter Property="Background" Value="#33ffffff" />
     </Style>
 
-    <!-- 用户区下拉里的行按钮 -->
+    <!-- 用户区那颗按钮本身 -->
+    <Style Selector="Button.userzone">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="4,2" />
+      <Setter Property="CornerRadius" Value="4" />
+    </Style>
+    <Style Selector="Button.userzone:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#f0f0f0" />
+    </Style>
+
+    <!-- 账户菜单里的行（原型 .um-mi：31 高、左右 14、悬停浅蓝） -->
     <Style Selector="Button.umenu">
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderThickness" Value="0" />
-      <Setter Property="Padding" Value="8,6" />
-      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="Padding" Value="14,0" />
+      <Setter Property="Height" Value="31" />
+      <Setter Property="CornerRadius" Value="0" />
       <Setter Property="FontSize" Value="12" />
+      <Setter Property="Foreground" Value="#2b2b2b" />
       <Setter Property="HorizontalAlignment" Value="Stretch" />
-      <Setter Property="HorizontalContentAlignment" Value="Left" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
     <Style Selector="Button.umenu:pointerover /template/ ContentPresenter">
       <Setter Property="Background" Value="#eaf6fd" />

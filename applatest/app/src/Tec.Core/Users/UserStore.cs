@@ -6,8 +6,10 @@ namespace Tec.Core.Users;
 
 public enum UserRole
 {
-    /// <summary>管理员：多一层用户管理（建账号、解锁、重置密码、停用）。</summary>
+    /// <summary>管理员：多一层用户管理（建账号、解锁、重置密码、停用、改角色）。</summary>
     Admin,
+    /// <summary>主管：能做实验，也能复核签字；账号的事仍归管理员。</summary>
+    Supervisor,
     /// <summary>操作员：日常做实验的那一层。</summary>
     Operator
 }
@@ -31,11 +33,72 @@ public sealed class UserAccount
     public DateTimeOffset PasswordSetAt { get; set; }
     public DateTimeOffset? LastLoginAt { get; set; }
 
+    /// <summary>
+    /// 下次登录必须改密码。新建账号、管理员重置密码之后默认打开——
+    /// 初始密码是别人定的，本人没改过之前，审计上「这次操作是谁做的」就站不住。
+    /// </summary>
+    public bool MustChangePassword { get; set; }
+
     [JsonIgnore]
-    public string RoleName => Role == UserRole.Admin ? "管理员" : "操作员";
+    public string RoleName => Role switch
+    {
+        UserRole.Admin => "管理员",
+        UserRole.Supervisor => "主管",
+        _ => "操作员"
+    };
 
     [JsonIgnore]
     public string StateName => Disabled ? "已停用" : Locked ? "已锁定" : "正常";
+
+    /// <summary>
+    /// 密码还有几天到期。null = 不适用（账号停用了，到期与否没意义）。
+    /// 从 PasswordSetAt 算，不单独存——存下来的数会跟改密码的动作脱节。
+    /// </summary>
+    public int? ExpiresInDays(DateTimeOffset now)
+    {
+        if (Disabled) return null;
+        var used = (now - PasswordSetAt).TotalDays;
+        return (int)Math.Ceiling(Math.Max(0, UserStore.PasswordMaxAgeDays - used));
+    }
+}
+
+/// <summary>
+/// 密码规则。**一处定义，三处用**：改密码对话框边打字边勾、
+/// 新增用户和重置密码落库前拦一道。规则文案也在这儿，界面不另抄一份。
+/// </summary>
+public static class PasswordPolicy
+{
+    public const int MinLength = 8;
+
+    public sealed record Rule(string Text, Func<string, string, bool> Ok);
+
+    /// <summary>参数是（新密码, 旧密码）。「两次一致」由界面自己比，不进这张表。</summary>
+    public static readonly IReadOnlyList<Rule> Rules = new[]
+    {
+        new Rule($"至少 {MinLength} 位", (n, _) => n.Length >= MinLength),
+        new Rule("同时包含字母和数字", (n, _) => n.Any(char.IsLetter) && n.Any(char.IsDigit)),
+        new Rule("与旧密码不同", (n, o) => n.Length > 0 && n != o)
+    };
+
+    /// <summary>不合规就返回第一条没过的规则；合规返回 null。</summary>
+    public static string? FirstProblem(string next, string current = "")
+        => Rules.FirstOrDefault(r => !r.Ok(next, current))?.Text;
+
+    /// <summary>
+    /// 生成一个能念得出来的随机密码（管理员重置时用）。
+    /// 去掉 0/O/1/l/I 这些看混的字符——密码要靠嘴念给本人听。
+    /// </summary>
+    public static string Generate(int length = 10)
+    {
+        const string cs = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        var chars = new char[Math.Max(MinLength, length)];
+        for (var i = 0; i < chars.Length; i++)
+            chars[i] = cs[RandomNumberGenerator.GetInt32(cs.Length)];
+        // 保证同时有字母和数字：末两位一个字母一个数字
+        chars[^2] = "abcdefghjkmnpqrstuvwxyz"[RandomNumberGenerator.GetInt32(23)];
+        chars[^1] = "23456789"[RandomNumberGenerator.GetInt32(8)];
+        return new string(chars);
+    }
 }
 
 public enum LoginOutcome { Ok, BadCredentials, Locked, Disabled }
@@ -57,6 +120,9 @@ public sealed class UserStore
 {
     public const int Pbkdf2Iterations = 100_000;
     public const int MaxTries = 3;
+
+    /// <summary>密码用多久算到期。到期不锁账号，界面上标红提示去改。</summary>
+    public const int PasswordMaxAgeDays = 90;
 
     /// <summary>首次开机自动建的管理员账号与初始密码。首次登录界面上明说，不藏。</summary>
     public const string DefaultAdmin = "admin";
@@ -182,7 +248,8 @@ public sealed class UserStore
     // ── 管理 ─────────────────────────────────────────────────────────
 
     /// <summary>建账号。重名返回 false。</summary>
-    public bool Add(string name, string display, UserRole role, string password)
+    public bool Add(string name, string display, UserRole role, string password,
+                    bool mustChangePassword = true)
     {
         lock (_gate)
         {
@@ -194,7 +261,8 @@ public sealed class UserStore
                 Display = string.IsNullOrWhiteSpace(display) ? name : display.Trim(),
                 Role = role,
                 CreatedAt = _now(),
-                PasswordSetAt = _now()
+                PasswordSetAt = _now(),
+                MustChangePassword = mustChangePassword
             };
             SetHash(u, password);
             _users.Add(u);
@@ -203,9 +271,25 @@ public sealed class UserStore
         }
     }
 
-    /// <summary>重置 / 修改密码。顺带清锁清计数——重置就是为了让人重新进来。</summary>
-    public bool SetPassword(string name, string password)
-        => Mutate(name, u => { SetHash(u, password); u.PasswordSetAt = _now(); u.Locked = false; u.FailedTries = 0; });
+    /// <summary>
+    /// 重置 / 修改密码。
+    ///
+    /// unlock 默认真：重置多半就是为了让人重新进来。但管理员可以只换密码
+    /// 不解锁——「先弄清楚这个账号为什么连错三次」也是一种处置，
+    /// 所以这一条留给调用方决定，不在这儿替它想。
+    /// </summary>
+    public bool SetPassword(string name, string password, bool mustChangeNext = false,
+                            bool unlock = true)
+        => Mutate(name, u =>
+        {
+            SetHash(u, password);
+            u.PasswordSetAt = _now();
+            u.MustChangePassword = mustChangeNext;
+            if (unlock) { u.Locked = false; u.FailedTries = 0; }
+        });
+
+    /// <summary>改角色。管理员在用户管理里改，写审计由调用方负责。</summary>
+    public bool SetRole(string name, UserRole role) => Mutate(name, u => u.Role = role);
 
     public bool Unlock(string name)
         => Mutate(name, u => { u.Locked = false; u.FailedTries = 0; });
@@ -319,6 +403,7 @@ public sealed class UserStore
         Name = u.Name, Display = u.Display, Role = u.Role,
         Hash = u.Hash, Salt = u.Salt, Iterations = u.Iterations,
         Disabled = u.Disabled, Locked = u.Locked, FailedTries = u.FailedTries,
-        CreatedAt = u.CreatedAt, PasswordSetAt = u.PasswordSetAt, LastLoginAt = u.LastLoginAt
+        CreatedAt = u.CreatedAt, PasswordSetAt = u.PasswordSetAt, LastLoginAt = u.LastLoginAt,
+        MustChangePassword = u.MustChangePassword
     };
 }

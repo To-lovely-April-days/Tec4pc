@@ -1,99 +1,274 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="Tec.App.Views.UserAdminWindow"
-        Title="用户管理" Width="720" Height="520" CanResize="True"
+        Title="用户管理" Width="900" Height="620" CanResize="False"
         WindowStartupLocation="CenterOwner"
+        SystemDecorations="None" Background="White"
         FontFamily="{StaticResource UiFont}" FontSize="12" Foreground="#333333">
 
+  <!--
+    用户管理（照 gbg-account 原型的 .um-win）：900 宽、深紫标题条、
+    一张表把「谁、什么角色、什么状态、上次什么时候来过、密码还有几天到期」
+    一次说完。**只停用不删除**——名字已经写进历史记录了。
+  -->
+
   <Window.Styles>
-    <Style Selector="Button.rowact">
-      <Setter Property="FontSize" Value="11" />
-      <Setter Property="Padding" Value="8,3" />
-      <Setter Property="CornerRadius" Value="2" />
-      <Setter Property="Background" Value="#f2f2f2" />
-      <Setter Property="BorderBrush" Value="#c6c6c6" />
-      <Setter Property="BorderThickness" Value="1" />
+    <!-- 表格行。本人那行浅绿打底，跟别人的行分开 -->
+    <Style Selector="Border.row">
+      <Setter Property="Background" Value="Transparent" />
     </Style>
-    <Style Selector="Button.rowact:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#e3f0f9" />
-      <Setter Property="BorderBrush" Value="#1a91d6" />
+    <Style Selector="Border.row:pointerover">
+      <Setter Property="Background" Value="#eaf6fd" />
+    </Style>
+    <Style Selector="Border.row.me">
+      <Setter Property="Background" Value="#f7fbf3" />
+    </Style>
+    <Style Selector="Border.row.me:pointerover">
+      <Setter Property="Background" Value="#eef7e6" />
+    </Style>
+    <!-- 表头每一格右边一道细线（原型 .um-th span） -->
+    <Style Selector="TextBlock.th">
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="Foreground" Value="#3a3a3a" />
+      <Setter Property="Padding" Value="8" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TextBlock.cell">
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Foreground" Value="#2b2b2b" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+    <!-- 新增面板里的输入框：28 高，比页面里的 finput 高一档（原型 .um-fld） -->
+    <Style Selector="TextBox.fadd">
+      <Setter Property="Height" Value="28" />
+      <Setter Property="MinHeight" Value="28" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Padding" Value="6,0" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="BorderBrush" Value="#a8a8a8" />
+      <Setter Property="CornerRadius" Value="2" />
+      <Setter Property="Background" Value="White" />
+    </Style>
+    <Style Selector="TextBlock.fldlbl">
+      <Setter Property="FontSize" Value="10.5" />
+      <Setter Property="Foreground" Value="#6f6f6f" />
+    </Style>
+    <!-- 表格里的角色下拉：做得像一格文字，不像一个控件——
+         这一列大部分时候是拿来读的，不是拿来点的 -->
+    <Style Selector="ComboBox.rolecell">
+      <Setter Property="Height" Value="24" />
+      <Setter Property="MinHeight" Value="24" />
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Padding" Value="4,0" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="CornerRadius" Value="2" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+    </Style>
+    <Style Selector="ComboBox.rolecell:pointerover /template/ Border#Background">
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderBrush" Value="#a8a8a8" />
     </Style>
   </Window.Styles>
 
-  <DockPanel Margin="18,14">
+  <Border BorderBrush="#17102b" BorderThickness="1">
+    <DockPanel>
 
-    <!-- 顶部说明 + 状态行 -->
-    <StackPanel DockPanel.Dock="Top" Spacing="4">
-      <TextBlock Text="用户管理" FontSize="19" FontWeight="Light" Foreground="#333333" />
-      <TextBlock FontSize="11" Foreground="#9a9a9a"
-                 Text="账号只停用不删除：名字已写进历史记录，删了记录就指向不存在的人。所有操作写入审计追踪。" />
-      <TextBlock Name="Note" FontSize="11.5" Foreground="#2f8f49" IsVisible="False" />
-    </StackPanel>
-
-    <!-- 底部：新增用户 -->
-    <Border DockPanel.Dock="Bottom" Background="#f7f7f7" BorderBrush="#e3e3e3"
-            BorderThickness="1" CornerRadius="3" Padding="12,10" Margin="0,10,0,0">
-      <StackPanel Spacing="8">
-        <TextBlock Text="新增用户" FontSize="12.5" FontWeight="SemiBold" Foreground="#3d3d3d" />
-        <Grid ColumnDefinitions="*,8,*,8,110,8,*,8,Auto">
-          <TextBox Grid.Column="0" Name="AddName" Watermark="登录名（如 zhang）" FontSize="12" />
-          <TextBox Grid.Column="2" Name="AddDisplay" Watermark="署名（如 张三）" FontSize="12" />
-          <ComboBox Grid.Column="4" Name="AddRole" FontSize="12" SelectedIndex="0">
-            <ComboBoxItem>操作员</ComboBoxItem>
-            <ComboBoxItem>管理员</ComboBoxItem>
-          </ComboBox>
-          <TextBox Grid.Column="6" Name="AddPass" Watermark="初始密码（至少 4 位）"
-                   PasswordChar="●" FontSize="12" />
-          <Button Grid.Column="8" Classes="btn primary" Content="添加" Click="OnAdd" />
+      <Border DockPanel.Dock="Top" Height="30" Background="#3c2d63"
+              PointerPressed="OnTitlebarPressed">
+        <Grid ColumnDefinitions="Auto,10,*,Auto">
+          <Viewbox Width="15" Height="15" Margin="8,0,0,0" VerticalAlignment="Center">
+            <Canvas Width="16" Height="16">
+              <Path Data="M 6,3 A 2.6,2.6 0 1 0 6,8.2 A 2.6,2.6 0 1 0 6,3 M 1.6,13.4 C 1.6,10.8 3.6,9.4 6,9.4 C 8.4,9.4 10.4,10.8 10.4,13.4 M 11,4.2 A 2.4,2.4 0 0 1 11,8.6"
+                    Stroke="#cfc6e6" StrokeThickness="1.4" />
+            </Canvas>
+          </Viewbox>
+          <TextBlock Grid.Column="2" Text="用户管理" Foreground="White" FontSize="12"
+                     VerticalAlignment="Center" />
+          <Button Grid.Column="3" Classes="winx" Click="OnClose" Margin="0,3,4,3"
+                  ToolTip.Tip="关闭">
+            <Path Data="M 0,0 L 8,8 M 8,0 L 0,8" Stroke="White" StrokeThickness="1.2" />
+          </Button>
         </Grid>
-        <TextBlock Name="AddErr" FontSize="11" Foreground="#c0392b" IsVisible="False" />
-      </StackPanel>
-    </Border>
+      </Border>
 
-    <!-- 用户表 -->
-    <Border BorderBrush="#e3e3e3" BorderThickness="1" CornerRadius="3" Margin="0,10,0,0">
-      <DockPanel>
-        <Border DockPanel.Dock="Top" Background="#f4f4f4" BorderBrush="#e3e3e3"
-                BorderThickness="0,0,0,1" Padding="10,7">
-          <Grid ColumnDefinitions="110,120,70,80,130,*">
-            <TextBlock Grid.Column="0" Text="登录名" FontSize="11" Foreground="#7a7a7a" />
-            <TextBlock Grid.Column="1" Text="署名" FontSize="11" Foreground="#7a7a7a" />
-            <TextBlock Grid.Column="2" Text="角色" FontSize="11" Foreground="#7a7a7a" />
-            <TextBlock Grid.Column="3" Text="状态" FontSize="11" Foreground="#7a7a7a" />
-            <TextBlock Grid.Column="4" Text="上次登录" FontSize="11" Foreground="#7a7a7a" />
+      <!-- 页脚 -->
+      <Border DockPanel.Dock="Bottom" BorderBrush="#e3e3e3" BorderThickness="0,1,0,0"
+              Padding="24,12,24,14">
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Name="FootLine" Classes="au" />
+          <Button Grid.Column="1" Classes="dlgbtn" Content="关闭" Click="OnClose" />
+        </Grid>
+      </Border>
+
+      <DockPanel Margin="24,18,24,0">
+
+        <StackPanel DockPanel.Dock="Top">
+          <TextBlock Text="用户管理" FontSize="26" FontWeight="Light" Foreground="#3b3b3b" />
+          <Border BorderBrush="#dcdcdc" BorderThickness="3,0,0,0" Padding="10,0,0,0" Margin="0,7,0,0">
+            <TextBlock FontSize="11" Foreground="#7a7a7a" LineHeight="18" TextWrapping="Wrap"
+                       Text="账号只停用不删除：名字已写进历史记录，删了记录就指向不存在的人。&#10;所有账号操作（新增、停用、改角色、重置密码）连同操作人与时间写入审计追踪。" />
+          </Border>
+
+          <!-- 工具条 -->
+          <Grid ColumnDefinitions="Auto,10,190,10,Auto,*,Auto" Margin="0,15,0,0">
+            <Button Name="AddToggle" Classes="dlgbtn primary" Height="26" MinWidth="96"
+                    FontSize="12" Content="＋ 新增用户" Click="OnToggleAdd" />
+            <Grid Grid.Column="2">
+              <TextBox Name="SearchBox" Classes="fadd" Height="26" MinHeight="26" FontSize="11.5"
+                       Padding="25,0,6,0" Watermark="搜索登录名或署名" />
+              <Viewbox Width="12" Height="12" HorizontalAlignment="Left" Margin="7,0,0,0"
+                       VerticalAlignment="Center" IsHitTestVisible="False">
+                <Canvas Width="16" Height="16">
+                  <Ellipse Canvas.Left="2.4" Canvas.Top="2.4" Width="9.2" Height="9.2"
+                           Stroke="#8d8d8d" StrokeThickness="1.5" />
+                  <Path Data="M 10.4,10.4 L 14.5,14.5" Stroke="#8d8d8d" StrokeThickness="1.7" />
+                </Canvas>
+              </Viewbox>
+            </Grid>
+            <CheckBox Grid.Column="4" Name="OnlyOffBox" FontSize="11.5" Content="只看非正常账号"
+                      VerticalAlignment="Center" />
+            <TextBlock Grid.Column="6" Name="CountLine" FontSize="11" Foreground="#9a9a9a"
+                       VerticalAlignment="Center" />
           </Grid>
-        </Border>
-        <ScrollViewer>
-          <ItemsControl Name="Rows">
-            <ItemsControl.ItemTemplate>
-              <DataTemplate>
-                <Border BorderBrush="#eeeeee" BorderThickness="0,0,0,1" Padding="10,7">
-                  <Grid ColumnDefinitions="110,120,70,80,130,*">
-                    <TextBlock Grid.Column="0" Text="{Binding Name}" FontSize="12"
-                               VerticalAlignment="Center" />
-                    <TextBlock Grid.Column="1" Text="{Binding Display}" FontSize="12"
-                               VerticalAlignment="Center" />
-                    <TextBlock Grid.Column="2" Text="{Binding RoleName}" FontSize="12"
-                               VerticalAlignment="Center" />
-                    <TextBlock Grid.Column="3" Text="{Binding StateName}" FontSize="12"
-                               Foreground="{Binding StateColor}" VerticalAlignment="Center" />
-                    <TextBlock Grid.Column="4" Text="{Binding LastLogin}" FontSize="11.5"
-                               Foreground="#7a7a7a" VerticalAlignment="Center" />
-                    <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="6"
-                                HorizontalAlignment="Right">
-                      <Button Classes="rowact" Content="解锁" Click="OnUnlock"
-                              IsVisible="{Binding Locked}" />
-                      <Button Classes="rowact" Content="重置密码" Click="OnReset" />
-                      <Button Classes="rowact" Content="{Binding DisableLabel}" Click="OnToggleDisable"
-                              IsVisible="{Binding !IsSelf}" />
-                    </StackPanel>
-                  </Grid>
+
+          <!-- 新增用户面板：默认收着，点「＋ 新增用户」才展开 -->
+          <Border Name="AddPanel" IsVisible="False" Background="#f7fbf3" BorderBrush="#cfe0c4"
+                  BorderThickness="1" CornerRadius="2" Padding="15,13,15,15" Margin="0,12,0,0">
+            <StackPanel>
+              <TextBlock Text="新增用户" FontSize="12" Foreground="#2f8f49" Margin="0,0,0,11" />
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <StackPanel Width="130" Spacing="5">
+                  <TextBlock Classes="fldlbl" Text="登录名" />
+                  <TextBox Name="AddName" Classes="fadd" Watermark="如 zhang" />
+                </StackPanel>
+                <StackPanel Width="130" Spacing="5">
+                  <TextBlock Classes="fldlbl" Text="署名" />
+                  <TextBox Name="AddDisplay" Classes="fadd" Watermark="如 张三" />
+                </StackPanel>
+                <StackPanel Width="96" Spacing="5">
+                  <TextBlock Classes="fldlbl" Text="角色" />
+                  <ComboBox Name="AddRole" Classes="sel" Height="28" MinHeight="28"
+                            HorizontalAlignment="Stretch" SelectedIndex="0">
+                    <ComboBoxItem>操作员</ComboBoxItem>
+                    <ComboBoxItem>主管</ComboBoxItem>
+                    <ComboBoxItem>管理员</ComboBoxItem>
+                  </ComboBox>
+                </StackPanel>
+                <StackPanel Width="146" Spacing="5">
+                  <TextBlock Classes="fldlbl" Text="初始密码" />
+                  <TextBox Name="AddPass" Classes="fadd" Watermark="至少 8 位" />
+                </StackPanel>
+                <StackPanel Spacing="5">
+                  <TextBlock Classes="fldlbl" Text=" " />
+                  <CheckBox Name="AddForce" Height="28" FontSize="11.5" IsChecked="True"
+                            Content="下次登录必须修改" VerticalAlignment="Center" />
+                </StackPanel>
+                <StackPanel Spacing="5">
+                  <TextBlock Classes="fldlbl" Text=" " />
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Classes="dlgbtn primary" Height="28" MinWidth="58" Padding="12,0" FontSize="12"
+                            Content="添加" Click="OnAdd" />
+                    <Button Classes="dlgbtn" Height="28" MinWidth="58" Padding="12,0" FontSize="12"
+                            Content="取消" Click="OnToggleAdd" />
+                  </StackPanel>
+                </StackPanel>
+              </StackPanel>
+              <TextBlock Name="AddErr" FontSize="11" Foreground="#c0392b" IsVisible="False"
+                         Margin="0,9,0,0" TextWrapping="Wrap" />
+            </StackPanel>
+          </Border>
+        </StackPanel>
+
+        <!-- 表 -->
+        <Border BorderBrush="#dcdcdc" BorderThickness="1" CornerRadius="2" Margin="0,12,0,18"
+                ClipToBounds="True">
+          <DockPanel>
+            <Border DockPanel.Dock="Top" Background="#fafafa" BorderBrush="#d5d5d5"
+                    BorderThickness="0,0,0,1">
+              <Grid ColumnDefinitions="104,108,84,96,116,92,*">
+                <Border BorderBrush="#e6e6e6" BorderThickness="0,0,1,0">
+                  <TextBlock Classes="th" Text="登录名" />
                 </Border>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-        </ScrollViewer>
+                <Border Grid.Column="1" BorderBrush="#e6e6e6" BorderThickness="0,0,1,0">
+                  <TextBlock Classes="th" Text="署名" />
+                </Border>
+                <Border Grid.Column="2" BorderBrush="#e6e6e6" BorderThickness="0,0,1,0">
+                  <TextBlock Classes="th" Text="角色" />
+                </Border>
+                <Border Grid.Column="3" BorderBrush="#e6e6e6" BorderThickness="0,0,1,0">
+                  <TextBlock Classes="th" Text="状态" />
+                </Border>
+                <Border Grid.Column="4" BorderBrush="#e6e6e6" BorderThickness="0,0,1,0">
+                  <TextBlock Classes="th" Text="上次登录" />
+                </Border>
+                <Border Grid.Column="5" BorderBrush="#e6e6e6" BorderThickness="0,0,1,0">
+                  <TextBlock Classes="th" Text="密码到期" />
+                </Border>
+                <TextBlock Grid.Column="6" Classes="th" Text="操作" TextAlignment="Right" />
+              </Grid>
+            </Border>
+
+            <TextBlock Name="EmptyNote" Text="没有匹配的账号" FontSize="11.5" Foreground="#a2a2a2"
+                       Height="70" HorizontalAlignment="Center" VerticalAlignment="Center"
+                       IsVisible="False" DockPanel.Dock="Top" Margin="0,26,0,0" />
+
+            <ScrollViewer>
+              <ItemsControl Name="Rows">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border Classes="row" Classes.me="{Binding IsSelf}"
+                            BorderBrush="#ececec" BorderThickness="0,0,0,1">
+                      <Grid ColumnDefinitions="104,108,84,96,116,92,*">
+                        <StackPanel Orientation="Horizontal" Spacing="5" Margin="8"
+                                    VerticalAlignment="Center">
+                          <TextBlock Classes="cell" Text="{Binding Name}" />
+                          <TextBlock Text="本人" FontSize="10" Foreground="#2f8f49"
+                                     VerticalAlignment="Center" IsVisible="{Binding IsSelf}" />
+                        </StackPanel>
+                        <TextBlock Grid.Column="1" Classes="cell" Text="{Binding Display}" Margin="8" />
+                        <!-- 角色是**可改**的：上头那段说明里写了「改角色」写审计，
+                             那就得真有地方改。自己那一行不给下拉，就是一格字——
+                             把自己从管理员降下去，这扇窗就再也打不开了；
+                             摆一个点不动的下拉，还不如干脆别摆 -->
+                        <Panel Grid.Column="2">
+                          <TextBlock Classes="cell" Text="{Binding RoleName}" Margin="8"
+                                     IsVisible="{Binding IsSelf}" ToolTip.Tip="{Binding RoleTip}" />
+                          <ComboBox Classes="rolecell" Margin="6,0,4,0" IsVisible="{Binding !IsSelf}"
+                                    VerticalAlignment="Center" ItemsSource="{Binding RoleNames}"
+                                    SelectedIndex="{Binding RoleIndex}"
+                                    SelectionChanged="OnRoleChanged"
+                                    ToolTip.Tip="{Binding RoleTip}" />
+                        </Panel>
+                        <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="6" Margin="8"
+                                    VerticalAlignment="Center">
+                          <Ellipse Width="8" Height="8" Fill="{Binding LedFill}"
+                                   Stroke="{Binding LedLine}" StrokeThickness="1"
+                                   VerticalAlignment="Center" />
+                          <TextBlock Classes="cell" Text="{Binding StateName}" />
+                        </StackPanel>
+                        <TextBlock Grid.Column="4" Classes="cell" Text="{Binding LastLogin}"
+                                   Foreground="#5a5a5a" Margin="8" />
+                        <TextBlock Grid.Column="5" Classes="cell" Text="{Binding ExpiryText}"
+                                   Foreground="{Binding ExpiryBrush}" Margin="8" />
+                        <StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="7"
+                                    HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    Margin="8,8,10,8">
+                          <Button Classes="umsm" Content="重置密码" Click="OnReset" />
+                          <Button Classes="umsm" Content="{Binding ToggleLabel}" Click="OnToggle"
+                                  IsEnabled="{Binding CanToggle}" ToolTip.Tip="{Binding ToggleTip}" />
+                        </StackPanel>
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+          </DockPanel>
+        </Border>
       </DockPanel>
-    </Border>
-  </DockPanel>
+    </DockPanel>
+  </Border>
 </Window>

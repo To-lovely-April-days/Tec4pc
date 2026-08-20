@@ -136,6 +136,116 @@
       <Setter Property="Foreground" Value="White" />
     </Style>
 
+    <!--
+      对话框那一套（照 gbg-account 原型的 .dlg-* / .um-*）：账户菜单、修改密码、
+      重置密码、用户管理四处共用。跟上面的 Button.btn 不是一回事——那是页面里的
+      按钮（28 高、圆角 3），这几个是对话框里的（30 高、圆角 2、灰底深边），
+      原型两套本来就长得不一样，各留各的，不互相凑合。
+    -->
+    <!-- 自绘标题栏右上角的窗钮 -->
+    <Style Selector="Button.winx">
+      <Setter Property="Width" Value="30" />
+      <Setter Property="Height" Value="24" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.winx:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#e81123" />
+    </Style>
+
+    <!-- 对话框里的输入框：30 高，聚焦描蓝；.bad 是「两次不一致」那种红边 -->
+    <Style Selector="TextBox.dlgin">
+      <Setter Property="Height" Value="30" />
+      <Setter Property="MinHeight" Value="30" />
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="Padding" Value="9,0,38,0" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="BorderBrush" Value="#a8a8a8" />
+      <Setter Property="CornerRadius" Value="2" />
+      <Setter Property="Background" Value="White" />
+    </Style>
+    <Style Selector="TextBox.dlgin.bad /template/ Border#PART_BorderElement">
+      <Setter Property="BorderBrush" Value="#c0392b" />
+    </Style>
+
+    <!-- 对话框按钮 -->
+    <Style Selector="Button.dlgbtn">
+      <Setter Property="Height" Value="30" />
+      <Setter Property="MinWidth" Value="92" />
+      <Setter Property="Padding" Value="16,0" />
+      <Setter Property="FontSize" Value="12.5" />
+      <Setter Property="Background" Value="#f2f2f2" />
+      <Setter Property="BorderBrush" Value="#8b8b8b" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="2" />
+      <Setter Property="Foreground" Value="#333333" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.dlgbtn:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#e3f0f9" />
+      <Setter Property="BorderBrush" Value="#1a91d6" />
+    </Style>
+    <Style Selector="Button.dlgbtn.primary">
+      <Setter Property="Background" Value="#2f8f49" />
+      <Setter Property="BorderBrush" Value="#28803f" />
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Button.dlgbtn.primary:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#28803f" />
+      <Setter Property="BorderBrush" Value="#28803f" />
+    </Style>
+    <!-- 禁用的主按钮仍是一颗绿灰的按钮，不是一块空白：
+         「现在还不能按」跟「这里没有按钮」得看得出区别 -->
+    <Style Selector="Button.dlgbtn.primary:disabled /template/ ContentPresenter">
+      <Setter Property="Background" Value="#c6cfc8" />
+      <Setter Property="BorderBrush" Value="#b7c0b9" />
+      <Setter Property="TextBlock.Foreground" Value="#f2f2f2" />
+    </Style>
+    <Style Selector="Button.dlgbtn:disabled">
+      <Setter Property="Cursor" Value="Arrow" />
+    </Style>
+
+    <!-- 表格行里的小按钮（.um-sm：22 高、11px） -->
+    <Style Selector="Button.umsm">
+      <Setter Property="Height" Value="22" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="Padding" Value="9,0" />
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="Background" Value="#f2f2f2" />
+      <Setter Property="BorderBrush" Value="#8b8b8b" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="2" />
+      <Setter Property="Foreground" Value="#333333" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.umsm:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#e3f0f9" />
+      <Setter Property="BorderBrush" Value="#1a91d6" />
+    </Style>
+    <Style Selector="Button.umsm:disabled /template/ ContentPresenter">
+      <Setter Property="Background" Value="#f7f7f7" />
+      <Setter Property="BorderBrush" Value="#cfcfcf" />
+      <Setter Property="TextBlock.Foreground" Value="#a5a5a5" />
+    </Style>
+    <Style Selector="Button.umsm:disabled">
+      <Setter Property="Cursor" Value="Arrow" />
+    </Style>
+
+    <!-- 页脚那句灰字（「修改会写入审计追踪」这类） -->
+    <Style Selector="TextBlock.au">
+      <Setter Property="FontSize" Value="10.5" />
+      <Setter Property="Foreground" Value="#9a9a9a" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
     <Style Selector="ComboBox.sel">
       <Setter Property="Height" Value="26" />
       <Setter Property="MinHeight" Value="26" />

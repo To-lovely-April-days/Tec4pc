@@ -49,7 +49,8 @@ public sealed class MainViewModel : ViewModelBase
             ws.SignOut();
             SignedOut?.Invoke(this, EventArgs.Empty);
         });
-        ws.UserChanged += (_, _) => RaiseAll(nameof(UserName), nameof(UserRoleName), nameof(IsAdmin));
+        ws.UserChanged += (_, _) => RaiseAll(nameof(UserName), nameof(UserLogin), nameof(UserRoleName),
+                                             nameof(UserSignLine), nameof(SessionLine), nameof(IsAdmin));
 
         ws.Store.Changed += (_, _) => Raise(nameof(DocTitle));
 
@@ -193,7 +194,13 @@ public sealed class MainViewModel : ViewModelBase
     // 右上角用户区。没登录时登录层盖着整个界面，这几个值不会被看见，
     // 但也照实写「未登录」，不冒充任何人
     public string UserName => Workspace.CurrentUser?.Display ?? "未登录";
+    public string UserLogin => Workspace.CurrentUser?.Name ?? "—";
     public string UserRoleName => Workspace.CurrentUser?.RoleName ?? "";
+    public string UserSignLine => $"署名：{UserName}";
+    /// <summary>「本次会话 08:41 起 · HTS-CTRL-01」——时刻是真的会话起点，机器名是真的机器名。</summary>
+    public string SessionLine => Workspace.LoginAt is { } t
+        ? $"本次会话 {t:HH:mm} 起 · {Environment.MachineName}"
+        : $"未登录 · {Environment.MachineName}";
     public bool IsAdmin => Workspace.IsAdmin;
 
     public RelayCommand Go { get; }
