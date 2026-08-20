@@ -73,8 +73,12 @@ public static class TerminationText
     };
 }
 
-/// <summary>步骤表里的一个参数小标签：「目标温度」「60.0 ℃」。</summary>
-public sealed record ParamChip(string Label, string Value);
+/// <summary>
+/// 步骤表里的一个参数小标签：「目标温度」「60.0 ℃」。
+/// Lead 是它前面那个分隔点——第一个没有，后面的都有（原型 .c-p em）。
+/// 摆在数据里而不是模板里：Avalonia 的选择器没有 :first-child。
+/// </summary>
+public sealed record ParamChip(string Label, string Value, string Lead = "");
 
 /// <summary>一张步骤卡（原型 .step）：模块色图标块 + 整句描述 + 预计开始 / 耗时。</summary>
 public sealed class StepViewModel : ViewModelBase
@@ -145,9 +149,14 @@ public sealed class StepViewModel : ViewModelBase
     /// 不在这儿另写一份——加一个参数字段，表上自然就多一个标签。
     /// 分段表（梯度控温那种）不摊开，只报一句有几段。
     /// </summary>
-    public IReadOnlyList<ParamChip> Chips
+    public IReadOnlyList<ParamChip> Chips => _chips ??= BuildChips();
+    private IReadOnlyList<ParamChip>? _chips;
+
+    /// <summary>这一步有没有参数可摊开。没有的话卡片第二行写一句「无参数」。</summary>
+    public bool HasChips => Chips.Count > 0;
+
+    private IReadOnlyList<ParamChip> BuildChips()
     {
-        get
         {
             var list = new List<ParamChip>();
             if (Descriptor is null) return list;
@@ -172,10 +181,11 @@ public sealed class StepViewModel : ViewModelBase
                         text = v.ToString() ?? "";
                         break;
                 }
-                if (text.Length > 0) list.Add(new ParamChip(f.Label, text));
+                if (text.Length > 0)
+                    list.Add(new ParamChip(f.Label, text, list.Count == 0 ? "" : "·"));
             }
             if (Step.Rows is { Count: > 0 } rows)
-                list.Add(new ParamChip("分段", rows.Count + " 段"));
+                list.Add(new ParamChip("分段", rows.Count + " 段", list.Count == 0 ? "" : "·"));
             return list;
         }
     }

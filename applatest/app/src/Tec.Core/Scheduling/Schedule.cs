@@ -23,6 +23,15 @@ public sealed record ScheduleEntry(
     /// </summary>
     public double StartTemp { get; init; } = 25;
 
+    /// <summary>
+    /// 这一步结束时的估算温度。有了它，温度剖面才画得出最后一段——
+    /// 前面每一段的终点可以借下一段的 StartTemp，最后一段没有下一段可借。
+    ///
+    /// 归档读回来的老条目没有这一项（默认 0）。剖面只画当下算出来的排期，
+    /// 不画归档，所以不受影响；真要用到归档，取 StartTemp 那条链更稳。
+    /// </summary>
+    public double EndTemp { get; init; } = 25;
+
     /// <summary>甘特条的实际长度：普通行取 Duration，循环开始行取 Span。</summary>
     public TimeSpan Extent => Span > Duration ? Span : Duration;
     public TimeSpan End => Start + Extent;
@@ -134,7 +143,7 @@ public sealed class Schedule
             }
 
             entries.Add(new ScheduleEntry(i, s.StepId, s.CommandId, t, dur, TimeSpan.Zero, 0, title, kind, known)
-            { StartTemp = before });
+            { StartTemp = before, EndTemp = ctx.Temperature });
             t += dur;
         }
 

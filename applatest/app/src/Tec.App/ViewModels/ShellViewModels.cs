@@ -317,12 +317,25 @@ public sealed class LibRowViewModel : ViewModelBase
         + (Recipe.Charge is { IsEmpty: false } c ? $" · 配料 {c.Items.Count} 组分" : "");
 }
 
-/// <summary>步骤表里的一个工艺阶段分组。没标阶段的步骤归到一个无名组，组头不出现。</summary>
+/// <summary>
+/// 步骤表里的一个工艺阶段分组。卡片左边那条槽（原型 .rx-gut）显示它：
+/// 「阶段 N」/ 阶段名 / 这一段的合计时长。
+///
+/// 没标阶段的步骤照样成一组，槽里写「未标阶段」——空着一块会让人以为是渲染漏了，
+/// 而「没标」本身是要看见的信息（报告里那一段会写不出在做什么）。
+/// </summary>
 public sealed class LibPhaseGroup
 {
     public required string Name { get; init; }
+    /// <summary>
+    /// 第几段（从 1 数，**只数标了名字的**）。分组是边扫边攒的，扫完才编号，所以可写。
+    /// 没标名字的那一组不给号：「阶段 1 · 未标阶段」自相矛盾，读的人会以为漏了名字。
+    /// </summary>
+    public int Ordinal { get; set; }
+    public string OrdinalText => HasName ? $"阶段 {Ordinal}" : "";
     public bool HasName => Name.Length > 0;
-    /// <summary>这一组的合计时长。组是边扫边攒的，扫完才知道多长，所以可写。</summary>
+    public string NameText => HasName ? Name : "未标阶段";
+    /// <summary>这一组的合计时长。同上，扫完才知道多长。</summary>
     public string DurationText { get; set; } = "";
     public List<StepViewModel> Steps { get; } = new();
 }
@@ -439,7 +452,7 @@ public sealed class RecipeLibViewModel : ViewModelBase
         set
         {
             if (!Set(ref _tab, value)) return;
-            RaiseAll(nameof(IsStepsTab), nameof(IsMatTab));
+            RaiseAll(nameof(IsStepsTab), nameof(IsMatTab), nameof(HasProfile));
         }
     }
 
@@ -457,12 +470,19 @@ public sealed class RecipeLibViewModel : ViewModelBase
             if (!Set(ref _selStep, value)) return;
             if (old is not null) old.IsSelected = false;
             if (value is not null) value.IsSelected = true;
-            RaiseAll(nameof(HasStepSel), nameof(StepChips));
+            RaiseAll(nameof(HasStepSel), nameof(StepChips), nameof(SelStepIndex));
         }
     }
 
     public bool HasStepSel => _selStep is not null;
     public IReadOnlyList<ParamChip> StepChips => _selStep?.Chips ?? Array.Empty<ParamChip>();
+
+    /// <summary>选中那一步在 Recipe.Steps 里的下标。剖面靠它高亮对应的色带，没选是 −1。</summary>
+    public int SelStepIndex => _selStep?.Entry.Index ?? -1;
+
+    /// <summary>点剖面上的色带：按步骤序号找回那一行。</summary>
+    public void PickStepAt(int index)
+        => SelStep = Flow.FirstOrDefault(v => v.Entry.Index == index) ?? _selStep;
 
     /// <summary>点表上的一行；两个标签页的切换。</summary>
     public RelayCommand PickStep { get; }
@@ -513,8 +533,11 @@ public sealed class RecipeLibViewModel : ViewModelBase
     public string Desc
     {
         get => Current?.Notes ?? "";
-        set { if (Current is not null) { Current.Notes = value; Raise(); } }
+        set { if (Current is not null) { Current.Notes = value; RaiseAll(nameof(Desc), nameof(HasDesc)); } }
     }
+
+    /// <summary>写了描述才在标题下面占一行。没写就不留空档。</summary>
+    public bool HasDesc => Desc.Trim().Length > 0;
 
     public string StepCountText => Current is null ? "" : Current.Steps.Count.ToString();
     public string UpdatedText => Current is null ? "" : Current.ModifiedAt.ToString("MM/dd");
@@ -602,6 +625,7 @@ public sealed class RecipeLibViewModel : ViewModelBase
         SelStep = null;
         var r = Current;
         var total = TimeSpan.Zero;
+        Profile = TempProfile.Empty;
         if (r is not null)
         {
             var plan = Schedule.Build(r, _ws.Catalog);
@@ -612,6 +636,7 @@ public sealed class RecipeLibViewModel : ViewModelBase
                 Flow.Add(new StepViewModel(i + 1, r.Steps[i], plan.Entries[i], d));
             }
             foreach (var v in Flow) total += v.Entry.Extent;
+            Profile = TempProfile.Build(r, _ws.Catalog, plan);
 
             // 按工艺阶段分组：连着的同阶段并成一组，隔开又标回来的算两组
             // （工序上它就是两段，合起来那段时长会骗人）
@@ -650,11 +675,12 @@ public sealed class RecipeLibViewModel : ViewModelBase
         foreach (var c in chs) ApplyTargets.Add(LabelOf(c));
         if (!chs.Contains(_applyCh)) _applyCh = chs.FirstOrDefault();
 
-        RaiseAll(nameof(Name), nameof(Desc), nameof(StepCountText), nameof(UpdatedText),
+        RaiseAll(nameof(Name), nameof(Desc), nameof(HasDesc), nameof(StepCountText), nameof(UpdatedText),
                  nameof(ApplyTarget), nameof(HasTargets), nameof(Current),
                  nameof(IsEmpty), nameof(HasAny), nameof(HasSelection),
                  nameof(HeaderMeta), nameof(HasMaterials), nameof(NoMaterials),
-                 nameof(AuthorText), nameof(HasStepSel));
+                 nameof(AuthorText), nameof(HasStepSel), nameof(SelStepIndex),
+                 nameof(Profile), nameof(HasProfile), nameof(ProfileNote));
         return;
 
         // 组的时长在这儿补：新开一组时才知道上一组有多长
@@ -662,7 +688,29 @@ public sealed class RecipeLibViewModel : ViewModelBase
         {
             if (g is null || g.Steps.Count == 0) return;
             g.DurationText = Fmt.Hms(span);
+            if (g.HasName) g.Ordinal = Phases.Count(x => x.HasName) + 1;
             Phases.Add(g);
+        }
+    }
+
+    /// <summary>温度剖面。全部由排期推出来（见 TempProfile），一个数都不是编的。</summary>
+    public TempProfile Profile { get; private set; } = TempProfile.Empty;
+
+    /// <summary>
+    /// 值不值得画那条剖面。全程没有一步动过温度时不画——
+    /// 一条笔直的水平线占掉一百多像素，什么也没说。
+    /// </summary>
+    public bool HasProfile => IsStepsTab && Profile is { IsEmpty: false, HasCurve: true };
+
+    /// <summary>剖面标题右边那句注释：总时长，以及「有循环，只画第一轮」的实话。</summary>
+    public string ProfileNote
+    {
+        get
+        {
+            if (Profile.IsEmpty) return "";
+            var s = $"按时长比例 · 总时长 {Fmt.Hms(Profile.Total)} · 点色带选中步骤";
+            if (Profile.HasLoop) s += " · 含循环，曲线只画第一轮";
+            return s;
         }
     }
 

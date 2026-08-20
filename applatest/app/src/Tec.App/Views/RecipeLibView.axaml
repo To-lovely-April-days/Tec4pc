@@ -4,13 +4,18 @@
              x:Class="Tec.App.Views.RecipeLibView">
 
   <!--
-    版式照 gbg-recipes.html：库列表 280 ｜ 主区（标题 + 标签页 + 工具条 + 表）｜ 属性 342。
-    属性栏不照原型那块通栏灰，按你定的那一套走：栏本身不铺底色、块用 PropsBg、
-    块之间露白缝、「当前选中的那一个」左边一条 6px 色条。
+    版式照 gbg-recipes 原型：库列表 280 ｜ 主区（标题 + 标签页 + 工具条 + 温度剖面 +
+    步骤卡）｜ 属性 342。属性栏不照原型那块通栏灰，按你定的那一套走：栏本身不铺底色、
+    块用 PropsBg、块之间露白缝、「当前选中的那一个」左边一条粗色条。
+
+    **这一页的选中色是绿的，不是全局那个蓝。**原型把整个 Recipes 视图定成绿色调
+    （列表、标签页、步骤卡、温度剖面上的色带都是 #2f8f49），而这四处必须是同一个颜色——
+    点了剖面上哪一段，哪张卡亮起来，眼睛得当场对上。为了跟别的页统一而把它们改蓝，
+    就得连剖面一起改，那条带子的绿又是原型定的。一页之内自洽优先。
 
     原型里有而我们没有的东西，一律不画：版本号（v3.2）、发布状态（PUBLISHED /
-    Draft / Archived）、文件路径、置顶、文件夹分组、版本历史、持续状态甘特条——
-    这些字段库里根本不记，画出来就是假的。表上每一格都是真读出来的。
+    Draft / Archived）、文件路径、置顶、文件夹分组、版本历史——这些字段库里根本不记，
+    画出来就是假的。剖面和甘特条画得出来，是因为它们**能从排期推出来**（见 TempProfile）。
   -->
   <UserControl.Styles>
     <!-- 库里的一条（原型 .rx-item）。左边那 6px 是选中条的位置，
@@ -29,8 +34,8 @@
       <Setter Property="BorderBrush" Value="#bfe0f4" />
     </Style>
     <Style Selector="Border.rxitem.sel">
-      <Setter Property="Background" Value="{StaticResource SelBg}" />
-      <Setter Property="BorderBrush" Value="{StaticResource SelBd}" />
+      <Setter Property="Background" Value="#e4f2d3" />
+      <Setter Property="BorderBrush" Value="#8bbf6a" />
     </Style>
     <Style Selector="Border.rxitem TextBlock.rn">
       <Setter Property="FontSize" Value="12.5" />
@@ -38,7 +43,7 @@
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
     <Style Selector="Border.rxitem.sel TextBlock.rn">
-      <Setter Property="Foreground" Value="{StaticResource SelTx}" />
+      <Setter Property="Foreground" Value="#1f5c30" />
       <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 
@@ -58,7 +63,7 @@
       <Setter Property="TextBlock.Foreground" Value="#0a84c8" />
     </Style>
     <Style Selector="Button.rxtab.on">
-      <Setter Property="Foreground" Value="{StaticResource SelBd}" />
+      <Setter Property="Foreground" Value="#2f8f49" />
     </Style>
 
     <!-- 表头一格 / 表身一行（原型 .rx-th / .rx-tr） -->
@@ -88,6 +93,21 @@
       <Setter Property="VerticalAlignment" Value="Center" />
       <Setter Property="Margin" Value="8,0" />
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+
+    <!-- 步骤卡（原型 .rx-card）：一行分隔线、悬停浅蓝、选中浅绿 + 左边一条绿。
+         选中色跟温度剖面上那条色带同一个绿：点了色带哪一张卡亮起来，一眼对得上 -->
+    <Style Selector="Border.card">
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderBrush" Value="#ececec" />
+      <Setter Property="BorderThickness" Value="0,0,0,1" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Border.card:pointerover">
+      <Setter Property="Background" Value="#eaf6fd" />
+    </Style>
+    <Style Selector="Border.card.sel">
+      <Setter Property="Background" Value="#e4f2d3" />
     </Style>
 
     <!-- 参数小标签（原型 .rx-chip） -->
@@ -175,7 +195,7 @@
                     <!-- 6px 那一列常在，选中才上色：内容不会因为选中横跳 -->
                     <Grid ColumnDefinitions="6,*">
                       <Border Grid.Column="0"
-                              Background="{Binding IsSelected, Converter={x:Static ctl:Is.SelBar}}" />
+                              Background="{Binding IsSelected, Converter={x:Static ctl:Is.GreenBar}}" />
                       <StackPanel Grid.Column="1" Margin="9,7,9,8">
                         <TextBlock Text="{Binding Name}" Classes="rn" />
                         <TextBlock Text="{Binding Meta}" FontSize="10.5" Foreground="#9a9a9a"
@@ -210,6 +230,11 @@
       <!-- 抬头（原型 .rx-head）：名字 26px 细体，下面一行元信息 -->
       <StackPanel DockPanel.Dock="Top" Margin="20,12,20,0" IsVisible="{Binding HasSelection}">
         <TextBlock Text="{Binding Name}" FontSize="26" FontWeight="Light" Foreground="#3b3b3b" />
+        <!-- 描述：库里真有这一项，以前只能在右栏编、页面上从不显示。写了就露出来，
+             没写就不占位置（原型这一行是文件路径，我们的配方不是文件） -->
+        <TextBlock Text="{Binding Desc}" FontSize="11" Foreground="#a2a2a2"
+                   Margin="0,5,0,0" TextTrimming="CharacterEllipsis"
+                   IsVisible="{Binding HasDesc}" />
         <TextBlock Text="{Binding HeaderMeta}" FontSize="11" Foreground="#7a7a7a"
                    Margin="0,6,0,0" TextTrimming="CharacterEllipsis" />
       </StackPanel>
@@ -244,19 +269,26 @@
         </StackPanel>
       </Border>
 
-      <!-- ── 表头。跟表身用同一串列宽，两边才对得齐 ── -->
-      <Border DockPanel.Dock="Top" Background="#fafafa" BorderBrush="#d5d5d5"
-              BorderThickness="0,0,0,1" Height="28"
-              IsVisible="{Binding IsStepsTab}">
-        <Grid ColumnDefinitions="6,40,104,1.2*,1.8*,60,104">
-          <TextBlock Grid.Column="1" Text="#" Classes="th" TextAlignment="Right" />
-          <TextBlock Grid.Column="2" Text="类型" Classes="th" />
-          <TextBlock Grid.Column="3" Text="步骤" Classes="th" />
-          <TextBlock Grid.Column="4" Text="参数" Classes="th" />
-          <TextBlock Grid.Column="5" Text="耗时" Classes="th" TextAlignment="Right" />
-          <TextBlock Grid.Column="6" Text="结束条件" Classes="th" />
-        </Grid>
+      <!-- ── 温度剖面（原型 .rx-prof）：按时长比例的一条带子，点色带选中步骤。
+           画的是**计划**——每段的起止来自排期，两端温度来自估算器一路推进的釜温。
+           全程没有一步动过温度就整条不出现（一条笔直的水平线什么也没说） ── -->
+      <Border DockPanel.Dock="Top" Background="#fafafa" BorderBrush="#dcdcdc"
+              BorderThickness="0,0,0,1" Padding="20,10,20,11"
+              IsVisible="{Binding HasProfile}">
+        <StackPanel>
+          <StackPanel Orientation="Horizontal" Spacing="9" Margin="0,0,0,8">
+            <Path Data="M 1.5,12.5 L 5,8 L 8,10.4 L 14.5,3" Stroke="#f7941e" StrokeThickness="1.6"
+                  VerticalAlignment="Center" />
+            <TextBlock Text="温度剖面" FontSize="11" Foreground="#3d3d3d"
+                       VerticalAlignment="Center" />
+            <TextBlock Text="{Binding ProfileNote}" FontSize="10.5" Foreground="#9a9a9a"
+                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+          </StackPanel>
+          <ctl:RecipeProfileView Name="Profile" Profile="{Binding Profile}"
+                                 SelectedIndex="{Binding SelStepIndex}" />
+        </StackPanel>
       </Border>
+
       <Border DockPanel.Dock="Top" Background="#fafafa" BorderBrush="#d5d5d5"
               BorderThickness="0,0,0,1" Height="28"
               IsVisible="{Binding IsMatTab}">
@@ -279,73 +311,90 @@
                      Text="库里存进第一条配方之后，这里会把它的步骤按工艺阶段摊开，方便应用前先看一眼。" />
         </StackPanel>
 
-        <!-- 步骤表 -->
+        <!-- ── 步骤（原型 .rx-phgrp）：左边一条阶段槽，右边一列两行式的卡片。
+             从前这里是一张七列的表，参数挤成一串小方块，长一点的就被裁掉；
+             卡片两行给了参数一整行的宽度，读起来才是一句话 ── -->
         <ScrollViewer IsVisible="{Binding IsStepsTab}">
-          <ItemsControl ItemsSource="{Binding Phases}">
+          <ItemsControl ItemsSource="{Binding Phases}" Margin="0,0,0,16">
             <ItemsControl.ItemTemplate>
               <DataTemplate>
-                <StackPanel>
-                  <!-- 阶段组头（原型 .rx-phase）。没标阶段的那一组不出组头 -->
-                  <Border Background="#f2f2f2" BorderBrush="#e3e3e3" BorderThickness="0,1,0,1"
-                          Padding="12,6" IsVisible="{Binding HasName}">
-                    <Grid ColumnDefinitions="*,Auto">
-                      <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="9">
-                        <TextBlock Text="阶段" FontSize="11" Foreground="#3d3d3d" />
-                        <TextBlock Text="{Binding Name}" FontSize="11"
-                                   Foreground="{StaticResource SelBd}" />
+                <Grid ColumnDefinitions="106,*">
+                  <!-- 阶段槽：阶段号 / 阶段名 / 这一段的合计时长（贴底） -->
+                  <Border Grid.Column="0" Background="#fafafa" BorderBrush="#e6e6e6"
+                          BorderThickness="0,0,1,0" Padding="20,11,12,10">
+                    <DockPanel>
+                      <TextBlock DockPanel.Dock="Bottom" Text="{Binding DurationText}"
+                                 FontSize="10" Foreground="#a2a2a2" Margin="0,8,0,0" />
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="{Binding OrdinalText}" FontSize="10" Foreground="#2f8f49"
+                                   IsVisible="{Binding HasName}" />
+                        <TextBlock Text="{Binding NameText}" FontSize="10.5" Foreground="#6f6f6f"
+                                   LineHeight="14" TextWrapping="Wrap" />
                       </StackPanel>
-                      <TextBlock Grid.Column="1" Text="{Binding DurationText}" FontSize="10.5"
-                                 Foreground="#8d8d8d" />
-                    </Grid>
+                    </DockPanel>
                   </Border>
 
-                  <ItemsControl ItemsSource="{Binding Steps}">
+                  <ItemsControl Grid.Column="1" ItemsSource="{Binding Steps}">
                     <ItemsControl.ItemTemplate>
                       <DataTemplate>
-                        <Border Classes="trow" Classes.sel="{Binding IsSelected}"
-                                MinHeight="34">
-                          <Grid ColumnDefinitions="6,40,104,1.2*,1.8*,60,104">
+                        <Border Classes="card" Classes.sel="{Binding IsSelected}">
+                          <Grid ColumnDefinitions="3,*">
+                            <!-- 选中那条 3px 绿边（原型 inset box-shadow）。常在，只换色 -->
                             <Border Grid.Column="0"
-                                    Background="{Binding IsSelected, Converter={x:Static ctl:Is.SelBar}}" />
-                            <TextBlock Grid.Column="1" Text="{Binding Seq}" TextAlignment="Right"
-                                       FontSize="10.5" Foreground="#9a9a9a" />
-                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="7"
-                                        Margin="8,0" VerticalAlignment="Center">
-                              <Border Width="4" Height="17" CornerRadius="1"
-                                      Background="{Binding ModuleColor}" />
-                              <TextBlock Text="{Binding Name}" Margin="0" />
+                                    Background="{Binding IsSelected, Converter={x:Static ctl:Is.GreenBar}}" />
+                            <StackPanel Grid.Column="1" Margin="11,9,16,10">
+                              <!-- 第一行：序号 · 模块色条 · 类型 · 整句描述 · 耗时 -->
+                              <Grid ColumnDefinitions="15,9,4,9,60,9,*,10,Auto">
+                                <TextBlock Grid.Column="0" Text="{Binding Seq}" FontSize="10.5"
+                                           Foreground="#9a9a9a" TextAlignment="Right"
+                                           VerticalAlignment="Center" />
+                                <Border Grid.Column="2" Height="16" CornerRadius="1"
+                                        Background="{Binding ModuleColor}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="4" Text="{Binding Name}" FontSize="11"
+                                           Foreground="#5a5a5a" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Grid.Column="6" Text="{Binding Desc}" FontSize="12.5"
+                                           Foreground="#2b2b2b" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Grid.Column="8" Text="{Binding PlanDuration}" FontSize="11.5"
+                                           Foreground="#3d3d3d" VerticalAlignment="Center" />
+                              </Grid>
+                              <!-- 第二行：参数一串 + 右端结束条件。缩进到跟描述对齐 -->
+                              <Grid ColumnDefinitions="*,12,Auto" Margin="28,6,0,0">
+                                <ItemsControl Grid.Column="0" ItemsSource="{Binding Chips}"
+                                              ClipToBounds="True">
+                                  <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                      <StackPanel Orientation="Horizontal" Spacing="5" />
+                                    </ItemsPanelTemplate>
+                                  </ItemsControl.ItemsPanel>
+                                  <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                      <StackPanel Orientation="Horizontal" Spacing="5">
+                                        <TextBlock Text="{Binding Lead}" FontSize="11"
+                                                   Foreground="#d5d5d5" VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding Label}" FontSize="11"
+                                                   Foreground="#9a9a9a" VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding Value}" FontSize="11"
+                                                   Foreground="#3d3d3d" VerticalAlignment="Center" />
+                                      </StackPanel>
+                                    </DataTemplate>
+                                  </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock Grid.Column="0" Text="无参数" FontSize="11"
+                                           Foreground="#c2c2c2" IsVisible="{Binding !HasChips}" />
+                                <TextBlock Grid.Column="2" FontSize="11" Foreground="#5a5a5a"
+                                           VerticalAlignment="Center">
+                                  <Run Text="→ " /><Run Text="{Binding EndText}" />
+                                </TextBlock>
+                              </Grid>
                             </StackPanel>
-                            <TextBlock Grid.Column="3" Text="{Binding Desc}" />
-                            <ItemsControl Grid.Column="4" ItemsSource="{Binding Chips}"
-                                          Margin="8,0" VerticalAlignment="Center"
-                                          ClipToBounds="True">
-                              <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                  <StackPanel Orientation="Horizontal" Spacing="4" />
-                                </ItemsPanelTemplate>
-                              </ItemsControl.ItemsPanel>
-                              <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                  <Border Classes="chip">
-                                    <StackPanel Orientation="Horizontal" Spacing="4">
-                                      <TextBlock Text="{Binding Label}" FontSize="10"
-                                                 Foreground="#9a9a9a" Margin="0" />
-                                      <TextBlock Text="{Binding Value}" FontSize="10"
-                                                 Foreground="#4a4a4a" Margin="0" />
-                                    </StackPanel>
-                                  </Border>
-                                </DataTemplate>
-                              </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                            <TextBlock Grid.Column="5" Text="{Binding PlanDuration}"
-                                       TextAlignment="Right" Foreground="#4a4a4a" />
-                            <TextBlock Grid.Column="6" Text="{Binding EndText}" Foreground="#5a5a5a" />
                           </Grid>
                         </Border>
                       </DataTemplate>
                     </ItemsControl.ItemTemplate>
                   </ItemsControl>
-                </StackPanel>
+                </Grid>
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>

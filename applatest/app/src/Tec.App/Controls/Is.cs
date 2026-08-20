@@ -25,6 +25,16 @@ public static class Is
         new FuncValueConverter<bool, IBrush>(on =>
             on ? new SolidColorBrush(Color.Parse("#1a7fc4")) : Brushes.Transparent);
 
+    /// <summary>
+    /// 步骤卡左边那条 3px 绿条（原型 .rx-card.rx-sel 的 inset 阴影）。
+    /// 跟 SelBar 分开是因为配方库那张步骤卡的选中色是绿的不是蓝的——
+    /// 那一片是「这条配方长什么样」的预览，跟温度剖面上的选中色带同一个绿，
+    /// 点了色带哪一张卡亮起来，两边对得上。
+    /// </summary>
+    public static readonly IValueConverter GreenBar =
+        new FuncValueConverter<bool, IBrush>(on =>
+            on ? new SolidColorBrush(Color.Parse("#2f8f49")) : Brushes.Transparent);
+
     public static readonly IValueConverter SelWeight =
         new FuncValueConverter<bool, FontWeight>(on => on ? FontWeight.SemiBold : FontWeight.Normal);
 }
