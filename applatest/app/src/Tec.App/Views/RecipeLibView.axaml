@@ -153,9 +153,8 @@
                          Foreground="#a2a2a2" VerticalAlignment="Bottom" Margin="0,0,0,3" />
             </Grid>
             <Panel>
-              <TextBox Classes="finput" Height="26" MinHeight="26" Padding="25,3,6,3"
-                       Watermark="搜配方名" Text="{Binding Query, Mode=TwoWay}" />
-              <ctl:TecIcon Key="ui-search" Tint="#9a9a9a" Size="12" Margin="8,0,0,0"
+              <TextBox Classes="srch" Watermark="搜配方名" Text="{Binding Query, Mode=TwoWay}" />
+              <ctl:TecIcon Key="ui-search" Tint="#9a9a9a" Size="13" Margin="8,0,0,0"
                            HorizontalAlignment="Left" VerticalAlignment="Center"
                            IsHitTestVisible="False" />
             </Panel>

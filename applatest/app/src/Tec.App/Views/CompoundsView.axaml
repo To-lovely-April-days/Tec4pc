@@ -96,10 +96,11 @@
         <StackPanel Orientation="Horizontal" Spacing="10" Margin="14,0" VerticalAlignment="Center">
           <TextBlock Text="检索：" FontSize="12" Foreground="#444444" VerticalAlignment="Center" />
           <Panel Width="260">
-            <TextBox Classes="finput" Height="26" Padding="26,0,6,0"
-                     Text="{Binding Search, Mode=TwoWay}" Watermark="名称 / CAS / 分子式" />
-            <ctl:TecIcon Key="ui-search" HorizontalAlignment="Left" VerticalAlignment="Center"
-                         Margin="7,0,0,0" IsHitTestVisible="False" />
+            <TextBox Classes="srch" Text="{Binding Search, Mode=TwoWay}"
+                     Watermark="名称 / CAS / 分子式" />
+            <ctl:TecIcon Key="ui-search" Tint="#9a9a9a" Size="13" Margin="8,0,0,0"
+                         HorizontalAlignment="Left" VerticalAlignment="Center"
+                         IsHitTestVisible="False" />
           </Panel>
           <TextBlock Text="类别：" FontSize="12" Foreground="#444444" VerticalAlignment="Center" />
           <ComboBox Classes="sel" Width="130" ItemsSource="{Binding Categories}"

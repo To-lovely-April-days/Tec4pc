@@ -386,6 +386,27 @@
       <Setter Property="Foreground" Value="#8d8d8d" />
     </Style>
 
+    <!--
+      检索框。全程序三处（化合物库 / 配方库 / 数据导出）从前各写各的：
+      三个高度、三个左内边距、两个圆角、两种描边——同一个部件三种拼法，
+      其中化合物库那个还漏了 VerticalContentAlignment，字贴着框顶。
+
+      **必须同时写 Height 和 MinHeight**：默认主题给 TextBox 的 MinHeight
+      比这里的 Height 矮，只写 Height 的话内容按 MinHeight 摆、框按 Height 撑，
+      多出来的高度全落在下边，字看着往上跑（化合物库那个就是这么歪的）。
+      左内边距 27 是给框里那枚放大镜让的位置。
+    -->
+    <Style Selector="TextBox.srch">
+      <Setter Property="Height" Value="26" />
+      <Setter Property="MinHeight" Value="26" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Padding" Value="27,0,8,0" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="BorderBrush" Value="#c4c4c4" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="Background" Value="White" />
+    </Style>
+
     <!-- 面板小节头：原型统一用圆形箭头，不用细横线 -->
     <Style Selector="TextBlock.acc">
       <Setter Property="FontSize" Value="11.5" />

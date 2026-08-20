@@ -91,7 +91,7 @@
               <Panel Margin="0,0,9,0">
                 <TextBox Classes="srch" Width="188" Text="{Binding Query, Mode=TwoWay}"
                          Watermark="搜索名称或记录编号" />
-                <ctl:TecIcon Key="ui-search" Tint="#9a9a9a" Size="13" Margin="7,0,0,0"
+                <ctl:TecIcon Key="ui-search" Tint="#9a9a9a" Size="13" Margin="8,0,0,0"
                              HorizontalAlignment="Left" VerticalAlignment="Center" IsHitTestVisible="False" />
               </Panel>
 
@@ -578,16 +578,6 @@
 
   <UserControl.Styles>
     <!-- 工具条 -->
-    <Style Selector="TextBox.srch">
-      <Setter Property="Height" Value="26" />
-      <Setter Property="MinHeight" Value="26" />
-      <Setter Property="FontSize" Value="11.5" />
-      <Setter Property="Padding" Value="27,0,8,0" />
-      <Setter Property="VerticalContentAlignment" Value="Center" />
-      <Setter Property="BorderBrush" Value="#c4c4c4" />
-      <Setter Property="CornerRadius" Value="3" />
-      <Setter Property="Background" Value="White" />
-    </Style>
     <!-- 本程序的按钮语言：描边圆角 + 悬停变蓝。台面 / 配方那几页都是这一套，
          导出页从前用的是原型那条扁平分段条，摆在一起像另一个程序 -->
     <Style Selector="Button.pill">
