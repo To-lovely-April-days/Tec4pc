@@ -136,7 +136,8 @@
                        HorizontalAlignment="Center" Margin="0,-2,0,0" />
           </StackPanel>
           <Button.Flyout>
-            <Flyout Placement="BottomEdgeAlignedRight" HorizontalOffset="4">
+            <Flyout Placement="BottomEdgeAlignedRight" HorizontalOffset="4"
+                    FlyoutPresenterClasses="umenupop">
               <StackPanel Width="252">
                 <!-- 菜单头：登录名 + 角色标签 / 署名 / 本次会话起于何时、哪台机器 -->
                 <Border Background="#fafafa" BorderBrush="#ececec" BorderThickness="0,0,0,1"
@@ -273,6 +274,23 @@
     </Style>
     <Style Selector="Button.tbico:pointerover /template/ ContentPresenter">
       <Setter Property="Background" Value="#33ffffff" />
+    </Style>
+
+    <!--
+      账户菜单的**外壳**。Flyout 弹出来的不是我们给的那块内容，外面还套着一层
+      FlyoutPresenter，它自带 8px 内边距、圆角和一圈浅描边——结果就是菜单里的
+      东西离外框有一圈白，头部那块灰底和悬停的浅蓝都够不到边（用户看出来的
+      「元素和外边的框有距离感」）。把这层压平：内边距归零、方角、
+      1px #8b8b8b 描边（原型 .um-menu 就是这一道），内容自己贴住框。
+    -->
+    <Style Selector="FlyoutPresenter.umenupop">
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderBrush" Value="#8b8b8b" />
+      <Setter Property="BorderThickness" Value="1" />
     </Style>
 
     <!-- 用户区那颗按钮本身 -->
