@@ -361,28 +361,38 @@ public sealed class ExperimentStore
     }
 
     /// <summary>
-    /// 化合物库读盘。第一次开机库是空的，把程序自带的参考数据灌一次；
-    /// 灌过就记一笔，操作人删掉的那条不会下次开机又回来。
+    /// 化合物库读盘。**不预置任何物性**——这一栏的数将来要拿去算加料量、判析出、
+    /// 卡温度上限，凭空多出十条通用模型物会让人以为物性是备齐了的。
+    /// 早期版本开机灌过十条，已经落盘的那些在这里一次性清掉。
     /// </summary>
     public void LoadCompounds(IList<Compound> into)
     {
         into.Clear();
-        if (Db is null)
-        {
-            // 库开不起来时至少让界面有东西可看，只是改了存不住
-            foreach (var c in CompoundSeed.All) into.Add(c.Clone());
-            return;
-        }
+        // 库开不起来就是空的。从前这时候拿自带数据顶上，让界面「有东西可看」——
+        // 那是拿假象盖住故障：改了存不住，人却看得见一库数
+        if (Db is null) return;
         try
         {
-            if (Db.CompoundCount == 0 && Db.Meta(CompoundSeed.MetaKey) is null)
+            if (Db.Meta(CompoundSeedPurge.MetaKey) is null)
             {
-                Db.SaveCompounds(CompoundSeed.All);
-                Db.SetMeta(CompoundSeed.MetaKey, "1");
+                var cas = CompoundSeedPurge.Pick(Db.LoadCompounds());
+                foreach (var c in cas) Db.DeleteCompound(c);
+                Db.SetMeta(CompoundSeedPurge.MetaKey, "1");
+                if (cas.Count > 0)
+                    Console.WriteLine($"[info] 清掉 {cas.Count} 条早期自带的化合物参考数据");
             }
             foreach (var c in Db.LoadCompounds()) into.Add(c);
         }
         catch (Exception ex) { Console.WriteLine($"[warn] 化合物库读盘失败：{ex.Message}"); }
+    }
+
+    /// <summary>整库清空。返回清掉几条。操作人在化合物页按「清空」才走这里。</summary>
+    public int ClearCompounds()
+    {
+        if (Db is null) return 0;
+        var n = Db.CompoundCount;
+        if (n > 0) Db.SaveCompounds(Array.Empty<Compound>());
+        return n;
     }
 
     /// <summary>化合物库版本号（每写一次 +1）。库开不起来时恒为 0——那时候本来也存不住。</summary>

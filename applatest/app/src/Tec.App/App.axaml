@@ -209,6 +209,15 @@
       <Setter Property="CornerRadius" Value="16" />
       <Setter Property="Background" Value="#ececec" />
     </Style>
+    <!-- 会丢数据的那种圆钮：描边染红，指上去也是红的，不跟别的钮一样变蓝。
+         按之前一定会弹框问一遍，但在按之前就该看出来这颗跟旁边那几颗不是一回事 -->
+    <Style Selector="Button.tbtn.danger">
+      <Setter Property="BorderBrush" Value="#c0392b" />
+    </Style>
+    <Style Selector="Button.tbtn.danger:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#fdecea" />
+      <Setter Property="BorderBrush" Value="#c0392b" />
+    </Style>
     <!-- 按不了的时候还是一个圈，只是淡下去。Fluent 的缺省禁用样式会把描边整个抹掉，
          剩一块灰饼——看着像坏了，不像"现在不能按" -->
     <Style Selector="Button.tbtn:disabled /template/ ContentPresenter">

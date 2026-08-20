@@ -120,6 +120,12 @@
           <Button Classes="tbtn sm" Command="{Binding Delete}" ToolTip.Tip="删除选中的这一条">
             <ctl:TecIcon Key="ui-foot-trash2" />
           </Button>
+          <!-- 清空整库：换体系、换客户的时候一条条删不现实。要先问一遍，
+               而且框里得写清楚「先导出一份 CSV 才是后悔药」 -->
+          <Button Classes="tbtn sm danger" Command="{Binding ClearAll}"
+                  ToolTip.Tip="清空整个化合物库（不可撤销；要留底先用「导出」存一份 CSV）">
+            <ctl:TecIcon Key="ui-foot-trash2" Tint="#c0392b" />
+          </Button>
 
           <TextBlock Text="{Binding Status}" IsVisible="{Binding HasStatus}"
                      Foreground="{Binding StatusColorHex}" FontSize="11.5"
@@ -166,9 +172,18 @@
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
-          <TextBlock Text="没有匹配的化合物" IsVisible="{Binding NoRows}"
+          <TextBlock Text="没有匹配的化合物" IsVisible="{Binding NoMatch}"
                      FontSize="12" Foreground="#a2a2a2" Margin="30"
                      HorizontalAlignment="Center" />
+          <!-- 空库跟「筛没了」分开说：空库要告诉人去哪儿添，筛没了只要告诉人换个词 -->
+          <StackPanel IsVisible="{Binding IsEmpty}" Margin="30" Spacing="7"
+                      HorizontalAlignment="Center">
+            <TextBlock Text="化合物库是空的" FontSize="13.5" Foreground="#7a7a7a"
+                       HorizontalAlignment="Center" />
+            <TextBlock FontSize="11.5" Foreground="#a2a2a2" LineHeight="19" MaxWidth="470"
+                       TextAlignment="Center" TextWrapping="Wrap"
+                       Text="用工具条上的「＋」逐条录入，或者「导入」一份 CSV。这里的数会拿去算加料体积、判析出、卡温度——程序不替你预置任何物性。" />
+          </StackPanel>
         </StackPanel>
       </ScrollViewer>
     </DockPanel>
@@ -180,7 +195,21 @@
             BorderBrush="#d2d2d2" BorderThickness="1,0,0,0">
       <ScrollViewer>
         <Border Background="{StaticResource ThemeFill}" Padding="18,16,18,20">
-        <StackPanel DataContext="{Binding Selected}">
+        <Panel>
+        <!-- 一条都没选中（库空了 / 筛没了）：整块物性收起来，只留一句话。
+             留着那一排空输入框，看着像「有一条化合物，只是什么都没填」 -->
+        <StackPanel IsVisible="{Binding !HasSelection}" Spacing="8">
+          <TextBlock Text="物性详情" FontSize="24" FontWeight="Light" Foreground="#333333"
+                     HorizontalAlignment="Center" Margin="0,0,0,8" />
+          <TextBlock Text="在左侧表里选中一条化合物，这里显示它的物性。"
+                     FontSize="11.5" Foreground="#8d8d8d" LineHeight="19"
+                     TextAlignment="Center" TextWrapping="Wrap" />
+          <TextBlock Text="库是空的就先用工具条上的「＋」新建一条，或者「导入」一份 CSV。"
+                     FontSize="11.5" Foreground="#8d8d8d" LineHeight="19"
+                     TextAlignment="Center" TextWrapping="Wrap" IsVisible="{Binding IsEmpty}" />
+        </StackPanel>
+        <StackPanel DataContext="{Binding Selected}"
+                    IsVisible="{Binding $parent[UserControl].DataContext.HasSelection}">
           <TextBlock Text="物性详情" FontSize="24" FontWeight="Light" Foreground="#333333"
                      HorizontalAlignment="Center" Margin="0,0,0,8" />
           <TextBlock Text="{Binding Name}" FontSize="21" FontWeight="Light" Foreground="#333333"
@@ -298,6 +327,7 @@
           <TextBlock Classes="intro left" Margin="0,10,0,0"
                      Text="饱和温度要按这一炉的浓度算（溶质质量 ÷ 溶剂体积），那两个数在配料表里。算出来可以直接写进控温步骤的目标温度（FR-5.9）。曲线是水中的溶解度，溶剂不是水就不换算。" />
         </StackPanel>
+        </Panel>
         </Border>
       </ScrollViewer>
     </Border>

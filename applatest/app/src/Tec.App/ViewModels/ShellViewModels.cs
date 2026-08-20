@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text;
 using Tec.App.Controls;
 using Tec.App.Services;
+using Tec.App.Views;
 using Tec.Core;
 using Tec.Core.Catalog;
 using Tec.Core.Chemistry;
@@ -999,6 +1000,7 @@ public sealed class CompoundsViewModel : ViewModelBase
         Delete = new RelayCommand(DoDelete);
         Import = new RelayCommand(() => _ = DoImportAsync());
         Export = new RelayCommand(() => _ = DoExportAsync());
+        ClearAll = new RelayCommand(() => _ = DoClearAllAsync());
         GoCharge = new RelayCommand(() => GoChargePage?.Invoke());
 
         // 化合物库是全局的，从 tecstudio.db 读；改一个字段写一条回去
@@ -1010,6 +1012,7 @@ public sealed class CompoundsViewModel : ViewModelBase
     public RelayCommand Delete { get; }
     public RelayCommand Import { get; }
     public RelayCommand Export { get; }
+    public RelayCommand ClearAll { get; }
 
     /// <summary>「到配料表算饱和温度」。外壳接上跳页——浓度只有那一页才知道。</summary>
     public RelayCommand GoCharge { get; }
@@ -1090,6 +1093,34 @@ public sealed class CompoundsViewModel : ViewModelBase
         if (_ws.Store.DeleteCompound(cas) is not null)
             Audit(row.Model, new[] { "删除" });
         Say(row.Model.HasCas ? $"已删除 {name}（{cas}）" : $"已删除 {name}");
+    }
+
+    /// <summary>
+    /// 清空整库。换体系、换客户的时候一条条删不现实。
+    ///
+    /// 三道闸：先问一遍（默认按钮是「取消」那一侧，不是「清空」）；框里写清楚
+    /// 有几条、能不能撤（不能）、先导出一份 CSV 才是后悔药；清完在系统日志里
+    /// 留一笔谁清的、清了几条——GLP 里「数据没了」这件事必须有人认领。
+    /// </summary>
+    private async Task DoClearAllAsync()
+    {
+        var n = _ws.Compounds.Count;
+        if (n == 0) { Say("库里已经是空的"); return; }
+        if (FileDialogs.Owner is not { } owner) return;
+
+        var choice = await ConfirmDialog.Ask(owner,
+            "清空化合物库",
+            $"库里这 {n} 条全部删掉，删完不能撤销。",
+            "配料表和配方里已经写下的名称、分子量不会跟着变——那些数在存的时候就"
+            + "抄进去了，不吃活库。但之后再想按名称连回化合物，库里得先有这一条。\n"
+            + "要留底就先取消，用工具条上的「导出」存一份 CSV。",
+            "清空", secondary: null);
+        if (choice != DialogChoice.Primary) return;
+
+        var removed = _ws.Store.ClearCompounds();
+        _ws.Compounds.Clear();          // 集合一变就触发 Reload，列表和右栏都会跟着空掉
+        _ws.Log?.Write("化合物", $"清空化合物库，删除 {removed} 条", _ws.Operator);
+        Say($"已清空，删除 {removed} 条");
     }
 
     /// <summary>
@@ -1218,6 +1249,10 @@ public sealed class CompoundsViewModel : ViewModelBase
     /// <summary>库里一条都没有——跟「筛出来是空的」不是一回事，说法也不一样。</summary>
     public bool IsEmpty => _all.Count == 0;
 
+    /// <summary>库里有东西，只是这个筛选条件下一条都没剩。跟空库分开说：
+    /// 空库要告诉人去哪儿添，筛没了只要告诉人换个词。</summary>
+    public bool NoMatch => Rows.Count == 0 && _all.Count > 0;
+
     private void Reload()
     {
         var keep = _selected?.Cas;
@@ -1226,7 +1261,14 @@ public sealed class CompoundsViewModel : ViewModelBase
         RebuildCategories();
         Apply();
         _selected = null;
-        Selected = Rows.FirstOrDefault(r => r.Cas == keep) ?? Rows.FirstOrDefault();
+        // 一条都不剩时要自己吆喝一声：Selected 的 setter 挡 null（那是给筛选用的，
+        // 筛没了不该把选中也丢掉），所以走不到它的 Raise。不补这一下，
+        // 库清空之后右栏还挂着最后看过的那条物性——列表是空的，右边却在编辑「水」
+        var pick = Rows.FirstOrDefault(r => r.Cas == keep) ?? Rows.FirstOrDefault();
+        if (pick is not null)
+            Selected = pick;
+        else
+            RaiseAll(nameof(Selected), nameof(HasSelection), nameof(ExtractNote), nameof(Coefficients));
         Raise(nameof(IsEmpty));
     }
 
@@ -1261,6 +1303,6 @@ public sealed class CompoundsViewModel : ViewModelBase
                 !c.Formula.Contains(_search, StringComparison.OrdinalIgnoreCase)) continue;
             Rows.Add(c);
         }
-        Raise(nameof(NoRows));
+        RaiseAll(nameof(NoRows), nameof(NoMatch));
     }
 }

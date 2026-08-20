@@ -231,8 +231,8 @@ public sealed class Workspace
         Store.LoadLibrary(Library);
         if (SeedPurge.Apply(Library) > 0) Store.SaveLibrary();
 
-        // 化合物库同样从全局库读。头一回开机库是空的，灌一次程序自带的参考数据——
-        // 物性数据不是工艺，属于该自带的资料（见 CompoundSeed 的说明）
+        // 化合物库同样从全局库读，同样不预置——早期版本灌过十条通用结晶模型物，
+        // 落盘的那些在读盘时一次性清掉（见 CompoundSeedPurge 的说明）
         Store.LoadCompounds(Compounds);
     }
 
