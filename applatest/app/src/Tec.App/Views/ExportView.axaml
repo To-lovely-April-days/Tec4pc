@@ -204,7 +204,7 @@
               <!-- 表头。可排序的那几列点了换升降序（原型 th.s） -->
               <Grid Classes="rhdr" ColumnDefinitions="34,152,300,132,80,218,78,62,88,60"
                     Background="#fafafa">
-                <CheckBox Grid.Column="0" MinHeight="0" Margin="9,0,0,0" VerticalAlignment="Center"
+                <CheckBox Grid.Column="0" MinHeight="0" Margin="12,0,0,0" VerticalAlignment="Center"
                           IsChecked="{Binding AllChecked}" Command="{Binding ToggleAll}"
                           ToolTip.Tip="全选 / 全不选" />
                 <Button Grid.Column="1" Classes="th" Command="{Binding SortBy}" CommandParameter="id">
@@ -237,10 +237,14 @@
               <ItemsControl ItemsSource="{Binding Rows}">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
-                    <Border Classes="rrow" Classes.on="{Binding IsChecked}" Classes.pv="{Binding IsPreview}"
+                    <Border Classes="rrow" Classes.on="{Binding IsChecked}"
                             Cursor="Hand" ToolTip.Tip="{Binding Tip}" PointerPressed="OnRowPressed">
+                      <Panel>
+                      <!-- 蓝条摆在 Grid 外面、盖在行上：不占列宽，
+                           表头与各行的列位就还是同一套数，勾选框自然对得齐 -->
+                      <Border Classes="pvbar" IsVisible="{Binding IsPreview}" />
                       <Grid ColumnDefinitions="34,152,300,132,80,218,78,62,88,60">
-                        <CheckBox Grid.Column="0" MinHeight="0" Margin="9,0,0,0" VerticalAlignment="Center"
+                        <CheckBox Grid.Column="0" MinHeight="0" Margin="12,0,0,0" VerticalAlignment="Center"
                                   IsChecked="{Binding IsChecked, Mode=TwoWay}" />
                         <TextBlock Grid.Column="1" Text="{Binding Id}" Classes="mut mono" />
                         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" Margin="9,0">
@@ -269,6 +273,7 @@
                         <TextBlock Grid.Column="9" Text="{Binding AlarmText}" Classes="mono num"
                                    Classes.alm="{Binding HasAlarm}" Classes.mut="{Binding !HasAlarm}" />
                       </Grid>
+                      </Panel>
                     </Border>
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
@@ -670,7 +675,7 @@
       <Setter Property="Height" Value="30" />
       <Setter Property="Background" Value="White" />
       <Setter Property="BorderBrush" Value="#f2f2f2" />
-      <Setter Property="BorderThickness" Value="3,0,0,1" />
+      <Setter Property="BorderThickness" Value="0,0,0,1" />
     </Style>
     <Style Selector="Border.rrow:pointerover">
       <Setter Property="Background" Value="#f2f8fd" />
@@ -678,9 +683,22 @@
     <Style Selector="Border.rrow.on, Border.rrow.on:pointerover">
       <Setter Property="Background" Value="#e8f2fb" />
     </Style>
-    <!-- 正在预览的那一条左边一道 3px 蓝条（原型 tr.pv） -->
-    <Style Selector="Border.rrow.pv">
-      <Setter Property="BorderBrush" Value="#1a7fc4" />
+
+    <!--
+      正在预览的那一条左边一道 3px 蓝条（原型 tr.pv）。
+
+      这条从前是行 Border 自己的左边框（BorderThickness="3,0,0,1"），两个毛病：
+        · 边框把行内容整体往右挤 3px，而表头没有这圈边框——两排勾选框差 3px，
+          一列勾选框看着是歪的；
+        · 蓝条贴死在表格左缘、跟窗口边挨着，露不全。
+      改成行内一根独立的条：行底色照旧铺满，蓝条自己往里让 3px，两件事都解决。
+    -->
+    <Style Selector="Border.pvbar">
+      <Setter Property="Width" Value="3" />
+      <Setter Property="Margin" Value="3,0,0,0" />
+      <Setter Property="HorizontalAlignment" Value="Left" />
+      <Setter Property="Background" Value="#1a7fc4" />
+      <Setter Property="CornerRadius" Value="1.5" />
     </Style>
     <Style Selector="Border.rrow TextBlock">
       <Setter Property="FontSize" Value="11.5" />
