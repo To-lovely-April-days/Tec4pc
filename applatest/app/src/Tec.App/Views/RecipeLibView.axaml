@@ -8,10 +8,9 @@
     步骤卡）｜ 属性 342。属性栏不照原型那块通栏灰，按你定的那一套走：栏本身不铺底色、
     块用 PropsBg、块之间露白缝、「当前选中的那一个」左边一条粗色条。
 
-    **这一页的选中色是绿的，不是全局那个蓝。**原型把整个 Recipes 视图定成绿色调
-    （列表、标签页、步骤卡、温度剖面上的色带都是 #2f8f49），而这四处必须是同一个颜色——
-    点了剖面上哪一段，哪张卡亮起来，眼睛得当场对上。为了跟别的页统一而把它们改蓝，
-    就得连剖面一起改，那条带子的绿又是原型定的。一页之内自洽优先。
+    **选中色跟全局一套走（蓝）**：列表、标签页、步骤卡、温度剖面上的色带四处同一个蓝。
+    原型这一页是绿调的，但一个程序里「选中」只该有一个颜色——这一页绿、别的页蓝，
+    换页时眼睛要重新认一次。四处必须彼此一致这条不变，只是那个颜色取全局的 SelBd。
 
     原型里有而我们没有的东西，一律不画：版本号（v3.2）、发布状态（PUBLISHED /
     Draft / Archived）、文件路径、置顶、文件夹分组、版本历史——这些字段库里根本不记，
@@ -34,8 +33,8 @@
       <Setter Property="BorderBrush" Value="#bfe0f4" />
     </Style>
     <Style Selector="Border.rxitem.sel">
-      <Setter Property="Background" Value="#e4f2d3" />
-      <Setter Property="BorderBrush" Value="#8bbf6a" />
+      <Setter Property="Background" Value="{StaticResource SelBg}" />
+      <Setter Property="BorderBrush" Value="{StaticResource SelBd}" />
     </Style>
     <Style Selector="Border.rxitem TextBlock.rn">
       <Setter Property="FontSize" Value="12.5" />
@@ -43,7 +42,7 @@
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
     <Style Selector="Border.rxitem.sel TextBlock.rn">
-      <Setter Property="Foreground" Value="#1f5c30" />
+      <Setter Property="Foreground" Value="{StaticResource SelTx}" />
       <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 
@@ -63,7 +62,7 @@
       <Setter Property="TextBlock.Foreground" Value="#0a84c8" />
     </Style>
     <Style Selector="Button.rxtab.on">
-      <Setter Property="Foreground" Value="#2f8f49" />
+      <Setter Property="Foreground" Value="{StaticResource SelBd}" />
     </Style>
 
     <!-- 表头一格 / 表身一行（原型 .rx-th / .rx-tr） -->
@@ -95,8 +94,8 @@
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
 
-    <!-- 步骤卡（原型 .rx-card）：一行分隔线、悬停浅蓝、选中浅绿 + 左边一条绿。
-         选中色跟温度剖面上那条色带同一个绿：点了色带哪一张卡亮起来，一眼对得上 -->
+    <!-- 步骤卡（原型 .rx-card）：一行分隔线、悬停浅蓝、选中蓝底 + 左边一条蓝。
+         选中色跟温度剖面上那条色带同一个蓝：点了色带哪一张卡亮起来，一眼对得上 -->
     <Style Selector="Border.card">
       <Setter Property="Background" Value="White" />
       <Setter Property="BorderBrush" Value="#ececec" />
@@ -107,7 +106,7 @@
       <Setter Property="Background" Value="#eaf6fd" />
     </Style>
     <Style Selector="Border.card.sel">
-      <Setter Property="Background" Value="#e4f2d3" />
+      <Setter Property="Background" Value="{StaticResource SelBg}" />
     </Style>
 
     <!-- 参数小标签（原型 .rx-chip） -->
@@ -195,23 +194,11 @@
                     <!-- 6px 那一列常在，选中才上色：内容不会因为选中横跳 -->
                     <Grid ColumnDefinitions="6,*">
                       <Border Grid.Column="0"
-                              Background="{Binding IsSelected, Converter={x:Static ctl:Is.GreenBar}}" />
+                              Background="{Binding IsSelected, Converter={x:Static ctl:Is.SelBar}}" />
                       <StackPanel Grid.Column="1" Margin="9,7,9,8">
                         <TextBlock Text="{Binding Name}" Classes="rn" />
                         <TextBlock Text="{Binding Meta}" FontSize="10.5" Foreground="#9a9a9a"
                                    Margin="0,4,0,0" TextTrimming="CharacterEllipsis" />
-                        <!-- 模块色带：一步一段，这条配方用到哪些模块一眼看得出 -->
-                        <Border Height="4" CornerRadius="2" Background="#f0f0f0"
-                                Margin="0,7,0,0" ClipToBounds="True">
-                          <ItemsControl ItemsSource="{Binding Mix}">
-                            <ItemsControl.ItemsPanel>
-                              <ItemsPanelTemplate><UniformGrid Rows="1" /></ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                              <DataTemplate><Border Background="{Binding}" /></DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                          </ItemsControl>
-                        </Border>
                       </StackPanel>
                     </Grid>
                   </Border>
@@ -326,7 +313,8 @@
                       <TextBlock DockPanel.Dock="Bottom" Text="{Binding DurationText}"
                                  FontSize="10" Foreground="#a2a2a2" Margin="0,8,0,0" />
                       <StackPanel Spacing="3">
-                        <TextBlock Text="{Binding OrdinalText}" FontSize="10" Foreground="#2f8f49"
+                        <TextBlock Text="{Binding OrdinalText}" FontSize="10"
+                                   Foreground="{StaticResource SelBd}"
                                    IsVisible="{Binding HasName}" />
                         <TextBlock Text="{Binding NameText}" FontSize="10.5" Foreground="#6f6f6f"
                                    LineHeight="14" TextWrapping="Wrap" />
@@ -339,9 +327,9 @@
                       <DataTemplate>
                         <Border Classes="card" Classes.sel="{Binding IsSelected}">
                           <Grid ColumnDefinitions="3,*">
-                            <!-- 选中那条 3px 绿边（原型 inset box-shadow）。常在，只换色 -->
+                            <!-- 选中那条 3px 蓝边（原型 inset box-shadow）。常在，只换色 -->
                             <Border Grid.Column="0"
-                                    Background="{Binding IsSelected, Converter={x:Static ctl:Is.GreenBar}}" />
+                                    Background="{Binding IsSelected, Converter={x:Static ctl:Is.SelBar}}" />
                             <StackPanel Grid.Column="1" Margin="11,9,16,10">
                               <!-- 第一行：序号 · 模块色条 · 类型 · 整句描述 · 耗时 -->
                               <Grid ColumnDefinitions="15,9,4,9,60,9,*,10,Auto">

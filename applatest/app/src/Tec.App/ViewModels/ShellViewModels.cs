@@ -303,7 +303,6 @@ public sealed class LibRowViewModel : ViewModelBase
 {
     private bool _sel;
     public required Recipe Recipe { get; init; }
-    public required IReadOnlyList<string> Mix { get; init; }
     public bool IsSelected
     {
         get => _sel;
@@ -570,7 +569,7 @@ public sealed class RecipeLibViewModel : ViewModelBase
     {
         _all.Clear();
         foreach (var r in _ws.Library)
-            _all.Add(new LibRowViewModel { Recipe = r, Mix = MixOf(r) });
+            _all.Add(new LibRowViewModel { Recipe = r });
         ApplyFilter();
         if (Rows.Count == 0) Selected = null;
     }
@@ -610,12 +609,6 @@ public sealed class RecipeLibViewModel : ViewModelBase
         }
         catch { /* 读不了就当没导入：这一页没有状态行，弹框反而打断操作 */ }
     }
-
-    /// <summary>列表底部的模块色带：一步一段，结束实验不计（原型 rmix）。</summary>
-    private IReadOnlyList<string> MixOf(Recipe r)
-        => r.Steps.Where(s => s.CommandId != BuiltinCommands.Finish)
-                  .Select(s => ModuleInfo.ColorOf(_ws.Catalog.TryGet(s.CommandId, out var d) ? d.Module : "通用"))
-                  .ToList();
 
     private void Refresh()
     {
