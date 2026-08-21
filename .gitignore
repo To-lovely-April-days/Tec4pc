@@ -3,3 +3,14 @@ obj/
 *.user
 .vs/
 TestResults/
+
+# 补丁与打补丁的残留。这个项目是靠 .patch 交付的：
+#   git format-patch 会把 NNNN-xxx.patch 扔在当前目录；
+#   git am 打岔时会在工作区留下 .rej（没打进去的那几段）和 .orig（打之前的原样）。
+# 这些都是过程产物，不该进版本库——尤其 .orig，它是源文件的副本，
+# 混进提交里会变成两份内容不同的同名代码。
+*.patch
+*.diff
+*.rej
+*.orig
+patches/
