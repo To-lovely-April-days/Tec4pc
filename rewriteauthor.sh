@@ -9,9 +9,15 @@ set -e
 NAME="To-lovely-April-days"
 MAIL="it1925184085@163.com"
 
-# 只改这几个旧身份写的提交，别人的一律不碰。
-# 按邮箱认，不按名字——名字大小写变过（Claude / claude）。
-OLD_MAILS="noreply@anthropic.com asimeniosfozia173@gmail.com To-lovely-April-days@users.noreply.github.com"
+# 要收编的旧身份，按**邮箱**认（名字大小写变过：Claude / claude）。
+#   noreply@anthropic.com                        Claude 署的名
+#   asimeniosfozia173@gmail.com                  早期几笔
+#   To-lovely-April-days@users.noreply.github.com 我上一版脚本用过的地址
+#   dev@tecstudio.local / dev@tec.local          早期自动化配置的占位地址，
+#                                                .local 是假域名，GitHub 认不了任何账号
+#   it1925184085@163.com                         就是你自己，只是显示名写着 admin，
+#                                                收进来是为了把显示名也统一掉
+OLD_MAILS="noreply@anthropic.com asimeniosfozia173@gmail.com To-lovely-April-days@users.noreply.github.com dev@tecstudio.local dev@tec.local it1925184085@163.com"
 
 # ── 跑之前的自检 ──────────────────────────────────────────────
 git rev-parse --git-dir >/dev/null 2>&1 || {
@@ -30,11 +36,22 @@ git rev-parse --git-dir >/dev/null 2>&1 || {
   exit 1; }
 
 echo "改之前的作者分布："
-git log --format='%an <%ae>' --branches --tags | sort | uniq -c | sort -rn
+git log --format='%an <%ae>' --branches | sort | uniq -c | sort -rn
 echo
 echo "要改成： $NAME <$MAIL>"
 echo "回车继续，Ctrl+C 放弃。"
 read _ignored
+
+# ── 存一个持久的后悔点 ───────────────────────────────────────
+# filter-branch -f 每跑一次都会覆盖 refs/original，跑第二遍就找不回最初那个位置了。
+# 打个 tag 钉住，只在第一次跑的时候打
+if git rev-parse -q --verify refs/tags/pre-author-rewrite >/dev/null; then
+  echo "后悔点 tag 已存在：pre-author-rewrite → $(git rev-parse --short refs/tags/pre-author-rewrite)"
+else
+  git tag pre-author-rewrite HEAD
+  echo "已打后悔点 tag：pre-author-rewrite → $(git rev-parse --short HEAD)"
+fi
+echo
 
 # ── 开改 ─────────────────────────────────────────────────────
 # 消息过滤器只用 sed，不用 perl —— Git for Windows 里 perl 不一定有。
@@ -56,7 +73,7 @@ FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch -f \
         -e "/^https:\/\/claude\.ai\/code\/session_/d" \
     | sed -e :a -e "/^\n*\$/{\$d;N;};/\n\$/ba"
   ' \
-  -- --branches --tags
+  -- --branches
 
 # ── 改完之后 ─────────────────────────────────────────────────
 git config user.name  "$NAME"
@@ -64,9 +81,9 @@ git config user.email "$MAIL"
 
 echo
 echo "✓ 改完了。现在的作者分布："
-git log --format='%an <%ae>' --branches --tags | sort | uniq -c | sort -rn
+git log --format='%an <%ae>' --branches | sort | uniq -c | sort -rn
 echo
 echo "以后这个仓库里的新提交也会用 $NAME <$MAIL>。"
 echo
-echo "确认没问题再推。后悔的话，把分支退回改之前："
-git for-each-ref refs/original/ --format='  git reset --hard %(objectname)   # 原 %(refname)'
+echo "确认没问题再推。后悔的话："
+echo "  git reset --hard pre-author-rewrite     # 退回第一次跑这个脚本之前"
