@@ -537,8 +537,8 @@
                 <Button Classes="tbtn foot" Command="{Binding Duplicate}" ToolTip.Tip="另存副本">
                   <ctl:TecIcon Key="ui-foot-dup" />
                 </Button>
-                <Button Classes="tbtn foot" Command="{Binding Delete}" ToolTip.Tip="从库中删除">
-                  <ctl:TecIcon Key="ui-foot-trash2" />
+                <Button Classes="tbtn del" Command="{Binding Delete}" ToolTip.Tip="从库中删除">
+                  <ctl:TecIcon Key="ui-foot-trash" />
                 </Button>
               </StackPanel>
             </Border>

@@ -117,14 +117,14 @@
                   ToolTip.Tip="把整库导成 CSV（带 BOM，Excel 双击打开不乱码）">
             <ctl:TecIcon Key="ui-snav-export" />
           </Button>
-          <Button Classes="tbtn sm" Command="{Binding Delete}" ToolTip.Tip="删除选中的这一条">
-            <ctl:TecIcon Key="ui-foot-trash2" />
+          <Button Classes="tbtn del" Command="{Binding Delete}" ToolTip.Tip="删除选中的这一条">
+            <ctl:TecIcon Key="ui-foot-trash" />
           </Button>
           <!-- 清空整库：换体系、换客户的时候一条条删不现实。要先问一遍，
                而且框里得写清楚「先导出一份 CSV 才是后悔药」 -->
-          <Button Classes="tbtn sm danger" Command="{Binding ClearAll}"
+          <Button Classes="tbtn del danger" Command="{Binding ClearAll}"
                   ToolTip.Tip="清空整个化合物库（不可撤销；要留底先用「导出」存一份 CSV）">
-            <ctl:TecIcon Key="ui-foot-trash2" Tint="#c0392b" />
+            <ctl:TecIcon Key="ui-foot-trash" Tint="#c0392b" />
           </Button>
 
           <TextBlock Text="{Binding Status}" IsVisible="{Binding HasStatus}"

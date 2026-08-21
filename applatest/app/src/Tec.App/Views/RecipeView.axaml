@@ -289,12 +289,15 @@
                                  Margin="4,0,0,0" />
                         <TextBox Grid.Column="3" Classes="vcell" Text="{Binding NoteText, Mode=TwoWay}"
                                  Margin="4,0,0,0" />
-                        <Button Grid.Column="4" Classes="trash" Margin="2,0,0,0"
+                        <!-- 24 是这一格的硬上限：第 5 列写死 26，再让出按钮自己的 2px 左边距。
+                             要放 32 得把表头（上面那个 Grid）和行模板两处列宽一起改，
+                             「说明」列会从 81 掉到 73，行高还会被顶高 6px -->
+                        <Button Grid.Column="4" Classes="tbtn del d24" Margin="2,0,0,0"
                                 VerticalAlignment="Center" HorizontalAlignment="Center"
                                 ToolTip.Tip="删除该变量"
                                 Command="{Binding $parent[UserControl].DataContext.RemoveVar}"
                                 CommandParameter="{Binding}">
-                          <ctl:TecIcon Key="ui-trash-step" />
+                          <ctl:TecIcon Key="ui-foot-trash" Size="11" />
                         </Button>
                       </Grid>
                     </DataTemplate>
@@ -351,9 +354,13 @@
                                      Foreground="#2b2b2b" VerticalAlignment="Center" />
                           <TextBox Grid.Column="1" Classes="hin" Margin="6,0"
                                    Text="{Binding LaneName, Mode=TwoWay}" />
-                          <Button Grid.Column="2" Classes="lhbtn" ToolTip.Tip="清空该通道的配方"
+                          <!-- 从 lhbtn 家族里摘出来挂到 del 上，而不是去改 lhbtn 的样式：
+                               正下方那颗「通道属性」铅笔钮（lhbtn sq）跟删除毫无关系，
+                               它只覆写了圆角，其余全靠 lhbtn 基类——动基类等于连它一起改。
+                               直径仍是 26（列宽写死 26），跟铅笔钮对得齐，只是底色和图标换了 -->
+                          <Button Grid.Column="2" Classes="tbtn del d26" ToolTip.Tip="清空该通道的配方"
                                   Click="OnLaneRemove">
-                            <ctl:TecIcon Key="ui-lane-trash" Tint="#1f1f1f" />
+                            <ctl:TecIcon Key="ui-foot-trash" Size="12" />
                           </Button>
                         </Grid>
                         <Grid ColumnDefinitions="38,*,26">
@@ -484,13 +491,18 @@
                                   </Border>
 
                                   <!-- 垃圾桶占右边那个空档，贴右下角（原型 .step .trash 也在右下） -->
+                                  <!-- 24 是这个空档的硬上限，动不得：这一列宽 24 是跟左边
+                                       「6px 色条 + 18px 竖排名」对称留的。改成 32 的话
+                                       BodyWidth 194→186、LabelWidth 一起缩，长描述从 4 行涨到 5 行，
+                                       而 MaxLines=4 会把第 5 行**静默吞掉**；左右也不再对称，
+                                       图标和描述整体左偏 4px -->
                                   <Button Grid.Column="3" Grid.Row="0" Grid.RowSpan="2"
-                                          Classes="trash" Margin="0,0,0,5"
+                                          Classes="tbtn del d24" Margin="0,0,0,5"
                                           VerticalAlignment="Bottom" HorizontalAlignment="Center"
                                           ToolTip.Tip="删除该步骤"
                                           Command="{Binding $parent[UserControl].DataContext.RemoveStep}"
                                           CommandParameter="{Binding}">
-                                    <ctl:TecIcon Key="ui-trash-step" />
+                                    <ctl:TecIcon Key="ui-foot-trash" Size="11" />
                                   </Button>
 
                                   <!-- 排期这一行借一点右空档（138 宽塞不下两段），
@@ -905,20 +917,6 @@
     <Style Selector="Button.lhbtn:pointerover /template/ ContentPresenter">
       <Setter Property="Background" Value="#dbe6f1" />
       <Setter Property="BorderBrush" Value="#1a7fc4" />
-    </Style>
-
-    <Style Selector="Button.trash">
-      <Setter Property="Width" Value="17" />
-      <Setter Property="Height" Value="17" />
-      <Setter Property="CornerRadius" Value="3" />
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderThickness" Value="0" />
-      <Setter Property="Padding" Value="0" />
-      <Setter Property="HorizontalContentAlignment" Value="Center" />
-      <Setter Property="VerticalContentAlignment" Value="Center" />
-    </Style>
-    <Style Selector="Button.trash:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#c8ecf8" />
     </Style>
 
     <Style Selector="Border.laneSel">

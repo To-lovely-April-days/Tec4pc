@@ -82,8 +82,8 @@
                   ToolTip.Tip="加一行空白组分（不预填任何物性——预填等于替人编数据）">
             <ctl:TecIcon Key="ui-cmp-cmpnew" />
           </Button>
-          <Button Classes="tbtn sm" Command="{Binding DeleteRow}" IsEnabled="{Binding HasChannels}" ToolTip.Tip="删除选中的这一行">
-            <ctl:TecIcon Key="ui-foot-trash2" />
+          <Button Classes="tbtn del" Command="{Binding DeleteRow}" IsEnabled="{Binding HasChannels}" ToolTip.Tip="删除选中的这一行">
+            <ctl:TecIcon Key="ui-foot-trash" />
           </Button>
           <Button Classes="tbtn sm" Command="{Binding ApplyToRecipe}" IsEnabled="{Binding HasChannels}"
                   ToolTip.Tip="把算出来的体积填进这一路配方里同名的加料步骤。按料液名对应；改了哪几步会逐条说出来，配方页可以撤销">

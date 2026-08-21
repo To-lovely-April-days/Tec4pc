@@ -209,8 +209,47 @@
       <Setter Property="CornerRadius" Value="16" />
       <Setter Property="Background" Value="#ececec" />
     </Style>
+    <!--
+      ══ 删除钮 ══
+      全程序**所有**删除入口共用这一族，规格照台面属性栏那颗（32 灰底圆钮 +
+      实心垃圾桶 ui-foot-trash）。从前是八处各写各的：两处 tbtn foot、
+      三处 tbtn sm、两处 17px 透明方角小钮（Button.trash）、一处泳道头的
+      蓝灰圆钮（lhbtn）；配着四个垃圾桶 svg，其中三个是同一条 path 的
+      三份拷贝，只是尺寸和颜色不同。同一个记号八种拼法。
+
+      单开 del 这个类而不是直接用 foot：foot 的意思是「属性栏底部动作区那一排」，
+      保存和连接也在用；del 的意思是「这颗会删东西」。`grep 'tbtn del'`
+      就是全项目的删除入口清单，以后不会再有人拿 foot 当删除记号。
+
+      d26 / d24 是同一颗钮的小号，给塞不下 32 的三个位置用（泳道头 26 列、
+      步骤卡 24 空档、变量行 24 空档，三处都动不得——算式见各自的注释）。
+      形状、底色、描边一律照旧，只是直径小一号；图标按基准的 15/32≈0.47
+      等比缩到 12 / 11，视觉重量才跟大号一致。
+    -->
+    <Style Selector="Button.tbtn.del">
+      <Setter Property="Width" Value="32" />
+      <Setter Property="Height" Value="32" />
+      <Setter Property="CornerRadius" Value="16" />
+      <Setter Property="Background" Value="#ececec" />
+      <Setter Property="BorderThickness" Value="2" />
+    </Style>
+    <Style Selector="Button.tbtn.del.d26">
+      <Setter Property="Width" Value="26" />
+      <Setter Property="Height" Value="26" />
+      <Setter Property="CornerRadius" Value="13" />
+      <Setter Property="BorderThickness" Value="1.6" />
+    </Style>
+    <Style Selector="Button.tbtn.del.d24">
+      <Setter Property="Width" Value="24" />
+      <Setter Property="Height" Value="24" />
+      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="BorderThickness" Value="1.6" />
+    </Style>
+
     <!-- 会丢数据的那种圆钮：描边染红，指上去也是红的，不跟别的钮一样变蓝。
-         按之前一定会弹框问一遍，但在按之前就该看出来这颗跟旁边那几颗不是一回事 -->
+         按之前一定会弹框问一遍，但在按之前就该看出来这颗跟旁边那几颗不是一回事。
+         跟 del 叠着用：形状 / 尺寸 / 图标全一样，只有描边和桶是红的——
+         「删一条」和「清整库」长成同尺寸同底色的孪生钮挨在一起才是真的危险 -->
     <Style Selector="Button.tbtn.danger">
       <Setter Property="BorderBrush" Value="#c0392b" />
     </Style>
