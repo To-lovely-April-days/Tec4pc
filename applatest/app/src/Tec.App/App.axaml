@@ -236,10 +236,13 @@
       </Setter>
     </Style>
 
-    <!-- 主菜单项：25px 细体，平时 #55595e，悬停 #1f2124，
-         选中 = 主题色的字 + 底下 2px 外壳黑。
-         一次只有一项是选中的，红字就是「你在这儿」；横杠交给黑，
-         两支笔各说一件事，不互相抢。
+    <!-- 主菜单项：25px 细体。
+         没选中的走 #a9adb1——看着是禁用那一档，但它照样能点。
+         这么排的道理：一次只有一项是当前视图，其余八项对「我现在在哪」
+         不提供信息，压到底才不跟红字抢。
+         代价是「能不能点」的提示弱了，所以悬停一步跳到 #1f2124（近黑），
+         指针一碰就明确告诉你这是活的。
+         选中 = 主题色的字 + 底下 2px 外壳黑，两支笔各说一件事。
 
          内边距挪成外边距：Avalonia 的边框画在 ContentPresenter 的外沿，
          Padding="11,0" 时下划线会比文字左右各长出 11px；原型那条是
@@ -259,7 +262,7 @@
       <!-- 300。中文要落到细体得靠字体自己有 Light 这一档（Windows 上的
            微软雅黑 UI 有）；没有 Light 的机器会退回 Regular，那是字体的事，不是这里 -->
       <Setter Property="FontWeight" Value="Light" />
-      <Setter Property="Foreground" Value="#55595e" />
+      <Setter Property="Foreground" Value="#a9adb1" />
       <!-- 拉满 52 高，下划线才落在菜单栏底边上（原型的 bottom:0） -->
       <Setter Property="VerticalAlignment" Value="Stretch" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
