@@ -237,9 +237,9 @@
     </Style>
 
     <!-- 主菜单项：25px 细体，平时 #55595e，悬停 #1f2124，
-         选中 = 墨色字 + 底下 2px 品牌红。
-         选中不靠字变红：品牌红只走小面积，一排 22px 的红字够不上「小面积」，
-         而且八项里只有一项变色时，红字看着像报警。下划线是原型 .menu-item.active::after。
+         选中 = 主题色的字 + 底下 2px 外壳黑。
+         一次只有一项是选中的，红字就是「你在这儿」；横杠交给黑，
+         两支笔各说一件事，不互相抢。
 
          内边距挪成外边距：Avalonia 的边框画在 ContentPresenter 的外沿，
          Padding="11,0" 时下划线会比文字左右各长出 11px；原型那条是
@@ -270,8 +270,8 @@
       <Setter Property="TextBlock.Foreground" Value="#1f2124" />
     </Style>
     <Style Selector="Button.menu.on">
-      <Setter Property="Foreground" Value="#1f2124" />
-      <Setter Property="BorderBrush" Value="#a41626" />
+      <Setter Property="Foreground" Value="#a41626" />
+      <Setter Property="BorderBrush" Value="#17191c" />
       <Setter Property="BorderThickness" Value="0,0,0,2" />
     </Style>
 
