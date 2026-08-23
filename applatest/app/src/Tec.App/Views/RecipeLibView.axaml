@@ -159,7 +159,9 @@
     </Style>
   </UserControl.Styles>
 
-  <Grid ColumnDefinitions="280,*,342">
+  <!-- 左栏 260 跟配方页的步骤库同宽（259 + 1px 分界）。两页的左栏都是
+       「库」，菜单在这两页之间切的时候宽度一变，整个中列跟着横跳一下 -->
+  <Grid ColumnDefinitions="260,*,342">
 
     <!-- ══ 左：配方库（原型 .rx-lib）══ -->
     <!-- ClipToBounds：这一栏宽度写死 280，Grid 不裁，里面的东西真比它宽的话
@@ -204,12 +206,12 @@
               <TextBlock Text="✕" FontSize="10" Foreground="#6b6f74"
                          HorizontalAlignment="Center" VerticalAlignment="Center" />
             </Button>
-            <Border Grid.Column="2" Width="1" Height="22" Background="#d4d4d4" Margin="8,0" />
+            <Border Grid.Column="2" Width="1" Height="22" Background="#d4d4d4" Margin="7,0" />
             <Button Grid.Column="3" Classes="tbtn sm" ToolTip.Tip="把配方页当前通道的配方收进库"
                     Command="{Binding NewFromChannel}">
               <ctl:TecIcon Key="ui-lh-libnew" />
             </Button>
-            <Button Grid.Column="4" Classes="tbtn sm" Margin="7,0,0,0"
+            <Button Grid.Column="4" Classes="tbtn sm" Margin="6,0,0,0"
                     ToolTip.Tip="从文件导入（.tecrecipe）" Command="{Binding ImportToLib}">
               <ctl:TecIcon Key="ui-lh-libimport" />
             </Button>
