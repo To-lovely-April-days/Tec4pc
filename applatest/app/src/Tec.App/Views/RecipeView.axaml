@@ -252,12 +252,12 @@
                 <ctl:TecIcon Key="ui-chev-down" Tint="#51555a" />
               </LayoutTransformControl>
             </Border>
-            <LayoutTransformControl HorizontalAlignment="Center">
-              <LayoutTransformControl.LayoutTransform>
-                <RotateTransform Angle="90" />
-              </LayoutTransformControl.LayoutTransform>
-              <TextBlock Text="变量" FontSize="17" FontWeight="Light" Foreground="#3a3d41" />
-            </LayoutTransformControl>
+            <!-- 竖排组名：汉字一个个正着摞下来，不是把整行转 90°。
+                 原型那条竖栏写的是 Variables，拉丁字母转着读没问题；
+                 汉字转 90° 就是躺倒的字，读起来像坏了（原来就是转的） -->
+            <TextBlock Text="变&#x0a;量" FontSize="17" FontWeight="Light"
+                       Foreground="#3a3d41" LineHeight="21" TextAlignment="Center"
+                       HorizontalAlignment="Center" />
             <Border Background="#d7d9d6" CornerRadius="9" Padding="6,2"
                     HorizontalAlignment="Center" IsVisible="{Binding HasVarsBadge}">
               <TextBlock Text="{Binding VarsBadge}" FontSize="11" Foreground="#3a3d41" />
@@ -338,7 +338,12 @@
 
       <!-- 画布：原型是一层极浅的径向底（中心 #f1f1f1 往外化到白）。
            从前是纯白，配上从前那种青色实心卡够用；现在卡片本身是白的，
-           白卡摞在白底上就只剩一圈 1px 灰线在撑，底色得比卡片深一档 -->
+           白卡摞在白底上就只剩一圈 1px 灰线在撑，底色得比卡片深一档。
+
+           渐变最亮的一头正好落在左缘，挨着「变量」那条 #f1f2f0 的竖栏，
+           两者之间因此有一道白带——那是要的：变量栏和配方区是两件事，
+           中间隔开一条才不至于连成一片。一度把它压成平的 #f2f2f2 去掉了
+           这道白带，是搞反了，已经改回来。 -->
       <Panel Grid.Column="1">
         <Panel.Background>
           <!-- 半径给到 115%/125%（原型也是 125%/105%）：够不到画布边角的话，
