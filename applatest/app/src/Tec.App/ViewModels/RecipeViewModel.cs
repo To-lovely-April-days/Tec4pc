@@ -34,12 +34,17 @@ public sealed class CommandItemViewModel
     public CommandDescriptor Descriptor { get; }
     public string Name => Descriptor.DisplayName;
     public string Module => Descriptor.Module;
+    /// <summary>彩色插画版（属性栏标题、拖动幽灵卡这些放得大的地方用）。</summary>
     public string IconKey => "cmd-" + (Descriptor.IconKey ?? "wait");
+    /// <summary>红底白线的小方块版（步骤库 15px、步骤卡 27px 用）。</summary>
+    public string TileIcon => "tile-" + (Descriptor.IconKey ?? "wait");
 }
 
 public sealed class ModuleGroup : ViewModelBase
 {
     private bool _open = true;
+    private bool _visible = true;
+    private bool _rule;
 
     public ModuleGroup(string name)
     {
@@ -49,12 +54,33 @@ public sealed class ModuleGroup : ViewModelBase
 
     public string Name { get; }
     public string Color { get; }
+
+    /// <summary>这一组的全部指令。搜索时按它重填 <see cref="Commands"/>。</summary>
+    public List<CommandItemViewModel> All { get; } = new();
     public ObservableCollection<CommandItemViewModel> Commands { get; } = new();
 
     public bool Open
     {
         get => _open;
         set => Set(ref _open, value);
+    }
+
+    /// <summary>搜索把这一组过滤空了就整组不显示（连组名带分隔线一起）。</summary>
+    public bool Visible
+    {
+        get => _visible;
+        set => Set(ref _visible, value);
+    }
+
+    /// <summary>
+    /// 这一组上方画不画那条 1px 分隔线。原型是组与组之间才有一条，
+    /// 所以「当前可见的第一组」不画——搜索把前几组滤没了之后，
+    /// 那条线得跟着挪，不能按建库时的次序写死。
+    /// </summary>
+    public bool Rule
+    {
+        get => _rule;
+        set => Set(ref _rule, value);
     }
 }
 
@@ -110,24 +136,6 @@ public sealed class StepViewModel : ViewModelBase
     /// </summary>
     public double CardWidth => 246 - Depth * 14;
 
-    /// <summary>
-    /// 卡片正文那一列的宽度：卡宽 − 2px 描边两条 − 左边（6px 色条 + 18px 竖排名）
-    /// − 右边同样宽的 24px 空档。左右一样宽，图标和描述才真的落在卡片中线上。
-    /// 算死而不是交给 Grid 的星号列去分：星号列量到的宽和最后排布的宽对不上，
-    /// 描述会按更宽的那个折行，右半截被卡片裁掉（"加入 10" 断成 "加入 1"）。
-    /// </summary>
-    public double BodyWidth => CardWidth - 4 - 24 - 24;
-
-    /// <summary>
-    /// 描述那行文字的盒子宽度。写死在 TextBlock 上，再配上它自己 6px 的左右
-    /// 内边距——两件事缺一不可：
-    ///   · 宽度写死，排版和排布用的是同一个数；
-    ///   · 内边距让**排版宽比盒子窄 12px**，一行排到头时最后那个字的墨迹
-    ///     比排版算出来的行宽多出来的一点有地方去。只写宽度不留内边距，
-    ///     那点墨迹会被 TextBlock 自己的边界切掉（"加入" 只剩一撇）。
-    /// </summary>
-    public double LabelWidth => BodyWidth - 8;
-
     public ScheduleEntry Entry { get; }
     public CommandDescriptor? Descriptor { get; }
 
@@ -135,6 +143,8 @@ public sealed class StepViewModel : ViewModelBase
     public string Module => Descriptor?.Module ?? "—";
     public string ModuleColor => ModuleInfo.ColorOf(Module);
     public string IconKey => "cmd-" + (Descriptor?.IconKey ?? "wait");
+    /// <summary>红底白线的小方块版（步骤卡上那枚 27px 的图标）。</summary>
+    public string TileIcon => "tile-" + (Descriptor?.IconKey ?? "wait");
     /// <summary>整句工艺语句（原型 stepDesc → DESC）。</summary>
     public string Desc => Entry.Title;
     /// <summary>卡片摘要（原型 PSPEC.sum）。</summary>
@@ -406,14 +416,16 @@ public sealed class RecipeViewModel : ViewModelBase
         foreach (var m in ws.Catalog.Modules)
         {
             var group = new ModuleGroup(m);
-            foreach (var c in ws.Catalog.InModule(m)) group.Commands.Add(new CommandItemViewModel(c));
+            foreach (var c in ws.Catalog.InModule(m)) group.All.Add(new CommandItemViewModel(c));
             Groups.Add(group);
         }
+        ApplyLibFilter();
 
         foreach (var r in ws.Library) Library.Add(new LibOption(r));
         _libPick = Library.FirstOrDefault()?.Recipe;
 
         AddStep = new RelayCommand(p => { if (p is CommandItemViewModel c) AddCommand(c); });
+        ClearLibFilter = new RelayCommand(() => LibFilter = "");
         RemoveStep = new RelayCommand(p => { if (p is StepViewModel s) Delete(s); });
         CopyRecipe = new RelayCommand(DoCopy);
         ApplyLib = new RelayCommand(DoApplyLib);
@@ -500,6 +512,55 @@ public sealed class RecipeViewModel : ViewModelBase
     }
 
     public ObservableCollection<ModuleGroup> Groups { get; } = new();
+
+    // ── 步骤库搜索（原型库头那一行）─────────────────────────────────
+    // 21 条指令分在 6 个模块里，平铺一屏放得下，但记不住哪条在哪个模块的时候，
+    // 打两个字比挨组翻快。匹配指令名和模块名两处：想不起「梯度控温」这四个字，
+    // 打「温度」也该把那一组捞出来。
+    private string _libFilter = "";
+
+    public string LibFilter
+    {
+        get => _libFilter;
+        set
+        {
+            if (!Set(ref _libFilter, value ?? "")) return;
+            Raise(nameof(HasLibFilter));
+            ApplyLibFilter();
+        }
+    }
+
+    public bool HasLibFilter => _libFilter.Trim().Length > 0;
+
+    /// <summary>搜不着的时候得说一声，不能只剩一片空白让人以为界面坏了。</summary>
+    public bool LibEmpty => Groups.All(g => !g.Visible);
+
+    private void ApplyLibFilter()
+    {
+        var q = _libFilter.Trim();
+        var rule = false;                  // 第一组不画上边那条线，之后每组都画
+
+        foreach (var g in Groups)
+        {
+            g.Commands.Clear();
+            foreach (var c in g.All)
+            {
+                if (q.Length == 0
+                    || c.Name.Contains(q, StringComparison.OrdinalIgnoreCase)
+                    || g.Name.Contains(q, StringComparison.OrdinalIgnoreCase))
+                    g.Commands.Add(c);
+            }
+
+            g.Visible = g.Commands.Count > 0;
+            // 搜索期间强制展开：过滤剩下的那几条藏在收起的组里等于没搜着
+            if (q.Length > 0 && g.Visible) g.Open = true;
+            g.Rule = g.Visible && rule;
+            if (g.Visible) rule = true;
+        }
+
+        Raise(nameof(LibEmpty));
+    }
+
     public ObservableCollection<LaneViewModel> Lanes { get; } = new();
     public ObservableCollection<LibOption> Library { get; } = new();
     public ObservableCollection<CopyTargetOption> CopyTargets { get; } = new();
@@ -583,6 +644,7 @@ public sealed class RecipeViewModel : ViewModelBase
     public string TotalNote { get; private set; } = "";
 
     public RelayCommand AddStep { get; }
+    public RelayCommand ClearLibFilter { get; }
     public RelayCommand RemoveStep { get; }
     public RelayCommand CopyRecipe { get; }
     public RelayCommand ApplyLib { get; }
@@ -856,6 +918,7 @@ public sealed class RecipeViewModel : ViewModelBase
 
     public string DragTitle { get; private set; } = "";
     public string DragIcon { get; private set; } = "cmd-wait";
+    public string DragTile { get; private set; } = "tile-wait";
     public string DragColor { get; private set; } = "#9aa4ab";
 
     /// <summary>从左边的步骤库拖出来。</summary>
@@ -866,6 +929,7 @@ public sealed class RecipeViewModel : ViewModelBase
         _dragStep = null;
         DragTitle = c.Name;
         DragIcon = c.IconKey;
+        DragTile = c.TileIcon;
         DragColor = ModuleInfo.ColorOf(c.Module);
         StartDrag();
     }
@@ -878,6 +942,7 @@ public sealed class RecipeViewModel : ViewModelBase
         _dragFromCh = fromChannel;
         DragTitle = s.Name;
         DragIcon = s.IconKey;
+        DragTile = s.TileIcon;
         DragColor = s.ModuleColor;
         s.Ghosted = true;
         StartDrag();
@@ -887,7 +952,7 @@ public sealed class RecipeViewModel : ViewModelBase
     {
         _dropCh = null;
         Dragging = true;
-        RaiseAll(nameof(DragTitle), nameof(DragIcon), nameof(DragColor));
+        RaiseAll(nameof(DragTitle), nameof(DragIcon), nameof(DragTile), nameof(DragColor));
     }
 
     /// <summary>

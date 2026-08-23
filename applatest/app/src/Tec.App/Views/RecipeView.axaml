@@ -6,89 +6,117 @@
              Focusable="True" KeyDown="OnKeyDown">
 
   <!--
-    版式照 gbg-scheduler.html 的 Process 视图 1:1 搬：
-    步骤库 312 ｜ 流程区 ｜ 属性 342（原型脚本面板 352，这里跟台面属性对齐取 342）。
-    属性栏不照原型，按用户要求走台面页那一套：块用 PropsBg、块之间露白缝、
-    「当前选中的那一个」左边一条 6px 粗色条。
+    左侧步骤库和中间的编辑区照 iControl 6.2 那份原型改：
+    步骤库 259 + 1px 分界 ｜ 流程区 ｜ 属性 342（属性栏不动，仍是台面页那一套）。
 
     左侧色条一律 6px。全程序用到这条「左边一道色条 = 这一块属于谁」的地方
-    一共五处，从前各写各的（14 / 12 / 11 / 6 / 4），同一个说法五个粗细：
-      · 配方页 步骤库分组块（原型 .dev .bar 14）
+    一共四处，从前各写各的（12 / 11 / 6 / 4），同一个说法四个粗细：
       · 配方页 步骤卡（原型 .step .sbar 11）
       · 配方页 / 台面页 属性块          ← 6，基准就是它
       · 运行页 通道磁贴（12）
       · 运行页 热编辑步骤行（4）
-    原型那两个数字（14 / 11）不再照抄：原型自己也没统一，而一个界面里
-    同一个记号只该有一个粗细。旁边那些 12×12 的小色块是另一回事（色卡，
-    不是色条），不在此列。
+    旁边那些 12×12 的小色块是另一回事（色卡，不是色条），不在此列。
+    步骤库的分组从整块色底改成了「3×11 的一小截色记号」，也不在此列。
   -->
-  <Grid ColumnDefinitions="312,*,342">
+  <Grid ColumnDefinitions="260,*,342">
 
-    <!-- ══ 左：步骤库（原型 .devlist）══
-         一个模块 = 一块 #eeefec，左边一条 6px 模块色条贯通整块（展开了也贯通），
-         块与块之间 2px 白缝。栏本身不铺底色、不画竖线——分界线在流程区那一侧。
-         原型这条是 14px，统一成 6px（见文件开头那段说明） -->
-    <Border Grid.Column="0" Background="White" Padding="0,2,4,0">
-      <!-- 底部那截留白写在内容的 Margin 上，不写 ScrollViewer 的 Padding：
-           Padding 是从可视区里扣的，不进滚动范围——最后一组的图标名字会卡在
-           下边缘，滚到底也露不出来 -->
-      <ScrollViewer>
-        <ItemsControl ItemsSource="{Binding Groups}" Margin="0,0,0,40">
-          <ItemsControl.ItemTemplate>
-            <DataTemplate>
-              <Border Classes="dev" Margin="0,0,0,2">
-                <Grid ColumnDefinitions="6,*">
-                  <!-- 色条贯通整块：收起时就是那 96px，展开了连指令格一起包 -->
-                  <Border Grid.Column="0" Background="{Binding Color}" />
-                  <StackPanel Grid.Column="1">
-                    <!-- 组头：96 高，圆圈箭头 + 组名（原型 .dev，23px/300 拉丁；
-                         中文按同一套换算落到 20px——汉字占满字身框，
-                         照抄字号会比原型大出三分之一） -->
-                    <Border Height="96" Background="Transparent" Cursor="Hand"
+    <!-- ══ 左：步骤库 ══
+         原型是一栏 259 宽的白列：24px 深色标题条 + 35px 搜索行 + 一条条 23px 的
+         指令行（15px 红方块图标 + 13px 指令名），组与组之间一条 1px 分隔线。
+
+         从「6 个 96px 的分组块 + 3 列 48px 图标格」换成平铺细行，是因为
+         21 条指令铺成细行一屏就放得下（原来六组展开要滚三屏）。代价是
+         48px 的彩色插画退到了步骤卡和属性栏，库里改用红底白线的小方块——
+         48 缩到 15 那种多色带阴影的图会糊成一团，两处本来就不该是同一张图。 -->
+    <Border Grid.Column="0" Background="#fdfdfd"
+            BorderBrush="#c9c9c9" BorderThickness="0,0,1,0">
+      <DockPanel>
+        <!-- 标题条：原型是 #3d3d3d→#151515 的竖向渐变，这里压平成外壳黑，
+             跟标题栏、属性栏那条色条同一个黑（用色纪律：大面积深色只有一种黑） -->
+        <Border DockPanel.Dock="Top" Height="24" Background="{StaticResource Shell}"
+                Padding="10,0">
+          <TextBlock Text="步骤库" FontSize="12.5" FontWeight="SemiBold" Foreground="White"
+                     VerticalAlignment="Center" />
+        </Border>
+
+        <!-- 搜索行：21 条指令分在 6 个模块里，平铺一屏放得下，但记不住
+             「梯度控温」在哪一组的时候，打两个字比挨组翻快。
+             指令名和模块名两处都匹配：打「温度」也该把那一组捞出来 -->
+        <Border DockPanel.Dock="Top" Height="35" Background="#f1f1f1"
+                BorderBrush="#cfcfcf" BorderThickness="0,0,0,1" Padding="9,0">
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBox Grid.Column="0" Classes="lfind" Watermark="搜索指令 / 模块"
+                     Text="{Binding LibFilter, Mode=TwoWay}" />
+            <Button Grid.Column="1" Classes="lfindx" Margin="6,0,0,0"
+                    IsVisible="{Binding HasLibFilter}" Command="{Binding ClearLibFilter}"
+                    ToolTip.Tip="清除搜索">
+              <TextBlock Text="✕" FontSize="10" Foreground="#6b6f74"
+                         HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Button>
+          </Grid>
+        </Border>
+
+        <!-- 底部那截留白写在内容的 Margin 上，不写 ScrollViewer 的 Padding：
+             Padding 是从可视区里扣的，不进滚动范围——最后一行会卡在下边缘，
+             滚到底也露不出来 -->
+        <ScrollViewer>
+          <StackPanel Margin="0,7,0,18">
+            <TextBlock Text="没有匹配的指令" FontSize="12" Foreground="#959a9f"
+                       Margin="12,8,0,0" IsVisible="{Binding LibEmpty}" />
+            <ItemsControl ItemsSource="{Binding Groups}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <StackPanel IsVisible="{Binding Visible}">
+                    <!-- 组与组之间才有一条线，第一组上面没有。搜索把前几组滤没了
+                         之后这条线得跟着挪，所以由 Rule 决定，不按建库次序写死 -->
+                    <Border Height="1" Background="#dcdcdc" Margin="8,10"
+                            IsVisible="{Binding Rule}" />
+                    <!-- 组名一行：小箭头 + 一小截模块色 + 组名。
+                         原型的分组只有分隔线、没有组名——留着是因为
+                         「控温」这四个字在哪一组，中文名不像英文那样自解释 -->
+                    <Border Height="21" Background="Transparent" Cursor="Hand"
                             PointerPressed="OnGroupBarPressed">
-                      <StackPanel Orientation="Horizontal" Spacing="16"
-                                  Margin="14,0,0,0" VerticalAlignment="Center">
-                        <Border Classes="exp3" Classes.up="{Binding Open}">
-                          <ctl:TecIcon Key="ui-chev-down" Tint="#51555a"
-                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                      <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Border Classes="chevm" Classes.up="{Binding Open}" Margin="10,0,6,0">
+                          <ctl:TecIcon Key="ui-chev-down" Tint="#9aa0a6" Size="9" />
                         </Border>
-                        <TextBlock Text="{Binding Name}" FontSize="20" FontWeight="Light"
-                                   Foreground="#3a3d41" VerticalAlignment="Center" />
+                        <Border Width="3" Height="11" Background="{Binding Color}"
+                                VerticalAlignment="Center" Margin="0,0,7,0" />
+                        <TextBlock Text="{Binding Name}" FontSize="11.5" Foreground="#6b6f74"
+                                   VerticalAlignment="Center" />
                       </StackPanel>
                     </Border>
 
-                    <!-- 指令格：3 列 × 96 高，图标 48 + 指令名。
-                         栏宽 312 减去内边距和色条，指令区净 290，三列每格 96.7——
-                         图标 48 正好占半格，名字多数一行排得下（原来四列一格 72，
-                         图标只有 28，「pH 反馈加料」还得折两行） -->
                     <ItemsControl ItemsSource="{Binding Commands}" IsVisible="{Binding Open}"
-                                  Margin="6,0,6,10">
-                      <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate><UniformGrid Columns="3" /></ItemsPanelTemplate>
-                      </ItemsControl.ItemsPanel>
+                                  Margin="0,2,0,0">
                       <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                          <Button Classes="cmd" Command="{Binding $parent[UserControl].DataContext.AddStep}"
+                          <Button Classes="lrow" ToolTip.Tip="点一下加到当前通道，按住拖到画布里指定位置"
+                                  Command="{Binding $parent[UserControl].DataContext.AddStep}"
                                   CommandParameter="{Binding}">
-                            <StackPanel>
-                              <Panel Height="48">
-                                <ctl:TecIcon Key="{Binding IconKey}" Size="48"
-                                             HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            <StackPanel Orientation="Horizontal" Spacing="8"
+                                        VerticalAlignment="Center">
+                              <!-- 方块底是 Border、图标铺在上面，不是给 TecIcon 加描边：
+                                   原型那张图的白线本来就画到方块边上，
+                                   用 BorderThickness 装它会把线切掉一圈 -->
+                              <Panel Classes="tile15">
+                                <Border Classes="tilebg15" />
+                                <ctl:TecIcon Key="{Binding TileIcon}" Size="15" />
                               </Panel>
-                              <TextBlock Text="{Binding Name}" FontSize="11" Foreground="#373a3e"
-                                         TextAlignment="Center" TextWrapping="Wrap" Margin="0,5,0,0" />
+                              <TextBlock Text="{Binding Name}" FontSize="13" Foreground="#1b1b1b"
+                                         VerticalAlignment="Center" />
                             </StackPanel>
                           </Button>
                         </DataTemplate>
                       </ItemsControl.ItemTemplate>
                     </ItemsControl>
                   </StackPanel>
-                </Grid>
-              </Border>
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
-      </ScrollViewer>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </ScrollViewer>
+      </DockPanel>
     </Border>
 
     <!-- ══ 中：工具条 + 一键复制 + 校验 + 泳道（原型 .procwrap）══
@@ -308,8 +336,20 @@
           </DockPanel>
         </Border>
 
-      <!-- 画布：原型 .lanes 是纯白，没有网格底纹 -->
+      <!-- 画布：原型是一层极浅的径向底（中心 #f1f1f1 往外化到白）。
+           从前是纯白，配上从前那种青色实心卡够用；现在卡片本身是白的，
+           白卡摞在白底上就只剩一圈 1px 灰线在撑，底色得比卡片深一档 -->
       <Panel Grid.Column="1">
+        <Panel.Background>
+          <!-- 半径给到 115%/125%（原型也是 125%/105%）：够不到画布边角的话，
+               半径尽头会在画布中间留下一圈看得见的椭圆硬边 -->
+          <RadialGradientBrush Center="72%,52%" GradientOrigin="72%,52%"
+                               RadiusX="115%" RadiusY="125%">
+            <GradientStop Color="#f0f0f0" Offset="0" />
+            <GradientStop Color="#f7f7f7" Offset="0.5" />
+            <GradientStop Color="#fdfdfd" Offset="1" />
+          </RadialGradientBrush>
+        </Panel.Background>
         <StackPanel IsVisible="{Binding NoLanes}" Margin="30,26" Spacing="7"
                     HorizontalAlignment="Left" VerticalAlignment="Top">
           <TextBlock Text="还没有通道" FontSize="15" Foreground="#6b6f74" />
@@ -424,103 +464,86 @@
                                 </ItemsControl.ItemTemplate>
                               </ItemsControl>
 
-                              <!-- 原型 .step：246 宽的青块，左边 11px 模块色条 +
-                                   竖排模块名，中间图标 + 整句描述，底下一行排期，
-                                   垃圾桶在右上（原型是右侧那一列图标的位置）。
+                              <!-- 原型 .step：白卡（白→#f6f6f6 竖向渐变 + 1px #cccccc），
+                                   左上一枚 27px 红方块图标，右边整句描述；底下一条
+                                   1px #dedede 把「这一步做什么」和「什么时候做」分开。
 
-                                   右边留出 24px 空档，跟左边「色条 6 + 竖排名 18」一样宽：
-                                   图标和描述是在这一列里居中的，左边有东西右边没有的话，
-                                   居中的结果就偏到卡片中线右侧去了。原型靠 .sbody 的
-                                   padding-right:24px 抵掉——那 24px 是给右侧三个白圈留的，
-                                   我们不搬那三个圈，但这个空档得留。 -->
-                              <Border Classes="step" Width="{Binding CardWidth}"
+                                   外面这层 stepwrap 是原型那个 3px padding 的壳：
+                                   选中环画在壳上（2px 主题红 + 一层 7% 的红），
+                                   卡片自己的宽度不变，描述不会因为选中而重新折行。
+
+                                   竖排模块名去掉了：描述本来就是一整句工艺语句，
+                                   模块名在里头基本重复。模块身份留在左边那条 6px 色条上。 -->
+                              <Border Classes="stepwrap" Width="{Binding CardWidth}"
                                       Tag="stepcard"
                                       Classes.stepSel="{Binding IsSelected}"
-                                      Classes.stepErr="{Binding HasStepError}"
                                       Classes.stepGhost="{Binding Ghosted}"
                                       PointerPressed="OnStepPressed">
-                                <!-- 竖排模块名那一列写死 18：留 Auto 的话，Grid 量它时给的是无限宽，
-                                     算出来的余量跟最终排布的余量对不上，右边一列会超出卡片 -->
-                                <Grid ColumnDefinitions="6,18,*,24" RowDefinitions="*,Auto">
-                                  <Border Grid.Column="0" Grid.RowSpan="2"
-                                          Background="{Binding ModuleColor}" />
-                                  <!-- 竖排模块名（原型 writing-mode:vertical-rl） -->
-                                  <LayoutTransformControl Grid.Column="1" Grid.RowSpan="2"
-                                                          VerticalAlignment="Top"
-                                                          Margin="3,7,0,0">
-                                    <LayoutTransformControl.LayoutTransform>
-                                      <RotateTransform Angle="90" />
-                                    </LayoutTransformControl.LayoutTransform>
-                                    <TextBlock Text="{Binding Module}" FontSize="11.5"
-                                               Foreground="#292b2e" />
-                                  </LayoutTransformControl>
+                                <Border Classes="step"
+                                        Classes.stepSel="{Binding IsSelected}"
+                                        Classes.stepErr="{Binding HasStepError}">
+                                <Grid ColumnDefinitions="6,*">
+                                  <Border Grid.Column="0" Background="{Binding ModuleColor}" />
+                                  <!-- 第一行留星号：卡片有最小高度，多出来的空当落在这一行，
+                                       那条分隔线才一直贴着底（原型 margin-top:auto） -->
+                                  <Grid Grid.Column="1" RowDefinitions="*,Auto,Auto"
+                                        Margin="7,6,7,5">
+                                    <Grid Grid.Row="0" ColumnDefinitions="27,7,*,Auto">
+                                      <Panel Classes="tile27" VerticalAlignment="Top">
+                                        <Border Classes="tilebg27" />
+                                        <ctl:TecIcon Key="{Binding TileIcon}" Size="27" />
+                                      </Panel>
+                                      <TextBlock Grid.Column="2" Text="{Binding Desc}"
+                                                 FontSize="12" Foreground="#1b1b1b"
+                                                 LineHeight="15" TextWrapping="Wrap"
+                                                 MaxLines="4" TextTrimming="CharacterEllipsis"
+                                                 VerticalAlignment="Top" />
 
-                                  <!-- 图标 + 描述：宽度算死（BodyWidth），不交给星号列去分 -->
-                                  <StackPanel Grid.Column="2" Grid.Row="0"
-                                              Width="{Binding BodyWidth}"
-                                              VerticalAlignment="Center" Margin="0,8,0,0">
-                                    <!-- 跟指令库同一个尺寸 48：同一张图在两处一样大，
-                                         从库里点进泳道不会「变小一号」 -->
-                                    <ctl:TecIcon Key="{Binding IconKey}" Size="48"
-                                                 HorizontalAlignment="Center" />
-                                    <!-- 左右各留 4px 空隙：字排到跟盒子一样宽时，
-                                         最后一个字的墨迹会比排版算出来的行宽多出一两个像素，
-                                         正好被盒子边缘切掉（"加入" 剩一撇）。留出这点余量，
-                                         多出来的墨迹有地方去 -->
-                                    <TextBlock Text="{Binding Desc}" FontSize="12.5"
-                                               Width="{Binding LabelWidth}"
-                                               Foreground="#1f2124" LineHeight="19"
-                                               TextAlignment="Center" TextWrapping="Wrap"
-                                               MaxLines="4" Margin="0,5,0,0"
-                                               Padding="6,0" />
-                                  </StackPanel>
+                                      <!-- 徽记（原型 .sbadge）。悬停能读到具体哪儿不对——
+                                           红框只说「这一步有事」，是什么事得说得出来，
+                                           不然人还得回面板里对 -->
+                                      <Border Grid.Column="3" Width="17" Height="17"
+                                              CornerRadius="9" Classes="sbadge"
+                                              Classes.warn="{Binding IssueWarn}"
+                                              VerticalAlignment="Top" Margin="6,0,0,0"
+                                              IsVisible="{Binding HasIssue}"
+                                              ToolTip.Tip="{Binding IssueTip}">
+                                        <TextBlock Text="!" FontSize="11" FontWeight="Bold"
+                                                   Foreground="White" HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center" />
+                                      </Border>
+                                    </Grid>
 
-                                  <!-- 徽记（原型 .sbadge）占右空档的上端，垃圾桶在下端，
-                                       一列两头分开。悬停能读到具体哪儿不对——红框只说
-                                       「这一步有事」，是什么事得说得出来，
-                                       不然人还得回面板里对 -->
-                                  <Border Grid.Column="3" Grid.Row="0" Width="17" Height="17"
-                                          CornerRadius="9" Classes="sbadge"
-                                          Classes.warn="{Binding IssueWarn}"
-                                          VerticalAlignment="Top" HorizontalAlignment="Center"
-                                          Margin="0,6,0,0" IsVisible="{Binding HasIssue}"
-                                          ToolTip.Tip="{Binding IssueTip}">
-                                    <TextBlock Text="!" FontSize="11" FontWeight="Bold"
-                                               Foreground="White" HorizontalAlignment="Center"
-                                               VerticalAlignment="Center" />
-                                  </Border>
+                                    <Border Grid.Row="1" Height="1" Background="#dedede"
+                                            Margin="0,6,0,0" />
 
-                                  <!-- 垃圾桶占右边那个空档，贴右下角（原型 .step .trash 也在右下） -->
-                                  <!-- 24 是这个空档的硬上限，动不得：这一列宽 24 是跟左边
-                                       「6px 色条 + 18px 竖排名」对称留的。改成 32 的话
-                                       BodyWidth 194→186、LabelWidth 一起缩，长描述从 4 行涨到 5 行，
-                                       而 MaxLines=4 会把第 5 行**静默吞掉**；左右也不再对称，
-                                       图标和描述整体左偏 4px -->
-                                  <Button Grid.Column="3" Grid.Row="0" Grid.RowSpan="2"
-                                          Classes="tbtn del d24" Margin="0,0,0,5"
-                                          VerticalAlignment="Bottom" HorizontalAlignment="Center"
-                                          ToolTip.Tip="删除该步骤"
-                                          Command="{Binding $parent[UserControl].DataContext.RemoveStep}"
-                                          CommandParameter="{Binding}">
-                                    <ctl:TecIcon Key="ui-foot-trash" Size="11" />
-                                  </Button>
-
-                                  <!-- 排期这一行借一点右空档（138 宽塞不下两段），
-                                       但要在垃圾桶左边收住，不然「耗时」会被桶盖住 -->
-                                  <Grid Grid.Row="1" Grid.Column="2" Grid.ColumnSpan="2"
-                                        ColumnDefinitions="*,Auto" Margin="0,6,26,5">
-                                    <TextBlock Grid.Column="0" FontSize="11" Foreground="#55595e"
-                                               VerticalAlignment="Center"
-                                               TextTrimming="CharacterEllipsis">
-                                      <Run Text="预计开始 " /><Run Text="{Binding PlanStart}" />
-                                    </TextBlock>
-                                    <TextBlock Grid.Column="1" FontSize="11" Foreground="#55595e"
-                                               VerticalAlignment="Center" Margin="6,0,0,0"
-                                               IsVisible="{Binding HasDuration}">
-                                      <Run Text="耗时 " /><Run Text="{Binding PlanDuration}" />
-                                    </TextBlock>
+                                    <!-- 排期这一行：左边预计开始，右边耗时，垃圾桶收在最右。
+                                         d24 是删除钮一族里最小的一号（见 App.axaml 那段说明），
+                                         这一行的高度就是它撑出来的 -->
+                                    <Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto"
+                                          Margin="0,3,0,0">
+                                      <TextBlock Grid.Column="0" FontSize="11.5"
+                                                 Foreground="#2b2b2b" VerticalAlignment="Center"
+                                                 TextTrimming="CharacterEllipsis">
+                                        <Run Text="预计开始 " /><Run Text="{Binding PlanStart}" />
+                                      </TextBlock>
+                                      <TextBlock Grid.Column="1" FontSize="11.5"
+                                                 Foreground="#6b6f74" VerticalAlignment="Center"
+                                                 Margin="6,0,4,0"
+                                                 IsVisible="{Binding HasDuration}">
+                                        <Run Text="耗时 " /><Run Text="{Binding PlanDuration}" />
+                                      </TextBlock>
+                                      <Button Grid.Column="2" Classes="tbtn del d24"
+                                              VerticalAlignment="Center"
+                                              ToolTip.Tip="删除该步骤"
+                                              Command="{Binding $parent[UserControl].DataContext.RemoveStep}"
+                                              CommandParameter="{Binding}">
+                                        <ctl:TecIcon Key="ui-foot-trash" Size="11" />
+                                      </Button>
+                                    </Grid>
                                   </Grid>
                                 </Grid>
+                                </Border>
                               </Border>
                               </StackPanel>
                             </StackPanel>
@@ -821,12 +844,15 @@
     <Canvas Grid.Column="0" Grid.ColumnSpan="3" IsHitTestVisible="False">
       <Border IsVisible="{Binding Dragging}"
               Canvas.Left="{Binding DragX}" Canvas.Top="{Binding DragY}"
-              Width="246" Background="#6ed3f0" BorderBrush="#a41626" BorderThickness="1.5"
-              CornerRadius="2" Padding="8,6" Opacity="0.94"
+              Width="246" Background="White" BorderBrush="#a41626" BorderThickness="1.5"
+              Padding="7,6" Opacity="0.96"
               BoxShadow="0 5 16 0 #33000000">
-        <StackPanel Orientation="Horizontal" Spacing="9">
-          <ctl:TecIcon Key="{Binding DragIcon}" Size="24" VerticalAlignment="Center" />
-          <TextBlock Text="{Binding DragTitle}" FontSize="11.5" Foreground="#1d1f22"
+        <StackPanel Orientation="Horizontal" Spacing="7">
+          <Panel Classes="tile27" VerticalAlignment="Center">
+            <Border Classes="tilebg27" />
+            <ctl:TecIcon Key="{Binding DragTile}" Size="27" />
+          </Panel>
+          <TextBlock Text="{Binding DragTitle}" FontSize="12" Foreground="#1b1b1b"
                      VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
         </StackPanel>
       </Border>
@@ -834,46 +860,108 @@
   </Grid>
 
   <UserControl.Styles>
-    <!-- 原型 .dev：96 高的一块 #eeefec，悬停 #e4e6e3 -->
-    <Style Selector="Border.dev">
-      <Setter Property="Background" Value="#eeefec" />
-      <!-- 左边不倒角：色条是方的，块跟着方，色条才贴得平 -->
-      <Setter Property="CornerRadius" Value="0,2,2,0" />
-      <Setter Property="ClipToBounds" Value="True" />
-    </Style>
-    <Style Selector="Border.dev:pointerover">
-      <Setter Property="Background" Value="#e4e6e3" />
-    </Style>
+    <!-- ══ 步骤库（原型 iControl 6.2 的 Recipe Library）══ -->
 
-    <Style Selector="Button.cmd">
-      <!-- 8 上 + 图标 48 + 5 + 名字两行 30 + 4 下 = 95，取 96 -->
-      <Setter Property="Height" Value="96" />
+    <!-- 搜索框：原型是 29×21 的白底细框 -->
+    <Style Selector="TextBox.lfind">
+      <Setter Property="Height" Value="21" />
+      <Setter Property="MinHeight" Value="21" />
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Padding" Value="6,1" />
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderBrush" Value="#8d9196" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="2" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.lfindx">
+      <Setter Property="Width" Value="19" />
+      <Setter Property="Height" Value="19" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="CornerRadius" Value="2" />
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderThickness" Value="0" />
-      <Setter Property="CornerRadius" Value="3" />
-      <Setter Property="Padding" Value="3,8,3,4" />
-      <Setter Property="HorizontalAlignment" Value="Stretch" />
-      <Setter Property="VerticalContentAlignment" Value="Top" />
-      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Cursor" Value="Hand" />
     </Style>
-    <Style Selector="Button.cmd:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#faf2f3" />
+    <Style Selector="Button.lfindx:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#e2e2e2" />
     </Style>
 
-    <!-- 原型 .step：246 宽的青块 -->
-    <Style Selector="Border.step">
-      <Setter Property="MinHeight" Value="118" />
-      <Setter Property="Background" Value="#6ed3f0" />
-      <!-- 左边不倒角，同上 -->
-      <Setter Property="CornerRadius" Value="0,2,2,0" />
+    <!-- 组名那行的小箭头：库里的行只有 21/23 高，圆圈箭头（exp3 22px）塞不下 -->
+    <Style Selector="Border.chevm">
+      <Setter Property="Width" Value="9" />
+      <Setter Property="Height" Value="9" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.chevm.up">
+      <Setter Property="RenderTransform">
+        <RotateTransform Angle="180" />
+      </Setter>
+    </Style>
+
+    <!-- 指令行：原型 23 高、左内边距 12、图标与名字之间 8、悬停 #f4e0e2 -->
+    <Style Selector="Button.lrow">
+      <Setter Property="Height" Value="23" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Padding" Value="12,0,8,0" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Left" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
       <Setter Property="Cursor" Value="Hand" />
-      <!-- 描边常在、平时是透明的：选中时只换颜色，卡片内宽不变，
-           文字不会因为选中而重新折行 -->
-      <Setter Property="BorderThickness" Value="2" />
-      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="Button.lrow:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#f4e0e2" />
+    </Style>
+
+    <!-- 指令图标那枚方块。原型库里 15px 平涂，卡片上 27px 带一层竖向渐变 -->
+    <Style Selector="Panel.tile15">
+      <Setter Property="Width" Value="15" />
+      <Setter Property="Height" Value="15" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.tilebg15">
+      <Setter Property="CornerRadius" Value="2" />
+      <Setter Property="Background" Value="#a41626" />
+      <Setter Property="BorderBrush" Value="#7e0f1c" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="Panel.tile27">
+      <Setter Property="Width" Value="27" />
+      <Setter Property="Height" Value="27" />
+    </Style>
+    <Style Selector="Border.tilebg27">
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="Background">
+        <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+          <GradientStop Color="#c8404f" Offset="0" />
+          <GradientStop Color="#a41626" Offset="1" />
+        </LinearGradientBrush>
+      </Setter>
+    </Style>
+
+    <!-- ══ 步骤卡 ══
+         原型 .step：白→#f6f6f6 竖向渐变 + 1px #cccccc，不倒角。
+         最小高度 75 = 上下 1px 描边 + 6 + 图标 27 + 6 + 分隔线 1 + 3 + 删除钮 24 + 5 -->
+    <Style Selector="Border.step">
+      <Setter Property="MinHeight" Value="75" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="#cccccc" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Background">
+        <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+          <GradientStop Color="#ffffff" Offset="0" />
+          <GradientStop Color="#f6f6f6" Offset="1" />
+        </LinearGradientBrush>
+      </Setter>
     </Style>
     <Style Selector="Border.step:pointerover">
-      <Setter Property="Background" Value="#82daf3" />
+      <Setter Property="Background" Value="#f2f2f2" />
     </Style>
 
     <!-- 泳道头里的输入：原型 .hsel，22 高、白底、#a9adb1 描边 -->
@@ -1155,14 +1243,32 @@
       <Setter Property="BorderBrush" Value="#a41626" />
       <Setter Property="Background" Value="#fdfafa" />
     </Style>
-    <Style Selector="Border.stepSel">
+
+    <!-- 步骤卡外面那层壳（原型给卡片留的 3px padding）：选中环画在这儿，
+         卡片自己的宽高一点不动，选中不会让描述重新折行 -->
+    <Style Selector="Border.stepwrap">
+      <Setter Property="Padding" Value="3" />
+      <Setter Property="BorderThickness" Value="2" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Border.stepwrap.stepSel">
       <Setter Property="BorderBrush" Value="#a41626" />
-      <Setter Property="BoxShadow" Value="0 0 0 3 #38a41626" />
+      <!-- 原型 rgba(164,22,38,0.07)：0.07×255 ≈ 0x12 -->
+      <Setter Property="Background" Value="#12a41626" />
+    </Style>
+    <!-- 卡片本身跟着淡红一层。只描外环不染底的话，四条泳道并排时
+         那圈 2px 红线太细，扫一眼分不出选中的是哪张 -->
+    <Style Selector="Border.step.stepSel">
+      <Setter Property="Background" Value="#fbf3f4" />
     </Style>
     <!-- 排在 stepSel 后面是有意的：点了面板里那一条会选中这一步，
-         描边要是跟着变蓝，人刚找到的那张红卡就在点中它的一瞬间不红了。
-         描边归错误，选中改由外面那圈蓝光表示，两件事各占一个记号 -->
-    <Style Selector="Border.stepErr">
+         描边要是跟着变回灰的，人刚找到的那张红框卡就在点中它的一瞬间不红了。
+         描边归错误，选中归外面那圈环，两件事各占一个记号。
+         只换描边、不染底：一条配方里出错的常常是好几步，每张都染一层粉，
+         整条泳道会糊成一片红，反倒看不出哪张是当前选中的那一张 -->
+    <Style Selector="Border.step.stepErr">
       <Setter Property="BorderBrush" Value="#d93025" />
     </Style>
   </UserControl.Styles>
