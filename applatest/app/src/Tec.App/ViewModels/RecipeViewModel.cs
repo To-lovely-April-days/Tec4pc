@@ -751,7 +751,8 @@ public sealed class RecipeViewModel : ViewModelBase
             if (value is not null) value.IsSelected = true;
             RebuildForm();
             RaiseAll(nameof(HasSelection), nameof(NoSelection), nameof(StepName), nameof(StepIcon),
-                     nameof(StepChannel), nameof(NoParams), nameof(PauseOnFault), nameof(StepSkipped), nameof(StepPhase));
+                     nameof(StepTile), nameof(StepChannel), nameof(NoParams), nameof(PauseOnFault),
+                     nameof(StepSkipped), nameof(StepPhase));
         }
     }
 
@@ -769,6 +770,8 @@ public sealed class RecipeViewModel : ViewModelBase
     // 换成这一步自己的图标，跟步骤库和泳道卡上看到的是同一张
     public string StepName => _selectedStep?.Name ?? "";
     public string StepIcon => _selectedStep?.IconKey ?? "cmd-wait";
+    /// <summary>属性栏标题上那枚图标：跟画布上那张卡同一枚红方块，别用彩色插画版。</summary>
+    public string StepTile => _selectedStep?.TileIcon ?? "tile-wait";
     public string StepChannel => LabelOf(_curCh);
 
     /// <summary>这条指令一个参数都没有（比如「循环结束」）。空着不说话会让人以为界面坏了。</summary>
