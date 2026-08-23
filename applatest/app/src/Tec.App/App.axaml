@@ -43,6 +43,21 @@
         <Color x:Key="SystemAccentColorDark1">#7e0f1c</Color>
         <Color x:Key="SystemAccentColorDark2">#7e0f1c</Color>
         <Color x:Key="SystemAccentColorDark3">#5c0b14</Color>
+
+        <!-- 勾选框：勾上之后底色走外壳黑，不走强调红。
+             复选框是控件不是记号，一屏可能有十几个（导出页的数据项那一列），
+             十几块饱和红压在表里就成了满屏警报。黑底白勾一样看得清，
+             红留给「当前视图」「选中条」这些一次只出现一处的地方。
+             Fluent 的勾选框颜色不吃具名笔，只认这几个键。 -->
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked" Color="#17191c" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" Color="#2c3034" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPressed" Color="#0f1113" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeChecked" Color="#17191c" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPointerOver" Color="#2c3034" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPressed" Color="#0f1113" />
+        <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundChecked" Color="#ffffff" />
+        <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundCheckedPointerOver" Color="#ffffff" />
+        <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundCheckedPressed" Color="#ffffff" />
       </ResourceDictionary>
       <ResourceDictionary x:Key="Dark">
         <Color x:Key="SystemAccentColor">#a41626</Color>
@@ -52,6 +67,21 @@
         <Color x:Key="SystemAccentColorDark1">#7e0f1c</Color>
         <Color x:Key="SystemAccentColorDark2">#7e0f1c</Color>
         <Color x:Key="SystemAccentColorDark3">#5c0b14</Color>
+
+        <!-- 勾选框：勾上之后底色走外壳黑，不走强调红。
+             复选框是控件不是记号，一屏可能有十几个（导出页的数据项那一列），
+             十几块饱和红压在表里就成了满屏警报。黑底白勾一样看得清，
+             红留给「当前视图」「选中条」这些一次只出现一处的地方。
+             Fluent 的勾选框颜色不吃具名笔，只认这几个键。 -->
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked" Color="#17191c" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" Color="#2c3034" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPressed" Color="#0f1113" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeChecked" Color="#17191c" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPointerOver" Color="#2c3034" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPressed" Color="#0f1113" />
+        <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundChecked" Color="#ffffff" />
+        <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundCheckedPointerOver" Color="#ffffff" />
+        <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundCheckedPressed" Color="#ffffff" />
       </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>
 
