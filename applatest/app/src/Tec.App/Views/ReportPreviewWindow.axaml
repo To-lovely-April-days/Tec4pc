@@ -21,8 +21,8 @@
       <Border DockPanel.Dock="Top" Height="30" PointerPressed="OnTitlebarPressed">
         <Border.Background>
           <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
-            <GradientStop Color="#5e1219" Offset="0" />
-            <GradientStop Color="#5e1219" Offset="1" />
+            <GradientStop Color="#17191c" Offset="0" />
+            <GradientStop Color="#17191c" Offset="1" />
           </LinearGradientBrush>
         </Border.Background>
         <Grid ColumnDefinitions="*,Auto">
@@ -78,7 +78,7 @@
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderThickness" Value="0" />
       <Setter Property="CornerRadius" Value="0" />
-      <Setter Property="Foreground" Value="#ebd8da" />
+      <Setter Property="Foreground" Value="#c8ccd1" />
       <Setter Property="FontSize" Value="12" />
       <Setter Property="HorizontalContentAlignment" Value="Center" />
       <Setter Property="VerticalContentAlignment" Value="Center" />

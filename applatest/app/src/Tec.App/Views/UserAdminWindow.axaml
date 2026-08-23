@@ -76,13 +76,13 @@
   <Border BorderBrush="#3a0a0f" BorderThickness="1">
     <DockPanel>
 
-      <Border DockPanel.Dock="Top" Height="30" Background="#5e1219"
+      <Border DockPanel.Dock="Top" Height="30" Background="#17191c"
               PointerPressed="OnTitlebarPressed">
         <Grid ColumnDefinitions="Auto,10,*,Auto">
           <Viewbox Width="15" Height="15" Margin="8,0,0,0" VerticalAlignment="Center">
             <Canvas Width="16" Height="16">
               <Path Data="M 6,3 A 2.6,2.6 0 1 0 6,8.2 A 2.6,2.6 0 1 0 6,3 M 1.6,13.4 C 1.6,10.8 3.6,9.4 6,9.4 C 8.4,9.4 10.4,10.8 10.4,13.4 M 11,4.2 A 2.4,2.4 0 0 1 11,8.6"
-                    Stroke="#e4cdd0" StrokeThickness="1.4" />
+                    Stroke="#a8adb3" StrokeThickness="1.4" />
             </Canvas>
           </Viewbox>
           <TextBlock Grid.Column="2" Text="用户管理" Foreground="White" FontSize="12"

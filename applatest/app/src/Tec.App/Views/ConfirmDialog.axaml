@@ -21,8 +21,8 @@
       <Border DockPanel.Dock="Top" Height="30" PointerPressed="OnTitlebarPressed">
         <Border.Background>
           <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
-            <GradientStop Color="#5e1219" Offset="0" />
-            <GradientStop Color="#5e1219" Offset="1" />
+            <GradientStop Color="#17191c" Offset="0" />
+            <GradientStop Color="#17191c" Offset="1" />
           </LinearGradientBrush>
         </Border.Background>
         <TextBlock Name="TitleText" Margin="14,0,0,0" VerticalAlignment="Center"

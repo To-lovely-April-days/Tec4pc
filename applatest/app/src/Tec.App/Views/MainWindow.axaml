@@ -22,11 +22,10 @@
           Margin="{Binding $parent[Window].OffScreenMargin}">
   <DockPanel>
 
-    <!-- 窗口标题栏：30px，纯色 #5e1219，自绘（原型 .titlebar）。
-         这一档是压暗去饱和的品牌红，不是 #a41626：标题栏面积大，
-         按原型的说法它是外壳不是信号，明度压下来才不跟报警红抢眼。
-         原来那道渐变去掉了——两端本来就是同一支笔，留着只是白算一遍 -->
-    <Border DockPanel.Dock="Top" Height="30" Background="#5e1219"
+    <!-- 窗口标题栏：30px，纯色外壳黑 #17191c，自绘（原型 .titlebar）。
+         三色里的黑。标题栏面积大，是外壳不是信号，所以不占品牌红。
+         右下那颗运行药丸走的是同一支笔——全程序只有一个黑 -->
+    <Border DockPanel.Dock="Top" Height="30" Background="#17191c"
             PointerPressed="OnTitlebarPressed">
       <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto" Margin="8,0,0,0">
         <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
@@ -49,16 +48,16 @@
         </TextBlock>
         <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
           <StackPanel Orientation="Horizontal" Spacing="4" Margin="6,0">
-            <ctl:TecIcon Key="ui-tb-about" Tint="#ebd8da" VerticalAlignment="Center" />
-            <TextBlock Text="关于" Foreground="#ebd8da" FontSize="12" VerticalAlignment="Center" />
+            <ctl:TecIcon Key="ui-tb-about" Tint="#c8ccd1" VerticalAlignment="Center" />
+            <TextBlock Text="关于" Foreground="#c8ccd1" FontSize="12" VerticalAlignment="Center" />
           </StackPanel>
           <StackPanel Orientation="Horizontal" Spacing="4" Margin="6,0">
-            <ctl:TecIcon Key="ui-tb-settings" Tint="#ebd8da" VerticalAlignment="Center" />
-            <TextBlock Text="设置" Foreground="#ebd8da" FontSize="12" VerticalAlignment="Center" />
+            <ctl:TecIcon Key="ui-tb-settings" Tint="#c8ccd1" VerticalAlignment="Center" />
+            <TextBlock Text="设置" Foreground="#c8ccd1" FontSize="12" VerticalAlignment="Center" />
           </StackPanel>
           <StackPanel Orientation="Horizontal" Spacing="4" Margin="6,0">
-            <ctl:TecIcon Key="ui-tb-help" Tint="#ebd8da" VerticalAlignment="Center" />
-            <TextBlock Text="帮助" Foreground="#ebd8da" FontSize="12" VerticalAlignment="Center" />
+            <ctl:TecIcon Key="ui-tb-help" Tint="#c8ccd1" VerticalAlignment="Center" />
+            <TextBlock Text="帮助" Foreground="#c8ccd1" FontSize="12" VerticalAlignment="Center" />
           </StackPanel>
         </StackPanel>
         <StackPanel Grid.Column="5" Orientation="Horizontal" Margin="10,0,0,0">
@@ -100,7 +99,7 @@
       <!-- 运行控制：黑药丸 + 三颗圆钮（运行 / 停止 / 暂停）。
            原型那句「模拟模式」去掉了——接上真机之后它就不对了，
            而这三个钮不论仿真真机都是同一件事，图标自己说得清 -->
-      <Border Background="#151515" CornerRadius="8" Height="48" Margin="0,2,150,0"
+      <Border Background="#17191c" CornerRadius="8" Height="48" Margin="0,2,150,0"
               HorizontalAlignment="Right" VerticalAlignment="Top" Padding="12,0">
         <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
           <!-- 三颗都是「对全部已启用通道」。单路的启停在运行页的通道磁贴上。

@@ -14,16 +14,17 @@
 
   <Panel>
     <Border Width="420" HorizontalAlignment="Center" VerticalAlignment="Center"
-            Background="#4a0e14" BorderBrush="#5e1219" BorderThickness="1" CornerRadius="4"
+            Background="#0f1113" BorderBrush="#17191c" BorderThickness="1" CornerRadius="4"
             Padding="34,30,34,26">
       <StackPanel Spacing="0">
 
-        <Border Width="64" Height="64" CornerRadius="32" Background="#5e1219"
+        <!-- 品牌红。底已经是黑的了，这颗再用黑就跟底糊在一起 -->
+        <Border Width="64" Height="64" CornerRadius="32" Background="#a41626"
                 HorizontalAlignment="Center">
           <Viewbox Width="34" Height="34" HorizontalAlignment="Center" VerticalAlignment="Center">
             <Canvas Width="26" Height="26">
-              <Ellipse Canvas.Left="8" Canvas.Top="3" Width="10" Height="10" Fill="#f4e4e6" />
-              <Path Data="M 3,25 C 3,19 7.5,16 13,16 C 18.5,16 23,19 23,25 Z" Fill="#f4e4e6" />
+              <Ellipse Canvas.Left="8" Canvas.Top="3" Width="10" Height="10" Fill="#ffffff" />
+              <Path Data="M 3,25 C 3,19 7.5,16 13,16 C 18.5,16 23,19 23,25 Z" Fill="#ffffff" />
             </Canvas>
           </Viewbox>
         </Border>

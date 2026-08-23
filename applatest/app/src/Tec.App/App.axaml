@@ -5,17 +5,24 @@
              RequestedThemeVariant="Light">
 
   <!--
-    ══ 配色 · HTLAB 品牌红（原型 gbgstarthtlab.html 的 :root） ══
+    ══ 配色 · 黑 + HTLAB 品牌红 + 白，三色 ══
+
+      外壳黑  #17191c   白  #ffffff   品牌红  #a41626
+
+    #17191c 不是纯黑：带一点冷（B 比 R 高 5）。纯黑跟白撞在一起太生硬，
+    而这一丝冷调跟暖的品牌红是互补关系，红压在上面会显得更沉。
 
     用色纪律，四条，改任何一支笔之前先读一遍：
 
     · 品牌红 #a41626 只出现在小面积：应用标记、3px 选中条、章节记号、
       固定图钉、菜单激活下划线、主按钮。整片底色不许用它。
-    · 标题栏用压暗去饱和的 #5e1219——面积大但明度低，它是外壳不是信号。
+    · 大面积深色一律走外壳黑：七个窗口的标题栏、登录页左栏、运行控制药丸、
+      面板深色表头。它是外壳不是信号，所以不占品牌色。
     · 报警红 #d93025 永远是「实底填充 + 白字 + 三角图标」这一副样子，
       靠面积和形状跟品牌红区分，不靠色相。别处不许出现实底彩色圆片。
     · 绿 #0e7a3e 只表示在线 / 运行 / 通过，不做装饰，也不当主按钮。
 
+    三色之外只剩两类：中性灰（正文与分隔线的层次）和状态色（绿/琥珀/报警红）。
     通道色与化合物类别色不在这套里——那是数据，跟着主题走等于把信息抹掉。
   -->
   <Application.Resources>
@@ -31,11 +38,11 @@
       <ResourceDictionary x:Key="Light">
         <Color x:Key="SystemAccentColor">#a41626</Color>
         <Color x:Key="SystemAccentColorLight1">#7e0f1c</Color>
-        <Color x:Key="SystemAccentColorLight2">#5e1219</Color>
-        <Color x:Key="SystemAccentColorLight3">#4e0f15</Color>
+        <Color x:Key="SystemAccentColorLight2">#7e0f1c</Color>
+        <Color x:Key="SystemAccentColorLight3">#5c0b14</Color>
         <Color x:Key="SystemAccentColorDark1">#7e0f1c</Color>
-        <Color x:Key="SystemAccentColorDark2">#5e1219</Color>
-        <Color x:Key="SystemAccentColorDark3">#4e0f15</Color>
+        <Color x:Key="SystemAccentColorDark2">#7e0f1c</Color>
+        <Color x:Key="SystemAccentColorDark3">#5c0b14</Color>
       </ResourceDictionary>
       <ResourceDictionary x:Key="Dark">
         <Color x:Key="SystemAccentColor">#a41626</Color>
@@ -43,14 +50,16 @@
         <Color x:Key="SystemAccentColorLight2">#d96b76</Color>
         <Color x:Key="SystemAccentColorLight3">#e8a0a8</Color>
         <Color x:Key="SystemAccentColorDark1">#7e0f1c</Color>
-        <Color x:Key="SystemAccentColorDark2">#5e1219</Color>
-        <Color x:Key="SystemAccentColorDark3">#4e0f15</Color>
+        <Color x:Key="SystemAccentColorDark2">#7e0f1c</Color>
+        <Color x:Key="SystemAccentColorDark3">#5c0b14</Color>
       </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>
 
     <!-- 品牌 -->
     <SolidColorBrush x:Key="Brand" Color="#a41626" />
-    <SolidColorBrush x:Key="BrandDk" Color="#5e1219" />
+    <!-- 外壳黑：七个窗口的标题栏、登录页左栏、运行控制药丸，同一支 -->
+    <SolidColorBrush x:Key="Shell" Color="#17191c" />
+    <SolidColorBrush x:Key="ShellDeep" Color="#0f1113" />
     <SolidColorBrush x:Key="BrandMid" Color="#7e0f1c" />
     <SolidColorBrush x:Key="BrandTint" Color="#faf2f3" />
     <SolidColorBrush x:Key="BrandTint2" Color="#f4e4e6" />
