@@ -371,9 +371,13 @@
                      外面这圈 padding 留给「当前通道」的选中环 -->
                 <!-- 顶对齐（原型 .lanes{align-items:flex-start}）：不这么写的话
                      泳道会被拉到画布满高，选中环就变成一个从头拖到底的长框 -->
+                <!-- BorderBrush 不写在这儿、走 laneBox 那条样式：内联值压得过样式，
+                     写死成 Transparent 之后 laneSel 和 laneDrop 的描边永远上不了色。
+                     这一处一直是这么写的，所以「当前通道」那圈其实从来没画出来过，
+                     看见的只是底下那层投影（实测改色前后都只有投影在变） -->
                 <Border Width="258" Padding="5" CornerRadius="4" BorderThickness="1.6"
-                        Tag="lane" VerticalAlignment="Top"
-                        BorderBrush="Transparent" Background="Transparent"
+                        Tag="lane" VerticalAlignment="Top" Classes="laneBox"
+                        Background="Transparent"
                         Classes.laneSel="{Binding IsCurrent}"
                         Classes.laneDrop="{Binding IsDropLane}"
                         PointerPressed="OnLanePressed" Cursor="Hand">
@@ -469,19 +473,22 @@
                                    左上一枚 27px 红方块图标，右边整句描述；底下一条
                                    1px #dedede 把「这一步做什么」和「什么时候做」分开。
 
-                                   外面这层 stepwrap 是原型那个 3px padding 的壳：
-                                   选中环画在壳上（2px 主题红 + 一层 7% 的红），
-                                   卡片自己的宽度不变，描述不会因为选中而重新折行。
+                                   里面那层 stepwrap 是原型那个 3px padding 的壳：
+                                   选中环画在壳的外沿，卡片自己的宽度不变，
+                                   描述不会因为选中而重新折行。
+
+                                   选中环是一条 Rectangle 不是 Border 的描边：
+                                   要的是黑色虚线，而 Border 的 BorderBrush 画不出虚线，
+                                   只有 Shape 才有 StrokeDashArray。它铺在卡片之上，
+                                   所以必须 IsHitTestVisible=False，不然点不着底下的卡。
 
                                    竖排模块名去掉了：描述本来就是一整句工艺语句，
                                    模块名在里头基本重复。模块身份留在左边那条 6px 色条上。 -->
-                              <Border Classes="stepwrap" Width="{Binding CardWidth}"
-                                      Tag="stepcard"
-                                      Classes.stepSel="{Binding IsSelected}"
-                                      Classes.stepGhost="{Binding Ghosted}"
-                                      PointerPressed="OnStepPressed">
+                              <Panel Width="{Binding CardWidth}" Tag="stepcard" Cursor="Hand"
+                                     Classes.stepGhost="{Binding Ghosted}"
+                                     PointerPressed="OnStepPressed">
+                              <Border Classes="stepwrap">
                                 <Border Classes="step"
-                                        Classes.stepSel="{Binding IsSelected}"
                                         Classes.stepErr="{Binding HasStepError}">
                                 <Grid ColumnDefinitions="6,*">
                                   <Border Grid.Column="0" Background="{Binding ModuleColor}" />
@@ -546,6 +553,8 @@
                                 </Grid>
                                 </Border>
                               </Border>
+                              <Rectangle Classes="selring" IsVisible="{Binding IsSelected}" />
+                              </Panel>
                               </StackPanel>
                             </StackPanel>
                           </DataTemplate>
@@ -1012,9 +1021,18 @@
       <Setter Property="BorderBrush" Value="#a41626" />
     </Style>
 
-    <Style Selector="Border.laneSel">
-      <Setter Property="BorderBrush" Value="#a41626" />
-      <Setter Property="BoxShadow" Value="0 0 0 3 #38a41626" />
+    <!-- 泳道的底：描边常在、平时不着色。必须排在 laneSel / laneDrop 前面——
+         Avalonia 比的是写的先后，不是选择器谁更具体 -->
+    <Style Selector="Border.laneBox">
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <!-- 当前通道那一圈：外壳黑的实线。从前是主题红——一整条泳道从头框到底，
+         那是全页最大的一块红，跟「品牌红只走小面积」正相反。
+         实线（不是步骤选中那种虚线）也是有意的：这两件事都叫「选中」，
+         一个说的是通道、一个说的是某一步，长得不一样才分得开 -->
+    <Style Selector="Border.laneBox.laneSel">
+      <Setter Property="BorderBrush" Value="#17191c" />
+      <Setter Property="BoxShadow" Value="0 0 0 3 #2617191c" />
     </Style>
     <!-- 校验面板里的一条：整行可点，跳到出问题的那一步 -->
     <Style Selector="Button.issue">
@@ -1249,30 +1267,34 @@
       <Setter Property="Background" Value="#fdfafa" />
     </Style>
 
-    <!-- 步骤卡外面那层壳（原型给卡片留的 3px padding）：选中环画在这儿，
-         卡片自己的宽高一点不动，选中不会让描述重新折行 -->
+    <!-- 步骤卡外面那层壳（原型给卡片留的 3px padding）：把选中环那 2+3 的位置
+         先占住，卡片自己的宽高一点不动，选中不会让描述重新折行 -->
     <Style Selector="Border.stepwrap">
       <Setter Property="Padding" Value="3" />
       <Setter Property="BorderThickness" Value="2" />
       <Setter Property="BorderBrush" Value="Transparent" />
       <Setter Property="Background" Value="Transparent" />
-      <Setter Property="Cursor" Value="Hand" />
     </Style>
-    <Style Selector="Border.stepwrap.stepSel">
-      <Setter Property="BorderBrush" Value="#a41626" />
-      <!-- 原型 rgba(164,22,38,0.07)：0.07×255 ≈ 0x12 -->
-      <Setter Property="Background" Value="#12a41626" />
+
+    <!-- 选中环：黑色虚线，铺在卡片之上。
+         用 Rectangle 而不是 Border 的描边，因为 Border 画不出虚线
+         （StrokeDashArray 是 Shape 才有的）。Shape 的 dash 单位是描边宽度的倍数，
+         2,1.6 配 2px 就是 4px 实、3.2px 虚。
+         底下垫一层 5% 的黑：四条泳道并排时只有一圈 2px 的线太细，
+         扫一眼分不出选中的是哪张。 -->
+    <Style Selector="Rectangle.selring">
+      <Setter Property="Stroke" Value="#17191c" />
+      <Setter Property="StrokeThickness" Value="2" />
+      <Setter Property="StrokeDashArray" Value="2,1.6" />
+      <Setter Property="Fill" Value="#0d000000" />
+      <!-- 描边是骑在几何边线上画的，一半在外——留 1px 让它整条落在盒子里 -->
+      <Setter Property="Margin" Value="1" />
+      <Setter Property="IsHitTestVisible" Value="False" />
     </Style>
-    <!-- 卡片本身跟着淡红一层。只描外环不染底的话，四条泳道并排时
-         那圈 2px 红线太细，扫一眼分不出选中的是哪张 -->
-    <Style Selector="Border.step.stepSel">
-      <Setter Property="Background" Value="#fbf3f4" />
-    </Style>
-    <!-- 排在 stepSel 后面是有意的：点了面板里那一条会选中这一步，
-         描边要是跟着变回灰的，人刚找到的那张红框卡就在点中它的一瞬间不红了。
-         描边归错误，选中归外面那圈环，两件事各占一个记号。
-         只换描边、不染底：一条配方里出错的常常是好几步，每张都染一层粉，
-         整条泳道会糊成一片红，反倒看不出哪张是当前选中的那一张 -->
+
+    <!-- 出错只换描边、不染底：一条配方里出错的常常是好几步，每张都染一层粉，
+         整条泳道会糊成一片红，反倒看不出哪张是当前选中的那一张。
+         这条红跟选中那圈黑虚线互不相干，可以同时出现在一张卡上 -->
     <Style Selector="Border.step.stepErr">
       <Setter Property="BorderBrush" Value="#d93025" />
     </Style>
