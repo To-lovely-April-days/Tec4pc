@@ -230,12 +230,18 @@
       <!-- 画布 + 浮在画布上的校验面板。面板浮着不占位：它一展开就把泳道挤扁的话，
            人一边看清单一边找那一步，找的过程里版面又变一次 -->
       <Panel>
-      <!-- 画布行（原型 .canvasrow）：左缘一条「变量」竖栏 + 泳道区。
+      <!-- 画布行（原型 .canvasrow）：左缘一条「变量」竖栏 + 8px 白缝 + 泳道区。
            原型 Process 视图左缘是三条竖栏（Variables / Startup / Shutdown），
            我们要的只有变量这一件事，就一条。样式照 .vcol：64 宽、#f1f2f0、
            右侧 1px #d7d9d6 分界、22px 圆圈箭头（exp3 与它同规格）+ 竖排名。
-           原型竖排字 20px Latin，按惯用换算中文取 17 -->
-      <Grid ColumnDefinitions="Auto,*">
+           原型竖排字 20px Latin，按惯用换算中文取 17。
+
+           中间那道白缝是原型的做法：竖栏之间、竖栏与泳道之间都空一条纯白，
+           两块灰各自成块，不连成一片。它只有在**两边都是灰**的时候才看得见——
+           从前画布铺的是径向渐变，最亮的一头正好落在左缘（实测 249,249,249），
+           白缝糊在那片近白里等于没有。所以画布底色压平成 #f0f0f0：
+           跟竖栏那 #f1f2f0 同一档，白缝夹在中间才立得住。 -->
+      <Grid ColumnDefinitions="Auto,8,*">
 
         <!-- 收起态：点整条都能展开 -->
         <Border Grid.Column="0" Width="64" Background="#f1f2f0"
@@ -336,25 +342,14 @@
           </DockPanel>
         </Border>
 
-      <!-- 画布：原型是一层极浅的径向底（中心 #f1f1f1 往外化到白）。
-           从前是纯白，配上从前那种青色实心卡够用；现在卡片本身是白的，
-           白卡摞在白底上就只剩一圈 1px 灰线在撑，底色得比卡片深一档。
+      <!-- 白缝。纯白、8 宽，从上通到底（原型那三条竖栏之间就是这么隔的） -->
+      <Border Grid.Column="1" Background="White" />
 
-           渐变最亮的一头正好落在左缘，挨着「变量」那条 #f1f2f0 的竖栏，
-           两者之间因此有一道白带——那是要的：变量栏和配方区是两件事，
-           中间隔开一条才不至于连成一片。一度把它压成平的 #f2f2f2 去掉了
-           这道白带，是搞反了，已经改回来。 -->
-      <Panel Grid.Column="1">
-        <Panel.Background>
-          <!-- 半径给到 115%/125%（原型也是 125%/105%）：够不到画布边角的话，
-               半径尽头会在画布中间留下一圈看得见的椭圆硬边 -->
-          <RadialGradientBrush Center="72%,52%" GradientOrigin="72%,52%"
-                               RadiusX="115%" RadiusY="125%">
-            <GradientStop Color="#f0f0f0" Offset="0" />
-            <GradientStop Color="#f7f7f7" Offset="0.5" />
-            <GradientStop Color="#fdfdfd" Offset="1" />
-          </RadialGradientBrush>
-        </Panel.Background>
+      <!-- 画布：一块平的 #f0f0f0。从前是纯白，配从前那种青色实心卡够用；
+           现在卡片本身是白的（白→#f6f6f6 + 1px #cccccc），得有块底托着。
+           不用原型那层径向渐变：原型的内容压在画布中段，我们的泳道一律贴左，
+           而渐变最亮的一头正好在左缘，白缝会糊在里面（见上一段） -->
+      <Panel Grid.Column="2" Background="#f0f0f0">
         <StackPanel IsVisible="{Binding NoLanes}" Margin="30,26" Spacing="7"
                     HorizontalAlignment="Left" VerticalAlignment="Top">
           <TextBlock Text="还没有通道" FontSize="15" Foreground="#6b6f74" />
@@ -363,7 +358,8 @@
                      Text="每台双通道反应器带来两条泳道。先去「台面」把反应器拖进来，这里就会出现对应的泳道。" />
         </StackPanel>
         <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
-          <ItemsControl ItemsSource="{Binding Lanes}" Margin="8,14,0,40">
+          <!-- 左边只留 4：白缝已经占了 8，两处加起来就把泳道推离竖栏太远了 -->
+          <ItemsControl ItemsSource="{Binding Lanes}" Margin="4,14,0,40">
             <ItemsControl.ItemsPanel>
               <ItemsPanelTemplate>
                 <StackPanel Orientation="Horizontal" Spacing="14" />
