@@ -106,7 +106,21 @@
   </Application.Resources>
 
   <Application.Styles>
-    <FluentTheme />
+    <!--
+      强调色钉死在品牌红上。
+
+      光在 Application.Resources 里覆盖 SystemAccentColor 是不够的：
+      Windows 上 Avalonia 会从系统取主题色（IPlatformSettings 的 AccentColor1）
+      灌进 Fluent 的调色板，那一份优先级压过应用资源——于是同一份代码在
+      Linux 上复选框是红的、在 Windows 上跟着系统蓝。Palettes 是 FluentTheme
+      自己的入口，给了它就不再问系统要。两处都写着，谁先生效都是这个色。
+    -->
+    <FluentTheme>
+      <FluentTheme.Palettes>
+        <ColorPaletteResources x:Key="Light" Accent="#a41626" />
+        <ColorPaletteResources x:Key="Dark" Accent="#a41626" />
+      </FluentTheme.Palettes>
+    </FluentTheme>
 
     <!--
       ══ 滚动条：全程序一套 ══
@@ -252,46 +266,55 @@
       <Setter Property="BorderThickness" Value="0,0,0,2" />
     </Style>
 
-    <!-- 运行控制：描边分段控件（原型 .rgroup / .rbtn）。
-         从前是黑药丸 + 三颗实心圆钮。换掉的理由在原型的用色纪律里：
-         报警红必须是「实底 + 白字」这一种形状，别处不许出现实底彩色圆片，
-         不然慌起来分不清哪个是急停。现在颜色只落在图标上，底一律是白的，
-         靠图标形状认按钮，靠颜色认性质。 -->
+    <!-- 运行控制：黑药丸 + 三颗实心圆钮。
+         中间试过原型那种描边分段控件，实机上不行：底色一白，三颗钮就只剩三个
+         小色块，禁用时再压到 0.38 透明度整排糊成一片，看不出哪颗是急停。
+         黑底 + 实心圆片这一套是靠「色块面积」认按钮的，压暗了照样分得清。 -->
     <Style Selector="Button.rbtn">
       <Setter Property="Width" Value="36" />
-      <Setter Property="Height" Value="28" />
-      <Setter Property="CornerRadius" Value="0" />
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderBrush" Value="#e1e3e0" />
-      <!-- 分段之间的竖线：每颗右侧一道，最后一颗单独去掉 -->
-      <Setter Property="BorderThickness" Value="0,0,1,0" />
+      <Setter Property="Height" Value="36" />
+      <Setter Property="CornerRadius" Value="18" />
+      <Setter Property="Background" Value="#4d4d4d" />
+      <Setter Property="BorderThickness" Value="0" />
       <Setter Property="Padding" Value="0" />
-      <Setter Property="Foreground" Value="#55595e" />
       <Setter Property="HorizontalContentAlignment" Value="Center" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
-    <Style Selector="Button.rbtn.last">
-      <Setter Property="BorderThickness" Value="0" />
+    <Style Selector="Button.rbtn.play">
+      <Setter Property="Background" Value="#0e7a3e" />
     </Style>
-    <!-- 颜色落在图标上。三张 svg 的 fill 已改成 currentColor，TecIcon 把它接到 Tint。
-         绿 = 在线/运行，红 = 报警/急停，琥珀 = 保持——三支笔各自只有这一个意思 -->
-    <Style Selector="Button.rbtn.play ctl|TecIcon"><Setter Property="Tint" Value="#0e7a3e" /></Style>
-    <Style Selector="Button.rbtn.stop ctl|TecIcon"><Setter Property="Tint" Value="#d93025" /></Style>
-    <Style Selector="Button.rbtn.hold ctl|TecIcon"><Setter Property="Tint" Value="#8a6100" /></Style>
-    <!-- 悬停只换底，图标颜色不动：三颗的性质不会因为鼠标经过就变 -->
-    <Style Selector="Button.rbtn:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#fafafa" />
+    <!-- 急停：红底。三颗一个样的话，慌起来很容易把停止按成暂停 -->
+    <Style Selector="Button.rbtn.stop">
+      <Setter Property="Background" Value="#d93025" />
     </Style>
-    <Style Selector="Button.rbtn:pressed /template/ ContentPresenter">
-      <Setter Property="Background" Value="#f0f0ee" />
+    <!-- 三张 svg 的 fill 是 currentColor，在黑药丸上一律描白 -->
+    <Style Selector="Button.rbtn ctl|TecIcon">
+      <Setter Property="Tint" Value="White" />
     </Style>
+    <!-- 按不了的时候暗下去。缺省禁用样式会把底色整个刷成一片灰，
+         三颗糊在一起分不出哪颗是哪颗——这里各自保住自己的颜色，只是整体压暗 -->
     <Style Selector="Button.rbtn:disabled">
-      <Setter Property="Opacity" Value="0.38" />
+      <Setter Property="Opacity" Value="0.32" />
       <Setter Property="Cursor" Value="Arrow" />
     </Style>
-    <Style Selector="Button.rbtn:disabled /template/ ContentPresenter">
-      <Setter Property="Background" Value="Transparent" />
+    <!-- 三颗的底色钉死：Fluent 的缺省 :pointerover / :pressed / :disabled 都会去改
+         ContentPresenter 的 Background，鼠标一压上去急停就从红变灰，
+         看着像它自己失效了 -->
+    <Style Selector="Button.rbtn:pointerover /template/ ContentPresenter,
+                     Button.rbtn:pressed /template/ ContentPresenter,
+                     Button.rbtn:disabled /template/ ContentPresenter">
+      <Setter Property="Background" Value="#4d4d4d" />
+    </Style>
+    <Style Selector="Button.rbtn.play:pointerover /template/ ContentPresenter,
+                     Button.rbtn.play:pressed /template/ ContentPresenter,
+                     Button.rbtn.play:disabled /template/ ContentPresenter">
+      <Setter Property="Background" Value="#0e7a3e" />
+    </Style>
+    <Style Selector="Button.rbtn.stop:pointerover /template/ ContentPresenter,
+                     Button.rbtn.stop:pressed /template/ ContentPresenter,
+                     Button.rbtn.stop:disabled /template/ ContentPresenter">
+      <Setter Property="Background" Value="#d93025" />
     </Style>
 
     <!-- 圆形工具按钮：34px，2px 深灰描边 -->

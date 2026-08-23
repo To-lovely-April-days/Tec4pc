@@ -97,24 +97,22 @@
         <Button Classes="menu" Content="数据导出"    Command="{Binding Go}" CommandParameter="7" Classes.on="{Binding IsExport}" />
       </StackPanel>
 
-      <!-- 运行控制：描边分段控件，三格（运行 / 停止 / 暂停），跟菜单栏基线对齐。
+      <!-- 运行控制：黑药丸 + 三颗圆钮（运行 / 停止 / 暂停）。
            原型那句「模拟模式」去掉了——接上真机之后它就不对了，
            而这三个钮不论仿真真机都是同一件事，图标自己说得清 -->
-      <Border BorderBrush="#d0d2cf" BorderThickness="1" CornerRadius="4" Background="White"
-              Height="30" Margin="0,11,150,0"
-              HorizontalAlignment="Right" VerticalAlignment="Top">
-        <StackPanel Orientation="Horizontal" VerticalAlignment="Stretch">
+      <Border Background="#151515" CornerRadius="8" Height="48" Margin="0,2,150,0"
+              HorizontalAlignment="Right" VerticalAlignment="Top" Padding="12,0">
+        <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
           <!-- 三颗都是「对全部已启用通道」。单路的启停在运行页的通道磁贴上。
                原型那颗「单步」去掉了：跳步是看着这一路当前那一步临时决定的，
                四路情况各不相同，一次全跳掉几乎不可能是人想要的，
                而且跳掉的每一步都写进记录撤不回来 -->
           <Button Classes="rbtn play" Command="{Binding SimRun}" IsEnabled="{Binding CanSimRun}"
                   ToolTip.Tip="{Binding SimRunTip}"><ctl:TecIcon Key="ui-sim-play" /></Button>
-          <!-- 停止是急停。底色全白之后，认它靠的是方块图标 + 报警红，
-               不再靠一颗红圆片——原型的用色纪律里实底红只留给报警行 -->
+          <!-- 停止是急停，长得跟别的不一样：慌起来按错的代价太大 -->
           <Button Classes="rbtn stop" Command="{Binding SimStop}" IsEnabled="{Binding CanSimStop}"
                   ToolTip.Tip="停止全部通道"><ctl:TecIcon Key="ui-sim-stop" /></Button>
-          <Button Classes="rbtn hold last" Command="{Binding SimPause}" IsEnabled="{Binding CanSimPause}"
+          <Button Classes="rbtn" Command="{Binding SimPause}" IsEnabled="{Binding CanSimPause}"
                   ToolTip.Tip="暂停全部正在跑的通道"><ctl:TecIcon Key="ui-sim-pause" /></Button>
         </StackPanel>
       </Border>

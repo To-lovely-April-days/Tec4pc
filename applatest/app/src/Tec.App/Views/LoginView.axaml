@@ -150,7 +150,7 @@
                         <Grid ColumnDefinitions="14,*,Auto">
                           <!-- 当前那一项打勾 -->
                           <Path Grid.Column="0" Data="M 0,3.4 L 2.6,6 L 7.4,0.6"
-                                Stroke="#0e7a3e" StrokeThickness="1.8" Fill="Transparent"
+                                Stroke="#a41626" StrokeThickness="1.8" Fill="Transparent"
                                 VerticalAlignment="Center" IsVisible="{Binding IsCurrent}" />
                           <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="12"
                                      Foreground="#292b2e" VerticalAlignment="Center" />
@@ -306,7 +306,7 @@
                     HorizontalAlignment="Left" MaxWidth="620" MinWidth="480" Margin="40,26">
           <StackPanel Orientation="Horizontal" Spacing="14">
             <!-- 对勾同理：画在原型那个 24×24 的画布里，Viewbox 缩到 22 居中 -->
-            <Border Width="46" Height="46" CornerRadius="23" Background="#0e7a3e">
+            <Border Width="46" Height="46" CornerRadius="23" Background="#a41626">
               <Viewbox Width="22" Height="22"
                        HorizontalAlignment="Center" VerticalAlignment="Center">
                 <Canvas Width="24" Height="24">
