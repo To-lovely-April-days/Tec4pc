@@ -17,33 +17,85 @@
     画出来就是假的。剖面和甘特条画得出来，是因为它们**能从排期推出来**（见 TempProfile）。
   -->
   <UserControl.Styles>
-    <!-- 库里的一条（原型 .rx-item）。左边那 6px 是选中条的位置，
+    <!-- 库里的一条。跟配方页的步骤库同一套说法：平铺细行 + 1px 分隔线，
+         不是一摞带圆角带边框的小卡片。左边那 6px 是选中条的位置，
          平时透明——写成边框的话选中时内容会横跳 6px -->
     <Style Selector="Border.rxitem">
-      <Setter Property="Background" Value="White" />
-      <Setter Property="BorderBrush" Value="#e4e6e3" />
-      <Setter Property="BorderThickness" Value="1" />
-      <!-- 左边不倒角：那 6px 色条是方的，卡片跟着方，色条才贴得平 -->
-      <Setter Property="CornerRadius" Value="0,3,3,0" />
-      <Setter Property="Margin" Value="0,0,0,3" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="#ececec" />
+      <Setter Property="BorderThickness" Value="0,0,0,1" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
     <Style Selector="Border.rxitem:pointerover">
-      <Setter Property="Background" Value="{StaticResource HovBg}" />
-      <Setter Property="BorderBrush" Value="#eccdd0" />
+      <Setter Property="Background" Value="#f4e0e2" />
     </Style>
     <Style Selector="Border.rxitem.sel">
       <Setter Property="Background" Value="{StaticResource SelBg}" />
-      <Setter Property="BorderBrush" Value="{StaticResource SelBd}" />
     </Style>
     <Style Selector="Border.rxitem TextBlock.rn">
-      <Setter Property="FontSize" Value="12.5" />
-      <Setter Property="Foreground" Value="#292b2e" />
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="Foreground" Value="#1b1b1b" />
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
     <Style Selector="Border.rxitem.sel TextBlock.rn">
       <Setter Property="Foreground" Value="{StaticResource SelTx}" />
       <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <!-- 搜索框与它右边那个清除叉：与步骤库那一行同规格（21 高、白底细框） -->
+    <Style Selector="TextBox.lfind">
+      <Setter Property="Height" Value="21" />
+      <Setter Property="MinHeight" Value="21" />
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Padding" Value="24,1,6,1" />
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderBrush" Value="#8d9196" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="2" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.lfindx">
+      <Setter Property="Width" Value="19" />
+      <Setter Property="Height" Value="19" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="CornerRadius" Value="2" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.lfindx:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#e2e2e2" />
+    </Style>
+
+    <!-- 搜索行右端那两颗库级动作钮。不用 tbtn sm（30px 圆钮）：
+         那一行照原型只有 35 高，30px 的圆顶着上下边缘，跟 21px 的搜索框
+         也不是一个体量。这里用原型库头自己那种钮——22×20 的方钮、
+         1px #b4b4b4 描边、极浅的竖向渐变，指上去描边转主题红 -->
+    <Style Selector="Button.lhx">
+      <Setter Property="Width" Value="22" />
+      <Setter Property="Height" Value="20" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="CornerRadius" Value="2" />
+      <Setter Property="BorderBrush" Value="#b4b4b4" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Background">
+        <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+          <GradientStop Color="#fdfdfd" Offset="0" />
+          <GradientStop Color="#eaeaea" Offset="1" />
+        </LinearGradientBrush>
+      </Setter>
+    </Style>
+    <Style Selector="Button.lhx:pointerover /template/ ContentPresenter">
+      <Setter Property="BorderBrush" Value="#a41626" />
+      <Setter Property="Background" Value="#f4dfe2" />
     </Style>
 
     <!-- 标签页（原型 .rx-tabs）：20px 细体，当前那个用主色 -->
@@ -139,65 +191,75 @@
     <!-- ══ 左：配方库（原型 .rx-lib）══ -->
     <!-- ClipToBounds：这一栏宽度写死 280，Grid 不裁，里面的东西真比它宽的话
          会溢到中列上去 -->
+    <!-- 抬头照配方页的步骤库那一套：24px 深色标题条 + 35px 搜索行，
+         下面是平铺细行。原来是「19px 细体标题 + 白底搜索 + 一条动作行 +
+         一摞带圆角带边框的小卡片」，四层白底叠在一起分不出层次，
+         八条配方看着像八个散落的盒子 -->
     <Border Grid.Column="0" ClipToBounds="True"
-            Background="#fafafa" BorderBrush="#dadcd9" BorderThickness="0,0,1,0">
+            Background="#fdfdfd" BorderBrush="#c9c9c9" BorderThickness="0,0,1,0">
       <DockPanel>
-        <!-- 抬头 + 搜索（原型 .rx-lhead） -->
-        <Border DockPanel.Dock="Top" Background="White" BorderBrush="#e1e3e0"
-                BorderThickness="0,0,0,1" Padding="12,11,12,10">
-          <StackPanel>
-            <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,9">
-              <TextBlock Grid.Column="0" Text="配方库" FontSize="19" FontWeight="Light"
-                         Foreground="#383b3f" />
-              <TextBlock Grid.Column="1" Text="{Binding LibCountText}" FontSize="10.5"
-                         Foreground="#9ea2a6" VerticalAlignment="Bottom" Margin="0,0,0,3" />
-            </Grid>
-            <Panel>
-              <TextBox Classes="srch" Watermark="搜配方名" Text="{Binding Query, Mode=TwoWay}" />
-              <ctl:TecIcon Key="ui-search" Tint="#959a9f" Size="13" Margin="8,0,0,0"
+        <Border DockPanel.Dock="Top" Height="24" Background="{StaticResource Shell}"
+                Padding="10,0">
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Grid.Column="0" Text="配方库" FontSize="12.5" FontWeight="SemiBold"
+                       Foreground="White" VerticalAlignment="Center" />
+            <!-- 条数跟标题同一行：它说的就是这个库有多大，不该单占一行 -->
+            <TextBlock Grid.Column="1" Text="{Binding LibCountText}" FontSize="10.5"
+                       Foreground="#9aa0a6" VerticalAlignment="Center" />
+          </Grid>
+        </Border>
+
+        <!-- 搜索行：搜索框 + 清除叉，右边隔一条竖线摆库级动作（新增与导入）。
+             这两件事跟「库」有关、跟当前打开的是哪条无关，所以仍在库这一栏，
+             只是并进这一行、不再单占一条 -->
+        <Border DockPanel.Dock="Top" Height="35" Background="#f1f1f1"
+                BorderBrush="#cfcfcf" BorderThickness="0,0,0,1" Padding="9,0">
+          <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto">
+            <Panel Grid.Column="0">
+              <TextBox Classes="lfind" Watermark="搜配方名" Text="{Binding Query, Mode=TwoWay}" />
+              <ctl:TecIcon Key="ui-search" Tint="#959a9f" Size="13" Margin="6,0,0,0"
                            HorizontalAlignment="Left" VerticalAlignment="Center"
                            IsHitTestVisible="False" />
             </Panel>
-          </StackPanel>
-        </Border>
-
-        <!-- 库级动作（原型 .rx-ltools）：新增与导入。这两件事跟「库」有关，
-             跟当前打开的是哪条无关，所以摆在库这一栏 -->
-        <Border DockPanel.Dock="Top" Background="White" BorderBrush="#dadcd9"
-                BorderThickness="0,0,0,1" Padding="12,8">
-          <StackPanel Orientation="Horizontal" Spacing="8">
-            <Button Classes="tbtn sm" ToolTip.Tip="把配方页当前通道的配方收进库"
+            <Button Grid.Column="1" Classes="lfindx" Margin="4,0,0,0"
+                    IsVisible="{Binding HasQuery}" Command="{Binding ClearQuery}"
+                    ToolTip.Tip="清除搜索">
+              <TextBlock Text="✕" FontSize="10" Foreground="#6b6f74"
+                         HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Button>
+            <Border Grid.Column="2" Width="1" Height="20" Background="#d4d4d4" Margin="8,0" />
+            <Button Grid.Column="3" Classes="lhx" ToolTip.Tip="把配方页当前通道的配方收进库"
                     Command="{Binding NewFromChannel}">
-              <ctl:TecIcon Key="ui-lh-libnew" />
+              <ctl:TecIcon Key="ui-lh-libnew" Size="13" />
             </Button>
-            <Button Classes="tbtn sm" ToolTip.Tip="从文件导入（.tecrecipe）"
-                    Command="{Binding ImportToLib}">
-              <ctl:TecIcon Key="ui-lh-libimport" />
+            <Button Grid.Column="4" Classes="lhx" Margin="6,0,0,0"
+                    ToolTip.Tip="从文件导入（.tecrecipe）" Command="{Binding ImportToLib}">
+              <ctl:TecIcon Key="ui-lh-libimport" Size="13" />
             </Button>
-          </StackPanel>
+          </Grid>
         </Border>
 
-        <!-- 底部留白同上：Padding 只留左右上，底下那截写在内容的 Margin 上 -->
-        <ScrollViewer Padding="8,8,8,0">
+        <!-- 底部留白写在内容的 Margin 上，不写 ScrollViewer 的 Padding：
+             Padding 是从可视区里扣的，不进滚动范围 -->
+        <ScrollViewer>
           <StackPanel Margin="0,0,0,40">
-            <StackPanel IsVisible="{Binding IsEmpty}" Margin="4,8" Spacing="7">
+            <StackPanel IsVisible="{Binding IsEmpty}" Margin="12,12,12,8" Spacing="7">
               <TextBlock Text="没有配方" FontSize="13" Foreground="#6b6f74" />
               <TextBlock FontSize="11.5" Foreground="#959a9f" LineHeight="19" TextWrapping="Wrap"
-                         Text="在配方页把一条配方调好，用上面第一个按钮收进来；或者从 .tecrecipe 文件导入。搜索没结果时清空搜索框即可。" />
+                         Text="在配方页把一条配方调好，用上面那颗「收进库」按钮收进来；或者从 .tecrecipe 文件导入。搜索没结果时清空搜索框即可。" />
             </StackPanel>
             <ItemsControl ItemsSource="{Binding Rows}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate>
-                  <Border Classes="rxitem" Classes.sel="{Binding IsSelected}"
-                         >
+                  <Border Classes="rxitem" Classes.sel="{Binding IsSelected}">
                     <!-- 6px 那一列常在，选中才上色：内容不会因为选中横跳 -->
                     <Grid ColumnDefinitions="6,*">
                       <Border Grid.Column="0"
                               Background="{Binding IsSelected, Converter={x:Static ctl:Is.SelBar}}" />
-                      <StackPanel Grid.Column="1" Margin="9,7,9,8">
+                      <StackPanel Grid.Column="1" Margin="8,6,10,7">
                         <TextBlock Text="{Binding Name}" Classes="rn" />
                         <TextBlock Text="{Binding Meta}" FontSize="10.5" Foreground="#959a9f"
-                                   Margin="0,4,0,0" TextTrimming="CharacterEllipsis" />
+                                   Margin="0,3,0,0" TextTrimming="CharacterEllipsis" />
                       </StackPanel>
                     </Grid>
                   </Border>

@@ -409,6 +409,7 @@ public sealed class RecipeLibViewModel : ViewModelBase
         });
 
         ImportToLib = new RelayCommand(() => _ = ImportAsync());
+        ClearQuery = new RelayCommand(() => Query = "");
         SaveLib = new RelayCommand(() => ws.Store.SaveLibrary());
 
         ApplyToChannel = new RelayCommand(() => Apply(false));
@@ -440,9 +441,13 @@ public sealed class RecipeLibViewModel : ViewModelBase
         set
         {
             if (!Set(ref _query, value ?? "")) return;
+            Raise(nameof(HasQuery));
             ApplyFilter();
         }
     }
+
+    /// <summary>搜索框右边那个清除叉：有字才露出来。</summary>
+    public bool HasQuery => _query.Trim().Length > 0;
 
     private int _tab;
     /// <summary>0 = 步骤表，1 = 物料表。</summary>
@@ -495,6 +500,7 @@ public sealed class RecipeLibViewModel : ViewModelBase
     public RelayCommand ApplyToAll { get; }
     public RelayCommand NewFromChannel { get; }
     public RelayCommand ImportToLib { get; }
+    public RelayCommand ClearQuery { get; }
     public RelayCommand SaveLib { get; }
 
     public LibRowViewModel? Selected
