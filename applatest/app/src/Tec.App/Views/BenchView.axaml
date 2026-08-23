@@ -147,7 +147,7 @@
         <Border DockPanel.Dock="Bottom" Padding="18,10,18,14"
                 Background="{StaticResource PropsBg}"
                 IsVisible="{Binding HasSelection}"
-                BorderBrush="{StaticResource SelBd}" BorderThickness="6,0,0,0">
+                BorderBrush="{StaticResource PropsBar}" BorderThickness="6,0,0,0">
           <StackPanel>
             <TextBlock Text="{Binding SaveHint}" IsVisible="{Binding HasSaveHint}"
                        FontSize="10.5" Foreground="#55595e" LineHeight="16" TextWrapping="Wrap"
@@ -269,7 +269,7 @@
                  它标的是「这一段属于谁」，而不只是「这里断开」 -->
             <Border Padding="18,16,18,20" IsVisible="{Binding HasSelection}"
                     Background="{StaticResource PropsBg}"
-                    BorderBrush="{StaticResource SelBd}" BorderThickness="6,0,0,0">
+                    BorderBrush="{StaticResource PropsBar}" BorderThickness="6,0,0,0">
             <StackPanel>
 
             <StackPanel IsVisible="{Binding HasSelection}">

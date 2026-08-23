@@ -468,7 +468,7 @@
             <!-- ═ 步骤块：表上点中哪一步显示哪一步，左边一条 6px 色条 ═ -->
             <Border Padding="18,16,18,20" IsVisible="{Binding HasStepSel}"
                     Background="{StaticResource PropsBg}"
-                    BorderBrush="{StaticResource SelBd}" BorderThickness="6,0,0,0">
+                    BorderBrush="{StaticResource PropsBar}" BorderThickness="6,0,0,0">
               <StackPanel DataContext="{Binding SelStep}">
                 <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center"
                             Margin="0,0,0,12">
