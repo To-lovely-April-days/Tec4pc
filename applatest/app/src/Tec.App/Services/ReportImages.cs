@@ -189,11 +189,11 @@ public static class ReportImages
             });
             legend.Children.Add(one);
         }
-        if (model.Tr is not null) Item("#e02020", "Tr 釜内");
+        if (model.Tr is not null) Item("#d93025", "Tr 釜内");
         if (model.Tj is not null) Item("#3f6fd8", "Tj 夹套");
         if (model.Dt is not null) Item("#b56cc9", "Tr−Tj");
-        if (model.Ph is not null) Item("#2f8f49", "pH");
-        if (duty is not null) Item("#b03a2e", "控温输出 %（下条）");
+        if (model.Ph is not null) Item("#0e7a3e", "pH");
+        if (duty is not null) Item("#a81e15", "控温输出 %（下条）");
         grid.Children.Add(legend);
 
         var chart = new Border

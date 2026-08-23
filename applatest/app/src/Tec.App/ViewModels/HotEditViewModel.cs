@@ -40,8 +40,8 @@ public sealed class HotStepViewModel : ViewModelBase
     public string Seq => (Index + 1).ToString();
     public string Badge => IsCurrent ? "当前" : IsPast ? "已跑" : "";
     public bool HasBadge => Badge.Length > 0;
-    public string BadgeFillHex => IsCurrent ? "#eaf4ec" : "#f0f0f0";
-    public string BadgeInkHex => IsCurrent ? "#2f8f49" : "#8d8d8d";
+    public string BadgeFillHex => IsCurrent ? "#eaf3ed" : "#eff0ee";
+    public string BadgeInkHex => IsCurrent ? "#0e7a3e" : "#888d92";
     public string ColorHex => ModuleInfo.ColorOf(Module);
 
     public bool IsSelected { get => _sel; set => Set(ref _sel, value); }

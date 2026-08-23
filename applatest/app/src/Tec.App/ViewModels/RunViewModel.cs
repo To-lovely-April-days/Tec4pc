@@ -72,7 +72,7 @@ public sealed class StatTileViewModel : ViewModelBase
     public bool On => !Off;
     /// <summary>停用的通道只写「已停用」和它是哪个孔——数据行留着全是「—」，看着像坏了。</summary>
     public string HostLabel => WellLabel.Of(_ws, Channel);
-    public string ColorHex => Off ? "#c2c2c2" : Channel switch
+    public string ColorHex => Off ? "#bfc2c2" : Channel switch
     { 1 => "#2f7ed8", 2 => "#2aa87a", 3 => "#c9772b", _ => "#8a63d2" };
 
     private ChannelRun? Run => _ws.Engine.Record.Of(Channel);
@@ -107,7 +107,7 @@ public sealed class StatTileViewModel : ViewModelBase
     /// <summary>出力到顶就标红：那是执行器余量用完了，再压不住的时刻。</summary>
     public string DutyColorHex =>
         Started && _ws.Pipeline.TryLatest(Channel, "duty", _ws.Clock.Now, out var d)
-        && Math.Abs(d.Value) >= 99 ? "#c0392b" : "#2b2b2b";
+        && Math.Abs(d.Value) >= 99 ? "#d93025" : "#292b2e";
 
     public bool HasDuty => _ws.Pipeline.Series(Channel, "duty") is { Count: > 0 };
     public bool HasPh => _ws.ChannelOf(Channel)?.Capabilities.Get<IScalarSensor>()
@@ -175,22 +175,22 @@ public sealed class StatTileViewModel : ViewModelBase
     /// <summary>状态色。跑着的绿、暂停琥珀、故障红，其余灰。</summary>
     public string StateColorHex => StateText switch
     {
-        "运行中" => "#2f8f49",
-        "已暂停" or "正在停止" => "#a8710a",
-        "故障" => "#c0392b",
+        "运行中" => "#0e7a3e",
+        "已暂停" or "正在停止" => "#8a6100",
+        "故障" => "#d93025",
         "已中止" => "#a05a4a",
         "已完成" => "#5f8a6a",
-        _ => "#8d8d8d"
+        _ => "#888d92"
     };
 
     public string StateFillHex => StateText switch
     {
-        "运行中" => "#eaf4ec",
+        "运行中" => "#eaf3ed",
         "已暂停" or "正在停止" => "#fbf3e4",
-        "故障" => "#fbe6e3",
-        "已中止" => "#f6ecea",
+        "故障" => "#fdecea",
+        "已中止" => "#fdf2f2",
         "已完成" => "#eef3ef",
-        _ => "#f0f0f0"
+        _ => "#eff0ee"
     };
 
     // ── 这一路自己的四个操作 ────────────────────────────────────────
@@ -473,12 +473,12 @@ public sealed class RunViewModel : ViewModelBase
     public bool HasSay => Say.Length > 0;
     /// <summary>被拒 / 失败是红的，正常回话是绿的——「CH2 不能启动」顶着一身成功色，
     /// 扫一眼的人会当成「已启动」。</summary>
-    public string SayColorHex { get; private set; } = "#2f8f49";
+    public string SayColorHex { get; private set; } = "#0e7a3e";
 
     private void Tell(string text, bool bad = false)
     {
         Say = text;
-        SayColorHex = bad ? "#c0392b" : "#2f8f49";
+        SayColorHex = bad ? "#d93025" : "#0e7a3e";
         RaiseAll(nameof(Say), nameof(HasSay), nameof(SayColorHex));
         var stamp = ++_sayStamp;
         DispatcherTimer.RunOnce(() =>
@@ -891,7 +891,7 @@ public sealed class RunViewModel : ViewModelBase
 
     private static Color ChColor(int chn, bool enabled = true)
         => Color.Parse(enabled ? chn switch
-        { 1 => "#2f7ed8", 2 => "#2aa87a", 3 => "#c9772b", _ => "#8a63d2" } : "#c2c2c2");
+        { 1 => "#2f7ed8", 2 => "#2aa87a", 3 => "#c9772b", _ => "#8a63d2" } : "#bfc2c2");
 
     private void BuildGantt()
     {

@@ -258,10 +258,10 @@ public static class ReportLayout
 {
     private const string Ink = "#242424";
     private const string Muted = "#7b7b7b";
-    private const string Rule = "#d8d5e6";
-    private const string HeadFill = "#ece9f5";
-    private const string BadInk = "#b03a2e";
-    private const string BadFill = "#fbeae7";
+    private const string Rule = "#ecd9db";
+    private const string HeadFill = "#ecedea";
+    private const string BadInk = "#a81e15";
+    private const string BadFill = "#fdecea";
 
     public static List<ReportPage> Paginate(ReportDoc doc, TextMetrics m, PageStyle? style = null)
     {
@@ -283,7 +283,7 @@ public static class ReportLayout
             Text = m.Ellipsis(m.Sanitize(doc.Subtitle), 11, st.ContentWidth)
         });
         y += 20;
-        page.Items.Add(new RectItem { X = st.Left, Y = y, W = st.ContentWidth, H = 1.4, Fill = "#6f5fa8" });
+        page.Items.Add(new RectItem { X = st.Left, Y = y, W = st.ContentWidth, H = 1.4, Fill = "#a85f68" });
         y += 26;
 
         if (doc.Simulated)
@@ -461,7 +461,7 @@ public static class ReportLayout
             page.Items.Add(new TextItem
             {
                 X = st.Left + 10, Y = y + 8 + i * 14, Text = lines[i], Size = 10,
-                Color = bad ? BadInk : "#7a5c14"
+                Color = bad ? BadInk : "#6b4b00"
             });
         return y + h + 12;
     }
@@ -547,7 +547,7 @@ public static class ReportLayout
                     { X = tx, Y = y + padY + k * lineH, Text = text, Size = fs, Color = bad ? BadInk : Ink });
                 }
 
-            page.Items.Add(new RectItem { X = st.Left, Y = y + rowH, W = st.ContentWidth, H = 0.4, Fill = "#e8e6f0" });
+            page.Items.Add(new RectItem { X = st.Left, Y = y + rowH, W = st.ContentWidth, H = 0.4, Fill = "#f0e8e9" });
             y += rowH;
         }
 

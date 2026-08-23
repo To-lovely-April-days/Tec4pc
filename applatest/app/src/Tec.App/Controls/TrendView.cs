@@ -63,7 +63,7 @@ public sealed class TrendView : Control
         var gridPen = new Pen(new SolidColorBrush(Color.Parse("#ececec")), 1);
         var gridPen2 = new Pen(new SolidColorBrush(Color.Parse("#f2f2f2")), 1);
         var axis = new SolidColorBrush(Color.Parse("#8d8d8d"));
-        var green = new SolidColorBrush(Color.Parse("#2f8f49"));
+        var green = new SolidColorBrush(Color.Parse("#0e7a3e"));
 
         // 横向温度格线 −40..180 每 40 ℃
         for (var tv = -40; tv <= 180; tv += 40)
@@ -93,15 +93,15 @@ public sealed class TrendView : Control
         {
             Curve(ctx, m.Dt, p => new Point(Xt(p.T), Y(p.V * 4 + 40)), "#b56cc9", 1.3, opacity: 0.8);
             Curve(ctx, m.Tj, p => new Point(Xt(p.T), Y(p.V)), "#3f6fd8", 1.6);
-            Curve(ctx, m.Tr, p => new Point(Xt(p.T), Y(p.V)), "#e02020", 1.8);
-            Curve(ctx, m.Ph, p => new Point(Xt(p.T), Y2(p.V)), "#2f8f49", 1.4, dash: true);
+            Curve(ctx, m.Tr, p => new Point(Xt(p.T), Y(p.V)), "#d93025", 1.8);
+            Curve(ctx, m.Ph, p => new Point(Xt(p.T), Y2(p.V)), "#0e7a3e", 1.4, dash: true);
         }
 
         // 当前时刻
         var nowX = Xt(m.NowSec);
-        var nowPen = new Pen(new SolidColorBrush(Color.Parse("#e02020")), 1.4);
+        var nowPen = new Pen(new SolidColorBrush(Color.Parse("#d93025")), 1.4);
         ctx.DrawLine(nowPen, new Point(nowX, T), new Point(nowX, h - B));
-        ctx.DrawEllipse(new SolidColorBrush(Color.Parse("#e02020")), null, new Point(nowX, T), 3, 3);
+        ctx.DrawEllipse(new SolidColorBrush(Color.Parse("#d93025")), null, new Point(nowX, T), 3, 3);
     }
 
     private static void Curve(DrawingContext ctx, TrendSeries? s, Func<(double T, double V), Point> map,

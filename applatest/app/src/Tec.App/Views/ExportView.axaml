@@ -8,13 +8,13 @@
 
     <!-- pghead。右边两颗圆钮是**这一页整体**的动作（跟某一条记录无关），
          所以摆在页头而不是工具条里——工具条那一排是筛选，性质不一样 -->
-    <Border DockPanel.Dock="Top" BorderBrush="#e3e3e3" BorderThickness="0,0,0,1" Padding="22,10,22,10">
+    <Border DockPanel.Dock="Top" BorderBrush="#e1e3e0" BorderThickness="0,0,0,1" Padding="22,10,22,10">
       <Grid ColumnDefinitions="Auto,*,Auto">
         <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="14">
-          <TextBlock Text="数据导出" FontSize="23" FontWeight="Light" Foreground="#2b2b2b"
+          <TextBlock Text="数据导出" FontSize="23" FontWeight="Light" Foreground="#292b2e"
                      VerticalAlignment="Bottom" />
           <TextBlock Text="从实验记录中选取一条或多条，配置导出内容后生成归档文件"
-                     FontSize="11.5" Foreground="#9a9a9a" VerticalAlignment="Bottom" Margin="0,0,0,4" />
+                     FontSize="11.5" Foreground="#959a9f" VerticalAlignment="Bottom" Margin="0,0,0,4" />
         </StackPanel>
 
         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
@@ -33,7 +33,7 @@
     </Border>
 
     <!-- foot 52px -->
-    <Border DockPanel.Dock="Bottom" Height="52" Background="#fafafa" BorderBrush="#e3e3e3"
+    <Border DockPanel.Dock="Bottom" Height="52" Background="#fafafa" BorderBrush="#e1e3e0"
             BorderThickness="0,1,0,0" Padding="22,0,16,0">
       <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
         <ItemsControl Grid.Column="0" ItemsSource="{Binding Stat}" VerticalAlignment="Center">
@@ -43,15 +43,15 @@
           <ItemsControl.ItemTemplate>
             <DataTemplate>
               <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,0,18,0">
-                <TextBlock Text="{Binding K}" FontSize="11.5" Foreground="#5a5a5a" />
-                <TextBlock Text="{Binding V}" FontSize="11.5" FontWeight="SemiBold" Foreground="#2b2b2b"
+                <TextBlock Text="{Binding K}" FontSize="11.5" Foreground="#565a5f" />
+                <TextBlock Text="{Binding V}" FontSize="11.5" FontWeight="SemiBold" Foreground="#292b2e"
                            FontFamily="Segoe UI, Microsoft YaHei UI, Microsoft YaHei" />
               </StackPanel>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
         <TextBlock Grid.Column="0" IsVisible="{Binding !SelCount}" VerticalAlignment="Center"
-                   FontSize="11.5" Foreground="#a5a5a5"
+                   FontSize="11.5" Foreground="#a1a5a9"
                    Text="未选择记录 —— 在左侧表格中勾选一条或多条后即可导出" />
 
         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center"
@@ -59,7 +59,7 @@
           <!-- 提醒条：运行中 / 已中止 / 采样已被顶掉，都是导出前该知道的 -->
           <Border IsVisible="{Binding HasWarn}" Background="#fdf6e8" BorderBrush="#e9d9ae"
                   BorderThickness="1" CornerRadius="3" Padding="10,5">
-            <TextBlock Text="{Binding Warn}" FontSize="11" Foreground="#7a5c14"
+            <TextBlock Text="{Binding Warn}" FontSize="11" Foreground="#6b4b00"
                        TextTrimming="CharacterEllipsis" />
           </Border>
           <TextBlock Text="{Binding Status}" IsVisible="{Binding HasStatus}" FontSize="11"
@@ -83,7 +83,7 @@
       <DockPanel Grid.Column="0" Background="White">
 
         <!-- tools -->
-        <Border DockPanel.Dock="Top" BorderBrush="#ececec" BorderThickness="0,0,0,1" Padding="16,9">
+        <Border DockPanel.Dock="Top" BorderBrush="#ebece9" BorderThickness="0,0,0,1" Padding="16,9">
           <!-- 左边一列 `*` 右边 `Auto`，**不能反过来**：Auto 给的是「要多少给多少」，
                筛选那排就永远不折行，右边的计数与「清除选择」被顶出可视区切掉一半 -->
           <Grid ColumnDefinitions="*,Auto">
@@ -91,7 +91,7 @@
               <Panel Margin="0,0,9,0">
                 <TextBox Classes="srch" Width="188" Text="{Binding Query, Mode=TwoWay}"
                          Watermark="搜索名称或记录编号" />
-                <ctl:TecIcon Key="ui-search" Tint="#9a9a9a" Size="13" Margin="8,0,0,0"
+                <ctl:TecIcon Key="ui-search" Tint="#959a9f" Size="13" Margin="8,0,0,0"
                              HorizontalAlignment="Left" VerticalAlignment="Center" IsHitTestVisible="False" />
               </Panel>
 
@@ -122,7 +122,7 @@
 
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12"
                         HorizontalAlignment="Right" VerticalAlignment="Center">
-              <TextBlock Text="{Binding CountText}" FontSize="11.5" Foreground="#8a8a8a" />
+              <TextBlock Text="{Binding CountText}" FontSize="11.5" Foreground="#858a8f" />
               <Button Classes="lnk" Content="清除选择" Command="{Binding ClearSel}" />
             </StackPanel>
           </Grid>
@@ -132,11 +132,11 @@
              那个更靠边，反过来写分隔条会跑到预览下面去，拖着拖着人就找不着它了 -->
         <Border DockPanel.Dock="Bottom" Height="{Binding PrevHeight}" Background="White">
           <DockPanel>
-            <Border DockPanel.Dock="Top" BorderBrush="#ececec" BorderThickness="0,0,0,1" Padding="16,7">
+            <Border DockPanel.Dock="Top" BorderBrush="#ebece9" BorderThickness="0,0,0,1" Padding="16,7">
               <Grid ColumnDefinitions="Auto,Auto,*,Auto">
-                <TextBlock Grid.Column="0" Text="数据预览" FontSize="12.5" Foreground="#3b3b3b"
+                <TextBlock Grid.Column="0" Text="数据预览" FontSize="12.5" Foreground="#383b3f"
                            VerticalAlignment="Center" />
-                <TextBlock Grid.Column="1" Text="{Binding PrevWho}" FontSize="11" Foreground="#9a9a9a"
+                <TextBlock Grid.Column="1" Text="{Binding PrevWho}" FontSize="11" Foreground="#959a9f"
                            VerticalAlignment="Center" Margin="10,0,0,0" />
                 <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="5">
                   <Button Classes="pill" Classes.on="{Binding PrevData}" Content="采样数据"
@@ -155,8 +155,8 @@
                   </ItemsControl.ItemsPanel>
                   <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                      <Border BorderBrush="#d5d5d5" BorderThickness="0,0,0,1" Padding="9,5" MinWidth="86">
-                        <TextBlock Text="{Binding Text}" FontSize="11" Foreground="#5a5a5a"
+                      <Border BorderBrush="#d3d5d2" BorderThickness="0,0,0,1" Padding="9,5" MinWidth="86">
+                        <TextBlock Text="{Binding Text}" FontSize="11" Foreground="#565a5f"
                                    TextAlignment="{Binding Align}" />
                       </Border>
                     </DataTemplate>
@@ -171,8 +171,8 @@
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                           <DataTemplate>
-                            <Border BorderBrush="#f4f4f4" BorderThickness="0,0,0,1" Padding="9,4" MinWidth="86">
-                              <TextBlock Text="{Binding Text}" FontSize="11" Foreground="#2b2b2b"
+                            <Border BorderBrush="#f4f4f3" BorderThickness="0,0,0,1" Padding="9,4" MinWidth="86">
+                              <TextBlock Text="{Binding Text}" FontSize="11" Foreground="#292b2e"
                                          TextAlignment="{Binding Align}" FontFamily="{Binding Font}" />
                             </Border>
                           </DataTemplate>
@@ -182,18 +182,18 @@
                   </ItemsControl.ItemTemplate>
                 </ItemsControl>
                 <TextBlock IsVisible="{Binding !HasPreview}" Margin="0,40" TextAlignment="Center"
-                           FontSize="12" Foreground="#9a9a9a"
+                           FontSize="12" Foreground="#959a9f"
                            Text="勾选一条实验记录后在此预览将要导出的内容" />
               </StackPanel>
             </ScrollViewer>
           </DockPanel>
         </Border>
 
-        <Border DockPanel.Dock="Bottom" Height="6" Background="#f4f4f4" Cursor="SizeNorthSouth"
-                BorderBrush="#e3e3e3" BorderThickness="0,1" Name="Splitter"
+        <Border DockPanel.Dock="Bottom" Height="6" Background="#f4f4f3" Cursor="SizeNorthSouth"
+                BorderBrush="#e1e3e0" BorderThickness="0,1" Name="Splitter"
                 PointerPressed="OnSplitPressed" PointerMoved="OnSplitMoved"
                 PointerReleased="OnSplitReleased">
-          <Border Width="34" Height="2" Background="#c8c8c8" CornerRadius="1"
+          <Border Width="34" Height="2" Background="#c5c8c7" CornerRadius="1"
                   HorizontalAlignment="Center" VerticalAlignment="Center" />
         </Border>
 
@@ -209,18 +209,18 @@
                           ToolTip.Tip="全选 / 全不选" />
                 <Button Grid.Column="1" Classes="th" Command="{Binding SortBy}" CommandParameter="id">
                   <StackPanel Orientation="Horizontal" Spacing="3">
-                    <TextBlock Text="记录编号" /><TextBlock Text="{Binding SortArrowId}" Foreground="#1a7fc4" />
+                    <TextBlock Text="记录编号" /><TextBlock Text="{Binding SortArrowId}" Foreground="#a41626" />
                   </StackPanel>
                 </Button>
                 <TextBlock Grid.Column="2" Classes="thx" Text="名称" />
                 <Button Grid.Column="3" Classes="th" Command="{Binding SortBy}" CommandParameter="ts">
                   <StackPanel Orientation="Horizontal" Spacing="3">
-                    <TextBlock Text="开始时间" /><TextBlock Text="{Binding SortArrowTs}" Foreground="#1a7fc4" />
+                    <TextBlock Text="开始时间" /><TextBlock Text="{Binding SortArrowTs}" Foreground="#a41626" />
                   </StackPanel>
                 </Button>
                 <Button Grid.Column="4" Classes="th" Command="{Binding SortBy}" CommandParameter="dur">
                   <StackPanel Orientation="Horizontal" Spacing="3">
-                    <TextBlock Text="时长" /><TextBlock Text="{Binding SortArrowDur}" Foreground="#1a7fc4" />
+                    <TextBlock Text="时长" /><TextBlock Text="{Binding SortArrowDur}" Foreground="#a41626" />
                   </StackPanel>
                 </Button>
                 <TextBlock Grid.Column="5" Classes="thx" Text="配方" />
@@ -228,7 +228,7 @@
                 <TextBlock Grid.Column="7" Classes="thx" Text="通道" />
                 <Button Grid.Column="8" Classes="th" Command="{Binding SortBy}" CommandParameter="pts">
                   <StackPanel Orientation="Horizontal" Spacing="3">
-                    <TextBlock Text="数据点" /><TextBlock Text="{Binding SortArrowPts}" Foreground="#1a7fc4" />
+                    <TextBlock Text="数据点" /><TextBlock Text="{Binding SortArrowPts}" Foreground="#a41626" />
                   </StackPanel>
                 </Button>
                 <TextBlock Grid.Column="9" Classes="thx" Text="报警" />
@@ -284,9 +284,9 @@
           <!-- 空状态：一条记录都没有 / 筛没了，说法不一样 -->
           <StackPanel IsVisible="{Binding NoRows}" HorizontalAlignment="Center"
                       VerticalAlignment="Center" Spacing="8" MaxWidth="520">
-            <TextBlock Text="{Binding EmptyText}" FontSize="14" Foreground="#7a7a7a"
+            <TextBlock Text="{Binding EmptyText}" FontSize="14" Foreground="#757a7f"
                        TextAlignment="Center" />
-            <TextBlock Text="{Binding EmptySub}" FontSize="11.5" Foreground="#9a9a9a"
+            <TextBlock Text="{Binding EmptySub}" FontSize="11.5" Foreground="#959a9f"
                        TextAlignment="Center" TextWrapping="Wrap" LineHeight="19" />
           </StackPanel>
         </Panel>
@@ -295,7 +295,7 @@
       <!-- 右栏 342px。**白底面板 + 浅紫内容块**，与台面 / 配方 / 配方库的属性面板
            同一套观感：块与块之间用白缝分隔（App.axaml 里 ThemeGap / ThemeFill 那两支笔） -->
       <Border Grid.Column="1" Background="{StaticResource ThemeGap}"
-              BorderBrush="#d2d2d2" BorderThickness="1,0,0,0">
+              BorderBrush="#d0d2cf" BorderThickness="1,0,0,0">
         <ScrollViewer>
           <StackPanel Margin="0,0,0,24">
 
@@ -305,7 +305,7 @@
             <Button Classes="sech" Command="{Binding FormatSection.Toggle}">
               <Grid ColumnDefinitions="Auto,Auto,*">
                 <Border Grid.Column="0" Classes="cir" Classes.cl="{Binding !FormatSection.Open}">
-                  <ctl:TecIcon Key="ui-chev-down" Tint="#666666" Size="9" />
+                  <ctl:TecIcon Key="ui-chev-down" Tint="#62666b" Size="9" />
                 </Border>
                 <TextBlock Grid.Column="1" Text="导出格式" Classes="sect" />
                 <TextBlock Grid.Column="2" Text="{Binding FormatHint}" Classes="hint" />
@@ -328,14 +328,14 @@
                             <ctl:TecIcon Key="{Binding IconKey}" HorizontalAlignment="Center"
                                          VerticalAlignment="Center" />
                           </Panel>
-                          <TextBlock Text="{Binding Name}" FontSize="12" Foreground="#2b2b2b"
+                          <TextBlock Text="{Binding Name}" FontSize="12" Foreground="#292b2e"
                                      TextAlignment="Center" Margin="0,3,0,0" />
-                          <TextBlock Text="{Binding Desc}" FontSize="9.5" Foreground="#9a9a9a"
+                          <TextBlock Text="{Binding Desc}" FontSize="9.5" Foreground="#959a9f"
                                      TextAlignment="Center" Margin="0,2,0,0" />
                         </StackPanel>
                         <!-- 选中的角上一个对勾。四张卡都是浅色的，只靠边框颜色分辨
                              要盯着看；一个勾隔着半米也认得出 -->
-                        <Border Width="18" Height="18" CornerRadius="9" Background="#1a7fc4"
+                        <Border Width="18" Height="18" CornerRadius="9" Background="#a41626"
                                 HorizontalAlignment="Right" VerticalAlignment="Top"
                                 Margin="0,-2,-2,0" IsVisible="{Binding On}">
                           <Path Data="M4.4,9.2 L7.5,12.2 L13.2,5.8" Stroke="White" StrokeThickness="1.9"
@@ -358,7 +358,7 @@
             <Button Classes="sech" Command="{Binding ItemsSection.Toggle}">
               <Grid ColumnDefinitions="Auto,Auto,*">
                 <Border Grid.Column="0" Classes="cir" Classes.cl="{Binding !ItemsSection.Open}">
-                  <ctl:TecIcon Key="ui-chev-down" Tint="#666666" Size="9" />
+                  <ctl:TecIcon Key="ui-chev-down" Tint="#62666b" Size="9" />
                 </Border>
                 <TextBlock Grid.Column="1" Text="数据项" Classes="sect" />
                 <TextBlock Grid.Column="2" Text="{Binding ItemHint}" Classes="hint" />
@@ -378,7 +378,7 @@
                                       MinHeight="0" Padding="6,0,0,0">
                               <StackPanel Orientation="Horizontal" Spacing="4">
                                 <TextBlock Text="{Binding Name}" FontSize="11.5" />
-                                <TextBlock Text="{Binding Unit}" FontSize="10.5" Foreground="#9a9a9a"
+                                <TextBlock Text="{Binding Unit}" FontSize="10.5" Foreground="#959a9f"
                                            IsVisible="{Binding HasUnit}" VerticalAlignment="Center" />
                               </StackPanel>
                             </CheckBox>
@@ -400,7 +400,7 @@
             <Button Classes="sech" Command="{Binding RangeSection.Toggle}">
               <Grid ColumnDefinitions="Auto,Auto,*">
                 <Border Grid.Column="0" Classes="cir" Classes.cl="{Binding !RangeSection.Open}">
-                  <ctl:TecIcon Key="ui-chev-down" Tint="#666666" Size="9" />
+                  <ctl:TecIcon Key="ui-chev-down" Tint="#62666b" Size="9" />
                 </Border>
                 <TextBlock Grid.Column="1" Text="时间范围与采样" Classes="sect" />
                 <TextBlock Grid.Column="2" Text="{Binding RangeHint}" Classes="hint" />
@@ -415,7 +415,7 @@
               <Grid Classes="frow" ColumnDefinitions="62,*,16,*" IsVisible="{Binding CustomRange}">
                 <TextBlock Grid.Column="0" Text="自" Classes="flbl" />
                 <TextBox Grid.Column="1" Classes="fin" Text="{Binding FromText, Mode=TwoWay}" />
-                <TextBlock Grid.Column="2" Text="至" FontSize="11.5" Foreground="#9a9a9a"
+                <TextBlock Grid.Column="2" Text="至" FontSize="11.5" Foreground="#959a9f"
                            HorizontalAlignment="Center" VerticalAlignment="Center" />
                 <TextBox Grid.Column="3" Classes="fin" Text="{Binding ToText, Mode=TwoWay}" />
               </Grid>
@@ -441,7 +441,7 @@
             <Button Classes="sech" Command="{Binding ReportSection.Toggle}">
               <Grid ColumnDefinitions="Auto,Auto,*">
                 <Border Grid.Column="0" Classes="cir" Classes.cl="{Binding !ReportSection.Open}">
-                  <ctl:TecIcon Key="ui-chev-down" Tint="#666666" Size="9" />
+                  <ctl:TecIcon Key="ui-chev-down" Tint="#62666b" Size="9" />
                 </Border>
                 <TextBlock Grid.Column="1" Text="报告内容" Classes="sect" />
                 <TextBlock Grid.Column="2" Text="{Binding TemplateHint}" Classes="hint" />
@@ -458,11 +458,11 @@
                             PointerPressed="OnTemplatePressed">
                       <StackPanel Orientation="Horizontal" Spacing="8">
                         <Border Classes="rd" Classes.on="{Binding On}">
-                          <Ellipse Width="7" Height="7" Fill="#1a7fc4" IsVisible="{Binding On}" />
+                          <Ellipse Width="7" Height="7" Fill="#a41626" IsVisible="{Binding On}" />
                         </Border>
                         <StackPanel>
-                          <TextBlock Text="{Binding Name}" FontSize="12" Foreground="#2b2b2b" />
-                          <TextBlock Text="{Binding Desc}" FontSize="10.5" Foreground="#9a9a9a"
+                          <TextBlock Text="{Binding Name}" FontSize="12" Foreground="#292b2e" />
+                          <TextBlock Text="{Binding Desc}" FontSize="10.5" Foreground="#959a9f"
                                      TextWrapping="Wrap" MaxWidth="250" Margin="0,2,0,0" />
                         </StackPanel>
                       </StackPanel>
@@ -492,7 +492,7 @@
             <Button Classes="sech" Command="{Binding TargetSection.Toggle}">
               <Grid ColumnDefinitions="Auto,Auto,*">
                 <Border Grid.Column="0" Classes="cir" Classes.cl="{Binding !TargetSection.Open}">
-                  <ctl:TecIcon Key="ui-chev-down" Tint="#666666" Size="9" />
+                  <ctl:TecIcon Key="ui-chev-down" Tint="#62666b" Size="9" />
                 </Border>
                 <TextBlock Grid.Column="1" Text="导出目标" Classes="sect" />
                 <TextBlock Grid.Column="2" Text="{Binding TargetHint}" Classes="hint" />
@@ -503,11 +503,11 @@
                       PointerPressed="OnDestLocal">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                   <Border Classes="rd" Classes.on="{Binding DestLocal}">
-                    <Ellipse Width="7" Height="7" Fill="#1a7fc4" IsVisible="{Binding DestLocal}" />
+                    <Ellipse Width="7" Height="7" Fill="#a41626" IsVisible="{Binding DestLocal}" />
                   </Border>
                   <StackPanel>
-                    <TextBlock Text="本地文件夹" FontSize="12" Foreground="#2b2b2b" />
-                    <TextBlock Text="{Binding LocalDir}" FontSize="10.5" Foreground="#9a9a9a"
+                    <TextBlock Text="本地文件夹" FontSize="12" Foreground="#292b2e" />
+                    <TextBlock Text="{Binding LocalDir}" FontSize="10.5" Foreground="#959a9f"
                                TextTrimming="CharacterEllipsis" MaxWidth="240"
                                ToolTip.Tip="{Binding LocalDir}" Margin="0,2,0,0" />
                   </StackPanel>
@@ -517,11 +517,11 @@
                       PointerPressed="OnDestUsb">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                   <Border Classes="rd" Classes.on="{Binding DestUsb}">
-                    <Ellipse Width="7" Height="7" Fill="#1a7fc4" IsVisible="{Binding DestUsb}" />
+                    <Ellipse Width="7" Height="7" Fill="#a41626" IsVisible="{Binding DestUsb}" />
                   </Border>
                   <StackPanel>
-                    <TextBlock Text="USB 记忆盘" FontSize="12" Foreground="#2b2b2b" />
-                    <TextBlock Text="{Binding UsbNote}" FontSize="10.5" Foreground="#9a9a9a"
+                    <TextBlock Text="USB 记忆盘" FontSize="12" Foreground="#292b2e" />
+                    <TextBlock Text="{Binding UsbNote}" FontSize="10.5" Foreground="#959a9f"
                                Margin="0,2,0,0" />
                   </StackPanel>
                 </StackPanel>
@@ -537,7 +537,7 @@
             <Button Classes="sech" Command="{Binding GlpSection.Toggle}">
               <Grid ColumnDefinitions="Auto,Auto,*">
                 <Border Grid.Column="0" Classes="cir" Classes.cl="{Binding !GlpSection.Open}">
-                  <ctl:TecIcon Key="ui-chev-down" Tint="#666666" Size="9" />
+                  <ctl:TecIcon Key="ui-chev-down" Tint="#62666b" Size="9" />
                 </Border>
                 <TextBlock Grid.Column="1" Text="GLP 合规" Classes="sect" />
                 <TextBlock Grid.Column="2" Text="{Binding GlpHint}" Classes="hint" />
@@ -587,24 +587,24 @@
       <Setter Property="HorizontalContentAlignment" Value="Center" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
       <Setter Property="FontSize" Value="11.5" />
-      <Setter Property="Foreground" Value="#333333" />
-      <Setter Property="Background" Value="#f7f7f7" />
-      <Setter Property="BorderBrush" Value="#8b8b8b" />
+      <Setter Property="Foreground" Value="#303337" />
+      <Setter Property="Background" Value="#f7f7f6" />
+      <Setter Property="BorderBrush" Value="#868b90" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="CornerRadius" Value="3" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
     <Style Selector="Button.pill:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#e3f0f9" />
-      <Setter Property="BorderBrush" Value="#1a91d6" />
+      <Setter Property="Background" Value="#f4e4e6" />
+      <Setter Property="BorderBrush" Value="#a41626" />
     </Style>
     <!-- 选中态排在悬停后面：同权重后写的赢，写前面一悬停就被盖掉 -->
     <Style Selector="Button.pill.on /template/ ContentPresenter">
-      <Setter Property="Background" Value="#e8f2fb" />
-      <Setter Property="BorderBrush" Value="#1a7fc4" />
+      <Setter Property="Background" Value="#faf2f3" />
+      <Setter Property="BorderBrush" Value="#a41626" />
     </Style>
     <Style Selector="Button.pill.on">
-      <Setter Property="Foreground" Value="#0b3760" />
+      <Setter Property="Foreground" Value="#7e0f1c" />
       <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
     <Style Selector="ComboBox.ftr">
@@ -612,7 +612,7 @@
       <Setter Property="MinHeight" Value="26" />
       <Setter Property="FontSize" Value="11.5" />
       <Setter Property="Padding" Value="6,0" />
-      <Setter Property="BorderBrush" Value="#c4c4c4" />
+      <Setter Property="BorderBrush" Value="#c1c4c4" />
       <Setter Property="CornerRadius" Value="3" />
       <Setter Property="Background" Value="White" />
       <Setter Property="VerticalAlignment" Value="Center" />
@@ -624,7 +624,7 @@
       <Setter Property="MinHeight" Value="0" />
       <Setter Property="MinWidth" Value="0" />
       <Setter Property="FontSize" Value="11.5" />
-      <Setter Property="Foreground" Value="#1a7fc4" />
+      <Setter Property="Foreground" Value="#a41626" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
     <Style Selector="Button.lnk:pointerover /template/ ContentPresenter">
@@ -637,7 +637,7 @@
     </Style>
     <Style Selector="Grid.rhdr > TextBlock.thx">
       <Setter Property="FontSize" Value="11.5" />
-      <Setter Property="Foreground" Value="#5a5a5a" />
+      <Setter Property="Foreground" Value="#565a5f" />
       <Setter Property="Padding" Value="9,0" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
@@ -649,13 +649,13 @@
       <Setter Property="MinWidth" Value="0" />
       <Setter Property="MinHeight" Value="0" />
       <Setter Property="FontSize" Value="11.5" />
-      <Setter Property="Foreground" Value="#5a5a5a" />
+      <Setter Property="Foreground" Value="#565a5f" />
       <Setter Property="HorizontalContentAlignment" Value="Left" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
     <Style Selector="Button.th:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#f0f5f9" />
+      <Setter Property="Background" Value="#f7f2f2" />
     </Style>
     <Style Selector="Button.th TextBlock">
       <Setter Property="FontSize" Value="11.5" />
@@ -664,14 +664,14 @@
     <Style Selector="Border.rrow">
       <Setter Property="Height" Value="30" />
       <Setter Property="Background" Value="White" />
-      <Setter Property="BorderBrush" Value="#f2f2f2" />
+      <Setter Property="BorderBrush" Value="#f1f2f0" />
       <Setter Property="BorderThickness" Value="0,0,0,1" />
     </Style>
     <Style Selector="Border.rrow:pointerover">
-      <Setter Property="Background" Value="#f2f8fd" />
+      <Setter Property="Background" Value="#f0f0ee" />
     </Style>
     <Style Selector="Border.rrow.on, Border.rrow.on:pointerover">
-      <Setter Property="Background" Value="#e8f2fb" />
+      <Setter Property="Background" Value="#faf2f3" />
     </Style>
 
     <!--
@@ -687,23 +687,23 @@
       <Setter Property="Width" Value="3" />
       <Setter Property="Margin" Value="3,0,0,0" />
       <Setter Property="HorizontalAlignment" Value="Left" />
-      <Setter Property="Background" Value="#1a7fc4" />
+      <Setter Property="Background" Value="#a41626" />
       <Setter Property="CornerRadius" Value="1.5" />
     </Style>
     <Style Selector="Border.rrow TextBlock">
       <Setter Property="FontSize" Value="11.5" />
-      <Setter Property="Foreground" Value="#2b2b2b" />
+      <Setter Property="Foreground" Value="#292b2e" />
       <Setter Property="Padding" Value="9,0" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style Selector="Border.rrow TextBlock.mut">
-      <Setter Property="Foreground" Value="#a5a5a5" />
+      <Setter Property="Foreground" Value="#a1a5a9" />
     </Style>
     <Style Selector="Border.rrow TextBlock.alm">
-      <Setter Property="Foreground" Value="#c0392b" />
+      <Setter Property="Foreground" Value="#d93025" />
     </Style>
     <Style Selector="Border.rrow.on TextBlock.nm">
-      <Setter Property="Foreground" Value="#0b3760" />
+      <Setter Property="Foreground" Value="#7e0f1c" />
       <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
     <Style Selector="TextBlock.mono">
@@ -737,13 +737,13 @@
       <Setter Property="Width" Value="17" />
       <Setter Property="Height" Value="17" />
       <Setter Property="CornerRadius" Value="9" />
-      <Setter Property="BorderBrush" Value="#b6b6b6" />
+      <Setter Property="BorderBrush" Value="#b2b6b8" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="Margin" Value="0,0,8,0" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style Selector="Button.sech:pointerover Border.cir">
-      <Setter Property="BorderBrush" Value="#1a7fc4" />
+      <Setter Property="BorderBrush" Value="#a41626" />
     </Style>
     <Style Selector="Border.cir > :is(Control)">
       <Setter Property="HorizontalAlignment" Value="Center" />
@@ -757,12 +757,12 @@
     </Style>
     <Style Selector="TextBlock.sect">
       <Setter Property="FontSize" Value="13" />
-      <Setter Property="Foreground" Value="#2b2b2b" />
+      <Setter Property="Foreground" Value="#292b2e" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style Selector="TextBlock.hint">
       <Setter Property="FontSize" Value="10.5" />
-      <Setter Property="Foreground" Value="#a5a5a5" />
+      <Setter Property="Foreground" Value="#a1a5a9" />
       <Setter Property="TextAlignment" Value="Right" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
@@ -771,12 +771,12 @@
     </Style>
     <Style Selector="TextBlock.grpl">
       <Setter Property="FontSize" Value="10.5" />
-      <Setter Property="Foreground" Value="#9a9a9a" />
+      <Setter Property="Foreground" Value="#959a9f" />
       <Setter Property="Margin" Value="0,8,0,3" />
     </Style>
     <Style Selector="TextBlock.tip">
       <Setter Property="FontSize" Value="10.5" />
-      <Setter Property="Foreground" Value="#9a9a9a" />
+      <Setter Property="Foreground" Value="#959a9f" />
       <Setter Property="LineHeight" Value="17" />
       <Setter Property="TextWrapping" Value="Wrap" />
       <Setter Property="Margin" Value="0,4,0,0" />
@@ -786,7 +786,7 @@
     </Style>
     <Style Selector="TextBlock.flbl">
       <Setter Property="FontSize" Value="11.5" />
-      <Setter Property="Foreground" Value="#3d3d3d" />
+      <Setter Property="Foreground" Value="#3a3d41" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <!-- 两种控件分开写：VerticalContentAlignment 不在它们的公共基类上，
@@ -797,7 +797,7 @@
       <Setter Property="FontSize" Value="11.5" />
       <Setter Property="Padding" Value="5,0" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
-      <Setter Property="BorderBrush" Value="#a8a8a8" />
+      <Setter Property="BorderBrush" Value="#a4a8ac" />
       <Setter Property="CornerRadius" Value="2" />
       <Setter Property="Background" Value="White" />
     </Style>
@@ -807,54 +807,54 @@
       <Setter Property="FontSize" Value="11.5" />
       <Setter Property="Padding" Value="5,0" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
-      <Setter Property="BorderBrush" Value="#a8a8a8" />
+      <Setter Property="BorderBrush" Value="#a4a8ac" />
       <Setter Property="CornerRadius" Value="2" />
       <Setter Property="Background" Value="White" />
     </Style>
 
     <Style Selector="Border.fmt">
-      <Setter Property="BorderBrush" Value="#d5d5d5" />
+      <Setter Property="BorderBrush" Value="#d3d5d2" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="CornerRadius" Value="4" />
       <Setter Property="Padding" Value="6,8,6,7" />
       <Setter Property="Background" Value="White" />
     </Style>
     <Style Selector="Border.fmt:pointerover">
-      <Setter Property="BorderBrush" Value="#1a7fc4" />
-      <Setter Property="Background" Value="#f2f8fd" />
+      <Setter Property="BorderBrush" Value="#a41626" />
+      <Setter Property="Background" Value="#f0f0ee" />
     </Style>
     <Style Selector="Border.fmt.on, Border.fmt.on:pointerover">
-      <Setter Property="BorderBrush" Value="#1a7fc4" />
-      <Setter Property="Background" Value="#e8f2fb" />
-      <Setter Property="BoxShadow" Value="0 0 0 2 #381a7fc4" />
+      <Setter Property="BorderBrush" Value="#a41626" />
+      <Setter Property="Background" Value="#faf2f3" />
+      <Setter Property="BoxShadow" Value="0 0 0 2 #38a41626" />
     </Style>
     <!-- 写不出来的格式：摆在那儿但按不下去，不假装能导 -->
     <Style Selector="Border.fmt.dis, Border.fmt.dis:pointerover">
       <Setter Property="Opacity" Value="0.42" />
       <Setter Property="Background" Value="#fafafa" />
-      <Setter Property="BorderBrush" Value="#d5d5d5" />
+      <Setter Property="BorderBrush" Value="#d3d5d2" />
       <Setter Property="Cursor" Value="Arrow" />
     </Style>
 
     <Style Selector="Border.chchip">
-      <Setter Property="BorderBrush" Value="#d5d5d5" />
+      <Setter Property="BorderBrush" Value="#d3d5d2" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="CornerRadius" Value="14" />
       <Setter Property="Padding" Value="8,4,11,4" />
       <Setter Property="Background" Value="White" />
     </Style>
     <Style Selector="Border.chchip:pointerover">
-      <Setter Property="BorderBrush" Value="#1a7fc4" />
-      <Setter Property="Background" Value="#f2f8fd" />
+      <Setter Property="BorderBrush" Value="#a41626" />
+      <Setter Property="Background" Value="#f0f0ee" />
     </Style>
     <Style Selector="Border.chchip.on, Border.chchip.on:pointerover">
-      <Setter Property="BorderBrush" Value="#1a7fc4" />
-      <Setter Property="Background" Value="#e8f2fb" />
+      <Setter Property="BorderBrush" Value="#a41626" />
+      <Setter Property="Background" Value="#faf2f3" />
     </Style>
     <Style Selector="Border.chchip.dis, Border.chchip.dis:pointerover">
       <Setter Property="Opacity" Value="0.4" />
       <Setter Property="Background" Value="#fafafa" />
-      <Setter Property="BorderBrush" Value="#d5d5d5" />
+      <Setter Property="BorderBrush" Value="#d3d5d2" />
       <Setter Property="Cursor" Value="Arrow" />
     </Style>
 
@@ -863,7 +863,7 @@
     </Style>
 
     <Style Selector="Border.dest">
-      <Setter Property="BorderBrush" Value="#d5d5d5" />
+      <Setter Property="BorderBrush" Value="#d3d5d2" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="CornerRadius" Value="4" />
       <Setter Property="Padding" Value="10,8" />
@@ -871,25 +871,25 @@
       <Setter Property="Margin" Value="0,0,0,6" />
     </Style>
     <Style Selector="Border.dest:pointerover">
-      <Setter Property="BorderBrush" Value="#1a7fc4" />
-      <Setter Property="Background" Value="#f2f8fd" />
+      <Setter Property="BorderBrush" Value="#a41626" />
+      <Setter Property="Background" Value="#f0f0ee" />
     </Style>
     <Style Selector="Border.dest.on, Border.dest.on:pointerover">
-      <Setter Property="BorderBrush" Value="#1a7fc4" />
-      <Setter Property="Background" Value="#e8f2fb" />
-      <Setter Property="BoxShadow" Value="0 0 0 2 #381a7fc4" />
+      <Setter Property="BorderBrush" Value="#a41626" />
+      <Setter Property="Background" Value="#faf2f3" />
+      <Setter Property="BoxShadow" Value="0 0 0 2 #38a41626" />
     </Style>
     <Style Selector="Border.rd">
       <Setter Property="Width" Value="14" />
       <Setter Property="Height" Value="14" />
       <Setter Property="CornerRadius" Value="7" />
-      <Setter Property="BorderBrush" Value="#9a9a9a" />
+      <Setter Property="BorderBrush" Value="#959a9f" />
       <Setter Property="BorderThickness" Value="1.4" />
       <Setter Property="VerticalAlignment" Value="Top" />
       <Setter Property="Margin" Value="0,2,0,0" />
     </Style>
     <Style Selector="Border.rd.on">
-      <Setter Property="BorderBrush" Value="#1a7fc4" />
+      <Setter Property="BorderBrush" Value="#a41626" />
     </Style>
     <Style Selector="Border.rd > Ellipse">
       <Setter Property="HorizontalAlignment" Value="Center" />

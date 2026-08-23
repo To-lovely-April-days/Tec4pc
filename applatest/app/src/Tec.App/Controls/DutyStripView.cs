@@ -67,7 +67,7 @@ public sealed class DutyStripView : Control
         foreach (var v in new[] { cap, -cap })
         {
             // 满量程线画成红虚线的效果（短划），贴着它跑就是余量用完了
-            var pen = new Pen(new SolidColorBrush(Color.Parse("#e0b4ad")), 1,
+            var pen = new Pen(new SolidColorBrush(Color.Parse("#e2b6ad")), 1,
                               new DashStyle(new double[] { 4, 3 }, 0));
             ctx.DrawLine(pen, new Point(L, Y(v)), new Point(w - R, Y(v)));
         }
@@ -82,7 +82,7 @@ public sealed class DutyStripView : Control
         if (Points is not { Count: > 1 } pts) return;
 
         // 面积：从零线往输出值填。加热暖色、制冷冷色，一眼分得出方向
-        var warm = new SolidColorBrush(Color.Parse("#e02020"), 0.16);
+        var warm = new SolidColorBrush(Color.Parse("#d93025"), 0.16);
         var cool = new SolidColorBrush(Color.Parse("#3f6fd8"), 0.16);
         for (var i = 1; i < pts.Count; i++)
         {
@@ -103,8 +103,8 @@ public sealed class DutyStripView : Control
         }
 
         // 轮廓线；贴到满量程的那几段加粗描红
-        var line = new Pen(new SolidColorBrush(Color.Parse("#b03a2e")), 1.2);
-        var full = new Pen(new SolidColorBrush(Color.Parse("#c0392b")), 2.4);
+        var line = new Pen(new SolidColorBrush(Color.Parse("#a81e15")), 1.2);
+        var full = new Pen(new SolidColorBrush(Color.Parse("#d93025")), 2.4);
         for (var i = 1; i < pts.Count; i++)
         {
             var (t0, v0) = pts[i - 1];

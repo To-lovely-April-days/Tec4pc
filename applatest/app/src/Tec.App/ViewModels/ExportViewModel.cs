@@ -70,11 +70,11 @@ public sealed class RunRowViewModel : ViewModelBase
 
     /// <summary>状态点：跑着的绿、中止红、跑完了灰。</summary>
     public string StateColorHex => State switch
-    { "运行中" => "#2f8f49", "已中止" => "#c0392b", _ => "#b6b6b6" };
+    { "运行中" => "#0e7a3e", "已中止" => "#d93025", _ => "#b2b6b8" };
 
     /// <summary>四格通道条。没启动的那一格是灰的（原型 .chn i）。</summary>
     public IReadOnlyList<string> ChBars =>
-        Enumerable.Range(1, 4).Select(k => Chs.Contains(k) ? ChColor(k) : "#e6e6e6").ToList();
+        Enumerable.Range(1, 4).Select(k => Chs.Contains(k) ? ChColor(k) : "#e4e6e3").ToList();
 
     public static string ChColor(int ch) => ch switch
     { 1 => "#2f7ed8", 2 => "#2aa87a", 3 => "#c9772b", _ => "#8a63d2" };
@@ -643,7 +643,7 @@ public sealed class ExportViewModel : ViewModelBase
     public bool HasStatus => Status.Length > 0;
     /// <summary>这一句是坏消息吗。失败照绿字印，读起来像「办成了」。</summary>
     public bool StatusBad { get; private set; }
-    public string StatusColorHex => StatusBad ? "#c0392b" : "#2f8f49";
+    public string StatusColorHex => StatusBad ? "#d93025" : "#0e7a3e";
 
     public string Warn { get; private set; } = "";
     public bool HasWarn => Warn.Length > 0;

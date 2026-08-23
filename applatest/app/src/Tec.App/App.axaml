@@ -1,48 +1,108 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctl="clr-namespace:Tec.App.Controls"
              x:Class="Tec.App.App"
              RequestedThemeVariant="Light">
 
-  <!-- 配色与尺寸全部照抄原型 tecstudio.html 的 CSS，不另起一套。
-       选中态四件套（实线边 / 底色 / 柔环 / 深蓝加粗文字）来自原型 :root，
-       对比度 10.6:1，是刻意选的，别改浅。 -->
+  <!--
+    ══ 配色 · HTLAB 品牌红（原型 gbgstarthtlab.html 的 :root） ══
+
+    用色纪律，四条，改任何一支笔之前先读一遍：
+
+    · 品牌红 #a41626 只出现在小面积：应用标记、3px 选中条、章节记号、
+      固定图钉、菜单激活下划线、主按钮。整片底色不许用它。
+    · 标题栏用压暗去饱和的 #5e1219——面积大但明度低，它是外壳不是信号。
+    · 报警红 #d93025 永远是「实底填充 + 白字 + 三角图标」这一副样子，
+      靠面积和形状跟品牌红区分，不靠色相。别处不许出现实底彩色圆片。
+    · 绿 #0e7a3e 只表示在线 / 运行 / 通过，不做装饰，也不当主按钮。
+
+    通道色与化合物类别色不在这套里——那是数据，跟着主题走等于把信息抹掉。
+  -->
   <Application.Resources>
-    <!-- 主题色：取自标题栏的深紫 #3c2d63，调淡到能当大面积底色。
-         面板成块着色、块与块之间用白缝分隔（GBG 的做法），
-         所以「底」是主题色、「缝」是白色。改配色只改这两支笔。 -->
-    <SolidColorBrush x:Key="ThemeFill" Color="#ece9f5" />
+   <ResourceDictionary>
+    <!--
+      Fluent 自带控件（复选框、单选钮、滑杆、下拉的选中行）不吃下面那些具名笔，
+      它们的强调色统一取自 SystemAccentColor 三兄弟。不改这里的话，
+      整套换完红，导出页那一列复选框还是蓝的——最扎眼的就是这个。
+      Dark 那一档也一起给：RequestedThemeVariant 现在是 Light，
+      只写 Light 的话哪天切过去就露馅。
+    -->
+    <ResourceDictionary.ThemeDictionaries>
+      <ResourceDictionary x:Key="Light">
+        <Color x:Key="SystemAccentColor">#a41626</Color>
+        <Color x:Key="SystemAccentColorLight1">#7e0f1c</Color>
+        <Color x:Key="SystemAccentColorLight2">#5e1219</Color>
+        <Color x:Key="SystemAccentColorLight3">#4e0f15</Color>
+        <Color x:Key="SystemAccentColorDark1">#7e0f1c</Color>
+        <Color x:Key="SystemAccentColorDark2">#5e1219</Color>
+        <Color x:Key="SystemAccentColorDark3">#4e0f15</Color>
+      </ResourceDictionary>
+      <ResourceDictionary x:Key="Dark">
+        <Color x:Key="SystemAccentColor">#a41626</Color>
+        <Color x:Key="SystemAccentColorLight1">#c8404f</Color>
+        <Color x:Key="SystemAccentColorLight2">#d96b76</Color>
+        <Color x:Key="SystemAccentColorLight3">#e8a0a8</Color>
+        <Color x:Key="SystemAccentColorDark1">#7e0f1c</Color>
+        <Color x:Key="SystemAccentColorDark2">#5e1219</Color>
+        <Color x:Key="SystemAccentColorDark3">#4e0f15</Color>
+      </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
+
+    <!-- 品牌 -->
+    <SolidColorBrush x:Key="Brand" Color="#a41626" />
+    <SolidColorBrush x:Key="BrandDk" Color="#5e1219" />
+    <SolidColorBrush x:Key="BrandMid" Color="#7e0f1c" />
+    <SolidColorBrush x:Key="BrandTint" Color="#faf2f3" />
+    <SolidColorBrush x:Key="BrandTint2" Color="#f4e4e6" />
+
+    <!-- 面板成块着色、块与块之间用白缝分隔（GBG 的做法）。
+         底改成中性 #ecedea 而不是品牌红调淡的：纪律第一条，大面积不占品牌色 -->
+    <SolidColorBrush x:Key="ThemeFill" Color="#ecedea" />
     <SolidColorBrush x:Key="ThemeGap" Color="#ffffff" />
-    <SolidColorBrush x:Key="ThemeLine" Color="#d6d0e6" />
+    <SolidColorBrush x:Key="ThemeLine" Color="#d0d2cf" />
 
-    <SolidColorBrush x:Key="SelBd" Color="#1a7fc4" />
-    <SolidColorBrush x:Key="SelBg" Color="#e8f2fb" />
-    <SolidColorBrush x:Key="SelRing" Color="#381a7fc4" />
-    <SolidColorBrush x:Key="SelTx" Color="#0b3760" />
-    <SolidColorBrush x:Key="HovBg" Color="#f2f8fd" />
+    <!-- 选中态四件套：实线边 / 底色 / 柔环 / 深色字。
+         选中底用最浅的 tint 而不是饱和红——同上，纪律第一条 -->
+    <SolidColorBrush x:Key="SelBd" Color="#a41626" />
+    <SolidColorBrush x:Key="SelBg" Color="#faf2f3" />
+    <SolidColorBrush x:Key="SelRing" Color="#38a41626" />
+    <SolidColorBrush x:Key="SelTx" Color="#7e0f1c" />
+    <!-- 悬停保持中性：悬停是「指针在这儿」，不是「选中了」，
+         两个都染品牌色的话，扫一眼分不出哪行是真选中 -->
+    <SolidColorBrush x:Key="HovBg" Color="#f0f0ee" />
 
-    <SolidColorBrush x:Key="Ink" Color="#333333" />
-    <SolidColorBrush x:Key="Ink2" Color="#3b3b3b" />
-    <SolidColorBrush x:Key="Muted" Color="#7a7a7a" />
-    <SolidColorBrush x:Key="Muted2" Color="#9a9a9a" />
-    <SolidColorBrush x:Key="Line" Color="#dcdcdc" />
-    <SolidColorBrush x:Key="Line2" Color="#e3e3e3" />
-    <SolidColorBrush x:Key="LibBg" Color="#f4f4f4" />
-    <!-- 属性栏底色，照原型 .props 的 #ececec。曾经试过调浅一档到 #f4f4f4，
-         对比下来还是原型这一档跟白输入框、白通道表的层次更清楚 -->
-    <SolidColorBrush x:Key="PropsBg" Color="#ececec" />
-    <SolidColorBrush x:Key="PropsLine" Color="#d2d2d2" />
-    <SolidColorBrush x:Key="Divider" Color="#d5d5d5" />
-    <SolidColorBrush x:Key="MenuBlue" Color="#1a91d6" />
-    <SolidColorBrush x:Key="Green" Color="#2f8f49" />
-    <SolidColorBrush x:Key="Red" Color="#e02020" />
+    <!-- 中性四档，对应原型的 ink / ink-2 / ink-3 / ink-4。
+         暗端偏冷、亮端偏暖绿，是原型自己的调子，不是纯灰 -->
+    <SolidColorBrush x:Key="Ink" Color="#1f2124" />
+    <SolidColorBrush x:Key="Ink2" Color="#55595e" />
+    <SolidColorBrush x:Key="Muted" Color="#8a8f94" />
+    <SolidColorBrush x:Key="Muted2" Color="#a9adb1" />
+    <SolidColorBrush x:Key="Line" Color="#e1e3e0" />
+    <SolidColorBrush x:Key="Line2" Color="#e1e3e0" />
+    <SolidColorBrush x:Key="LibBg" Color="#fafafa" />
+    <SolidColorBrush x:Key="PropsBg" Color="#ecedea" />
+    <SolidColorBrush x:Key="PropsLine" Color="#d0d2cf" />
+    <SolidColorBrush x:Key="Divider" Color="#d0d2cf" />
 
-    <!-- 通道色，与原型 chColor 一致 -->
+    <!-- 状态。三支各自只有一个意思 -->
+    <SolidColorBrush x:Key="Run" Color="#0e7a3e" />
+    <SolidColorBrush x:Key="RunLt" Color="#2fa35f" />
+    <SolidColorBrush x:Key="Hold" Color="#8a6100" />
+    <SolidColorBrush x:Key="Alarm" Color="#d93025" />
+    <SolidColorBrush x:Key="AlarmDk" Color="#a81e15" />
+    <!-- 老名字留着，指到新笔上，免得引用它的地方一次全改 -->
+    <SolidColorBrush x:Key="MenuBlue" Color="#a41626" />
+    <SolidColorBrush x:Key="Green" Color="#0e7a3e" />
+    <SolidColorBrush x:Key="Red" Color="#d93025" />
+
+    <!-- 通道色：数据，不跟主题走 -->
     <SolidColorBrush x:Key="Ch1" Color="#2f7ed8" />
     <SolidColorBrush x:Key="Ch2" Color="#2aa87a" />
     <SolidColorBrush x:Key="Ch3" Color="#c9772b" />
     <SolidColorBrush x:Key="Ch4" Color="#8a63d2" />
 
     <FontFamily x:Key="UiFont">Segoe UI, Microsoft YaHei UI, Microsoft YaHei, system-ui, Arial</FontFamily>
+   </ResourceDictionary>
   </Application.Resources>
 
   <Application.Styles>
@@ -51,8 +111,8 @@
     <!--
       ══ 滚动条：全程序一套 ══
 
-      照原型那段 CSS 写死：槽 14px #f0f0f0，滑块 #cdcdcd 四周内缩 3px（露出来 8px 宽）、
-      圆头，悬停 #a6a6a6、按下再深一档。
+      照原型那段 CSS 写死：槽 14px #eff0ee，滑块 #cbcdcb 四周内缩 3px（露出来 8px 宽）、
+      圆头，悬停 #a2a6aa、按下再深一档。
 
       **Fluent 自带那套伸缩滚动条不要。**它平时是一条几像素的细线，指针一碰
       就整条变粗、上下还长出两个箭头按钮——同一条滚动条两副样子，
@@ -73,7 +133,7 @@
     </Style>
 
     <Style Selector="ScrollBar">
-      <Setter Property="Background" Value="#f0f0f0" />
+      <Setter Property="Background" Value="#eff0ee" />
       <Setter Property="Cursor" Value="Arrow" />
     </Style>
 
@@ -126,7 +186,7 @@
 
     <!-- 滑块。内缩 3px 靠模板里这圈 Margin，槽的底色从后面透出来当边距 -->
     <Style Selector="Thumb.sbthumb">
-      <Setter Property="Background" Value="#cdcdcd" />
+      <Setter Property="Background" Value="#cbcdcb" />
       <Setter Property="Cursor" Value="Arrow" />
       <Setter Property="Template">
         <ControlTemplate>
@@ -135,10 +195,10 @@
       </Setter>
     </Style>
     <Style Selector="Thumb.sbthumb:pointerover">
-      <Setter Property="Background" Value="#a6a6a6" />
+      <Setter Property="Background" Value="#a2a6aa" />
     </Style>
     <Style Selector="Thumb.sbthumb:pressed">
-      <Setter Property="Background" Value="#8f8f8f" />
+      <Setter Property="Background" Value="#8a8f94" />
     </Style>
 
     <!-- 滑块两侧的空槽：点一下翻一页。透明但要能收指针，所以底色写 Transparent -->
@@ -153,11 +213,19 @@
       </Setter>
     </Style>
 
-    <!-- 主菜单项：25px 细体，悬停 #0a84c8，选中 #1a91d6 -->
+    <!-- 主菜单项：25px 细体，平时 #55595e，悬停 #1f2124，
+         选中 = 墨色字 + 底下 2px 品牌红。
+         选中不靠字变红：品牌红只走小面积，一排 22px 的红字够不上「小面积」，
+         而且八项里只有一项变色时，红字看着像报警。下划线是原型 .menu-item.active::after。
+
+         内边距挪成外边距：Avalonia 的边框画在 ContentPresenter 的外沿，
+         Padding="11,0" 时下划线会比文字左右各长出 11px；原型那条是
+         left:11px right:11px，正好贴着文字。改用 Margin 就对齐了。 -->
     <Style Selector="Button.menu">
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderThickness" Value="0" />
-      <Setter Property="Padding" Value="11,0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Margin" Value="11,0" />
       <!--
         原型那排菜单是 25px 拉丁，大写字母实高 18px；同样 25px 的中文实高 24px——
         汉字占满字身框，拉丁大写只占约 0.72，照抄字号中文就比原型大了三分之一，
@@ -168,16 +236,62 @@
       <!-- 300。中文要落到细体得靠字体自己有 Light 这一档（Windows 上的
            微软雅黑 UI 有）；没有 Light 的机器会退回 Regular，那是字体的事，不是这里 -->
       <Setter Property="FontWeight" Value="Light" />
-      <Setter Property="Foreground" Value="#3b3b3b" />
-      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Foreground" Value="#55595e" />
+      <!-- 拉满 52 高，下划线才落在菜单栏底边上（原型的 bottom:0） -->
+      <Setter Property="VerticalAlignment" Value="Stretch" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
     <Style Selector="Button.menu:pointerover /template/ ContentPresenter">
       <Setter Property="Background" Value="Transparent" />
-      <Setter Property="TextBlock.Foreground" Value="#0a84c8" />
+      <Setter Property="TextBlock.Foreground" Value="#1f2124" />
     </Style>
     <Style Selector="Button.menu.on">
-      <Setter Property="Foreground" Value="#1a91d6" />
+      <Setter Property="Foreground" Value="#1f2124" />
+      <Setter Property="BorderBrush" Value="#a41626" />
+      <Setter Property="BorderThickness" Value="0,0,0,2" />
+    </Style>
+
+    <!-- 运行控制：描边分段控件（原型 .rgroup / .rbtn）。
+         从前是黑药丸 + 三颗实心圆钮。换掉的理由在原型的用色纪律里：
+         报警红必须是「实底 + 白字」这一种形状，别处不许出现实底彩色圆片，
+         不然慌起来分不清哪个是急停。现在颜色只落在图标上，底一律是白的，
+         靠图标形状认按钮，靠颜色认性质。 -->
+    <Style Selector="Button.rbtn">
+      <Setter Property="Width" Value="36" />
+      <Setter Property="Height" Value="28" />
+      <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="#e1e3e0" />
+      <!-- 分段之间的竖线：每颗右侧一道，最后一颗单独去掉 -->
+      <Setter Property="BorderThickness" Value="0,0,1,0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Foreground" Value="#55595e" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.rbtn.last">
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <!-- 颜色落在图标上。三张 svg 的 fill 已改成 currentColor，TecIcon 把它接到 Tint。
+         绿 = 在线/运行，红 = 报警/急停，琥珀 = 保持——三支笔各自只有这一个意思 -->
+    <Style Selector="Button.rbtn.play ctl|TecIcon"><Setter Property="Tint" Value="#0e7a3e" /></Style>
+    <Style Selector="Button.rbtn.stop ctl|TecIcon"><Setter Property="Tint" Value="#d93025" /></Style>
+    <Style Selector="Button.rbtn.hold ctl|TecIcon"><Setter Property="Tint" Value="#8a6100" /></Style>
+    <!-- 悬停只换底，图标颜色不动：三颗的性质不会因为鼠标经过就变 -->
+    <Style Selector="Button.rbtn:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#fafafa" />
+    </Style>
+    <Style Selector="Button.rbtn:pressed /template/ ContentPresenter">
+      <Setter Property="Background" Value="#f0f0ee" />
+    </Style>
+    <Style Selector="Button.rbtn:disabled">
+      <Setter Property="Opacity" Value="0.38" />
+      <Setter Property="Cursor" Value="Arrow" />
+    </Style>
+    <Style Selector="Button.rbtn:disabled /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
     </Style>
 
     <!-- 圆形工具按钮：34px，2px 深灰描边 -->
@@ -186,7 +300,7 @@
       <Setter Property="Height" Value="34" />
       <Setter Property="CornerRadius" Value="17" />
       <Setter Property="Background" Value="White" />
-      <Setter Property="BorderBrush" Value="#4a4a4a" />
+      <Setter Property="BorderBrush" Value="#474a4e" />
       <Setter Property="BorderThickness" Value="2" />
       <Setter Property="Padding" Value="0" />
       <Setter Property="HorizontalContentAlignment" Value="Center" />
@@ -194,8 +308,8 @@
       <Setter Property="Cursor" Value="Hand" />
     </Style>
     <Style Selector="Button.tbtn:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#e8f4fb" />
-      <Setter Property="BorderBrush" Value="#1a91d6" />
+      <Setter Property="Background" Value="#faf2f3" />
+      <Setter Property="BorderBrush" Value="#a41626" />
     </Style>
     <Style Selector="Button.tbtn.sm">
       <Setter Property="Width" Value="30" />
@@ -207,7 +321,7 @@
       <Setter Property="Width" Value="32" />
       <Setter Property="Height" Value="32" />
       <Setter Property="CornerRadius" Value="16" />
-      <Setter Property="Background" Value="#ececec" />
+      <Setter Property="Background" Value="#ebece9" />
     </Style>
     <!--
       ══ 删除钮 ══
@@ -230,7 +344,7 @@
       <Setter Property="Width" Value="32" />
       <Setter Property="Height" Value="32" />
       <Setter Property="CornerRadius" Value="16" />
-      <Setter Property="Background" Value="#ececec" />
+      <Setter Property="Background" Value="#ebece9" />
       <Setter Property="BorderThickness" Value="2" />
     </Style>
     <Style Selector="Button.tbtn.del.d26">
@@ -251,17 +365,17 @@
          跟 del 叠着用：形状 / 尺寸 / 图标全一样，只有描边和桶是红的——
          「删一条」和「清整库」长成同尺寸同底色的孪生钮挨在一起才是真的危险 -->
     <Style Selector="Button.tbtn.danger">
-      <Setter Property="BorderBrush" Value="#c0392b" />
+      <Setter Property="BorderBrush" Value="#d93025" />
     </Style>
     <Style Selector="Button.tbtn.danger:pointerover /template/ ContentPresenter">
       <Setter Property="Background" Value="#fdecea" />
-      <Setter Property="BorderBrush" Value="#c0392b" />
+      <Setter Property="BorderBrush" Value="#d93025" />
     </Style>
     <!-- 按不了的时候还是一个圈，只是淡下去。Fluent 的缺省禁用样式会把描边整个抹掉，
          剩一块灰饼——看着像坏了，不像"现在不能按" -->
     <Style Selector="Button.tbtn:disabled /template/ ContentPresenter">
-      <Setter Property="Background" Value="#f5f5f5" />
-      <Setter Property="BorderBrush" Value="#cfcfcf" />
+      <Setter Property="Background" Value="#f5f5f4" />
+      <Setter Property="BorderBrush" Value="#cdcfcd" />
     </Style>
     <Style Selector="Button.tbtn:disabled">
       <Setter Property="Opacity" Value="0.55" />
@@ -273,19 +387,21 @@
       <Setter Property="MinWidth" Value="72" />
       <Setter Property="Height" Value="28" />
       <Setter Property="Padding" Value="14,0" />
-      <Setter Property="BorderBrush" Value="#b9b9b9" />
+      <Setter Property="BorderBrush" Value="#b6b9bb" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="Background" Value="White" />
       <Setter Property="CornerRadius" Value="3" />
       <Setter Property="FontSize" Value="12" />
-      <Setter Property="Foreground" Value="#333333" />
+      <Setter Property="Foreground" Value="#303337" />
       <Setter Property="HorizontalContentAlignment" Value="Center" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
+    <!-- 主操作 = 品牌红。绿只留给「在线 / 运行 / 通过」这一个意思；
+         「导出」「保存」这类是动作不是状态，占了绿就分不清了 -->
     <Style Selector="Button.btn.primary">
-      <Setter Property="Background" Value="#2f8f49" />
-      <Setter Property="BorderBrush" Value="#2a7f41" />
+      <Setter Property="Background" Value="#a41626" />
+      <Setter Property="BorderBrush" Value="#7e0f1c" />
       <Setter Property="Foreground" Value="White" />
     </Style>
 
@@ -318,12 +434,12 @@
       <Setter Property="FontSize" Value="13" />
       <Setter Property="Padding" Value="9,0,38,0" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
-      <Setter Property="BorderBrush" Value="#a8a8a8" />
+      <Setter Property="BorderBrush" Value="#a4a8ac" />
       <Setter Property="CornerRadius" Value="2" />
       <Setter Property="Background" Value="White" />
     </Style>
     <Style Selector="TextBox.dlgin.bad /template/ Border#PART_BorderElement">
-      <Setter Property="BorderBrush" Value="#c0392b" />
+      <Setter Property="BorderBrush" Value="#d93025" />
     </Style>
 
     <!-- 对话框按钮 -->
@@ -332,34 +448,34 @@
       <Setter Property="MinWidth" Value="92" />
       <Setter Property="Padding" Value="16,0" />
       <Setter Property="FontSize" Value="12.5" />
-      <Setter Property="Background" Value="#f2f2f2" />
-      <Setter Property="BorderBrush" Value="#8b8b8b" />
+      <Setter Property="Background" Value="#f1f2f0" />
+      <Setter Property="BorderBrush" Value="#868b90" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="CornerRadius" Value="2" />
-      <Setter Property="Foreground" Value="#333333" />
+      <Setter Property="Foreground" Value="#303337" />
       <Setter Property="HorizontalContentAlignment" Value="Center" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
     <Style Selector="Button.dlgbtn:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#e3f0f9" />
-      <Setter Property="BorderBrush" Value="#1a91d6" />
+      <Setter Property="Background" Value="#f4e4e6" />
+      <Setter Property="BorderBrush" Value="#a41626" />
     </Style>
     <Style Selector="Button.dlgbtn.primary">
-      <Setter Property="Background" Value="#2f8f49" />
-      <Setter Property="BorderBrush" Value="#28803f" />
+      <Setter Property="Background" Value="#a41626" />
+      <Setter Property="BorderBrush" Value="#7e0f1c" />
       <Setter Property="Foreground" Value="White" />
     </Style>
     <Style Selector="Button.dlgbtn.primary:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#28803f" />
-      <Setter Property="BorderBrush" Value="#28803f" />
+      <Setter Property="Background" Value="#7e0f1c" />
+      <Setter Property="BorderBrush" Value="#7e0f1c" />
     </Style>
-    <!-- 禁用的主按钮仍是一颗绿灰的按钮，不是一块空白：
+    <!-- 禁用的主按钮仍是一颗压暗的按钮，不是一块空白：
          「现在还不能按」跟「这里没有按钮」得看得出区别 -->
     <Style Selector="Button.dlgbtn.primary:disabled /template/ ContentPresenter">
-      <Setter Property="Background" Value="#c6cfc8" />
-      <Setter Property="BorderBrush" Value="#b7c0b9" />
-      <Setter Property="TextBlock.Foreground" Value="#f2f2f2" />
+      <Setter Property="Background" Value="#d8cdcf" />
+      <Setter Property="BorderBrush" Value="#c9bcbe" />
+      <Setter Property="TextBlock.Foreground" Value="#f1f2f0" />
     </Style>
     <Style Selector="Button.dlgbtn:disabled">
       <Setter Property="Cursor" Value="Arrow" />
@@ -371,22 +487,22 @@
       <Setter Property="MinWidth" Value="0" />
       <Setter Property="Padding" Value="9,0" />
       <Setter Property="FontSize" Value="11" />
-      <Setter Property="Background" Value="#f2f2f2" />
-      <Setter Property="BorderBrush" Value="#8b8b8b" />
+      <Setter Property="Background" Value="#f1f2f0" />
+      <Setter Property="BorderBrush" Value="#868b90" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="CornerRadius" Value="2" />
-      <Setter Property="Foreground" Value="#333333" />
+      <Setter Property="Foreground" Value="#303337" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
     <Style Selector="Button.umsm:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#e3f0f9" />
-      <Setter Property="BorderBrush" Value="#1a91d6" />
+      <Setter Property="Background" Value="#f4e4e6" />
+      <Setter Property="BorderBrush" Value="#a41626" />
     </Style>
     <Style Selector="Button.umsm:disabled /template/ ContentPresenter">
-      <Setter Property="Background" Value="#f7f7f7" />
-      <Setter Property="BorderBrush" Value="#cfcfcf" />
-      <Setter Property="TextBlock.Foreground" Value="#a5a5a5" />
+      <Setter Property="Background" Value="#f7f7f6" />
+      <Setter Property="BorderBrush" Value="#cdcfcd" />
+      <Setter Property="TextBlock.Foreground" Value="#a1a5a9" />
     </Style>
     <Style Selector="Button.umsm:disabled">
       <Setter Property="Cursor" Value="Arrow" />
@@ -395,7 +511,7 @@
     <!-- 页脚那句灰字（「修改会写入审计追踪」这类） -->
     <Style Selector="TextBlock.au">
       <Setter Property="FontSize" Value="10.5" />
-      <Setter Property="Foreground" Value="#9a9a9a" />
+      <Setter Property="Foreground" Value="#959a9f" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
 
@@ -404,7 +520,7 @@
       <Setter Property="MinHeight" Value="26" />
       <Setter Property="FontSize" Value="12" />
       <Setter Property="Padding" Value="6,0" />
-      <Setter Property="BorderBrush" Value="#a8a8a8" />
+      <Setter Property="BorderBrush" Value="#a4a8ac" />
       <Setter Property="CornerRadius" Value="2" />
       <Setter Property="Background" Value="White" />
     </Style>
@@ -414,7 +530,7 @@
       <Setter Property="MinHeight" Value="23" />
       <Setter Property="FontSize" Value="12" />
       <Setter Property="Padding" Value="6,2" />
-      <Setter Property="BorderBrush" Value="#a8a8a8" />
+      <Setter Property="BorderBrush" Value="#a4a8ac" />
       <Setter Property="CornerRadius" Value="2" />
       <!-- 输入框一律白底：面板底色是灰的，不写死白的话输入框跟着灰，
            「哪儿能填」就看不出来了。原型 .finput 也是 background:#fff -->
@@ -428,10 +544,10 @@
     -->
     <Style Selector="TextBox.finput:disabled /template/ Border#PART_BorderElement">
       <Setter Property="Background" Value="White" />
-      <Setter Property="BorderBrush" Value="#c8c8c8" />
+      <Setter Property="BorderBrush" Value="#c5c8c7" />
     </Style>
     <Style Selector="TextBox.finput:disabled">
-      <Setter Property="Foreground" Value="#8d8d8d" />
+      <Setter Property="Foreground" Value="#888d92" />
     </Style>
 
     <!--
@@ -450,7 +566,7 @@
       <Setter Property="FontSize" Value="12" />
       <Setter Property="Padding" Value="27,0,8,0" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
-      <Setter Property="BorderBrush" Value="#c4c4c4" />
+      <Setter Property="BorderBrush" Value="#c1c4c4" />
       <Setter Property="CornerRadius" Value="3" />
       <Setter Property="Background" Value="White" />
     </Style>
@@ -458,20 +574,20 @@
     <!-- 面板小节头：原型统一用圆形箭头，不用细横线 -->
     <Style Selector="TextBlock.acc">
       <Setter Property="FontSize" Value="11.5" />
-      <Setter Property="Foreground" Value="#3d3d3d" />
+      <Setter Property="Foreground" Value="#3a3d41" />
       <Setter Property="Margin" Value="0,6" />
     </Style>
     <Style Selector="TextBlock.h2big">
       <Setter Property="FontSize" Value="24" />
       <Setter Property="FontWeight" Value="Light" />
-      <Setter Property="Foreground" Value="#333333" />
+      <Setter Property="Foreground" Value="#303337" />
       <Setter Property="HorizontalAlignment" Value="Center" />
       <Setter Property="Margin" Value="0,0,0,8" />
     </Style>
     <!-- 面板标题底下那句副标题：一两行、居中，压着标题的轴线 -->
     <Style Selector="TextBlock.intro">
       <Setter Property="FontSize" Value="11.5" />
-      <Setter Property="Foreground" Value="#5a5a5a" />
+      <Setter Property="Foreground" Value="#565a5f" />
       <Setter Property="LineHeight" Value="18" />
       <Setter Property="TextAlignment" Value="Center" />
       <Setter Property="TextWrapping" Value="Wrap" />
@@ -485,12 +601,12 @@
     </Style>
     <Style Selector="TextBlock.lbl">
       <Setter Property="FontSize" Value="12" />
-      <Setter Property="Foreground" Value="#444444" />
+      <Setter Property="Foreground" Value="#414448" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style Selector="TextBlock.muted">
       <Setter Property="FontSize" Value="11" />
-      <Setter Property="Foreground" Value="#7a7a7a" />
+      <Setter Property="Foreground" Value="#757a7f" />
     </Style>
     <Style Selector="TextBlock.mono">
       <Setter Property="FontFamily" Value="Consolas, Menlo, monospace" />

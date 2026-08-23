@@ -1488,13 +1488,13 @@ public sealed class RecipeViewModel : ViewModelBase
     {
         get
         {
-            if (!IsDoseStep || _selectedStep?.Step is not { } step) return "#8d8d8d";
+            if (!IsDoseStep || _selectedStep?.Step is not { } step) return "#888d92";
             var table = Workspace.ChannelCharges.TryGetValue(_curCh, out var t) ? t : null;
-            if (table is null || table.IsEmpty) return "#8d8d8d";
+            if (table is null || table.IsEmpty) return "#888d92";
             var chemId = step.Parameters.Str(ChargeLink.ChemKey);
-            if (chemId.Length == 0) return "#8d8d8d";
-            if (table.Items.All(i => i.Id != chemId)) return "#c0392b";
-            return step.Parameters.Flag(ChargeLink.LinkedKey) ? "#2f8f49" : "#a8710a";
+            if (chemId.Length == 0) return "#888d92";
+            if (table.Items.All(i => i.Id != chemId)) return "#d93025";
+            return step.Parameters.Flag(ChargeLink.LinkedKey) ? "#0e7a3e" : "#8a6100";
         }
     }
 
@@ -1524,7 +1524,7 @@ public sealed record ChannelStateRow(
 {
     public string ColorHex => HasLane
         ? Channel switch { 1 => "#2f7ed8", 2 => "#2aa87a", 3 => "#c9772b", _ => "#8a63d2" }
-        : "#c2c2c2";
+        : "#bfc2c2";
 
     /// <summary>接在名称后面的灰字，比如「 · 机A · CH1」。</summary>
     public string ChannelSuffix => $" · {ChannelLabel}";
@@ -1550,7 +1550,7 @@ public sealed record IssueRow(ValidationIssue Issue, int Channel, string Channel
 {
     public bool IsError => Issue.Level == IssueLevel.Error;
     public string Text => Issue.Message;
-    public string Dot => IsError ? "#c62828" : "#dba32c";
+    public string Dot => IsError ? "#a81e15" : "#dba32c";
     public string? Hint => IssueHints.Of(Issue.Code);
     public bool HasHint => Hint is not null;
     /// <summary>能定位到具体某一步的才可点。</summary>

@@ -39,8 +39,8 @@ public sealed class AlarmRowViewModel : ViewModelBase
     public bool Standing => Alarm.Standing;
 
     /// <summary>报警中是红的，恢复了转灰——一眼分得出还有几条正响着。</summary>
-    public string StateColorHex => Alarm.Standing ? "#c0392b" : "#5f6f7a";
-    public string StateFillHex => Alarm.Standing ? "#fbe6e3" : "#eef1f3";
+    public string StateColorHex => Alarm.Standing ? "#d93025" : "#55595e";
+    public string StateFillHex => Alarm.Standing ? "#fdecea" : "#eef1f3";
 
     public string TimeText
     {
@@ -126,9 +126,9 @@ public sealed class AlarmBarViewModel : ViewModelBase
     public bool CanAckAll => Unacked > 0;
 
     /// <summary>还在响的用红，全都恢复了只等确认用灰蓝——颜色本身就是一句话。</summary>
-    public string BarFillHex => Standing > 0 ? "#fbe6e3" : "#eef1f3";
-    public string BarLineHex => Standing > 0 ? "#e0b4ad" : "#ccd4d9";
-    public string BarInkHex => Standing > 0 ? "#c0392b" : "#41525c";
+    public string BarFillHex => Standing > 0 ? "#fdecea" : "#eef1f3";
+    public string BarLineHex => Standing > 0 ? "#e2b6ad" : "#ccd4d9";
+    public string BarInkHex => Standing > 0 ? "#d93025" : "#55595e";
 
     /// <summary>
     /// 一行字说清「现在有几条、最要紧的是哪条」。数「正在响的」和

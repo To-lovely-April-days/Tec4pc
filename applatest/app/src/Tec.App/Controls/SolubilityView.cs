@@ -76,11 +76,11 @@ public sealed class SolubilityView : Control
             for (var i = 1; i < 46; i++) g.LineTo(new Point(X(i * 2), Y(SolAt(i * 2))));
             g.EndFigure(false);
         }
-        ctx.DrawGeometry(null, new Pen(new SolidColorBrush(Color.Parse("#2f8f49")), 1.8)
+        ctx.DrawGeometry(null, new Pen(new SolidColorBrush(Color.Parse("#0e7a3e")), 1.8)
         { LineJoin = PenLineJoin.Round }, geo);
 
         // 25 ℃ 是室温基准，结晶筛选先看这一点
-        var red = new SolidColorBrush(Color.Parse("#e02020"));
+        var red = new SolidColorBrush(Color.Parse("#d93025"));
         var at25 = SolAt(25);
         ctx.DrawEllipse(red, null, new Point(X(25), Y(at25)), 3, 3);
         Text(ctx, $"25℃：{at25.ToString("F2", CultureInfo.InvariantCulture)}",

@@ -5,7 +5,7 @@
         CanResize="False" ShowInTaskbar="False"
         WindowStartupLocation="CenterOwner"
         FontFamily="{StaticResource UiFont}" FontSize="12"
-        Foreground="#333333" Background="Transparent"
+        Foreground="#303337" Background="Transparent"
         TransparencyLevelHint="Transparent"
         ExtendClientAreaToDecorationsHint="True"
         ExtendClientAreaChromeHints="NoChrome"
@@ -14,15 +14,15 @@
 
   <!-- 与主窗口同一套外观：8px 圆角自绘 + 30px 深紫渐变标题栏 -->
   <Border CornerRadius="8" ClipToBounds="True" Background="White"
-          BorderBrush="#c9c4d8" BorderThickness="1"
+          BorderBrush="#e0c3c6" BorderThickness="1"
           Margin="{Binding $parent[Window].OffScreenMargin}">
     <DockPanel>
 
       <Border DockPanel.Dock="Top" Height="30" PointerPressed="OnTitlebarPressed">
         <Border.Background>
           <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
-            <GradientStop Color="#3c2d63" Offset="0" />
-            <GradientStop Color="#2f2350" Offset="1" />
+            <GradientStop Color="#5e1219" Offset="0" />
+            <GradientStop Color="#5e1219" Offset="1" />
           </LinearGradientBrush>
         </Border.Background>
         <TextBlock Name="TitleText" Margin="14,0,0,0" VerticalAlignment="Center"
@@ -30,8 +30,8 @@
       </Border>
 
       <!-- 底部按钮条：浅灰底 + 上细线，与导出页的操作条同款 -->
-      <Border DockPanel.Dock="Bottom" Background="#f4f4f4"
-              BorderBrush="#dcdcdc" BorderThickness="0,1,0,0" Padding="18,12">
+      <Border DockPanel.Dock="Bottom" Background="#f4f4f3"
+              BorderBrush="#dadcd9" BorderThickness="0,1,0,0" Padding="18,12">
         <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
           <Button Name="PrimaryBtn" Classes="btn primary" Click="OnPrimary" MinWidth="88" />
           <Button Name="SecondaryBtn" Classes="btn" Click="OnSecondary" MinWidth="88" />
@@ -45,13 +45,13 @@
              一眼扫过去分不出「成了」和「砸了」 -->
         <Border Name="Badge" Width="38" Height="38" CornerRadius="19" Background="#fdf3e2"
                 BorderBrush="#e8c98d" BorderThickness="1" VerticalAlignment="Top">
-          <TextBlock Name="BadgeText" Text="!" FontSize="21" FontWeight="SemiBold" Foreground="#b8860b"
+          <TextBlock Name="BadgeText" Text="!" FontSize="21" FontWeight="SemiBold" Foreground="#8a6100"
                      HorizontalAlignment="Center" VerticalAlignment="Center" />
         </Border>
         <StackPanel Spacing="7" MaxWidth="388">
-          <TextBlock Name="MessageText" FontSize="14" Foreground="#2b2b2b"
+          <TextBlock Name="MessageText" FontSize="14" Foreground="#292b2e"
                      TextWrapping="Wrap" LineHeight="20" />
-          <TextBlock Name="DetailText" FontSize="11.5" Foreground="#7a7a7a"
+          <TextBlock Name="DetailText" FontSize="11.5" Foreground="#757a7f"
                      TextWrapping="Wrap" LineHeight="18" />
         </StackPanel>
       </StackPanel>

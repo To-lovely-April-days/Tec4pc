@@ -6,7 +6,7 @@
         Title="TecStudio 平行合成工作站 - PSW-4"
         Width="1500" Height="940" MinWidth="1280" MinHeight="720"
         FontFamily="{StaticResource UiFont}" FontSize="12"
-        Foreground="#333333" Background="Transparent"
+        Foreground="#303337" Background="Transparent"
         TransparencyLevelHint="Transparent"
         ExtendClientAreaToDecorationsHint="True"
         ExtendClientAreaChromeHints="NoChrome"
@@ -22,14 +22,12 @@
           Margin="{Binding $parent[Window].OffScreenMargin}">
   <DockPanel>
 
-    <!-- 窗口标题栏：30px 深紫渐变，自绘（原型 .titlebar） -->
-    <Border DockPanel.Dock="Top" Height="30" PointerPressed="OnTitlebarPressed">
-      <Border.Background>
-        <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
-          <GradientStop Color="#3c2d63" Offset="0" />
-          <GradientStop Color="#2f2350" Offset="1" />
-        </LinearGradientBrush>
-      </Border.Background>
+    <!-- 窗口标题栏：30px，纯色 #5e1219，自绘（原型 .titlebar）。
+         这一档是压暗去饱和的品牌红，不是 #a41626：标题栏面积大，
+         按原型的说法它是外壳不是信号，明度压下来才不跟报警红抢眼。
+         原来那道渐变去掉了——两端本来就是同一支笔，留着只是白算一遍 -->
+    <Border DockPanel.Dock="Top" Height="30" Background="#5e1219"
+            PointerPressed="OnTitlebarPressed">
       <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto" Margin="8,0,0,0">
         <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
           <Button Classes="tbico" Command="{Binding SimRun}" ToolTip.Tip="运行">
@@ -51,16 +49,16 @@
         </TextBlock>
         <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
           <StackPanel Orientation="Horizontal" Spacing="4" Margin="6,0">
-            <ctl:TecIcon Key="ui-tb-about" Tint="#e6e0f5" VerticalAlignment="Center" />
-            <TextBlock Text="关于" Foreground="#e6e0f5" FontSize="12" VerticalAlignment="Center" />
+            <ctl:TecIcon Key="ui-tb-about" Tint="#ebd8da" VerticalAlignment="Center" />
+            <TextBlock Text="关于" Foreground="#ebd8da" FontSize="12" VerticalAlignment="Center" />
           </StackPanel>
           <StackPanel Orientation="Horizontal" Spacing="4" Margin="6,0">
-            <ctl:TecIcon Key="ui-tb-settings" Tint="#e6e0f5" VerticalAlignment="Center" />
-            <TextBlock Text="设置" Foreground="#e6e0f5" FontSize="12" VerticalAlignment="Center" />
+            <ctl:TecIcon Key="ui-tb-settings" Tint="#ebd8da" VerticalAlignment="Center" />
+            <TextBlock Text="设置" Foreground="#ebd8da" FontSize="12" VerticalAlignment="Center" />
           </StackPanel>
           <StackPanel Orientation="Horizontal" Spacing="4" Margin="6,0">
-            <ctl:TecIcon Key="ui-tb-help" Tint="#e6e0f5" VerticalAlignment="Center" />
-            <TextBlock Text="帮助" Foreground="#e6e0f5" FontSize="12" VerticalAlignment="Center" />
+            <ctl:TecIcon Key="ui-tb-help" Tint="#ebd8da" VerticalAlignment="Center" />
+            <TextBlock Text="帮助" Foreground="#ebd8da" FontSize="12" VerticalAlignment="Center" />
           </StackPanel>
         </StackPanel>
         <StackPanel Grid.Column="5" Orientation="Horizontal" Margin="10,0,0,0">
@@ -87,7 +85,7 @@
 
     <!-- 主菜单栏：52px 白底，25px 细体菜单项；右侧模拟模式与用户区叠在同一行 -->
     <Panel DockPanel.Dock="Top" Height="52" Background="White">
-      <Border BorderBrush="#e3e3e3" BorderThickness="0,0,0,1" />
+      <Border BorderBrush="#e1e3e0" BorderThickness="0,0,0,1" />
       <StackPanel Orientation="Horizontal" Margin="14,0,0,0" VerticalAlignment="Center">
         <Button Classes="menu" Content="开始"        Command="{Binding Go}" CommandParameter="0" Classes.on="{Binding IsStart}" />
         <Button Classes="menu" Content="台面"        Command="{Binding Go}" CommandParameter="1" Classes.on="{Binding IsBench}" />
@@ -99,22 +97,24 @@
         <Button Classes="menu" Content="数据导出"    Command="{Binding Go}" CommandParameter="7" Classes.on="{Binding IsExport}" />
       </StackPanel>
 
-      <!-- 运行控制：黑色药丸 + 4 个圆钮（运行 / 停止 / 暂停 / 单步）。
+      <!-- 运行控制：描边分段控件，三格（运行 / 停止 / 暂停），跟菜单栏基线对齐。
            原型那句「模拟模式」去掉了——接上真机之后它就不对了，
-           而这四个钮不论仿真真机都是同一件事，图标自己说得清 -->
-      <Border Background="#151515" CornerRadius="8" Height="48" Margin="0,2,150,0"
-              HorizontalAlignment="Right" VerticalAlignment="Top" Padding="12,0">
-        <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
+           而这三个钮不论仿真真机都是同一件事，图标自己说得清 -->
+      <Border BorderBrush="#d0d2cf" BorderThickness="1" CornerRadius="4" Background="White"
+              Height="30" Margin="0,11,150,0"
+              HorizontalAlignment="Right" VerticalAlignment="Top">
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Stretch">
           <!-- 三颗都是「对全部已启用通道」。单路的启停在运行页的通道磁贴上。
                原型那颗「单步」去掉了：跳步是看着这一路当前那一步临时决定的，
                四路情况各不相同，一次全跳掉几乎不可能是人想要的，
                而且跳掉的每一步都写进记录撤不回来 -->
           <Button Classes="rbtn play" Command="{Binding SimRun}" IsEnabled="{Binding CanSimRun}"
                   ToolTip.Tip="{Binding SimRunTip}"><ctl:TecIcon Key="ui-sim-play" /></Button>
-          <!-- 停止是急停，长得跟别的不一样：慌起来按错的代价太大 -->
+          <!-- 停止是急停。底色全白之后，认它靠的是方块图标 + 报警红，
+               不再靠一颗红圆片——原型的用色纪律里实底红只留给报警行 -->
           <Button Classes="rbtn stop" Command="{Binding SimStop}" IsEnabled="{Binding CanSimStop}"
                   ToolTip.Tip="停止全部通道"><ctl:TecIcon Key="ui-sim-stop" /></Button>
-          <Button Classes="rbtn" Command="{Binding SimPause}" IsEnabled="{Binding CanSimPause}"
+          <Button Classes="rbtn hold last" Command="{Binding SimPause}" IsEnabled="{Binding CanSimPause}"
                   ToolTip.Tip="暂停全部正在跑的通道"><ctl:TecIcon Key="ui-sim-pause" /></Button>
         </StackPanel>
       </Border>
@@ -132,7 +132,7 @@
         <Button Name="UserZone" Classes="userzone" VerticalAlignment="Center" Cursor="Hand">
           <StackPanel>
             <ctl:TecIcon Key="ui-user" HorizontalAlignment="Center" />
-            <TextBlock Text="{Binding UserName}" FontSize="10" Foreground="#555555"
+            <TextBlock Text="{Binding UserName}" FontSize="10" Foreground="#51555a"
                        HorizontalAlignment="Center" Margin="0,-2,0,0" />
           </StackPanel>
           <Button.Flyout>
@@ -140,10 +140,10 @@
                     FlyoutPresenterClasses="umenupop">
               <StackPanel Width="252">
                 <!-- 菜单头：登录名 + 角色标签 / 署名 / 本次会话起于何时、哪台机器 -->
-                <Border Background="#fafafa" BorderBrush="#ececec" BorderThickness="0,0,0,1"
+                <Border Background="#fafafa" BorderBrush="#ebece9" BorderThickness="0,0,0,1"
                         Padding="14,13,14,12">
                   <StackPanel Orientation="Horizontal" Spacing="11">
-                    <Border Width="34" Height="34" CornerRadius="17" Background="#4a4a4a"
+                    <Border Width="34" Height="34" CornerRadius="17" Background="#474a4e"
                             VerticalAlignment="Top">
                       <Viewbox Width="18" Height="18" HorizontalAlignment="Center"
                                VerticalAlignment="Center">
@@ -156,15 +156,15 @@
                     <StackPanel>
                       <StackPanel Orientation="Horizontal" Spacing="5">
                         <TextBlock Text="{Binding UserLogin}" FontSize="14" FontWeight="Light"
-                                   Foreground="#2b2b2b" VerticalAlignment="Center" />
-                        <Border Background="#f2fbf4" BorderBrush="#a9d3b4" BorderThickness="1"
+                                   Foreground="#292b2e" VerticalAlignment="Center" />
+                        <Border Background="#f0f8f3" BorderBrush="#a6cdb4" BorderThickness="1"
                                 CornerRadius="9" Padding="7,1" VerticalAlignment="Center">
-                          <TextBlock Text="{Binding UserRoleName}" FontSize="10" Foreground="#2f8f49" />
+                          <TextBlock Text="{Binding UserRoleName}" FontSize="10" Foreground="#0e7a3e" />
                         </Border>
                       </StackPanel>
-                      <TextBlock Text="{Binding UserSignLine}" FontSize="11" Foreground="#6f6f6f"
+                      <TextBlock Text="{Binding UserSignLine}" FontSize="11" Foreground="#6b6f74"
                                  Margin="0,3,0,0" />
-                      <TextBlock Text="{Binding SessionLine}" FontSize="10.5" Foreground="#a2a2a2"
+                      <TextBlock Text="{Binding SessionLine}" FontSize="10.5" Foreground="#9ea2a6"
                                  Margin="0,4,0,0" />
                     </StackPanel>
                   </StackPanel>
@@ -178,7 +178,7 @@
                     <Viewbox Grid.Column="0" Width="14" Height="14" VerticalAlignment="Center">
                       <Canvas Width="16" Height="16">
                         <Path Data="M 5.6,5.2 A 2.8,2.8 0 1 0 5.6,10.8 A 2.8,2.8 0 1 0 5.6,5.2 M 8.4,8 H 14 M 12,8 V 10.6 M 10.2,8 V 10"
-                              Stroke="#5a5a5a" StrokeThickness="1.4" />
+                              Stroke="#565a5f" StrokeThickness="1.4" />
                       </Canvas>
                     </Viewbox>
                     <TextBlock Grid.Column="2" Text="修改密码" VerticalAlignment="Center" />
@@ -189,27 +189,27 @@
                     <Viewbox Grid.Column="0" Width="14" Height="14" VerticalAlignment="Center">
                       <Canvas Width="16" Height="16">
                         <Path Data="M 6,3 A 2.6,2.6 0 1 0 6,8.2 A 2.6,2.6 0 1 0 6,3 M 1.6,13.4 C 1.6,10.8 3.6,9.4 6,9.4 C 8.4,9.4 10.4,10.8 10.4,13.4 M 11,4.2 A 2.4,2.4 0 0 1 11,8.6 M 12.4,13.4 C 12.4,11.6 11.9,10.5 11,9.8"
-                              Stroke="#5a5a5a" StrokeThickness="1.4" />
+                              Stroke="#565a5f" StrokeThickness="1.4" />
                       </Canvas>
                     </Viewbox>
                     <TextBlock Grid.Column="2" Text="用户管理" VerticalAlignment="Center" />
-                    <TextBlock Grid.Column="3" Text="仅管理员" FontSize="10" Foreground="#a2a2a2"
+                    <TextBlock Grid.Column="3" Text="仅管理员" FontSize="10" Foreground="#9ea2a6"
                                VerticalAlignment="Center" />
                   </Grid>
                 </Button>
 
-                <Border Height="1" Background="#ececec" Margin="0,4" />
+                <Border Height="1" Background="#ebece9" Margin="0,4" />
 
                 <Button Classes="umenu" Click="OnLockScreen">
                   <Grid ColumnDefinitions="15,9,*,Auto">
                     <Viewbox Grid.Column="0" Width="14" Height="14" VerticalAlignment="Center">
                       <Canvas Width="16" Height="16">
                         <Path Data="M 3.4,7 H 12.6 V 14 H 3.4 Z M 5.6,7 V 5.2 A 2.4,2.4 0 0 1 10.4,5.2 V 7"
-                              Stroke="#5a5a5a" StrokeThickness="1.4" />
+                              Stroke="#565a5f" StrokeThickness="1.4" />
                       </Canvas>
                     </Viewbox>
                     <TextBlock Grid.Column="2" Text="锁定屏幕" VerticalAlignment="Center" />
-                    <TextBlock Grid.Column="3" Text="运行不中断" FontSize="10" Foreground="#a2a2a2"
+                    <TextBlock Grid.Column="3" Text="运行不中断" FontSize="10" Foreground="#9ea2a6"
                                VerticalAlignment="Center" />
                   </Grid>
                 </Button>
@@ -218,7 +218,7 @@
                     <Viewbox Grid.Column="0" Width="14" Height="14" VerticalAlignment="Center">
                       <Canvas Width="16" Height="16">
                         <Path Data="M 6.4,2.6 H 3 V 13.4 H 6.4 M 9,5.4 L 11.6,8 L 9,10.6 M 11.6,8 H 6"
-                              Stroke="#5a5a5a" StrokeThickness="1.4" />
+                              Stroke="#565a5f" StrokeThickness="1.4" />
                       </Canvas>
                     </Viewbox>
                     <TextBlock Grid.Column="2" Text="注销" VerticalAlignment="Center" />
@@ -281,7 +281,7 @@
       FlyoutPresenter，它自带 8px 内边距、圆角和一圈浅描边——结果就是菜单里的
       东西离外框有一圈白，头部那块灰底和悬停的浅蓝都够不到边（用户看出来的
       「元素和外边的框有距离感」）。把这层压平：内边距归零、方角、
-      1px #8b8b8b 描边（原型 .um-menu 就是这一道），内容自己贴住框。
+      1px #868b90 描边（原型 .um-menu 就是这一道），内容自己贴住框。
     -->
     <Style Selector="FlyoutPresenter.umenupop">
       <Setter Property="Padding" Value="0" />
@@ -289,7 +289,7 @@
       <Setter Property="MinWidth" Value="0" />
       <Setter Property="MinHeight" Value="0" />
       <Setter Property="Background" Value="White" />
-      <Setter Property="BorderBrush" Value="#8b8b8b" />
+      <Setter Property="BorderBrush" Value="#868b90" />
       <Setter Property="BorderThickness" Value="1" />
     </Style>
 
@@ -301,7 +301,7 @@
       <Setter Property="CornerRadius" Value="4" />
     </Style>
     <Style Selector="Button.userzone:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#f0f0f0" />
+      <Setter Property="Background" Value="#eff0ee" />
     </Style>
 
     <!-- 账户菜单里的行（原型 .um-mi：31 高、左右 14、悬停浅蓝） -->
@@ -312,13 +312,13 @@
       <Setter Property="Height" Value="31" />
       <Setter Property="CornerRadius" Value="0" />
       <Setter Property="FontSize" Value="12" />
-      <Setter Property="Foreground" Value="#2b2b2b" />
+      <Setter Property="Foreground" Value="#292b2e" />
       <Setter Property="HorizontalAlignment" Value="Stretch" />
       <Setter Property="HorizontalContentAlignment" Value="Stretch" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
     <Style Selector="Button.umenu:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#eaf6fd" />
+      <Setter Property="Background" Value="#f0f0ee" />
     </Style>
 
     <Style Selector="Button.win">
@@ -339,47 +339,5 @@
       <Setter Property="Background" Value="#e81123" />
     </Style>
 
-    <Style Selector="Button.rbtn">
-      <Setter Property="Width" Value="36" />
-      <Setter Property="Height" Value="36" />
-      <Setter Property="CornerRadius" Value="18" />
-      <Setter Property="Background" Value="#4d4d4d" />
-      <Setter Property="BorderThickness" Value="0" />
-      <Setter Property="Padding" Value="0" />
-      <Setter Property="HorizontalContentAlignment" Value="Center" />
-      <Setter Property="VerticalContentAlignment" Value="Center" />
-      <Setter Property="Cursor" Value="Hand" />
-    </Style>
-    <Style Selector="Button.rbtn.play">
-      <Setter Property="Background" Value="#28b44a" />
-    </Style>
-    <!-- 急停：红底。四颗一个样的话，慌起来很容易把停止按成暂停 -->
-    <Style Selector="Button.rbtn.stop">
-      <Setter Property="Background" Value="#c8352b" />
-    </Style>
-    <!-- 按不了的时候暗下去。缺省禁用样式会把底色整个刷成一片灰，
-         三颗糊在一起分不出哪颗是哪颗——这里各自保住自己的颜色，只是整体压暗 -->
-    <Style Selector="Button.rbtn:disabled">
-      <Setter Property="Opacity" Value="0.32" />
-      <Setter Property="Cursor" Value="Arrow" />
-    </Style>
-    <!-- 三颗的底色钉死：Fluent 的缺省 :pointerover / :pressed / :disabled 都会去改
-         ContentPresenter 的 Background，鼠标一压上去急停就从红变灰，
-         看着像它自己失效了。原型这三颗本来就没有悬停效果 -->
-    <Style Selector="Button.rbtn:pointerover /template/ ContentPresenter,
-                     Button.rbtn:pressed /template/ ContentPresenter,
-                     Button.rbtn:disabled /template/ ContentPresenter">
-      <Setter Property="Background" Value="#4d4d4d" />
-    </Style>
-    <Style Selector="Button.rbtn.play:pointerover /template/ ContentPresenter,
-                     Button.rbtn.play:pressed /template/ ContentPresenter,
-                     Button.rbtn.play:disabled /template/ ContentPresenter">
-      <Setter Property="Background" Value="#28b44a" />
-    </Style>
-    <Style Selector="Button.rbtn.stop:pointerover /template/ ContentPresenter,
-                     Button.rbtn.stop:pressed /template/ ContentPresenter,
-                     Button.rbtn.stop:disabled /template/ ContentPresenter">
-      <Setter Property="Background" Value="#c8352b" />
-    </Style>
   </Window.Styles>
 </Window>

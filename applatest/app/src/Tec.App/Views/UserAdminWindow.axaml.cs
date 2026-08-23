@@ -28,18 +28,18 @@ public sealed class UserRow
 
         var (fill, line) =
             u.Disabled ? ("#cfcfcf", "#a5a5a5") :
-            u.Locked ? ("#e8c05a", "#b5851f") :
-                       ("#3fbf5f", "#2f8f49");
+            u.Locked ? ("#e8c05a", "#8a6100") :
+                       ("#2fa35f", "#0e7a3e");
         LedFill = Brush(fill);
         LedLine = Brush(line);
 
         // 密码到期：停用的账号不谈到期（谈了也没意义），刚建 / 刚重置的说「首次须改」
         var (expText, expColor) =
             u.Disabled ? ("—", "#c2c2c2") :
-            u.MustChangePassword ? ("首次须改", "#b5851f") :
+            u.MustChangePassword ? ("首次须改", "#8a6100") :
             u.ExpiresInDays(now) is not { } d ? ("—", "#c2c2c2") :
-            d == 0 ? ("已过期", "#c0392b") :
-            d <= 7 ? ($"{d} 天", "#b5851f") :
+            d == 0 ? ("已过期", "#d93025") :
+            d <= 7 ? ($"{d} 天", "#8a6100") :
                      ($"{d} 天", "#2b2b2b");
         ExpiryText = expText;
         ExpiryBrush = Brush(expColor);

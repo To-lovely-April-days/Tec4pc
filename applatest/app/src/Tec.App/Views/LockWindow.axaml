@@ -3,8 +3,8 @@
         x:Class="Tec.App.Views.LockWindow"
         Title="屏幕已锁定" CanResize="False" ShowInTaskbar="False"
         Width="640" Height="480" WindowStartupLocation="Manual"
-        SystemDecorations="None" Topmost="True" Background="#1c1533"
-        FontFamily="{StaticResource UiFont}" FontSize="12" Foreground="#e8e4f3">
+        SystemDecorations="None" Topmost="True" Background="#3f0b11"
+        FontFamily="{StaticResource UiFont}" FontSize="12" Foreground="#f4e4e6">
 
   <!--
     锁定屏幕。**通道该跑还在跑**——锁的是坐在这台机器前的人，不是台面上的实验：
@@ -14,23 +14,23 @@
 
   <Panel>
     <Border Width="420" HorizontalAlignment="Center" VerticalAlignment="Center"
-            Background="#241c42" BorderBrush="#3c2d63" BorderThickness="1" CornerRadius="4"
+            Background="#4a0e14" BorderBrush="#5e1219" BorderThickness="1" CornerRadius="4"
             Padding="34,30,34,26">
       <StackPanel Spacing="0">
 
-        <Border Width="64" Height="64" CornerRadius="32" Background="#3c2d63"
+        <Border Width="64" Height="64" CornerRadius="32" Background="#5e1219"
                 HorizontalAlignment="Center">
           <Viewbox Width="34" Height="34" HorizontalAlignment="Center" VerticalAlignment="Center">
             <Canvas Width="26" Height="26">
-              <Ellipse Canvas.Left="8" Canvas.Top="3" Width="10" Height="10" Fill="#e8e4f3" />
-              <Path Data="M 3,25 C 3,19 7.5,16 13,16 C 18.5,16 23,19 23,25 Z" Fill="#e8e4f3" />
+              <Ellipse Canvas.Left="8" Canvas.Top="3" Width="10" Height="10" Fill="#f4e4e6" />
+              <Path Data="M 3,25 C 3,19 7.5,16 13,16 C 18.5,16 23,19 23,25 Z" Fill="#f4e4e6" />
             </Canvas>
           </Viewbox>
         </Border>
 
         <TextBlock Text="屏幕已锁定" FontSize="24" FontWeight="Light" Foreground="#ffffff"
                    HorizontalAlignment="Center" Margin="0,16,0,0" />
-        <TextBlock Name="WhoLine" FontSize="11.5" Foreground="#a79ec6"
+        <TextBlock Name="WhoLine" FontSize="11.5" Foreground="#c69ba0"
                    HorizontalAlignment="Center" Margin="0,7,0,0" TextAlignment="Center"
                    TextWrapping="Wrap" />
 
@@ -44,8 +44,8 @@
         <TextBlock Name="ErrText" FontSize="11" Foreground="#ff9d92" IsVisible="False"
                    Margin="0,8,0,0" TextWrapping="Wrap" />
 
-        <Border Background="#2c2350" CornerRadius="2" Padding="11,9" Margin="0,18,0,0">
-          <TextBlock FontSize="11" Foreground="#a79ec6" LineHeight="17" TextWrapping="Wrap"
+        <Border Background="#4e0f15" CornerRadius="2" Padding="11,9" Margin="0,18,0,0">
+          <TextBlock FontSize="11" Foreground="#c69ba0" LineHeight="17" TextWrapping="Wrap"
                      Text="锁定期间通道照常运行、数据照常记录——锁住的是这台机器前的人，不是台面上的实验。" />
         </Border>
 
@@ -61,12 +61,12 @@
       <Setter Property="BorderThickness" Value="0" />
       <Setter Property="Padding" Value="6,3" />
       <Setter Property="FontSize" Value="11.5" />
-      <Setter Property="Foreground" Value="#8f85b4" />
+      <Setter Property="Foreground" Value="#b4858c" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
     <Style Selector="Button.link:pointerover /template/ ContentPresenter">
       <Setter Property="Background" Value="Transparent" />
-      <Setter Property="TextBlock.Foreground" Value="#c9c1e4" />
+      <Setter Property="TextBlock.Foreground" Value="#e4c8cb" />
     </Style>
   </Window.Styles>
 </Window>

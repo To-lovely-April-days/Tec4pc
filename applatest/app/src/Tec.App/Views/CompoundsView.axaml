@@ -7,54 +7,54 @@
     <Style Selector="Border.crow">
       <!-- 没有背景的 Border 不参与命中测试，点在列与列之间就没反应 -->
       <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderBrush" Value="#ececec" />
+      <Setter Property="BorderBrush" Value="#ebece9" />
       <Setter Property="BorderThickness" Value="0,0,0,1" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
     <Style Selector="Border.crow:pointerover">
-      <Setter Property="Background" Value="#f5f5f5" />
+      <Setter Property="Background" Value="#f5f5f4" />
     </Style>
     <Style Selector="Border.crow.sel">
-      <Setter Property="Background" Value="#e8f2fb" />
-      <Setter Property="BorderBrush" Value="#ececec" />
+      <Setter Property="Background" Value="#faf2f3" />
+      <Setter Property="BorderBrush" Value="#ebece9" />
     </Style>
     <Style Selector="Border.crow TextBlock">
       <Setter Property="FontSize" Value="12" />
-      <Setter Property="Foreground" Value="#2b2b2b" />
+      <Setter Property="Foreground" Value="#292b2e" />
       <Setter Property="Margin" Value="10,8" />
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style Selector="Border.crow.sel TextBlock">
-      <Setter Property="Foreground" Value="#0b3760" />
+      <Setter Property="Foreground" Value="#7e0f1c" />
       <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
     <Style Selector="Border.crow TextBlock.fx">
       <Setter Property="FontFamily" Value="Consolas,monospace" />
-      <Setter Property="Foreground" Value="#4a4a4a" />
+      <Setter Property="Foreground" Value="#474a4e" />
     </Style>
     <Style Selector="Border.crow TextBlock.note">
-      <Setter Property="Foreground" Value="#7a7a7a" />
+      <Setter Property="Foreground" Value="#757a7f" />
     </Style>
     <Style Selector="Border.crow.sel TextBlock.fx, Border.crow.sel TextBlock.note">
-      <Setter Property="Foreground" Value="#0b3760" />
+      <Setter Property="Foreground" Value="#7e0f1c" />
     </Style>
     <!-- 表头：11px + 字距，粘在顶部 -->
     <Style Selector="TextBlock.chd">
       <Setter Property="FontSize" Value="11" />
-      <Setter Property="Foreground" Value="#3a3a3a" />
+      <Setter Property="Foreground" Value="#373a3e" />
       <Setter Property="Margin" Value="10,8" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style Selector="TextBlock.unit">
       <Setter Property="FontSize" Value="11" />
-      <Setter Property="Foreground" Value="#8d8d8d" />
+      <Setter Property="Foreground" Value="#888d92" />
       <Setter Property="Margin" Value="6,0,0,0" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style Selector="TextBlock.frowk">
       <Setter Property="FontSize" Value="11.5" />
-      <Setter Property="Foreground" Value="#3d3d3d" />
+      <Setter Property="Foreground" Value="#3a3d41" />
       <Setter Property="Width" Value="96" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
@@ -80,7 +80,7 @@
       <Setter Property="Width" Value="20" />
       <Setter Property="Height" Value="20" />
       <Setter Property="CornerRadius" Value="10" />
-      <Setter Property="BorderBrush" Value="#6b6b6b" />
+      <Setter Property="BorderBrush" Value="#676b70" />
       <Setter Property="BorderThickness" Value="1.5" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
@@ -91,18 +91,18 @@
     <!-- ========== .cmain ========== -->
     <DockPanel Grid.Column="0" Background="White">
 
-      <!-- .ctool：58px 高，#ededed -->
-      <Border DockPanel.Dock="Top" Height="58" Background="#ededed">
+      <!-- .ctool：58px 高，#ecedea -->
+      <Border DockPanel.Dock="Top" Height="58" Background="#ecedea">
         <StackPanel Orientation="Horizontal" Spacing="10" Margin="14,0" VerticalAlignment="Center">
-          <TextBlock Text="检索：" FontSize="12" Foreground="#444444" VerticalAlignment="Center" />
+          <TextBlock Text="检索：" FontSize="12" Foreground="#414448" VerticalAlignment="Center" />
           <Panel Width="260">
             <TextBox Classes="srch" Text="{Binding Search, Mode=TwoWay}"
                      Watermark="名称 / CAS / 分子式" />
-            <ctl:TecIcon Key="ui-search" Tint="#9a9a9a" Size="13" Margin="8,0,0,0"
+            <ctl:TecIcon Key="ui-search" Tint="#959a9f" Size="13" Margin="8,0,0,0"
                          HorizontalAlignment="Left" VerticalAlignment="Center"
                          IsHitTestVisible="False" />
           </Panel>
-          <TextBlock Text="类别：" FontSize="12" Foreground="#444444" VerticalAlignment="Center" />
+          <TextBlock Text="类别：" FontSize="12" Foreground="#414448" VerticalAlignment="Center" />
           <ComboBox Classes="sel" Width="130" ItemsSource="{Binding Categories}"
                     SelectedItem="{Binding Category, Mode=TwoWay}" />
           <Button Classes="tbtn sm" Command="{Binding AddNew}"
@@ -124,7 +124,7 @@
                而且框里得写清楚「先导出一份 CSV 才是后悔药」 -->
           <Button Classes="tbtn del danger" Command="{Binding ClearAll}"
                   ToolTip.Tip="清空整个化合物库（不可撤销；要留底先用「导出」存一份 CSV）">
-            <ctl:TecIcon Key="ui-foot-trash" Tint="#c0392b" />
+            <ctl:TecIcon Key="ui-foot-trash" Tint="#d93025" />
           </Button>
 
           <TextBlock Text="{Binding Status}" IsVisible="{Binding HasStatus}"
@@ -136,7 +136,7 @@
 
       <!-- 表头（.crow.head）：常驻顶部 -->
       <Border DockPanel.Dock="Top" Background="#fafafa"
-              BorderBrush="#d5d5d5" BorderThickness="0,0,0,1">
+              BorderBrush="#d3d5d2" BorderThickness="0,0,0,1">
         <Grid ColumnDefinitions="44,1.3*,1*,0.9*,76,86,72,76,92,1*">
           <TextBlock Grid.Column="1" Text="名称" Classes="chd" />
           <TextBlock Grid.Column="2" Text="CAS 号" Classes="chd" />
@@ -173,14 +173,14 @@
             </ItemsControl.ItemTemplate>
           </ItemsControl>
           <TextBlock Text="没有匹配的化合物" IsVisible="{Binding NoMatch}"
-                     FontSize="12" Foreground="#a2a2a2" Margin="30"
+                     FontSize="12" Foreground="#9ea2a6" Margin="30"
                      HorizontalAlignment="Center" />
           <!-- 空库跟「筛没了」分开说：空库要告诉人去哪儿添，筛没了只要告诉人换个词 -->
           <StackPanel IsVisible="{Binding IsEmpty}" Margin="30" Spacing="7"
                       HorizontalAlignment="Center">
-            <TextBlock Text="化合物库是空的" FontSize="13.5" Foreground="#7a7a7a"
+            <TextBlock Text="化合物库是空的" FontSize="13.5" Foreground="#757a7f"
                        HorizontalAlignment="Center" />
-            <TextBlock FontSize="11.5" Foreground="#a2a2a2" LineHeight="19" MaxWidth="470"
+            <TextBlock FontSize="11.5" Foreground="#9ea2a6" LineHeight="19" MaxWidth="470"
                        TextAlignment="Center" TextWrapping="Wrap"
                        Text="用工具条上的「＋」逐条录入，或者「导入」一份 CSV。这里的数会拿去算加料体积、判析出、卡温度——程序不替你预置任何物性。" />
           </StackPanel>
@@ -190,33 +190,33 @@
 
     <!-- ========== 右侧物性详情 ========== -->
     <!-- 与台面属性同一套观感：白底面板 + 浅紫内容块。
-         从前这一整栏是 #ececec 的灰，跟台面 / 配方 / 配方库那三页对不上 -->
+         从前这一整栏是 #ebece9 的灰，跟台面 / 配方 / 配方库那三页对不上 -->
     <Border Grid.Column="1" Background="{StaticResource ThemeGap}"
-            BorderBrush="#d2d2d2" BorderThickness="1,0,0,0">
+            BorderBrush="#d0d2cf" BorderThickness="1,0,0,0">
       <ScrollViewer>
         <Border Background="{StaticResource ThemeFill}" Padding="18,16,18,20">
         <Panel>
         <!-- 一条都没选中（库空了 / 筛没了）：整块物性收起来，只留一句话。
              留着那一排空输入框，看着像「有一条化合物，只是什么都没填」 -->
         <StackPanel IsVisible="{Binding !HasSelection}" Spacing="8">
-          <TextBlock Text="物性详情" FontSize="24" FontWeight="Light" Foreground="#333333"
+          <TextBlock Text="物性详情" FontSize="24" FontWeight="Light" Foreground="#303337"
                      HorizontalAlignment="Center" Margin="0,0,0,8" />
           <TextBlock Text="在左侧表里选中一条化合物，这里显示它的物性。"
-                     FontSize="11.5" Foreground="#8d8d8d" LineHeight="19"
+                     FontSize="11.5" Foreground="#888d92" LineHeight="19"
                      TextAlignment="Center" TextWrapping="Wrap" />
           <TextBlock Text="库是空的就先用工具条上的「＋」新建一条，或者「导入」一份 CSV。"
-                     FontSize="11.5" Foreground="#8d8d8d" LineHeight="19"
+                     FontSize="11.5" Foreground="#888d92" LineHeight="19"
                      TextAlignment="Center" TextWrapping="Wrap" IsVisible="{Binding IsEmpty}" />
         </StackPanel>
         <StackPanel DataContext="{Binding Selected}"
                     IsVisible="{Binding $parent[UserControl].DataContext.HasSelection}">
-          <TextBlock Text="物性详情" FontSize="24" FontWeight="Light" Foreground="#333333"
+          <TextBlock Text="物性详情" FontSize="24" FontWeight="Light" Foreground="#303337"
                      HorizontalAlignment="Center" Margin="0,0,0,8" />
-          <TextBlock Text="{Binding Name}" FontSize="21" FontWeight="Light" Foreground="#333333"
+          <TextBlock Text="{Binding Name}" FontSize="21" FontWeight="Light" Foreground="#303337"
                      HorizontalAlignment="Center" Margin="0,0,0,12" />
 
           <!-- 结构式：骨架式；离子化合物没有骨架，排离子对 -->
-          <Border Background="White" BorderBrush="#dcdcdc" BorderThickness="1" CornerRadius="3"
+          <Border Background="White" BorderBrush="#dadcd9" BorderThickness="1" CornerRadius="3"
                   Margin="0,0,0,14">
             <ctl:MoleculeView Structure="{Binding Structure}" IonText="{Binding IonText}" />
           </Border>
@@ -298,7 +298,7 @@
             </StackPanel>
           </StackPanel>
 
-          <Border Height="1" Background="#d5d5d5" Margin="0,12,0,14" />
+          <Border Height="1" Background="#d3d5d2" Margin="0,12,0,14" />
           <!-- 这一块的 DataContext 是选中的化合物，小节状态在视图模型上，
                所以要顺着 UserControl 往上取 -->
           <Button Classes="secbtn" Margin="0,0,0,8"
@@ -306,14 +306,14 @@
             <StackPanel Orientation="Horizontal" Spacing="8">
               <Border Classes="exp3"
                       Classes.up="{Binding $parent[UserControl].DataContext.SolubilitySection.Open}">
-                <ctl:TecIcon Key="ui-chev-down" Tint="#555555" />
+                <ctl:TecIcon Key="ui-chev-down" Tint="#51555a" />
               </Border>
-              <TextBlock Text="溶解度 – 温度（g/100 mL 水）" FontSize="11.5" Foreground="#3d3d3d"
+              <TextBlock Text="溶解度 – 温度（g/100 mL 水）" FontSize="11.5" Foreground="#3a3d41"
                          VerticalAlignment="Center" />
             </StackPanel>
           </Button>
 
-          <Border Background="White" BorderBrush="#dcdcdc" BorderThickness="1" CornerRadius="3"
+          <Border Background="White" BorderBrush="#dadcd9" BorderThickness="1" CornerRadius="3"
                   IsVisible="{Binding $parent[UserControl].DataContext.SolubilitySection.Open}">
             <ctl:SolubilityView Coefficients="{Binding Solubility}" />
           </Border>

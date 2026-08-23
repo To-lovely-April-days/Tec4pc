@@ -190,14 +190,14 @@ public sealed class ChargeRowViewModel : ViewModelBase
         ? (d >= 0 ? "+" : "") + d.ToString("0.#", CultureInfo.InvariantCulture) + " %" : "";
     public bool HasDeviation => _line?.MassDeviation is not null;
     /// <summary>差得超过 2 % 标红：称量误差到这个量级就该被看见了。</summary>
-    public string DeviationColorHex => Math.Abs(_line?.MassDeviation ?? 0) > 2 ? "#c0392b" : "#7a7a7a";
+    public string DeviationColorHex => Math.Abs(_line?.MassDeviation ?? 0) > 2 ? "#d93025" : "#757a7f";
 
     /// <summary>缺什么 / 按什么假设算的。表格最后一列。</summary>
     public string Hint => string.Join("；", (_line?.Missing ?? new List<string>())
                                      .Concat(_line?.Assumptions ?? new List<string>()));
     public bool HasHint => Hint.Length > 0;
     /// <summary>缺东西是红的，只是「按 100 % 计」这种假设是灰的——两者严重程度不同。</summary>
-    public string HintColorHex => _line?.Missing.Count > 0 ? "#c0392b" : "#8a7a4a";
+    public string HintColorHex => _line?.Missing.Count > 0 ? "#d93025" : "#8a6100";
 
     /// <summary>右栏顶上那句：这一行的物性是从哪来的。</summary>
     public string RowNote
@@ -468,7 +468,7 @@ public sealed class ChargeViewModel : ViewModelBase
     public string TotalVolumeText => _result?.TotalVolume is { } v
         ? v.ToString("0.##", CultureInfo.InvariantCulture) + " mL" : "—";
 
-    public string VesselColorHex => _result?.OverVessel == true ? "#c0392b" : "#3d3d3d";
+    public string VesselColorHex => _result?.OverVessel == true ? "#d93025" : "#3a3d41";
 
     public string YieldText
     {
@@ -506,7 +506,7 @@ public sealed class ChargeViewModel : ViewModelBase
     public string Status { get; private set; } = "";
     public bool HasStatus => Status.Length > 0;
     public bool StatusBad { get; private set; }
-    public string StatusColorHex => StatusBad ? "#c0392b" : "#2f8f49";
+    public string StatusColorHex => StatusBad ? "#d93025" : "#0e7a3e";
 
     private void Say(string text, bool bad = false)
     {
@@ -1130,7 +1130,7 @@ public sealed class MatrixCellVm : ViewModelBase
         }
     }
 
-    public string BgHex => Locked ? "#f0f0f0" : Missing || Uneven ? "#fdf3e4" : "#ffffff";
+    public string BgHex => Locked ? "#eff0ee" : Missing || Uneven ? "#fdf3e4" : "#ffffff";
 
     private static string Num(double v)
     {

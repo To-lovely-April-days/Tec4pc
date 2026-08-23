@@ -18,7 +18,7 @@ public sealed class PasswordRuleRow
     public IBrush BoxFill => Ok ? Green : Brushes.Transparent;
     public IBrush BoxLine => Ok ? Green : Grey;
 
-    private static readonly IBrush Green = new SolidColorBrush(Color.Parse("#2f8f49"));
+    private static readonly IBrush Green = new SolidColorBrush(Color.Parse("#0e7a3e"));
     private static readonly IBrush Grey = new SolidColorBrush(Color.Parse("#cfcfcf"));
     private static readonly IBrush Ink = new SolidColorBrush(Color.Parse("#4a4a4a"));
     private static readonly IBrush Pale = new SolidColorBrush(Color.Parse("#a2a2a2"));

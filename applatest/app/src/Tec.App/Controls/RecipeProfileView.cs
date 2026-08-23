@@ -158,11 +158,11 @@ public sealed class RecipeProfileView : Control
         // 选中 / 悬停都是蓝的（跟全局那一套一致），靠深浅与两条边线分开：
         // 悬停只上一层很淡的底，选中除了底色还画左右两条实线
         var sep = new Pen(Brush("#f0f0f0"), 1);
-        var hovFill = Brush("#1a91d6", 0.08);
-        var selFill = Brush("#1a7fc4", 0.16);
-        var selEdge = new Pen(Brush("#1a7fc4"), 1);
+        var hovFill = Brush("#a41626", 0.08);
+        var selFill = Brush("#a41626", 0.16);
+        var selEdge = new Pen(Brush("#a41626"), 1);
         var num = Brush("#c2c2c2");
-        var numOn = Brush("#1a7fc4");
+        var numOn = Brush("#a41626");
 
         foreach (var g in prof.Segments)
         {

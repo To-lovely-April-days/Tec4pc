@@ -10,12 +10,12 @@ public static class Is
     public static readonly IValueConverter Bad = new FuncValueConverter<string?, bool>(s => s == "bad");
 
     public static readonly IValueConverter SelInk =
-        new FuncValueConverter<bool, Color>(on => Color.Parse(on ? "#0b3760" : "#9a9a9a"));
+        new FuncValueConverter<bool, Color>(on => Color.Parse(on ? "#7e0f1c" : "#9a9a9a"));
     public static readonly IValueConverter SelFg =
-        new FuncValueConverter<bool, IBrush>(on => new SolidColorBrush(Color.Parse(on ? "#0b3760" : "#2b2b2b")));
+        new FuncValueConverter<bool, IBrush>(on => new SolidColorBrush(Color.Parse(on ? "#7e0f1c" : "#2b2b2b")));
     /// <summary>格式卡片上那个线描图标：选中的用主蓝，其余灰（原型 .fmt.on .fi）。</summary>
     public static readonly IValueConverter FmtInk =
-        new FuncValueConverter<bool, Color>(on => Color.Parse(on ? "#1a7fc4" : "#8a8a8a"));
+        new FuncValueConverter<bool, Color>(on => Color.Parse(on ? "#a41626" : "#8a8a8a"));
 
     /// <summary>
     /// 那条 6px 选中色条：选中上主色，没选中透明。
@@ -23,7 +23,7 @@ public static class Is
     /// </summary>
     public static readonly IValueConverter SelBar =
         new FuncValueConverter<bool, IBrush>(on =>
-            on ? new SolidColorBrush(Color.Parse("#1a7fc4")) : Brushes.Transparent);
+            on ? new SolidColorBrush(Color.Parse("#a41626")) : Brushes.Transparent);
 
     public static readonly IValueConverter SelWeight =
         new FuncValueConverter<bool, FontWeight>(on => on ? FontWeight.SemiBold : FontWeight.Normal);

@@ -133,7 +133,7 @@ public sealed class GanttView : Control
             {
                 var color = row.DevClass switch
                 {
-                    "bad" => "#c0392b", "warn" => "#a8710a", _ => "#5a5a5a"
+                    "bad" => "#d93025", "warn" => "#8a6100", _ => "#5a5a5a"
                 };
                 var df = Ft(dev, 10, new SolidColorBrush(Color.Parse(color)), FontWeight.SemiBold);
                 rx -= df.Width;
@@ -177,7 +177,7 @@ public sealed class GanttView : Control
         }
 
         // 红线
-        var nowPen = new SolidColorBrush(Color.Parse("#e02020"));
+        var nowPen = new SolidColorBrush(Color.Parse("#d93025"));
         if (m.NowSec is { } now)
             ctx.DrawRectangle(nowPen, null, new Rect(X(now) - 1, ScaleH, 2, y - ScaleH));
         foreach (var (sec, rowIdx, count) in m.NowMarks)

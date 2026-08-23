@@ -74,9 +74,9 @@ public partial class ConfirmDialog : Window
     {
         var (fill, line, ink, glyph) = tone switch
         {
-            DialogTone.Ok => ("#e9f6ec", "#a6d8b3", "#2f8f49", "✓"),
-            DialogTone.Bad => ("#fbeae7", "#e0b4ad", "#c0392b", "✕"),
-            _ => ("#fdf3e2", "#e8c98d", "#b8860b", "!")
+            DialogTone.Ok => ("#eaf3ed", "#a6cdb4", "#0e7a3e", "✓"),
+            DialogTone.Bad => ("#fdecea", "#e2b6ad", "#d93025", "✕"),
+            _ => ("#fdf3e2", "#e8c98d", "#8a6100", "!")
         };
         Badge.Background = new SolidColorBrush(Color.Parse(fill));
         Badge.BorderBrush = new SolidColorBrush(Color.Parse(line));

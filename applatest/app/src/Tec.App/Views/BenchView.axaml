@@ -31,10 +31,10 @@
                     <ctl:DeviceArtView ArtKey="{Binding ArtKey}" Fit="True"
                                        Width="108" Height="88" HorizontalAlignment="Center" />
                     <TextBlock Text="{Binding Name}" FontSize="11"
-                               Foreground="#3d3d3d" Width="108"
+                               Foreground="#3a3d41" Width="108"
                                TextAlignment="Center" TextWrapping="Wrap" Margin="0,4,0,0" />
                     <TextBlock Text="{Binding Problem}" IsVisible="{Binding HasProblem}" Width="108"
-                               FontSize="9.5" Foreground="#b3261e" TextAlignment="Center" TextWrapping="Wrap" />
+                               FontSize="9.5" Foreground="#a81e15" TextAlignment="Center" TextWrapping="Wrap" />
                   </StackPanel>
                 </Border>
               </DataTemplate>
@@ -72,9 +72,9 @@
                     PointerPressed="OnDevicePressed">
               <StackPanel>
                 <ctl:DeviceArtView ArtKey="{Binding ArtKey}" ArtWidth="{Binding Width}" />
-                <TextBlock Text="{Binding Title}" FontSize="11" Foreground="#3b3b3b"
+                <TextBlock Text="{Binding Title}" FontSize="11" Foreground="#383b3f"
                            HorizontalAlignment="Center" Margin="0,2,0,0" />
-                <TextBlock Text="{Binding ChannelText}" FontSize="10" Foreground="#9a9a9a"
+                <TextBlock Text="{Binding ChannelText}" FontSize="10" Foreground="#959a9f"
                            HorizontalAlignment="Center" />
               </StackPanel>
             </Border>
@@ -120,15 +120,15 @@
         <Button Classes="tbtn sm" ToolTip.Tip="放大" Command="{Binding ZoomIn}"><ctl:TecIcon Key="ui-tool-zoomin" /></Button>
         <Button Classes="tbtn sm" ToolTip.Tip="缩小" Command="{Binding ZoomOut}"><ctl:TecIcon Key="ui-tool-zoomout" /></Button>
         <Button Classes="tbtn sm" ToolTip.Tip="适应窗口" Command="{Binding FitAll}"><ctl:TecIcon Key="ui-tool-fit" /></Button>
-        <TextBlock Text="{Binding ZoomText}" FontSize="11" Foreground="#9a9a9a"
+        <TextBlock Text="{Binding ZoomText}" FontSize="11" Foreground="#959a9f"
                    VerticalAlignment="Center" Margin="4,0,0,0" />
       </StackPanel>
 
       <TextBlock Text="从左侧设备库把设备拖到这里" IsVisible="{Binding IsEmpty}"
-                 FontSize="14" Foreground="#b6b0c4" HorizontalAlignment="Center"
+                 FontSize="14" Foreground="#c4b0b4" HorizontalAlignment="Center"
                  VerticalAlignment="Center" IsHitTestVisible="False" />
 
-      <TextBlock Text="{Binding BenchSummary}" FontSize="11" Foreground="#9a9a9a"
+      <TextBlock Text="{Binding BenchSummary}" FontSize="11" Foreground="#959a9f"
                  HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="14" />
     </Panel>
 
@@ -150,10 +150,10 @@
                 BorderBrush="{StaticResource SelBd}" BorderThickness="6,0,0,0">
           <StackPanel>
             <TextBlock Text="{Binding SaveHint}" IsVisible="{Binding HasSaveHint}"
-                       FontSize="10.5" Foreground="#7a7580" LineHeight="16" TextWrapping="Wrap"
+                       FontSize="10.5" Foreground="#55595e" LineHeight="16" TextWrapping="Wrap"
                        TextAlignment="Center" Margin="0,0,0,8" />
             <TextBlock Text="{Binding ProbeResult}" IsVisible="{Binding HasProbeResult}"
-                       FontSize="10.5" Foreground="#7a7580" LineHeight="16" TextWrapping="Wrap"
+                       FontSize="10.5" Foreground="#55595e" LineHeight="16" TextWrapping="Wrap"
                        TextAlignment="Center" Margin="0,0,0,8" />
             <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center"
                         Margin="0,0,0,10" IsVisible="{Binding HasSelection}">
@@ -183,7 +183,7 @@
             <!-- 原型 .props h2：24px / 300 / #333，细体。正文加粗、标题细，
                  层次才拉得开；标题跟着一起加粗的话满栏一样重，反而没有重点 -->
             <TextBlock Text="台面属性"
-                       FontSize="24" FontWeight="Light" Foreground="#333333"
+                       FontSize="24" FontWeight="Light" Foreground="#303337"
                        HorizontalAlignment="Center" Margin="0,0,0,8" />
 
             <StackPanel>
@@ -194,41 +194,41 @@
                    输入框一直伸到最右，比下面那排设备参数宽出 40px，
                    一列输入框长短不一，看着像没对齐——因为确实没对齐 -->
               <Grid ColumnDefinitions="96,*,40" Margin="0,0,0,8">
-                <TextBlock Grid.Column="0" Text="台面名称" FontSize="12" Foreground="#3d3d3d"
+                <TextBlock Grid.Column="0" Text="台面名称" FontSize="12" Foreground="#3a3d41"
                            VerticalAlignment="Center" Margin="0,0,10,0" />
                 <TextBox Grid.Column="1" Classes="finput" Text="{Binding BenchName, Mode=TwoWay}" />
               </Grid>
               <Grid ColumnDefinitions="96,*,40" Margin="0,0,0,10">
-                <TextBlock Grid.Column="0" Text="设备数" FontSize="12" Foreground="#3d3d3d"
+                <TextBlock Grid.Column="0" Text="设备数" FontSize="12" Foreground="#3a3d41"
                            VerticalAlignment="Center" Margin="0,0,10,0" />
                 <TextBox Grid.Column="1" Classes="finput" Text="{Binding DeviceCountText}" IsEnabled="False" />
               </Grid>
             </StackPanel>
 
-            <Border Height="1" Background="#d5d5d5" Margin="0,10,0,14" />
+            <Border Height="1" Background="#d3d5d2" Margin="0,10,0,14" />
             <Button Classes="acc" Command="{Binding ToggleChTable}" Margin="0,6">
               <StackPanel Orientation="Horizontal" Spacing="8">
                 <Border Classes="exp3" Classes.up="{Binding ChTableOpen}">
-                  <ctl:TecIcon Key="ui-chev-down" Tint="#555555" />
+                  <ctl:TecIcon Key="ui-chev-down" Tint="#51555a" />
                 </Border>
-                <TextBlock Text="通道总表（勾选 = 启用）" FontSize="12" Foreground="#3d3d3d"
+                <TextBlock Text="通道总表（勾选 = 启用）" FontSize="12" Foreground="#3a3d41"
                            VerticalAlignment="Center" />
               </StackPanel>
             </Button>
 
             <!-- .chtable：色块 + CHn + 来源 + 探头标签 + 启停勾选 -->
-            <Border Background="White" BorderBrush="#dcdcdc" BorderThickness="1" CornerRadius="3"
+            <Border Background="White" BorderBrush="#dadcd9" BorderThickness="1" CornerRadius="3"
                     IsVisible="{Binding ChTableOpen}">
               <ItemsControl ItemsSource="{Binding ChannelRows}">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
-                    <Border BorderBrush="#eeeeee" BorderThickness="0,0,0,1" Padding="10,0" MinHeight="32">
+                    <Border BorderBrush="#edeeeb" BorderThickness="0,0,0,1" Padding="10,0" MinHeight="32">
                       <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto">
                         <Border Grid.Column="0" Width="12" Height="12" CornerRadius="3"
                                 Background="{Binding ColorHex}" VerticalAlignment="Center" />
                         <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="12" FontWeight="SemiBold"
-                                   Foreground="#2b2b2b" Margin="8,0,0,0" VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="2" Text="{Binding Host}" FontSize="11" Foreground="#8d8d8d"
+                                   Foreground="#292b2e" Margin="8,0,0,0" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="2" Text="{Binding Host}" FontSize="11" Foreground="#888d92"
                                    Margin="8,0,0,0" VerticalAlignment="Center" />
                         <ItemsControl Grid.Column="3" ItemsSource="{Binding Probes}" VerticalAlignment="Center">
                           <ItemsControl.ItemsPanel>
@@ -236,9 +236,9 @@
                           </ItemsControl.ItemsPanel>
                           <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                              <Border Background="#fafafa" BorderBrush="#c8c8c8" BorderThickness="1"
+                              <Border Background="#fafafa" BorderBrush="#c5c8c7" BorderThickness="1"
                                       CornerRadius="8" Padding="6,1">
-                                <TextBlock Text="{Binding}" FontSize="9" Foreground="#7a7a7a" />
+                                <TextBlock Text="{Binding}" FontSize="9" Foreground="#757a7f" />
                               </Border>
                             </DataTemplate>
                           </ItemsControl.ItemTemplate>
@@ -252,7 +252,7 @@
               </ItemsControl>
             </Border>
 
-            <TextBlock FontSize="11.5" Foreground="#5a5a5a" LineHeight="18" TextWrapping="Wrap"
+            <TextBlock FontSize="11.5" Foreground="#565a5f" LineHeight="18" TextWrapping="Wrap"
                        Margin="0,6,0,0"
                        IsVisible="{Binding ChTableOpen}"
                        Text="两台反应器可组成 4 通道高通量系统，也可拆分为两套独立系统分别运行；停用的通道不参与配方与运行。" />
@@ -282,10 +282,10 @@
               <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center"
                           Margin="0,0,0,12" IsVisible="{Binding !Renaming}">
                 <TextBlock Text="{Binding SelectedTitle}"
-                           FontSize="21" FontWeight="Light" Foreground="#333333"
+                           FontSize="21" FontWeight="Light" Foreground="#303337"
                            VerticalAlignment="Center" />
                 <Button Classes="hbtn" ToolTip.Tip="重命名" Command="{Binding ToggleRename}">
-                  <ctl:TecIcon Key="ui-pencil" Tint="#1f1f1f" />
+                  <ctl:TecIcon Key="ui-pencil" Tint="#1d1f22" />
                 </Button>
               </StackPanel>
 
@@ -297,7 +297,7 @@
                          Text="{Binding DeviceName, Mode=TwoWay}" />
                 <Button Grid.Column="2" Classes="hbtn" ToolTip.Tip="改完" Margin="7,0,0,0"
                         Command="{Binding ToggleRename}">
-                  <ctl:TecIcon Key="ui-pencil" Tint="#1f1f1f" />
+                  <ctl:TecIcon Key="ui-pencil" Tint="#1d1f22" />
                 </Button>
               </Grid>
 
@@ -307,23 +307,23 @@
 
               <!-- 探头要绑通道；反应器自带通道，没有这一行 -->
               <Grid ColumnDefinitions="96,*,40" Margin="0,0,0,8" IsVisible="{Binding IsProbe}">
-                <TextBlock Grid.Column="0" Text="绑定通道" FontSize="12" Foreground="#3d3d3d"
+                <TextBlock Grid.Column="0" Text="绑定通道" FontSize="12" Foreground="#3a3d41"
                            VerticalAlignment="Center" Margin="0,0,10,0" />
                 <ComboBox Grid.Column="1" Classes="sel" Height="23" HorizontalAlignment="Stretch"
                           ItemsSource="{Binding BindTargets}"
                           SelectedItem="{Binding BindTarget, Mode=TwoWay}" />
               </Grid>
 
-              <Border Height="1" Background="#d5d5d5" Margin="0,10,0,14" />
+              <Border Height="1" Background="#d3d5d2" Margin="0,10,0,14" />
 
               <!-- 反应器：孔位 → 通道，可独立启停 -->
               <StackPanel IsVisible="{Binding IsReactor}">
                 <Button Classes="acc" Command="{Binding ToggleWells}" Margin="0,0,0,8">
                   <StackPanel Orientation="Horizontal" Spacing="8">
                     <Border Classes="exp3" Classes.up="{Binding WellsOpen}">
-                      <ctl:TecIcon Key="ui-chev-down" Tint="#555555" />
+                      <ctl:TecIcon Key="ui-chev-down" Tint="#51555a" />
                     </Border>
-                    <TextBlock Text="通道启用（独立启停）" FontSize="12" Foreground="#3d3d3d"
+                    <TextBlock Text="通道启用（独立启停）" FontSize="12" Foreground="#3a3d41"
                                VerticalAlignment="Center" />
                   </StackPanel>
                 </Button>
@@ -335,7 +335,7 @@
                                   VerticalAlignment="Center" />
                         <Border Width="12" Height="12" CornerRadius="3" Background="{Binding ColorHex}"
                                 VerticalAlignment="Center" />
-                        <TextBlock Text="{Binding Host}" FontSize="12" Foreground="#3d3d3d"
+                        <TextBlock Text="{Binding Host}" FontSize="12" Foreground="#3a3d41"
                                    VerticalAlignment="Center" />
                       </StackPanel>
                     </DataTemplate>
@@ -393,19 +393,19 @@
       <Setter Property="Height" Value="26" />
       <Setter Property="Padding" Value="16,0" />
       <Setter Property="MinWidth" Value="0" />
-      <Setter Property="Background" Value="#f7f7f7" />
-      <Setter Property="BorderBrush" Value="#8b8b8b" />
+      <Setter Property="Background" Value="#f7f7f6" />
+      <Setter Property="BorderBrush" Value="#868b90" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="CornerRadius" Value="3" />
       <Setter Property="FontSize" Value="12" />
-      <Setter Property="Foreground" Value="#333333" />
+      <Setter Property="Foreground" Value="#303337" />
       <Setter Property="HorizontalContentAlignment" Value="Center" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
     <Style Selector="Button.pill:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#e3f0f9" />
-      <Setter Property="BorderBrush" Value="#1a91d6" />
+      <Setter Property="Background" Value="#f4e4e6" />
+      <Setter Property="BorderBrush" Value="#a41626" />
     </Style>
     <Style Selector="Border.dev">
       <Setter Property="Padding" Value="6,6,6,4" />
@@ -417,8 +417,8 @@
     </Style>
     <!-- 台面上选中的设备描一圈蓝框 -->
     <Style Selector="Border.dev.sel">
-      <Setter Property="BorderBrush" Value="#1a7fc4" />
-      <Setter Property="Background" Value="#0d1a7fc4" />
+      <Setter Property="BorderBrush" Value="#a41626" />
+      <Setter Property="Background" Value="#0da41626" />
     </Style>
 
     <!-- GBG 的 hbtn：26px 圆钮，浅蓝底深描边 -->
@@ -428,15 +428,15 @@
       <Setter Property="MinWidth" Value="0" />
       <Setter Property="Padding" Value="0" />
       <Setter Property="CornerRadius" Value="13" />
-      <Setter Property="Background" Value="#c5d2df" />
-      <Setter Property="BorderBrush" Value="#3a3a3a" />
+      <Setter Property="Background" Value="#e0c3c6" />
+      <Setter Property="BorderBrush" Value="#373a3e" />
       <Setter Property="BorderThickness" Value="1.6" />
       <Setter Property="HorizontalContentAlignment" Value="Center" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
     <Style Selector="Button.hbtn:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#d9e4ef" />
+      <Setter Property="Background" Value="#eedde0" />
     </Style>
     <!-- 通道总表里的勾选框。Avalonia 的缺省 CheckBox 连边距一共占 32px 高，
          一行就被它撑到 47px；原型那张表一行 32px，四条通道一屏放得下。
@@ -463,7 +463,7 @@
     <!-- .frow.chk2：14px 方框 + 11.5px 文字 -->
     <Style Selector="CheckBox.chk2">
       <Setter Property="FontSize" Value="12" />
-      <Setter Property="Foreground" Value="#3d3d3d" />
+      <Setter Property="Foreground" Value="#3a3d41" />
       <Setter Property="MinHeight" Value="0" />
       <Setter Property="Margin" Value="0,0,0,6" />
     </Style>
@@ -490,7 +490,7 @@
       <Setter Property="Width" Value="20" />
       <Setter Property="Height" Value="20" />
       <Setter Property="CornerRadius" Value="10" />
-      <Setter Property="BorderBrush" Value="#6b6b6b" />
+      <Setter Property="BorderBrush" Value="#676b70" />
       <Setter Property="BorderThickness" Value="1.5" />
       <Setter Property="HorizontalAlignment" Value="Center" />
       <Setter Property="VerticalAlignment" Value="Center" />

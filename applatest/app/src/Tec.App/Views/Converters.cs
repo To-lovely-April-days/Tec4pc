@@ -9,14 +9,14 @@ public static class Converters
 
     /// <summary>通道状态小灯（原型 .chstate .led / .led.on）。</summary>
     public static readonly IValueConverter LedBrush =
-        new FuncValueConverter<bool, IBrush>(on => B(on ? "#3fbf5f" : "#c8c8c8"));
+        new FuncValueConverter<bool, IBrush>(on => B(on ? "#2fa35f" : "#c8c8c8"));
 
     // ── 开始视图卡片标签（原型 .rtag / .rtag.live / .rtag.draft）──
 
     public static readonly IValueConverter TagBg =
         new FuncValueConverter<string?, IBrush>(c => c switch
         {
-            "live" => B("#2f8f49"),
+            "live" => B("#0e7a3e"),
             "draft" => B("#e6ffffff"),
             _ => B("#f0ffffff")
         });
@@ -24,7 +24,7 @@ public static class Converters
     public static readonly IValueConverter TagBorder =
         new FuncValueConverter<string?, IBrush>(c => c switch
         {
-            "live" => B("#2f8f49"),
+            "live" => B("#0e7a3e"),
             _ => B("#dcdcdc")
         });
 
@@ -38,11 +38,11 @@ public static class Converters
 
     /// <summary>图钉：钉住转绿（原型 .rpin.pinned）。</summary>
     public static readonly IValueConverter PinTint =
-        new FuncValueConverter<bool, Color>(p => Color.Parse(p ? "#2f8f49" : "#8d8d8d"));
+        new FuncValueConverter<bool, Color>(p => Color.Parse(p ? "#0e7a3e" : "#8d8d8d"));
 
     /// <summary>选中的卡片标题转深蓝加粗（原型 .rcard.on .rname）。</summary>
     public static readonly IValueConverter NameFg =
-        new FuncValueConverter<bool, IBrush>(on => B(on ? "#0b3760" : "#2b2b2b"));
+        new FuncValueConverter<bool, IBrush>(on => B(on ? "#7e0f1c" : "#2b2b2b"));
 
     public static readonly IValueConverter NameWeight =
         new FuncValueConverter<bool, FontWeight>(on => on ? FontWeight.SemiBold : FontWeight.Normal);

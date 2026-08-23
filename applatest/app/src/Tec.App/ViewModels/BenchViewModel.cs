@@ -574,7 +574,7 @@ public sealed class BenchViewModel : ViewModelBase
                     Opacity = legal && !busy ? (target ? 1 : 0.45) : 0.14,
                     Size = hot ? 17 : legal && !busy ? 12 : 8.4,
                     ColorHex = busy && !hot ? "#c2c7cb"
-                             : a.Kind == PortKind.Top ? "#2f6fb5"
+                             : a.Kind == PortKind.Top ? "#a41626"
                              : a.Kind == PortKind.Side ? "#c53a9d" : "#9aa0a5"
                 });
             }
@@ -834,7 +834,7 @@ public sealed class PortDot
     public double Size { get; init; } = 12;
     public double Opacity { get; init; } = 1;
     public bool Hot { get; init; }
-    public string ColorHex { get; init; } = "#2f6fb5";
+    public string ColorHex { get; init; } = "#a41626";
     public string Label { get; init; } = "";
     public double Left => X - Size / 2;
     public double Top => Y - Size / 2;

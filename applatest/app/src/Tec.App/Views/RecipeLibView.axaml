@@ -21,7 +21,7 @@
          平时透明——写成边框的话选中时内容会横跳 6px -->
     <Style Selector="Border.rxitem">
       <Setter Property="Background" Value="White" />
-      <Setter Property="BorderBrush" Value="#e6e6e6" />
+      <Setter Property="BorderBrush" Value="#e4e6e3" />
       <Setter Property="BorderThickness" Value="1" />
       <!-- 左边不倒角：那 6px 色条是方的，卡片跟着方，色条才贴得平 -->
       <Setter Property="CornerRadius" Value="0,3,3,0" />
@@ -30,7 +30,7 @@
     </Style>
     <Style Selector="Border.rxitem:pointerover">
       <Setter Property="Background" Value="{StaticResource HovBg}" />
-      <Setter Property="BorderBrush" Value="#bfe0f4" />
+      <Setter Property="BorderBrush" Value="#eccdd0" />
     </Style>
     <Style Selector="Border.rxitem.sel">
       <Setter Property="Background" Value="{StaticResource SelBg}" />
@@ -38,7 +38,7 @@
     </Style>
     <Style Selector="Border.rxitem TextBlock.rn">
       <Setter Property="FontSize" Value="12.5" />
-      <Setter Property="Foreground" Value="#2b2b2b" />
+      <Setter Property="Foreground" Value="#292b2e" />
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
     <Style Selector="Border.rxitem.sel TextBlock.rn">
@@ -54,12 +54,12 @@
       <Setter Property="MinHeight" Value="0" />
       <Setter Property="FontSize" Value="20" />
       <Setter Property="FontWeight" Value="Light" />
-      <Setter Property="Foreground" Value="#8d8d8d" />
+      <Setter Property="Foreground" Value="#888d92" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
     <Style Selector="Button.rxtab:pointerover /template/ ContentPresenter">
       <Setter Property="Background" Value="Transparent" />
-      <Setter Property="TextBlock.Foreground" Value="#0a84c8" />
+      <Setter Property="TextBlock.Foreground" Value="#1f2124" />
     </Style>
     <Style Selector="Button.rxtab.on">
       <Setter Property="Foreground" Value="{StaticResource SelBd}" />
@@ -68,7 +68,7 @@
     <!-- 表头一格 / 表身一行（原型 .rx-th / .rx-tr） -->
     <Style Selector="TextBlock.th">
       <Setter Property="FontSize" Value="11" />
-      <Setter Property="Foreground" Value="#3a3a3a" />
+      <Setter Property="Foreground" Value="#373a3e" />
       <Setter Property="VerticalAlignment" Value="Center" />
       <Setter Property="Margin" Value="8,0" />
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
@@ -76,7 +76,7 @@
     <Style Selector="Border.trow">
       <!-- 透明也能收指针，写白只是省一层：表本来就铺在白上 -->
       <Setter Property="Background" Value="White" />
-      <Setter Property="BorderBrush" Value="#ececec" />
+      <Setter Property="BorderBrush" Value="#ebece9" />
       <Setter Property="BorderThickness" Value="0,0,0,1" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
@@ -88,7 +88,7 @@
     </Style>
     <Style Selector="Border.trow TextBlock">
       <Setter Property="FontSize" Value="11.5" />
-      <Setter Property="Foreground" Value="#2b2b2b" />
+      <Setter Property="Foreground" Value="#292b2e" />
       <Setter Property="VerticalAlignment" Value="Center" />
       <Setter Property="Margin" Value="8,0" />
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
@@ -98,12 +98,12 @@
          选中色跟温度剖面上那条色带同一个蓝：点了色带哪一张卡亮起来，一眼对得上 -->
     <Style Selector="Border.card">
       <Setter Property="Background" Value="White" />
-      <Setter Property="BorderBrush" Value="#ececec" />
+      <Setter Property="BorderBrush" Value="#ebece9" />
       <Setter Property="BorderThickness" Value="0,0,0,1" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
     <Style Selector="Border.card:pointerover">
-      <Setter Property="Background" Value="#eaf6fd" />
+      <Setter Property="Background" Value="#f0f0ee" />
     </Style>
     <Style Selector="Border.card.sel">
       <Setter Property="Background" Value="{StaticResource SelBg}" />
@@ -111,8 +111,8 @@
 
     <!-- 参数小标签（原型 .rx-chip） -->
     <Style Selector="Border.chip">
-      <Setter Property="Background" Value="#f4f4f4" />
-      <Setter Property="BorderBrush" Value="#e6e6e6" />
+      <Setter Property="Background" Value="#f4f4f3" />
+      <Setter Property="BorderBrush" Value="#e4e6e3" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="CornerRadius" Value="2" />
       <Setter Property="Padding" Value="6,2" />
@@ -123,7 +123,7 @@
       <Setter Property="Width" Value="20" />
       <Setter Property="Height" Value="20" />
       <Setter Property="CornerRadius" Value="10" />
-      <Setter Property="BorderBrush" Value="#6b6b6b" />
+      <Setter Property="BorderBrush" Value="#676b70" />
       <Setter Property="BorderThickness" Value="1.5" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
@@ -140,21 +140,21 @@
     <!-- ClipToBounds：这一栏宽度写死 280，Grid 不裁，里面的东西真比它宽的话
          会溢到中列上去 -->
     <Border Grid.Column="0" ClipToBounds="True"
-            Background="#fafafa" BorderBrush="#dcdcdc" BorderThickness="0,0,1,0">
+            Background="#fafafa" BorderBrush="#dadcd9" BorderThickness="0,0,1,0">
       <DockPanel>
         <!-- 抬头 + 搜索（原型 .rx-lhead） -->
-        <Border DockPanel.Dock="Top" Background="White" BorderBrush="#e3e3e3"
+        <Border DockPanel.Dock="Top" Background="White" BorderBrush="#e1e3e0"
                 BorderThickness="0,0,0,1" Padding="12,11,12,10">
           <StackPanel>
             <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,9">
               <TextBlock Grid.Column="0" Text="配方库" FontSize="19" FontWeight="Light"
-                         Foreground="#3b3b3b" />
+                         Foreground="#383b3f" />
               <TextBlock Grid.Column="1" Text="{Binding LibCountText}" FontSize="10.5"
-                         Foreground="#a2a2a2" VerticalAlignment="Bottom" Margin="0,0,0,3" />
+                         Foreground="#9ea2a6" VerticalAlignment="Bottom" Margin="0,0,0,3" />
             </Grid>
             <Panel>
               <TextBox Classes="srch" Watermark="搜配方名" Text="{Binding Query, Mode=TwoWay}" />
-              <ctl:TecIcon Key="ui-search" Tint="#9a9a9a" Size="13" Margin="8,0,0,0"
+              <ctl:TecIcon Key="ui-search" Tint="#959a9f" Size="13" Margin="8,0,0,0"
                            HorizontalAlignment="Left" VerticalAlignment="Center"
                            IsHitTestVisible="False" />
             </Panel>
@@ -163,7 +163,7 @@
 
         <!-- 库级动作（原型 .rx-ltools）：新增与导入。这两件事跟「库」有关，
              跟当前打开的是哪条无关，所以摆在库这一栏 -->
-        <Border DockPanel.Dock="Top" Background="White" BorderBrush="#dcdcdc"
+        <Border DockPanel.Dock="Top" Background="White" BorderBrush="#dadcd9"
                 BorderThickness="0,0,0,1" Padding="12,8">
           <StackPanel Orientation="Horizontal" Spacing="8">
             <Button Classes="tbtn sm" ToolTip.Tip="把配方页当前通道的配方收进库"
@@ -181,8 +181,8 @@
         <ScrollViewer Padding="8,8,8,0">
           <StackPanel Margin="0,0,0,40">
             <StackPanel IsVisible="{Binding IsEmpty}" Margin="4,8" Spacing="7">
-              <TextBlock Text="没有配方" FontSize="13" Foreground="#6f6f6f" />
-              <TextBlock FontSize="11.5" Foreground="#9a9a9a" LineHeight="19" TextWrapping="Wrap"
+              <TextBlock Text="没有配方" FontSize="13" Foreground="#6b6f74" />
+              <TextBlock FontSize="11.5" Foreground="#959a9f" LineHeight="19" TextWrapping="Wrap"
                          Text="在配方页把一条配方调好，用上面第一个按钮收进来；或者从 .tecrecipe 文件导入。搜索没结果时清空搜索框即可。" />
             </StackPanel>
             <ItemsControl ItemsSource="{Binding Rows}">
@@ -196,7 +196,7 @@
                               Background="{Binding IsSelected, Converter={x:Static ctl:Is.SelBar}}" />
                       <StackPanel Grid.Column="1" Margin="9,7,9,8">
                         <TextBlock Text="{Binding Name}" Classes="rn" />
-                        <TextBlock Text="{Binding Meta}" FontSize="10.5" Foreground="#9a9a9a"
+                        <TextBlock Text="{Binding Meta}" FontSize="10.5" Foreground="#959a9f"
                                    Margin="0,4,0,0" TextTrimming="CharacterEllipsis" />
                       </StackPanel>
                     </Grid>
@@ -215,13 +215,13 @@
 
       <!-- 抬头（原型 .rx-head）：名字 26px 细体，下面一行元信息 -->
       <StackPanel DockPanel.Dock="Top" Margin="20,12,20,0" IsVisible="{Binding HasSelection}">
-        <TextBlock Text="{Binding Name}" FontSize="26" FontWeight="Light" Foreground="#3b3b3b" />
+        <TextBlock Text="{Binding Name}" FontSize="26" FontWeight="Light" Foreground="#383b3f" />
         <!-- 描述：库里真有这一项，以前只能在右栏编、页面上从不显示。写了就露出来，
              没写就不占位置（原型这一行是文件路径，我们的配方不是文件） -->
-        <TextBlock Text="{Binding Desc}" FontSize="11" Foreground="#a2a2a2"
+        <TextBlock Text="{Binding Desc}" FontSize="11" Foreground="#9ea2a6"
                    Margin="0,5,0,0" TextTrimming="CharacterEllipsis"
                    IsVisible="{Binding HasDesc}" />
-        <TextBlock Text="{Binding HeaderMeta}" FontSize="11" Foreground="#7a7a7a"
+        <TextBlock Text="{Binding HeaderMeta}" FontSize="11" Foreground="#757a7f"
                    Margin="0,6,0,0" TextTrimming="CharacterEllipsis" />
       </StackPanel>
 
@@ -237,11 +237,11 @@
       <!-- 工具条（原型 .rx-tool）：这一条上的动作都是对「当前打开的这条配方」的。
            原型那排是解锁改步骤，我们这一页不改步骤（改在配方页），
            所以放的是这一页真正的主动作——应用到通道 -->
-      <Border DockPanel.Dock="Top" Height="42" Background="#f4f4f4"
-              BorderBrush="#e3e3e3" BorderThickness="0,1,0,1" IsVisible="{Binding HasSelection}">
+      <Border DockPanel.Dock="Top" Height="42" Background="#f4f4f3"
+              BorderBrush="#e1e3e0" BorderThickness="0,1,0,1" IsVisible="{Binding HasSelection}">
         <StackPanel Orientation="Horizontal" Spacing="8" Margin="20,0,16,0"
                     VerticalAlignment="Center">
-          <TextBlock Text="应用到" FontSize="12" Foreground="#444444" VerticalAlignment="Center" />
+          <TextBlock Text="应用到" FontSize="12" Foreground="#414448" VerticalAlignment="Center" />
           <ComboBox Classes="sel" Width="180" ItemsSource="{Binding ApplyTargets}"
                     SelectedItem="{Binding ApplyTarget, Mode=TwoWay}" />
           <Button Classes="btn" Content="应用" Command="{Binding ApplyToChannel}"
@@ -250,7 +250,7 @@
           <Button Classes="btn" Content="应用到全部通道" Command="{Binding ApplyToAll}"
                   IsEnabled="{Binding HasTargets}"
                   ToolTip.Tip="替换全部启用通道的步骤。每个通道各落一份独立副本" />
-          <TextBlock Text="应用会替换目标通道当前的全部步骤" FontSize="11" Foreground="#9a9a9a"
+          <TextBlock Text="应用会替换目标通道当前的全部步骤" FontSize="11" Foreground="#959a9f"
                      VerticalAlignment="Center" Margin="4,0,0,0" />
         </StackPanel>
       </Border>
@@ -258,16 +258,16 @@
       <!-- ── 温度剖面（原型 .rx-prof）：按时长比例的一条带子，点色带选中步骤。
            画的是**计划**——每段的起止来自排期，两端温度来自估算器一路推进的釜温。
            全程没有一步动过温度就整条不出现（一条笔直的水平线什么也没说） ── -->
-      <Border DockPanel.Dock="Top" Background="#fafafa" BorderBrush="#dcdcdc"
+      <Border DockPanel.Dock="Top" Background="#fafafa" BorderBrush="#dadcd9"
               BorderThickness="0,0,0,1" Padding="20,10,20,11"
               IsVisible="{Binding HasProfile}">
         <StackPanel>
           <StackPanel Orientation="Horizontal" Spacing="9" Margin="0,0,0,8">
             <Path Data="M 1.5,12.5 L 5,8 L 8,10.4 L 14.5,3" Stroke="#f7941e" StrokeThickness="1.6"
                   VerticalAlignment="Center" />
-            <TextBlock Text="温度剖面" FontSize="11" Foreground="#3d3d3d"
+            <TextBlock Text="温度剖面" FontSize="11" Foreground="#3a3d41"
                        VerticalAlignment="Center" />
-            <TextBlock Text="{Binding ProfileNote}" FontSize="10.5" Foreground="#9a9a9a"
+            <TextBlock Text="{Binding ProfileNote}" FontSize="10.5" Foreground="#959a9f"
                        VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
           </StackPanel>
           <ctl:RecipeProfileView Name="Profile" Profile="{Binding Profile}"
@@ -275,7 +275,7 @@
         </StackPanel>
       </Border>
 
-      <Border DockPanel.Dock="Top" Background="#fafafa" BorderBrush="#d5d5d5"
+      <Border DockPanel.Dock="Top" Background="#fafafa" BorderBrush="#d3d5d2"
               BorderThickness="0,0,0,1" Height="28"
               IsVisible="{Binding IsMatTab}">
         <Grid ColumnDefinitions="6,1.4*,110,80,120,90">
@@ -291,8 +291,8 @@
         <!-- 空库 -->
         <StackPanel IsVisible="{Binding IsEmpty}" Margin="30,26" Spacing="7"
                     HorizontalAlignment="Left" VerticalAlignment="Top">
-          <TextBlock Text="还没有配方可看" FontSize="15" Foreground="#6f6f6f" />
-          <TextBlock FontSize="12" Foreground="#9a9a9a" LineHeight="19" MaxWidth="480"
+          <TextBlock Text="还没有配方可看" FontSize="15" Foreground="#6b6f74" />
+          <TextBlock FontSize="12" Foreground="#959a9f" LineHeight="19" MaxWidth="480"
                      TextWrapping="Wrap"
                      Text="库里存进第一条配方之后，这里会把它的步骤按工艺阶段摊开，方便应用前先看一眼。" />
         </StackPanel>
@@ -306,16 +306,16 @@
               <DataTemplate>
                 <Grid ColumnDefinitions="106,*">
                   <!-- 阶段槽：阶段号 / 阶段名 / 这一段的合计时长（贴底） -->
-                  <Border Grid.Column="0" Background="#fafafa" BorderBrush="#e6e6e6"
+                  <Border Grid.Column="0" Background="#fafafa" BorderBrush="#e4e6e3"
                           BorderThickness="0,0,1,0" Padding="20,11,12,10">
                     <DockPanel>
                       <TextBlock DockPanel.Dock="Bottom" Text="{Binding DurationText}"
-                                 FontSize="10" Foreground="#a2a2a2" Margin="0,8,0,0" />
+                                 FontSize="10" Foreground="#9ea2a6" Margin="0,8,0,0" />
                       <StackPanel Spacing="3">
                         <TextBlock Text="{Binding OrdinalText}" FontSize="10"
                                    Foreground="{StaticResource SelBd}"
                                    IsVisible="{Binding HasName}" />
-                        <TextBlock Text="{Binding NameText}" FontSize="10.5" Foreground="#6f6f6f"
+                        <TextBlock Text="{Binding NameText}" FontSize="10.5" Foreground="#6b6f74"
                                    LineHeight="14" TextWrapping="Wrap" />
                       </StackPanel>
                     </DockPanel>
@@ -333,18 +333,18 @@
                               <!-- 第一行：序号 · 模块色条 · 类型 · 整句描述 · 耗时 -->
                               <Grid ColumnDefinitions="15,9,4,9,60,9,*,10,Auto">
                                 <TextBlock Grid.Column="0" Text="{Binding Seq}" FontSize="10.5"
-                                           Foreground="#9a9a9a" TextAlignment="Right"
+                                           Foreground="#959a9f" TextAlignment="Right"
                                            VerticalAlignment="Center" />
                                 <Border Grid.Column="2" Height="16" CornerRadius="1"
                                         Background="{Binding ModuleColor}" VerticalAlignment="Center" />
                                 <TextBlock Grid.Column="4" Text="{Binding Name}" FontSize="11"
-                                           Foreground="#5a5a5a" VerticalAlignment="Center"
+                                           Foreground="#565a5f" VerticalAlignment="Center"
                                            TextTrimming="CharacterEllipsis" />
                                 <TextBlock Grid.Column="6" Text="{Binding Desc}" FontSize="12.5"
-                                           Foreground="#2b2b2b" VerticalAlignment="Center"
+                                           Foreground="#292b2e" VerticalAlignment="Center"
                                            TextTrimming="CharacterEllipsis" />
                                 <TextBlock Grid.Column="8" Text="{Binding PlanDuration}" FontSize="11.5"
-                                           Foreground="#3d3d3d" VerticalAlignment="Center" />
+                                           Foreground="#3a3d41" VerticalAlignment="Center" />
                               </Grid>
                               <!-- 第二行：参数一串 + 右端结束条件。缩进到跟描述对齐 -->
                               <Grid ColumnDefinitions="*,12,Auto" Margin="28,6,0,0">
@@ -359,18 +359,18 @@
                                     <DataTemplate>
                                       <StackPanel Orientation="Horizontal" Spacing="5">
                                         <TextBlock Text="{Binding Lead}" FontSize="11"
-                                                   Foreground="#d5d5d5" VerticalAlignment="Center" />
+                                                   Foreground="#d3d5d2" VerticalAlignment="Center" />
                                         <TextBlock Text="{Binding Label}" FontSize="11"
-                                                   Foreground="#9a9a9a" VerticalAlignment="Center" />
+                                                   Foreground="#959a9f" VerticalAlignment="Center" />
                                         <TextBlock Text="{Binding Value}" FontSize="11"
-                                                   Foreground="#3d3d3d" VerticalAlignment="Center" />
+                                                   Foreground="#3a3d41" VerticalAlignment="Center" />
                                       </StackPanel>
                                     </DataTemplate>
                                   </ItemsControl.ItemTemplate>
                                 </ItemsControl>
                                 <TextBlock Grid.Column="0" Text="无参数" FontSize="11"
-                                           Foreground="#c2c2c2" IsVisible="{Binding !HasChips}" />
-                                <TextBlock Grid.Column="2" FontSize="11" Foreground="#5a5a5a"
+                                           Foreground="#bfc2c2" IsVisible="{Binding !HasChips}" />
+                                <TextBlock Grid.Column="2" FontSize="11" Foreground="#565a5f"
                                            VerticalAlignment="Center">
                                   <Run Text="→ " /><Run Text="{Binding EndText}" />
                                 </TextBlock>
@@ -391,7 +391,7 @@
         <ScrollViewer IsVisible="{Binding IsMatTab}">
           <StackPanel>
             <TextBlock IsVisible="{Binding NoMaterials}" Margin="20,18" FontSize="11.5"
-                       Foreground="#9a9a9a" TextWrapping="Wrap" MaxWidth="520"
+                       Foreground="#959a9f" TextWrapping="Wrap" MaxWidth="520"
                        HorizontalAlignment="Left"
                        Text="这条配方没有捎配料表。配方页存进库时，通道上那张配料表会一起入库（实投与批号不带——那是跟某一炉走的）。" />
             <ItemsControl ItemsSource="{Binding Materials}">
@@ -400,10 +400,10 @@
                   <Border Classes="trow" MinHeight="32" Cursor="Arrow">
                     <Grid ColumnDefinitions="6,1.4*,110,80,120,90">
                       <TextBlock Grid.Column="1" Text="{Binding Name}" />
-                      <TextBlock Grid.Column="2" Text="{Binding Cas}" Foreground="#5a5a5a" />
-                      <TextBlock Grid.Column="3" Text="{Binding Role}" Foreground="#5a5a5a" />
-                      <TextBlock Grid.Column="4" Text="{Binding Amount}" Foreground="#4a4a4a" />
-                      <TextBlock Grid.Column="5" Text="{Binding Phase}" Foreground="#5a5a5a" />
+                      <TextBlock Grid.Column="2" Text="{Binding Cas}" Foreground="#565a5f" />
+                      <TextBlock Grid.Column="3" Text="{Binding Role}" Foreground="#565a5f" />
+                      <TextBlock Grid.Column="4" Text="{Binding Amount}" Foreground="#474a4e" />
+                      <TextBlock Grid.Column="5" Text="{Binding Phase}" Foreground="#565a5f" />
                     </Grid>
                   </Border>
                 </DataTemplate>
@@ -422,7 +422,7 @@
             <!-- ═ 配方块：常驻 ═ -->
             <Border Padding="18,16,18,20" Background="{StaticResource PropsBg}">
               <StackPanel>
-                <TextBlock Text="配方属性" FontSize="24" FontWeight="Light" Foreground="#333333"
+                <TextBlock Text="配方属性" FontSize="24" FontWeight="Light" Foreground="#303337"
                            HorizontalAlignment="Center" Margin="0,0,0,8" />
                 <TextBlock Classes="intro" IsVisible="{Binding IsEmpty}"
                            Text="左边库里还没有配方。存进第一条之后，这里可以改名、写描述，并把它应用到通道。" />
@@ -431,29 +431,29 @@
 
                 <StackPanel IsVisible="{Binding HasSelection}">
                   <Grid ColumnDefinitions="96,*,40" Margin="0,0,0,8">
-                    <TextBlock Grid.Column="0" Text="名称" FontSize="12" Foreground="#3d3d3d"
+                    <TextBlock Grid.Column="0" Text="名称" FontSize="12" Foreground="#3a3d41"
                                VerticalAlignment="Center" Margin="0,0,10,0" />
                     <TextBox Grid.Column="1" Classes="finput" Text="{Binding Name, Mode=TwoWay}" />
                   </Grid>
                   <Grid ColumnDefinitions="96,*,40" Margin="0,0,0,8">
-                    <TextBlock Grid.Column="0" Text="描述" FontSize="12" Foreground="#3d3d3d"
+                    <TextBlock Grid.Column="0" Text="描述" FontSize="12" Foreground="#3a3d41"
                                VerticalAlignment="Center" Margin="0,0,10,0" />
                     <TextBox Grid.Column="1" Classes="finput" Text="{Binding Desc, Mode=TwoWay}" />
                   </Grid>
                   <Grid ColumnDefinitions="96,*,40" Margin="0,0,0,8">
-                    <TextBlock Grid.Column="0" Text="步骤数" FontSize="12" Foreground="#3d3d3d"
+                    <TextBlock Grid.Column="0" Text="步骤数" FontSize="12" Foreground="#3a3d41"
                                VerticalAlignment="Center" Margin="0,0,10,0" />
                     <TextBox Grid.Column="1" Classes="finput" Text="{Binding StepCountText}"
                              IsEnabled="False" />
                   </Grid>
                   <Grid ColumnDefinitions="96,*,40" Margin="0,0,0,8">
-                    <TextBlock Grid.Column="0" Text="作者" FontSize="12" Foreground="#3d3d3d"
+                    <TextBlock Grid.Column="0" Text="作者" FontSize="12" Foreground="#3a3d41"
                                VerticalAlignment="Center" Margin="0,0,10,0" />
                     <TextBox Grid.Column="1" Classes="finput" Text="{Binding AuthorText}"
                              IsEnabled="False" />
                   </Grid>
                   <Grid ColumnDefinitions="96,*,40">
-                    <TextBlock Grid.Column="0" Text="最近更新" FontSize="12" Foreground="#3d3d3d"
+                    <TextBlock Grid.Column="0" Text="最近更新" FontSize="12" Foreground="#3a3d41"
                                VerticalAlignment="Center" Margin="0,0,10,0" />
                     <TextBox Grid.Column="1" Classes="finput" Text="{Binding UpdatedText}"
                              IsEnabled="False" />
@@ -475,52 +475,52 @@
                   <!-- 配方页属性栏同款：色块换成这一步自己的指令图标 -->
                   <ctl:TecIcon Key="{Binding IconKey}" Size="24" VerticalAlignment="Center" />
                   <TextBlock Text="{Binding Name}" FontSize="21" FontWeight="Light"
-                             Foreground="#333333" VerticalAlignment="Center" />
-                  <TextBlock Text="{Binding Module}" FontSize="12" Foreground="#8d8d8d"
+                             Foreground="#303337" VerticalAlignment="Center" />
+                  <TextBlock Text="{Binding Module}" FontSize="12" Foreground="#888d92"
                              VerticalAlignment="Center" />
                 </StackPanel>
 
-                <TextBlock Text="{Binding Desc}" FontSize="11.5" Foreground="#3d3d3d"
+                <TextBlock Text="{Binding Desc}" FontSize="11.5" Foreground="#3a3d41"
                            LineHeight="18" TextWrapping="Wrap" Margin="0,0,0,10" />
 
                 <Grid ColumnDefinitions="96,*,40" Margin="0,0,0,8">
-                  <TextBlock Grid.Column="0" Text="耗时" FontSize="12" Foreground="#3d3d3d"
+                  <TextBlock Grid.Column="0" Text="耗时" FontSize="12" Foreground="#3a3d41"
                              VerticalAlignment="Center" Margin="0,0,10,0" />
                   <TextBox Grid.Column="1" Classes="finput" Text="{Binding PlanDuration}"
                            IsEnabled="False" />
                 </Grid>
                 <Grid ColumnDefinitions="96,*,40" Margin="0,0,0,8">
-                  <TextBlock Grid.Column="0" Text="结束条件" FontSize="12" Foreground="#3d3d3d"
+                  <TextBlock Grid.Column="0" Text="结束条件" FontSize="12" Foreground="#3a3d41"
                              VerticalAlignment="Center" Margin="0,0,10,0" />
                   <TextBox Grid.Column="1" Classes="finput" Text="{Binding EndText}"
                            IsEnabled="False" />
                 </Grid>
                 <Grid ColumnDefinitions="96,*,40">
-                  <TextBlock Grid.Column="0" Text="工艺阶段" FontSize="12" Foreground="#3d3d3d"
+                  <TextBlock Grid.Column="0" Text="工艺阶段" FontSize="12" Foreground="#3a3d41"
                              VerticalAlignment="Center" Margin="0,0,10,0" />
                   <TextBox Grid.Column="1" Classes="finput" Text="{Binding PhaseText}"
                            IsEnabled="False" />
                 </Grid>
 
-                <Border Height="1" Background="#d5d5d5" Margin="0,12,0,10" />
-                <TextBlock Text="参数" FontSize="11.5" Foreground="#5a5a5a" Margin="0,0,0,6" />
+                <Border Height="1" Background="#d3d5d2" Margin="0,12,0,10" />
+                <TextBlock Text="参数" FontSize="11.5" Foreground="#565a5f" Margin="0,0,0,6" />
                 <ItemsControl ItemsSource="{Binding Chips}">
                   <ItemsControl.ItemTemplate>
                     <DataTemplate>
                       <Grid ColumnDefinitions="96,*" Margin="0,0,0,5">
                         <TextBlock Grid.Column="0" Text="{Binding Label}" FontSize="11.5"
-                                   Foreground="#5a5a5a" Margin="0,0,10,0" />
+                                   Foreground="#565a5f" Margin="0,0,10,0" />
                         <TextBlock Grid.Column="1" Text="{Binding Value}" FontSize="11.5"
-                                   Foreground="#2b2b2b" />
+                                   Foreground="#292b2e" />
                       </Grid>
                     </DataTemplate>
                   </ItemsControl.ItemTemplate>
                 </ItemsControl>
                 <TextBlock IsVisible="{Binding !Chips.Count}" Text="该指令无需设置参数。"
-                           FontSize="11.5" Foreground="#8d8d8d" />
+                           FontSize="11.5" Foreground="#888d92" />
 
                 <!-- 库里的配方是只读的：要改就应用到某个通道，在配方页改 -->
-                <TextBlock FontSize="11" Foreground="#8d8d8d" LineHeight="17" TextWrapping="Wrap"
+                <TextBlock FontSize="11" Foreground="#888d92" LineHeight="17" TextWrapping="Wrap"
                            Margin="0,12,0,0"
                            Text="库里的配方只看不改。要改先用上面的「应用」把它放到一个通道上，在配方页改完再存回库。" />
               </StackPanel>

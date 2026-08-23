@@ -109,11 +109,11 @@ public static class TrendImage
                 Child = Line(text, 11.5, ink)
             });
 
-        Chip(cap.Channel + (cap.Well.Length > 0 ? $" · {cap.Well}" : ""), "#1f4e79", "#e8f2fb", "#bcd7ec");
+        Chip(cap.Channel + (cap.Well.Length > 0 ? $" · {cap.Well}" : ""), "#7e0f1c", "#faf2f3", "#e4c3c6");
         Chip("窗口 " + cap.Window, "#444444", "#f4f4f4", "#e0e0e0");
         Chip(cap.Range, "#444444", "#f4f4f4", "#e0e0e0");
         Chip(cap.Points, "#444444", "#f4f4f4", "#e0e0e0");
-        if (cap.Simulated) Chip("仿真运行 · 非真实实验数据", "#c0392b", "#fbe6e3", "#e0b4ad");
+        if (cap.Simulated) Chip("仿真运行 · 非真实实验数据", "#d93025", "#fdecea", "#e2b6ad");
         rows.Children.Add(sub);
 
         return new Border { Padding = new Thickness(18, 14, 18, 8), Child = rows };
@@ -143,10 +143,10 @@ public static class TrendImage
             one.Children.Add(Line(text, 11, "#444444"));
             row.Children.Add(one);
         }
-        Item("#e02020", "Tr 釜内");
+        Item("#d93025", "Tr 釜内");
         Item("#3f6fd8", "Tj 夹套");
         Item("#b56cc9", "Tr−Tj");
-        if (cap.HasPh) Item("#2f8f49", "pH", dash: true);
+        if (cap.HasPh) Item("#0e7a3e", "pH", dash: true);
         return row;
     }
 

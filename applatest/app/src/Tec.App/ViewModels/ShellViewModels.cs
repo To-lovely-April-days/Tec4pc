@@ -965,7 +965,7 @@ public sealed class CompoundViewModel : ViewModelBase
     {
         "有机酸" => "#ec5a24",
         "药物" => "#3f6fd8",
-        "氨基酸" => "#2f8f49",
+        "氨基酸" => "#2f8f49",   // 类别色，跟运行绿 #0e7a3e 刻意不同：一个是数据一个是状态
         "无机盐" => "#8a5a3b",
         _ => "#c0399f"
     };
@@ -1024,7 +1024,7 @@ public sealed class CompoundsViewModel : ViewModelBase
     public string Status { get; private set; } = "";
     public bool HasStatus => Status.Length > 0;
     public bool StatusBad { get; private set; }
-    public string StatusColorHex => StatusBad ? "#c0392b" : "#2f8f49";
+    public string StatusColorHex => StatusBad ? "#d93025" : "#0e7a3e";
 
     private void Say(string text, bool bad = false)
     {
