@@ -60,57 +60,73 @@
              Padding 是从可视区里扣的，不进滚动范围——最后一行会卡在下边缘，
              滚到底也露不出来 -->
         <ScrollViewer>
-          <StackPanel Margin="0,7,0,18">
+          <StackPanel Margin="0,6,0,18">
             <TextBlock Text="没有匹配的指令" FontSize="12" Foreground="#959a9f"
                        Margin="12,8,0,0" IsVisible="{Binding LibEmpty}" />
             <ItemsControl ItemsSource="{Binding Groups}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate>
-                  <StackPanel IsVisible="{Binding Visible}">
-                    <!-- 组与组之间才有一条线，第一组上面没有。搜索把前几组滤没了
-                         之后这条线得跟着挪，所以由 Rule 决定，不按建库次序写死 -->
-                    <Border Height="1" Background="#dcdcdc" Margin="8,10"
-                            IsVisible="{Binding Rule}" />
-                    <!-- 组名一行：小箭头 + 一小截模块色 + 组名。
-                         原型的分组只有分隔线、没有组名——留着是因为
-                         「控温」这四个字在哪一组，中文名不像英文那样自解释 -->
-                    <Border Height="21" Background="Transparent" Cursor="Hand"
-                            PointerPressed="OnGroupBarPressed">
-                      <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <Border Classes="chevm" Classes.up="{Binding Open}" Margin="10,0,6,0">
-                          <ctl:TecIcon Key="ui-chev-down" Tint="#9aa0a6" Size="9" />
+                  <!-- 一个模块 = 一块 #eeefec，左边一条 6px 模块色条贯通整块
+                       （收起时就是那 52px，展开了连指令格一起包），块与块之间 2px 白缝 -->
+                  <Border Classes="dev" Margin="0,0,0,2" IsVisible="{Binding Visible}">
+                    <Grid ColumnDefinitions="6,*">
+                      <Border Grid.Column="0" Background="{Binding Color}" />
+                      <StackPanel Grid.Column="1">
+                        <!-- 组头 52 高。原型那条是 96——那是给 23px 拉丁字留的，
+                             中文组名到 15px 就够，96 高只剩空白，六组一收起
+                             就吃掉 588px。52 之后六组全收起只占 324 -->
+                        <Border Classes="devhd" Height="52" Cursor="Hand"
+                                PointerPressed="OnGroupBarPressed">
+                          <Grid ColumnDefinitions="Auto,*,Auto" Margin="12,0,10,0">
+                            <Border Grid.Column="0" Classes="exp3m" Classes.up="{Binding Open}">
+                              <ctl:TecIcon Key="ui-chev-down" Tint="#51555a" Size="10"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                            <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="15"
+                                       FontWeight="Light" Foreground="#3a3d41"
+                                       VerticalAlignment="Center" Margin="11,0,0,0" />
+                            <TextBlock Grid.Column="2" Text="{Binding Commands.Count}"
+                                       FontSize="10.5" Foreground="#9aa0a6"
+                                       VerticalAlignment="Center" />
+                          </Grid>
                         </Border>
-                        <Border Width="3" Height="11" Background="{Binding Color}"
-                                VerticalAlignment="Center" Margin="0,0,7,0" />
-                        <TextBlock Text="{Binding Name}" FontSize="11.5" Foreground="#6b6f74"
-                                   VerticalAlignment="Center" />
-                      </StackPanel>
-                    </Border>
 
-                    <ItemsControl ItemsSource="{Binding Commands}" IsVisible="{Binding Open}"
-                                  Margin="0,2,0,0">
-                      <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                          <Button Classes="lrow" ToolTip.Tip="点一下加到当前通道，按住拖到画布里指定位置"
-                                  Command="{Binding $parent[UserControl].DataContext.AddStep}"
-                                  CommandParameter="{Binding}">
-                            <StackPanel Orientation="Horizontal" Spacing="8"
-                                        VerticalAlignment="Center">
-                              <!-- 方块底是 Border、图标铺在上面，不是给 TecIcon 加描边：
-                                   原型那张图的白线本来就画到方块边上，
-                                   用 BorderThickness 装它会把线切掉一圈 -->
-                              <Panel Classes="tile15">
-                                <Border Classes="tilebg15" />
-                                <ctl:TecIcon Key="{Binding TileIcon}" Size="15" />
-                              </Panel>
-                              <TextBlock Text="{Binding Name}" FontSize="13" Foreground="#1b1b1b"
-                                         VerticalAlignment="Center" />
-                            </StackPanel>
-                          </Button>
-                        </DataTemplate>
-                      </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                  </StackPanel>
+                        <!-- 指令格：2 列 × 46 高，27px 红方块 + 指令名。
+                             栏宽 259 减去色条和左右各 6，指令区净 241，两列每格 120——
+                             名字那半格净 76，最长的「溶解度点测定」6 个字 69px 排得下 -->
+                        <ItemsControl ItemsSource="{Binding Commands}" IsVisible="{Binding Open}"
+                                      Margin="6,0,6,8">
+                          <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate><UniformGrid Columns="2" /></ItemsPanelTemplate>
+                          </ItemsControl.ItemsPanel>
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                              <Button Classes="cmd2"
+                                      ToolTip.Tip="点一下加到当前通道，按住拖到画布里指定位置"
+                                      Command="{Binding $parent[UserControl].DataContext.AddStep}"
+                                      CommandParameter="{Binding}">
+                                <StackPanel Orientation="Horizontal" Spacing="7"
+                                            VerticalAlignment="Center">
+                                  <!-- 方块底是 Border、图标铺在上面，不是给 TecIcon 加描边：
+                                       原型那张图的白线本来就画到方块边上，
+                                       用 BorderThickness 装它会把线切掉一圈 -->
+                                  <Panel Classes="tile27" VerticalAlignment="Center">
+                                    <Border Classes="tilebg27" />
+                                    <ctl:TecIcon Key="{Binding TileIcon}" Size="27" />
+                                  </Panel>
+                                  <TextBlock Text="{Binding Name}" FontSize="11.5"
+                                             Foreground="#373a3e" LineHeight="15"
+                                             TextWrapping="Wrap" MaxLines="2"
+                                             TextTrimming="CharacterEllipsis"
+                                             VerticalAlignment="Center" />
+                                </StackPanel>
+                              </Button>
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                      </StackPanel>
+                    </Grid>
+                  </Border>
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
@@ -905,47 +921,56 @@
       <Setter Property="Background" Value="#e2e2e2" />
     </Style>
 
-    <!-- 组名那行的小箭头：库里的行只有 21/23 高，圆圈箭头（exp3 22px）塞不下 -->
-    <Style Selector="Border.chevm">
-      <Setter Property="Width" Value="9" />
-      <Setter Property="Height" Value="9" />
+    <!-- 分组块：一块 #eeefec，左边不倒角——色条是方的，块跟着方，色条才贴得平。
+         悬停只亮组头那一条，不亮整块：块里装着指令格，指着某一格时
+         整块跟着变色，看着像是整组被选中了 -->
+    <Style Selector="Border.dev">
+      <Setter Property="Background" Value="#eeefec" />
+      <Setter Property="CornerRadius" Value="0,2,2,0" />
+      <Setter Property="ClipToBounds" Value="True" />
+    </Style>
+    <Style Selector="Border.devhd">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="Border.devhd:pointerover">
+      <Setter Property="Background" Value="#e4e6e3" />
+    </Style>
+
+    <!-- 组头那个圆圈箭头。18 是配 52px 组头的：exp3 那 22 是给 96px 组头留的 -->
+    <Style Selector="Border.exp3m">
+      <Setter Property="Width" Value="18" />
+      <Setter Property="Height" Value="18" />
+      <Setter Property="CornerRadius" Value="9" />
+      <Setter Property="BorderBrush" Value="#676b70" />
+      <Setter Property="BorderThickness" Value="1.4" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
-    <Style Selector="Border.chevm.up">
+    <Style Selector="Border.exp3m.up">
       <Setter Property="RenderTransform">
         <RotateTransform Angle="180" />
       </Setter>
     </Style>
 
-    <!-- 指令行：原型 23 高、左内边距 12、图标与名字之间 8、悬停 #f4e0e2 -->
-    <Style Selector="Button.lrow">
-      <Setter Property="Height" Value="23" />
+    <!-- 指令格：2 列 × 46 高，横排「方块 + 名字」。悬停浮一块白，
+         不是浅红——格子铺在 #eeefec 的块底上，白比红更像「这一格亮起来了」 -->
+    <Style Selector="Button.cmd2">
+      <Setter Property="Height" Value="46" />
       <Setter Property="MinHeight" Value="0" />
-      <Setter Property="Padding" Value="12,0,8,0" />
+      <Setter Property="Padding" Value="6,0,4,0" />
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderThickness" Value="0" />
-      <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="CornerRadius" Value="3" />
       <Setter Property="HorizontalAlignment" Value="Stretch" />
       <Setter Property="HorizontalContentAlignment" Value="Left" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
-    <Style Selector="Button.lrow:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#f4e0e2" />
+    <Style Selector="Button.cmd2:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#faf2f3" />
     </Style>
 
-    <!-- 指令图标那枚方块。原型库里 15px 平涂，卡片上 27px 带一层竖向渐变 -->
-    <Style Selector="Panel.tile15">
-      <Setter Property="Width" Value="15" />
-      <Setter Property="Height" Value="15" />
-      <Setter Property="VerticalAlignment" Value="Center" />
-    </Style>
-    <Style Selector="Border.tilebg15">
-      <Setter Property="CornerRadius" Value="2" />
-      <Setter Property="Background" Value="#a41626" />
-      <Setter Property="BorderBrush" Value="#7e0f1c" />
-      <Setter Property="BorderThickness" Value="1" />
-    </Style>
+    <!-- 指令图标那枚方块：库里和步骤卡上同一个尺寸 27，
+         从库里点进泳道不会「变小一号」 -->
     <Style Selector="Panel.tile27">
       <Setter Property="Width" Value="27" />
       <Setter Property="Height" Value="27" />

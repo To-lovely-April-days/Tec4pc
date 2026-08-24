@@ -44,7 +44,6 @@ public sealed class ModuleGroup : ViewModelBase
 {
     private bool _open = true;
     private bool _visible = true;
-    private bool _rule;
 
     public ModuleGroup(string name)
     {
@@ -70,17 +69,6 @@ public sealed class ModuleGroup : ViewModelBase
     {
         get => _visible;
         set => Set(ref _visible, value);
-    }
-
-    /// <summary>
-    /// 这一组上方画不画那条 1px 分隔线。原型是组与组之间才有一条，
-    /// 所以「当前可见的第一组」不画——搜索把前几组滤没了之后，
-    /// 那条线得跟着挪，不能按建库时的次序写死。
-    /// </summary>
-    public bool Rule
-    {
-        get => _rule;
-        set => Set(ref _rule, value);
     }
 }
 
@@ -538,7 +526,6 @@ public sealed class RecipeViewModel : ViewModelBase
     private void ApplyLibFilter()
     {
         var q = _libFilter.Trim();
-        var rule = false;                  // 第一组不画上边那条线，之后每组都画
 
         foreach (var g in Groups)
         {
@@ -554,8 +541,6 @@ public sealed class RecipeViewModel : ViewModelBase
             g.Visible = g.Commands.Count > 0;
             // 搜索期间强制展开：过滤剩下的那几条藏在收起的组里等于没搜着
             if (q.Length > 0 && g.Visible) g.Open = true;
-            g.Rule = g.Visible && rule;
-            if (g.Visible) rule = true;
         }
 
         Raise(nameof(LibEmpty));
