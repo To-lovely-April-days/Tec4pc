@@ -271,7 +271,7 @@ public sealed class LaneViewModel : ViewModelBase
             _owner.Workspace.LaneNames[Channel] = value;
             if (_owner.Workspace.ChannelRecipes.TryGetValue(Channel, out var r)) r.Name = value;
             _owner.Workspace.Store.MarkDirty();
-            Raise();
+            RaiseAll(nameof(LaneName), nameof(NameStacked));
         }
     }
 
@@ -307,7 +307,7 @@ public sealed class LaneViewModel : ViewModelBase
 
     public void RefreshOptions()
     {
-        Raise(nameof(LaneName));
+        RaiseAll(nameof(LaneName), nameof(NameStacked));
         ChannelOptions.Clear();
         foreach (var c in _owner.Workspace.Channels.Where(c => c.Enabled).OrderBy(c => c.Number))
             ChannelOptions.Add(_owner.LabelOf(c.Number));
@@ -318,6 +318,38 @@ public sealed class LaneViewModel : ViewModelBase
     {
         get => _isCurrent;
         set => Set(ref _isCurrent, value);
+    }
+
+    // ── 收起 / 展开 ───────────────────────────────────────────────
+    // 跟左缘那条「变量」栏一个说法：收起来就剩一条窄竖栏，圆圈箭头 + 竖排名。
+    // 四条泳道并排时，眼下只改其中一条的人可以把另外三条收掉，
+    // 省下的横向空间归当前这条。收起是看的状态，不进文件。
+    private bool _open = true;
+
+    public bool Open
+    {
+        get => _open;
+        set { if (Set(ref _open, value)) RaiseAll(nameof(Closed), nameof(SlabWidth)); }
+    }
+
+    public bool Closed => !_open;
+
+    /// <summary>整条泳道（连底色那一块）多宽：展开 258，收起 52。</summary>
+    public double SlabWidth => _open ? 258 : 52;
+
+    /// <summary>
+    /// 竖排的泳道名：汉字一个个正着摞，不是把整行转 90°——
+    /// 转 90° 的汉字是躺倒的字，读起来像坏了。太长的截住，
+    /// 竖栏再高也不该让一个名字从头写到底。
+    /// </summary>
+    public string NameStacked
+    {
+        get
+        {
+            var n = LaneName;
+            if (n.Length > 9) n = n[..8] + "…";
+            return string.Join("\n", n.Select(c => c.ToString()));
+        }
     }
 
     /// <summary>

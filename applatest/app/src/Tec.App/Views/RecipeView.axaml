@@ -385,21 +385,58 @@
             </ItemsControl.ItemsPanel>
             <ItemsControl.ItemTemplate>
               <DataTemplate>
-                <!-- 原型 .col 是 246 宽（卡片里的字放大到 12.5 之后，200 装不下排期那一行）。
-                     外面这圈 padding 留给「当前通道」的选中环 -->
-                <!-- 顶对齐（原型 .lanes{align-items:flex-start}）：不这么写的话
-                     泳道会被拉到画布满高，选中环就变成一个从头拖到底的长框 -->
-                <!-- BorderBrush 不写在这儿、走 laneBox 那条样式：内联值压得过样式，
-                     写死成 Transparent 之后 laneSel 和 laneDrop 的描边永远上不了色。
-                     这一处一直是这么写的，所以「当前通道」那圈其实从来没画出来过，
-                     看见的只是底下那层投影（实测改色前后都只有投影在变） -->
-                <Border Width="258" Padding="5" CornerRadius="4" BorderThickness="1.6"
-                        Tag="lane" VerticalAlignment="Top" Classes="laneBox"
-                        Background="Transparent"
+                <!-- 一条泳道 = 一块自己的底色（原型每一列都坐在一块灰上），
+                     展开 258 宽、收起 52。竖着拉满：底色那一块要从上通到底，
+                     几条并排才像几根柱子；收起的那条也就跟着一样高。
+                     内容 246 宽（卡片里的字放大到 12.5 之后，200 装不下排期那一行）。
+
+                     BorderBrush 不写在这儿、走 laneBox 那条样式：内联值压得过样式，
+                     写死成 Transparent 之后 laneSel 和 laneDrop 的描边永远上不了色。 -->
+                <Border Width="{Binding SlabWidth}" Padding="5" CornerRadius="4"
+                        BorderThickness="1.6" Tag="lane" Classes="laneBox"
+                        VerticalAlignment="Stretch"
                         Classes.laneSel="{Binding IsCurrent}"
                         Classes.laneDrop="{Binding IsDropLane}"
                         PointerPressed="OnLanePressed" Cursor="Hand">
-                  <StackPanel>
+                  <Panel>
+                  <!-- ── 收起态：一条窄竖栏，跟左缘那条「变量」同一个说法 ── -->
+                  <StackPanel IsVisible="{Binding Closed}" Margin="0,8,0,0" Spacing="10"
+                              HorizontalAlignment="Center">
+                    <Border Classes="exp3m" Cursor="Hand" Background="Transparent"
+                            PointerPressed="OnLaneToggle">
+                      <LayoutTransformControl HorizontalAlignment="Center"
+                                              VerticalAlignment="Center">
+                        <LayoutTransformControl.LayoutTransform>
+                          <RotateTransform Angle="-90" />
+                        </LayoutTransformControl.LayoutTransform>
+                        <ctl:TecIcon Key="ui-chev-down" Tint="#51555a" Size="10" />
+                      </LayoutTransformControl>
+                    </Border>
+                    <TextBlock Text="{Binding NameStacked}" FontSize="13" FontWeight="Light"
+                               Foreground="#3a3d41" LineHeight="16" TextAlignment="Center"
+                               HorizontalAlignment="Center" />
+                    <Border Background="#d7d9d6" CornerRadius="8" Padding="5,2"
+                            HorizontalAlignment="Center">
+                      <TextBlock Text="{Binding Channel, StringFormat='CH{0}'}" FontSize="10.5"
+                                 Foreground="#3a3d41" />
+                    </Border>
+                  </StackPanel>
+
+                  <!-- ── 展开态 ── -->
+                  <StackPanel IsVisible="{Binding Open}">
+                    <!-- 收起这条泳道。摆在泳道头上方、贴左——收起来之后
+                         竖栏顶上那枚就落在同一个位置，一开一合位置对得上 -->
+                    <Border Classes="exp3m up" Cursor="Hand" Background="Transparent"
+                            HorizontalAlignment="Left" Margin="1,0,0,5"
+                            ToolTip.Tip="收起该通道" PointerPressed="OnLaneToggle">
+                      <LayoutTransformControl HorizontalAlignment="Center"
+                                              VerticalAlignment="Center">
+                        <LayoutTransformControl.LayoutTransform>
+                          <RotateTransform Angle="-90" />
+                        </LayoutTransformControl.LayoutTransform>
+                        <ctl:TecIcon Key="ui-chev-down" Tint="#51555a" Size="10" />
+                      </LayoutTransformControl>
+                    </Border>
                     <!-- 原型 .lane-head：#d6b8bb 一块，两行「标签 + 输入 + 圆钮」。
                          有错的时候描一圈红（原型是把整块染成 #fdf2f2，我们这块是
                          蓝灰的实心底，染红只会脏，而且要跟蓝色选中环抢眼睛）。
@@ -595,6 +632,7 @@
                       </Panel>
                     </StackPanel>
                   </StackPanel>
+                  </Panel>
                 </Border>
               </DataTemplate>
             </ItemsControl.ItemTemplate>
@@ -1067,9 +1105,12 @@
       <Setter Property="BorderBrush" Value="#a41626" />
     </Style>
 
-    <!-- 泳道的底：描边常在、平时不着色。必须排在 laneSel / laneDrop 前面——
+    <!-- 泳道的底：一条泳道坐在一块自己的浅灰上（原型每一列都有），
+         画布是白的，几块灰并排才看得出这是几根柱子、缝在哪儿。
+         描边常在、平时不着色，必须排在 laneSel / laneDrop 前面——
          Avalonia 比的是写的先后，不是选择器谁更具体 -->
     <Style Selector="Border.laneBox">
+      <Setter Property="Background" Value="#efefef" />
       <Setter Property="BorderBrush" Value="Transparent" />
     </Style>
     <!-- 当前通道：不画描边，只在外面浮一层很浅的黑影。

@@ -71,6 +71,16 @@ public partial class RecipeView : UserControl
                                      DispatcherPriority.Background);
     }
 
+    /// <summary>
+    /// 泳道的开合。Handled 掉：外面那层 Border 的 PointerPressed 是「切到这条通道」，
+    /// 不拦住的话点收起会连带把当前通道切过去——收起的多半正是不想看的那一条。
+    /// </summary>
+    private void OnLaneToggle(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is Control { DataContext: LaneViewModel lane }) lane.Open = !lane.Open;
+        e.Handled = true;
+    }
+
     /// <summary>左缘「变量」竖栏：收起态点整条展开，展开态点圆圈收起。</summary>
     private void OnVarsBarPressed(object? sender, PointerPressedEventArgs e)
     {
