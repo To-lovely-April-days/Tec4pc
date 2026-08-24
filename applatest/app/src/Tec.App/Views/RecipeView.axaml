@@ -31,25 +31,19 @@
     <Border Grid.Column="0" Background="#fdfdfd"
             BorderBrush="#c9c9c9" BorderThickness="0,0,1,0">
       <DockPanel>
-        <!-- 标题条：原型是 #3d3d3d→#151515 的竖向渐变，这里压平成外壳黑，
-             跟标题栏、属性栏那条色条同一个黑（用色纪律：大面积深色只有一种黑） -->
-        <Border DockPanel.Dock="Top" Height="24" Background="{StaticResource Shell}"
-                Padding="10,0">
-          <TextBlock Text="步骤库" FontSize="12.5" FontWeight="SemiBold" Foreground="White"
-                     VerticalAlignment="Center" />
-        </Border>
-
-        <!-- 搜索行：21 条指令分在 6 个模块里，平铺一屏放得下，但记不住
-             「梯度控温」在哪一组的时候，打两个字比挨组翻快。
-             指令名和模块名两处都匹配：打「温度」也该把那一组捞出来 -->
+        <!-- 搜索行：平时不占位，点分组头右端那枚放大镜才展开（SearchOpen）。
+             21 条指令分在 6 个模块里，多数时候用不着搜；记不住「梯度控温」
+             在哪一组的时候，打两个字比挨组翻快。指令名和模块名两处都匹配：
+             打「温度」也该把那一组捞出来。
+             Dock 在上而不是塞进 ScrollViewer：搜着搜着往下滚，框还在眼前 -->
         <Border DockPanel.Dock="Top" Height="35" Background="#f1f1f1"
-                BorderBrush="#cfcfcf" BorderThickness="0,0,0,1" Padding="9,0">
+                BorderBrush="#cfcfcf" BorderThickness="0,0,0,1" Padding="9,0"
+                IsVisible="{Binding SearchOpen}">
           <Grid ColumnDefinitions="*,Auto">
-            <TextBox Grid.Column="0" Classes="lfind" Watermark="搜索指令 / 模块"
+            <TextBox Grid.Column="0" Name="LibFind" Classes="lfind" Watermark="搜索指令 / 模块"
                      Text="{Binding LibFilter, Mode=TwoWay}" />
             <Button Grid.Column="1" Classes="lfindx" Margin="6,0,0,0"
-                    IsVisible="{Binding HasLibFilter}" Command="{Binding ClearLibFilter}"
-                    ToolTip.Tip="清除搜索">
+                    Command="{Binding ToggleSearch}" ToolTip.Tip="收起搜索">
               <TextBlock Text="✕" FontSize="10" Foreground="#6b6f74"
                          HorizontalAlignment="Center" VerticalAlignment="Center" />
             </Button>
@@ -68,16 +62,16 @@
                 <DataTemplate>
                   <!-- 一个模块 = 一块 #eeefec，左边一条 6px 模块色条贯通整块
                        （收起时就是那 52px，展开了连指令格一起包），块与块之间 2px 白缝 -->
-                  <Border Classes="dev" Margin="0,0,0,2" IsVisible="{Binding Visible}">
+                  <Border Classes="dev" Margin="0,0,0,8" IsVisible="{Binding Visible}">
                     <Grid ColumnDefinitions="6,*">
                       <Border Grid.Column="0" Background="{Binding Color}" />
                       <StackPanel Grid.Column="1">
                         <!-- 组头 52 高。原型那条是 96——那是给 23px 拉丁字留的，
                              中文组名到 15px 就够，96 高只剩空白，六组一收起
-                             就吃掉 588px。52 之后六组全收起只占 324 -->
+                             就吃掉 588px。52 之后六组全收起只占 354 -->
                         <Border Classes="devhd" Height="52" Cursor="Hand"
                                 PointerPressed="OnGroupBarPressed">
-                          <Grid ColumnDefinitions="Auto,*,Auto" Margin="12,0,10,0">
+                          <Grid ColumnDefinitions="Auto,*,Auto,Auto" Margin="12,0,6,0">
                             <Border Grid.Column="0" Classes="exp3m" Classes.up="{Binding Open}">
                               <ctl:TecIcon Key="ui-chev-down" Tint="#51555a" Size="10"
                                            HorizontalAlignment="Center" VerticalAlignment="Center" />
@@ -88,6 +82,13 @@
                             <TextBlock Grid.Column="2" Text="{Binding Commands.Count}"
                                        FontSize="10.5" Foreground="#9aa0a6"
                                        VerticalAlignment="Center" />
+                            <!-- 放大镜。库的抬头拆掉之后，搜索没有别的地方落脚了，
+                                 就落在组头这一行的右端——每组都有一枚，点哪一枚
+                                 都是开同一个搜索框（搜的是整个库，不是这一组） -->
+                            <Button Grid.Column="3" Classes="gfind" ToolTip.Tip="搜索指令 / 模块"
+                                    Click="OnFindToggle">
+                              <ctl:TecIcon Key="ui-search" Tint="#9aa0a6" Size="13" />
+                            </Button>
                           </Grid>
                         </Border>
 
@@ -919,6 +920,25 @@
     </Style>
     <Style Selector="Button.lfindx:pointerover /template/ ContentPresenter">
       <Setter Property="Background" Value="#e2e2e2" />
+    </Style>
+
+    <!-- 组头右端那枚放大镜 -->
+    <Style Selector="Button.gfind">
+      <Setter Property="Width" Value="24" />
+      <Setter Property="Height" Value="24" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Margin" Value="6,0,0,0" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.gfind:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#dcdedb" />
     </Style>
 
     <!-- 分组块：一块 #eeefec，左边不倒角——色条是方的，块跟着方，色条才贴得平。

@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Tec.App.ViewModels;
 
@@ -51,6 +52,23 @@ public partial class RecipeView : UserControl
     private void OnGroupBarPressed(object? sender, PointerPressedEventArgs e)
     {
         if (sender is Control { DataContext: ModuleGroup g }) g.Open = !g.Open;
+    }
+
+    /// <summary>
+    /// 分组头右端那枚放大镜：开合搜索框，展开时顺手把光标放进去。
+    ///
+    /// 焦点不能挂在 TextBox 的 AttachedToVisualTree 上：Avalonia 的
+    /// IsVisible=false **不会**把控件摘出视觉树，那个事件只在装载时响一次，
+    /// 之后再怎么开合都不会再响（实测：框开了但打字进不去）。
+    /// 排到 Background 再抢焦点，是要等这一下点击把焦点收进按钮之后再夺回来。
+    /// </summary>
+    private void OnFindToggle(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        vm.ToggleSearch.Execute(null);
+        if (vm.SearchOpen)
+            Dispatcher.UIThread.Post(() => LibFind.Focus(NavigationMethod.Tab),
+                                     DispatcherPriority.Background);
     }
 
     /// <summary>左缘「变量」竖栏：收起态点整条展开，展开态点圆圈收起。</summary>

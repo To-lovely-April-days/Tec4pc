@@ -413,7 +413,11 @@ public sealed class RecipeViewModel : ViewModelBase
         _libPick = Library.FirstOrDefault()?.Recipe;
 
         AddStep = new RelayCommand(p => { if (p is CommandItemViewModel c) AddCommand(c); });
-        ClearLibFilter = new RelayCommand(() => LibFilter = "");
+        ToggleSearch = new RelayCommand(() =>
+        {
+            SearchOpen = !SearchOpen;
+            if (!SearchOpen) LibFilter = "";
+        });
         RemoveStep = new RelayCommand(p => { if (p is StepViewModel s) Delete(s); });
         CopyRecipe = new RelayCommand(DoCopy);
         ApplyLib = new RelayCommand(DoApplyLib);
@@ -513,12 +517,22 @@ public sealed class RecipeViewModel : ViewModelBase
         set
         {
             if (!Set(ref _libFilter, value ?? "")) return;
-            Raise(nameof(HasLibFilter));
             ApplyLibFilter();
         }
     }
 
-    public bool HasLibFilter => _libFilter.Trim().Length > 0;
+    private bool _searchOpen;
+
+    /// <summary>
+    /// 搜索框平时不占位，点分组头右端那枚放大镜才展开。
+    /// 收起时把搜索词一并清掉：留着的话框收了、库还是滤过的，
+    /// 人看见的是「少了一半指令」而不是「还在搜索中」。
+    /// </summary>
+    public bool SearchOpen
+    {
+        get => _searchOpen;
+        private set => Set(ref _searchOpen, value);
+    }
 
     /// <summary>搜不着的时候得说一声，不能只剩一片空白让人以为界面坏了。</summary>
     public bool LibEmpty => Groups.All(g => !g.Visible);
@@ -629,7 +643,7 @@ public sealed class RecipeViewModel : ViewModelBase
     public string TotalNote { get; private set; } = "";
 
     public RelayCommand AddStep { get; }
-    public RelayCommand ClearLibFilter { get; }
+    public RelayCommand ToggleSearch { get; }
     public RelayCommand RemoveStep { get; }
     public RelayCommand CopyRecipe { get; }
     public RelayCommand ApplyLib { get; }
