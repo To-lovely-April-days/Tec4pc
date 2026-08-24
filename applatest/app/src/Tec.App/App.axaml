@@ -107,10 +107,12 @@
     <SolidColorBrush x:Key="SelRing" Color="#38a41626" />
     <SolidColorBrush x:Key="SelTx" Color="#7e0f1c" />
     <!-- 属性栏里那条 6px 左竖条（台面 / 配方 / 配方库共四处）。
-         它标的是「下面这一块讲的是当前选中的那个东西」，是结构记号不是状态，
-         所以走外壳黑而不是强调红。跟 SelBd 分开定义：SelBd 还管着
-         配方库的选中边框和两处红字，那些得留在红上 -->
-    <SolidColorBrush x:Key="PropsBar" Color="#17191c" />
+         它标的是「下面这一块讲的是当前选中的那个东西」。
+         这是全程序唯一一处蓝：换过品牌红（太抢，那条挨着一整栏参数）、
+         也换过外壳黑（太重，像把这一块框死了），最后回到改配色以前的
+         #1a7fc4。跟 SelBd 分开定义：SelBd 还管着配方库的选中边框和
+         两处红字，那些得留在红上 -->
+    <SolidColorBrush x:Key="PropsBar" Color="#1a7fc4" />
     <!-- 悬停保持中性：悬停是「指针在这儿」，不是「选中了」，
          两个都染品牌色的话，扫一眼分不出哪行是真选中 -->
     <SolidColorBrush x:Key="HovBg" Color="#f0f0ee" />
