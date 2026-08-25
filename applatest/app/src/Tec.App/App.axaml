@@ -97,14 +97,31 @@
           虽然都写了 Background / BorderBrush，但那只压得住常态——状态一换，
           模板会把这几个键直接写到 PART_BorderElement 上，压不住，只能在这儿改。
 
-          **聚焦那一档故意不动**（TextControlBorderBrushFocused 仍是强调色）：
-          描边淡到 #DDDDDD 之后，「光标在哪个框里」就只剩这一个提示了。
+          **聚焦那一档单独一支 #ACC3DF**（淡蓝灰）。描边淡到 #DDDDDD 之后，
+          「光标在哪个框里」就只剩这一个提示了，所以这一档不能也淡掉；
+          从前它跟着强调色走，是品牌红 #A41626——一个正在输入的框描一圈红，
+          跟报警红是同一副样子，容易读成「这一格填错了」。
         -->
         <SolidColorBrush x:Key="TextControlBackground" Color="White" />
         <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="White" />
         <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="White" />
         <SolidColorBrush x:Key="TextControlBorderBrush" Color="#dddddd" />
         <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="#dddddd" />
+        <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="#acc3df" />
+
+        <!--
+          下拉框跟输入框同排同高，得跟着一块儿钉死，不然一悬停就露馅：
+          实测鼠标压上「波特率」那个框，底从白变成 #F9F9F9——
+          单看不明显，可它旁边的输入框是钉住不变的，两个框一高一低地闪。
+          描边那几档量出来本来就是 #DDDDDD（类样式压得住），一并写死免得以后飘。
+        -->
+        <SolidColorBrush x:Key="ComboBoxBackground" Color="White" />
+        <SolidColorBrush x:Key="ComboBoxBackgroundUnfocused" Color="White" />
+        <SolidColorBrush x:Key="ComboBoxBackgroundPointerOver" Color="White" />
+        <SolidColorBrush x:Key="ComboBoxBackgroundPressed" Color="White" />
+        <SolidColorBrush x:Key="ComboBoxBorderBrush" Color="#dddddd" />
+        <SolidColorBrush x:Key="ComboBoxBorderBrushPointerOver" Color="#dddddd" />
+        <SolidColorBrush x:Key="ComboBoxBorderBrushPressed" Color="#dddddd" />
 
       </ResourceDictionary>
       <ResourceDictionary x:Key="Dark">
@@ -161,14 +178,31 @@
           虽然都写了 Background / BorderBrush，但那只压得住常态——状态一换，
           模板会把这几个键直接写到 PART_BorderElement 上，压不住，只能在这儿改。
 
-          **聚焦那一档故意不动**（TextControlBorderBrushFocused 仍是强调色）：
-          描边淡到 #DDDDDD 之后，「光标在哪个框里」就只剩这一个提示了。
+          **聚焦那一档单独一支 #ACC3DF**（淡蓝灰）。描边淡到 #DDDDDD 之后，
+          「光标在哪个框里」就只剩这一个提示了，所以这一档不能也淡掉；
+          从前它跟着强调色走，是品牌红 #A41626——一个正在输入的框描一圈红，
+          跟报警红是同一副样子，容易读成「这一格填错了」。
         -->
         <SolidColorBrush x:Key="TextControlBackground" Color="White" />
         <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="White" />
         <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="White" />
         <SolidColorBrush x:Key="TextControlBorderBrush" Color="#dddddd" />
         <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="#dddddd" />
+        <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="#acc3df" />
+
+        <!--
+          下拉框跟输入框同排同高，得跟着一块儿钉死，不然一悬停就露馅：
+          实测鼠标压上「波特率」那个框，底从白变成 #F9F9F9——
+          单看不明显，可它旁边的输入框是钉住不变的，两个框一高一低地闪。
+          描边那几档量出来本来就是 #DDDDDD（类样式压得住），一并写死免得以后飘。
+        -->
+        <SolidColorBrush x:Key="ComboBoxBackground" Color="White" />
+        <SolidColorBrush x:Key="ComboBoxBackgroundUnfocused" Color="White" />
+        <SolidColorBrush x:Key="ComboBoxBackgroundPointerOver" Color="White" />
+        <SolidColorBrush x:Key="ComboBoxBackgroundPressed" Color="White" />
+        <SolidColorBrush x:Key="ComboBoxBorderBrush" Color="#dddddd" />
+        <SolidColorBrush x:Key="ComboBoxBorderBrushPointerOver" Color="#dddddd" />
+        <SolidColorBrush x:Key="ComboBoxBorderBrushPressed" Color="#dddddd" />
 
       </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>

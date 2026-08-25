@@ -111,7 +111,7 @@
       <Setter Property="Foreground" Value="#202225" />
     </Style>
     <Style Selector="TextBox.fin:focus">
-      <Setter Property="BorderBrush" Value="#a41626" />
+      <Setter Property="BorderBrush" Value="#acc3df" />
     </Style>
     <Style Selector="ComboBox.fsel">
       <Setter Property="Height" Value="23" />

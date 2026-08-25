@@ -24,7 +24,7 @@
       <Setter Property="CornerRadius" Value="2" />
     </Style>
     <Style Selector="TextBox.lgin:focus /template/ Border#PART_BorderElement">
-      <Setter Property="BorderBrush" Value="#a41626" />
+      <Setter Property="BorderBrush" Value="#acc3df" />
     </Style>
 
     <!-- 按钮文字水平垂直都居中：默认模板的内容是靠上的，32 高的钮里字会偏下沿 -->
