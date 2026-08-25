@@ -11,7 +11,7 @@
   <Grid ColumnDefinitions="260,*,312">
 
     <!--
-      设备库：分类成组——52px 组头（圆圈箭头 + 类名 + 台数）+ 两列设备格，
+      设备库：分类成组——40px 组头（圆圈箭头 + 类名 + 台数）+ 两列设备格，
       组头可点，整类收起展开。
 
       **底色关系反过来了**：整栏铺面色 #F1F1F1，设备格是白的。
@@ -29,21 +29,28 @@
              一列设备图摆在那儿，本来就没人会认错成别的东西 -->
         <!-- 底部留白同配方页：写内容的 Margin，不写 ScrollViewer 的 Padding -->
         <!--
-          滚动条常驻（Visible + AllowAutoHide=False）。两个理由：
-          · 分类一收一展，内容高度跳来跳去，滚动条跟着来去的话格子宽度也跟着变
-            （它是占位的，不是浮在内容上的），一收一展整栏抖一下。
-            常驻就是把那 13px 一直留出来，格子宽度从此不动。
-          · 自动隐藏那一档平时只剩一条细线，不把指针移过去根本看不出这栏能滚——
-            设备多了下面还有货，得让人一眼知道。
+          滚动条走缺省（Auto + 自动隐藏）。从前写死 Visible + AllowAutoHide=False，
+          于是不管内容够不够高，右边永远杵着一条灰带子。
+
+          实测缺省态的两档行为：
+          · 内容装得下（设备就这几台、窗口最大化时就是这种情况）——**整条不出现**，
+            栏宽 260 全归格子，一格 118。
+          · 内容装不下——占 14px 的槽，格子收到 111；滑块指针离开约 3 秒后自己淡掉，
+            只剩一条 #EFF0EE 的轨，比栏底 #F1F1F1 亮两级，肉眼看不出来。
+          也就是说 AllowAutoHide 淡的是滑块不是槽，槽该占的宽还是要占。
+          这一档反复不要紧：设备图已经不写死宽度、跟着格子拉伸（见下面 DeviceArtView），
+          槽来了图自己缩一点，不会裁掉半台机器。
         -->
-        <ScrollViewer VerticalScrollBarVisibility="Visible" AllowAutoHide="False">
+        <ScrollViewer>
           <ItemsControl ItemsSource="{Binding Groups}" Margin="0,0,0,40">
             <ItemsControl.ItemTemplate>
               <DataTemplate>
                 <Border Classes="grp" Margin="0,0,0,8">
                     <StackPanel>
 
-                      <Border Classes="grphd" Height="52" Cursor="Hand"
+                      <!-- 52 → 40：这一行只有一个圈箭头（18）、一个类名和一个台数，
+                           52 的时候上下各空 17，比它自己的内容还高 -->
+                      <Border Classes="grphd" Height="40" Cursor="Hand"
                               PointerPressed="OnGroupPressed">
                         <!-- 左内边距 10：色条没了以后，组头和下面那排格子
                              左缘要落在同一条线上（格子那排也是 10） -->
@@ -61,9 +68,9 @@
                         </Grid>
                       </Border>
 
-                      <!-- 设备格：两列。栏宽 260 减去滚动条 13、左右各 10，
-                           净 227，两列每格 113，格子自己留 5 的缝，图 102 宽。
-                           右边只写 5：格子自己带 5 的右外边距，5+5 才跟左边的 10 对称 -->
+                      <!-- 设备格：两列。左右各 10（右边只写 5，格子自己带 5 的右外边距，
+                           5+5 才跟左边的 10 对称）。
+                           格子宽度不再算死：滚动条出不出来都行，图跟着格子走 -->
                       <ItemsControl ItemsSource="{Binding Items}" IsVisible="{Binding Open}"
                                     Margin="10,0,5,1">
                         <ItemsControl.ItemsPanel>
@@ -72,17 +79,25 @@
                         <ItemsControl.ItemTemplate>
                           <DataTemplate>
                             <Border Classes="cell" PointerPressed="OnLibraryPressed">
-                              <StackPanel HorizontalAlignment="Center">
-                                <!-- 统一 108×74 的格子，图等比缩进去。各设备图的高度本来就接近
-                                     （138~150），按高度缩放出来的比例也就接近，看着是一样大的；
-                                     宽的那两台（反应器 176、加料泵 172）由宽度兜住，整幅不裁 -->
-                                <ctl:DeviceArtView ArtKey="{Binding ArtKey}" Fit="True"
-                                                   Width="102" Height="74" HorizontalAlignment="Center" />
+                              <StackPanel>
+                                <!--
+                                  图占满格子的宽、高给到 92。Fit 取宽高两个方向的较小比例，
+                                  整幅不裁；宽度不写死是为了让它跟着格子走
+                                  （滚动条出不出来、栏宽以后改不改，都不用回来改这里）。
+
+                                  74 → 92 是为了「设备在白卡片上占得更大」：
+                                  各设备图约 176×145，格子净宽约 112 时按宽算比例是 0.64，
+                                  高 74 时按高算只有 0.51 —— 也就是说高度在卡脖子，
+                                  图两边空着一截白。给到 92 之后按高算 0.63，两个方向差不多齐，
+                                  图才真的把格子填满。
+                                -->
+                                <ctl:DeviceArtView ArtKey="{Binding ArtKey}" Fit="True" Height="92" />
                                 <TextBlock Text="{Binding Name}" FontSize="11"
-                                           Foreground="#3a3d41" Width="102" LineHeight="14"
-                                           TextAlignment="Center" TextWrapping="Wrap" Margin="0,3,0,0" />
-                                <TextBlock Text="{Binding Problem}" IsVisible="{Binding HasProblem}" Width="102"
-                                           FontSize="9.5" Foreground="#a81e15" TextAlignment="Center" TextWrapping="Wrap" />
+                                           Foreground="#3a3d41" LineHeight="14"
+                                           TextAlignment="Center" TextWrapping="Wrap" Margin="4,3,4,0" />
+                                <TextBlock Text="{Binding Problem}" IsVisible="{Binding HasProblem}"
+                                           FontSize="9.5" Foreground="#a81e15" Margin="4,0"
+                                           TextAlignment="Center" TextWrapping="Wrap" />
                               </StackPanel>
                             </Border>
                           </DataTemplate>
@@ -468,23 +483,16 @@
 
     <!-- 设备库的一格：一台设备一张**白卡片**，浮在整栏那块面色底上，
          格与格之间留缝露灰底。
-         描边那一格常驻（1px、平时透明）：悬停时才上色，
-         写成悬停才加边框的话，那一刻卡片内容会往里缩 1px —— 一排格子跟着抖 -->
+         上下内边距收到 4 / 5（原来 7 / 6）：省下来的都归图，
+         图在卡片上占得更满。
+         没有悬停态：白卡片没法再往亮里走，往暗里走又会比它坐着的灰底还暗、
+         读成「按下去了」，描边又被否掉了——所以这一格只靠手型光标说「能点」。 -->
     <Style Selector="Border.cell">
       <Setter Property="Background" Value="White" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="BorderBrush" Value="Transparent" />
-      <Setter Property="Padding" Value="0,7,0,6" />
+      <Setter Property="Padding" Value="0,4,0,5" />
       <Setter Property="Margin" Value="0,0,5,5" />
       <Setter Property="CornerRadius" Value="2" />
       <Setter Property="Cursor" Value="Hand" />
-    </Style>
-    <!-- 悬停：卡片还是白的，只镶一圈灰边。
-         白卡片已经是这一栏最亮的东西了，悬停没法再亮；
-         往暗里走（从前是填 #DEE3E8）又会比它坐着的灰底还暗，读成「按下去了」。
-         所以改成描边说话——跟圆钮、勾选框那一套是同一个做法 -->
-    <Style Selector="Border.cell:pointerover">
-      <Setter Property="BorderBrush" Value="#9aa0a6" />
     </Style>
 
     <Style Selector="Button.pill">
