@@ -97,6 +97,8 @@
          从前两者共用外壳黑，甲方给色之后分了家 -->
     <SolidColorBrush x:Key="Shell" Color="#352d6a" />
     <SolidColorBrush x:Key="ShellDeep" Color="#251f4b" />
+    <!-- 菜单栏底。跟泳道头卡片同值，是甲方给的同一支 -->
+    <SolidColorBrush x:Key="MenuBar" Color="#bfc9d7" />
     <!-- 通用深色底 -->
     <SolidColorBrush x:Key="Chrome" Color="#333333" />
     <SolidColorBrush x:Key="ChromeDeep" Color="#1f1f1f" />
@@ -309,15 +311,18 @@
       <!-- 300。中文要落到细体得靠字体自己有 Light 这一档（Windows 上的
            微软雅黑 UI 有）；没有 Light 的机器会退回 Regular，那是字体的事，不是这里 -->
       <Setter Property="FontWeight" Value="Light" />
-      <Setter Property="Foreground" Value="#a9adb1" />
+      <!-- 未选中一律黑字。从前是浅灰 #a9adb1（白底上「没选中的往后退」那一套），
+           菜单栏改成 #bfc9d7 的实底之后浅灰压在上面几乎读不出来 -->
+      <Setter Property="Foreground" Value="#1f2124" />
       <!-- 拉满 52 高，下划线才落在菜单栏底边上（原型的 bottom:0） -->
       <Setter Property="VerticalAlignment" Value="Stretch" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
+    <!-- 悬停：默认已经是黑字了，再写黑等于没反应，压到纯黑一档 -->
     <Style Selector="Button.menu:pointerover /template/ ContentPresenter">
       <Setter Property="Background" Value="Transparent" />
-      <Setter Property="TextBlock.Foreground" Value="#1f2124" />
+      <Setter Property="TextBlock.Foreground" Value="#000000" />
     </Style>
     <!-- 选中项：字与下划线同色。从前字是品牌红、线是外壳黑，
          那是「红只许小面积」时代的折中；甲方给了菜单选中蓝之后，

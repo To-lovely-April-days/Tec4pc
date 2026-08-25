@@ -97,9 +97,10 @@
       </TextBlock>
     </Border>
 
-    <!-- 主菜单栏：52px 白底，25px 细体菜单项；右侧模拟模式与用户区叠在同一行 -->
-    <Panel DockPanel.Dock="Top" Height="52" Background="White">
-      <Border BorderBrush="#e1e3e0" BorderThickness="0,0,0,1" />
+    <!-- 主菜单栏：52px，底色 #bfc9d7；右侧模拟模式与用户区叠在同一行。
+         底边那条分界线去掉了：从前是白底才需要一条线跟下面的白画布断开，
+         现在底色自己就是边界，再压一条比它浅的线反而像描歪了 -->
+    <Panel DockPanel.Dock="Top" Height="52" Background="{StaticResource MenuBar}">
       <StackPanel Orientation="Horizontal" Margin="14,0,0,0" VerticalAlignment="Center">
         <Button Classes="menu" Content="开始"        Command="{Binding Go}" CommandParameter="0" Classes.on="{Binding IsStart}" />
         <Button Classes="menu" Content="台面"        Command="{Binding Go}" CommandParameter="1" Classes.on="{Binding IsBench}" />

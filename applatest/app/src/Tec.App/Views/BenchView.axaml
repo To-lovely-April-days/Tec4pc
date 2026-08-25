@@ -16,7 +16,8 @@
       组头可点，整类收起展开。两页的左栏干的是同一件事，不该长成两副样子。
 
       底色只铺在**设备格**上，一台一块、格间留缝：这一栏要说的是
-      「这里有几台机器」。栏和分类块都不铺底——铺了那些格子就连成一整片。
+      「这里有几台机器」。栏和分类块都不铺底，其余部分一律白——
+      铺了那些格子就连成一整片，看不出是一台一台的东西。
     -->
     <Border Grid.Column="0">
       <DockPanel>
@@ -458,22 +459,19 @@
       <Setter Property="RenderTransform" Value="rotate(180deg)" />
     </Style>
 
-    <!-- 设备库的一格：**一台设备一块底**，格与格之间留缝露白。
-         底色比面色 #eff1f3 深一档，用的是泳道头卡片那支 #bfc9d7——
-         这两处是同一件事（「一张卡」），全程序就这一支笔，不另调一个。
-         #eff1f3 太贴近白：一格一格刷上去看不出边界，几格连起来就是一整片，
-         「这里有几台机器」这句话就说没了。 -->
+    <!-- 设备库的一格：**一台设备一块底**（面色 #eff1f3），格与格之间留缝露白。
+         这一栏除了格子以外全是白的——组头、色条旁边、缝，都是白底。 -->
     <Style Selector="Border.cell">
-      <Setter Property="Background" Value="#bfc9d7" />
+      <Setter Property="Background" Value="{StaticResource PropsBg}" />
       <Setter Property="Padding" Value="0,7,0,6" />
       <Setter Property="Margin" Value="0,0,5,5" />
       <Setter Property="CornerRadius" Value="2" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
-    <!-- 悬停再深一档。原来挂的是 SelBg（红调的 #faf2f3），那是换配色以前
-         留下的，压在蓝灰格子上是脏的 -->
+    <!-- 悬停深一档。原来挂的是 SelBg（红调的 #faf2f3），那是换配色以前
+         留下的，压在这套冷灰上是脏的 -->
     <Style Selector="Border.cell:pointerover">
-      <Setter Property="Background" Value="#a9b6c7" />
+      <Setter Property="Background" Value="#dee3e8" />
     </Style>
 
     <Style Selector="Button.pill">
