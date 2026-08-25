@@ -500,6 +500,28 @@
       <Setter Property="Height" Value="24" />
       <Setter Property="CornerRadius" Value="12" />
     </Style>
+    <!--
+      bare：只留记号，不套圈。眼下只给配方页步骤卡右下角那颗删除钮用。
+
+      圆钮那一族的圈是「这是一颗独立的钮」的意思——工具条上一排、属性栏底下一排，
+      都是站在自己那块地方的按钮。步骤卡里不是：那颗桶挤在「预计开始 / 耗时」
+      同一行的行尾，一张卡上已经有色条、图标、徽记、描述、排期五样东西，
+      再多一个圈就是第六种形状。去掉圈以后它读成「这一行末尾的一个动作」，
+      跟旁边两段字是一体的。
+
+      仍然挂在 tbtn del 底下（`grep 'tbtn del'` 还是全项目的删除入口清单），
+      只是把圈和直径覆写掉：20 见方、3 圆角，指上去压一层黑当反馈。
+    -->
+    <Style Selector="Button.tbtn.bare">
+      <Setter Property="Width" Value="20" />
+      <Setter Property="Height" Value="20" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="Button.tbtn.bare:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#18000000" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
 
     <!-- 会丢数据的那种圆钮：描边染红，指上去也是红的，不跟别的钮一样变蓝。
          按之前一定会弹框问一遍，但在按之前就该看出来这颗跟旁边那几颗不是一回事。

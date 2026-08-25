@@ -118,11 +118,10 @@ public sealed class StepViewModel : ViewModelBase
     public IReadOnlyList<int> Spines => Enumerable.Range(0, Depth).ToList();
 
     /// <summary>
-    /// 卡片宽度让出缩进，泳道整体还是 190（见 LaneViewModel.SlabWidth），各条泳道对得齐。
-    /// 246 → 190：排期从一行拆成两行之后，卡片不再被「预计开始 + 耗时 + 桶」
-    /// 那一行顶着，190 就够；省下的宽度换成高度。
+    /// 卡片宽度让出缩进，泳道整体还是 232（见 LaneViewModel.SlabWidth），各条泳道对得齐。
+    /// 232 = 排期那一行的下限 ≈226 再留 6 富余，算式见 RecipeView 里那一行的注释。
     /// </summary>
-    public double CardWidth => 190 - Depth * 14;
+    public double CardWidth => 232 - Depth * 14;
 
     public ScheduleEntry Entry { get; }
     public CommandDescriptor? Descriptor { get; }
@@ -357,15 +356,13 @@ public sealed class LaneViewModel : ViewModelBase
     public bool Closed => !_open;
 
     /// <summary>
-    /// 整条泳道（连底色那一块）多宽：展开 202，收起 52。
+    /// 整条泳道（连底色那一块）多宽：展开 244，收起 52。
     ///
-    /// 258 → 202：四条并排的时候太占地方，同一屏能同时读到的步骤反而少。
-    /// 省下来的宽度换成高度——步骤卡里「预计开始 / 耗时」原本挤在一行，
-    /// 那一行是 258 的下限（97 + 78 + 24 + 20 ≈ 219）；拆成两行之后
-    /// 内容 190 就够，卡片长高一点点，一条泳道里能看到的步骤没变少。
-    /// 这个 202 = 内容 190 + Padding 5×2 + 描边 1.6×2，跟从前 258 = 246 + 12 同一个算式。
+    /// 258 → 244：排期仍是一行（「预计开始 + 耗时 + 桶」），所以下限还在，
+    /// 只是那颗桶去掉圈之后从 24 收到 20、少占 4，内容跟着从 246 收到 232。
+    /// 244 = 内容 232 + Padding 5×2 + 描边 1.6×2，跟从前 258 = 246 + 12 同一个算式。
     /// </summary>
-    public double SlabWidth => _open ? 202 : 52;
+    public double SlabWidth => _open ? 244 : 52;
 
     /// <summary>
     /// 竖排的泳道名：汉字一个个正着摞，不是把整行转 90°——
@@ -383,44 +380,29 @@ public sealed class LaneViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// 这条泳道上的问题数。角标钉在泳道头右上角、探出去一半——四条泳道并排时，
-    /// 「哪一路不能跑」要在扫一眼的距离上就分得出来，不该等人挨个点开看。
+    /// 这条泳道上的问题数。只剩一个用处：有错误的时候把泳道头描一圈红。
     ///
-    /// 有错误就报错误、只有提醒才报提醒（转琥珀）：两件事的后果不一样，
-    /// 一枚角标只说一件——把「1 错误 1 提醒」并排塞进角标，最要紧的那半句会被稀释。
+    /// 从前还挂着一枚「n 错误 / n 提醒」的角标，去掉了——同一条消息在这一页上
+    /// 说了三遍：copybar 右端那枚 vchip 报总数、泳道头出错描红、出问题的那张
+    /// 步骤卡右上角有一枚记号。哪一路不能跑、坏在哪一步，后两样已经指到位了。
     /// </summary>
     private int _errors;
     private int _warns;
-    private string _badgeTip = "";
 
     public int Errors
     {
         get => _errors;
-        set { if (Set(ref _errors, value)) RaiseBadge(); }
+        set { if (Set(ref _errors, value)) Raise(nameof(HasErrors)); }
     }
 
     public int Warns
     {
         get => _warns;
-        set { if (Set(ref _warns, value)) RaiseBadge(); }
+        set => Set(ref _warns, value);
     }
-
-    /// <summary>角标的悬停文本：这条泳道上那几条问题挨行列出来。</summary>
-    public string BadgeTip
-    {
-        get => _badgeTip;
-        set => Set(ref _badgeTip, value);
-    }
-
-    private void RaiseBadge() =>
-        RaiseAll(nameof(HasErrors), nameof(HasBadge), nameof(BadgeWarn), nameof(BadgeText));
 
     /// <summary>泳道头描红只看错误——提醒不挡启动，不该把整条泳道标成「坏的」。</summary>
     public bool HasErrors => _errors > 0;
-
-    public bool HasBadge => _errors > 0 || _warns > 0;
-    public bool BadgeWarn => _errors == 0 && _warns > 0;
-    public string BadgeText => _errors > 0 ? $"{_errors} 错误" : $"{_warns} 提醒";
 
     /// <summary>落点在这条泳道的末尾（拖到虚线框上）。</summary>
     private bool _dropAtEnd;
@@ -491,9 +473,6 @@ public sealed class RecipeViewModel : ViewModelBase
         PickIssue = new RelayCommand(p => { if (p is IssueRow r) SelectIssue(r); });
         TogglePanel = new RelayCommand(() => PanelOpen = !PanelOpen);
         ClosePanel = new RelayCommand(() => PanelOpen = false);
-        // 泳道角标 / 步骤徽记点了就展开面板：角标只说「这儿有 N 条」，
-        // 是哪 N 条得有地方读；两处指向同一块内容，不另开一套弹窗
-        OpenPanel = new RelayCommand(() => { if (HasProblems) PanelOpen = true; });
         ShowAll = new RelayCommand(() => OnlyErrors = false);
         ShowOnlyErrors = new RelayCommand(() => OnlyErrors = true);
         Undo = new RelayCommand(DoUndo);
@@ -717,7 +696,6 @@ public sealed class RecipeViewModel : ViewModelBase
     public RelayCommand PickIssue { get; }
     public RelayCommand TogglePanel { get; }
     public RelayCommand ClosePanel { get; }
-    public RelayCommand OpenPanel { get; }
     public RelayCommand ShowAll { get; }
     public RelayCommand ShowOnlyErrors { get; }
 
@@ -1348,7 +1326,6 @@ public sealed class RecipeViewModel : ViewModelBase
                 ? Stoichiometry.Solve(t, Workspace.Compounds.ToList()) : null;
             var errs = 0;
             var warns = 0;
-            var tip = new List<string>();
             foreach (var i in RecipeValidator.Validate(recipe, Workspace.Catalog,
                                                        Workspace.ChannelOf(lane.Channel), charge: charge))
             {
@@ -1359,7 +1336,6 @@ public sealed class RecipeViewModel : ViewModelBase
                 var err = i.Level == IssueLevel.Error;
                 rows.Add(new IssueRow(i, lane.Channel, lane.ChannelLabel));
                 if (err) errs++; else warns++;
-                tip.Add(i.Message);
                 // 徽记钉到具体那一步上。按 StepId 找而不是下标：校验结果算出来到
                 // 画到屏上这段时间里人可能已经插了一步，下标就指歪了
                 if (i.StepId is not { } sid) continue;
@@ -1369,7 +1345,6 @@ public sealed class RecipeViewModel : ViewModelBase
             }
             lane.Errors = errs;
             lane.Warns = warns;
-            lane.BadgeTip = string.Join("\n", tip);
         }
         // 错误排在提醒前面：挡启动的那些先看。OrderBy 是稳定排序，
         // 同一级里仍按通道、按步骤的原顺序，不会每次刷新跳来跳去
