@@ -97,10 +97,12 @@
       </TextBlock>
     </Border>
 
-    <!-- 主菜单栏：52px，底色 #bfc9d7；右侧模拟模式与用户区叠在同一行。
+    <!-- 主菜单栏：44px，底色 #bfc9d7；右侧运行控制与用户区叠在同一行。
          底边那条分界线去掉了：从前是白底才需要一条线跟下面的白画布断开，
-         现在底色自己就是边界，再压一条比它浅的线反而像描歪了 -->
-    <Panel DockPanel.Dock="Top" Height="52" Background="{StaticResource MenuBar}">
+         现在底色自己就是边界，再压一条比它浅的线反而像描歪了。
+         52 → 44：菜单字 22px、实高 21，52 是照原型 25px 拉丁定的高度，
+         中文压到 22 之后上下就空出来了 -->
+    <Panel DockPanel.Dock="Top" Height="44" Background="{StaticResource MenuBar}">
       <StackPanel Orientation="Horizontal" Margin="14,0,0,0" VerticalAlignment="Center">
         <Button Classes="menu" Content="开始"        Command="{Binding Go}" CommandParameter="0" Classes.on="{Binding IsStart}" />
         <Button Classes="menu" Content="台面"        Command="{Binding Go}" CommandParameter="1" Classes.on="{Binding IsBench}" />
@@ -115,9 +117,9 @@
       <!-- 运行控制：黑药丸 + 三颗圆钮（运行 / 停止 / 暂停）。
            原型那句「模拟模式」去掉了——接上真机之后它就不对了，
            而这三个钮不论仿真真机都是同一件事，图标自己说得清 -->
-      <Border Background="{StaticResource Chrome}" CornerRadius="8" Height="48" Margin="0,2,150,0"
-              HorizontalAlignment="Right" VerticalAlignment="Top" Padding="12,0">
-        <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
+      <Border Background="{StaticResource Chrome}" CornerRadius="8" Height="38" Margin="0,3,150,0"
+              HorizontalAlignment="Right" VerticalAlignment="Top" Padding="10,0">
+        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
           <!-- 三颗都是「对全部已启用通道」。单路的启停在运行页的通道磁贴上。
                原型那颗「单步」去掉了：跳步是看着这一路当前那一步临时决定的，
                四路情况各不相同，一次全跳掉几乎不可能是人想要的，
@@ -135,10 +137,16 @@
       <StackPanel Orientation="Horizontal" Spacing="14" HorizontalAlignment="Right"
                   VerticalAlignment="Center" Margin="0,0,12,0">
         <!-- 这台机器本身。直接用设备库那份双通道反应器的图，不再另存一份图标：
-             同一台机器在顶栏、设备库、画布上就永远是同一张脸。新图是竖长的
-             （169.8×179.93），Fit 会等比缩进这个 44×40 的格子，整幅不裁 -->
-        <ctl:DeviceArtView ArtKey="reactor2" Fit="True" Width="44" Height="40"
-                           VerticalAlignment="Center" />
+             同一台机器在顶栏、设备库、画布上就永远是同一张脸。
+             套一个圆圈，尺寸与描边照 Button.tbtn（34 / 白底 / #474a4e 2px）——
+             顶栏右边这一排本来就全是圆的（三颗运行钮、用户头像），
+             只有它是一张裸图浮在那儿，看着像没做完 -->
+        <Border Width="34" Height="34" CornerRadius="17" Background="White"
+                BorderBrush="#474a4e" BorderThickness="2" ClipToBounds="True"
+                VerticalAlignment="Center" ToolTip.Tip="双通道反应器 RD-105">
+          <ctl:DeviceArtView ArtKey="reactor2" Fit="True" Width="24" Height="22"
+                             HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Border>
         <!-- 用户区（照 gbg-account 原型 .um-anchor / .um-menu 重做）：
              头像 + 署名，点开 252 宽的账户菜单——头部是「谁在用这台机器」，
              下面四条带图标的菜单项 -->
@@ -243,6 +251,10 @@
         </Button>
       </StackPanel>
     </Panel>
+
+    <!-- 菜单栏与下面内容之间的白缝。6px —— 跟属性栏左边那条色条一个厚度：
+         全程序「这里断开」这件事只用一个尺寸说，缝多宽、条多粗是同一个数 -->
+    <Border DockPanel.Dock="Top" Height="6" Background="White" />
 
     <!-- 视图区 -->
     <Panel>

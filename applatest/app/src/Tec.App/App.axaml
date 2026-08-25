@@ -337,10 +337,11 @@
          中间试过原型那种描边分段控件，实机上不行：底色一白，三颗钮就只剩三个
          小色块，禁用时再压到 0.38 透明度整排糊成一片，看不出哪颗是急停。
          黑底 + 实心圆片这一套是靠「色块面积」认按钮的，压暗了照样分得清。 -->
+    <!-- 30 是配 38 高的药丸的（药丸配 44 高的菜单栏）。从前是 36 配 48 -->
     <Style Selector="Button.rbtn">
-      <Setter Property="Width" Value="36" />
-      <Setter Property="Height" Value="36" />
-      <Setter Property="CornerRadius" Value="18" />
+      <Setter Property="Width" Value="30" />
+      <Setter Property="Height" Value="30" />
+      <Setter Property="CornerRadius" Value="15" />
       <Setter Property="Background" Value="#4d4d4d" />
       <Setter Property="BorderThickness" Value="0" />
       <Setter Property="Padding" Value="0" />
