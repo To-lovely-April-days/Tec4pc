@@ -4,8 +4,8 @@
              xmlns:v="clr-namespace:Tec.App.Views"
              x:Class="Tec.App.Views.BenchView">
 
-  <!-- 三栏宽度照原型：设备库 118 · 台面自适应 · 属性面板 342 -->
-  <Grid ColumnDefinitions="118,*,342">
+  <!-- 三栏宽度：设备库 118 · 台面自适应 · 属性面板 312（原型 342，收窄 30） -->
+  <Grid ColumnDefinitions="118,*,312">
 
     <!--
       设备库（学 GBG）：**栏本身不铺底色、跟画布之间也不画分界线**，
@@ -189,16 +189,16 @@
             <StackPanel>
               <TextBlock Classes="intro"
                          Text="从左侧设备库拖入设备组成台面。点选台面上的设备可编辑其连接与通道绑定；下表可独立启停每个通道。" />
-              <!-- 列宽 96,*,40 跟 SchemaFormView 的表单行一模一样（标签 96、
+              <!-- 列宽 76,*,40 跟 SchemaFormView 的表单行一模一样（标签 76、
                    输入自适应、右边 40 留给单位）。从前这两行写的是 96,*，
                    输入框一直伸到最右，比下面那排设备参数宽出 40px，
                    一列输入框长短不一，看着像没对齐——因为确实没对齐 -->
-              <Grid ColumnDefinitions="96,*,40" Margin="0,0,0,8">
+              <Grid ColumnDefinitions="76,*,40" Margin="0,0,0,8">
                 <TextBlock Grid.Column="0" Text="台面名称" FontSize="12" Foreground="#3a3d41"
                            VerticalAlignment="Center" Margin="0,0,10,0" />
                 <TextBox Grid.Column="1" Classes="finput" Text="{Binding BenchName, Mode=TwoWay}" />
               </Grid>
-              <Grid ColumnDefinitions="96,*,40" Margin="0,0,0,10">
+              <Grid ColumnDefinitions="76,*,40" Margin="0,0,0,10">
                 <TextBlock Grid.Column="0" Text="设备数" FontSize="12" Foreground="#3a3d41"
                            VerticalAlignment="Center" Margin="0,0,10,0" />
                 <TextBox Grid.Column="1" Classes="finput" Text="{Binding DeviceCountText}" IsEnabled="False" />
@@ -289,10 +289,10 @@
                 </Button>
               </StackPanel>
 
-              <!-- 改的时候：输入框落进下面表单的同一列（96,*,40），
+              <!-- 改的时候：输入框落进下面表单的同一列（76,*,40），
                    左右两边都跟串口 / 波特率那排对齐。**输入框就该跟输入框一列**——
                    从前它是居中浮着的固定 180px，跟下面哪一条边都对不上 -->
-              <Grid ColumnDefinitions="96,*,40" Margin="0,0,0,12" IsVisible="{Binding Renaming}">
+              <Grid ColumnDefinitions="76,*,40" Margin="0,0,0,12" IsVisible="{Binding Renaming}">
                 <TextBox Grid.Column="1" Classes="finput"
                          Text="{Binding DeviceName, Mode=TwoWay}" />
                 <Button Grid.Column="2" Classes="hbtn" ToolTip.Tip="改完" Margin="7,0,0,0"
@@ -306,7 +306,7 @@
               <v:SchemaFormView DataContext="{Binding ConfigForm}" />
 
               <!-- 探头要绑通道；反应器自带通道，没有这一行 -->
-              <Grid ColumnDefinitions="96,*,40" Margin="0,0,0,8" IsVisible="{Binding IsProbe}">
+              <Grid ColumnDefinitions="76,*,40" Margin="0,0,0,8" IsVisible="{Binding IsProbe}">
                 <TextBlock Grid.Column="0" Text="绑定通道" FontSize="12" Foreground="#3a3d41"
                            VerticalAlignment="Center" Margin="0,0,10,0" />
                 <ComboBox Grid.Column="1" Classes="sel" Height="23" HorizontalAlignment="Stretch"
@@ -379,8 +379,11 @@
   <UserControl.Styles>
     <!-- 设备库的一格：整格一块底色（图 + 名字都在里面），格与格之间露画布的白。
          悬停整格转浅蓝，跟台面上选中设备是同一套提示语言 -->
+    <!-- 格子底跟属性块同一支笔（PropsBg）：这两块是这一页仅有的两处
+         「不是画布的面」，从前一个 #fafafa 一个 #ecedea，差一档不多不少，
+         正好落在「看得出不一样、又说不出为什么」那个区间 -->
     <Style Selector="Border.cell">
-      <Setter Property="Background" Value="{StaticResource LibBg}" />
+      <Setter Property="Background" Value="{StaticResource PropsBg}" />
       <Setter Property="Padding" Value="0,8,0,7" />
       <Setter Property="Margin" Value="0,0,0,6" />
       <Setter Property="Cursor" Value="Hand" />

@@ -220,8 +220,13 @@ public sealed class BenchViewModel : ViewModelBase
         set { if (value is { Length: > 0 }) { _ws.Bench.Name = value; Raise(); } }
     }
 
+    /// <summary>
+    /// 分隔符跟画布右下角的 <see cref="BenchSummary"/> 一样用「·」，不用「（…，…）」：
+    /// 一对全角括号加一个全角逗号就是 36px，属性栏收到 312 之后这一句会被切在框里
+    /// （实测切掉末尾的「）」）。同一份数字在两处露面，写法本来就该一致。
+    /// </summary>
     public string DeviceCountText
-        => $"{_ws.Bench.Devices.Count} 台（{_ws.Channels.Count} 通道，{_ws.Channels.Count(c => c.Enabled)} 启用）";
+        => $"{_ws.Bench.Devices.Count} 台 · {_ws.Channels.Count} 通道 · {_ws.Channels.Count(c => c.Enabled)} 启用";
 
     /// <summary>设备库里点中的那一项。真正的拖拽落位下一轮做。</summary>
     public LibraryItemViewModel? PickedFromLibrary

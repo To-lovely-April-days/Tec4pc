@@ -18,7 +18,7 @@
     旁边那些 12×12 的小色块是另一回事（色卡，不是色条），不在此列。
     步骤库的分组从整块色底改成了「3×11 的一小截色记号」，也不在此列。
   -->
-  <Grid ColumnDefinitions="260,*,342">
+  <Grid ColumnDefinitions="260,*,312">
 
     <!-- ══ 左：步骤库 ══
          原型是一栏 259 宽的白列：24px 深色标题条 + 35px 搜索行 + 一条条 23px 的
@@ -765,7 +765,7 @@
                 </StackPanel>
               </Button>
               <StackPanel IsVisible="{Binding LibSection.Open}">
-                <Grid ColumnDefinitions="96,*,40" Margin="0,6,0,0">
+                <Grid ColumnDefinitions="76,*,40" Margin="0,6,0,0">
                   <TextBlock Grid.Column="0" Text="配方" FontSize="12" Foreground="#3a3d41"
                              VerticalAlignment="Center" Margin="0,0,10,0" />
                   <ComboBox Grid.Column="1" Classes="sel" HorizontalAlignment="Stretch"
@@ -864,7 +864,7 @@
 
               <!-- 加料步骤连配料表（CH-4.1）：选一行建立引用，体积从此跟随计算 -->
               <StackPanel IsVisible="{Binding IsDoseStep}" Margin="0,10,0,0" Spacing="5">
-                <Grid ColumnDefinitions="96,*,40">
+                <Grid ColumnDefinitions="76,*,40">
                   <TextBlock Grid.Column="0" Text="连配料表" FontSize="12" Foreground="#3a3d41"
                              VerticalAlignment="Center" Margin="0,0,10,0" />
                   <ComboBox Grid.Column="1" Classes="sel" HorizontalAlignment="Stretch"
@@ -894,7 +894,7 @@
                             IsChecked="{Binding StepSkipped, Mode=TwoWay}" />
                   <!-- 工艺阶段：设备不知道这一段在结晶还是在蒸馏，只有人知道。
                        标了就进记录、进报告，报告里注明是操作人标的 -->
-                  <Grid ColumnDefinitions="96,*,40" Margin="0,4,0,0">
+                  <Grid ColumnDefinitions="76,*,40" Margin="0,4,0,0">
                     <TextBlock Grid.Column="0" Text="工艺阶段" FontSize="12" Foreground="#3a3d41"
                                VerticalAlignment="Center" Margin="0,0,10,0" />
                     <ComboBox Grid.Column="1" Classes="sel" HorizontalAlignment="Stretch"

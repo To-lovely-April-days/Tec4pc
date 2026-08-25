@@ -125,7 +125,6 @@
     <SolidColorBrush x:Key="Muted2" Color="#a9adb1" />
     <SolidColorBrush x:Key="Line" Color="#e1e3e0" />
     <SolidColorBrush x:Key="Line2" Color="#e1e3e0" />
-    <SolidColorBrush x:Key="LibBg" Color="#fafafa" />
     <SolidColorBrush x:Key="PropsBg" Color="#ecedea" />
     <SolidColorBrush x:Key="PropsLine" Color="#d0d2cf" />
     <SolidColorBrush x:Key="Divider" Color="#d0d2cf" />

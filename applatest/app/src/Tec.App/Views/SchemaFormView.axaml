@@ -4,8 +4,15 @@
              x:Class="Tec.App.Views.SchemaFormView">
 
   <!-- 表单一律由 schema 渲染。尺寸照原型 .frow / .finput：
-       标签 96px · 11.5px，输入框 23px 高 · 11.5px，行间距 8px。
-       提示是 .pf-tip —— 10.5px 灰字，不是蓝底方块。 -->
+       标签 76px · 11.5px，输入框 23px 高 · 11.5px，行间距 8px。
+       提示是 .pf-tip —— 10.5px 灰字，不是蓝底方块。
+
+       标签列原本 96：那是属性栏还有 342 宽时定的。栏缩到 312、再让出
+       13px 滚动条之后，输入框只剩 127，「1 台（2 通道，2 启用）」这种
+       整句读数就被切在框里。标签绝大多数是 ≤5 个汉字（「反应釜规格」
+       60px），76 减去 10 的右边距还剩 66，够站；省下的 20px 全给输入框。
+       个别 7 个字的（「到达后等待稳定」「多久没数算失效」）折成两行——
+       所以这一列的 TextWrapping 不能去掉。 -->
   <StackPanel>
 
     <ItemsControl ItemsSource="{Binding Fields}">
@@ -13,7 +20,7 @@
         <DataTemplate>
           <!-- 单位列固定 40px（原型 .pf-u）：写 Auto 的话没有单位的行输入框会多伸出去，
                一列输入框长短不一 -->
-          <Grid ColumnDefinitions="96,*,40" Margin="0,0,0,8" IsVisible="{Binding IsVisible}">
+          <Grid ColumnDefinitions="76,*,40" Margin="0,0,0,8" IsVisible="{Binding IsVisible}">
             <TextBlock Grid.Column="0" Text="{Binding Label}" VerticalAlignment="Center"
                        FontSize="12" Foreground="#3a3d41" TextWrapping="Wrap" Margin="0,0,10,0" />
 
@@ -81,10 +88,13 @@
               Height="24" MinWidth="0" Padding="10,0" FontSize="11.5" Margin="0,2,0,0" />
     </StackPanel>
 
-    <!-- .pf-tip：10.5px 灰字 -->
+    <!-- .pf-tip：10.5px 灰字。
+         下边距不能省：一张表单的 tip 后面往往紧跟着**另一张**表单
+         （台面栏里「连接」和「设备参数」是前后两个 SchemaFormView），
+         只写上边距的话 tip 末行跟下一张表头一行贴在一起，看着像叠上去了。 -->
     <TextBlock IsVisible="{Binding HasTip}" Text="{Binding Tip}"
                FontSize="10.5" Foreground="#959a9f" LineHeight="16"
-               TextWrapping="Wrap" Margin="0,7,0,0" />
+               TextWrapping="Wrap" Margin="0,7,0,12" />
   </StackPanel>
 
   <UserControl.Styles>

@@ -4,8 +4,8 @@
              x:Class="Tec.App.Views.RecipeLibView">
 
   <!--
-    版式照 gbg-recipes 原型：库列表 280 ｜ 主区（标题 + 标签页 + 工具条 + 温度剖面 +
-    步骤卡）｜ 属性 342。属性栏不照原型那块通栏灰，按你定的那一套走：栏本身不铺底色、
+    版式：库列表 260（跟配方页的步骤库同宽）｜ 主区（标题 + 标签页 + 工具条 +
+    温度剖面 + 步骤卡）｜ 属性 312。属性栏不照原型那块通栏灰，按你定的那一套走：栏本身不铺底色、
     块用 PropsBg、块之间露白缝、「当前选中的那一个」左边一条粗色条。
 
     **选中色跟全局一套走（蓝）**：列表、标签页、步骤卡、温度剖面上的色带四处同一个蓝。
@@ -161,10 +161,10 @@
 
   <!-- 左栏 260 跟配方页的步骤库同宽（259 + 1px 分界）。两页的左栏都是
        「库」，菜单在这两页之间切的时候宽度一变，整个中列跟着横跳一下 -->
-  <Grid ColumnDefinitions="260,*,342">
+  <Grid ColumnDefinitions="260,*,312">
 
     <!-- ══ 左：配方库（原型 .rx-lib）══ -->
-    <!-- ClipToBounds：这一栏宽度写死 280，Grid 不裁，里面的东西真比它宽的话
+    <!-- ClipToBounds：这一栏宽度写死 260，Grid 不裁，里面的东西真比它宽的话
          会溢到中列上去 -->
     <!-- 抬头照配方页的步骤库那一套：24px 深色标题条 + 35px 搜索行，
          下面是平铺细行。原来是「19px 细体标题 + 白底搜索 + 一条动作行 +
@@ -471,29 +471,29 @@
                            Text="点中间表里的一行，可在下面查看那一步的参数。" />
 
                 <StackPanel IsVisible="{Binding HasSelection}">
-                  <Grid ColumnDefinitions="96,*,40" Margin="0,0,0,8">
+                  <Grid ColumnDefinitions="76,*,40" Margin="0,0,0,8">
                     <TextBlock Grid.Column="0" Text="名称" FontSize="12" Foreground="#3a3d41"
                                VerticalAlignment="Center" Margin="0,0,10,0" />
                     <TextBox Grid.Column="1" Classes="finput" Text="{Binding Name, Mode=TwoWay}" />
                   </Grid>
-                  <Grid ColumnDefinitions="96,*,40" Margin="0,0,0,8">
+                  <Grid ColumnDefinitions="76,*,40" Margin="0,0,0,8">
                     <TextBlock Grid.Column="0" Text="描述" FontSize="12" Foreground="#3a3d41"
                                VerticalAlignment="Center" Margin="0,0,10,0" />
                     <TextBox Grid.Column="1" Classes="finput" Text="{Binding Desc, Mode=TwoWay}" />
                   </Grid>
-                  <Grid ColumnDefinitions="96,*,40" Margin="0,0,0,8">
+                  <Grid ColumnDefinitions="76,*,40" Margin="0,0,0,8">
                     <TextBlock Grid.Column="0" Text="步骤数" FontSize="12" Foreground="#3a3d41"
                                VerticalAlignment="Center" Margin="0,0,10,0" />
                     <TextBox Grid.Column="1" Classes="finput" Text="{Binding StepCountText}"
                              IsEnabled="False" />
                   </Grid>
-                  <Grid ColumnDefinitions="96,*,40" Margin="0,0,0,8">
+                  <Grid ColumnDefinitions="76,*,40" Margin="0,0,0,8">
                     <TextBlock Grid.Column="0" Text="作者" FontSize="12" Foreground="#3a3d41"
                                VerticalAlignment="Center" Margin="0,0,10,0" />
                     <TextBox Grid.Column="1" Classes="finput" Text="{Binding AuthorText}"
                              IsEnabled="False" />
                   </Grid>
-                  <Grid ColumnDefinitions="96,*,40">
+                  <Grid ColumnDefinitions="76,*,40">
                     <TextBlock Grid.Column="0" Text="最近更新" FontSize="12" Foreground="#3a3d41"
                                VerticalAlignment="Center" Margin="0,0,10,0" />
                     <TextBox Grid.Column="1" Classes="finput" Text="{Binding UpdatedText}"
@@ -524,19 +524,19 @@
                 <TextBlock Text="{Binding Desc}" FontSize="11.5" Foreground="#3a3d41"
                            LineHeight="18" TextWrapping="Wrap" Margin="0,0,0,10" />
 
-                <Grid ColumnDefinitions="96,*,40" Margin="0,0,0,8">
+                <Grid ColumnDefinitions="76,*,40" Margin="0,0,0,8">
                   <TextBlock Grid.Column="0" Text="耗时" FontSize="12" Foreground="#3a3d41"
                              VerticalAlignment="Center" Margin="0,0,10,0" />
                   <TextBox Grid.Column="1" Classes="finput" Text="{Binding PlanDuration}"
                            IsEnabled="False" />
                 </Grid>
-                <Grid ColumnDefinitions="96,*,40" Margin="0,0,0,8">
+                <Grid ColumnDefinitions="76,*,40" Margin="0,0,0,8">
                   <TextBlock Grid.Column="0" Text="结束条件" FontSize="12" Foreground="#3a3d41"
                              VerticalAlignment="Center" Margin="0,0,10,0" />
                   <TextBox Grid.Column="1" Classes="finput" Text="{Binding EndText}"
                            IsEnabled="False" />
                 </Grid>
-                <Grid ColumnDefinitions="96,*,40">
+                <Grid ColumnDefinitions="76,*,40">
                   <TextBlock Grid.Column="0" Text="工艺阶段" FontSize="12" Foreground="#3a3d41"
                              VerticalAlignment="Center" Margin="0,0,10,0" />
                   <TextBox Grid.Column="1" Classes="finput" Text="{Binding PhaseText}"
@@ -548,9 +548,12 @@
                 <ItemsControl ItemsSource="{Binding Chips}">
                   <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                      <Grid ColumnDefinitions="96,*" Margin="0,0,0,5">
+                      <Grid ColumnDefinitions="76,*" Margin="0,0,0,5">
+                        <!-- 标签得能折行：参数名是驱动 schema 给的，长短不由这里说了算
+                             （「到达后等待稳定」就有 7 个字）。不折行的话 Grid 不裁剪，
+                             标签会直接压到右边那一列的值上 -->
                         <TextBlock Grid.Column="0" Text="{Binding Label}" FontSize="11.5"
-                                   Foreground="#565a5f" Margin="0,0,10,0" />
+                                   Foreground="#565a5f" Margin="0,0,10,0" TextWrapping="Wrap" />
                         <TextBlock Grid.Column="1" Text="{Binding Value}" FontSize="11.5"
                                    Foreground="#292b2e" />
                       </Grid>
