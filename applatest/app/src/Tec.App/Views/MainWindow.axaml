@@ -14,11 +14,12 @@
 
   <!--
     窗口圆角自绘：Windows 11 的 DWM 只给还原态窗口加圆角，最大化一律方角，
-    应用改不了它的行为——所以圆角由这里裁。代价是最大化时屏幕四角透出桌面。
+    应用改不了它的行为——所以圆角由这里裁。裁多少见下面 Window.Styles 里
+    那两条：还原态 8，最大化 0（跟 DWM 的行为一致，也不会从四角漏出桌面）。
     OffScreenMargin 是最大化时窗口超出工作区的那一圈（自绘标题栏必须自己补），
     不补的话四边各有几像素内容跑到屏幕外面。
   -->
-  <Border Name="Shell" Background="White" CornerRadius="8" ClipToBounds="True"
+  <Border Name="Shell" Background="White" ClipToBounds="True"
           Margin="{Binding $parent[Window].OffScreenMargin}">
   <DockPanel>
 
@@ -103,7 +104,11 @@
          52 → 44：菜单字 22px、实高 21，52 是照原型 25px 拉丁定的高度，
          中文压到 22 之后上下就空出来了 -->
     <Panel DockPanel.Dock="Top" Height="44" Background="{StaticResource MenuBar}">
-      <StackPanel Orientation="Horizontal" Margin="14,0,0,0" VerticalAlignment="Center">
+      <!-- 左边距 2（不是 14）：菜单项自己各带 11 的外边距，再加汉字自身的
+           左侧留白，「开」的笔画落在 x=20；标题栏第一个图标在 x=13。
+           两者内容不同（22px 汉字 vs 16px 图标），各自的留白也不同，
+           不去凑到同一个像素——从前是 14，首字落在 x=27，那才是明显缩进去一截 -->
+      <StackPanel Orientation="Horizontal" Margin="2,0,0,0" VerticalAlignment="Center">
         <Button Classes="menu" Content="开始"        Command="{Binding Go}" CommandParameter="0" Classes.on="{Binding IsStart}" />
         <Button Classes="menu" Content="台面"        Command="{Binding Go}" CommandParameter="1" Classes.on="{Binding IsBench}" />
         <Button Classes="menu" Content="配方"        Command="{Binding Go}" CommandParameter="2" Classes.on="{Binding IsRecipe}" />
@@ -291,6 +296,20 @@
   </Border>
 
   <Window.Styles>
+    <!--
+      窗口圆角。**不能写成 Border 上的内联属性**：内联值压得过样式，
+      写在标签上之后最大化那条规则永远上不了。
+      两条的先后不能反：Avalonia 同优先级按源码顺序，后写的赢。
+    -->
+    <Style Selector="Border#Shell">
+      <Setter Property="CornerRadius" Value="8" />
+    </Style>
+    <!-- 最大化：四角切平。窗口这时候是贴着屏幕边的，圆角会把桌面从四个角
+         露出来——那是「窗口没铺满」的样子，跟最大化要表达的正相反 -->
+    <Style Selector="Window[WindowState=Maximized] Border#Shell">
+      <Setter Property="CornerRadius" Value="0" />
+    </Style>
+
     <!-- 标题栏左上那两个图标按钮：只有指针悬停时才显出底色，平时和标题栏一体 -->
     <Style Selector="Button.tbico">
       <Setter Property="Background" Value="Transparent" />
