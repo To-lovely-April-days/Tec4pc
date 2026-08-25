@@ -47,11 +47,17 @@ public static class BenchDock
     private const double ArtVw = 169.8, ArtVh = 179.93;
 
     /// <summary>
-    /// 设备在画布上的显示宽度。反应器画得比原来大，是为了让釜体里的液体和
-    /// 搅拌桨看得清——接口坐标按 ArtVw 等比换算，这里改宽度不会让管路错位。
+    /// 设备在画布上的显示宽度。接口坐标按 ArtVw 等比换算，这里改宽度不会让管路错位。
     /// 三处（画布节点、拖拽幽灵、卡片缩略图）从前各写各的，现在只此一份。
+    ///
+    /// 从 300 / 120 对半收到 150 / 60：从前一台反应器就占掉画布小半张，
+    /// 摆两台就得靠滚动，看不到整个台面长什么样。
+    /// 注意这不是「换个显示比例」那么轻——**已存盘的台面里，设备位置是用户
+    /// 当初摆的绝对坐标**（松手落在哪儿就是哪儿，不吸附，见 EndDrag 的注释）。
+    /// 机器缩了一半而坐标没动，老台面上插着的探头会显得离反应器远了些；
+    /// 管路仍然连得上（连线是按当前宽度重算的），只是不如当初摆得紧凑。
     /// </summary>
-    public static double DisplayWidth(string artKey) => artKey == "reactor2" ? 300 : 120;
+    public static double DisplayWidth(string artKey) => artKey == "reactor2" ? 150 : 60;
 
     /// <summary>
     /// 反应器的 11 个接口。坐标是量出来的，不是估的：把设备图按 viewBox 宽 1:1

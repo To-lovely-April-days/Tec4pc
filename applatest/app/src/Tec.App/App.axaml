@@ -59,21 +59,38 @@
           （导出页的数据项那一列），十几块实心黑压在浅色表里，
           比它们标记的那些数据本身还重——远看是一列黑点，不是一列勾。
 
-          现在底 Transparent、描边和勾都是 #333333：跟圆钮一族同一个道理，
-          坐在什么底上就露什么底（属性栏是面色、表格是白），
-          「勾没勾」由那一笔勾说，不靠一块色块喊。
-          悬停 / 按下压一层黑当反馈，用的跟圆钮一族同两个值。
+          再从前一版是底 Transparent「坐在什么底上就露什么底」，
+          可属性栏底色是 #F1F1F1，框里跟着灰，看不出那是个能点的框。
+          **现在一律白底**：勾没勾都白，跟输入框一个底色，一列看下来
+          「这几格是能改的」齐平。勾上之后那一笔勾是纯黑 #000000。
+          悬停 / 按下不再压黑，只把描边压深——底色得一直是白的。
           Fluent 的勾选框颜色不吃具名笔，只认这几个键。
         -->
-        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked" Color="Transparent" />
-        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" Color="#18000000" />
-        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPressed" Color="#22000000" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillUnchecked" Color="White" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillUncheckedPointerOver" Color="White" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillUncheckedPressed" Color="White" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeUnchecked" Color="#333333" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeUncheckedPointerOver" Color="#000000" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeUncheckedPressed" Color="#000000" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked" Color="White" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" Color="White" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPressed" Color="White" />
         <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeChecked" Color="#333333" />
         <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPointerOver" Color="#000000" />
         <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPressed" Color="#000000" />
-        <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundChecked" Color="#333333" />
+        <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundChecked" Color="#000000" />
         <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundCheckedPointerOver" Color="#000000" />
         <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundCheckedPressed" Color="#000000" />
+
+        <!--
+          输入框一律白底，三个状态都是。Fluent 默认悬停 / 聚焦时会把框刷成浅灰，
+          鼠标一扫过去一排框跟着变灰，看着像被禁用了。各处的 TextBox 样式里
+          虽然都写了 Background=White，但那只压得住常态——状态一换，模板会把
+          这几个键直接写到 PART_BorderElement 上，压不住，只能在这儿改。
+        -->
+        <SolidColorBrush x:Key="TextControlBackground" Color="White" />
+        <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="White" />
+        <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="White" />
 
       </ResourceDictionary>
       <ResourceDictionary x:Key="Dark">
@@ -92,21 +109,38 @@
           （导出页的数据项那一列），十几块实心黑压在浅色表里，
           比它们标记的那些数据本身还重——远看是一列黑点，不是一列勾。
 
-          现在底 Transparent、描边和勾都是 #333333：跟圆钮一族同一个道理，
-          坐在什么底上就露什么底（属性栏是面色、表格是白），
-          「勾没勾」由那一笔勾说，不靠一块色块喊。
-          悬停 / 按下压一层黑当反馈，用的跟圆钮一族同两个值。
+          再从前一版是底 Transparent「坐在什么底上就露什么底」，
+          可属性栏底色是 #F1F1F1，框里跟着灰，看不出那是个能点的框。
+          **现在一律白底**：勾没勾都白，跟输入框一个底色，一列看下来
+          「这几格是能改的」齐平。勾上之后那一笔勾是纯黑 #000000。
+          悬停 / 按下不再压黑，只把描边压深——底色得一直是白的。
           Fluent 的勾选框颜色不吃具名笔，只认这几个键。
         -->
-        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked" Color="Transparent" />
-        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" Color="#18000000" />
-        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPressed" Color="#22000000" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillUnchecked" Color="White" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillUncheckedPointerOver" Color="White" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillUncheckedPressed" Color="White" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeUnchecked" Color="#333333" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeUncheckedPointerOver" Color="#000000" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeUncheckedPressed" Color="#000000" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked" Color="White" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" Color="White" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPressed" Color="White" />
         <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeChecked" Color="#333333" />
         <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPointerOver" Color="#000000" />
         <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPressed" Color="#000000" />
-        <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundChecked" Color="#333333" />
+        <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundChecked" Color="#000000" />
         <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundCheckedPointerOver" Color="#000000" />
         <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundCheckedPressed" Color="#000000" />
+
+        <!--
+          输入框一律白底，三个状态都是。Fluent 默认悬停 / 聚焦时会把框刷成浅灰，
+          鼠标一扫过去一排框跟着变灰，看着像被禁用了。各处的 TextBox 样式里
+          虽然都写了 Background=White，但那只压得住常态——状态一换，模板会把
+          这几个键直接写到 PART_BorderElement 上，压不住，只能在这儿改。
+        -->
+        <SolidColorBrush x:Key="TextControlBackground" Color="White" />
+        <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="White" />
+        <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="White" />
 
       </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>
@@ -645,29 +679,87 @@
     <!--
       勾选框勾上之后那个方框要留着。
 
-      上面主题字典里那几个 CheckBoxCheckBackground*Checked 只把**底**改透明就够了，
+      上面主题字典里那几个 CheckBoxCheckBackground*Checked 只管**底**，
       **描边却跟着一起没了**——实测勾上之后整个方框消失，只剩一个光秃秃的勾，
       而没勾的时候是一个空方框：同一个控件，勾一下方框就不见了，
       一列里勾的和没勾的两行对不齐。
 
-      所以直接压模板里那块 Border#NormalRectangle：底透、描边照旧 1px #333333。
+      所以直接压模板里那块 Border#NormalRectangle：白底、描边 1px #333333。
       这样两个状态是同一个方框，区别只在里面有没有那一笔勾——本来就该是这样。
+      三个状态的底都是纯白，悬停 / 按下只把描边压深，不再压一层黑。
     -->
     <Style Selector="CheckBox:checked /template/ Border#NormalRectangle">
-      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Background" Value="White" />
       <Setter Property="BorderBrush" Value="#333333" />
       <Setter Property="BorderThickness" Value="1" />
     </Style>
     <Style Selector="CheckBox:checked:pointerover /template/ Border#NormalRectangle">
-      <Setter Property="Background" Value="#18000000" />
+      <Setter Property="Background" Value="White" />
       <Setter Property="BorderBrush" Value="#000000" />
       <Setter Property="BorderThickness" Value="1" />
     </Style>
     <Style Selector="CheckBox:checked:pressed /template/ Border#NormalRectangle">
-      <Setter Property="Background" Value="#22000000" />
+      <Setter Property="Background" Value="White" />
       <Setter Property="BorderBrush" Value="#000000" />
       <Setter Property="BorderThickness" Value="1" />
     </Style>
+
+    <!--
+      方框从 20 收到 16 —— 只能换模板，样式改不动。
+
+      Fluent 的勾选框模板里，20 这个尺寸写在两处，两处都碰不得：
+        · Grid#RootGrid 第一列写死 20。ColumnDefinitions 不是 AvaloniaProperty，
+          样式里根本设不了（试过，编译期 AVLN3000）。
+        · Border#NormalRectangle 的 Width/Height 是模板里的**字面属性**，
+          也就是那个部件上的**本地值**——本地值压过样式，
+          在这儿写 <Setter Property="Width"> 一点用没有（试过，量出来还是 20）。
+      而且 Fluent 没给这个尺寸留资源键（整份主题里没有 CheckBoxSize 之类，
+      查过 dll 里所有 CheckBox* 键，只有颜色）。
+
+      所以这里整个换掉 Template。**四个部件名一个不改**——
+      RootGrid / NormalRectangle / CheckGlyph / PART_ContentPresenter：
+      Fluent 那套状态样式（勾的路径数据、透明度、各状态的填色描边）
+      是按这几个名字选的，名字留着，它们就照旧生效，
+      我们只换了骨架尺寸，一行颜色逻辑都不用重写。
+      样式里的 Setter 压得过 ControlTheme 里的 Setter，所以这一条能盖住原模板。
+
+      勾那一笔的路径是照 16×16 画的（模板里那个撑尺寸的空 Panel 就是 16×16），
+      原先 Viewbox 把它放大到 20；现在格子本来就是 16，1:1 画，反而更清楚。
+    -->
+    <Style Selector="CheckBox">
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Background="{TemplateBinding Background}"
+                  BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}"
+                  CornerRadius="{TemplateBinding CornerRadius}">
+            <Grid x:Name="RootGrid" ColumnDefinitions="16,*">
+              <Border x:Name="NormalRectangle"
+                      Width="16" Height="16"
+                      BorderThickness="1" CornerRadius="2"
+                      UseLayoutRounding="False"
+                      VerticalAlignment="Center" />
+              <Viewbox Width="16" Height="16" VerticalAlignment="Center"
+                       UseLayoutRounding="False">
+                <Panel>
+                  <Panel Width="16" Height="16" />
+                  <Path x:Name="CheckGlyph" Opacity="0" Stretch="Uniform"
+                        VerticalAlignment="Center" />
+                </Panel>
+              </Viewbox>
+              <ContentPresenter x:Name="PART_ContentPresenter" Grid.Column="1"
+                                Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                Margin="{TemplateBinding Padding}"
+                                HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                TextWrapping="Wrap" />
+            </Grid>
+          </Border>
+        </ControlTemplate>
+      </Setter>
+    </Style>
+
 
 
     <!-- 会丢数据的那种圆钮：描边染红，指上去也是红的，不跟别的钮一样变蓝。
