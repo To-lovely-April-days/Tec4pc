@@ -29,19 +29,15 @@
              一列设备图摆在那儿，本来就没人会认错成别的东西 -->
         <!-- 底部留白同配方页：写内容的 Margin，不写 ScrollViewer 的 Padding -->
         <!--
-          滚动条走缺省（Auto + 自动隐藏）。从前写死 Visible + AllowAutoHide=False，
-          于是不管内容够不够高，右边永远杵着一条灰带子。
+          滚动条常驻（Visible + AllowAutoHide=False），样子见 App.axaml 里
+          ScrollBar 那一段：#F1F1F1 的轨 + #B8B8B8 的滑块 + 上下两枚三角箭头。
+          轨跟这一栏的底同值，所以看得见的只有滑块和箭头。
 
-          实测缺省态的两档行为：
-          · 内容装得下（设备就这几台、窗口最大化时就是这种情况）——**整条不出现**，
-            栏宽 260 全归格子，一格 118。
-          · 内容装不下——占 14px 的槽，格子收到 111；滑块指针离开约 3 秒后自己淡掉，
-            只剩一条 #EFF0EE 的轨，比栏底 #F1F1F1 亮两级，肉眼看不出来。
-          也就是说 AllowAutoHide 淡的是滑块不是槽，槽该占的宽还是要占。
-          这一档反复不要紧：设备图已经不写死宽度、跟着格子拉伸（见下面 DeviceArtView），
-          槽来了图自己缩一点，不会裁掉半台机器。
+          常驻还顺带把那 14px 一直占住，分类一收一展格子宽度不变（一格 111）。
+          就算哪天改回自动隐藏也不至于出事：设备图不写死宽度、跟着格子拉伸
+          （见下面 DeviceArtView），槽来了图自己缩一点，不会裁掉半台机器。
         -->
-        <ScrollViewer>
+        <ScrollViewer VerticalScrollBarVisibility="Visible" AllowAutoHide="False">
           <ItemsControl ItemsSource="{Binding Groups}" Margin="0,0,0,40">
             <ItemsControl.ItemTemplate>
               <DataTemplate>
