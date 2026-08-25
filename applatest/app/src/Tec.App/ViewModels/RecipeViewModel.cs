@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
+using Avalonia;
+using Avalonia.Media;
 using Tec.App.Services;
 using Tec.Core;
 using Tec.Core.Benches;
@@ -13,19 +15,72 @@ using Tec.Drivers.Simulator;
 
 namespace Tec.App.ViewModels;
 
-/// <summary>模块信息（原型 GRP）：标签、模块色。图标铺在模块色块上用白描边版。</summary>
+/// <summary>
+/// 模块信息（原型 GRP）：模块色，以及指令方块那一套派生色。
+///
+/// ══ 指令方块为什么按模块着色 ══
+/// 从前所有指令方块都是同一支品牌红（#C8404F → #A41626 的渐变），
+/// 换配色之后整屏冷灰蓝里只剩它是暖红。现在方块＝该指令所属模块的色，
+/// 跟步骤卡左边那条 6px 色条、步骤库里的分类色条、甘特图上的色块
+/// 说的是同一件事——扫一眼就知道这一步归哪个模块管。
+///
+/// ══ 通用从 #9AA4AB 换成 #10868F ══
+/// 老的灰蓝对白字只有 2.54:1，混在另外五支饱和色里像「这条被禁用了」；
+/// 而通用是**指令条数最多**的一组（等待 / 循环 / 变量 / 提示 / 联锁 /
+/// 标记 / 采样 / 联锁 / 结束共九条），它在库里出现得最频繁。
+/// 新的青 #10868F 对白字 4.35:1，且填进了色相环上最大的一段空白——
+/// 绿 128°（pH）到紫 252°（搅拌）之间整整 124° 原本没人占。
+/// </summary>
 public static class ModuleInfo
 {
     public static string ColorOf(string module) => module switch
     {
-        "通用" => "#9aa4ab",
+        "通用" => "#10868f",
         "温度模块" => "#ec5a24",
         "搅拌" => "#5b46bd",
         "加料" => "#c53a9d",
         "pH 控制" => "#39b54a",
         "在线分析" => "#dba32c",
+        // 认不出的模块（StepViewModel.Module 在指令不在目录里时是「—」）留着老那支灰蓝。
+        // 它现在不再是任何一个模块的颜色，正好专门表示「这条指令我不认识」
         _ => "#9aa4ab"
     };
+
+    public static Color TintOf(string module) => Color.Parse(ColorOf(module));
+
+    /// <summary>
+    /// 指令方块的底：模块色打底、顶上提亮 20% 的竖向渐变（照旧品牌红那支
+    /// #C8404F → #A41626 的明度关系推的，换色不换手法）。
+    ///
+    /// 缓存住：这支笔刷在步骤库、每张步骤卡、属性栏标题、拖拽幽灵卡上
+    /// 反复要，六个模块一共就六支，没必要每次绑定都新建一个。
+    /// </summary>
+    public static IBrush BrushOf(string module)
+    {
+        if (_brushes.TryGetValue(module, out var b)) return b;
+        var baseColor = TintOf(module);
+        var brush = new LinearGradientBrush
+        {
+            StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
+            EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
+            GradientStops =
+            {
+                new GradientStop(Mix(baseColor, Colors.White, 0.20), 0),
+                new GradientStop(baseColor, 1)
+            }
+        };
+        brush.ToImmutable();
+        _brushes[module] = brush;
+        return brush;
+    }
+
+    private static readonly Dictionary<string, IBrush> _brushes = new(StringComparer.Ordinal);
+
+    internal static Color Mix(Color a, Color b, double t) => Color.FromArgb(
+        255,
+        (byte)Math.Round(a.R + (b.R - a.R) * t),
+        (byte)Math.Round(a.G + (b.G - a.G) * t),
+        (byte)Math.Round(a.B + (b.B - a.B) * t));
 }
 
 public sealed class CommandItemViewModel
@@ -36,8 +91,12 @@ public sealed class CommandItemViewModel
     public string Module => Descriptor.Module;
     /// <summary>彩色插画版（属性栏标题、拖动幽灵卡这些放得大的地方用）。</summary>
     public string IconKey => "cmd-" + (Descriptor.IconKey ?? "wait");
-    /// <summary>红底白线的小方块版（步骤库 15px、步骤卡 27px 用）。</summary>
+    /// <summary>模块色底、白线的小方块版（步骤库 15px、步骤卡 27px 用）。</summary>
     public string TileIcon => "tile-" + (Descriptor.IconKey ?? "wait");
+    /// <summary>方块的底：模块色渐变。</summary>
+    public IBrush TileBrush => ModuleInfo.BrushOf(Module);
+    /// <summary>方块里那两支配角色的来源（淡色 / 深色由 SvgArt 从它推）。</summary>
+    public Color TileTint => ModuleInfo.TintOf(Module);
 }
 
 public sealed class ModuleGroup : ViewModelBase
@@ -129,6 +188,9 @@ public sealed class StepViewModel : ViewModelBase
     public string Name => Descriptor?.DisplayName ?? Entry.CommandId;
     public string Module => Descriptor?.Module ?? "—";
     public string ModuleColor => ModuleInfo.ColorOf(Module);
+    /// <summary>卡片左上角那枚方块的底 / 里面配角色的来源。见 ModuleInfo。</summary>
+    public IBrush TileBrush => ModuleInfo.BrushOf(Module);
+    public Color TileTint => ModuleInfo.TintOf(Module);
     public string IconKey => "cmd-" + (Descriptor?.IconKey ?? "wait");
     /// <summary>红底白线的小方块版（步骤卡上那枚 27px 的图标）。</summary>
     public string TileIcon => "tile-" + (Descriptor?.IconKey ?? "wait");
@@ -790,7 +852,8 @@ public sealed class RecipeViewModel : ViewModelBase
             if (value is not null) value.IsSelected = true;
             RebuildForm();
             RaiseAll(nameof(HasSelection), nameof(NoSelection), nameof(StepName), nameof(StepIcon),
-                     nameof(StepTile), nameof(StepChannel), nameof(NoParams), nameof(PauseOnFault),
+                     nameof(StepTile), nameof(StepTileBrush), nameof(StepTileTint),
+                     nameof(StepChannel), nameof(NoParams), nameof(PauseOnFault),
                      nameof(StepSkipped), nameof(StepPhase));
         }
     }
@@ -809,8 +872,11 @@ public sealed class RecipeViewModel : ViewModelBase
     // 换成这一步自己的图标，跟步骤库和泳道卡上看到的是同一张
     public string StepName => _selectedStep?.Name ?? "";
     public string StepIcon => _selectedStep?.IconKey ?? "cmd-wait";
-    /// <summary>属性栏标题上那枚图标：跟画布上那张卡同一枚红方块，别用彩色插画版。</summary>
+    /// <summary>属性栏标题上那枚图标：跟画布上那张卡同一枚方块，别用彩色插画版。</summary>
     public string StepTile => _selectedStep?.TileIcon ?? "tile-wait";
+    /// <summary>方块的底 / 配角色，跟卡上那张一个模块色。见 ModuleInfo。</summary>
+    public IBrush StepTileBrush => ModuleInfo.BrushOf(_selectedStep?.Module ?? "通用");
+    public Color StepTileTint => ModuleInfo.TintOf(_selectedStep?.Module ?? "通用");
     public string StepChannel => LabelOf(_curCh);
 
     /// <summary>这条指令一个参数都没有（比如「循环结束」）。空着不说话会让人以为界面坏了。</summary>
@@ -961,7 +1027,10 @@ public sealed class RecipeViewModel : ViewModelBase
     public string DragTitle { get; private set; } = "";
     public string DragIcon { get; private set; } = "cmd-wait";
     public string DragTile { get; private set; } = "tile-wait";
-    public string DragColor { get; private set; } = "#9aa4ab";
+    public string DragColor { get; private set; } = "#10868f";
+    /// <summary>幽灵卡上那枚方块的底 / 配角色。跟着 DragColor 一起换。</summary>
+    public IBrush DragTileBrush { get; private set; } = ModuleInfo.BrushOf("通用");
+    public Color DragTileTint { get; private set; } = ModuleInfo.TintOf("通用");
 
     /// <summary>从左边的步骤库拖出来。</summary>
     public void BeginDragCommand(CommandItemViewModel c)
@@ -973,6 +1042,8 @@ public sealed class RecipeViewModel : ViewModelBase
         DragIcon = c.IconKey;
         DragTile = c.TileIcon;
         DragColor = ModuleInfo.ColorOf(c.Module);
+        DragTileBrush = ModuleInfo.BrushOf(c.Module);
+        DragTileTint = ModuleInfo.TintOf(c.Module);
         StartDrag();
     }
 
@@ -986,6 +1057,8 @@ public sealed class RecipeViewModel : ViewModelBase
         DragIcon = s.IconKey;
         DragTile = s.TileIcon;
         DragColor = s.ModuleColor;
+        DragTileBrush = ModuleInfo.BrushOf(s.Module);
+        DragTileTint = ModuleInfo.TintOf(s.Module);
         s.Ghosted = true;
         StartDrag();
     }
@@ -994,7 +1067,8 @@ public sealed class RecipeViewModel : ViewModelBase
     {
         _dropCh = null;
         Dragging = true;
-        RaiseAll(nameof(DragTitle), nameof(DragIcon), nameof(DragTile), nameof(DragColor));
+        RaiseAll(nameof(DragTitle), nameof(DragIcon), nameof(DragTile), nameof(DragColor),
+                 nameof(DragTileBrush), nameof(DragTileTint));
     }
 
     /// <summary>

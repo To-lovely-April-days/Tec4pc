@@ -62,6 +62,28 @@ public sealed class SvgArt
     {
         /// <summary>currentColor 解析成什么。图标的着色入口。</summary>
         public Color Current { get; init; } = Color.Parse("#3d3d3d");
+
+        /// <summary>
+        /// currentColorPale / currentColorDeep 解析成什么：由 Current 按固定关系推出来。
+        ///
+        /// 指令方块（tile-*.svg）里的线条不是纯白一色，还有两支配角：
+        /// 一支淡色画液面 / 次要填充，一支深色画描边 / 指针。
+        /// 它们原本是照品牌红手调的三个死值（#E8B8BE / #7E0F1C / #A41626），
+        /// 方块改成按模块着色之后，六个模块就要六套三色——手写十八个值不现实，
+        /// 也保证不了六套之间的明度关系一致。
+        ///
+        /// 所以改成从 Current 推：淡＝提白 72%，深＝压黑 23%。
+        /// 这两个系数就是从原来那套红里量出来的，换色不换手法。
+        /// </summary>
+        public Color CurrentPale => Lerp(Current, Colors.White, 0.72);
+
+        public Color CurrentDeep => Lerp(Current, Colors.Black, 0.23);
+
+        private static Color Lerp(Color a, Color b, double t) => Color.FromArgb(
+            255,
+            (byte)Math.Round(a.R + (b.R - a.R) * t),
+            (byte)Math.Round(a.G + (b.G - a.G) * t),
+            (byte)Math.Round(a.B + (b.B - a.B) * t));
         /// <summary>非空时：所有实体描边强制此色（原型 iconWhite 的白描边版）。</summary>
         public Color? StrokeOverride { get; init; }
         /// <summary>
@@ -284,6 +306,9 @@ public sealed class SvgArt
         value = value.Trim();
         if (value.Length == 0 || value == "none") return null;
         if (value == "currentColor") return new SolidColorBrush(paint.Current);
+        // 见 Paint.CurrentPale 那段说明：指令方块里的淡色 / 深色配角
+        if (value == "currentColorPale") return new SolidColorBrush(paint.CurrentPale);
+        if (value == "currentColorDeep") return new SolidColorBrush(paint.CurrentDeep);
 
         if (value.StartsWith("url(", StringComparison.Ordinal))
         {

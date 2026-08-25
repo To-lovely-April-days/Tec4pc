@@ -116,8 +116,9 @@
                                        原型那张图的白线本来就画到方块边上，
                                        用 BorderThickness 装它会把线切掉一圈 -->
                                   <Panel Classes="tile27" VerticalAlignment="Center">
-                                    <Border Classes="tilebg27" />
-                                    <ctl:TecIcon Key="{Binding TileIcon}" Size="27" />
+                                    <Border Classes="tilebg27" Background="{Binding TileBrush}" />
+                                    <ctl:TecIcon Key="{Binding TileIcon}" Size="27"
+                                                 Tint="{Binding TileTint}" />
                                   </Panel>
                                   <TextBlock Text="{Binding Name}" FontSize="11.5"
                                              Foreground="#373a3e" LineHeight="15"
@@ -576,8 +577,9 @@
                                         Margin="7,6,7,5">
                                     <Grid Grid.Row="0" ColumnDefinitions="27,7,*,Auto">
                                       <Panel Classes="tile27" VerticalAlignment="Top">
-                                        <Border Classes="tilebg27" />
-                                        <ctl:TecIcon Key="{Binding TileIcon}" Size="27" />
+                                        <Border Classes="tilebg27" Background="{Binding TileBrush}" />
+                                        <ctl:TecIcon Key="{Binding TileIcon}" Size="27"
+                                                     Tint="{Binding TileTint}" />
                                       </Panel>
                                       <TextBlock Grid.Column="2" Text="{Binding Desc}"
                                                  FontSize="12" Foreground="#1b1b1b"
@@ -893,8 +895,9 @@
                           HorizontalAlignment="Center">
                 <!-- 跟画布上那张卡同一枚红方块：从卡片点进属性栏，认的是同一个记号 -->
                 <Panel Classes="tile27" VerticalAlignment="Center">
-                  <Border Classes="tilebg27" />
-                  <ctl:TecIcon Key="{Binding StepTile}" Size="27" />
+                  <Border Classes="tilebg27" Background="{Binding StepTileBrush}" />
+                  <ctl:TecIcon Key="{Binding StepTile}" Size="27"
+                               Tint="{Binding StepTileTint}" />
                 </Panel>
                 <TextBlock Text="{Binding StepName}" FontSize="21" FontWeight="Light"
                            Foreground="#303337" VerticalAlignment="Center" />
@@ -964,8 +967,9 @@
               BoxShadow="0 5 16 0 #33000000">
         <StackPanel Orientation="Horizontal" Spacing="7">
           <Panel Classes="tile27" VerticalAlignment="Center">
-            <Border Classes="tilebg27" />
-            <ctl:TecIcon Key="{Binding DragTile}" Size="27" />
+            <Border Classes="tilebg27" Background="{Binding DragTileBrush}" />
+            <ctl:TecIcon Key="{Binding DragTile}" Size="27"
+                         Tint="{Binding DragTileTint}" />
           </Panel>
           <TextBlock Text="{Binding DragTitle}" FontSize="12" Foreground="#1b1b1b"
                      VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
@@ -1078,14 +1082,18 @@
       <Setter Property="Width" Value="27" />
       <Setter Property="Height" Value="27" />
     </Style>
+    <!--
+      方块的底不再写死在样式里，改成每处各自 Background="{Binding …TileBrush}"：
+      从前是一支品牌红渐变 #C8404F → #A41626，全程序所有指令共用；
+      现在方块＝该指令所属模块的色（见 ModuleInfo 那段说明），
+      跟卡片左边那条 6px 色条、库里的分类色条、甘特图上的色块说的是同一件事。
+
+      渐变的做法没变（顶上提亮 20%），只是底色换成了模块色，在 ModuleInfo.BrushOf 里建。
+      方块里那两支配角色（淡色画液面、深色画描边）由 SvgArt 从 TecIcon.Tint 推出来，
+      所以四处都要连 Tint 一起绑——只绑底不绑 Tint，线条会留在原来那套红上。
+    -->
     <Style Selector="Border.tilebg27">
       <Setter Property="CornerRadius" Value="3" />
-      <Setter Property="Background">
-        <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
-          <GradientStop Color="#c8404f" Offset="0" />
-          <GradientStop Color="#a41626" Offset="1" />
-        </LinearGradientBrush>
-      </Setter>
     </Style>
 
     <!-- ══ 步骤卡 ══

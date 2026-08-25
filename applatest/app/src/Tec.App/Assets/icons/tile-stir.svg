@@ -1,4 +1,4 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 15 15">
   <path d="M7.5 2.6v6.6" fill="none" stroke="#ffffff" stroke-width="1.2"/>
-  <path d="M4 10.6c0-1.7 1.6-2.4 3.5-2.4s3.5.7 3.5 2.4c0 1.4-1.6 2-3.5 2s-3.5-.6-3.5-2z" fill="#e8b8be" stroke="#ffffff" stroke-width="0.8"/>
+  <path d="M4 10.6c0-1.7 1.6-2.4 3.5-2.4s3.5.7 3.5 2.4c0 1.4-1.6 2-3.5 2s-3.5-.6-3.5-2z" fill="currentColorPale" stroke="#ffffff" stroke-width="0.8"/>
 </svg>
