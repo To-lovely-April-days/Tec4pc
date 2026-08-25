@@ -240,19 +240,19 @@
                           IsVisible="{Binding PanelEmptyAll}">
                 <!-- 对号走图标不走字符：程序不带字体，「✓」(U+2713) 在客户机上
                      碰上没这个码位的字体就是一个豆腐块。「!」是 ASCII，没这个风险 -->
-                <Border Classes="sev ok"><ctl:TecIcon Key="ui-ok" Tint="#0e7a3e" Size="10" /></Border>
+                <Border Classes="sev ok"><ctl:TecIcon Key="ui-ok" /></Border>
                 <TextBlock Text="校验通过" FontSize="12.5" Foreground="#0e7a3e"
                            VerticalAlignment="Center" />
               </StackPanel>
               <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center"
                           IsVisible="{Binding HasErrors}">
-                <Border Classes="sev"><TextBlock Text="!" /></Border>
+                <Border Classes="sev"><ctl:TecIcon Key="ui-alert" /></Border>
                 <TextBlock Text="{Binding ErrorText}" FontSize="12.5" Foreground="#d93025"
                            VerticalAlignment="Center" />
               </StackPanel>
               <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center"
                           IsVisible="{Binding HasWarns}">
-                <Border Classes="sev warn"><TextBlock Text="!" /></Border>
+                <Border Classes="sev warn"><ctl:TecIcon Key="ui-alert" /></Border>
                 <TextBlock Text="{Binding WarnText}" FontSize="12.5" Foreground="#8a6100"
                            VerticalAlignment="Center" />
               </StackPanel>
@@ -414,9 +414,9 @@
             <ItemsControl.ItemTemplate>
               <DataTemplate>
                 <!-- 一条泳道 = 一块自己的底色（原型每一列都坐在一块灰上），
-                     展开 258 宽、收起 52。竖着拉满：底色那一块要从上通到底，
+                     展开 202 宽、收起 52。竖着拉满：底色那一块要从上通到底，
                      几条并排才像几根柱子；收起的那条也就跟着一样高。
-                     内容 246 宽（卡片里的字放大到 12.5 之后，200 装不下排期那一行）。
+                     内容 190 宽（算式见 SlabWidth 的注释）。
 
                      BorderBrush 不写在这儿、走 laneBox 那条样式：内联值压得过样式，
                      写死成 Transparent 之后 laneSel 和 laneDrop 的描边永远上不了色。 -->
@@ -480,7 +480,7 @@
                             Command="{Binding $parent[UserControl].DataContext.OpenPanel}">
                       <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
                         <Border Classes="sev" Classes.warn="{Binding BadgeWarn}">
-                          <TextBlock Text="!" />
+                          <ctl:TecIcon Key="ui-alert" />
                         </Border>
                         <TextBlock Classes="cbt" Text="{Binding BadgeText}" />
                       </StackPanel>
@@ -496,28 +496,41 @@
                             BorderThickness="1.4"
                             Classes.laneHeadErr="{Binding HasErrors}">
                       <StackPanel Spacing="8">
-                        <Grid ColumnDefinitions="38,*,26">
+                        <!-- 名称行：平时一行字，按铅笔才变成输入框。
+                             行高写死 26（= 圆钮直径）：字比输入框矮，
+                             不定高的话一按铅笔整块头就往下长一截 -->
+                        <Grid ColumnDefinitions="38,*,26" Height="26">
                           <TextBlock Grid.Column="0" Text="名称" FontSize="12.5"
                                      Foreground="#292b2e" VerticalAlignment="Center" />
+                          <TextBlock Grid.Column="1" Margin="6,0" Text="{Binding LaneName}"
+                                     FontSize="12.5" Foreground="#1b1d20"
+                                     VerticalAlignment="Center"
+                                     TextTrimming="CharacterEllipsis"
+                                     IsVisible="{Binding NotRenaming}" />
                           <TextBox Grid.Column="1" Classes="hin" Margin="6,0"
-                                   Text="{Binding LaneName, Mode=TwoWay}" />
-                          <!-- 从 lhbtn 家族里摘出来挂到 del 上，而不是去改 lhbtn 的样式：
-                               正下方那颗「通道属性」铅笔钮（lhbtn sq）跟删除毫无关系，
-                               它只覆写了圆角，其余全靠 lhbtn 基类——动基类等于连它一起改。
-                               直径仍是 26（列宽写死 26），跟铅笔钮对得齐，只是底色和图标换了 -->
-                          <Button Grid.Column="2" Classes="tbtn del d26" ToolTip.Tip="清空该通道的配方"
-                                  Click="OnLaneRemove">
-                            <ctl:TecIcon Key="ui-foot-trash" Size="12" />
+                                   Text="{Binding LaneName, Mode=TwoWay}"
+                                   IsVisible="{Binding Renaming}" />
+                          <!-- 铅笔：改名开关。原来这个位置是垃圾桶，跟「名称」这一格
+                               没关系；现在铅笔跟着它改的那一行走，垃圾桶挪到下一行 -->
+                          <Button Grid.Column="2" Classes="tbtn d26" ToolTip.Tip="改这条通道的配方名"
+                                  Command="{Binding ToggleRename}">
+                            <ctl:TecIcon Key="ui-lane-pencil" Size="12" />
                           </Button>
                         </Grid>
-                        <Grid ColumnDefinitions="38,*,26">
+                        <Grid ColumnDefinitions="38,*,26" Height="26">
                           <TextBlock Grid.Column="0" Text="通道" FontSize="12.5"
                                      Foreground="#292b2e" VerticalAlignment="Center" />
                           <ComboBox Grid.Column="1" Classes="hsel" Margin="6,0"
                                     ItemsSource="{Binding ChannelOptions}"
                                     SelectedItem="{Binding ChannelPick, Mode=TwoWay}" />
-                          <Button Grid.Column="2" Classes="lhbtn sq" ToolTip.Tip="通道属性（在台面中设置）">
-                            <ctl:TecIcon Key="ui-lane-pencil" Tint="#1d1f22" />
+                          <!-- 这一格从前是一颗「通道属性」铅笔钮，可它压根没挂命令，
+                               点下去什么都不会发生，只有一句「在台面中设置」的悬停字——
+                               删了它，位置让给垃圾桶。
+                               垃圾桶清的是这条通道的**步骤**，通道绑定不动，悬停里说清 -->
+                          <Button Grid.Column="2" Classes="tbtn del d26"
+                                  ToolTip.Tip="清空该通道的配方（步骤全删，通道绑定不动）"
+                                  Click="OnLaneRemove">
+                            <ctl:TecIcon Key="ui-foot-trash" Size="12" />
                           </Button>
                         </Grid>
                       </StackPanel>
@@ -533,13 +546,13 @@
                               <Panel Height="14">
                                 <Border Width="1" Height="14" Background="#757a7f"
                                         HorizontalAlignment="Center" />
-                                <Border Width="246" Height="4" CornerRadius="2" Background="#a41626"
+                                <Border Width="190" Height="4" CornerRadius="2" Background="#a41626"
                                         VerticalAlignment="Center"
                                         IsVisible="{Binding DropBefore}" />
                               </Panel>
                               <!-- 循环体缩进：每套一层让出 14px，并在让出的位置画一条竖线。
-                                   泳道整体仍是 246 宽，各条泳道对得齐 -->
-                              <StackPanel Orientation="Horizontal" Width="246">
+                                   泳道整体仍是 190 宽，各条泳道对得齐 -->
+                              <StackPanel Orientation="Horizontal" Width="190">
                               <ItemsControl ItemsSource="{Binding Spines}">
                                 <ItemsControl.ItemsPanel>
                                   <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
@@ -599,7 +612,7 @@
                                               VerticalAlignment="Top" Margin="6,0,0,0"
                                               IsVisible="{Binding HasIssue}"
                                               ToolTip.Tip="{Binding IssueTip}">
-                                        <TextBlock Text="!" />
+                                        <ctl:TecIcon Key="ui-alert" />
                                       </Border>
                                     </Grid>
 
@@ -609,23 +622,30 @@
                                     <Border Grid.Row="1" Height="1" Background="#22000000"
                                             Margin="0,6,0,0" />
 
-                                    <!-- 排期这一行：左边预计开始，右边耗时，垃圾桶收在最右。
-                                         d24 是删除钮一族里最小的一号（见 App.axaml 那段说明），
-                                         这一行的高度就是它撑出来的 -->
-                                    <Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto"
+                                    <!-- 排期这一块：预计开始一行、耗时一行，垃圾桶收在右边。
+                                         d24 是删除钮一族里最小的一号（见 App.axaml 那段说明）。
+
+                                         从前三样挤在一行，那一行就是泳道宽度的下限：
+                                         「预计开始 00:17:35」≈97 + 「耗时 0:20:00」≈78 + 桶 24
+                                         + 内外边距 ≈20 ＝ 219，所以内容非 246 不可。
+                                         拆成两行之后这一块只要 ≈121，泳道才收得到 190。
+                                         换来的是卡片高 15px 左右——正是「窄一点、高一点」 -->
+                                    <Grid Grid.Row="2" ColumnDefinitions="*,Auto"
                                           Margin="0,3,0,0">
-                                      <TextBlock Grid.Column="0" FontSize="11.5"
-                                                 Foreground="#2b2b2b" VerticalAlignment="Center"
-                                                 TextTrimming="CharacterEllipsis">
-                                        <Run Text="预计开始 " /><Run Text="{Binding PlanStart}" />
-                                      </TextBlock>
-                                      <TextBlock Grid.Column="1" FontSize="11.5"
-                                                 Foreground="#6b6f74" VerticalAlignment="Center"
-                                                 Margin="6,0,4,0"
-                                                 IsVisible="{Binding HasDuration}">
-                                        <Run Text="耗时 " /><Run Text="{Binding PlanDuration}" />
-                                      </TextBlock>
-                                      <Button Grid.Column="2" Classes="tbtn del d24"
+                                      <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                        <TextBlock FontSize="11.5"
+                                                   Foreground="#2b2b2b"
+                                                   TextTrimming="CharacterEllipsis">
+                                          <Run Text="预计开始 " /><Run Text="{Binding PlanStart}" />
+                                        </TextBlock>
+                                        <TextBlock FontSize="11.5"
+                                                   Foreground="#6b6f74"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   IsVisible="{Binding HasDuration}">
+                                          <Run Text="耗时 " /><Run Text="{Binding PlanDuration}" />
+                                        </TextBlock>
+                                      </StackPanel>
+                                      <Button Grid.Column="1" Classes="tbtn del d24"
                                               VerticalAlignment="Center"
                                               ToolTip.Tip="删除该步骤"
                                               Command="{Binding $parent[UserControl].DataContext.RemoveStep}"
@@ -647,10 +667,10 @@
 
                       <Panel Height="14">
                         <Border Width="1" Height="14" Background="#757a7f" HorizontalAlignment="Center" />
-                        <Border Width="246" Height="4" CornerRadius="2" Background="#a41626"
+                        <Border Width="190" Height="4" CornerRadius="2" Background="#a41626"
                                 VerticalAlignment="Center" IsVisible="{Binding DropAtEnd}" />
                       </Panel>
-                      <Panel Width="246" Height="64">
+                      <Panel Width="190" Height="64">
                         <Rectangle Fill="White" Stroke="#959a9f" StrokeThickness="1.5"
                                    StrokeDashArray="4,3" IsVisible="{Binding !DropAtEnd}" />
                         <Rectangle Fill="#faf2f3" Stroke="#a41626" StrokeThickness="1.8"
@@ -943,7 +963,7 @@
     <Canvas Grid.Column="0" Grid.ColumnSpan="3" IsHitTestVisible="False">
       <Border IsVisible="{Binding Dragging}"
               Canvas.Left="{Binding DragX}" Canvas.Top="{Binding DragY}"
-              Width="246" Background="White" BorderBrush="#a41626" BorderThickness="1.5"
+              Width="190" Background="White" BorderBrush="#a41626" BorderThickness="1.5"
               Padding="7,6" Opacity="0.96"
               BoxShadow="0 5 16 0 #33000000">
         <StackPanel Orientation="Horizontal" Spacing="7">
@@ -1100,39 +1120,32 @@
       <Setter Property="Background" Value="White" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
+    <!-- 通道那个下拉：跟名称行一个道理，不碰它的时候不摆白框——
+         平时就是卡片上的一行字加一个小角标，指上去才浮出底色、
+         点开的时候转白。白框只在「你正在动它」的时候出现 -->
     <Style Selector="ComboBox.hsel">
       <Setter Property="Height" Value="22" />
       <Setter Property="MinHeight" Value="22" />
       <Setter Property="FontSize" Value="11.5" />
       <Setter Property="Padding" Value="5,0" />
-      <Setter Property="BorderBrush" Value="#a9adb1" />
+      <Setter Property="BorderThickness" Value="0" />
       <Setter Property="CornerRadius" Value="2" />
-      <Setter Property="Background" Value="White" />
+      <Setter Property="Background" Value="Transparent" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
+    <Style Selector="ComboBox.hsel:pointerover /template/ Border#Background">
+      <Setter Property="Background" Value="#d3dae3" />
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="ComboBox.hsel:pressed /template/ Border#Background">
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
 
-    <!-- 泳道头上那颗 26px 圆钮。规格照 Button.tbtn.del.d26：底透、描边 #1f2124 1.6。
-         从前填 #e0c3c6、描边 #373a3e、悬停 #f0dfe1 + #a41626——一整套换配色以前的
-         品牌红，坐在 #bfc9d7 的泳道头卡片上是一颗突然冒出来的粉圆点 -->
-    <Style Selector="Button.lhbtn">
-      <Setter Property="Width" Value="26" />
-      <Setter Property="Height" Value="26" />
-      <Setter Property="CornerRadius" Value="13" />
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderBrush" Value="#1f2124" />
-      <Setter Property="BorderThickness" Value="1.6" />
-      <Setter Property="Padding" Value="0" />
-      <Setter Property="HorizontalContentAlignment" Value="Center" />
-      <Setter Property="VerticalContentAlignment" Value="Center" />
-      <Setter Property="Cursor" Value="Hand" />
-    </Style>
-    <Style Selector="Button.lhbtn.sq">
-      <Setter Property="CornerRadius" Value="3" />
-    </Style>
-    <Style Selector="Button.lhbtn:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#18000000" />
-      <Setter Property="BorderBrush" Value="#000000" />
-    </Style>
+    <!-- Button.lhbtn（泳道头那颗 26px 方角圆钮）整族删了：它唯一的用处是
+         「通道属性」那颗按钮，而那颗按钮压根没挂命令，点下去什么都不会发生。
+         现在名称行用铅笔（tbtn d26）、通道行用垃圾桶（tbtn del d26），
+         泳道头上的钮跟全程序同一族 -->
 
     <!-- 泳道的底：一条泳道坐在一块自己的浅灰上（原型每一列都有），
          画布是白的，几块灰并排才看得出这是几根柱子、缝在哪儿。
@@ -1251,16 +1264,26 @@
     <Style Selector="Border.sev.ok">
       <Setter Property="BorderBrush" Value="#0e7a3e" />
     </Style>
-    <!-- 圈里那个记号：跟着圈一个色 -->
-    <Style Selector="Border.sev > TextBlock">
-      <Setter Property="FontSize" Value="11.5" />
-      <Setter Property="FontWeight" Value="Bold" />
-      <Setter Property="Foreground" Value="#d93025" />
-      <Setter Property="HorizontalAlignment" Value="Center" />
-      <Setter Property="VerticalAlignment" Value="Center" />
+    <!--
+      圈里那个记号：跟着圈一个色。
+
+      **「!」不用字符、改画成图标**：字符在圈里居不了中。字的盒子是
+      「上沿 = 字体 ascent、下沿 = descent」，跟这个字实际的墨迹对不上——
+      「!」的墨迹只占盒子上半截偏下，descent 那一块是空的，
+      于是盒子居中 = 墨迹偏上。实测上留 2px 下留 3px。
+      画成 svg 就是墨迹自己对着 viewBox 居中，跟字体无关：
+      竖杠 3.8..8.4（圆头，实际墨迹 2.6..9.6）+ 圆点 12.05 半径 1.35
+      （墨迹 10.7..13.4），整体 2.6..13.4，正中 8.0。
+    -->
+    <Style Selector="Border.sev ctl|TecIcon">
+      <Setter Property="Size" Value="11" />
+      <Setter Property="Tint" Value="#d93025" />
     </Style>
-    <Style Selector="Border.sev.warn > TextBlock">
-      <Setter Property="Foreground" Value="#8a6100" />
+    <Style Selector="Border.sev.warn ctl|TecIcon">
+      <Setter Property="Tint" Value="#8a6100" />
+    </Style>
+    <Style Selector="Border.sev.ok ctl|TecIcon">
+      <Setter Property="Tint" Value="#0e7a3e" />
     </Style>
 
     <!-- 泳道角标（原型 .cbadge）：现在只是「sev 圆 + 一行字」的容器，

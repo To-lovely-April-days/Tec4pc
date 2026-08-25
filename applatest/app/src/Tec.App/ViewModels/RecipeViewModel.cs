@@ -118,11 +118,11 @@ public sealed class StepViewModel : ViewModelBase
     public IReadOnlyList<int> Spines => Enumerable.Range(0, Depth).ToList();
 
     /// <summary>
-    /// 卡片宽度让出缩进，泳道整体还是 246（原型 .col 宽），各条泳道对得齐。
-    /// 从 200 加到 246 是跟着卡片里的字一起放大的：字号 10.5 → 12.5 之后，
-    /// 200 宽装不下「预计开始 00:17:35 · 耗时 0:17:30」那一行，会截成「00:...」。
+    /// 卡片宽度让出缩进，泳道整体还是 190（见 LaneViewModel.SlabWidth），各条泳道对得齐。
+    /// 246 → 190：排期从一行拆成两行之后，卡片不再被「预计开始 + 耗时 + 桶」
+    /// 那一行顶着，190 就够；省下的宽度换成高度。
     /// </summary>
-    public double CardWidth => 246 - Depth * 14;
+    public double CardWidth => 190 - Depth * 14;
 
     public ScheduleEntry Entry { get; }
     public CommandDescriptor? Descriptor { get; }
@@ -257,11 +257,33 @@ public sealed class LaneViewModel : ViewModelBase
         _owner = owner;
         Channel = channel;
         Select = new RelayCommand(() => owner.CurCh = channel);
+        ToggleRename = new RelayCommand(() => Renaming = !Renaming);
     }
 
     public int Channel { get; }
     public RelayCommand Select { get; }
     public ObservableCollection<StepViewModel> Steps { get; } = new();
+
+    /// <summary>
+    /// 名称在不在改。平时泳道头上那一行是**一行字**，按了铅笔才变成输入框。
+    /// 从前是一个白框常驻——白框的意思是「这儿等你填」，可这一行九成时间
+    /// 没人碰，一块空白等在那里，读的时候还得先认出那是个已经填好的框。
+    /// 台面属性栏那颗「重命名」早就是这个做法（BenchViewModel.Renaming），
+    /// 这里跟它一样。
+    /// 改不改进文件：LaneName 的 setter 每敲一下就写，跟从前一样，
+    /// 这个开关只管长相。
+    /// </summary>
+    private bool _renaming;
+
+    public bool Renaming
+    {
+        get => _renaming;
+        private set { if (Set(ref _renaming, value)) Raise(nameof(NotRenaming)); }
+    }
+
+    public bool NotRenaming => !_renaming;
+
+    public RelayCommand ToggleRename { get; }
 
     public string LaneName
     {
@@ -334,8 +356,16 @@ public sealed class LaneViewModel : ViewModelBase
 
     public bool Closed => !_open;
 
-    /// <summary>整条泳道（连底色那一块）多宽：展开 258，收起 52。</summary>
-    public double SlabWidth => _open ? 258 : 52;
+    /// <summary>
+    /// 整条泳道（连底色那一块）多宽：展开 202，收起 52。
+    ///
+    /// 258 → 202：四条并排的时候太占地方，同一屏能同时读到的步骤反而少。
+    /// 省下来的宽度换成高度——步骤卡里「预计开始 / 耗时」原本挤在一行，
+    /// 那一行是 258 的下限（97 + 78 + 24 + 20 ≈ 219）；拆成两行之后
+    /// 内容 190 就够，卡片长高一点点，一条泳道里能看到的步骤没变少。
+    /// 这个 202 = 内容 190 + Padding 5×2 + 描边 1.6×2，跟从前 258 = 246 + 12 同一个算式。
+    /// </summary>
+    public double SlabWidth => _open ? 202 : 52;
 
     /// <summary>
     /// 竖排的泳道名：汉字一个个正着摞，不是把整行转 90°——
