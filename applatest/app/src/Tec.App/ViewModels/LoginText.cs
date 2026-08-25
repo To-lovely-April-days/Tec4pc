@@ -61,7 +61,7 @@ public sealed record LoginText(
         KSession: "会话开始", KStation: "工作站", KPrev: "上次登录", PrevNever: "首次登录",
         SignOut: "注销", OpenApp: "进入工作站",
         VersionFmt: "版本 {0} · 工作站 {1}",
-        ArtHintFmt: "login-visual.png · 252 × 176\n放进程序目录的 Resources 文件夹：\n{0}",
+        ArtHintFmt: "login-visual.png · 340 × 238\n（出 2 倍图 680 × 476 更清楚）\n放进程序目录的 Resources 文件夹：\n{0}",
         Minimize: "最小化", Close: "关闭", LangMenu: "语言");
 
     public static readonly LoginText En = new(
@@ -90,7 +90,7 @@ public sealed record LoginText(
         KSession: "Session started", KStation: "Workstation", KPrev: "Previous sign-in", PrevNever: "First sign-in",
         SignOut: "Sign out", OpenApp: "Open workstation",
         VersionFmt: "Version {0} · workstation {1}",
-        ArtHintFmt: "login-visual.png · 252 × 176\nPut it in the Resources folder next to the program:\n{0}",
+        ArtHintFmt: "login-visual.png · 340 × 238\n(export at 2x — 680 × 476 — for a crisp fit)\nPut it in the Resources folder next to the program:\n{0}",
         Minimize: "Minimise", Close: "Close", LangMenu: "Language");
 
     public static readonly IReadOnlyList<LoginText> All = new[] { Zh, En };

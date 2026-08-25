@@ -167,7 +167,11 @@
         </Grid>
       </Border>
 
-      <Grid ColumnDefinitions="300,*">
+      <!-- 左栏 380 / 右栏 460。原来是 300 / 540——图位卡在 252 宽上，
+           而右边那张表单最宽的一行（标签 68 + 输入框）400 就够了，
+           多出来的 80 白占着。挪给左栏，图位从 252×176 长到 340×238
+           （面积 1.8 倍） -->
+      <Grid ColumnDefinitions="380,*">
 
         <!-- ═ 左：品牌（原型 .lg-brand，整列铺满高度） ═
 
@@ -181,7 +185,7 @@
              现在只给它自己一块深色卡（见下面那 252×176），栏子仍是白的。 -->
         <Border Grid.Column="0" Background="White"
                 BorderBrush="#e1e3e0" BorderThickness="0,0,1,0"
-                Padding="24,25,24,20">
+                Padding="20,18,20,18">
           <DockPanel>
             <StackPanel DockPanel.Dock="Top">
               <!-- 品牌标：品牌红圆角方块 + 白三角。三角画在原型那个 26×26 的画布里
@@ -189,9 +193,10 @@
                    Path 量到的是「原点到几何右下角」那个盒子，把这个盒子居中，
                    等于把三角连同它左上那片空白一起居中，看着就偏右下了 -->
               <!-- 红牌白三角。白栏上这是整页唯一的一块品牌红 -->
-              <Border Width="52" Height="52" CornerRadius="6" Background="#a41626"
-                      HorizontalAlignment="Left" Margin="0,0,0,14">
-                <Viewbox Width="24" Height="24"
+              <!-- 46 而不是 52：竖着的空当全让给图位了，上半截每一项都收一点 -->
+              <Border Width="46" Height="46" CornerRadius="5" Background="#a41626"
+                      HorizontalAlignment="Left" Margin="0,0,0,12">
+                <Viewbox Width="22" Height="22"
                          HorizontalAlignment="Center" VerticalAlignment="Center">
                   <Canvas Width="26" Height="26">
                     <Path Data="M 8,5 L 21,13 L 8,21 Z" Fill="White" />
@@ -201,12 +206,16 @@
               <TextBlock Text="TecStudio" FontSize="28" FontWeight="Light" Foreground="#17191c" />
               <TextBlock Text="{Binding T.BrandSub}" FontSize="12" Foreground="#6b6f74"
                          Margin="0,6,0,0" />
-              <Border Height="1" Background="#e6e8e5" Margin="0,18,0,16" />
+              <Border Height="1" Background="#e6e8e5" Margin="0,14,0,12" />
 
               <!-- 图位（原型 .lg-art 252×176）：一张位图。没提供就按原型给虚线占位。
                    底是深色卡：照片透明底、画的是银灰仪器，压在白上前后分不开。
                    全页的黑就剩这一块和顶上那条标题栏，都是有理由的黑 -->
-              <Border Width="252" Height="176" HorizontalAlignment="Left"
+              <!-- 340×238：跟 252×176 同一个长宽比（1.432），换算下来正好占满
+                   380 减两边 20 内边距那 340。竖着算：18 + 46 + 12 + 字标 34 + 6 +
+                   副标 17 + 14 + 线 1 + 12 + 238 = 398，加版本行 17 和下内边距 18
+                   共 433，机身高 440 —— 留 7px，再大就顶出去了 -->
+              <Border Width="340" Height="238" HorizontalAlignment="Left"
                       Background="#17191c" CornerRadius="3" ClipToBounds="True">
                 <Panel>
                   <Image Source="{Binding ArtImage}" IsVisible="{Binding HasArt}"
@@ -231,7 +240,7 @@
 
         <!-- ═ 右：表单台面。块竖直居中，宽度封顶——窗口再宽字段也不失比例 ═ -->
         <StackPanel Grid.Column="1" IsVisible="{Binding IsForm}" VerticalAlignment="Center"
-                    HorizontalAlignment="Left" MaxWidth="620" MinWidth="480" Margin="40,26">
+                    HorizontalAlignment="Left" MaxWidth="420" MinWidth="360" Margin="30,24">
           <TextBlock Text="{Binding T.H1}" FontSize="26" FontWeight="Light" Foreground="#383b3f" />
           <TextBlock Text="{Binding T.Lead}" FontSize="11.5"
                      Foreground="#757a7f" Margin="0,6,0,0" />
@@ -316,8 +325,10 @@
         </StackPanel>
 
         <!-- ═ 右：登录成功台面（数据都是真的） ═ -->
+        <!-- 宽度跟表单那块一样：左栏加宽之后右栏只有 460，还留着 480 的下限
+             会把「进入工作站」和右侧那三行值顶到窗外（实测截到过） -->
         <StackPanel Grid.Column="1" IsVisible="{Binding IsDone}" VerticalAlignment="Center"
-                    HorizontalAlignment="Left" MaxWidth="620" MinWidth="480" Margin="40,26">
+                    HorizontalAlignment="Left" MaxWidth="420" MinWidth="360" Margin="30,24">
           <StackPanel Orientation="Horizontal" Spacing="14">
             <!-- 对勾同理：画在原型那个 24×24 的画布里，Viewbox 缩到 22 居中 -->
             <Border Width="46" Height="46" CornerRadius="23" Background="#a41626">
