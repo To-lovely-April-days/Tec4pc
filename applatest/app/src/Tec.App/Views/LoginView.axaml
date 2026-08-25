@@ -171,15 +171,16 @@
 
         <!-- ═ 左：品牌（原型 .lg-brand，整列铺满高度） ═
 
-             底色比标题栏再深一档（#101215 对 #17191c），顶上另加一道 #33373b 的细线。
-             两块都用同一支黑的时候，左栏和标题栏在左边 300px 里连成一整块，
-             看不出哪儿是标题栏、哪儿是品牌栏——分两个明度加一道线，
-             两个面就各自站住了，用的还是同一个黑。
-             原来是 #ebece9 的浅橄榄灰：蓝通道比绿低 3，300 宽整列铺开、
-             右边又贴着纯白表单，整块发闷；更要命的是台面照片是透明底的
-             银灰仪器，压在浅灰上分不出前后，糊成一片。黑底一垫仪器自己就跳出来。 -->
-        <Border Grid.Column="0" Background="#101215"
-                BorderBrush="#33373b" BorderThickness="0,1,1,0"
+             白栏。黑只留给标题栏和照片那一块卡，其余靠品牌红的红牌
+             和黑的字标点住——整列铺黑（试过 #101215）在 300 宽上就是一大片，
+             右边贴着纯白表单，一页里两个极端。
+             左右两栏都是白的，靠右缘那道 1px 分开。
+
+             照片不能跟着变白：它是透明底的银灰仪器，压在白（或浅灰）上
+             分不出前后，糊成一片——这是当初整列改黑的起因。
+             现在只给它自己一块深色卡（见下面那 252×176），栏子仍是白的。 -->
+        <Border Grid.Column="0" Background="White"
+                BorderBrush="#e1e3e0" BorderThickness="0,0,1,0"
                 Padding="24,25,24,20">
           <DockPanel>
             <StackPanel DockPanel.Dock="Top">
@@ -187,7 +188,7 @@
                    （Viewbox 缩到 24 居中）——直接把 Path 丢进圆里对齐是不行的：
                    Path 量到的是「原点到几何右下角」那个盒子，把这个盒子居中，
                    等于把三角连同它左上那片空白一起居中，看着就偏右下了 -->
-              <!-- 红牌白三角。黑底上这是整页唯一的品牌红，三色的关系一眼就立住了 -->
+              <!-- 红牌白三角。白栏上这是整页唯一的一块品牌红 -->
               <Border Width="52" Height="52" CornerRadius="6" Background="#a41626"
                       HorizontalAlignment="Left" Margin="0,0,0,14">
                 <Viewbox Width="24" Height="24"
@@ -197,29 +198,33 @@
                   </Canvas>
                 </Viewbox>
               </Border>
-              <TextBlock Text="TecStudio" FontSize="28" FontWeight="Light" Foreground="White" />
-              <TextBlock Text="{Binding T.BrandSub}" FontSize="12" Foreground="#a8adb3"
+              <TextBlock Text="TecStudio" FontSize="28" FontWeight="Light" Foreground="#17191c" />
+              <TextBlock Text="{Binding T.BrandSub}" FontSize="12" Foreground="#6b6f74"
                          Margin="0,6,0,0" />
-              <Border Height="1" Background="#2c2f33" Margin="0,18,0,16" />
+              <Border Height="1" Background="#e6e8e5" Margin="0,18,0,16" />
 
-              <!-- 图位（原型 .lg-art 252×176）：一张位图。没提供就按原型给虚线占位 -->
-              <Panel Width="252" Height="176" HorizontalAlignment="Left">
-                <Image Source="{Binding ArtImage}" IsVisible="{Binding HasArt}"
-                       Stretch="Uniform" />
-                <Panel IsVisible="{Binding !HasArt}">
-                  <Border Background="#1e2124" CornerRadius="2" />
-                  <Rectangle Stroke="#3d4145" StrokeThickness="1" StrokeDashArray="4,3"
-                             RadiusX="2" RadiusY="2" />
-                  <!-- 路径可能很长，得能折行：不折的话尾巴会被占位框裁掉，
-                       而被裁掉的恰好是「放在哪」那一段 -->
-                  <TextBlock Text="{Binding ArtHint}" FontSize="10" Foreground="#7f858a"
-                             TextAlignment="Center" LineHeight="16" TextWrapping="Wrap"
-                             Margin="10,0" HorizontalAlignment="Center" VerticalAlignment="Center" />
+              <!-- 图位（原型 .lg-art 252×176）：一张位图。没提供就按原型给虚线占位。
+                   底是深色卡：照片透明底、画的是银灰仪器，压在白上前后分不开。
+                   全页的黑就剩这一块和顶上那条标题栏，都是有理由的黑 -->
+              <Border Width="252" Height="176" HorizontalAlignment="Left"
+                      Background="#17191c" CornerRadius="3" ClipToBounds="True">
+                <Panel>
+                  <Image Source="{Binding ArtImage}" IsVisible="{Binding HasArt}"
+                         Stretch="Uniform" />
+                  <Panel IsVisible="{Binding !HasArt}">
+                    <Rectangle Stroke="#3d4145" StrokeThickness="1" StrokeDashArray="4,3"
+                               RadiusX="2" RadiusY="2" Margin="6" />
+                    <!-- 路径可能很长，得能折行：不折的话尾巴会被占位框裁掉，
+                         而被裁掉的恰好是「放在哪」那一段 -->
+                    <TextBlock Text="{Binding ArtHint}" FontSize="10" Foreground="#7f858a"
+                               TextAlignment="Center" LineHeight="16" TextWrapping="Wrap"
+                               Margin="14,0" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                  </Panel>
                 </Panel>
-              </Panel>
+              </Border>
             </StackPanel>
             <TextBlock DockPanel.Dock="Bottom" Text="{Binding VersionLine}" FontSize="10.5"
-                       Foreground="#7f858a" VerticalAlignment="Bottom" LineHeight="17" />
+                       Foreground="#9ea2a6" VerticalAlignment="Bottom" LineHeight="17" />
             <Panel />
           </DockPanel>
         </Border>
