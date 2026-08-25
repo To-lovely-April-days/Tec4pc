@@ -319,10 +319,39 @@
       <Setter Property="VerticalContentAlignment" Value="Center" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
-    <!-- 悬停：默认已经是黑字了，再写黑等于没反应，压到纯黑一档 -->
+    <!--
+      悬停 / 按下：**什么都不变**。菜单项靠「哪一个是蓝的」说当前在哪一页，
+      鼠标划过去改样子只会跟这件事抢眼睛。
+
+      这两条不能省，也不能只写 Background：Fluent 自带的按钮主题在
+      :pointerover / :pressed 上把 TextBlock.Foreground 写在 **ContentPresenter**
+      上，那是内容文字继承链上更近的一环，压得过按钮自己的 Foreground——
+      光删掉我们这边的设值，字照样被主题刷成黑的（实测：未选中 #1f2124 → #000000，
+      选中项连那个蓝都被盖成黑）。所以得在同一处显式写回原色：
+      未选中写常态的墨色，选中项另写一条把蓝按回去。
+
+      BorderBrush 同理，而且更隐蔽：选中项底下那条 2px 蓝线是靠
+      BorderBrush 画的，主题在 :pointerover 上把 ContentPresenter 的
+      BorderBrush 也换掉，鼠标一停线就变成栏底色、看着像整条没了
+      （实测差异正好是那 92 个像素：#2a6fe5 → #bfc9d7）。
+    -->
     <Style Selector="Button.menu:pointerover /template/ ContentPresenter">
       <Setter Property="Background" Value="Transparent" />
-      <Setter Property="TextBlock.Foreground" Value="#000000" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="TextBlock.Foreground" Value="#1f2124" />
+    </Style>
+    <Style Selector="Button.menu:pressed /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="TextBlock.Foreground" Value="#1f2124" />
+    </Style>
+    <Style Selector="Button.menu.on:pointerover /template/ ContentPresenter">
+      <Setter Property="BorderBrush" Value="{StaticResource MenuBlue}" />
+      <Setter Property="TextBlock.Foreground" Value="{StaticResource MenuBlue}" />
+    </Style>
+    <Style Selector="Button.menu.on:pressed /template/ ContentPresenter">
+      <Setter Property="BorderBrush" Value="{StaticResource MenuBlue}" />
+      <Setter Property="TextBlock.Foreground" Value="{StaticResource MenuBlue}" />
     </Style>
     <!-- 选中项：字与下划线同色。从前字是品牌红、线是外壳黑，
          那是「红只许小面积」时代的折中；甲方给了菜单选中蓝之后，
