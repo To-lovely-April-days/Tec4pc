@@ -101,8 +101,8 @@
       <Border DockPanel.Dock="Top" Height="30">
         <Border.Background>
           <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
-            <GradientStop Color="#17191c" Offset="0" />
-            <GradientStop Color="#17191c" Offset="1" />
+            <GradientStop Color="#352d6a" Offset="0" />
+            <GradientStop Color="#352d6a" Offset="1" />
           </LinearGradientBrush>
         </Border.Background>
         <Grid ColumnDefinitions="Auto,*,Auto">

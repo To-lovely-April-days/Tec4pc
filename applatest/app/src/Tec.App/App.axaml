@@ -5,21 +5,25 @@
              RequestedThemeVariant="Light">
 
   <!--
-    ══ 配色 · 黑 + HTLAB 品牌红 + 白，三色 ══
+    ══ 配色 ══
 
-      外壳黑  #17191c   白  #ffffff   品牌红  #a41626
+      标题栏靛  #352d6a   通用深色底  #333333   白  #ffffff
+      菜单选中蓝  #2a6fe5   面色  #eff1f3   品牌红  #a41626
 
-    #17191c 不是纯黑：带一点冷（B 比 R 高 5）。纯黑跟白撞在一起太生硬，
-    而这一丝冷调跟暖的品牌红是互补关系，红压在上面会显得更沉。
+    色值是甲方给的一张表，不是推出来的，别照「协调」二字自行微调：
+      标题栏 #352d6a ｜ 菜单选中 #2a6fe5 ｜ 属性栏与设备库格子 #eff1f3 ｜
+      泳道头卡片 #bfc9d7 ｜ 步骤卡 #82dcfe ｜ 底部状态条 #333333 白字 ｜
+      复选框对号 #eff1f3
 
     用色纪律，四条，改任何一支笔之前先读一遍：
 
-    · 品牌红 #a41626 只出现在小面积：应用标记、3px 选中条、章节记号、
-      固定图钉、菜单激活下划线、主按钮。整片底色不许用它。
-    · 大面积深色一律走外壳黑：七个窗口的标题栏、登录页左栏、运行控制药丸、
-      面板深色表头。它是外壳不是信号，所以不占品牌色。
+    · 大面积深色分两支：**标题栏**走 #352d6a（七个窗口的标题栏都是它），
+      其余深色底（运行药丸、复选框实底、面板深色表头、底部状态条）走
+      通用的 #333333。它们是外壳不是信号，所以不占信号色。
+    · 面 #eff1f3 是「不是画布的那一层」：属性块、设备库格子、步骤库分类块、
+      页顶工具条，全是这一支。同一层只许有一个色值——差一档最难看。
     · 报警红 #d93025 永远是「实底填充 + 白字 + 三角图标」这一副样子，
-      靠面积和形状跟品牌红区分，不靠色相。别处不许出现实底彩色圆片。
+      靠面积和形状区分，不靠色相。别处不许出现实底彩色圆片。
     · 绿 #0e7a3e 只表示在线 / 运行 / 通过，不做装饰，也不当主按钮。
 
     三色之外只剩两类：中性灰（正文与分隔线的层次）和状态色（绿/琥珀/报警红）。
@@ -49,13 +53,13 @@
              十几块饱和红压在表里就成了满屏警报。黑底白勾一样看得清，
              红留给「当前视图」「选中条」这些一次只出现一处的地方。
              Fluent 的勾选框颜色不吃具名笔，只认这几个键。 -->
-        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked" Color="#17191c" />
-        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" Color="#2c3034" />
-        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPressed" Color="#0f1113" />
-        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeChecked" Color="#17191c" />
-        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPointerOver" Color="#2c3034" />
-        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPressed" Color="#0f1113" />
-        <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundChecked" Color="#ffffff" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked" Color="#333333" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" Color="#484848" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPressed" Color="#1f1f1f" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeChecked" Color="#333333" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPointerOver" Color="#484848" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPressed" Color="#1f1f1f" />
+        <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundChecked" Color="#eff1f3" />
         <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundCheckedPointerOver" Color="#ffffff" />
         <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundCheckedPressed" Color="#ffffff" />
       </ResourceDictionary>
@@ -73,13 +77,13 @@
              十几块饱和红压在表里就成了满屏警报。黑底白勾一样看得清，
              红留给「当前视图」「选中条」这些一次只出现一处的地方。
              Fluent 的勾选框颜色不吃具名笔，只认这几个键。 -->
-        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked" Color="#17191c" />
-        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" Color="#2c3034" />
-        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPressed" Color="#0f1113" />
-        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeChecked" Color="#17191c" />
-        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPointerOver" Color="#2c3034" />
-        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPressed" Color="#0f1113" />
-        <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundChecked" Color="#ffffff" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked" Color="#333333" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" Color="#484848" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPressed" Color="#1f1f1f" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeChecked" Color="#333333" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPointerOver" Color="#484848" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPressed" Color="#1f1f1f" />
+        <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundChecked" Color="#eff1f3" />
         <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundCheckedPointerOver" Color="#ffffff" />
         <SolidColorBrush x:Key="CheckBoxCheckGlyphForegroundCheckedPressed" Color="#ffffff" />
       </ResourceDictionary>
@@ -87,16 +91,23 @@
 
     <!-- 品牌 -->
     <SolidColorBrush x:Key="Brand" Color="#a41626" />
-    <!-- 外壳黑：七个窗口的标题栏、登录页左栏、运行控制药丸，同一支 -->
-    <SolidColorBrush x:Key="Shell" Color="#17191c" />
-    <SolidColorBrush x:Key="ShellDeep" Color="#0f1113" />
+    <!-- 标题栏靛：七个窗口的标题栏、登录页左栏那块，同一支。
+         它跟 Chrome 是两回事：Shell 是「这是本程序的头」，
+         Chrome 是「这是一块深色底」（运行药丸、复选框、状态条）。
+         从前两者共用外壳黑，甲方给色之后分了家 -->
+    <SolidColorBrush x:Key="Shell" Color="#352d6a" />
+    <SolidColorBrush x:Key="ShellDeep" Color="#251f4b" />
+    <!-- 通用深色底 -->
+    <SolidColorBrush x:Key="Chrome" Color="#333333" />
+    <SolidColorBrush x:Key="ChromeDeep" Color="#1f1f1f" />
     <SolidColorBrush x:Key="BrandMid" Color="#7e0f1c" />
     <SolidColorBrush x:Key="BrandTint" Color="#faf2f3" />
     <SolidColorBrush x:Key="BrandTint2" Color="#f4e4e6" />
 
-    <!-- 面板成块着色、块与块之间用白缝分隔（GBG 的做法）。
-         底改成中性 #ecedea 而不是品牌红调淡的：纪律第一条，大面积不占品牌色 -->
-    <SolidColorBrush x:Key="ThemeFill" Color="#ecedea" />
+    <!-- 面板成块着色、块与块之间用白缝分隔。
+         #eff1f3 是甲方给的「面色」：属性块、设备库格子、步骤库分类块、
+         页顶工具条共用这一支。PropsBg 跟它同值，两个名字都在用，改要一起改 -->
+    <SolidColorBrush x:Key="ThemeFill" Color="#eff1f3" />
     <SolidColorBrush x:Key="ThemeGap" Color="#ffffff" />
     <SolidColorBrush x:Key="ThemeLine" Color="#d0d2cf" />
 
@@ -125,7 +136,7 @@
     <SolidColorBrush x:Key="Muted2" Color="#a9adb1" />
     <SolidColorBrush x:Key="Line" Color="#e1e3e0" />
     <SolidColorBrush x:Key="Line2" Color="#e1e3e0" />
-    <SolidColorBrush x:Key="PropsBg" Color="#ecedea" />
+    <SolidColorBrush x:Key="PropsBg" Color="#eff1f3" />
     <SolidColorBrush x:Key="PropsLine" Color="#d0d2cf" />
     <SolidColorBrush x:Key="Divider" Color="#d0d2cf" />
 
@@ -135,8 +146,8 @@
     <SolidColorBrush x:Key="Hold" Color="#8a6100" />
     <SolidColorBrush x:Key="Alarm" Color="#d93025" />
     <SolidColorBrush x:Key="AlarmDk" Color="#a81e15" />
-    <!-- 老名字留着，指到新笔上，免得引用它的地方一次全改 -->
-    <SolidColorBrush x:Key="MenuBlue" Color="#a41626" />
+    <!-- 菜单选中蓝：名字是历史的，值是甲方给的 #2a6fe5 -->
+    <SolidColorBrush x:Key="MenuBlue" Color="#2a6fe5" />
     <SolidColorBrush x:Key="Green" Color="#0e7a3e" />
     <SolidColorBrush x:Key="Red" Color="#d93025" />
 
@@ -308,9 +319,12 @@
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="TextBlock.Foreground" Value="#1f2124" />
     </Style>
+    <!-- 选中项：字与下划线同色。从前字是品牌红、线是外壳黑，
+         那是「红只许小面积」时代的折中；甲方给了菜单选中蓝之后，
+         记号只剩一个意思，就不该再拆成两个颜色说 -->
     <Style Selector="Button.menu.on">
-      <Setter Property="Foreground" Value="#a41626" />
-      <Setter Property="BorderBrush" Value="#17191c" />
+      <Setter Property="Foreground" Value="{StaticResource MenuBlue}" />
+      <Setter Property="BorderBrush" Value="{StaticResource MenuBlue}" />
       <Setter Property="BorderThickness" Value="0,0,0,2" />
     </Style>
 

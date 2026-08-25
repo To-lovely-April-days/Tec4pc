@@ -71,7 +71,7 @@
     <DockPanel Grid.Column="0" Background="White">
 
       <!-- 工具条：通道 + 四个动作 + 釜容 + 状态 -->
-      <Border DockPanel.Dock="Top" Height="58" Background="#ecedea">
+      <Border DockPanel.Dock="Top" Height="58" Background="{StaticResource ThemeFill}">
         <StackPanel Orientation="Horizontal" Spacing="10" Margin="14,0" VerticalAlignment="Center">
           <TextBlock Text="通道：" FontSize="12" Foreground="#414448" VerticalAlignment="Center" />
           <ComboBox Classes="sel" Width="92" ItemsSource="{Binding Channels}"

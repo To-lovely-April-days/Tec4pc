@@ -92,7 +92,7 @@
     <DockPanel Grid.Column="0" Background="White">
 
       <!-- .ctool：58px 高，#ecedea -->
-      <Border DockPanel.Dock="Top" Height="58" Background="#ecedea">
+      <Border DockPanel.Dock="Top" Height="58" Background="{StaticResource ThemeFill}">
         <StackPanel Orientation="Horizontal" Spacing="10" Margin="14,0" VerticalAlignment="Center">
           <TextBlock Text="检索：" FontSize="12" Foreground="#414448" VerticalAlignment="Center" />
           <Panel Width="260">

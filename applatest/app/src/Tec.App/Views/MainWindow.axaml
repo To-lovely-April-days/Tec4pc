@@ -22,10 +22,10 @@
           Margin="{Binding $parent[Window].OffScreenMargin}">
   <DockPanel>
 
-    <!-- 窗口标题栏：30px，纯色外壳黑 #17191c，自绘（原型 .titlebar）。
+    <!-- 窗口标题栏：30px，纯色 Shell（#352d6a），自绘（原型 .titlebar）。
          三色里的黑。标题栏面积大，是外壳不是信号，所以不占品牌红。
          右下那颗运行药丸走的是同一支笔——全程序只有一个黑 -->
-    <Border DockPanel.Dock="Top" Height="30" Background="#17191c"
+    <Border DockPanel.Dock="Top" Height="30" Background="{StaticResource Shell}"
             PointerPressed="OnTitlebarPressed">
       <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto" Margin="8,0,0,0">
         <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
@@ -82,6 +82,21 @@
     <Panel>
     <DockPanel>
 
+    <!--
+      底部状态条：22px，通用深色底 #333333 白字。
+
+      只写「已打开 + 当前实验名」这一件事。GBG 那条底栏写的也正是这个
+      （Opened Documentation）。别往里塞它拿不到的东西：这一层能实时跟得住的
+      只有 Store.Changed 这一路信号，凑数写上去的字要么是死的、要么是编的。
+      要加运行状态 / 通道数得先把那几路的变更通知接到这一层来，是另一件事。
+    -->
+    <Border DockPanel.Dock="Bottom" Height="22" Background="{StaticResource Chrome}">
+      <TextBlock VerticalAlignment="Center" Margin="12,0" FontSize="11" Foreground="White"
+                 TextTrimming="CharacterEllipsis">
+        <Run Text="已打开 " /><Run Text="{Binding DocTitle}" />
+      </TextBlock>
+    </Border>
+
     <!-- 主菜单栏：52px 白底，25px 细体菜单项；右侧模拟模式与用户区叠在同一行 -->
     <Panel DockPanel.Dock="Top" Height="52" Background="White">
       <Border BorderBrush="#e1e3e0" BorderThickness="0,0,0,1" />
@@ -99,7 +114,7 @@
       <!-- 运行控制：黑药丸 + 三颗圆钮（运行 / 停止 / 暂停）。
            原型那句「模拟模式」去掉了——接上真机之后它就不对了，
            而这三个钮不论仿真真机都是同一件事，图标自己说得清 -->
-      <Border Background="#17191c" CornerRadius="8" Height="48" Margin="0,2,150,0"
+      <Border Background="{StaticResource Chrome}" CornerRadius="8" Height="48" Margin="0,2,150,0"
               HorizontalAlignment="Right" VerticalAlignment="Top" Padding="12,0">
         <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
           <!-- 三颗都是「对全部已启用通道」。单路的启停在运行页的通道磁贴上。

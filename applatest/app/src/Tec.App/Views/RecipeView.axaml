@@ -137,14 +137,14 @@
     </Border>
 
     <!-- ══ 中：工具条 + 一键复制 + 校验 + 泳道（原型 .procwrap）══
-         右边留 6px 白：工具条那条 #ecedea 的灰带一直铺到属性栏跟前，
-         而属性栏那块是 #ebece9——差一级，眼睛看不出是两块，整条通到底。
+         右边留 6px 白：工具条那条面色一直铺到属性栏跟前，而属性栏
+         用的是同一支面色——不留缝的话两块连成一片，看不出是两块。
          左边靠步骤库那 4px 白缝分开，右边照样得有一条 -->
     <Border Grid.Column="1" Background="White" Padding="0,0,6,0">
     <DockPanel>
 
-      <!-- 原型 .proctool：58 高、#ecedea 一条整的、34px 圆钮 -->
-      <Border DockPanel.Dock="Top" Height="58" Background="#ecedea">
+      <!-- 原型 .proctool：58 高、面色一条整的、34px 圆钮 -->
+      <Border DockPanel.Dock="Top" Height="58" Background="{StaticResource ThemeFill}">
         <StackPanel Orientation="Horizontal" Spacing="8" Margin="14,0" VerticalAlignment="Center">
           <TextBlock Text="配方：" Classes="lbl" />
           <ComboBox Classes="sel" Width="246" ItemsSource="{Binding Lanes}"
@@ -181,13 +181,14 @@
       </Border>
 
       <!-- copybar（原型 .bar2）：左边一键复制，右端一枚校验 chip。
-           #f5f5f4 比工具条那条 #ecedea 浅一档——两条灰带分得出层次，
+           #f6f7f9 比工具条那条面色浅一档（跟着面色一起转的冷调，
+           别留回原来那支暖灰 #f5f5f4，两条带子会一暖一冷）——分得出层次，
            chip 的 hover / 展开态才有白底可反白（白条上反白等于没反应）。
 
            校验并进这一行、不另立一条：它不是一块常驻内容，是一枚状态灯。
            从前那条校验条摊在画布上头，问题一多就把泳道往下顶，
            越是有问题越看不见配方——正好跟它的目的相反 -->
-      <Border DockPanel.Dock="Top" Background="#f5f5f4" BorderBrush="#e1e3e0"
+      <Border DockPanel.Dock="Top" Background="#f6f7f9" BorderBrush="#e1e3e0"
               IsVisible="{Binding HasLanes}"
               BorderThickness="0,0,0,1" Padding="14,8">
         <Grid ColumnDefinitions="Auto,*,Auto">
@@ -437,7 +438,7 @@
                         <ctl:TecIcon Key="ui-chev-down" Tint="#51555a" Size="10" />
                       </LayoutTransformControl>
                     </Border>
-                    <!-- 原型 .lane-head：#d6b8bb 一块，两行「标签 + 输入 + 圆钮」。
+                    <!-- 原型 .lane-head：#bfc9d7 一块，两行「标签 + 输入 + 圆钮」。
                          有错的时候描一圈红（原型是把整块染成 #fdf2f2，我们这块是
                          蓝灰的实心底，染红只会脏，而且要跟蓝色选中环抢眼睛）。
                          角标钉在这块的右上角、探出去一半（原型 .cbadge top/right -8） -->
@@ -445,7 +446,7 @@
                     <!-- 描边常在、平时不着色（BorderBrush 不写死成 Transparent：
                          内联值压得过样式，那样 laneHeadErr 永远上不了色，实测踩到）。
                          粗细恒为 1.4，出不出错都不改版 -->
-                    <Border Background="#d6b8bb" CornerRadius="2" Padding="8,8,8,10"
+                    <Border Background="#bfc9d7" CornerRadius="2" Padding="8,8,8,10"
                             BorderThickness="1.4"
                             Classes.laneHeadErr="{Binding HasErrors}">
                       <StackPanel Spacing="8">
@@ -577,7 +578,10 @@
                                       </Border>
                                     </Grid>
 
-                                    <Border Grid.Row="1" Height="1" Background="#dedede"
+                                    <!-- 分隔线用半透明黑，不写死浅灰：卡底从白换成
+                                         #82dcfe 之后，#dedede 跟它明度几乎一样，
+                                         这条线等于没画。压一层黑在什么底上都看得见 -->
+                                    <Border Grid.Row="1" Height="1" Background="#22000000"
                                             Margin="0,6,0,0" />
 
                                     <!-- 排期这一行：左边预计开始，右边耗时，垃圾桶收在最右。
@@ -983,7 +987,7 @@
          悬停只亮组头那一条，不亮整块：块里装着指令格，指着某一格时
          整块跟着变色，看着像是整组被选中了 -->
     <Style Selector="Border.dev">
-      <Setter Property="Background" Value="#eeefec" />
+      <Setter Property="Background" Value="{StaticResource ThemeFill}" />
       <Setter Property="CornerRadius" Value="0,2,2,0" />
       <Setter Property="ClipToBounds" Value="True" />
     </Style>
@@ -991,7 +995,7 @@
       <Setter Property="Background" Value="Transparent" />
     </Style>
     <Style Selector="Border.devhd:pointerover">
-      <Setter Property="Background" Value="#e4e6e3" />
+      <Setter Property="Background" Value="#e2e5e9" />
     </Style>
 
     <!-- 组头那个圆圈箭头。18 是配 52px 组头的：exp3 那 22 是给 96px 组头留的 -->
@@ -1049,17 +1053,15 @@
     <Style Selector="Border.step">
       <Setter Property="MinHeight" Value="75" />
       <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="BorderBrush" Value="#cccccc" />
+      <Setter Property="BorderBrush" Value="#5cbfe0" />
       <Setter Property="Cursor" Value="Hand" />
-      <Setter Property="Background">
-        <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
-          <GradientStop Color="#ffffff" Offset="0" />
-          <GradientStop Color="#f6f6f6" Offset="1" />
-        </LinearGradientBrush>
-      </Setter>
+      <!-- 实底 #82dcfe（甲方给的），不是从前那道白→灰的渐变：
+           渐变是拿来在白画布上「浮」一张白卡的，卡本身有颜色之后，
+           上下两端各调一档只会看着脏 -->
+      <Setter Property="Background" Value="#82dcfe" />
     </Style>
     <Style Selector="Border.step:pointerover">
-      <Setter Property="Background" Value="#f2f2f2" />
+      <Setter Property="Background" Value="#6ad2f8" />
     </Style>
 
     <!-- 泳道头里的输入：原型 .hsel，22 高、白底、#a9adb1 描边 -->
@@ -1109,8 +1111,11 @@
          画布是白的，几块灰并排才看得出这是几根柱子、缝在哪儿。
          描边常在、平时不着色，必须排在 laneSel / laneDrop 前面——
          Avalonia 比的是写的先后，不是选择器谁更具体 -->
+    <!-- 泳道底跟工具条、步骤库分类块是同一层「不是画布的面」，走同一支面色。
+         从前它是中性 #efefef，跟 #eff1f3 只差一丝冷暖：两块紧挨着（泳道顶到
+         工具条底下），差这么一点点反而比差一大截更难看 -->
     <Style Selector="Border.laneBox">
-      <Setter Property="Background" Value="#efefef" />
+      <Setter Property="Background" Value="{StaticResource ThemeFill}" />
       <Setter Property="BorderBrush" Value="Transparent" />
     </Style>
     <!-- 当前通道：不画描边，只在外面浮一层很浅的黑影。

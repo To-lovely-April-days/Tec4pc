@@ -76,7 +76,7 @@
   <Border BorderBrush="#3a0a0f" BorderThickness="1">
     <DockPanel>
 
-      <Border DockPanel.Dock="Top" Height="30" Background="#17191c"
+      <Border DockPanel.Dock="Top" Height="30" Background="{StaticResource Shell}"
               PointerPressed="OnTitlebarPressed">
         <Grid ColumnDefinitions="Auto,10,*,Auto">
           <Viewbox Width="15" Height="15" Margin="8,0,0,0" VerticalAlignment="Center">
