@@ -137,14 +137,24 @@
               </ItemsControl.ItemsPanel>
               <ItemsControl.ItemTemplate>
                 <DataTemplate>
-                  <!-- 这一栏的磁贴**没有 ✕**：这儿的 ✕ 只可能是「删文件」，
-                       那是要问一句的事，不该藏在一个角标后面 -->
-                  <Border Classes="tile" Classes.on="{Binding On}"
+                  <Border Classes="tile dir" Classes.on="{Binding On}"
                           PointerPressed="OnCardPressed" ToolTip.Tip="{Binding Path}">
-                    <StackPanel Margin="10,22,10,8">
-                      <Border Classes="tileth"><ctl:BenchThumb Parts="{Binding Parts}" Margin="5" /></Border>
-                      <TextBlock Text="{Binding Name}" Classes="tilen" />
-                    </StackPanel>
+                    <Panel>
+                      <StackPanel Margin="10,22,10,8">
+                        <Border Classes="tileth"><ctl:BenchThumb Parts="{Binding Parts}" Margin="5" /></Border>
+                        <TextBlock Text="{Binding Name}" Classes="tilen" />
+                      </StackPanel>
+
+                      <!-- 这一栏的 ✕ 是**真删文件**，跟左边那栏的「划掉一条记录」
+                           不是一回事。所以命令里一定先弹一句确认——
+                           删的是操作人存下来的整份实验，没有回收站可退 -->
+                      <Button Classes="tilex" ToolTip.Tip="删除这个实验文件"
+                              Command="{Binding $parent[UserControl].DataContext.DeleteFile}"
+                              CommandParameter="{Binding}">
+                        <TextBlock Text="✕" FontSize="11" Foreground="#4a4f55"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                      </Button>
+                    </Panel>
                   </Border>
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
@@ -193,11 +203,16 @@
     </Style>
 
     <!-- ══ 磁贴 ══
-         GBG 那一片是品牌绿；我们走卡片色 #bfc9d7，跟菜单栏、泳道头同一支。
-         168×140：预览框 148×86 + 名字一行，一栏 ~470 宽能并排两个 -->
+         GBG 两栏是同一支绿的深浅两档：左「Recent」重、右「目录」淡。
+         我们照这个关系摆，色值走自己这条线上的两档——
+         · 左「最近」 #d7dde5：卡片色 #bfc9d7 与面色 #eff1f3 的正中间。
+           比原来的卡片色亮一档（原来压在白页上偏重），又明显比右栏实。
+           没有引进新的色相，只是同一条线上多站了一格。
+         · 右「实验目录」 #eff1f3：面色本身，最淡的一档，往后退。
+         168 宽：预览框 148×86 + 名字一行，一栏 ~470 宽能并排两个 -->
     <Style Selector="Border.tile">
       <Setter Property="Width" Value="168" />
-      <Setter Property="Background" Value="#bfc9d7" />
+      <Setter Property="Background" Value="#d7dde5" />
       <Setter Property="CornerRadius" Value="2" />
       <!-- 内边距写在内容的 Margin 上、不写这儿：Padding 会把里面所有东西
            一起框进去，右上角那个 ✕ 就只能贴到预览框的角，贴不到磁贴的角。
@@ -209,7 +224,14 @@
       <Setter Property="Cursor" Value="Hand" />
     </Style>
     <Style Selector="Border.tile:pointerover">
-      <Setter Property="Background" Value="#a9b6c7" />
+      <Setter Property="Background" Value="#c6cfda" />
+    </Style>
+    <!-- 右栏：面色那一档，连悬停也跟着淡一格 -->
+    <Style Selector="Border.tile.dir">
+      <Setter Property="Background" Value="{StaticResource ThemeFill}" />
+    </Style>
+    <Style Selector="Border.tile.dir:pointerover">
+      <Setter Property="Background" Value="#dee3e8" />
     </Style>
     <!-- 当前打开的那一份：描一圈菜单选中蓝。这是全页唯一要一眼找到的东西 -->
     <Style Selector="Border.tile.on">

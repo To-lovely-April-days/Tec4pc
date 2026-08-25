@@ -86,6 +86,38 @@ public sealed class StartViewModel : ViewModelBase
             Reload();
         });
 
+        // 实验目录那一栏磁贴上的 ✕：**真删文件**。所以一定先问一句——
+        // 这一下没有回收站可退，删的是操作人存下来的整份实验。
+        // 跟「最近」那栏的 ✕ 是两回事：那边只划掉一条记录，文件还在。
+        DeleteFile = new RelayCommand(p => Async(async () =>
+        {
+            if (p is not RecentCardViewModel card) return;
+            if (FileDialogs.Owner is not { } owner) return;
+
+            var opened = string.Equals(card.Path, _store.CurrentPath,
+                                       StringComparison.OrdinalIgnoreCase);
+            var choice = await ConfirmDialog.Ask(owner,
+                "删除实验文件",
+                $"把「{card.Name}」从磁盘上删掉，删完不能撤销。",
+                (opened ? "这份实验现在正开着。删掉文件之后窗口里的内容还在，"
+                        + "但「保存」就没有落点了，得用「另存为」重新挑位置。" + "\n" : "")
+                + $"路径：{card.Path}",
+                "删除", secondary: null);
+            if (choice != DialogChoice.Primary) return;
+
+            try
+            {
+                File.Delete(card.Path);
+                // 文件没了，最近列表里那一条也就没有意义了，一并划掉
+                _store.Recent.RemoveAll(
+                    r => string.Equals(r.Path, card.Path, StringComparison.OrdinalIgnoreCase));
+                _store.SaveRecent();
+                Status = $"已删除 {card.Name}";
+            }
+            catch (Exception ex) { Status = "删不掉：" + ex.Message; }
+            Reload();
+        }));
+
         TogglePin = new RelayCommand(p =>
         {
             if (p is not RecentCardViewModel card) return;
@@ -360,6 +392,7 @@ public sealed class StartViewModel : ViewModelBase
     public RelayCommand TogglePin { get; }
     public RelayCommand OpenRecent { get; }
     public RelayCommand Forget { get; }
+    public RelayCommand DeleteFile { get; }
     public RelayCommand NewExperiment { get; }
     public RelayCommand OpenExperiment { get; }
     public RelayCommand SaveExperiment { get; }
