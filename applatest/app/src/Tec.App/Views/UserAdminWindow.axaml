@@ -46,7 +46,7 @@
       <Setter Property="FontSize" Value="12" />
       <Setter Property="Padding" Value="6,0" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
-      <Setter Property="BorderBrush" Value="#a4a8ac" />
+      <Setter Property="BorderBrush" Value="#dddddd" />
       <Setter Property="CornerRadius" Value="2" />
       <Setter Property="Background" Value="White" />
     </Style>

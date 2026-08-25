@@ -19,7 +19,7 @@
       <Setter Property="Padding" Value="9,0" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
       <Setter Property="Background" Value="White" />
-      <Setter Property="BorderBrush" Value="#a4a8ac" />
+      <Setter Property="BorderBrush" Value="#dddddd" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="CornerRadius" Value="2" />
     </Style>

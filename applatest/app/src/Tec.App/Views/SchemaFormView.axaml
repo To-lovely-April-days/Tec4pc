@@ -104,7 +104,7 @@
       <Setter Property="FontSize" Value="11.5" />
       <Setter Property="Padding" Value="6,0" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
-      <Setter Property="BorderBrush" Value="#a4a8ac" />
+      <Setter Property="BorderBrush" Value="#dddddd" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="CornerRadius" Value="2" />
       <Setter Property="Background" Value="White" />
@@ -119,7 +119,7 @@
       <Setter Property="FontSize" Value="11.5" />
       <Setter Property="Padding" Value="6,0" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
-      <Setter Property="BorderBrush" Value="#a4a8ac" />
+      <Setter Property="BorderBrush" Value="#dddddd" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="CornerRadius" Value="2" />
       <Setter Property="Background" Value="White" />
