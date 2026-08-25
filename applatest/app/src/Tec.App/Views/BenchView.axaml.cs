@@ -24,6 +24,16 @@ public partial class BenchView : UserControl
     /// </summary>
     private Point OnStage(PointerEventArgs e) => e.GetPosition(World);
 
+    /// <summary>
+    /// 设备库的分类头：点一下收起 / 展开这一类。
+    /// Handled 掉，不然这一下会顺着冒到画布上去（画布的 PointerPressed 是取消选中）。
+    /// </summary>
+    private void OnGroupPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is Control { DataContext: DeviceGroup g }) g.Open = !g.Open;
+        e.Handled = true;
+    }
+
     // ── 从设备库拖出来 ──────────────────────────────────────────────
     private void OnLibraryPressed(object? sender, PointerPressedEventArgs e)
     {

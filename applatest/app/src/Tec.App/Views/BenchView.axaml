@@ -4,38 +4,80 @@
              xmlns:v="clr-namespace:Tec.App.Views"
              x:Class="Tec.App.Views.BenchView">
 
-  <!-- 三栏宽度：设备库 118 · 台面自适应 · 属性面板 312（原型 342，收窄 30） -->
-  <Grid ColumnDefinitions="118,*,312">
+  <!-- 三栏宽度：设备库 260 · 台面自适应 · 属性面板 312。
+       左栏跟配方页、配方库页同宽——三页的左栏都是「库」，宽度不一致的话
+       在菜单之间切换整个中列会横跳一下。从前这里是 118（一列一格），
+       分类和两列格子都是在这个宽度上摆不下的 -->
+  <Grid ColumnDefinitions="260,*,312">
 
     <!--
-      设备库（学 GBG）：**栏本身不铺底色、跟画布之间也不画分界线**，
-      底色下沉到每一个设备格子上——一格一块，格子之间露出画布的白。
-      整栏铺一层灰再划一条竖线，等于给「取货架」这件小事画了个边框；
-      GBG 的做法是让格子自己成块，栏不存在。
+      设备库：分类成块，跟配方页的步骤库同一副样子——
+      6px 分类色条 + 52px 组头（圆圈箭头 + 类名 + 台数）+ 两列设备格，
+      组头可点，整类收起展开。两页的左栏干的是同一件事，不该长成两副样子。
+
+      栏本身不铺底色、跟画布之间也不画分界线：底色下沉到每一块分类上，
+      块与块之间露出画布的白。
     -->
     <Border Grid.Column="0">
       <DockPanel>
-        <!-- 不写「设备库」这个抬头（GBG 也没有）：一列设备图摆在那儿，
-             本来就没人会认错成别的东西；一行标题占掉的是第一台设备的位置 -->
+        <!-- 不写「设备库」这个抬头（GBG 也没有，配方页的步骤库也已经拆了）：
+             一列设备图摆在那儿，本来就没人会认错成别的东西 -->
         <!-- 底部留白同配方页：写内容的 Margin，不写 ScrollViewer 的 Padding -->
         <ScrollViewer>
-          <ItemsControl ItemsSource="{Binding Library}" Margin="0,0,0,40">
+          <ItemsControl ItemsSource="{Binding Groups}" Margin="0,0,0,40">
             <ItemsControl.ItemTemplate>
               <DataTemplate>
-                <!-- 一格 = 一块底色（图 + 名字都在块里），块与块之间是画布的白 -->
-                <Border Classes="cell" PointerPressed="OnLibraryPressed">
-                  <StackPanel HorizontalAlignment="Center">
-                    <!-- 统一 108×88 的格子，图等比缩进去。各设备图的高度本来就接近
-                         （138~150），按高度缩放出来的比例也就接近，看着是一样大的；
-                         宽的那两台（反应器 176、加料泵 172）由宽度兜住，整幅不裁 -->
-                    <ctl:DeviceArtView ArtKey="{Binding ArtKey}" Fit="True"
-                                       Width="108" Height="88" HorizontalAlignment="Center" />
-                    <TextBlock Text="{Binding Name}" FontSize="11"
-                               Foreground="#3a3d41" Width="108"
-                               TextAlignment="Center" TextWrapping="Wrap" Margin="0,4,0,0" />
-                    <TextBlock Text="{Binding Problem}" IsVisible="{Binding HasProblem}" Width="108"
-                               FontSize="9.5" Foreground="#a81e15" TextAlignment="Center" TextWrapping="Wrap" />
-                  </StackPanel>
+                <Border Classes="grp" Margin="0,0,0,8">
+                  <Grid ColumnDefinitions="6,*">
+                    <Border Grid.Column="0" Background="{Binding Color}" />
+                    <StackPanel Grid.Column="1">
+
+                      <Border Classes="grphd" Height="52" Cursor="Hand"
+                              PointerPressed="OnGroupPressed">
+                        <Grid ColumnDefinitions="Auto,*,Auto" Margin="12,0,10,0">
+                          <Border Grid.Column="0" Classes="exp3m" Classes.up="{Binding Open}">
+                            <ctl:TecIcon Key="ui-chev-down" Tint="#51555a" Size="10"
+                                         HorizontalAlignment="Center" VerticalAlignment="Center" />
+                          </Border>
+                          <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="15"
+                                     FontWeight="Light" Foreground="#3a3d41"
+                                     VerticalAlignment="Center" Margin="11,0,0,0" />
+                          <TextBlock Grid.Column="2" Text="{Binding Items.Count}"
+                                     FontSize="10.5" Foreground="#9aa0a6"
+                                     VerticalAlignment="Center" />
+                        </Grid>
+                      </Border>
+
+                      <!-- 设备格：两列。栏宽 260 减去滚动条 13、色条 6、左右各 6，
+                           净 229，两列每格 114——图仍是 108 宽，跟从前一样大，
+                           只是一行摆得下两台了 -->
+                      <ItemsControl ItemsSource="{Binding Items}" IsVisible="{Binding Open}"
+                                    Margin="6,0,6,6">
+                        <ItemsControl.ItemsPanel>
+                          <ItemsPanelTemplate><UniformGrid Columns="2" /></ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate>
+                            <Border Classes="cell" PointerPressed="OnLibraryPressed">
+                              <StackPanel HorizontalAlignment="Center">
+                                <!-- 统一 108×74 的格子，图等比缩进去。各设备图的高度本来就接近
+                                     （138~150），按高度缩放出来的比例也就接近，看着是一样大的；
+                                     宽的那两台（反应器 176、加料泵 172）由宽度兜住，整幅不裁 -->
+                                <ctl:DeviceArtView ArtKey="{Binding ArtKey}" Fit="True"
+                                                   Width="102" Height="74" HorizontalAlignment="Center" />
+                                <TextBlock Text="{Binding Name}" FontSize="11"
+                                           Foreground="#3a3d41" Width="102" LineHeight="14"
+                                           TextAlignment="Center" TextWrapping="Wrap" Margin="0,3,0,0" />
+                                <TextBlock Text="{Binding Problem}" IsVisible="{Binding HasProblem}" Width="102"
+                                           FontSize="9.5" Foreground="#a81e15" TextAlignment="Center" TextWrapping="Wrap" />
+                              </StackPanel>
+                            </Border>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+
+                    </StackPanel>
+                  </Grid>
                 </Border>
               </DataTemplate>
             </ItemsControl.ItemTemplate>
@@ -377,15 +419,40 @@
   </Grid>
 
   <UserControl.Styles>
-    <!-- 设备库的一格：整格一块底色（图 + 名字都在里面），格与格之间露画布的白。
-         悬停整格转浅蓝，跟台面上选中设备是同一套提示语言 -->
-    <!-- 格子底跟属性块同一支笔（PropsBg）：这两块是这一页仅有的两处
-         「不是画布的面」，从前一个 #fafafa 一个 #ecedea，差一档不多不少，
-         正好落在「看得出不一样、又说不出为什么」那个区间 -->
-    <Style Selector="Border.cell">
+    <!-- 一类 = 一块底色，左边一条 6px 分类色条贯通整块（收起时就是那 52px，
+         展开了连设备格一起包），块与块之间 8px 白缝。同配方页的 Border.dev -->
+    <Style Selector="Border.grp">
       <Setter Property="Background" Value="{StaticResource PropsBg}" />
-      <Setter Property="Padding" Value="0,8,0,7" />
-      <Setter Property="Margin" Value="0,0,0,6" />
+      <Setter Property="CornerRadius" Value="0,2,2,0" />
+      <Setter Property="ClipToBounds" Value="True" />
+    </Style>
+    <Style Selector="Border.grphd">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="Border.grphd:pointerover">
+      <Setter Property="Background" Value="#e2e5e9" />
+    </Style>
+
+    <!-- 组头那个圆圈箭头。18 是配 52px 组头的，同配方页的 exp3m -->
+    <Style Selector="Border.exp3m">
+      <Setter Property="Width" Value="18" />
+      <Setter Property="Height" Value="18" />
+      <Setter Property="CornerRadius" Value="9" />
+      <Setter Property="BorderBrush" Value="#9aa0a6" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.exp3m.up">
+      <Setter Property="RenderTransform" Value="rotate(180deg)" />
+    </Style>
+
+    <!-- 设备库的一格：格底透明，露出所在分类那块的底色（图 + 名字都在格里）。
+         从前一格自己刷一层 PropsBg、格间露画布的白——现在底色上移到了分类块上，
+         格子再刷一遍就是同色叠同色，白缝也没了地方露 -->
+    <Style Selector="Border.cell">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Padding" Value="0,7,0,6" />
+      <Setter Property="CornerRadius" Value="2" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
     <Style Selector="Border.cell:pointerover">
@@ -418,10 +485,13 @@
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
-    <!-- 台面上选中的设备描一圈蓝框 -->
+    <!-- 台面上选中的设备：**只描一圈框，不填底**，框色就是属性栏的底色。
+         填底那一版是把设备图整个染上一层色，机器本身什么颜色就看不准了；
+         用属性栏的底色描框，是把「画布上这一台」和「右边正在编的这一块」
+         用同一个颜色系上——右边那块是什么底，选中的就框什么色 -->
     <Style Selector="Border.dev.sel">
-      <Setter Property="BorderBrush" Value="#a41626" />
-      <Setter Property="Background" Value="#0da41626" />
+      <Setter Property="BorderBrush" Value="{StaticResource PropsBg}" />
+      <Setter Property="Background" Value="Transparent" />
     </Style>
 
     <!-- GBG 的 hbtn：26px 圆钮，浅蓝底深描边 -->

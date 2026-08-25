@@ -22,6 +22,58 @@ public sealed class LibraryItemViewModel
     public bool Usable => Package.Usable;
     public string Problem => Package.Problem ?? "";
     public bool HasProblem => !string.IsNullOrEmpty(Package.Problem);
+
+    /// <summary>
+    /// 设备库的分类。**从驱动自己报的能力里读出来的**，不是另立一张表：
+    /// 装进来一个第三方驱动，它归哪一类由它的 Capabilities 决定，
+    /// 不用回来改主程序。清单里没有 category 这个字段，也不该有——
+    /// 那样同一件事就有两个说法，早晚对不上。
+    ///
+    /// 能力可能挂在两个地方：加载成功的读驱动实例（DriverInfo.Capabilities），
+    /// 加载失败的（灰掉但仍然列出来的那些）只剩清单，读清单的那份。
+    /// </summary>
+    public string Category
+    {
+        get
+        {
+            var caps = Package.Driver?.Info.Capabilities
+                       ?? (IReadOnlyList<string>)Package.Manifest.Capabilities;
+            if (caps.Contains("ITemperatureControl")) return "反应与控温";
+            if (caps.Contains("IDosing")) return "加料";
+            if (caps.Contains("IScalarSensor")) return "在线检测";
+            return "其他";
+        }
+    }
+}
+
+/// <summary>
+/// 设备库里的一类。跟配方页步骤库的 <c>ModuleGroup</c> 是同一副样子——
+/// 6px 色条 + 52px 组头 + 两列格子，收起展开也一样。两页的左栏干的是同一件事
+/// （「从库里挑一个放到右边去」），长成两副样子没有道理。
+///
+/// 色条直接借步骤库那张模块色表：控温类设备与「温度模块」那组指令是同一个
+/// 物理子系统，两页给它同一个颜色，扫一眼就对得上。
+/// </summary>
+public sealed class DeviceGroup : ViewModelBase
+{
+    private bool _open = true;
+
+    public DeviceGroup(string name)
+    {
+        Name = name;
+        Color = ModuleInfo.ColorOf(name switch
+        {
+            "反应与控温" => "温度模块",
+            "加料" => "加料",
+            "在线检测" => "在线分析",
+            _ => "通用"
+        });
+    }
+
+    public string Name { get; }
+    public string Color { get; }
+    public ObservableCollection<LibraryItemViewModel> Items { get; } = new();
+    public bool Open { get => _open; set => Set(ref _open, value); }
 }
 
 public sealed class DeviceNodeViewModel : ViewModelBase
@@ -115,6 +167,8 @@ public sealed class BenchViewModel : ViewModelBase
     }
 
     public ObservableCollection<LibraryItemViewModel> Library { get; } = new();
+    /// <summary>设备库按能力分的类。视图绑的是这个，Library 仍留着（拖拽与查找走它）。</summary>
+    public ObservableCollection<DeviceGroup> Groups { get; } = new();
     public ObservableCollection<DeviceNodeViewModel> Devices { get; } = new();
     public ObservableCollection<ChannelRowViewModel> ChannelRows { get; } = new();
 
@@ -368,7 +422,9 @@ public sealed class BenchViewModel : ViewModelBase
     public double DragY { get; private set; }
 
     /// <summary>设备库那一栏的宽度，与视图的三栏定义一致。</summary>
-    private const double LibraryWidth = 118;
+    // 跟配方页、配方库页的左栏同宽。三页的左栏干的是同一件事，
+    // 宽度不一致的话在菜单之间切换整个中列会横跳一下
+    private const double LibraryWidth = 260;
 
     /// <summary>
     /// 幽灵画在跨三栏的顶层，所以要把画布坐标换成视图坐标——不这样它会被
@@ -689,10 +745,31 @@ public sealed class BenchViewModel : ViewModelBase
         }
     }
 
+    /// <summary>
+    /// 分类的先后。按「先有台面才有别的」排：反应器给出通道，加料和探头都得
+    /// 挂到通道上去。空的那一类不出现——不装加料泵的机器不该看见一个空的「加料」。
+    /// </summary>
+    private static readonly string[] CategoryOrder = { "反应与控温", "加料", "在线检测", "其他" };
+
     public void Reload()
     {
         Library.Clear();
         foreach (var p in _ws.Drivers.ForLibrary()) Library.Add(new LibraryItemViewModel(p));
+
+        // 收起 / 展开的状态得带过来。Reload 是台面一有风吹草动就跑一遍的
+        // （BenchChanged），而设备库本身跟台面上摆了什么无关——不记着的话，
+        // 收起一类再拖一台设备下去，那一类自己又弹开了（实测踩到）
+        var wasOpen = Groups.ToDictionary(g => g.Name, g => g.Open);
+        Groups.Clear();
+        foreach (var name in CategoryOrder)
+        {
+            var items = Library.Where(x => x.Category == name).ToList();
+            if (items.Count == 0) continue;
+            var g = new DeviceGroup(name);
+            if (wasOpen.TryGetValue(name, out var open)) g.Open = open;
+            foreach (var it in items) g.Items.Add(it);
+            Groups.Add(g);
+        }
 
         SyncDevices();
         RebuildLinks();
