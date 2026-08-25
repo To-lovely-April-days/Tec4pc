@@ -138,10 +138,12 @@
                   VerticalAlignment="Center" Margin="0,0,12,0">
         <!-- 这台机器本身。直接用设备库那份双通道反应器的图，不再另存一份图标：
              同一台机器在顶栏、设备库、画布上就永远是同一张脸。
-             套一个圆圈，尺寸与描边照 Button.tbtn（34 / 白底 / #474a4e 2px）——
+             套一个圆圈，尺寸与描边照 Button.tbtn（34 / #474a4e 2px 描边）——
              顶栏右边这一排本来就全是圆的（三颗运行钮、用户头像），
              只有它是一张裸图浮在那儿，看着像没做完 -->
-        <Border Width="34" Height="34" CornerRadius="17" Background="White"
+        <!-- 圈里是透的，露菜单栏的底色，不刷白：写 Transparent 而不是写死
+             #bfc9d7，菜单栏底色哪天再动，这个圈自己就跟上了 -->
+        <Border Width="34" Height="34" CornerRadius="17" Background="Transparent"
                 BorderBrush="#474a4e" BorderThickness="2" ClipToBounds="True"
                 VerticalAlignment="Center" ToolTip.Tip="双通道反应器 RD-105">
           <ctl:DeviceArtView ArtKey="reactor2" Fit="True" Width="24" Height="22"
