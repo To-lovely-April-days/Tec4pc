@@ -28,8 +28,10 @@
          21 条指令铺成细行一屏就放得下（原来六组展开要滚三屏）。代价是
          48px 的彩色插画退到了步骤卡和属性栏，库里改用红底白线的小方块——
          48 缩到 15 那种多色带阴影的图会糊成一团，两处本来就不该是同一张图。 -->
-    <Border Grid.Column="0" Background="#fdfdfd"
-            BorderBrush="#c9c9c9" BorderThickness="0,0,1,0">
+    <!-- 栏底纯白、不画右分界线：中列左边留的那 6px 白缝就是分界。
+         从前是 #fdfdfd 加一条 #c9c9c9 —— 白缝旁边摆一条比它暗一丝的近白色，
+         那一丝差别正好落在「看得出不一样又说不出为什么」那个区间 -->
+    <Border Grid.Column="0" Background="White">
       <DockPanel>
         <!-- 搜索行：平时不占位，点分组头右端那枚放大镜才展开（SearchOpen）。
              21 条指令分在 6 个模块里，多数时候用不着搜；记不住「梯度控温」
@@ -54,7 +56,9 @@
              Padding 是从可视区里扣的，不进滚动范围——最后一行会卡在下边缘，
              滚到底也露不出来 -->
         <ScrollViewer>
-          <StackPanel Margin="0,6,0,18">
+          <!-- 上边距必须是 0：中列的工具条是从栏顶第 0 行开始画的，
+               这里留 6 的话第一个分组块比工具条低一截，两栏顶不在一条线上 -->
+          <StackPanel Margin="0,0,0,18">
             <TextBlock Text="没有匹配的指令" FontSize="12" Foreground="#959a9f"
                        Margin="12,8,0,0" IsVisible="{Binding LibEmpty}" />
             <ItemsControl ItemsSource="{Binding Groups}">
@@ -137,10 +141,11 @@
     </Border>
 
     <!-- ══ 中：工具条 + 一键复制 + 校验 + 泳道（原型 .procwrap）══
-         右边留 6px 白：工具条那条面色一直铺到属性栏跟前，而属性栏
-         用的是同一支面色——不留缝的话两块连成一片，看不出是两块。
-         左边靠步骤库那 4px 白缝分开，右边照样得有一条 -->
-    <Border Grid.Column="1" Background="White" Padding="0,0,6,0">
+         左右各留 6px 白缝。6 跟属性栏左边那条色条一个厚度，也跟菜单栏
+         底下那条白缝一个厚度——全程序「这里断开」只用一个尺寸说。
+         右边：工具条那条面色一直铺到属性栏跟前，而属性栏用的是同一支面色，
+         不留缝两块就连成一片。左边：步骤库的分组块也是这支面色，同理。 -->
+    <Border Grid.Column="1" Background="White" Padding="6,0,6,0">
     <DockPanel>
 
       <!-- 原型 .proctool：58 高、面色一条整的、34px 圆钮 -->

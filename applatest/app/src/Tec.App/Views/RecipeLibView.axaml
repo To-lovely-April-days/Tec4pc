@@ -170,8 +170,8 @@
          下面是平铺细行。原来是「19px 细体标题 + 白底搜索 + 一条动作行 +
          一摞带圆角带边框的小卡片」，四层白底叠在一起分不出层次，
          八条配方看着像八个散落的盒子 -->
-    <Border Grid.Column="0" ClipToBounds="True"
-            Background="#fdfdfd" BorderBrush="#c9c9c9" BorderThickness="0,0,1,0">
+    <!-- 栏底纯白、不画右分界线：中列左边留的那 6px 白缝就是分界（同配方页） -->
+    <Border Grid.Column="0" ClipToBounds="True" Background="White">
       <DockPanel>
         <Border DockPanel.Dock="Top" Height="24" Background="{StaticResource Shell}"
                 Padding="10,0">
@@ -251,7 +251,9 @@
     </Border>
 
     <!-- ══ 中：标题 + 标签页 + 工具条 + 表（原型 .rx-main）══ -->
-    <Border Grid.Column="1" Background="White" Padding="0,0,6,0">
+    <!-- 左右各 6px 白缝，同配方页。两页的左栏都是「库」，
+         切过去缝的宽窄一变就看得出来 -->
+    <Border Grid.Column="1" Background="White" Padding="6,0,6,0">
     <DockPanel>
 
       <!-- 抬头（原型 .rx-head）：名字 26px 细体，下面一行元信息 -->
