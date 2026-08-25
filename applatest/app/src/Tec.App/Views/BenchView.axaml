@@ -23,7 +23,15 @@
         <!-- 不写「设备库」这个抬头（GBG 也没有，配方页的步骤库也已经拆了）：
              一列设备图摆在那儿，本来就没人会认错成别的东西 -->
         <!-- 底部留白同配方页：写内容的 Margin，不写 ScrollViewer 的 Padding -->
-        <ScrollViewer>
+        <!--
+          滚动条常驻（Visible + AllowAutoHide=False）。两个理由：
+          · 分类一收一展，内容高度跳来跳去，滚动条跟着来去的话格子宽度也跟着变
+            （它是占位的，不是浮在内容上的），一收一展整栏抖一下。
+            常驻就是把那 13px 一直留出来，格子宽度从此不动。
+          · 自动隐藏那一档平时只剩一条细线，不把指针移过去根本看不出这栏能滚——
+            设备多了下面还有货，得让人一眼知道。
+        -->
+        <ScrollViewer VerticalScrollBarVisibility="Visible" AllowAutoHide="False">
           <ItemsControl ItemsSource="{Binding Groups}" Margin="0,0,0,40">
             <ItemsControl.ItemTemplate>
               <DataTemplate>
