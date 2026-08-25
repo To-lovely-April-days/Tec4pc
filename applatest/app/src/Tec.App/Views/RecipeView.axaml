@@ -148,8 +148,9 @@
     <Border Grid.Column="1" Background="White" Padding="6,0,6,0">
     <DockPanel>
 
-      <!-- 原型 .proctool：58 高、面色一条整的、34px 圆钮 -->
-      <Border DockPanel.Dock="Top" Height="58" Background="{StaticResource ThemeFill}">
+      <!-- 原型 .proctool：面色一条整的、34px 圆钮。
+           58 → 48：里面最高的是 34 的圆钮，58 上下各空 12，白留得太多 -->
+      <Border DockPanel.Dock="Top" Height="48" Background="{StaticResource ThemeFill}">
         <StackPanel Orientation="Horizontal" Spacing="8" Margin="14,0" VerticalAlignment="Center">
           <TextBlock Text="配方：" Classes="lbl" />
           <ComboBox Classes="sel" Width="246" ItemsSource="{Binding Lanes}"
@@ -184,6 +185,11 @@
                      TextTrimming="CharacterEllipsis" MaxWidth="330" />
         </StackPanel>
       </Border>
+
+      <!-- 工具条与 copybar 之间的白缝，6px，同全程序那一个尺寸。
+           跟 copybar 一起显隐：没有通道时 copybar 不在，这条缝也不该单独留着 -->
+      <Border DockPanel.Dock="Top" Height="6" Background="White"
+              IsVisible="{Binding HasLanes}" />
 
       <!-- copybar（原型 .bar2）：左边一键复制，右端一枚校验 chip。
            #f6f7f9 比工具条那条面色浅一档（跟着面色一起转的冷调，
@@ -253,26 +259,28 @@
       <!-- 画布 + 浮在画布上的校验面板。面板浮着不占位：它一展开就把泳道挤扁的话，
            人一边看清单一边找那一步，找的过程里版面又变一次 -->
       <Panel>
-      <!-- 画布行（原型 .canvasrow）：左缘一条「变量」竖栏 + 8px 白缝 + 泳道区。
+      <!-- 画布行（原型 .canvasrow）：左缘一条「变量」竖栏 + 6px 白缝 + 泳道区。
            原型 Process 视图左缘是三条竖栏（Variables / Startup / Shutdown），
-           我们要的只有变量这一件事，就一条。样式照 .vcol：64 宽、#f1f2f0、
-           右侧 1px #d7d9d6 分界、22px 圆圈箭头（exp3 与它同规格）+ 竖排名。
-           原型竖排字 20px Latin，按惯用换算中文取 17。
+           我们要的只有变量这一件事，就一条。
 
-           中间那道白缝是原型的做法：竖栏之间、竖栏与泳道之间都空一条纯白，
-           两块灰各自成块，不连成一片。它只有在**两边都是灰**的时候才看得见——
-           从前画布铺的是径向渐变，最亮的一头正好落在左缘（实测 249,249,249），
-           白缝糊在那片近白里等于没有。所以画布底色压平成 #f0f0f0：
-           跟竖栏那 #f1f2f0 同一档，白缝夹在中间才立得住。 -->
-      <Grid ColumnDefinitions="Auto,8,*">
+           收起态的尺寸照**运行页那三条收起来的竖栏**（Border.panetab）走：
+           28 宽、15px 竖排字。同一个部件在两页不该是两个宽度。
+           从前这里是 64 / 17px——那是照原型 .vcol 定的，可原型那三条并排
+           才有 64 的道理，我们只有一条。
 
-        <!-- 收起态：点整条都能展开 -->
-        <Border Grid.Column="0" Width="64" Background="#f1f2f0"
-                BorderBrush="#d7d9d6" BorderThickness="0,0,1,0"
+           白缝 8 → 6：跟属性栏那条色条、菜单栏底下那条缝一个厚度。
+           右侧那条 1px 分界线去掉——白缝就是分界，不用再画一条。 -->
+      <Grid ColumnDefinitions="Auto,6,*">
+
+        <!-- 收起态：点整条都能展开。
+             上边距 14 跟泳道那一摞对齐（ItemsControl Margin 的第二个数），
+             两边的块顶在同一条水平线上起 -->
+        <Border Grid.Column="0" Width="28" Background="{StaticResource PropsBg}"
+                Margin="0,14,0,0" VerticalAlignment="Stretch"
                 IsVisible="{Binding VarsClosed}" Cursor="Hand"
                 PointerPressed="OnVarsBarPressed">
-          <StackPanel Margin="0,12,0,0" Spacing="12" HorizontalAlignment="Center">
-            <Border Classes="exp3">
+          <StackPanel Margin="0,8,0,0" Spacing="10" HorizontalAlignment="Center">
+            <Border Classes="exp3" Width="20" Height="20" CornerRadius="10">
               <!-- 收起时箭头指右（原型 .vcol 的朝向）：down 逆时针转 90° -->
               <LayoutTransformControl HorizontalAlignment="Center" VerticalAlignment="Center">
                 <LayoutTransformControl.LayoutTransform>
@@ -284,21 +292,23 @@
             <!-- 竖排组名：汉字一个个正着摞下来，不是把整行转 90°。
                  原型那条竖栏写的是 Variables，拉丁字母转着读没问题；
                  汉字转 90° 就是躺倒的字，读起来像坏了（原来就是转的） -->
-            <TextBlock Text="变&#x0a;量" FontSize="17" FontWeight="Light"
-                       Foreground="#3a3d41" LineHeight="21" TextAlignment="Center"
+            <TextBlock Text="变&#x0a;量" FontSize="15" FontWeight="Light"
+                       Foreground="#3a3d41" LineHeight="17" TextAlignment="Center"
                        HorizontalAlignment="Center" />
-            <Border Background="#d7d9d6" CornerRadius="9" Padding="6,2"
+            <!-- 角标在 28 宽的栏里只剩 26 净宽，左右内边距收到 4 才装得下两位数 -->
+            <Border Background="#d7d9d6" CornerRadius="8" Padding="4,2"
                     HorizontalAlignment="Center" IsVisible="{Binding HasVarsBadge}">
-              <TextBlock Text="{Binding VarsBadge}" FontSize="11" Foreground="#3a3d41" />
+              <TextBlock Text="{Binding VarsBadge}" FontSize="10.5" Foreground="#3a3d41" />
             </Border>
           </StackPanel>
         </Border>
 
-        <!-- 展开态：变量表。行编辑直接写回配方，撤销 / 校验与步骤参数同一套 -->
-        <Border Grid.Column="0" Width="332" Background="#fafafa"
-                BorderBrush="#d7d9d6" BorderThickness="0,0,1,0"
+        <!-- 展开态：变量表。行编辑直接写回配方，撤销 / 校验与步骤参数同一套。
+             上边距与收起态、与泳道那一摞同为 14：开合之间块顶不该跳一下 -->
+        <Border Grid.Column="0" Width="332" Background="{StaticResource PropsBg}"
+                Margin="0,14,0,0" VerticalAlignment="Stretch"
                 IsVisible="{Binding VarsOpen}">
-          <DockPanel Margin="12,12,12,10">
+          <DockPanel Margin="12,10,12,10">
             <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="12">
               <Border Classes="exp3" Cursor="Hand" PointerPressed="OnVarsBarPressed"
                       Background="Transparent">
@@ -382,8 +392,9 @@
                      Text="每台双通道反应器带来两条泳道。先去「台面」把反应器拖进来，这里就会出现对应的泳道。" />
         </StackPanel>
         <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
-          <!-- 左边只留 4：白缝已经占了 8，两处加起来就把泳道推离竖栏太远了 -->
-          <ItemsControl ItemsSource="{Binding Lanes}" Margin="4,14,0,40">
+          <!-- 左边不再另留：缝由那一列 6px 独占，这里再加就成了 6+n，
+               跟别处的缝对不上。上边距 14 是竖栏跟着对齐的那条线 -->
+          <ItemsControl ItemsSource="{Binding Lanes}" Margin="0,14,0,40">
             <ItemsControl.ItemsPanel>
               <ItemsPanelTemplate>
                 <StackPanel Orientation="Horizontal" Spacing="14" />
