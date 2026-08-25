@@ -123,6 +123,21 @@
         <SolidColorBrush x:Key="ComboBoxBorderBrushPointerOver" Color="#dddddd" />
         <SolidColorBrush x:Key="ComboBoxBorderBrushPressed" Color="#dddddd" />
 
+        <!--
+          下拉展开后那一列选项：选中行 #C0CAD3，鼠标压在哪一行是 #D5DDE4。
+          从前两档都跟着 SystemAccentColor 走，于是选中行是品牌红铺满一条——
+          一个「当前值是哪一个」的提示，重得像条报警。
+
+          三个「选中 + 还在动」的档也钉成 #C0CAD3：选中那一行不管鼠标在不在上面、
+          按没按下去，都还是同一个 #C0CAD3，不会一碰就褪成没选中的样子。
+          没选中的行按下去先给 #C0CAD3，等于「松手它就是这个色」的预告。
+        -->
+        <SolidColorBrush x:Key="ComboBoxItemBackgroundSelected" Color="#c0cad3" />
+        <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedPointerOver" Color="#c0cad3" />
+        <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedPressed" Color="#c0cad3" />
+        <SolidColorBrush x:Key="ComboBoxItemBackgroundPointerOver" Color="#d5dde4" />
+        <SolidColorBrush x:Key="ComboBoxItemBackgroundPressed" Color="#c0cad3" />
+
       </ResourceDictionary>
       <ResourceDictionary x:Key="Dark">
         <Color x:Key="SystemAccentColor">#a41626</Color>
@@ -203,6 +218,21 @@
         <SolidColorBrush x:Key="ComboBoxBorderBrush" Color="#dddddd" />
         <SolidColorBrush x:Key="ComboBoxBorderBrushPointerOver" Color="#dddddd" />
         <SolidColorBrush x:Key="ComboBoxBorderBrushPressed" Color="#dddddd" />
+
+        <!--
+          下拉展开后那一列选项：选中行 #C0CAD3，鼠标压在哪一行是 #D5DDE4。
+          从前两档都跟着 SystemAccentColor 走，于是选中行是品牌红铺满一条——
+          一个「当前值是哪一个」的提示，重得像条报警。
+
+          三个「选中 + 还在动」的档也钉成 #C0CAD3：选中那一行不管鼠标在不在上面、
+          按没按下去，都还是同一个 #C0CAD3，不会一碰就褪成没选中的样子。
+          没选中的行按下去先给 #C0CAD3，等于「松手它就是这个色」的预告。
+        -->
+        <SolidColorBrush x:Key="ComboBoxItemBackgroundSelected" Color="#c0cad3" />
+        <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedPointerOver" Color="#c0cad3" />
+        <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedPressed" Color="#c0cad3" />
+        <SolidColorBrush x:Key="ComboBoxItemBackgroundPointerOver" Color="#d5dde4" />
+        <SolidColorBrush x:Key="ComboBoxItemBackgroundPressed" Color="#c0cad3" />
 
       </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>
