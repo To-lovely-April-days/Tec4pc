@@ -58,20 +58,11 @@ public sealed class DeviceGroup : ViewModelBase
 {
     private bool _open = true;
 
-    public DeviceGroup(string name)
-    {
-        Name = name;
-        Color = ModuleInfo.ColorOf(name switch
-        {
-            "反应与控温" => "温度模块",
-            "加料" => "加料",
-            "在线检测" => "在线分析",
-            _ => "通用"
-        });
-    }
+    // 从前还带一支 Color（借配方页的模块色），画在分类块左缘那条 6px 色条上。
+    // 色条去掉之后没人用了，一起删——分类名写在组头上，色条是同一件事说第二遍。
+    public DeviceGroup(string name) => Name = name;
 
     public string Name { get; }
-    public string Color { get; }
     public ObservableCollection<LibraryItemViewModel> Items { get; } = new();
     public bool Open { get => _open; set => Set(ref _open, value); }
 }

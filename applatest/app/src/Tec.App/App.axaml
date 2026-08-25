@@ -8,20 +8,24 @@
     ══ 配色 ══
 
       标题栏靛  #352d6a   通用深色底  #333333   白  #ffffff
-      菜单选中蓝  #2a6fe5   面色  #eff1f3   品牌红  #a41626
+      菜单选中蓝  #2a6fe5   面色  #f1f1f1   品牌红  #a41626
 
     色值是甲方给的一张表，不是推出来的，别照「协调」二字自行微调：
-      标题栏 #352d6a ｜ 菜单选中 #2a6fe5 ｜ 属性栏与设备库格子 #eff1f3 ｜
-      泳道头卡片 #bfc9d7 ｜ 步骤卡 #82dcfe ｜ 底部状态条 #333333 白字 ｜
-      复选框对号 #eff1f3
+      标题栏 #352d6a ｜ 菜单选中 #2a6fe5 ｜ 属性栏与设备库那一栏的底 #f1f1f1 ｜
+      泳道头卡片 #bfc9d7 ｜ 步骤卡 #82dcfe ｜ 底部状态条 #333333 白字
+
+    面色从 #eff1f3 挪到 #f1f1f1（去掉了原来那点偏蓝，成中性灰），
+    同一轮里台面设备库的底色关系也翻了过来：栏铺面色、设备格是白的。
 
     用色纪律，四条，改任何一支笔之前先读一遍：
 
     · 大面积深色分两支：**标题栏**走 #352d6a（七个窗口的标题栏都是它），
       其余深色底（运行药丸、复选框实底、面板深色表头、底部状态条）走
       通用的 #333333。它们是外壳不是信号，所以不占信号色。
-    · 面 #eff1f3 是「不是画布的那一层」：属性块、设备库格子、步骤库分类块、
-      页顶工具条，全是这一支。同一层只许有一个色值——差一档最难看。
+    · 面 #f1f1f1 是「不是画布的那一层」：属性块、设备库那一栏的底、
+      步骤库分类块、页顶工具条，全是这一支。同一层只许有一个色值——差一档最难看。
+      （台面设备库里的**设备格**是例外，它是白的：一台设备一张白卡片浮在这层灰上，
+      跟「一块面上开一个浅灰坑」不是一回事。）
     · 报警红 #d93025 永远是「实底填充 + 白字 + 三角图标」这一副样子，
       靠面积和形状区分，不靠色相。别处不许出现实底彩色圆片。
     · 绿 #0e7a3e 只表示在线 / 运行 / 通过，不做装饰，也不当主按钮。
@@ -123,9 +127,13 @@
     <SolidColorBrush x:Key="BrandTint2" Color="#f4e4e6" />
 
     <!-- 面板成块着色、块与块之间用白缝分隔。
-         #eff1f3 是甲方给的「面色」：属性块、设备库格子、步骤库分类块、
-         页顶工具条共用这一支。PropsBg 跟它同值，两个名字都在用，改要一起改 -->
-    <SolidColorBrush x:Key="ThemeFill" Color="#eff1f3" />
+         「面色」这一支：属性块、设备库那一栏的底、步骤库分类块、页顶工具条共用。
+         PropsBg 跟它同值，两个名字都在用，改要一起改。
+
+         #EFF1F3 → #F1F1F1：甲方新给的值，把原来那点偏蓝去掉了，成了中性灰。
+         差得很小（最多两级），别的页面上肉眼看不出来；
+         真正换了样子的是台面那一栏——底色和设备格的关系整个反过来了，见 BenchView。 -->
+    <SolidColorBrush x:Key="ThemeFill" Color="#f1f1f1" />
     <SolidColorBrush x:Key="ThemeGap" Color="#ffffff" />
     <SolidColorBrush x:Key="ThemeLine" Color="#d0d2cf" />
 
@@ -154,7 +162,8 @@
     <SolidColorBrush x:Key="Muted2" Color="#a9adb1" />
     <SolidColorBrush x:Key="Line" Color="#e1e3e0" />
     <SolidColorBrush x:Key="Line2" Color="#e1e3e0" />
-    <SolidColorBrush x:Key="PropsBg" Color="#eff1f3" />
+    <!-- 跟 ThemeFill 同值，见上面那段 -->
+    <SolidColorBrush x:Key="PropsBg" Color="#f1f1f1" />
     <SolidColorBrush x:Key="PropsLine" Color="#d0d2cf" />
     <SolidColorBrush x:Key="Divider" Color="#d0d2cf" />
 

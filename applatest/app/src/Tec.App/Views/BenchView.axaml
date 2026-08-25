@@ -11,15 +11,19 @@
   <Grid ColumnDefinitions="260,*,312">
 
     <!--
-      设备库：分类成组，跟配方页的步骤库同一副样子——
-      6px 分类色条 + 52px 组头（圆圈箭头 + 类名 + 台数）+ 两列设备格，
-      组头可点，整类收起展开。两页的左栏干的是同一件事，不该长成两副样子。
+      设备库：分类成组——52px 组头（圆圈箭头 + 类名 + 台数）+ 两列设备格，
+      组头可点，整类收起展开。
 
-      底色只铺在**设备格**上，一台一块、格间留缝：这一栏要说的是
-      「这里有几台机器」。栏和分类块都不铺底，其余部分一律白——
-      铺了那些格子就连成一整片，看不出是一台一台的东西。
+      **底色关系反过来了**：整栏铺面色 #F1F1F1，设备格是白的。
+      从前是反的（栏白、格子铺面色），那样格子是「挖在白纸上的浅灰坑」；
+      现在栏是一块灰底、一台设备一张白卡片浮在上面，
+      「这里有几台机器」这句话是白卡片在说，跟参考图一致。
+
+      分类色条（6px，按模块着色）去掉了：分类名本来就写在组头上，
+      色条是同一件事说第二遍；而且它是这一栏唯一的强色，
+      六个分类并排就是左缘一条彩虹，比它旁边的设备图还抢眼。
     -->
-    <Border Grid.Column="0">
+    <Border Grid.Column="0" Background="{StaticResource ThemeFill}">
       <DockPanel>
         <!-- 不写「设备库」这个抬头（GBG 也没有，配方页的步骤库也已经拆了）：
              一列设备图摆在那儿，本来就没人会认错成别的东西 -->
@@ -37,13 +41,13 @@
             <ItemsControl.ItemTemplate>
               <DataTemplate>
                 <Border Classes="grp" Margin="0,0,0,8">
-                  <Grid ColumnDefinitions="6,*">
-                    <Border Grid.Column="0" Background="{Binding Color}" />
-                    <StackPanel Grid.Column="1">
+                    <StackPanel>
 
                       <Border Classes="grphd" Height="52" Cursor="Hand"
                               PointerPressed="OnGroupPressed">
-                        <Grid ColumnDefinitions="Auto,*,Auto" Margin="12,0,10,0">
+                        <!-- 左内边距 10：色条没了以后，组头和下面那排格子
+                             左缘要落在同一条线上（格子那排也是 10） -->
+                        <Grid ColumnDefinitions="Auto,*,Auto" Margin="10,0,10,0">
                           <Border Grid.Column="0" Classes="exp3m" Classes.up="{Binding Open}">
                             <ctl:TecIcon Key="ui-chev-down" Tint="#51555a" Size="10"
                                          HorizontalAlignment="Center" VerticalAlignment="Center" />
@@ -57,11 +61,11 @@
                         </Grid>
                       </Border>
 
-                      <!-- 设备格：两列。栏宽 260 减去滚动条 13、色条 6、左右各 6，
-                           净 229，两列每格 114，格子自己留 5 的缝，图 102 宽 -->
-                      <!-- 右边只留 1：格子自己带 5 的右外边距，1+5 才跟左边的 6 对称 -->
+                      <!-- 设备格：两列。栏宽 260 减去滚动条 13、左右各 10，
+                           净 227，两列每格 113，格子自己留 5 的缝，图 102 宽。
+                           右边只写 5：格子自己带 5 的右外边距，5+5 才跟左边的 10 对称 -->
                       <ItemsControl ItemsSource="{Binding Items}" IsVisible="{Binding Open}"
-                                    Margin="6,0,1,1">
+                                    Margin="10,0,5,1">
                         <ItemsControl.ItemsPanel>
                           <ItemsPanelTemplate><UniformGrid Columns="2" /></ItemsPanelTemplate>
                         </ItemsControl.ItemsPanel>
@@ -86,7 +90,6 @@
                       </ItemsControl>
 
                     </StackPanel>
-                  </Grid>
                 </Border>
               </DataTemplate>
             </ItemsControl.ItemTemplate>
@@ -434,16 +437,20 @@
          铺了的话一格一格的设备底就连成一整片，看不出是一台一台的东西了
          （这一栏要说的正是「这里有几台机器」）。分类靠色条和组头站住，
          不靠一块底色圈起来。块与块之间 8px 白缝。 -->
+    <!-- 圆角从 0,2,2,0 改回四角都是 2：那个「左边两角不倒」是为了跟色条严丝合缝，
+         色条没了就没有理由再缺两个角 -->
     <Style Selector="Border.grp">
       <Setter Property="Background" Value="Transparent" />
-      <Setter Property="CornerRadius" Value="0,2,2,0" />
+      <Setter Property="CornerRadius" Value="2" />
       <Setter Property="ClipToBounds" Value="True" />
     </Style>
     <Style Selector="Border.grphd">
       <Setter Property="Background" Value="Transparent" />
     </Style>
+    <!-- 组头悬停压一层黑，跟圆钮、勾选框一套：栏底从白换成面色之后，
+         原来那支 #E2E5E9 比新底只深两级，指上去几乎看不出来 -->
     <Style Selector="Border.grphd:pointerover">
-      <Setter Property="Background" Value="#e2e5e9" />
+      <Setter Property="Background" Value="#14000000" />
     </Style>
 
     <!-- 组头那个圆圈箭头。18 是配 52px 组头的，同配方页的 exp3m -->
@@ -459,19 +466,25 @@
       <Setter Property="RenderTransform" Value="rotate(180deg)" />
     </Style>
 
-    <!-- 设备库的一格：**一台设备一块底**（面色 #eff1f3），格与格之间留缝露白。
-         这一栏除了格子以外全是白的——组头、色条旁边、缝，都是白底。 -->
+    <!-- 设备库的一格：一台设备一张**白卡片**，浮在整栏那块面色底上，
+         格与格之间留缝露灰底。
+         描边那一格常驻（1px、平时透明）：悬停时才上色，
+         写成悬停才加边框的话，那一刻卡片内容会往里缩 1px —— 一排格子跟着抖 -->
     <Style Selector="Border.cell">
-      <Setter Property="Background" Value="{StaticResource PropsBg}" />
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="Transparent" />
       <Setter Property="Padding" Value="0,7,0,6" />
       <Setter Property="Margin" Value="0,0,5,5" />
       <Setter Property="CornerRadius" Value="2" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
-    <!-- 悬停深一档。原来挂的是 SelBg（红调的 #faf2f3），那是换配色以前
-         留下的，压在这套冷灰上是脏的 -->
+    <!-- 悬停：卡片还是白的，只镶一圈灰边。
+         白卡片已经是这一栏最亮的东西了，悬停没法再亮；
+         往暗里走（从前是填 #DEE3E8）又会比它坐着的灰底还暗，读成「按下去了」。
+         所以改成描边说话——跟圆钮、勾选框那一套是同一个做法 -->
     <Style Selector="Border.cell:pointerover">
-      <Setter Property="Background" Value="#dee3e8" />
+      <Setter Property="BorderBrush" Value="#9aa0a6" />
     </Style>
 
     <Style Selector="Button.pill">
