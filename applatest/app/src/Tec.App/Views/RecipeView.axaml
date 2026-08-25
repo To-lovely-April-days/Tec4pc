@@ -151,8 +151,10 @@
       <!-- 原型 .proctool：面色一条整的、34px 圆钮。
            58 → 48：里面最高的是 34 的圆钮，58 上下各空 12，白留得太多 -->
       <Border DockPanel.Dock="Top" Height="48" Background="{StaticResource ThemeFill}">
-        <StackPanel Orientation="Horizontal" Spacing="8" Margin="14,0" VerticalAlignment="Center">
-          <TextBlock Text="配方：" Classes="lbl" />
+        <!-- 圆钮之间 4（不是 8）：GBG 那排工具钮几乎是挨着的，一排读成一组；
+             8 的时候每颗都像独立的一件东西 -->
+        <StackPanel Orientation="Horizontal" Spacing="4" Margin="14,0" VerticalAlignment="Center">
+          <TextBlock Text="配方：" Classes="lbl" Margin="0,0,4,0" />
           <ComboBox Classes="sel" Width="246" ItemsSource="{Binding Lanes}"
                     SelectedItem="{Binding CurLane, Mode=TwoWay}">
             <ComboBox.ItemTemplate>

@@ -181,14 +181,14 @@
     <Style Selector="Button.srail:pointerover /template/ ContentPresenter">
       <Setter Property="Background" Value="Transparent" />
     </Style>
-    <!-- 圈本身：尺寸与描边照 Button.tbtn（34 / #474a4e 2px），全程序圆钮一副样子 -->
+    <!-- 圈本身：尺寸与描边照 Button.tbtn（34 / #1f2124 1.6px），全程序圆钮一副样子 -->
     <Style Selector="Border.srailo">
       <Setter Property="Width" Value="34" />
       <Setter Property="Height" Value="34" />
       <Setter Property="CornerRadius" Value="17" />
       <Setter Property="Background" Value="White" />
-      <Setter Property="BorderBrush" Value="#474a4e" />
-      <Setter Property="BorderThickness" Value="2" />
+      <Setter Property="BorderBrush" Value="#1f2124" />
+      <Setter Property="BorderThickness" Value="1.6" />
       <Setter Property="HorizontalAlignment" Value="Center" />
     </Style>
     <!-- 悬停：只有圈变，字不动 -->
