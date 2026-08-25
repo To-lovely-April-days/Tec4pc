@@ -216,7 +216,15 @@
                 <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
               </ComboBox.ItemTemplate>
             </ComboBox>
-            <Button Classes="btn primary" Content="一键复制" Command="{Binding CopyRecipe}" />
+            <!-- 从「一键复制」那颗品牌红方钮换成圆钮一族的 26 号：这一句话本身
+                 （把 X 的配方复制到 [通道]）已经把动作说完了，钮只是那个动词；
+                 一块红方块杵在冷灰带子上，比它旁边真正要读的那句话还抢眼。
+                 字挪进 ToolTip，图标用复制记号 ui-foot-dup —— 跟属性栏那颗
+                 「复制设备」同一个记号，同一件事 -->
+            <Button Classes="tbtn d26" Command="{Binding CopyRecipe}"
+                    ToolTip.Tip="一键复制：把当前通道的配方复制到所选通道">
+              <ctl:TecIcon Key="ui-foot-dup" Size="12" />
+            </Button>
             <TextBlock Text="各通道配方可独立编辑，互不影响" FontSize="12" Foreground="#888d92"
                        VerticalAlignment="Center" />
           </StackPanel>
@@ -226,24 +234,25 @@
           <Button Grid.Column="2" Classes="vchip" Classes.open="{Binding PanelOpen}"
                   Command="{Binding TogglePanel}" IsEnabled="{Binding HasProblems}">
             <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
+              <!-- 三盏灯从 8px 实心小点换成 sev 圆：跟泳道角标、步骤卡徽记
+                   同一个记号，圈色跟着后面那行字的颜色走 -->
               <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center"
                           IsVisible="{Binding PanelEmptyAll}">
-                <Border Width="8" Height="8" CornerRadius="4" Background="#2fa35f"
-                        VerticalAlignment="Center" />
+                <!-- 对号走图标不走字符：程序不带字体，「✓」(U+2713) 在客户机上
+                     碰上没这个码位的字体就是一个豆腐块。「!」是 ASCII，没这个风险 -->
+                <Border Classes="sev ok"><ctl:TecIcon Key="ui-ok" Tint="#0e7a3e" Size="10" /></Border>
                 <TextBlock Text="校验通过" FontSize="12.5" Foreground="#0e7a3e"
                            VerticalAlignment="Center" />
               </StackPanel>
               <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center"
                           IsVisible="{Binding HasErrors}">
-                <Border Width="8" Height="8" CornerRadius="4" Background="#d93025"
-                        VerticalAlignment="Center" />
+                <Border Classes="sev"><TextBlock Text="!" /></Border>
                 <TextBlock Text="{Binding ErrorText}" FontSize="12.5" Foreground="#d93025"
                            VerticalAlignment="Center" />
               </StackPanel>
               <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center"
                           IsVisible="{Binding HasWarns}">
-                <Border Width="8" Height="8" CornerRadius="4" Background="#e8a33d"
-                        VerticalAlignment="Center" />
+                <Border Classes="sev warn"><TextBlock Text="!" /></Border>
                 <TextBlock Text="{Binding WarnText}" FontSize="12.5" Foreground="#8a6100"
                            VerticalAlignment="Center" />
               </StackPanel>
@@ -445,8 +454,12 @@
                   <StackPanel IsVisible="{Binding Open}">
                     <!-- 收起这条泳道。摆在泳道头上方、贴左——收起来之后
                          竖栏顶上那枚就落在同一个位置，一开一合位置对得上 -->
-                    <Border Classes="exp3m up" Cursor="Hand" Background="Transparent"
-                            HorizontalAlignment="Left" Margin="1,0,0,5"
+                    <!-- 这条行左边折叠钮、右边角标，两枚都是 18 高，行高恒为 18：
+                         角标只有出问题的泳道才有，行高要是跟着它变，
+                         四条泳道的头就会一条高一条低 -->
+                    <Grid Margin="0,0,0,5" Height="18" ColumnDefinitions="Auto,*,Auto">
+                    <Border Grid.Column="0" Classes="exp3m up" Cursor="Hand" Background="Transparent"
+                            HorizontalAlignment="Left" Margin="1,0,0,0"
                             ToolTip.Tip="收起该通道" PointerPressed="OnLaneToggle">
                       <LayoutTransformControl HorizontalAlignment="Center"
                                               VerticalAlignment="Center">
@@ -456,11 +469,26 @@
                         <ctl:TecIcon Key="ui-chev-down" Tint="#51555a" Size="10" />
                       </LayoutTransformControl>
                     </Border>
+
+                    <!-- 角标（原型 .cbadge）：四条泳道并排的时候，「哪一路不能跑」
+                         要在扫一眼的距离上就分得出来，不该等人挨条点开看。
+                         点它展开校验面板。只有提醒没有错误时转琥珀——
+                         两种后果不一样，颜色得跟着分 -->
+                    <Button Grid.Column="2" Classes="cbadge" Classes.warn="{Binding BadgeWarn}"
+                            IsVisible="{Binding HasBadge}"
+                            ToolTip.Tip="{Binding BadgeTip}"
+                            Command="{Binding $parent[UserControl].DataContext.OpenPanel}">
+                      <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                        <Border Classes="sev" Classes.warn="{Binding BadgeWarn}">
+                          <TextBlock Text="!" />
+                        </Border>
+                        <TextBlock Classes="cbt" Text="{Binding BadgeText}" />
+                      </StackPanel>
+                    </Button>
+                    </Grid>
                     <!-- 原型 .lane-head：#bfc9d7 一块，两行「标签 + 输入 + 圆钮」。
                          有错的时候描一圈红（原型是把整块染成 #fdf2f2，我们这块是
-                         蓝灰的实心底，染红只会脏，而且要跟蓝色选中环抢眼睛）。
-                         角标钉在这块的右上角、探出去一半（原型 .cbadge top/right -8） -->
-                    <Panel>
+                         蓝灰的实心底，染红只会脏，而且要跟蓝色选中环抢眼睛） -->
                     <!-- 描边常在、平时不着色（BorderBrush 不写死成 Transparent：
                          内联值压得过样式，那样 laneHeadErr 永远上不了色，实测踩到）。
                          粗细恒为 1.4，出不出错都不改版 -->
@@ -494,24 +522,6 @@
                         </Grid>
                       </StackPanel>
                     </Border>
-
-                    <!-- 角标（原型 .cbadge）：实心胶囊，探出泳道头右上角。
-                         四条泳道并排的时候，「哪一路不能跑」要在扫一眼的距离上
-                         就分得出来，不该等人挨条点开看。点它展开校验面板。
-                         只有提醒没有错误时转琥珀——两种后果不一样，颜色得跟着分 -->
-                    <Button Classes="cbadge" Classes.warn="{Binding BadgeWarn}"
-                            HorizontalAlignment="Right" VerticalAlignment="Top"
-                            Margin="0,-8,-8,0" IsVisible="{Binding HasBadge}"
-                            ToolTip.Tip="{Binding BadgeTip}"
-                            Command="{Binding $parent[UserControl].DataContext.OpenPanel}">
-                      <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                        <TextBlock Text="⚠" FontSize="10.5" Foreground="White"
-                                   VerticalAlignment="Center" />
-                        <TextBlock Text="{Binding BadgeText}" FontSize="11" Foreground="White"
-                                   VerticalAlignment="Center" />
-                      </StackPanel>
-                    </Button>
-                    </Panel>
 
                     <!-- 原型 .lane-body：步骤卡竖着排，卡之间一截 14px 的细线 -->
                     <StackPanel HorizontalAlignment="Center" Margin="0,10,0,0">
@@ -584,15 +594,12 @@
                                       <!-- 徽记（原型 .sbadge）。悬停能读到具体哪儿不对——
                                            红框只说「这一步有事」，是什么事得说得出来，
                                            不然人还得回面板里对 -->
-                                      <Border Grid.Column="3" Width="17" Height="17"
-                                              CornerRadius="9" Classes="sbadge"
+                                      <Border Grid.Column="3" Classes="sev"
                                               Classes.warn="{Binding IssueWarn}"
                                               VerticalAlignment="Top" Margin="6,0,0,0"
                                               IsVisible="{Binding HasIssue}"
                                               ToolTip.Tip="{Binding IssueTip}">
-                                        <TextBlock Text="!" FontSize="11" FontWeight="Bold"
-                                                   Foreground="White" HorizontalAlignment="Center"
-                                                   VerticalAlignment="Center" />
+                                        <TextBlock Text="!" />
                                       </Border>
                                     </Grid>
 
@@ -1213,41 +1220,76 @@
       <Setter Property="BorderBrush" Value="Transparent" />
     </Style>
 
-    <!-- 泳道角标（原型 .cbadge）：实心胶囊 + 一圈同色的软阴影，
-         探出泳道头右上角。默认红，只有提醒时琥珀 -->
-    <!-- 底色 / 圆角 / 投影都写在 /template/ ContentPresenter 上：
-         Button 自己没有 BoxShadow 这个属性（只有 Border 和 ContentPresenter 有） -->
+    <!--
+      ══ 严重度记号 Border.sev ══
+      「这里有事」这个意思，页面上原本有三种长相：泳道角标是实心胶囊 + 软阴影，
+      步骤卡徽记是实心圆 + 白「!」，copybar 状态灯是一颗 8px 实心小点。
+      同一件事三种拼法，而且三处都是实心色块——跟刚刚定下的圆钮一族
+      （底透 / 1.6 描边 / 里面一个记号）正好相反。
+
+      现在统一成一副样子：**18 的透明圆 + 1.6 描边 + 里面一个记号**，
+      尺寸和描边跟 Border.exp3m（泳道那枚折叠圆）、Button.tbtn 一族对齐，
+      只有颜色按严重度分。颜色直接借 copybar 上早就在用的那三支文字色，
+      于是「圈的颜色 = 记号的颜色 = 后面那行字的颜色」，一档严重度一支色。
+
+      代价说在前面：实心琥珀胶囊 + 阴影本来是能一眼扫到的，换成描边之后
+      「远看一眼就知道哪条泳道不能跑」这件事弱了一档。要是嫌淡，
+      单给 err 那一档留回实心是最小的回退，说一声就改。
+    -->
+    <Style Selector="Border.sev">
+      <Setter Property="Width" Value="18" />
+      <Setter Property="Height" Value="18" />
+      <Setter Property="CornerRadius" Value="9" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="1.6" />
+      <Setter Property="BorderBrush" Value="#d93025" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.sev.warn">
+      <Setter Property="BorderBrush" Value="#8a6100" />
+    </Style>
+    <Style Selector="Border.sev.ok">
+      <Setter Property="BorderBrush" Value="#0e7a3e" />
+    </Style>
+    <!-- 圈里那个记号：跟着圈一个色 -->
+    <Style Selector="Border.sev > TextBlock">
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="Foreground" Value="#d93025" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.sev.warn > TextBlock">
+      <Setter Property="Foreground" Value="#8a6100" />
+    </Style>
+
+    <!-- 泳道角标（原型 .cbadge）：现在只是「sev 圆 + 一行字」的容器，
+         底、圆角、阴影全去掉。位置也从「探出泳道头右上角」挪到了头顶那条
+         折叠钮行的右端——描边式的记号骑在卡片边上会被两种底切成两半，
+         而那条行整条都在白画布上；它跟折叠钮同为 18 高，
+         有没有角标都不改行高，四条泳道的卡片仍然平齐 -->
     <Style Selector="Button.cbadge">
-      <Setter Property="Height" Value="20" />
+      <Setter Property="Height" Value="18" />
       <Setter Property="MinHeight" Value="0" />
-      <Setter Property="Padding" Value="8,0" />
-      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="Padding" Value="0" />
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderThickness" Value="0" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
     <Style Selector="Button.cbadge /template/ ContentPresenter">
-      <Setter Property="CornerRadius" Value="10" />
-      <Setter Property="Background" Value="#d93025" />
-      <Setter Property="BoxShadow" Value="0 2 6 0 #59d93025" />
+      <Setter Property="Background" Value="Transparent" />
     </Style>
     <Style Selector="Button.cbadge:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#d93025" />
+      <Setter Property="Background" Value="Transparent" />
     </Style>
-    <Style Selector="Button.cbadge.warn /template/ ContentPresenter">
-      <Setter Property="Background" Value="#e8a33d" />
-      <Setter Property="BoxShadow" Value="0 2 6 0 #59e8a33d" />
+    <!-- 角标那行字：跟圈一个色 -->
+    <Style Selector="Button.cbadge TextBlock.cbt">
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Foreground" Value="#d93025" />
+      <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
-    <Style Selector="Button.cbadge.warn:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#cf8f2c" />
-    </Style>
-
-    <!-- 步骤卡上那枚「!」（原型 .sbadge） -->
-    <Style Selector="Border.sbadge">
-      <Setter Property="Background" Value="#d93025" />
-    </Style>
-    <Style Selector="Border.sbadge.warn">
-      <Setter Property="Background" Value="#e8a33d" />
+    <Style Selector="Button.cbadge.warn TextBlock.cbt">
+      <Setter Property="Foreground" Value="#8a6100" />
     </Style>
 
     <!-- 有错的那条泳道，头上描一圈红。原型是把整块染成 #fdf2f2——

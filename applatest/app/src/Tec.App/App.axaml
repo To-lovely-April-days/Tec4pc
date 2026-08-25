@@ -487,12 +487,15 @@
       <Setter Property="Height" Value="32" />
       <Setter Property="CornerRadius" Value="16" />
     </Style>
-    <Style Selector="Button.tbtn.del.d26">
+    <!-- d26 / d24 只管直径，不带「删除」的意思：写在 .del 后面，所以
+         `tbtn del d26` 仍然是 26。单拎出来是因为别处也有塞不下 34 的位置
+         （copybar 那颗复制钮就是 26），不该为了借个尺寸去挂 del 这个记号 -->
+    <Style Selector="Button.tbtn.d26">
       <Setter Property="Width" Value="26" />
       <Setter Property="Height" Value="26" />
       <Setter Property="CornerRadius" Value="13" />
     </Style>
-    <Style Selector="Button.tbtn.del.d24">
+    <Style Selector="Button.tbtn.d24">
       <Setter Property="Width" Value="24" />
       <Setter Property="Height" Value="24" />
       <Setter Property="CornerRadius" Value="12" />
@@ -659,6 +662,11 @@
     <Style Selector="ComboBox.sel">
       <Setter Property="Height" Value="26" />
       <Setter Property="MinHeight" Value="26" />
+      <!-- 定高的控件必须自己说要居中：默认是 Stretch，配上写死的 Height，
+           Avalonia 就把它顶在槽位的**上沿**。配方工具条那条 48 高的带子里，
+           一排 34 的圆钮撑出 34 的槽，26 的下拉框于是贴着槽顶——
+           实测框在 y=109..134，槽中线 125.5，整整高了 3.5px -->
+      <Setter Property="VerticalAlignment" Value="Center" />
       <Setter Property="FontSize" Value="12" />
       <Setter Property="Padding" Value="6,0" />
       <Setter Property="BorderBrush" Value="#a4a8ac" />
