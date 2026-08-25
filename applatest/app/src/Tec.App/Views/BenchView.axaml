@@ -509,22 +509,24 @@
       <Setter Property="Background" Value="Transparent" />
     </Style>
 
-    <!-- GBG 的 hbtn：26px 圆钮，浅蓝底深描边 -->
+    <!-- 26px 圆钮，规格照 Button.tbtn.del.d26：底透、描边 #1f2124 1.6。
+         从前填 #e0c3c6 描边 #373a3e，是换配色以前的品牌红剩下的 -->
     <Style Selector="Button.hbtn">
       <Setter Property="Width" Value="26" />
       <Setter Property="Height" Value="26" />
       <Setter Property="MinWidth" Value="0" />
       <Setter Property="Padding" Value="0" />
       <Setter Property="CornerRadius" Value="13" />
-      <Setter Property="Background" Value="#e0c3c6" />
-      <Setter Property="BorderBrush" Value="#373a3e" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="#1f2124" />
       <Setter Property="BorderThickness" Value="1.6" />
       <Setter Property="HorizontalContentAlignment" Value="Center" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
     <Style Selector="Button.hbtn:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#eedde0" />
+      <Setter Property="Background" Value="#18000000" />
+      <Setter Property="BorderBrush" Value="#000000" />
     </Style>
     <!-- 通道总表里的勾选框。Avalonia 的缺省 CheckBox 连边距一共占 32px 高，
          一行就被它撑到 47px；原型那张表一行 32px，四条通道一屏放得下。

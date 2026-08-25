@@ -1104,13 +1104,15 @@
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
 
-    <!-- 原型 .hbtn：26px 圆钮，底色比泳道头深一档 -->
+    <!-- 泳道头上那颗 26px 圆钮。规格照 Button.tbtn.del.d26：底透、描边 #1f2124 1.6。
+         从前填 #e0c3c6、描边 #373a3e、悬停 #f0dfe1 + #a41626——一整套换配色以前的
+         品牌红，坐在 #bfc9d7 的泳道头卡片上是一颗突然冒出来的粉圆点 -->
     <Style Selector="Button.lhbtn">
       <Setter Property="Width" Value="26" />
       <Setter Property="Height" Value="26" />
       <Setter Property="CornerRadius" Value="13" />
-      <Setter Property="Background" Value="#e0c3c6" />
-      <Setter Property="BorderBrush" Value="#373a3e" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="#1f2124" />
       <Setter Property="BorderThickness" Value="1.6" />
       <Setter Property="Padding" Value="0" />
       <Setter Property="HorizontalContentAlignment" Value="Center" />
@@ -1121,8 +1123,8 @@
       <Setter Property="CornerRadius" Value="3" />
     </Style>
     <Style Selector="Button.lhbtn:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#f0dfe1" />
-      <Setter Property="BorderBrush" Value="#a41626" />
+      <Setter Property="Background" Value="#18000000" />
+      <Setter Property="BorderBrush" Value="#000000" />
     </Style>
 
     <!-- 泳道的底：一条泳道坐在一块自己的浅灰上（原型每一列都有），

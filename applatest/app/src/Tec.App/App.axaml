@@ -423,12 +423,16 @@
       2px 的深灰在 34 的圆上偏钝，一排摆开像一串垫圈。
       1.6 也是 sm 那一档本来就在用的粗细——现在整族一个粗细，
       同一行里混着 1.6 和 2 的时候，粗的那颗会显得比旁边"重要"。
+
+      **圈里是透的**，不填白：这一族坐在什么底上就露什么底（工具条是面色、
+      画布是白、属性块是面色）。填白的时候，压在面色工具条上的那几颗
+      各自顶着一块比周围亮的圆盘，一排看过去像几个补丁。
     -->
     <Style Selector="Button.tbtn">
       <Setter Property="Width" Value="34" />
       <Setter Property="Height" Value="34" />
       <Setter Property="CornerRadius" Value="17" />
-      <Setter Property="Background" Value="White" />
+      <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderBrush" Value="#1f2124" />
       <Setter Property="BorderThickness" Value="1.6" />
       <Setter Property="Padding" Value="0" />
@@ -436,10 +440,16 @@
       <Setter Property="VerticalContentAlignment" Value="Center" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
-    <!-- 悬停：底转面色、描边压到纯黑。原来是品牌红的一套（#faf2f3 / #a41626），
-         那是换配色以前留下的——现在满屏冷灰蓝，指哪儿哪儿冒一圈红 -->
+    <!-- 悬停：压一层 9% 的黑、描边到纯黑。原来是品牌红的一套（#faf2f3 / #a41626），
+         那是换配色以前留下的——现在满屏冷灰蓝，指哪儿哪儿冒一圈红。
+
+         **半透明而不是给个定色**：圈里既然是透的，这一族就坐在三种底上
+         （白画布 / 面色工具条 / 面色属性块）。之前悬停填面色 #eff1f3，
+         压在面色工具条上等于什么都没发生——指上去只有描边从 #1f2124
+         挪到 #000000，肉眼分不出来。压一层黑就跟底无关：
+         白 → #ebebeb，面色 → #d8dade，两边都是看得见的一档。 -->
     <Style Selector="Button.tbtn:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="{StaticResource ThemeFill}" />
+      <Setter Property="Background" Value="#18000000" />
       <Setter Property="BorderBrush" Value="#000000" />
     </Style>
     <Style Selector="Button.tbtn.sm">
@@ -447,11 +457,13 @@
       <Setter Property="Height" Value="30" />
       <Setter Property="CornerRadius" Value="15" />
     </Style>
+    <!-- foot / del 从前各刷一层 #ebece9。它跟面色 #eff1f3 只差四级，
+         压在属性块上是「看得出不一样又说不出为什么」那一档；
+         底一律透明之后，这两族跟工具条那几颗长得一样，本来就该一样 -->
     <Style Selector="Button.tbtn.foot">
       <Setter Property="Width" Value="32" />
       <Setter Property="Height" Value="32" />
       <Setter Property="CornerRadius" Value="16" />
-      <Setter Property="Background" Value="#ebece9" />
     </Style>
     <!--
       ══ 删除钮 ══
@@ -474,7 +486,6 @@
       <Setter Property="Width" Value="32" />
       <Setter Property="Height" Value="32" />
       <Setter Property="CornerRadius" Value="16" />
-      <Setter Property="Background" Value="#ebece9" />
     </Style>
     <Style Selector="Button.tbtn.del.d26">
       <Setter Property="Width" Value="26" />
@@ -495,13 +506,16 @@
       <Setter Property="BorderBrush" Value="#d93025" />
     </Style>
     <Style Selector="Button.tbtn.danger:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#fdecea" />
+      <!-- 同上：半透明的红而不是 #fdecea 那种定色，坐白底坐面色底都成立 -->
+      <Setter Property="Background" Value="#22d93025" />
       <Setter Property="BorderBrush" Value="#d93025" />
     </Style>
     <!-- 按不了的时候还是一个圈，只是淡下去。Fluent 的缺省禁用样式会把描边整个抹掉，
-         剩一块灰饼——看着像坏了，不像"现在不能按" -->
+         剩一块灰饼——看着像坏了，不像"现在不能按"。
+         底跟常态一样是透的（从前刷 #f5f5f4，压在面色工具条上是一块比周围亮的圆盘，
+         正是"填白"那个毛病换了个颜色）：只靠描边转淡 + 整体 0.55 说明按不了 -->
     <Style Selector="Button.tbtn:disabled /template/ ContentPresenter">
-      <Setter Property="Background" Value="#f5f5f4" />
+      <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderBrush" Value="#cdcfcd" />
     </Style>
     <Style Selector="Button.tbtn:disabled">

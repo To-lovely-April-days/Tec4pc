@@ -186,14 +186,15 @@
       <Setter Property="Width" Value="34" />
       <Setter Property="Height" Value="34" />
       <Setter Property="CornerRadius" Value="17" />
-      <Setter Property="Background" Value="White" />
+      <!-- 同 tbtn：圈里透明，露它坐着的那层底 -->
+      <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderBrush" Value="#1f2124" />
       <Setter Property="BorderThickness" Value="1.6" />
       <Setter Property="HorizontalAlignment" Value="Center" />
     </Style>
-    <!-- 悬停：只有圈变，字不动 -->
+    <!-- 悬停：只有圈变，字不动。同 tbtn 压一层 9% 的黑而不是给个定色 -->
     <Style Selector="Button.srail:pointerover Border.srailo">
-      <Setter Property="Background" Value="{StaticResource ThemeFill}" />
+      <Setter Property="Background" Value="#18000000" />
     </Style>
     <Style Selector="TextBlock.sraill">
       <Setter Property="FontSize" Value="11.5" />
