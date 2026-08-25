@@ -74,6 +74,18 @@ public sealed class StartViewModel : ViewModelBase
             card.On = true;
         });
 
+        // GBG 磁贴右上角那个 ✕：把这一条从「最近」里划掉。
+        // **只动列表，不删文件**——文件还在实验目录里，右边那一栏照样看得见。
+        // 真删文件不该藏在一个 ✕ 后面，那是另一件要问一句的事
+        Forget = new RelayCommand(p =>
+        {
+            if (p is not RecentCardViewModel card) return;
+            _store.Recent.RemoveAll(
+                r => string.Equals(r.Path, card.Path, StringComparison.OrdinalIgnoreCase));
+            _store.SaveRecent();
+            Reload();
+        });
+
         TogglePin = new RelayCommand(p =>
         {
             if (p is not RecentCardViewModel card) return;
@@ -212,28 +224,72 @@ public sealed class StartViewModel : ViewModelBase
         try { await work(); } catch (Exception ex) { Console.WriteLine("[error] " + ex.Message); }
     }
 
-    /// <summary>把最近实验列表重画成卡片。</summary>
+    /// <summary>把最近实验与实验目录两栏都重画成磁贴。</summary>
     public void Reload()
     {
         Recent.Clear();
         foreach (var e in _store.Recent)
-            Recent.Add(new RecentCardViewModel
-            {
-                Name = e.Name,
-                Path = e.Path,
-                Parts = e.Thumb,
-                Tag = string.Equals(e.Path, _store.CurrentPath, StringComparison.OrdinalIgnoreCase)
-                    ? "已打开" : e.Steps == 0 ? "草稿" : "",
-                TagClass = string.Equals(e.Path, _store.CurrentPath, StringComparison.OrdinalIgnoreCase)
-                    ? "live" : e.Steps == 0 ? "draft" : "",
-                When = Ago(e.OpenedAt),
-                Size = Size(e.Path),
-                Note = $"{e.Devices} 台设备 · {e.Channels} 个通道 · 共 {e.Steps} 步",
-                Pinned = e.Pinned,
-                On = string.Equals(e.Path, _store.CurrentPath, StringComparison.OrdinalIgnoreCase)
-            });
-        RaiseAll(nameof(IsEmpty), nameof(Subtitle), nameof(CurrentFile));
+            Recent.Add(Card(e.Path, e.Thumb, e.Name, e.Devices, e.Channels, e.Steps,
+                            e.OpenedAt, e.Pinned));
+
+        ReloadFolder();
+        RaiseAll(nameof(IsEmpty), nameof(FolderEmpty), nameof(Subtitle), nameof(CurrentFile));
     }
+
+    /// <summary>
+    /// 实验目录那一栏：把 ExperimentsDir 里的 .tec 文件全列出来，按改动时间新的在前。
+    /// 这一栏跟「最近」是两回事——最近只记打开过的，目录里躺着的即使从没打开过也在。
+    /// 目录不存在（还没存过任何实验）就是空的，不造条目出来。
+    /// </summary>
+    private void ReloadFolder()
+    {
+        Folder.Clear();
+        var dir = FolderPath;
+        if (!Directory.Exists(dir)) return;
+
+        IEnumerable<FileInfo> files;
+        try
+        {
+            files = new DirectoryInfo(dir)
+                    .EnumerateFiles("*" + TecFiles.ExperimentExt)
+                    .OrderByDescending(f => f.LastWriteTime);
+        }
+        catch { return; }                       // 目录读不了就当空的，不是崩的理由
+
+        foreach (var f in files)
+        {
+            // 缩略图与台面规模只有「最近」那份记录里有；目录里没打开过的那些
+            // 拿不到，留空——不为了让磁贴好看去编一个台面出来
+            var known = _store.Recent.FirstOrDefault(
+                r => string.Equals(r.Path, f.FullName, StringComparison.OrdinalIgnoreCase));
+            IReadOnlyList<ThumbPart> thumb = known?.Thumb ?? (IReadOnlyList<ThumbPart>)Array.Empty<ThumbPart>();
+            Folder.Add(Card(f.FullName, thumb,
+                            Path.GetFileNameWithoutExtension(f.Name),
+                            known?.Devices ?? -1, known?.Channels ?? -1, known?.Steps ?? -1,
+                            f.LastWriteTime, false));
+        }
+    }
+
+    /// <summary>两栏共用一种磁贴。设备 / 通道 / 步数给 -1 表示这条还不知道。</summary>
+    private RecentCardViewModel Card(string path, IReadOnlyList<ThumbPart> thumb, string name,
+                                     int devices, int channels, int steps,
+                                     DateTimeOffset at, bool pinned)
+        => new()
+        {
+            Name = name,
+            Path = path,
+            Parts = thumb,
+            Tag = string.Equals(path, _store.CurrentPath, StringComparison.OrdinalIgnoreCase)
+                ? "已打开" : steps == 0 ? "草稿" : "",
+            TagClass = string.Equals(path, _store.CurrentPath, StringComparison.OrdinalIgnoreCase)
+                ? "live" : steps == 0 ? "draft" : "",
+            When = Ago(at),
+            Size = Size(path),
+            Note = devices < 0 ? "" : $"{devices} 台设备 · {channels} 个通道 · 共 {steps} 步",
+            Pinned = pinned,
+            On = string.Equals(path, _store.CurrentPath, StringComparison.OrdinalIgnoreCase)
+        };
+
 
     private static string Ago(DateTimeOffset at)
     {
@@ -257,6 +313,14 @@ public sealed class StartViewModel : ViewModelBase
     public Workspace Workspace { get; }
     public ObservableCollection<RecentCardViewModel> Recent { get; } = new();
 
+    /// <summary>实验目录里躺着的全部实验（GBG 起始页右边那一栏就是这个）。</summary>
+    public ObservableCollection<RecentCardViewModel> Folder { get; } = new();
+
+    /// <summary>这一栏读的是哪个目录。抬头上直接写出来，跟 GBG 一样。</summary>
+    public string FolderPath => ExperimentStore.ExperimentsDir;
+
+    public bool FolderEmpty => Folder.Count == 0;
+
     /// <summary>一条最近实验都没有时，卡片区换成一句说明——空白一片容易让人以为是没加载出来。</summary>
     public bool IsEmpty => Recent.Count == 0;
 
@@ -273,6 +337,7 @@ public sealed class StartViewModel : ViewModelBase
     public RelayCommand Pick { get; }
     public RelayCommand TogglePin { get; }
     public RelayCommand OpenRecent { get; }
+    public RelayCommand Forget { get; }
     public RelayCommand NewExperiment { get; }
     public RelayCommand OpenExperiment { get; }
     public RelayCommand SaveExperiment { get; }

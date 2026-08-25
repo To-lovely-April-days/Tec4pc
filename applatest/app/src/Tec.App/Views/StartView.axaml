@@ -4,269 +4,279 @@
              xmlns:v="clr-namespace:Tec.App.Views"
              x:Class="Tec.App.Views.StartView">
 
-  <!-- 原型 view-start：左 .startnav（16px 细体 + 3px 左侧选中条）｜右 .startmain -->
+  <!--
+    版式照 GBG 的 Start 标签页：左缘一列圆钮（图标在圈里、名字在圈下），
+    右边并排两栏磁贴——左「最近」、右「实验目录」，抬头直接写目录路径。
+    颜色不跟它：GBG 那一片是品牌绿，我们走自己那支卡片色 #bfc9d7。
+
+    GBG 的左缘只有 New / Browse 两颗（Save / Save As 在载入程序之后才出现），
+    我们这十个动作没有别的落脚处（设置 / 关于在标题栏另有一份，但导入导出台面、
+    GLP 导出只在这儿），所以全留着，只是换成同一副圆钮的样子。
+  -->
   <Grid ColumnDefinitions="Auto,*">
 
-    <Border Grid.Column="0" Background="#fafafa" BorderBrush="#dadcd9" BorderThickness="0,0,1,0">
-      <ScrollViewer Width="268">
-        <!--
-          左边让开 3px。原型里这排是贴着页面最左边画的（.snav 的 border-left 就在 x=0），
-          浏览器里左边什么都没有，那 3px 选中条看得清清楚楚；到了真窗口里，
-          它紧挨着窗框那条深线，两条竖线并排，选中条就像被啃掉一半。
-          让开的这 3px 是面板自己的底色，看着是「行从面板边缘缩进一点」，
-          选中条整根露出来
-        -->
-        <StackPanel Margin="3,18,0,18">
-        <Button Classes="snav on" Command="{Binding OpenExperiment}">
-          <StackPanel Orientation="Horizontal" Spacing="14">
-            <Panel Width="22"><ctl:TecIcon Key="ui-snav-open" Tint="#7e0f1c"
-                         HorizontalAlignment="Center" VerticalAlignment="Center" /></Panel>
-            <TextBlock Text="打开实验" VerticalAlignment="Center" />
-          </StackPanel>
-        </Button>
-        <Button Classes="snav" Command="{Binding NewExperiment}">
-          <StackPanel Orientation="Horizontal" Spacing="14">
-            <Panel Width="22"><ctl:TecIcon Key="ui-snav-new" Tint="#3a3d41"
-                         HorizontalAlignment="Center" VerticalAlignment="Center" /></Panel>
-            <TextBlock Text="新建实验" VerticalAlignment="Center" />
-          </StackPanel>
-        </Button>
-        <Button Classes="snav" Command="{Binding SaveExperiment}">
-          <StackPanel Orientation="Horizontal" Spacing="14">
-            <Panel Width="22"><ctl:TecIcon Key="ui-snav-save" Tint="#3a3d41"
-                         HorizontalAlignment="Center" VerticalAlignment="Center" /></Panel>
-            <TextBlock Text="保存" VerticalAlignment="Center" />
-          </StackPanel>
-        </Button>
-        <Button Classes="snav" Command="{Binding SaveAsExperiment}">
-          <StackPanel Orientation="Horizontal" Spacing="14">
-            <Panel Width="22"><ctl:TecIcon Key="ui-snav-saveas" Tint="#3a3d41"
-                         HorizontalAlignment="Center" VerticalAlignment="Center" /></Panel>
-            <TextBlock Text="另存为" VerticalAlignment="Center" />
-          </StackPanel>
-        </Button>
-        <Border Height="1" Background="#e0e2df" Margin="22,10" />
-        <Button Classes="snav" Command="{Binding ImportBench}">
-          <StackPanel Orientation="Horizontal" Spacing="14">
-            <Panel Width="22"><ctl:TecIcon Key="ui-snav-import" Tint="#3a3d41"
-                         HorizontalAlignment="Center" VerticalAlignment="Center" /></Panel>
-            <TextBlock Text="导入台面" VerticalAlignment="Center" />
-          </StackPanel>
-        </Button>
-        <Button Classes="snav" Command="{Binding ExportBench}">
-          <StackPanel Orientation="Horizontal" Spacing="14">
-            <Panel Width="22"><ctl:TecIcon Key="ui-snav-export" Tint="#3a3d41"
-                         HorizontalAlignment="Center" VerticalAlignment="Center" /></Panel>
-            <TextBlock Text="导出台面" VerticalAlignment="Center" />
-          </StackPanel>
-        </Button>
-        <Button Classes="snav" Command="{Binding OpenExport}">
-          <StackPanel Orientation="Horizontal" Spacing="14">
-            <Panel Width="22"><ctl:TecIcon Key="ui-snav-glp" Tint="#3a3d41"
-                         HorizontalAlignment="Center" VerticalAlignment="Center" /></Panel>
-            <TextBlock Text="数据导出（GLP）" VerticalAlignment="Center" />
-          </StackPanel>
-        </Button>
-        <Button Classes="snav">
-          <StackPanel Orientation="Horizontal" Spacing="14">
-            <Panel Width="22"><ctl:TecIcon Key="ui-snav-settings" Tint="#3a3d41"
-                         HorizontalAlignment="Center" VerticalAlignment="Center" /></Panel>
-            <TextBlock Text="设置" VerticalAlignment="Center" />
-          </StackPanel>
-        </Button>
-        <Border Height="1" Background="#e0e2df" Margin="22,10" />
-        <Button Classes="snav">
-          <StackPanel Orientation="Horizontal" Spacing="14">
-            <Panel Width="22"><ctl:TecIcon Key="ui-snav-about" Tint="#3a3d41"
-                         HorizontalAlignment="Center" VerticalAlignment="Center" /></Panel>
-            <TextBlock Text="关于" VerticalAlignment="Center" />
-          </StackPanel>
-        </Button>
-        <Button Classes="snav" Command="{Binding Quit}">
-          <StackPanel Orientation="Horizontal" Spacing="14">
-            <Panel Width="22"><ctl:TecIcon Key="ui-snav-exit" Tint="#3a3d41"
-                         HorizontalAlignment="Center" VerticalAlignment="Center" /></Panel>
-            <TextBlock Text="退出" VerticalAlignment="Center" />
-          </StackPanel>
-        </Button>
+    <Border Grid.Column="0" Background="White">
+      <ScrollViewer Width="96" VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="0,16,0,20" Spacing="14">
+
+          <!-- 一颗 = 圆钮 + 圈下的名字。整块可点，不是只有圆圈能点 -->
+          <Button Classes="srail" Command="{Binding NewExperiment}" ToolTip.Tip="新建实验">
+            <StackPanel Spacing="5">
+              <Border Classes="srailo"><ctl:TecIcon Key="ui-snav-new" Tint="#1f2124" /></Border>
+              <TextBlock Text="新建" Classes="sraill" />
+            </StackPanel>
+          </Button>
+          <Button Classes="srail" Command="{Binding OpenExperiment}" ToolTip.Tip="打开实验">
+            <StackPanel Spacing="5">
+              <Border Classes="srailo"><ctl:TecIcon Key="ui-snav-open" Tint="#1f2124" /></Border>
+              <TextBlock Text="打开" Classes="sraill" />
+            </StackPanel>
+          </Button>
+          <Button Classes="srail" Command="{Binding SaveExperiment}" ToolTip.Tip="保存实验">
+            <StackPanel Spacing="5">
+              <Border Classes="srailo"><ctl:TecIcon Key="ui-snav-save" Tint="#1f2124" /></Border>
+              <TextBlock Text="保存" Classes="sraill" />
+            </StackPanel>
+          </Button>
+          <Button Classes="srail" Command="{Binding SaveAsExperiment}" ToolTip.Tip="另存为">
+            <StackPanel Spacing="5">
+              <Border Classes="srailo"><ctl:TecIcon Key="ui-snav-saveas" Tint="#1f2124" /></Border>
+              <TextBlock Text="另存为" Classes="sraill" />
+            </StackPanel>
+          </Button>
+
+          <Border Height="1" Background="#e0e2df" Margin="20,2" />
+
+          <Button Classes="srail" Command="{Binding ImportBench}" ToolTip.Tip="导入台面">
+            <StackPanel Spacing="5">
+              <Border Classes="srailo"><ctl:TecIcon Key="ui-snav-import" Tint="#1f2124" /></Border>
+              <TextBlock Text="导入台面" Classes="sraill" />
+            </StackPanel>
+          </Button>
+          <Button Classes="srail" Command="{Binding ExportBench}" ToolTip.Tip="导出台面">
+            <StackPanel Spacing="5">
+              <Border Classes="srailo"><ctl:TecIcon Key="ui-snav-export" Tint="#1f2124" /></Border>
+              <TextBlock Text="导出台面" Classes="sraill" />
+            </StackPanel>
+          </Button>
+          <Button Classes="srail" Command="{Binding OpenExport}" ToolTip.Tip="数据导出（GLP）">
+            <StackPanel Spacing="5">
+              <Border Classes="srailo"><ctl:TecIcon Key="ui-snav-glp" Tint="#1f2124" /></Border>
+              <TextBlock Text="数据导出" Classes="sraill" />
+            </StackPanel>
+          </Button>
+
+          <Border Height="1" Background="#e0e2df" Margin="20,2" />
+
+          <Button Classes="srail" Command="{Binding Quit}" ToolTip.Tip="退出">
+            <StackPanel Spacing="5">
+              <Border Classes="srailo"><ctl:TecIcon Key="ui-snav-exit" Tint="#1f2124" /></Border>
+              <TextBlock Text="退出" Classes="sraill" />
+            </StackPanel>
+          </Button>
+
         </StackPanel>
       </ScrollViewer>
     </Border>
 
-    <ScrollViewer Grid.Column="1">
-      <StackPanel Margin="30,22,30,40" MaxWidth="1400" HorizontalAlignment="Left">
+    <!-- 右边整块：一条状态行（文件操作的结果）+ 两栏磁贴 -->
+    <DockPanel Grid.Column="1" Margin="4,16,20,0">
 
-        <!-- .hero：52px 品牌红圆角标 + 36px 极细标题 -->
-        <StackPanel Orientation="Horizontal" Spacing="16" Margin="0,0,0,6">
-          <!-- 原型是 align-items:flex-end，标记与文字底边对齐；但右边那摞字
-               （36px 标题 + 两行小字）比标记高，底对齐之后标记整个沉在下半截，
-               看着不在文字这一块的中间。改成竖向居中：标记中心对着整摞字的中线 -->
-          <!-- 应用标记：品牌红圆角方块（原型 .hero .mark，52×52 / radius 6）。
-               从前是绿圆。绿在这套配色里只表示「在线 / 运行」，
-               起始页这块牌子跟运行状态没关系，占着绿就等于一直在说「在跑」 -->
-          <Border Width="52" Height="52" CornerRadius="6" Background="#a41626"
-                  VerticalAlignment="Center">
-            <!--
-              牌子里放运行三角，跟顶栏那颗「运行」按钮同一个图形资源——
-              同一个意思在两处必须长得一模一样，各画一份迟早会走样。
-              三角在 16 的画布里占 x=4~14（中心 9，画布中心 8），本身就往右让了 1，
-              正好抵掉「右向三角形几何居中会显得偏左」那点视觉错位。
-              svg 的 fill 是 currentColor，这里显式给白 -->
-            <ctl:TecIcon Key="ui-sim-play" Size="30" Tint="White"
-                         HorizontalAlignment="Center" VerticalAlignment="Center" />
+      <!-- 文件操作的结果写在这儿，成了失败了都看得见。不弹框——操作人手上可能正跑着实验 -->
+      <TextBlock DockPanel.Dock="Top" Text="{Binding Status}" FontSize="12" Foreground="#0e7a3e"
+                 TextWrapping="Wrap" MaxWidth="900" HorizontalAlignment="Left" Margin="0,0,0,12"
+                 IsVisible="{Binding Status, Converter={x:Static v:Converters.NotBlank}}" />
+
+      <!-- 两栏等宽，中间 20 的沟。GBG 是左窄右宽（左边固定六格），
+           我们两边条数都不定，等分不会有一边空着 -->
+      <Grid ColumnDefinitions="*,20,*">
+
+        <!-- ══ 左：最近 ══ -->
+        <DockPanel Grid.Column="0">
+          <TextBlock DockPanel.Dock="Top" Text="最近" FontSize="19" FontWeight="Light"
+                     Foreground="#55595e" Margin="2,0,0,12" />
+
+          <Border DockPanel.Dock="Top" IsVisible="{Binding IsEmpty}"
+                  Background="{StaticResource ThemeFill}" CornerRadius="3" Padding="22,26">
+            <StackPanel Spacing="7">
+              <TextBlock Text="还没有实验" FontSize="15" Foreground="#6b6f74" />
+              <TextBlock FontSize="12" Foreground="#959a9f" LineHeight="19" TextWrapping="Wrap"
+                         Text="新建实验、在台面上摆好设备、配好配方，保存之后就会出现在这里。" />
+            </StackPanel>
           </Border>
-          <StackPanel VerticalAlignment="Bottom">
-            <TextBlock Text="TecStudio" FontSize="36" FontWeight="ExtraLight"
-                       Foreground="#292b2e" LineHeight="38" />
-            <TextBlock Text="{Binding Subtitle}" FontSize="13" Foreground="#757a7f" Margin="0,6,0,0" />
-            <TextBlock Text="{Binding CurrentFile}" FontSize="11" Foreground="#9ea2a6" Margin="0,3,0,0"
-                       TextTrimming="CharacterEllipsis" MaxWidth="760"
-                       ToolTip.Tip="{Binding CurrentFile}" />
-          </StackPanel>
-        </StackPanel>
 
-        <!-- 文件操作的结果写在这儿，成了失败了都看得见。不弹框——操作人手上可能正跑着实验 -->
-        <TextBlock Text="{Binding Status}" FontSize="12" Foreground="#0e7a3e" Margin="0,10,0,0"
-                   TextWrapping="Wrap" MaxWidth="760" IsVisible="{Binding Status, Converter={x:Static v:Converters.NotBlank}}" />
-
-        <!-- .section-h：3px 品牌红短竖条 + 19px 细体 + 右侧细线。
-             竖条是原型 .section-h::before——品牌红在这一套里只走这种小面积记号 -->
-        <Grid ColumnDefinitions="Auto,Auto,*" Margin="0,26,0,10">
-          <Border Grid.Column="0" Width="3" Height="14" Background="#a41626"
-                  VerticalAlignment="Center" />
-          <TextBlock Grid.Column="1" Text="最近实验" FontSize="19" FontWeight="Light"
-                     Foreground="#55595e" VerticalAlignment="Center" Margin="12,0,0,0" />
-          <Border Grid.Column="2" Height="1" Background="#e1e3e0" Margin="12,0,0,0"
-                  VerticalAlignment="Center" />
-        </Grid>
-
-        <!-- 一条都没有时的说明。等存盘做出来，保存过的实验会自己出现在这里 -->
-        <Border IsVisible="{Binding IsEmpty}" Background="#fafafa" BorderBrush="#e4e6e3"
-                BorderThickness="1" CornerRadius="5" Padding="26,30" Margin="0,0,14,14">
-          <StackPanel Spacing="7">
-            <TextBlock Text="还没有实验" FontSize="15" Foreground="#6b6f74" />
-            <TextBlock FontSize="12" Foreground="#959a9f" LineHeight="19" MaxWidth="520"
-                       TextWrapping="Wrap"
-                       Text="新建实验、在台面上摆好设备、配好配方，保存之后就会出现在这里。" />
-          </StackPanel>
-        </Border>
-
-        <!-- .recgrid：292px 卡片自动铺排 -->
-        <ItemsControl ItemsSource="{Binding Recent}">
-          <ItemsControl.ItemsPanel>
-            <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
-          </ItemsControl.ItemsPanel>
-          <ItemsControl.ItemTemplate>
-            <DataTemplate>
-              <Border Width="292" Margin="0,0,14,14" CornerRadius="5" ClipToBounds="True"
-                      Background="White" BorderBrush="#e2e4e6" BorderThickness="1"
-                      Classes.on="{Binding On}" Cursor="Hand"
-                      PointerPressed="OnCardPressed">
-                <StackPanel>
-                  <!-- .rthumb：150px 高预览 + 左上标签 + 右上图钉 -->
-                  <Panel Height="150" Background="#f7f8f9">
-                    <Border BorderBrush="#edeef0" BorderThickness="0,0,0,1" />
-                    <!-- 台面的真缩略图：设备按真实坐标缩放画出来，管路一并画上 -->
-                    <ctl:BenchThumb Parts="{Binding Parts}" Margin="6" />
-
-                    <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="10"
-                            CornerRadius="9" Padding="9,2"
-                            Background="{Binding TagClass, Converter={x:Static v:Converters.TagBg}}"
-                            BorderBrush="{Binding TagClass, Converter={x:Static v:Converters.TagBorder}}"
-                            BorderThickness="1">
-                      <TextBlock Text="{Binding Tag}" FontSize="10"
-                                 Foreground="{Binding TagClass, Converter={x:Static v:Converters.TagFg}}" />
-                    </Border>
-
-                    <Button Classes="rpin" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="8"
-                            Classes.pinned="{Binding Pinned}"
-                            Command="{Binding $parent[UserControl].DataContext.TogglePin}"
-                            CommandParameter="{Binding}">
-                      <ctl:TecIcon Key="ui-pin"
-                                   Tint="{Binding Pinned, Converter={x:Static v:Converters.PinTint}}" />
-                    </Button>
-                  </Panel>
-
-                  <!-- .rbody：只留两行。第一行实验名，第二行规模 + 时间体积靠右。
-                       完整路径进 ToolTip——它长得永远显示不全，占一整行不值 -->
-                  <StackPanel Margin="14,10,14,11" Spacing="3"
-                              ToolTip.Tip="{Binding Path}">
-                    <TextBlock Text="{Binding Name}" FontSize="15" LineHeight="19"
-                               TextTrimming="CharacterEllipsis"
-                               Foreground="{Binding On, Converter={x:Static v:Converters.NameFg}}"
-                               FontWeight="{Binding On, Converter={x:Static v:Converters.NameWeight}}" />
-                    <Grid ColumnDefinitions="*,Auto">
-                      <TextBlock Grid.Column="0" Text="{Binding Note}" FontSize="11" Foreground="#858a8f"
-                                 LineHeight="16" TextTrimming="CharacterEllipsis"
-                                 VerticalAlignment="Center" Margin="0,0,8,0" />
-                      <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding When}" FontSize="10.5" Foreground="#a4a8ac" />
-                        <Ellipse Width="3" Height="3" Fill="#cdcfcd" Margin="6,0" VerticalAlignment="Center" />
-                        <TextBlock Text="{Binding Size}" FontSize="10.5" Foreground="#a4a8ac" />
+          <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <ItemsControl ItemsSource="{Binding Recent}" Margin="0,0,0,24">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border Classes="tile" Classes.on="{Binding On}"
+                          PointerPressed="OnCardPressed" ToolTip.Tip="{Binding Path}">
+                    <Panel>
+                      <StackPanel Margin="10,22,10,8">
+                        <!-- 白底预览框：台面按真实坐标缩放画出来，管路一并画上。
+                             从没打开过的那些没有缩略图，框就是空的——不编一个台面出来 -->
+                        <Border Classes="tileth"><ctl:BenchThumb Parts="{Binding Parts}" Margin="5" /></Border>
+                        <TextBlock Text="{Binding Name}" Classes="tilen" />
                       </StackPanel>
-                    </Grid>
-                  </StackPanel>
-                </StackPanel>
-              </Border>
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
-      </StackPanel>
-    </ScrollViewer>
+
+                      <!-- ✕：把这一条从「最近」里划掉。**不删文件**——
+                           它还在实验目录里，右边那一栏照样看得见 -->
+                      <Button Classes="tilex" ToolTip.Tip="从最近列表里移除（不删文件）"
+                              Command="{Binding $parent[UserControl].DataContext.Forget}"
+                              CommandParameter="{Binding}">
+                        <TextBlock Text="✕" FontSize="11" Foreground="#4a4f55"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                      </Button>
+                    </Panel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </DockPanel>
+
+        <!-- ══ 右：实验目录 ══ -->
+        <DockPanel Grid.Column="2">
+          <!-- 抬头就是目录路径本身（GBG 也是这么写的）：这一栏读的是哪儿，
+               不用另找地方说 -->
+          <TextBlock DockPanel.Dock="Top" Text="{Binding FolderPath}" FontSize="19"
+                     FontWeight="Light" Foreground="#55595e" Margin="2,0,0,12"
+                     TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding FolderPath}" />
+
+          <Border DockPanel.Dock="Top" IsVisible="{Binding FolderEmpty}"
+                  Background="{StaticResource ThemeFill}" CornerRadius="3" Padding="22,26">
+            <StackPanel Spacing="7">
+              <TextBlock Text="这个目录里还没有实验文件" FontSize="15" Foreground="#6b6f74" />
+              <TextBlock FontSize="12" Foreground="#959a9f" LineHeight="19" TextWrapping="Wrap"
+                         Text="用「另存为」把实验存进这个目录，它就会出现在这一栏。" />
+            </StackPanel>
+          </Border>
+
+          <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <ItemsControl ItemsSource="{Binding Folder}" Margin="0,0,0,24">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <!-- 这一栏的磁贴**没有 ✕**：这儿的 ✕ 只可能是「删文件」，
+                       那是要问一句的事，不该藏在一个角标后面 -->
+                  <Border Classes="tile" Classes.on="{Binding On}"
+                          PointerPressed="OnCardPressed" ToolTip.Tip="{Binding Path}">
+                    <StackPanel Margin="10,22,10,8">
+                      <Border Classes="tileth"><ctl:BenchThumb Parts="{Binding Parts}" Margin="5" /></Border>
+                      <TextBlock Text="{Binding Name}" Classes="tilen" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </DockPanel>
+
+      </Grid>
+    </DockPanel>
   </Grid>
 
   <UserControl.Styles>
-    <!-- .snav：16px 细体，3px 左侧选中条，选中底 #faf2f3 + 深蓝字 -->
-    <Style Selector="Button.snav">
-      <Setter Property="HorizontalAlignment" Value="Stretch" />
-      <Setter Property="HorizontalContentAlignment" Value="Left" />
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderBrush" Value="Transparent" />
-      <Setter Property="BorderThickness" Value="3,0,0,0" />
-      <Setter Property="CornerRadius" Value="0" />
-      <Setter Property="Padding" Value="19,11" />
-      <Setter Property="FontSize" Value="16" />
-      <Setter Property="FontWeight" Value="Light" />
-      <Setter Property="Foreground" Value="#3a3d41" />
-      <Setter Property="Cursor" Value="Hand" />
-    </Style>
-    <Style Selector="Button.snav:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#f0f0ee" />
-      <Setter Property="TextBlock.Foreground" Value="#1f2124" />
-    </Style>
-    <Style Selector="Button.snav.on">
-      <Setter Property="BorderBrush" Value="#a41626" />
-      <Setter Property="Background" Value="#faf2f3" />
-      <Setter Property="Foreground" Value="#7e0f1c" />
-      <Setter Property="FontWeight" Value="Normal" />
-    </Style>
-    <Style Selector="Button.snav.on /template/ ContentPresenter">
-      <Setter Property="Background" Value="#faf2f3" />
-    </Style>
 
-    <!-- .rcard 悬停 / 选中 -->
-    <Style Selector="Border.on">
-      <Setter Property="BorderBrush" Value="#a41626" />
-      <Setter Property="BoxShadow" Value="0 0 0 2 #38a41626" />
-    </Style>
-
-    <Style Selector="Button.rpin">
-      <Setter Property="Width" Value="24" />
-      <Setter Property="Height" Value="24" />
-      <Setter Property="CornerRadius" Value="12" />
+    <!-- ══ 左缘那一列圆钮 ══ -->
+    <Style Selector="Button.srail">
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderThickness" Value="0" />
       <Setter Property="Padding" Value="0" />
-      <Setter Property="Opacity" Value="0" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
       <Setter Property="HorizontalContentAlignment" Value="Center" />
-      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Cursor" Value="Hand" />
     </Style>
-    <Style Selector="Border:pointerover Button.rpin">
-      <Setter Property="Opacity" Value="0.55" />
+    <Style Selector="Button.srail:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
     </Style>
-    <Style Selector="Button.rpin.pinned">
+    <!-- 圈本身：尺寸与描边照 Button.tbtn（34 / #474a4e 2px），全程序圆钮一副样子 -->
+    <Style Selector="Border.srailo">
+      <Setter Property="Width" Value="34" />
+      <Setter Property="Height" Value="34" />
+      <Setter Property="CornerRadius" Value="17" />
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderBrush" Value="#474a4e" />
+      <Setter Property="BorderThickness" Value="2" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+    </Style>
+    <!-- 悬停：只有圈变，字不动 -->
+    <Style Selector="Button.srail:pointerover Border.srailo">
+      <Setter Property="Background" Value="{StaticResource ThemeFill}" />
+    </Style>
+    <Style Selector="TextBlock.sraill">
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Foreground" Value="#3a3d41" />
+      <Setter Property="TextAlignment" Value="Center" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+    </Style>
+
+    <!-- ══ 磁贴 ══
+         GBG 那一片是品牌绿；我们走卡片色 #bfc9d7，跟菜单栏、泳道头同一支。
+         168×140：预览框 148×86 + 名字一行，一栏 ~470 宽能并排两个 -->
+    <Style Selector="Border.tile">
+      <Setter Property="Width" Value="168" />
+      <Setter Property="Background" Value="#bfc9d7" />
+      <Setter Property="CornerRadius" Value="2" />
+      <!-- 内边距写在内容的 Margin 上、不写这儿：Padding 会把里面所有东西
+           一起框进去，右上角那个 ✕ 就只能贴到预览框的角，贴不到磁贴的角。
+           上边留 22 而不是 10：18px 的 ✕ 加上下各 3 的余量正好 24，
+           留 10 的话它有一半压在白预览框上，看着像预览图自己带了个叉 -->
+      <Setter Property="Margin" Value="0,0,10,10" />
+      <Setter Property="BorderThickness" Value="2" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Border.tile:pointerover">
+      <Setter Property="Background" Value="#a9b6c7" />
+    </Style>
+    <!-- 当前打开的那一份：描一圈菜单选中蓝。这是全页唯一要一眼找到的东西 -->
+    <Style Selector="Border.tile.on">
+      <Setter Property="BorderBrush" Value="{StaticResource MenuBlue}" />
+    </Style>
+
+    <!-- 预览框：白底，磁贴上唯一的白 -->
+    <Style Selector="Border.tileth">
+      <Setter Property="Height" Value="86" />
+      <Setter Property="Background" Value="White" />
+      <Setter Property="ClipToBounds" Value="True" />
+    </Style>
+
+    <Style Selector="TextBlock.tilen">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Foreground" Value="#22262b" />
+      <Setter Property="TextAlignment" Value="Center" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+      <Setter Property="Margin" Value="0,7,0,0" />
+    </Style>
+
+    <!-- 右上角那个 ✕：平时压到很淡，指针进了磁贴才浮出来 -->
+    <Style Selector="Button.tilex">
+      <Setter Property="Width" Value="18" />
+      <Setter Property="Height" Value="18" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="CornerRadius" Value="9" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="HorizontalAlignment" Value="Right" />
+      <Setter Property="VerticalAlignment" Value="Top" />
+      <Setter Property="Margin" Value="0,3,3,0" />
+      <Setter Property="Opacity" Value="0" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Border.tile:pointerover Button.tilex">
       <Setter Property="Opacity" Value="1" />
-      <Setter Property="Background" Value="#e6ffffff" />
     </Style>
+    <Style Selector="Button.tilex:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#66ffffff" />
+    </Style>
+
   </UserControl.Styles>
 </UserControl>
