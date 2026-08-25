@@ -65,11 +65,11 @@
                         </Grid>
                       </Border>
 
-                      <!-- 设备格：两列。左右各 10（右边只写 5，格子自己带 5 的右外边距，
-                           5+5 才跟左边的 10 对称）。
+                      <!-- 设备格：两列，格与格之间 8 的缝（原来 5，看着两张卡快贴上了）。
+                           左右各 10：右边只写 2，格子自己带 8 的右外边距，2+8 才跟左边的 10 对称。
                            格子宽度不再算死：滚动条出不出来都行，图跟着格子走 -->
                       <ItemsControl ItemsSource="{Binding Items}" IsVisible="{Binding Open}"
-                                    Margin="10,0,5,1">
+                                    Margin="10,0,2,1">
                         <ItemsControl.ItemsPanel>
                           <ItemsPanelTemplate><UniformGrid Columns="2" /></ItemsPanelTemplate>
                         </ItemsControl.ItemsPanel>
@@ -78,23 +78,27 @@
                             <Border Classes="cell" PointerPressed="OnLibraryPressed">
                               <StackPanel>
                                 <!--
-                                  图占满格子的宽、高给到 81。Fit 取宽高两个方向的较小比例，
-                                  整幅不裁；宽度不写死是为了让它跟着格子走
-                                  （滚动条出不出来、栏宽以后改不改，都不用回来改这里）。
+                                  Fit 取宽高两个方向的较小比例，整幅不裁；宽度不写死是为了
+                                  让它跟着格子走（滚动条出不出来、栏宽以后改不改，
+                                  都不用回来改这里）。高度得手算，因为竖排 StackPanel
+                                  给的可用高是无穷，Fit 自己定不出来。
 
-                                  高度跟着栏宽走：设备图约 176×145，栏 240 减滚动条 14、
-                                  左右各 10，两列每格 103，格子自带 5 的右缝 ⇒ 净宽 98。
-                                  按宽算比例 98/176 = 0.557，所以高度取 145×0.557 ≈ 81——
-                                  两个方向同时到边，图正好把格子填满，上下不留空。
-                                  （栏从 260 收到 240 时这个数从 92 改到 81；
-                                  以后再动栏宽，照这条式子重算。）
+                                  这一版**图从填满格子退到留一圈白**：卡片左右各让出 9 的内边距，
+                                  机器不再顶着卡片边。算式——
+                                    栏 240 − 滚动条 14 = 226
+                                    ItemsControl 左 10 右 2 ⇒ 214，两列每格 107
+                                    格子右外边距 8 ⇒ 卡片宽 99
+                                    卡片左右内边距各 9 ⇒ 图宽 81
+                                    图比 176×145 ⇒ 高 = 145 × 81/176 ≈ 67
+                                  两个方向同时到边（0.460 对 0.462），图不裁也不留空当。
+                                  以后再动栏宽 / 缝 / 内边距，照这条链子重算这一个数。
                                 -->
-                                <ctl:DeviceArtView ArtKey="{Binding ArtKey}" Fit="True" Height="81" />
+                                <ctl:DeviceArtView ArtKey="{Binding ArtKey}" Fit="True" Height="67" />
                                 <TextBlock Text="{Binding Name}" FontSize="11"
                                            Foreground="#3a3d41" LineHeight="14"
-                                           TextAlignment="Center" TextWrapping="Wrap" Margin="4,3,4,0" />
+                                           TextAlignment="Center" TextWrapping="Wrap" Margin="0,4,0,0" />
                                 <TextBlock Text="{Binding Problem}" IsVisible="{Binding HasProblem}"
-                                           FontSize="9.5" Foreground="#a81e15" Margin="4,0"
+                                           FontSize="9.5" Foreground="#a81e15"
                                            TextAlignment="Center" TextWrapping="Wrap" />
                               </StackPanel>
                             </Border>
@@ -479,16 +483,17 @@
       <Setter Property="RenderTransform" Value="rotate(180deg)" />
     </Style>
 
-    <!-- 设备库的一格：一台设备一张**白卡片**，浮在整栏那块面色底上，
-         格与格之间留缝露灰底。
-         上下内边距收到 4 / 5（原来 7 / 6）：省下来的都归图，
-         图在卡片上占得更满。
+    <!-- 设备库的一格：一台设备一张**白卡片**，浮在整栏那块面色底上。
+         缝从 5 加到 8：5 的时候两张卡几乎贴着，一排读成一条连着的白带子，
+         数不清是几台。8 才看得出这是一张一张分开的卡片。
+         内边距 9,8,9,6：左右两边是新加的，机器不再顶着卡片边——
+         「一台机器摆在一张卡片上」，卡片得留出一圈白才像话。
          没有悬停态：白卡片没法再往亮里走，往暗里走又会比它坐着的灰底还暗、
          读成「按下去了」，描边又被否掉了——所以这一格只靠手型光标说「能点」。 -->
     <Style Selector="Border.cell">
       <Setter Property="Background" Value="White" />
-      <Setter Property="Padding" Value="0,4,0,5" />
-      <Setter Property="Margin" Value="0,0,5,5" />
+      <Setter Property="Padding" Value="9,8,9,6" />
+      <Setter Property="Margin" Value="0,0,8,8" />
       <Setter Property="CornerRadius" Value="2" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
