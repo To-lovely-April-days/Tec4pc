@@ -524,14 +524,13 @@
                         <ItemsControl.ItemTemplate>
                           <DataTemplate>
                             <StackPanel HorizontalAlignment="Center">
-                              <!-- 连接线那一截同时当落点指示条用：高度不变，拖动时版面不跳 -->
-                              <Panel Height="14">
+                              <!-- 连接线那一截同时当落点指示用：**这一格高度恒为 14**，
+                                   拖动时版面不跳。箭头比 14 高，靠 ZIndex 压在上下两张卡之上
+                                   露出来，不占布局，见 Path.droparrow 那条样式 -->
+                              <Panel Height="14" ZIndex="5">
                                 <Border Width="1" Height="14" Background="#757a7f"
                                         HorizontalAlignment="Center" />
-                                <Border Width="232" Height="4" CornerRadius="2"
-                                        Background="{StaticResource MenuBlue}"
-                                        VerticalAlignment="Center"
-                                        IsVisible="{Binding DropBefore}" />
+                                <Path Classes="droparrow" IsVisible="{Binding DropBefore}" />
                               </Panel>
                               <!-- 循环体缩进：每套一层让出 14px，并在让出的位置画一条竖线。
                                    泳道整体仍是 232 宽，各条泳道对得齐 -->
@@ -647,21 +646,19 @@
                         </ItemsControl.ItemTemplate>
                       </ItemsControl>
 
-                      <Panel Height="14">
-                        <Border Width="1" Height="14" Background="#757a7f" HorizontalAlignment="Center" />
-                        <Border Width="232" Height="4" CornerRadius="2"
-                                Background="{StaticResource MenuBlue}"
-                                VerticalAlignment="Center" IsVisible="{Binding DropAtEnd}" />
+                      <!-- 泳道末尾的落点。**那张虚线卡片整个没了**：
+                           它从前一直杵在每条泳道底下（不拖也在），一条泳道等于永远挂着
+                           一个空盒子，四条泳道就是四个。落点该在拖的时候才出现。
+                           线也只在这时候画——链子到最后一张卡就断了，不再往下拖一截空的。 -->
+                      <Panel Height="14" ZIndex="5">
+                        <Border Width="1" Height="14" Background="#757a7f"
+                                HorizontalAlignment="Center" IsVisible="{Binding DropAtEnd}" />
+                        <Path Classes="droparrow" IsVisible="{Binding DropAtEnd}" />
                       </Panel>
-                      <Panel Width="232" Height="64">
-                        <Rectangle Fill="White" Stroke="#959a9f" StrokeThickness="1.5"
-                                   StrokeDashArray="4,3" IsVisible="{Binding !DropAtEnd}" />
-                        <Rectangle Fill="#e8f0fd" Stroke="{StaticResource MenuBlue}" StrokeThickness="1.8"
-                                   StrokeDashArray="4,3" IsVisible="{Binding DropAtEnd}" />
-                        <TextBlock Text="{Binding DropHint}" FontSize="11" Foreground="#888d92"
-                                   TextAlignment="Center" VerticalAlignment="Center"
-                                   TextWrapping="Wrap" Margin="4" />
-                      </Panel>
+                      <!-- 空泳道还是得有句话告诉人往哪儿放，但只留字、不再是一张卡 -->
+                      <TextBlock Text="{Binding DropHint}" IsVisible="{Binding ShowHint}"
+                                 FontSize="11" Foreground="#888d92" Width="232"
+                                 TextAlignment="Center" TextWrapping="Wrap" Margin="0,10,0,4" />
                     </StackPanel>
 
                     <!-- 收起这条泳道。落在头卡底下那截缝的左端。
@@ -1060,9 +1057,10 @@
       </Setter>
     </Style>
 
-    <!-- 指令格：2 列 × 46 高，横排「方块 + 名字」。悬停浮一块白，
-         不是浅红——格子铺在面色的块底上，白比红更像「这一格亮起来了」。
-         （这段注释一直是这么写的，值却还是浅红 #FAF2F3，换配色时漏了这一处） -->
+    <!-- 指令格：2 列 × 46 高，横排「方块 + 名字」。
+         **悬停不变色**：这一列格子本来就是一格一个彩方块，鼠标扫过去再浮一层白，
+         整列跟着一格一格地闪。要点哪个由方块和名字自己说，不靠底色喊。
+         （从前浮白，更早是浅红 #FAF2F3） -->
     <Style Selector="Button.cmd2">
       <Setter Property="Height" Value="46" />
       <Setter Property="MinHeight" Value="0" />
@@ -1075,8 +1073,61 @@
       <Setter Property="VerticalContentAlignment" Value="Center" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
+    <!--
+      「不变色」得**写出来**，不能只是把自己那条悬停样式删掉。
+      Fluent 的按钮主题自己有 :pointerover / :pressed 两条，直接往模板里那块
+      ContentPresenter 上刷底色；上面 Button.cmd2 的 Background=Transparent 设在
+      控件上，压不住它。删掉我们自己那条之后露出来的是 Fluent 的默认灰
+      （实测悬停格子 #D9D9D9，旁边没悬停的是面色 #F1F1F1）。
+      所以这两条得留着，把底色按回透明。
+    -->
     <Style Selector="Button.cmd2:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="White" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="Button.cmd2:pressed /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+
+    <!--
+      落点箭头。松手会插在哪儿，就在哪儿画这么一支宽头朝下的箭。
+
+      尺寸：232 宽（跟卡片同宽）× 20 高。可它待的那一格只有 14 高——
+      那 14 是两张卡之间的连接线，**不能为了放箭头就把它撑开**，
+      一撑开，鼠标在两个落点之间来回移，底下整列跟着上下弹。
+      所以箭头不占布局，多出来的 6 靠负外边距**只往上溢**：
+        VerticalAlignment=Top + Margin 0,-6 ⇒ 占 y −6..14，尖正好落在这一格的底边，
+        也就是新卡片将要插进去的那条缝上。
+
+      **只往上溢，不往下溢**，是因为压不住下面那张卡：往下溢的那截会被它盖掉。
+      同一个 item 里，这一格排在卡片前面，画得也早；给父 Panel 加 ZIndex 不管用
+      （试过 ZIndex=5，箭头尖照样被卡片吃掉）。往上溢就没这问题——
+      上面那张卡是**更早**的一个 item（或者泳道头），我们画得比它晚，压得住。
+
+      画法：Stretch=None，宽高写死 232×20，图形按自己的坐标画，
+      横向中点 116 就是 232 的一半——Path 的 HorizontalAlignment 是不管用的
+      （Shape 在 Stretch=None 下按 geometry.Bounds.Right 量宽），只能拿坐标对齐。
+
+      渐变：左 #42A0D3 → 中 #50BBEB → 右 #319FD8，横向。
+      三个色里 #50BBEB 明显最亮，另外两个亮度几乎一样（160/211 对 159/216），
+      这正是「中间一道高光、两边各一道暗边」的样子——要是上下明到暗的直渐变，
+      用不着两支这么接近的深色。所以按横向三段铺，箭头看着像根圆棍。
+    -->
+    <Style Selector="Path.droparrow">
+      <Setter Property="Width" Value="232" />
+      <Setter Property="Height" Value="20" />
+      <Setter Property="Stretch" Value="None" />
+      <Setter Property="VerticalAlignment" Value="Top" />
+      <Setter Property="Margin" Value="0,-6,0,0" />
+      <Setter Property="Data" Value="M 92,0 L 140,0 L 140,8 L 202,8 L 116,20 L 30,8 L 92,8 Z" />
+      <Setter Property="Fill">
+        <LinearGradientBrush StartPoint="0%,50%" EndPoint="100%,50%">
+          <GradientStop Color="#42A0D3" Offset="0" />
+          <GradientStop Color="#50BBEB" Offset="0.5" />
+          <GradientStop Color="#319FD8" Offset="1" />
+        </LinearGradientBrush>
+      </Setter>
     </Style>
 
     <!-- 指令图标那枚方块：库里和步骤卡上同一个尺寸 27，

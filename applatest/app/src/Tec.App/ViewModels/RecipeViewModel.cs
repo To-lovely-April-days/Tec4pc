@@ -471,7 +471,7 @@ public sealed class LaneViewModel : ViewModelBase
     public bool DropAtEnd
     {
         get => _dropAtEnd;
-        set { if (Set(ref _dropAtEnd, value)) Raise(nameof(DropHint)); }
+        set { if (Set(ref _dropAtEnd, value)) Raise(nameof(ShowHint)); }
     }
 
     /// <summary>松手会落在这条泳道里。整条描蓝，一眼看得出要放进哪个通道。</summary>
@@ -482,11 +482,16 @@ public sealed class LaneViewModel : ViewModelBase
         set => Set(ref _isDropLane, value);
     }
 
-    public string DropHint => DropAtEnd
-        ? "松手放到这里"
-        : IsCurrent ? "从左侧步骤库拖进来，或点一下也行" : "点选此列后可编辑";
+    public string DropHint => IsCurrent ? "从左侧步骤库拖进来，或点一下也行" : "点选此列后可编辑";
 
-    public void RefreshHint() => RaiseAll(nameof(DropHint), nameof(IsCurrent));
+    /// <summary>
+    /// 末尾那句提示只在**空泳道**上出现。摆了步骤的泳道用不着它——
+    /// 怎么加步骤，第一次就学会了，往后每条泳道底下都挂一句是白占地方。
+    /// 正在往这条泳道上拖的时候也收起来：那时候说话的是落点箭头。
+    /// </summary>
+    public bool ShowHint => Steps.Count == 0 && !DropAtEnd;
+
+    public void RefreshHint() => RaiseAll(nameof(DropHint), nameof(IsCurrent), nameof(ShowHint));
 }
 
 /// <summary>
@@ -1358,22 +1363,27 @@ public sealed class RecipeViewModel : ViewModelBase
         foreach (var lane in Lanes)
         {
             lane.IsCurrent = lane.Channel == _curCh;
-            lane.RefreshHint();
             lane.RefreshOptions();
             lane.Steps.Clear();
-            if (!Workspace.ChannelRecipes.TryGetValue(lane.Channel, out var recipe)) continue;
-            var plan = Schedule.Build(recipe, Workspace.Catalog);
-            var depth = 0;
-            for (var i = 0; i < recipe.Steps.Count; i++)
+            if (Workspace.ChannelRecipes.TryGetValue(lane.Channel, out var recipe))
             {
-                var step = recipe.Steps[i];
-                Workspace.Catalog.TryGet(step.CommandId, out var d);
+                var plan = Schedule.Build(recipe, Workspace.Catalog);
+                var depth = 0;
+                for (var i = 0; i < recipe.Steps.Count; i++)
+                {
+                    var step = recipe.Steps[i];
+                    Workspace.Catalog.TryGet(step.CommandId, out var d);
 
-                // 循环结束行先退一层再画，它跟循环开始行才对得齐
-                if (BuiltinCommands.IsLoopEnd(step.CommandId)) depth = Math.Max(0, depth - 1);
-                lane.Steps.Add(new StepViewModel(i + 1, step, plan.Entries[i], d) { Depth = depth });
-                if (BuiltinCommands.IsLoopBegin(step.CommandId)) depth++;
+                    // 循环结束行先退一层再画，它跟循环开始行才对得齐
+                    if (BuiltinCommands.IsLoopEnd(step.CommandId)) depth = Math.Max(0, depth - 1);
+                    lane.Steps.Add(new StepViewModel(i + 1, step, plan.Entries[i], d) { Depth = depth });
+                    if (BuiltinCommands.IsLoopBegin(step.CommandId)) depth++;
+                }
             }
+            // 这一句得等泳道填完再调：ShowHint 看的是 Steps.Count。
+            // 从前它在 Clear 之前，读到的是上一轮的步骤数（那会儿只关系到
+            // DropHint 的措辞，看不出来；现在它决定那句话出不出现，就露馅了）
+            lane.RefreshHint();
         }
 
         CopyTargets.Clear();
