@@ -83,17 +83,24 @@
                                   都不用回来改这里）。高度得手算，因为竖排 StackPanel
                                   给的可用高是无穷，Fit 自己定不出来。
 
-                                  这一版**图从填满格子退到留一圈白**：卡片左右各让出 9 的内边距，
-                                  机器不再顶着卡片边。算式——
+                                  **图的左右留白写在图自己的 Margin 上，不写在卡片的内边距上。**
+                                  这两处不是一回事：卡片内边距会连设备名一起往里收，
+                                  而名字那一行本来就不宽（「双通道反应器 RD-105」已经要折两行），
+                                  再收就折三行、卡片反而更高。所以只勒图、不勒字。
+
+                                  算式一条链子——
                                     栏 240 − 滚动条 14 = 226
                                     ItemsControl 左 10 右 2 ⇒ 214，两列每格 107
                                     格子右外边距 8 ⇒ 卡片宽 99
-                                    卡片左右内边距各 9 ⇒ 图宽 81
-                                    图比 176×145 ⇒ 高 = 145 × 81/176 ≈ 67
-                                  两个方向同时到边（0.460 对 0.462），图不裁也不留空当。
-                                  以后再动栏宽 / 缝 / 内边距，照这条链子重算这一个数。
+                                    卡片左右内边距各 6 ⇒ 内容宽 87（名字用的就是这个）
+                                    图自己左右各让 12 ⇒ 图宽 63
+                                    图比 176×145 ⇒ 高 = 145 × 63/176 ≈ 52
+                                  两个方向同时到边（0.358 对 0.359），图不裁也不留空当。
+                                  卡片总高 = 7 + 52 + 4 + 14（一行名）+ 6 = 83，名字折两行则 97。
+                                  以后再动栏宽 / 缝 / 留白，照这条链子重算这一个数。
                                 -->
-                                <ctl:DeviceArtView ArtKey="{Binding ArtKey}" Fit="True" Height="67" />
+                                <ctl:DeviceArtView ArtKey="{Binding ArtKey}" Fit="True"
+                                                   Height="52" Margin="12,0" />
                                 <TextBlock Text="{Binding Name}" FontSize="11"
                                            Foreground="#3a3d41" LineHeight="14"
                                            TextAlignment="Center" TextWrapping="Wrap" Margin="0,4,0,0" />
@@ -486,13 +493,14 @@
     <!-- 设备库的一格：一台设备一张**白卡片**，浮在整栏那块面色底上。
          缝从 5 加到 8：5 的时候两张卡几乎贴着，一排读成一条连着的白带子，
          数不清是几台。8 才看得出这是一张一张分开的卡片。
-         内边距 9,8,9,6：左右两边是新加的，机器不再顶着卡片边——
-         「一台机器摆在一张卡片上」，卡片得留出一圈白才像话。
+         内边距 6,7,6,6：卡片自己只留一点边，图的左右留白由图的 Margin 单独管
+         （见上面 DeviceArtView 那段——勒图不勒字，不然设备名要多折一行，
+         卡片反而更高）。
          没有悬停态：白卡片没法再往亮里走，往暗里走又会比它坐着的灰底还暗、
          读成「按下去了」，描边又被否掉了——所以这一格只靠手型光标说「能点」。 -->
     <Style Selector="Border.cell">
       <Setter Property="Background" Value="White" />
-      <Setter Property="Padding" Value="9,8,9,6" />
+      <Setter Property="Padding" Value="6,7,6,6" />
       <Setter Property="Margin" Value="0,0,8,8" />
       <Setter Property="CornerRadius" Value="2" />
       <Setter Property="Cursor" Value="Hand" />
