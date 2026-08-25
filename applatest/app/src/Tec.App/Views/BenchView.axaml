@@ -101,16 +101,22 @@
 
                                   高给 78（≥ 145 × 94/176 = 77.45），故意让**宽**先到边，
                                   这样 95% 是准的；图实画 94 × 77.4，竖着松 0.6，看不出来。
-                                  卡片总高 = 7 + 78 + 4 + 14（一行名）+ 6 = 109，名字折两行则 123。
 
                                   图占卡片宽的 94/99 ≈ 95%。一路是 64% → 80% → 95% 加上来的。
                                   以后再动栏宽 / 缝 / 留白，照这条链子重算这一个数。
+
+                                  卡片总高 = 4 + 78 + 2 + 14（一行名）+ 4 = 102，名字折两行则 116。
+                                  高度是这么来的，想再压矮只能从这五段里挑：
+                                    78 是机器本身——这幅图的墨迹近乎正方（136×145），
+                                       宽定在 94，高就只能是 77.4，动不了。要矮就得让宽。
+                                    14 是名字一行，11px 字配 13 会啃掉「（RD105）」的括号脚，不再收。
+                                    剩下 4 / 2 / 4 是白边，已经压到底了（从前是 7 / 4 / 6）。
                                 -->
                                 <ctl:DeviceArtView ArtKey="{Binding ArtKey}" Fit="True"
                                                    Height="78" Margin="-3.5,0" />
                                 <TextBlock Text="{Binding Name}" FontSize="11"
                                            Foreground="#3a3d41" LineHeight="14"
-                                           TextAlignment="Center" TextWrapping="Wrap" Margin="0,4,0,0" />
+                                           TextAlignment="Center" TextWrapping="Wrap" Margin="0,2,0,0" />
                                 <TextBlock Text="{Binding Problem}" IsVisible="{Binding HasProblem}"
                                            FontSize="9.5" Foreground="#a81e15"
                                            TextAlignment="Center" TextWrapping="Wrap" />
@@ -507,7 +513,8 @@
          读成「按下去了」，描边又被否掉了——所以这一格只靠手型光标说「能点」。 -->
     <Style Selector="Border.cell">
       <Setter Property="Background" Value="White" />
-      <Setter Property="Padding" Value="6,7,6,6" />
+      <!-- 上下压到 4：卡片高的大头是机器那 78，白边这里能省的全省了 -->
+      <Setter Property="Padding" Value="6,4,6,4" />
       <Setter Property="Margin" Value="0,0,8,8" />
       <Setter Property="CornerRadius" Value="2" />
       <Setter Property="Cursor" Value="Hand" />
