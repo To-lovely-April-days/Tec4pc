@@ -7,9 +7,10 @@
   <!-- 原型 view-run：runtop 44px → runbody 三块 pane → 底部执行记录抽屉 -->
   <DockPanel Background="White">
 
-    <!-- runtop。启动 / 停止 / 暂停 / 单步在菜单栏右边那排圆钮上，这里不再摆一份 -->
-    <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,*" Height="44" Margin="14,0"
-          VerticalAlignment="Top">
+    <!-- runtop。启动 / 停止 / 暂停 / 单步在菜单栏右边那排圆钮上，这里不再摆一份。
+         底色走面色：它跟下面三块 pane 是两层东西，铺上底才分得开 -->
+    <Border DockPanel.Dock="Top" Height="44" Background="{StaticResource ThemeFill}">
+    <Grid ColumnDefinitions="Auto,*" Margin="14,0">
       <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
         <TextBlock Text="实验：" FontSize="12" Foreground="#414448" VerticalAlignment="Center" />
         <!-- 同时只打开一个实验；能切换要等「打开实验」做出来 -->
@@ -23,6 +24,10 @@
                  FontSize="11.5" Foreground="{Binding SayColorHex}" VerticalAlignment="Center"
                  TextAlignment="Right" Margin="14,0,0,0" TextTrimming="CharacterEllipsis" />
     </Grid>
+    </Border>
+
+    <!-- runtop 与下面之间的白缝，6px，同全程序那一个尺寸 -->
+    <Border DockPanel.Dock="Top" Height="6" Background="White" />
 
     <!-- 报警带。一条都没有就整条不画——平时不占地方，有事才出现。
          **刻意不做成弹框**：模态窗会把急停那颗钮挡在后面，
@@ -220,8 +225,9 @@
          ColumnDefinition 不在可视树上，绑不了 DataContext -->
     <Grid x:Name="Body" ColumnDefinitions="600,6,*,6,430,Auto" Margin="8,0,8,8">
 
-      <!-- pane 台面总览 -->
-      <Border Grid.Column="0" Classes="pane">
+      <!-- pane 台面总览。**只有这一块**的右侧铺面色，另两块（趋势 / 甘特）
+           右侧留白——那两块里画的是曲线和条带，底一上色读数就糊 -->
+      <Border Grid.Column="0" Classes="pane" Background="{StaticResource ThemeFill}">
         <DockPanel>
           <Border DockPanel.Dock="Left" Classes="panetab">
             <StackPanel Spacing="10" Margin="0,8,0,0" HorizontalAlignment="Center">
@@ -368,8 +374,9 @@
                            Text="台面上还没有通道。拖一台反应器进台面，这里就会出现它的通道。" />
               </Panel>
             </Border>
-            <!-- deck -->
-            <Border Background="#f7f7f6" ClipToBounds="True">
+            <!-- deck。底色跟着这一块 pane 走（面色），不再自己另刷一支 #f7f7f6——
+                 那支跟面色差三档，台面图周围就露出一块说不清的浅灰 -->
+            <Border Background="{StaticResource ThemeFill}" ClipToBounds="True">
               <ctl:DeckView x:Name="Deck" Workspace="{Binding Workspace}" />
             </Border>
           </DockPanel>
@@ -388,8 +395,11 @@
             </StackPanel>
           </Border>
           <DockPanel IsVisible="{Binding TrendPane.Open}">
-            <!-- 原型 .trend-tool 是 flex-wrap:wrap：窗口一窄图例换行，不是被切掉 -->
-            <WrapPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="10,8,10,4">
+            <!-- 原型 .trend-tool 是 flex-wrap:wrap：窗口一窄图例换行，不是被切掉。
+                 外面套一层面色：这一排是「挑看哪一路」的开关，跟下面那张图
+                 不是一回事，铺上底才分得出上下两层 -->
+            <Border DockPanel.Dock="Top" Background="{StaticResource ThemeFill}">
+            <WrapPanel Orientation="Horizontal" Margin="10,8,10,4">
               <TextBlock Text="通道" FontSize="12" Foreground="#414448" VerticalAlignment="Center"
                          Margin="0,0,10,0" />
               <ComboBox Classes="sel" Width="104" Margin="0,0,10,0" ItemsSource="{Binding TrendChannels}"
@@ -421,6 +431,7 @@
                 <TextBlock Text="pH" FontSize="11" Foreground="#414448" />
               </StackPanel>
             </WrapPanel>
+            </Border>
             <Panel>
               <ctl:TrendView Model="{Binding Trend}" IsVisible="{Binding !TrendEmpty}" />
               <TextBlock IsVisible="{Binding TrendEmpty}" Text="{Binding TrendEmptyText}"
@@ -443,7 +454,9 @@
             </StackPanel>
           </Border>
           <DockPanel IsVisible="{Binding GanttPane.Open}">
-            <WrapPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="10,8,10,4">
+            <!-- 同趋势那排：顶部这条是开关，铺面色跟下面的条带分层 -->
+            <Border DockPanel.Dock="Top" Background="{StaticResource ThemeFill}">
+            <WrapPanel Orientation="Horizontal" Margin="10,8,10,4">
               <ComboBox Classes="sel" Width="104" FontSize="11" Margin="0,0,10,0"
                         ItemsSource="{Binding AlignOptions}" SelectedItem="{Binding AlignLabel, Mode=TwoWay}" />
               <CheckBox Content="显示时间" FontSize="12" Margin="0,0,10,0"
@@ -458,6 +471,7 @@
               <TextBlock Text="淡 = 计划，实 = 实际" FontSize="11" Foreground="#959a9f"
                          VerticalAlignment="Center" />
             </WrapPanel>
+            </Border>
             <Panel>
               <ScrollViewer IsVisible="{Binding !NoChannels}">
                 <ctl:GanttView Model="{Binding Gantt}" />
@@ -593,16 +607,17 @@
   </DockPanel>
 
   <UserControl.Styles>
+    <!-- 三块 pane 都不画边框：Body 那个 Grid 里本来就有 6px 的缝列把它们隔开，
+         再各描一圈线是把同一件事说两遍 -->
     <Style Selector="Border.pane">
-      <Setter Property="BorderBrush" Value="#b6b9bb" />
-      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderThickness" Value="0" />
       <Setter Property="Background" Value="White" />
     </Style>
+    <!-- 左侧竖标签：#bfc9d7，同菜单栏那一支；也不画边框 -->
     <Style Selector="Border.panetab">
       <Setter Property="Width" Value="28" />
-      <Setter Property="Background" Value="#f4f4f3" />
-      <Setter Property="BorderBrush" Value="#dadcd9" />
-      <Setter Property="BorderThickness" Value="0,0,1,0" />
+      <Setter Property="Background" Value="{StaticResource MenuBar}" />
+      <Setter Property="BorderThickness" Value="0" />
     </Style>
     <Style Selector="TextBlock.vtxt">
       <Setter Property="FontSize" Value="15" />
