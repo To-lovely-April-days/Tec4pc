@@ -413,16 +413,18 @@
       </DockPanel>
     </Border>
     <!-- 拖拽中的幽灵：跨三栏画在最上层，从设备库拖出来时压在库面板上方。
-         拖台面上已有的设备时不画——那台设备自己跟着手在走 -->
+         拖台面上已有的设备时不画——那台设备自己跟着手在走。
+
+         画的是一张固定尺寸的小样（Fit 进 88×64），不是落地后的原大，
+         也不跟着缩放变。原大那一版拖一台反应器就是一大块半透明的图糊在
+         画布上，把底下的接口圆点和管路预览全挡了——而拖动时真正要看的
+         正是那两样。小样只回答「手上是哪一台」。 -->
     <Canvas Grid.Column="0" Grid.ColumnSpan="3" IsHitTestVisible="False"
             IsVisible="{Binding ShowGhost}">
-      <Border Canvas.Left="{Binding GhostX}" Canvas.Top="{Binding GhostY}" Opacity="0.7"
-              Padding="6,6,6,4" RenderTransformOrigin="0%,0%">
-        <Border.RenderTransform>
-          <ScaleTransform ScaleX="{Binding Zoom}" ScaleY="{Binding Zoom}" />
-        </Border.RenderTransform>
-        <ctl:DeviceArtView ArtKey="{Binding DragArtKey}" ArtWidth="{Binding DragWidth}" />
-      </Border>
+      <ctl:DeviceArtView Canvas.Left="{Binding GhostX}" Canvas.Top="{Binding GhostY}"
+                         ArtKey="{Binding DragArtKey}" Fit="True"
+                         Width="{Binding GhostBoxW}" Height="{Binding GhostBoxH}"
+                         Opacity="0.75" />
     </Canvas>
   </Grid>
 

@@ -427,11 +427,26 @@ public sealed class BenchViewModel : ViewModelBase
     private const double LibraryWidth = 260;
 
     /// <summary>
+    /// 手上拎着的那个小样的尺寸。**固定**，既不随设备实际大小变、也不随缩放变：
+    /// 从前幽灵画的是「落地之后的原大」，一台反应器拖起来就是一大块半透明的图
+    /// 糊在画布上，挡住了底下的接口圆点和管路预览——而那两样才是拖动时真正
+    /// 要看的东西。小样只回答「手上是哪一台」，落在哪、接哪个口由接口圆点说。
+    /// 尺寸取的是设备库格子里那张图（102×74）再小一档。
+    /// </summary>
+    private const double GhostW = 88, GhostH = 64;
+
+    public double GhostBoxW => GhostW;
+    public double GhostBoxH => GhostH;
+
+    /// <summary>
     /// 幽灵画在跨三栏的顶层，所以要把画布坐标换成视图坐标——不这样它会被
     /// 画布的裁剪切掉，从设备库里拖出来时像是从库底下钻出来的。
+    ///
+    /// 抓取点 _grab 是设备中心（见 BeginDragFromLibrary），所以把小样也按中心
+    /// 摆：它既跟着指针，又正好落在「这台设备将来占的那块地方」的正中。
     /// </summary>
-    public double GhostX => DragX * Zoom + PanX + LibraryWidth;
-    public double GhostY => DragY * Zoom + PanY;
+    public double GhostX => (DragX + DragWidth / 2) * Zoom + PanX + LibraryWidth - GhostW / 2;
+    public double GhostY => (DragY + DragHeight / 2) * Zoom + PanY - GhostH / 2;
 
     /// <summary>当前会插上的那个接口。</summary>
     public Anchor? Hover
