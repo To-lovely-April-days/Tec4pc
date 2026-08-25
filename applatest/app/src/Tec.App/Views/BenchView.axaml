@@ -488,9 +488,11 @@
       <Setter Property="VerticalContentAlignment" Value="Center" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
+    <!-- 悬停压一层黑、描边到纯黑，跟圆钮一族同一个做法。
+         原来是 #F4E4E6 + #A41626 那套粉红，换配色以前留下的 -->
     <Style Selector="Button.pill:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#f4e4e6" />
-      <Setter Property="BorderBrush" Value="#a41626" />
+      <Setter Property="Background" Value="#18000000" />
+      <Setter Property="BorderBrush" Value="#000000" />
     </Style>
     <Style Selector="Border.dev">
       <Setter Property="Padding" Value="6,6,6,4" />

@@ -528,7 +528,8 @@
                               <Panel Height="14">
                                 <Border Width="1" Height="14" Background="#757a7f"
                                         HorizontalAlignment="Center" />
-                                <Border Width="232" Height="4" CornerRadius="2" Background="#a41626"
+                                <Border Width="232" Height="4" CornerRadius="2"
+                                        Background="{StaticResource MenuBlue}"
                                         VerticalAlignment="Center"
                                         IsVisible="{Binding DropBefore}" />
                               </Panel>
@@ -648,13 +649,14 @@
 
                       <Panel Height="14">
                         <Border Width="1" Height="14" Background="#757a7f" HorizontalAlignment="Center" />
-                        <Border Width="232" Height="4" CornerRadius="2" Background="#a41626"
+                        <Border Width="232" Height="4" CornerRadius="2"
+                                Background="{StaticResource MenuBlue}"
                                 VerticalAlignment="Center" IsVisible="{Binding DropAtEnd}" />
                       </Panel>
                       <Panel Width="232" Height="64">
                         <Rectangle Fill="White" Stroke="#959a9f" StrokeThickness="1.5"
                                    StrokeDashArray="4,3" IsVisible="{Binding !DropAtEnd}" />
-                        <Rectangle Fill="#faf2f3" Stroke="#a41626" StrokeThickness="1.8"
+                        <Rectangle Fill="#e8f0fd" Stroke="{StaticResource MenuBlue}" StrokeThickness="1.8"
                                    StrokeDashArray="4,3" IsVisible="{Binding DropAtEnd}" />
                         <TextBlock Text="{Binding DropHint}" FontSize="11" Foreground="#888d92"
                                    TextAlignment="Center" VerticalAlignment="Center"
@@ -962,7 +964,7 @@
     <Canvas Grid.Column="0" Grid.ColumnSpan="3" IsHitTestVisible="False">
       <Border IsVisible="{Binding Dragging}"
               Canvas.Left="{Binding DragX}" Canvas.Top="{Binding DragY}"
-              Width="232" Background="White" BorderBrush="#a41626" BorderThickness="1.5"
+              Width="232" Background="White" BorderBrush="{StaticResource MenuBlue}" BorderThickness="1.5"
               Padding="7,6" Opacity="0.96"
               BoxShadow="0 5 16 0 #33000000">
         <StackPanel Orientation="Horizontal" Spacing="7">
@@ -1059,7 +1061,8 @@
     </Style>
 
     <!-- 指令格：2 列 × 46 高，横排「方块 + 名字」。悬停浮一块白，
-         不是浅红——格子铺在 #eeefec 的块底上，白比红更像「这一格亮起来了」 -->
+         不是浅红——格子铺在面色的块底上，白比红更像「这一格亮起来了」。
+         （这段注释一直是这么写的，值却还是浅红 #FAF2F3，换配色时漏了这一处） -->
     <Style Selector="Button.cmd2">
       <Setter Property="Height" Value="46" />
       <Setter Property="MinHeight" Value="0" />
@@ -1073,7 +1076,7 @@
       <Setter Property="Cursor" Value="Hand" />
     </Style>
     <Style Selector="Button.cmd2:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#faf2f3" />
+      <Setter Property="Background" Value="White" />
     </Style>
 
     <!-- 指令图标那枚方块：库里和步骤卡上同一个尺寸 27，
@@ -1411,9 +1414,20 @@
     <Style Selector="Border.stepGhost">
       <Setter Property="Opacity" Value="0.42" />
     </Style>
+    <!--
+      拖拽落点这一整套从品牌红换成菜单蓝 #2A6FE5（浅底 #E8F0FD）：
+      泳道描边、步骤之间那根落点条、末尾那个虚线框、跟手的幽灵卡描边，
+      四样一起换——它们说的是同一件事「松手就放这儿」，不该一半红一半别的。
+
+      为什么不留红：红在这一页已经有主了——校验里的「错误」是红的。
+      拖一个步骤的时候整条泳道镶一圈红边，跟「这条通道有错」长得一模一样，
+      而这两件事的意思正好相反（一个是「可以放」，一个是「这儿不对」）。
+      蓝在这套配色里的意思是「当前 / 生效中」（菜单选中就是它），
+      落点是个转瞬即逝的「现在指着这儿」，正好同一支。
+    -->
     <Style Selector="Border.laneDrop">
-      <Setter Property="BorderBrush" Value="#a41626" />
-      <Setter Property="Background" Value="#fdfafa" />
+      <Setter Property="BorderBrush" Value="{StaticResource MenuBlue}" />
+      <Setter Property="Background" Value="#f5f9ff" />
     </Style>
 
     <!-- 步骤卡外面那层壳（原型给卡片留的 3px padding）：把选中环那 2+3 的位置
