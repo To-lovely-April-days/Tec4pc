@@ -415,7 +415,7 @@ public sealed class BenchViewModel : ViewModelBase
     /// <summary>设备库那一栏的宽度，与视图的三栏定义一致。</summary>
     // 跟配方页、配方库页的左栏同宽。三页的左栏干的是同一件事，
     // 宽度不一致的话在菜单之间切换整个中列会横跳一下
-    private const double LibraryWidth = 260;
+    private const double LibraryWidth = 240;
 
     /// <summary>
     /// 手上拎着的那个小样的尺寸。**固定**，既不随设备实际大小变、也不随缩放变：

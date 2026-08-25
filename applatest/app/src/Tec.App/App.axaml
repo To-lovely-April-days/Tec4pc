@@ -247,6 +247,21 @@
       <Setter Property="Cursor" Value="Arrow" />
     </Style>
 
+    <!--
+      输入框里不许出现滚动条。
+
+      TextBox 的模板里裹着一层 ScrollViewer，字比框长的时候它就冒出来——
+      上面那条 ScrollViewer 样式又把自动隐藏关了，于是属性栏里
+      「四通道平行合成台面」这种填满的框，右端会长出一小截带三角的滚动条，
+      还要吃掉 14px，把最后一个字挤出去。实测就是这么丢的「面」和「用」。
+      全程序没有多行输入框（没有一个 TextBox 写 AcceptsReturn），
+      所以两个方向一律 Hidden：装不下就让它按光标滚，不摆滚动条。
+    -->
+    <Style Selector="TextBox">
+      <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Hidden" />
+      <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Hidden" />
+    </Style>
+
     <Style Selector="ScrollBar:vertical">
       <Setter Property="Width" Value="14" />
       <Setter Property="MinWidth" Value="14" />
