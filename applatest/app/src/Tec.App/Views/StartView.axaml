@@ -9,9 +9,12 @@
     右边并排两栏磁贴——左「最近」、右「实验目录」，抬头直接写目录路径。
     颜色不跟它：GBG 那一片是品牌绿，我们走自己那支卡片色 #bfc9d7。
 
-    GBG 的左缘只有 New / Browse 两颗（Save / Save As 在载入程序之后才出现），
-    我们这十个动作没有别的落脚处（设置 / 关于在标题栏另有一份，但导入导出台面、
-    GLP 导出只在这儿），所以全留着，只是换成同一副圆钮的样子。
+    左缘只有「新建 / 打开」两颗常驻，「保存 / 另存为」等打开或新建过一份实验
+    之后才出现——GBG 的做法（Once a program is loaded, Save and Save As will be
+    visible）。一份都没开的时候，那两颗按下去无非是存一份空的，摆着只让人猜。
+
+    ⚠ 导入台面 / 导出台面按这一版从这里撤掉了，而它们**在别处没有入口**。
+    数据导出还有主菜单那一栏，退出还有标题栏的 ✕，这两个没有。
   -->
   <Grid ColumnDefinitions="Auto,*">
 
@@ -32,46 +35,18 @@
               <TextBlock Text="打开" Classes="sraill" />
             </StackPanel>
           </Button>
-          <Button Classes="srail" Command="{Binding SaveExperiment}" ToolTip.Tip="保存实验">
+          <Button Classes="srail" Command="{Binding SaveExperiment}" ToolTip.Tip="保存实验"
+                  IsVisible="{Binding HasDoc}">
             <StackPanel Spacing="5">
               <Border Classes="srailo"><ctl:TecIcon Key="ui-snav-save" Tint="#1f2124" /></Border>
               <TextBlock Text="保存" Classes="sraill" />
             </StackPanel>
           </Button>
-          <Button Classes="srail" Command="{Binding SaveAsExperiment}" ToolTip.Tip="另存为">
+          <Button Classes="srail" Command="{Binding SaveAsExperiment}" ToolTip.Tip="另存为"
+                  IsVisible="{Binding HasDoc}">
             <StackPanel Spacing="5">
               <Border Classes="srailo"><ctl:TecIcon Key="ui-snav-saveas" Tint="#1f2124" /></Border>
               <TextBlock Text="另存为" Classes="sraill" />
-            </StackPanel>
-          </Button>
-
-          <Border Height="1" Background="#e0e2df" Margin="20,2" />
-
-          <Button Classes="srail" Command="{Binding ImportBench}" ToolTip.Tip="导入台面">
-            <StackPanel Spacing="5">
-              <Border Classes="srailo"><ctl:TecIcon Key="ui-snav-import" Tint="#1f2124" /></Border>
-              <TextBlock Text="导入台面" Classes="sraill" />
-            </StackPanel>
-          </Button>
-          <Button Classes="srail" Command="{Binding ExportBench}" ToolTip.Tip="导出台面">
-            <StackPanel Spacing="5">
-              <Border Classes="srailo"><ctl:TecIcon Key="ui-snav-export" Tint="#1f2124" /></Border>
-              <TextBlock Text="导出台面" Classes="sraill" />
-            </StackPanel>
-          </Button>
-          <Button Classes="srail" Command="{Binding OpenExport}" ToolTip.Tip="数据导出（GLP）">
-            <StackPanel Spacing="5">
-              <Border Classes="srailo"><ctl:TecIcon Key="ui-snav-glp" Tint="#1f2124" /></Border>
-              <TextBlock Text="数据导出" Classes="sraill" />
-            </StackPanel>
-          </Button>
-
-          <Border Height="1" Background="#e0e2df" Margin="20,2" />
-
-          <Button Classes="srail" Command="{Binding Quit}" ToolTip.Tip="退出">
-            <StackPanel Spacing="5">
-              <Border Classes="srailo"><ctl:TecIcon Key="ui-snav-exit" Tint="#1f2124" /></Border>
-              <TextBlock Text="退出" Classes="sraill" />
             </StackPanel>
           </Button>
 

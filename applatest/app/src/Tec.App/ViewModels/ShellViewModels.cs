@@ -102,6 +102,7 @@ public sealed class StartViewModel : ViewModelBase
             if (await GuardedAsync(() => _store.OpenAsync(card.Path), $"已打开 {card.Name}"))
             {
                 Status += MigrationNote();
+                HasDoc = true;
                 shell.Tab = MainViewModel.TabBench;
             }
         }));
@@ -109,6 +110,7 @@ public sealed class StartViewModel : ViewModelBase
         NewExperiment = new RelayCommand(() => Async(async () =>
         {
             await GuardedAsync(_store.NewAsync, "已新建实验。去「台面」把设备拖进来。");
+            HasDoc = true;
             shell.Tab = MainViewModel.TabBench;
         }));
 
@@ -119,6 +121,7 @@ public sealed class StartViewModel : ViewModelBase
                                    $"已打开 {Path.GetFileNameWithoutExtension(path)}"))
             {
                 Status += MigrationNote();
+                HasDoc = true;
                 shell.Tab = MainViewModel.TabBench;
             }
         }));
@@ -233,7 +236,8 @@ public sealed class StartViewModel : ViewModelBase
                             e.OpenedAt, e.Pinned));
 
         ReloadFolder();
-        RaiseAll(nameof(IsEmpty), nameof(FolderEmpty), nameof(Subtitle), nameof(CurrentFile));
+        RaiseAll(nameof(IsEmpty), nameof(FolderEmpty), nameof(Subtitle),
+                 nameof(CurrentFile), nameof(HasDoc));
     }
 
     /// <summary>
@@ -320,6 +324,24 @@ public sealed class StartViewModel : ViewModelBase
     public string FolderPath => ExperimentStore.ExperimentsDir;
 
     public bool FolderEmpty => Folder.Count == 0;
+
+    private bool _hasDoc;
+
+    /// <summary>
+    /// 已经打开或新建过一份实验。左缘那两颗「保存 / 另存为」等它为真才出现——
+    /// GBG 的做法（Once a program is loaded, Save and Save As will be visible）。
+    /// 刚起程序、一份都没开的时候，那两颗按下去无非是弹个另存对话框存一份空的，
+    /// 摆在那儿只是让人猜「这是要保存什么」。
+    ///
+    /// 不能只看 CurrentPath：新建出来的那份还没落盘，路径是 null，
+    /// 可它恰恰是最需要「另存为」的时候。也不能只看 Dirty：
+    /// NewAsync 收尾时会把脏标记抹掉。所以自己记一个。
+    /// </summary>
+    public bool HasDoc
+    {
+        get => _hasDoc || _store.CurrentPath is not null;
+        private set => Set(ref _hasDoc, value);
+    }
 
     /// <summary>一条最近实验都没有时，卡片区换成一句说明——空白一片容易让人以为是没加载出来。</summary>
     public bool IsEmpty => Recent.Count == 0;
