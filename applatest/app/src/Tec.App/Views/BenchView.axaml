@@ -76,51 +76,51 @@
                         <ItemsControl.ItemTemplate>
                           <DataTemplate>
                             <Border Classes="cell" PointerPressed="OnLibraryPressed">
-                              <StackPanel>
-                                <!--
-                                  Fit 取宽高两个方向的较小比例，整幅不裁；宽度不写死是为了
-                                  让它跟着格子走（滚动条出不出来、栏宽以后改不改，
-                                  都不用回来改这里）。高度得手算，因为竖排 StackPanel
-                                  给的可用高是无穷，Fit 自己定不出来。
+                              <!--
+                                **卡片是正方的：99 × 99。** 高写死在 Border.cell 上，
+                                名字一行两行都不改高度，一栏看下来是一格一格的方块。
 
-                                  **图的左右留白写在图自己的 Margin 上，不写在卡片的内边距上。**
-                                  这两处不是一回事：卡片内边距会连设备名一起往里收，
-                                  而名字那一行本来就不宽（「双通道反应器 RD-105」已经要折两行），
-                                  再收就折三行、卡片反而更高。所以只勒图、不勒字。
+                                所以这里必须是 Grid 不是 StackPanel：名字那行 Auto 先量，
+                                剩下的全给图（星号行）。这样名字折两行的卡片图自动小一点、
+                                折一行的图自动大一点，而卡片始终是 99 见方。
+                                图也就不用再手算高度了——从前竖排 StackPanel 给的可用高是无穷，
+                                Fit 定不出尺寸才要手写 Height；星号行给的是实数，Fit 自己就够。
 
-                                  算式一条链子——
-                                    栏 240 − 滚动条 14 = 226
-                                    ItemsControl 左 10 右 2 ⇒ 214，两列每格 107
-                                    格子右外边距 8 ⇒ 卡片宽 99
-                                    卡片左右内边距各 6 ⇒ 内容宽 87（名字用的就是这个）
-                                    图自己左右各让 −3.5 ⇒ 图宽 87 + 7 = 94
-                                  ——**负外边距**：94 已经比内容宽 87 还宽，
-                                  图得从内边距里探出去半点才够。探出去也不会出卡片：
-                                  卡片 99 减图 94 还剩 2.5 一边，白边还在，也不用 ClipToBounds。
-                                  负的只给图，名字仍旧按 87 排，不受影响。
+                                **图的左右留白写在图自己的 Margin 上，不写在卡片的内边距上。**
+                                这两处不是一回事：卡片内边距会连设备名一起往里收，
+                                而名字那一行本来就不宽（「双通道反应器 RD-105」已经要折两行），
+                                再收就折三行、图反而更小。所以只勒图、不勒字。
 
-                                  高给 78（≥ 145 × 94/176 = 77.45），故意让**宽**先到边，
-                                  这样 95% 是准的；图实画 94 × 77.4，竖着松 0.6，看不出来。
+                                算式一条链子——
+                                  栏 240 − 滚动条 14 = 226
+                                  ItemsControl 左 10 右 2 ⇒ 214，两列每格 107
+                                  格子右外边距 8 ⇒ 卡片宽 99 ⇒ 卡片高也定 99
+                                  卡片内边距 6/4/6/4 ⇒ 内容 87 × 91（名字用的就是那 87）
+                                  图自己左右各让 −3.5 ⇒ 图那一格宽 87 + 7 = 94
+                                ——**负外边距**：94 已经比内容宽 87 还宽，
+                                图得从内边距里探出去半点才够。探出去也不会出卡片：
+                                卡片 99 减 94 还剩 2.5 一边，白边还在，也不用 ClipToBounds。
+                                负的只给图，名字仍旧按 87 排，不受影响。
 
-                                  图占卡片宽的 94/99 ≈ 95%。一路是 64% → 80% → 95% 加上来的。
-                                  以后再动栏宽 / 缝 / 留白，照这条链子重算这一个数。
-
-                                  卡片总高 = 4 + 78 + 2 + 14（一行名）+ 4 = 102，名字折两行则 116。
-                                  高度是这么来的，想再压矮只能从这五段里挑：
-                                    78 是机器本身——这幅图的墨迹近乎正方（136×145），
-                                       宽定在 94，高就只能是 77.4，动不了。要矮就得让宽。
-                                    14 是名字一行，11px 字配 13 会啃掉「（RD105）」的括号脚，不再收。
-                                    剩下 4 / 2 / 4 是白边，已经压到底了（从前是 7 / 4 / 6）。
-                                -->
-                                <ctl:DeviceArtView ArtKey="{Binding ArtKey}" Fit="True"
-                                                   Height="78" Margin="-3.5,0" />
-                                <TextBlock Text="{Binding Name}" FontSize="11"
-                                           Foreground="#3a3d41" LineHeight="14"
-                                           TextAlignment="Center" TextWrapping="Wrap" Margin="0,2,0,0" />
-                                <TextBlock Text="{Binding Problem}" IsVisible="{Binding HasProblem}"
-                                           FontSize="9.5" Foreground="#a81e15"
-                                           TextAlignment="Center" TextWrapping="Wrap" />
-                              </StackPanel>
+                                图这一格的高 = 91 − 名字那块，Fit 再按 176×145 等比缩进去：
+                                  一行名：名字块 2+14=16 ⇒ 格 94×75 ⇒ 图 91×75，占卡片宽 92%
+                                  两行名：名字块 2+28=30 ⇒ 格 94×61 ⇒ 图 74×61，占卡片宽 75%
+                                这幅图的墨迹近乎正方（136×145），所以正方卡片里高先到边、
+                                宽吃不满——92% 已经是 99 见方能给到的顶了。
+                                要图再大只能让卡片重新变高，两者不可兼得。
+                              -->
+                              <Grid RowDefinitions="*,Auto">
+                                <ctl:DeviceArtView Grid.Row="0" ArtKey="{Binding ArtKey}"
+                                                   Fit="True" Margin="-3.5,0" />
+                                <StackPanel Grid.Row="1">
+                                  <TextBlock Text="{Binding Name}" FontSize="11"
+                                             Foreground="#3a3d41" LineHeight="14"
+                                             TextAlignment="Center" TextWrapping="Wrap" Margin="0,2,0,0" />
+                                  <TextBlock Text="{Binding Problem}" IsVisible="{Binding HasProblem}"
+                                             FontSize="9.5" Foreground="#a81e15"
+                                             TextAlignment="Center" TextWrapping="Wrap" />
+                                </StackPanel>
+                              </Grid>
                             </Border>
                           </DataTemplate>
                         </ItemsControl.ItemTemplate>
@@ -513,7 +513,9 @@
          读成「按下去了」，描边又被否掉了——所以这一格只靠手型光标说「能点」。 -->
     <Style Selector="Border.cell">
       <Setter Property="Background" Value="White" />
-      <!-- 上下压到 4：卡片高的大头是机器那 78，白边这里能省的全省了 -->
+      <!-- 正方：宽 99 是算出来的（栏宽 → 格子 → 外边距），高就照着写死 99。
+           名字一行两行都不改高度，图那一格自己伸缩去适应，见模板里的注释 -->
+      <Setter Property="Height" Value="99" />
       <Setter Property="Padding" Value="6,4,6,4" />
       <Setter Property="Margin" Value="0,0,8,8" />
       <Setter Property="CornerRadius" Value="2" />
@@ -542,18 +544,19 @@
     </Style>
     <Style Selector="Border.dev">
       <Setter Property="Padding" Value="6,6,6,4" />
-      <Setter Property="BorderThickness" Value="1.6" />
+      <!-- 1 不是 1.6：选中框要细。粗细两个状态得一样，不然选中的一刹那
+           设备会因为边框变宽而挪半像素，看着像抖了一下 -->
+      <Setter Property="BorderThickness" Value="1" />
       <Setter Property="CornerRadius" Value="4" />
       <Setter Property="BorderBrush" Value="Transparent" />
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
-    <!-- 台面上选中的设备：**只描一圈框，不填底**，框色走标题栏那支靛（Shell）。
+    <!-- 台面上选中的设备：**只描一圈框，不填底**，1px 的 #E1E1E1。
          填底那一版是把设备图整个染上一层色，机器本身什么颜色就看不准了。
-         框色试过属性栏底色 #eff1f3——那是「跟右边那块系上」的想法，可它离白
-         只差一点点，压在白画布上等于没描 -->
+         从前这圈是标题栏那支靛（Shell）、1.6 粗，太重。 -->
     <Style Selector="Border.dev.sel">
-      <Setter Property="BorderBrush" Value="{StaticResource Shell}" />
+      <Setter Property="BorderBrush" Value="#E1E1E1" />
       <Setter Property="Background" Value="Transparent" />
     </Style>
 
