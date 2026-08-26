@@ -279,7 +279,7 @@
           滚到顶时这 14px 落在台面块 16px 内边距里，只有底色（#F1F1F1）在那儿，
           化到透明露出的是页面留白的白——两色只差 14/255，看不出来。
         -->
-        <ScrollViewer Name="PropsScroll">
+        <ScrollViewer>
           <ScrollViewer.OpacityMask>
             <LinearGradientBrush StartPoint="0,0" EndPoint="0,14" SpreadMethod="Pad">
               <GradientStop Color="#00000000" Offset="0" />

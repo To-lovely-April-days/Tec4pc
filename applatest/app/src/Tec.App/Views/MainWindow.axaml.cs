@@ -80,12 +80,7 @@ public partial class MainWindow : Window
 
         _probe ??= PerfProbe.Attach(this, DiagLine);
 
-        if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
-        {
-            // 减负档：当场摘掉属性栏那层渐隐遮罩，看 Render 的 Avg 掉不掉
-            PerfProbe.ToggleLite();
-        }
-        else if (e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+        if (e.KeyModifiers.HasFlag(KeyModifiers.Shift))
         {
             _opaque = !_opaque;
             TransparencyLevelHint = new[]
@@ -99,7 +94,7 @@ public partial class MainWindow : Window
             PerfProbe.Overlays(this, _probe.Toggle());
         }
 
-        DiagLine.IsVisible = _probe.On || !_opaque || PerfProbe.Lite;   // 非默认档都露一句
+        DiagLine.IsVisible = _probe.On || !_opaque;   // 透明是非默认档，露出来提醒一句
         if (DiagLine.IsVisible) _probe.Refresh();
     }
 
