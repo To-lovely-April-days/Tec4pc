@@ -11,11 +11,19 @@
       <Setter Property="BorderThickness" Value="0,0,0,1" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
+    <!-- 悬停 / 选中走全局那一对（SelBg #A4D5F2 / HovBg #D5DDE4），
+         跟配方库那张表、跟展开的下拉列表是同一副样子——
+         「这一条是选中的」在一个程序里不该有第二种说法。
+         从前这儿是最浅的红 tint #FAF2F3 配中性灰 #F5F5F4。
+
+         **两条的先后不能反**：Avalonia 同优先级按源码顺序，后写的赢。
+         .sel 写在 :pointerover 后面，所以鼠标扫过选中那一行时它还是选中色，
+         不会一碰就褪成悬停色。 -->
     <Style Selector="Border.crow:pointerover">
-      <Setter Property="Background" Value="#f5f5f4" />
+      <Setter Property="Background" Value="{StaticResource HovBg}" />
     </Style>
     <Style Selector="Border.crow.sel">
-      <Setter Property="Background" Value="#faf2f3" />
+      <Setter Property="Background" Value="{StaticResource SelBg}" />
       <Setter Property="BorderBrush" Value="#ebece9" />
     </Style>
     <Style Selector="Border.crow TextBlock">
@@ -25,8 +33,11 @@
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
+    <!-- 选中行的字跟着底色一起回到正文黑：底不是红的了，字再红就没来由，
+         而且深红压在这层淡蓝上读着发闷。加粗留着——那是「这一条是选中的」
+         第二个说法，光靠底色一种在长表里容易看丢 -->
     <Style Selector="Border.crow.sel TextBlock">
-      <Setter Property="Foreground" Value="#7e0f1c" />
+      <Setter Property="Foreground" Value="{StaticResource SelTx}" />
       <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
     <Style Selector="Border.crow TextBlock.fx">
@@ -36,8 +47,10 @@
     <Style Selector="Border.crow TextBlock.note">
       <Setter Property="Foreground" Value="#757a7f" />
     </Style>
+    <!-- 分子式与备注平时各有各的灰，选中那一行统一成同一支字色：
+         一行里三种深浅的字，选中之后还各说各的，那一行就散了 -->
     <Style Selector="Border.crow.sel TextBlock.fx, Border.crow.sel TextBlock.note">
-      <Setter Property="Foreground" Value="#7e0f1c" />
+      <Setter Property="Foreground" Value="{StaticResource SelTx}" />
     </Style>
     <!-- 表头：11px + 字距，粘在顶部 -->
     <Style Selector="TextBlock.chd">
