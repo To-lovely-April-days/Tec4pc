@@ -163,6 +163,7 @@ public sealed class PerfProbe
         var mb = (GC.GetTotalAllocatedBytes(false) - _alloc0) / 1024.0 / 1024.0;
         return new StringBuilder()
             .Append("F12 自检 · 渲染 ").Append(Backend())
+            .Append(" · 出帧 ").Append(Timer())
             .Append(" · 透明 ").Append(_win.ActualTransparencyLevel)
             .Append(" · 窗口 ").Append($"{_win.Bounds.Width:0}×{_win.Bounds.Height:0}")
             .Append(" @ ").Append($"{_win.RenderScaling:0.##}×")
@@ -235,6 +236,38 @@ public sealed class PerfProbe
                 .GetMethod("GetService", new[] { typeof(Type) })?
                 .Invoke(current, new object?[] { iface });
             return svc is null ? "软件整窗重画" : "GPU 合成 · " + svc.GetType().Name;
+        }
+        catch
+        {
+            return "未知";
+        }
+    }
+
+    /// <summary>
+    /// 谁在定出帧的节奏。**这一格决定了「卡」有没有救。**
+    ///
+    /// 名字里带 WinUI / Composition / Vsync 的，是跟着显示器的垂直同步走的，
+    /// 帧距应该稳稳贴着 16.7 ms（60 Hz）。看到 SleepLoop / Default 就是
+    /// 「自己拿定时器数着出帧」——那条路要靠 1 ms 时钟粒度撑着才准，
+    /// 见 Program.SharpenTimer 那一段。
+    ///
+    /// 跟 Backend() 一样只能反射问，问不出来写「未知」。
+    /// </summary>
+    private static string Timer()
+    {
+        try
+        {
+            var locator = Type.GetType("Avalonia.AvaloniaLocator, Avalonia.Base");
+            var current = locator?
+                .GetProperty("Current", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)?
+                .GetValue(null);
+            var iface = Type.GetType("Avalonia.Rendering.IRenderTimer, Avalonia.Base");
+            if (current is null || iface is null) return "未知";
+
+            var svc = current.GetType()
+                .GetMethod("GetService", new[] { typeof(Type) })?
+                .Invoke(current, new object?[] { iface });
+            return svc?.GetType().Name ?? "未知";
         }
         catch
         {
