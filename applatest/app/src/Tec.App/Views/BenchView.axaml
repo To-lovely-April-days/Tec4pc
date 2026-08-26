@@ -261,7 +261,31 @@
           </StackPanel>
         </Border>
 
+        <!--
+          往下滚的时候，卷上去的那一行会被视口上沿**齐刷刷切一刀**——
+          常常只剩半截字贴在栏顶，看着不像「滚上去了」，像字漏到外面去了。
+          （上沿再往上是 6px 的页面留白和菜单栏，没有任何一条线兜着，所以更明显。）
+
+          所以给视口上沿蒙一道 14px 的渐隐：字滚到那儿是化开的，不是被切断的。
+          14 是照一行正文的高定的（12px 字、行高 15）——band 比一行矮的话，
+          半截字里只有上面几像素化开，下面仍是齐口，还是能看出被切过。
+          遮罩必须挂在 ScrollViewer 上、不能挂在里面的内容上——
+          遮罩按元素自己的坐标算，挂在内容上它会跟着内容一起滚走。
+
+          渐变端点写的是**绝对像素**（0,0 → 0,8），不是百分比：
+          栏高会变，百分比会让这道渐隐跟着忽宽忽窄。
+          SpreadMethod=Pad 保证 8px 以下全是实的。
+
+          滚到顶时这 14px 落在台面块 16px 内边距里，只有底色（#F1F1F1）在那儿，
+          化到透明露出的是页面留白的白——两色只差 14/255，看不出来。
+        -->
         <ScrollViewer>
+          <ScrollViewer.OpacityMask>
+            <LinearGradientBrush StartPoint="0,0" EndPoint="0,14" SpreadMethod="Pad">
+              <GradientStop Color="#00000000" Offset="0" />
+              <GradientStop Color="#FF000000" Offset="1" />
+            </LinearGradientBrush>
+          </ScrollViewer.OpacityMask>
           <StackPanel>
 
             <!-- ===== 台面块：**常驻**，选没选设备都在（GBG 的 Welcome 块就是这样）=====
