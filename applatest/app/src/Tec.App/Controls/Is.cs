@@ -21,9 +21,15 @@ public static class Is
     /// 那条 6px 选中色条：选中上主色，没选中透明。
     /// 用一列常在的 Border 而不是左边框——写成边框的话选中时内容会横跳 6px。
     /// </summary>
+    /// <summary>
+    /// 「当前选中的这一条」左边那道竖条（配方库两处：库列表 6px、步骤卡 3px）。
+    /// 从品牌红 #A41626 改成 #FFCF00：选中底色换成淡蓝 #ACC3DF 之后，
+    /// 一道红杠压在上头跟这一页别处的红（报错）撞意思；黄跟蓝是补色，
+    /// 一眼看得出「就是这一条」，又不会被读成「这一条出事了」。
+    /// </summary>
     public static readonly IValueConverter SelBar =
         new FuncValueConverter<bool, IBrush>(on =>
-            on ? new SolidColorBrush(Color.Parse("#a41626")) : Brushes.Transparent);
+            on ? new SolidColorBrush(Color.Parse("#FFCF00")) : Brushes.Transparent);
 
     public static readonly IValueConverter SelWeight =
         new FuncValueConverter<bool, FontWeight>(on => on ? FontWeight.SemiBold : FontWeight.Normal);
