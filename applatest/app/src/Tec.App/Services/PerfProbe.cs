@@ -180,7 +180,8 @@ public sealed class PerfProbe
             .Append(" · 排队 本秒 ").Append($"{qAvg:0.0}")
             .Append(" 最大 ").Append($"{_qWinMax:0}")
             .Append(" 全程最大 ").Append($"{_qMax:0}")
-            .Append(" ms · GC ").Append(GC.CollectionCount(0) - _gc0)
+            .Append(Lite ? " ms · 减负档：属性栏渐隐已摘 · GC " : " ms · GC ")
+            .Append(GC.CollectionCount(0) - _gc0)
             .Append('/').Append(GC.CollectionCount(1) - _gc1)
             .Append('/').Append(GC.CollectionCount(2) - _gc2)
             .Append(" · 已分配 ").Append($"{mb:0}").Append(" MB")
@@ -279,6 +280,43 @@ public sealed class PerfProbe
         {
             return "未知";
         }
+    }
+
+    // ── 减负档（Ctrl+F12）────────────────────────────────────────────
+    //
+    // **拿来当场问「这一样贵不贵」的开关。**
+    //
+    // 现场读数：登录窗 Render Avg 1.71 ms，配方页 Render Avg 8.29 ms、
+    // 最大 57.41 ms，帧距被顶到 20.6 ms（60 Hz 的一格是 16.7）。
+    // 同一台机器、同一个渲染后端，差的是**这一页画了什么**。排队 0.0 ms、
+    // GC 4/2/1，界面线程和内存都干净——贵的就是画面本身。
+    //
+    // 那一页上唯一一件「昂贵的合成动作」是属性栏顶沿那 14px 渐隐：
+    // 它是一层 OpacityMask，合成器得先把整条属性栏画进一张离屏图、
+    // 再按遮罩混一遍，**每帧都来一次**。属性栏在 1.5 倍缩放下是 450×1275 个
+    // 实际像素，这一遭不便宜。
+    //
+    // 早先在开发机上试过摘掉它，没量出差别——**但那台机器没有显卡**，
+    // 整窗重画本来就占了九成时间，离屏这点开销淹在里头了。有显卡的机器上
+    // 整窗合成几乎免费，离屏那一层就成了大头。所以那次「不是它」的结论
+    // 对现场不成立，得在现场重新问一次。
+    //
+    // 问法：Ctrl+F12 当场摘掉这层遮罩，看右上角 Render 的 Avg 掉不掉。
+    // 掉了就说明是它，我再想个不用离屏的画法（渐隐本身可以留）；
+    // 没掉就说明还在别处，继续找。**开关不改变任何数据，纯粹是画法。**
+    private static bool _lite;
+
+    /// <summary>减负档开着没有。属性栏那层渐隐遮罩跟着它走。</summary>
+    public static bool Lite => _lite;
+
+    /// <summary>减负档变了。两页属性栏各自听着，摘 / 挂自己那层遮罩。</summary>
+    public static event EventHandler? LiteChanged;
+
+    public static bool ToggleLite()
+    {
+        _lite = !_lite;
+        LiteChanged?.Invoke(null, EventArgs.Empty);
+        return _lite;
     }
 
     /// <summary>Avalonia 自带的那几个浮层（帧率、渲染耗时、布局耗时）跟着一起开关。</summary>

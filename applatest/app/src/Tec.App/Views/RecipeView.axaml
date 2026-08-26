@@ -845,7 +845,7 @@
            而是化开。跟台面页属性栏同一处理，那边的注释写得全，改这儿也去看那一段
            （BenchView.axaml，属性栏那个 ScrollViewer）。两页的属性栏是同一块东西，
            一处化开一处齐口的话，来回切菜单会看出差别 -->
-      <ScrollViewer>
+      <ScrollViewer Name="PropsScroll">
         <ScrollViewer.OpacityMask>
           <LinearGradientBrush StartPoint="0,0" EndPoint="0,14" SpreadMethod="Pad">
             <GradientStop Color="#00000000" Offset="0" />

@@ -1,13 +1,19 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Media;
 using Avalonia.Input;
+using Tec.App.Services;
 using Tec.App.ViewModels;
 
 namespace Tec.App.Views;
 
 public partial class BenchView : UserControl
 {
-    public BenchView() => InitializeComponent();
+    public BenchView()
+    {
+        InitializeComponent();
+        HookLite();
+    }
 
     private BenchViewModel? Vm => DataContext as BenchViewModel;
 
@@ -92,4 +98,21 @@ public partial class BenchView : UserControl
 
     /// <summary>「适应窗口」要知道可视区多大。</summary>
     private void OnStageSize(object? sender, SizeChangedEventArgs e) => Vm?.StageSize(e.NewSize);
+
+    // ── 减负档：属性栏顶沿那层渐隐 ──────────────────────────────────
+    //
+    // 那 14px 渐隐是一层 OpacityMask，合成器每帧都要把整条属性栏先画进离屏图
+    // 再混一遍。Ctrl+F12 当场摘掉它，好在现场量出它到底值多少毫秒
+    // （为什么要这么问，见 Services/PerfProbe 里「减负档」那一段）。
+    // 摘掉只是少一层渐隐，属性栏的内容一个字都不少。
+    private void HookLite()
+    {
+        _fade = PropsScroll.OpacityMask;
+        PerfProbe.LiteChanged += (_, _) => ApplyLite();
+        ApplyLite();
+    }
+
+    private IBrush? _fade;
+
+    private void ApplyLite() => PropsScroll.OpacityMask = PerfProbe.Lite ? null : _fade;
 }

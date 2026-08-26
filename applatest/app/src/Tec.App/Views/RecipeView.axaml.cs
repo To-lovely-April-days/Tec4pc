@@ -1,9 +1,11 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Media;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Tec.App.Services;
 using Tec.App.ViewModels;
 
 namespace Tec.App.Views;
@@ -13,6 +15,7 @@ public partial class RecipeView : UserControl
     public RecipeView()
     {
         InitializeComponent();
+        HookLite();
 
         // 走隧道阶段：左边的步骤库是 Button，它会把冒泡的 PointerPressed 吃掉，
         // 冒泡阶段再挂就收不到按下的位置了
@@ -203,4 +206,21 @@ public partial class RecipeView : UserControl
 
     private bool Inside(Visual v, Point at)
         => this.TranslatePoint(at, v) is { } p && new Rect(v.Bounds.Size).Contains(p);
+
+    // ── 减负档：属性栏顶沿那层渐隐 ──────────────────────────────────
+    //
+    // 那 14px 渐隐是一层 OpacityMask，合成器每帧都要把整条属性栏先画进离屏图
+    // 再混一遍。Ctrl+F12 当场摘掉它，好在现场量出它到底值多少毫秒
+    // （为什么要这么问，见 Services/PerfProbe 里「减负档」那一段）。
+    // 摘掉只是少一层渐隐，属性栏的内容一个字都不少。
+    private void HookLite()
+    {
+        _fade = PropsScroll.OpacityMask;
+        PerfProbe.LiteChanged += (_, _) => ApplyLite();
+        ApplyLite();
+    }
+
+    private IBrush? _fade;
+
+    private void ApplyLite() => PropsScroll.OpacityMask = PerfProbe.Lite ? null : _fade;
 }
