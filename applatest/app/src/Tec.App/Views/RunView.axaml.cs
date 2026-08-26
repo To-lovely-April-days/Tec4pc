@@ -10,11 +10,6 @@ public partial class RunView : UserControl
     public RunView()
     {
         InitializeComponent();
-        // 台面总览随周期刷新重画（数据在管线里，控件只管画）
-        var timer = new Avalonia.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(700) };
-        timer.Tick += (_, _) => Deck.Refresh();
-        timer.Start();
-
         DataContextChanged += (_, _) => Hook();
         Hook();
     }
@@ -24,6 +19,11 @@ public partial class RunView : UserControl
     /// <summary>
     /// 三块 pane 的折叠状态一变就重算列宽。
     /// ColumnDefinition 不在可视树上，拿不到 DataContext，绑不了——只能在这儿算。
+    ///
+    /// 台面总览的重画也挂在这儿：搭 RunViewModel 那趟表的车，不另起一个。
+    /// 从前这里自己起了一个 700ms 的 DispatcherTimer——一进过运行页就永远跳下去，
+    /// 翻到别的页也照跳，Deck 明明藏着还在一遍遍作废重画。
+    /// 那正是那个视图模型自己的注释里写着「没必要」的第二个表。
     /// </summary>
     private void Hook()
     {
@@ -33,13 +33,21 @@ public partial class RunView : UserControl
             _hooked.BenchPane.PropertyChanged -= OnPane;
             _hooked.TrendPane.PropertyChanged -= OnPane;
             _hooked.GanttPane.PropertyChanged -= OnPane;
+            _hooked.Ticked -= OnTicked;
         }
         _hooked = DataContext as RunViewModel;
         if (_hooked is null) return;
         _hooked.BenchPane.PropertyChanged += OnPane;
         _hooked.TrendPane.PropertyChanged += OnPane;
         _hooked.GanttPane.PropertyChanged += OnPane;
+        _hooked.Ticked += OnTicked;
         Layout();
+    }
+
+    /// <summary>台面总览随节拍重画（数据在管线里，控件只管画）。藏着的时候不画。</summary>
+    private void OnTicked(object? sender, EventArgs e)
+    {
+        if (IsEffectivelyVisible) Deck.Refresh();
     }
 
     private void OnPane(object? sender, PropertyChangedEventArgs e)

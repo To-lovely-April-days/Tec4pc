@@ -221,6 +221,10 @@ public sealed class MainViewModel : ViewModelBase
             // 配方页那枚校验 chip 现在也看配料表。配料表在另一页上改，
             // 切回来不重算的话，条上写的还是改之前那一版
             if (value == TabRecipe) Recipe.RefreshAll();
+            // 运行页那趟 700ms 心跳只在「它在前台」或「炉子真在跑」时才重算。
+            // 翻走之后曲线、甘特、事件行谁也不会变，重算一遍是白烧界面线程
+            // ——空转时九成的 CPU 在那儿（实测见 RunViewModel.Heavy 的注释）
+            Run.SetOnPage(value == TabRun);
             RaiseAll(nameof(IsStart), nameof(IsBench), nameof(IsRecipe), nameof(IsLib),
                      nameof(IsCompounds), nameof(IsCharge), nameof(IsRun), nameof(IsExport));
         }

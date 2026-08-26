@@ -381,9 +381,48 @@ public sealed class RunViewModel : ViewModelBase
         ws.BenchChanged += (_, _) => { SyncChannels(); Tick(); };
 
         _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(700) };
-        _timer.Tick += (_, _) => Tick();
+        _timer.Tick += (_, _) => { if (Heavy) Tick(); else Ticked?.Invoke(this, EventArgs.Empty); };
         _timer.Start();
         Tick();
+    }
+
+    /// <summary>运行页此刻是不是摆在前台。换页的地方（MainViewModel.Tab）写进来。</summary>
+    private bool _onPage;
+
+    /// <summary>
+    /// 这一跳要不要真去重算。
+    ///
+    /// **表一直按 700ms 跳，跳进来先问这一句。** 只有两种情况值得重算：
+    ///   · 运行页正摆在前台——曲线、甘特、事件行都在人眼前，秒秒都在变；
+    ///   · 引擎里还有活着的通道——人虽然翻到别的页去了，可炉子在跑，
+    ///     报警要照冒、翻回来那一下得是新的。
+    /// 两条都不成立时，这一跳能改的东西一样也没有：图冻在最后一格
+    /// （见 ChartNow）、没有新采样、不会凭空多出一条事件。重算一遍纯是白烧。
+    ///
+    /// 白烧的量实测过：什么都不点静置 19 s，重算这一路吃掉 83 jiffies，
+    /// 跳过之后是 8——**空转时九成的 CPU 在这里**。翻页也快一截：
+    /// 「开始 ↔ 配方」来回八趟从 153 掉到 76，正好一半。心跳是在界面线程上跳的，
+    /// 它占着的每一毫秒，点下去的那一下就得排在后面等。
+    ///
+    /// 跳过的那些跳并不是什么都不做：Ticked 照发。外壳那三颗运行控制圆钮
+    /// 挂在它上面，而它们看的是「有没有哪一路按下去会动」——配方页加一步
+    /// 就会变，那件事根本不惊动引擎（见 MainViewModel 里那段注释），
+    /// 所以这一路不能停，只是它本来就只有四个属性通知，便宜得多。
+    /// </summary>
+    private bool Heavy => _onPage || _ws.Engine.Runners.Any(
+        r => r.State is ChannelRunState.Running
+                     or ChannelRunState.Paused
+                     or ChannelRunState.Aborting);
+
+    /// <summary>
+    /// 换页的时候告诉它「运行页现在在不在前台」。翻**到**运行页那一下立刻重算一遍，
+    /// 不然人看到的是上次离开时那一张——中间可能已经跑完一炉了。
+    /// </summary>
+    public void SetOnPage(bool on)
+    {
+        if (_onPage == on) return;
+        _onPage = on;
+        if (on) Tick();
     }
 
     /// <summary>
