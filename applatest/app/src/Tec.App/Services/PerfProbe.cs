@@ -45,12 +45,12 @@ public sealed class PerfProbe
     private DispatcherTimer? _timer;
     private StreamWriter? _log;
 
-    // 队列排队
-    private double _qSum, _qMax, _qWin;
-    private int _qN;
-    // 帧距
-    private double _fSum, _fMax, _fWin;
-    private int _fN, _fSlowWin, _fSlowAll;
+    // 队列排队：全程一套，本秒一套
+    private double _qSum, _qMax, _qWinSum, _qWinMax;
+    private int _qN, _qWinN;
+    // 帧距：同上
+    private double _fSum, _fMax, _fWinSum, _fWinMax;
+    private int _fN, _fWinN, _fSlowWin, _fSlowAll;
     private TimeSpan _fLast;
     private bool _fFirst = true;
     // GC
@@ -82,9 +82,9 @@ public sealed class PerfProbe
 
     private void Start()
     {
-        _qSum = _qMax = _qWin = 0;
-        _fSum = _fMax = _fWin = 0;
-        _qN = _fN = _fSlowWin = _fSlowAll = _refresh = _seconds = 0;
+        _qSum = _qMax = _qWinSum = _qWinMax = 0;
+        _fSum = _fMax = _fWinSum = _fWinMax = 0;
+        _qN = _qWinN = _fN = _fWinN = _fSlowWin = _fSlowAll = _refresh = _seconds = 0;
         _fFirst = true;
         _gc0 = GC.CollectionCount(0);
         _gc1 = GC.CollectionCount(1);
@@ -102,10 +102,10 @@ public sealed class PerfProbe
             Dispatcher.UIThread.Post(() =>
             {
                 var wait = (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency;
-                _qSum += wait;
-                _qN++;
+                _qSum += wait; _qN++;
+                _qWinSum += wait; _qWinN++;
                 if (wait > _qMax) _qMax = wait;
-                if (wait > _qWin) _qWin = wait;
+                if (wait > _qWinMax) _qWinMax = wait;
             }, DispatcherPriority.Background);
 
             // 一秒结一次账：刷字、记一行日志、把「近 1 秒」那几个清零
@@ -115,8 +115,8 @@ public sealed class PerfProbe
             var text = Text();
             _line.Text = text;
             WriteLog(text);
-            _qWin = _fWin = 0;
-            _fSlowWin = 0;
+            _qWinSum = _qWinMax = _fWinSum = _fWinMax = 0;
+            _qWinN = _fWinN = _fSlowWin = 0;
         };
         _timer.Start();
         _line.Text = Text();
@@ -145,10 +145,10 @@ public sealed class PerfProbe
             // 一秒以上的间隔当作「中间停过」，不计进统计
             if (ms is > 0 and < 1000)
             {
-                _fSum += ms;
-                _fN++;
+                _fSum += ms; _fN++;
+                _fWinSum += ms; _fWinN++;
                 if (ms > _fMax) _fMax = ms;
-                if (ms > _fWin) _fWin = ms;
+                if (ms > _fWinMax) _fWinMax = ms;
                 if (ms > 32) { _fSlowWin++; _fSlowAll++; }   // 掉了一格（60 Hz）
             }
         }
@@ -158,8 +158,13 @@ public sealed class PerfProbe
 
     private string Text()
     {
-        var fAvg = _fN > 0 ? _fSum / _fN : 0;
-        var qAvg = _qN > 0 ? _qSum / _qN : 0;
+        // **平均一律按「这一秒」算，不按全程。**全程平均会被开头那几秒
+        // （建窗、建可视树、第一次布局）永久地拉高：现场读到帧距全程平均
+        // 18.5 ms，可那时候「本秒慢帧 0、排队最大 1 ms」——当下明明是顺的，
+        // 累计值却还挂着开头那笔账。断续的毛病要看的就是「此刻」
+        var fAvg = _fWinN > 0 ? _fWinSum / _fWinN : 0;
+        var qAvg = _qWinN > 0 ? _qWinSum / _qWinN : 0;
+        var fAll = _fN > 0 ? _fSum / _fN : 0;
         var mb = (GC.GetTotalAllocatedBytes(false) - _alloc0) / 1024.0 / 1024.0;
         return new StringBuilder()
             .Append("F12 自检 · 渲染 ").Append(Backend())
@@ -167,13 +172,14 @@ public sealed class PerfProbe
             .Append(" · 透明 ").Append(_win.ActualTransparencyLevel)
             .Append(" · 窗口 ").Append($"{_win.Bounds.Width:0}×{_win.Bounds.Height:0}")
             .Append(" @ ").Append($"{_win.RenderScaling:0.##}×")
-            .Append(" · 帧距 平均 ").Append($"{fAvg:0.0}")
-            .Append(" / 近 1 秒最大 ").Append($"{_fWin:0}")
-            .Append(" ms · 慢帧 近 1 秒 ").Append(_fSlowWin)
+            .Append(" · 帧距 本秒 ").Append($"{fAvg:0.0}")
+            .Append(" 最大 ").Append($"{_fWinMax:0}")
+            .Append(" 全程 ").Append($"{fAll:0.0}")
+            .Append(" ms · 慢帧 本秒 ").Append(_fSlowWin)
             .Append(" 全程 ").Append(_fSlowAll)
-            .Append(" · 排队 平均 ").Append($"{qAvg:0.0}")
-            .Append(" / 近 1 秒最大 ").Append($"{_qWin:0}")
-            .Append(" / 全程最大 ").Append($"{_qMax:0}")
+            .Append(" · 排队 本秒 ").Append($"{qAvg:0.0}")
+            .Append(" 最大 ").Append($"{_qWinMax:0}")
+            .Append(" 全程最大 ").Append($"{_qMax:0}")
             .Append(" ms · GC ").Append(GC.CollectionCount(0) - _gc0)
             .Append('/').Append(GC.CollectionCount(1) - _gc1)
             .Append('/').Append(GC.CollectionCount(2) - _gc2)
