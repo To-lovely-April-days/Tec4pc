@@ -124,19 +124,19 @@
         <SolidColorBrush x:Key="ComboBoxBorderBrushPressed" Color="#dddddd" />
 
         <!--
-          下拉展开后那一列选项：选中行 #ACC3DF，鼠标压在哪一行是 #D5DDE4。
+          下拉展开后那一列选项：选中行 #C0CAD3，鼠标压在哪一行是 #D5DDE4。
           从前两档都跟着 SystemAccentColor 走，于是选中行是品牌红铺满一条——
           一个「当前值是哪一个」的提示，重得像条报警。
 
-          三个「选中 + 还在动」的档也钉成 #ACC3DF：选中那一行不管鼠标在不在上面、
+          三个「选中 + 还在动」的档也钉成 #C0CAD3：选中那一行不管鼠标在不在上面、
           按没按下去，都还是同一个色，不会一碰就褪成没选中的样子。
-          没选中的行按下去先给 #ACC3DF，等于「松手它就是这个色」的预告。
+          没选中的行按下去先给 #C0CAD3，等于「松手它就是这个色」的预告。
         -->
-        <SolidColorBrush x:Key="ComboBoxItemBackgroundSelected" Color="#acc3df" />
-        <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedPointerOver" Color="#acc3df" />
-        <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedPressed" Color="#acc3df" />
+        <SolidColorBrush x:Key="ComboBoxItemBackgroundSelected" Color="#c0cad3" />
+        <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedPointerOver" Color="#c0cad3" />
+        <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedPressed" Color="#c0cad3" />
         <SolidColorBrush x:Key="ComboBoxItemBackgroundPointerOver" Color="#d5dde4" />
-        <SolidColorBrush x:Key="ComboBoxItemBackgroundPressed" Color="#acc3df" />
+        <SolidColorBrush x:Key="ComboBoxItemBackgroundPressed" Color="#c0cad3" />
 
       </ResourceDictionary>
       <ResourceDictionary x:Key="Dark">
@@ -220,19 +220,19 @@
         <SolidColorBrush x:Key="ComboBoxBorderBrushPressed" Color="#dddddd" />
 
         <!--
-          下拉展开后那一列选项：选中行 #ACC3DF，鼠标压在哪一行是 #D5DDE4。
+          下拉展开后那一列选项：选中行 #C0CAD3，鼠标压在哪一行是 #D5DDE4。
           从前两档都跟着 SystemAccentColor 走，于是选中行是品牌红铺满一条——
           一个「当前值是哪一个」的提示，重得像条报警。
 
-          三个「选中 + 还在动」的档也钉成 #ACC3DF：选中那一行不管鼠标在不在上面、
+          三个「选中 + 还在动」的档也钉成 #C0CAD3：选中那一行不管鼠标在不在上面、
           按没按下去，都还是同一个色，不会一碰就褪成没选中的样子。
-          没选中的行按下去先给 #ACC3DF，等于「松手它就是这个色」的预告。
+          没选中的行按下去先给 #C0CAD3，等于「松手它就是这个色」的预告。
         -->
-        <SolidColorBrush x:Key="ComboBoxItemBackgroundSelected" Color="#acc3df" />
-        <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedPointerOver" Color="#acc3df" />
-        <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedPressed" Color="#acc3df" />
+        <SolidColorBrush x:Key="ComboBoxItemBackgroundSelected" Color="#c0cad3" />
+        <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedPointerOver" Color="#c0cad3" />
+        <SolidColorBrush x:Key="ComboBoxItemBackgroundSelectedPressed" Color="#c0cad3" />
         <SolidColorBrush x:Key="ComboBoxItemBackgroundPointerOver" Color="#d5dde4" />
-        <SolidColorBrush x:Key="ComboBoxItemBackgroundPressed" Color="#acc3df" />
+        <SolidColorBrush x:Key="ComboBoxItemBackgroundPressed" Color="#c0cad3" />
 
       </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>
@@ -267,16 +267,19 @@
 
     <!-- 选中态四件套：实线边 / 底色 / 柔环 / 选中行的字色。
 
-         **底色跟下拉列表统一**：选中 #ACC3DF、悬停 #D5DDE4，
-         跟展开的下拉里那两档一模一样（见主题字典里 ComboBoxItemBackground*）。
-         两处必须一起改——这两支笔存在的全部意义就是「同一个程序里选中只有一副样子」。
-         从前选中是最浅的红 tint #FAF2F3、悬停是中性灰 #F0F0EE——
-         同一个程序里「这一条是选中的」不该在下拉里是一副样子、在列表里是另一副。
+         选中 #A4D5F2、悬停 #D5DDE4。从前选中是最浅的红 tint #FAF2F3、
+         悬停是中性灰 #F0F0EE——「这一条是选中的」不该在程序里是一副红样子。
+
+         **底色跟下拉列表不是同一支**：下拉那一列选项自己钉死在 #C0CAD3
+         （见主题字典里 ComboBoxItemBackground*），列表这边比它更亮更蓝。
+         两处曾经短暂统一过，实际看下来不合适：下拉是一列窄行、露脸半秒就收，
+         底重一点才压得住；列表是整页常驻的一条，同样的重量看久了发闷。
+         所以这两支笔各走各的，**改一支不要顺手改另一支**。
 
          选中行的字跟着从深红 #7E0F1C 回到正文黑：底不是红的了，字再红就没来由，
          而且深红压在这层淡蓝上读着发闷。 -->
     <SolidColorBrush x:Key="SelBd" Color="#a41626" />
-    <SolidColorBrush x:Key="SelBg" Color="#acc3df" />
+    <SolidColorBrush x:Key="SelBg" Color="#a4d5f2" />
     <SolidColorBrush x:Key="SelRing" Color="#38a41626" />
     <SolidColorBrush x:Key="SelTx" Color="#1b1b1b" />
     <!-- 属性栏里那条 6px 左竖条（台面 / 配方 / 配方库共四处）。

@@ -155,11 +155,15 @@ public sealed class RecipeProfileView : Control
         }
 
         // ── 色带：一步一段，点它选中那一步 ────────────────────────────
-        // 选中 / 悬停都是蓝的（跟全局那一套一致），靠深浅与两条边线分开：
-        // 悬停只上一层很淡的底，选中除了底色还画左右两条实线
+        // 选中的那一段铺 #EDFEEF（很淡的绿），悬停仍是一层更淡的红 tint：
+        // 两个态本来就靠深浅分不开——都是「浅色底」——改成一绿一红，
+        // 加上选中还画左右两条实线，扫一眼就知道哪段是点住的、哪段只是路过。
+        //
+        // 选中这一支是**不透明**的：它盖的是白底画布，透明度只会把它冲淡；
+        // 悬停那支保持带透明度，因为它可能压在已经铺了色的选中段旁边。
         var sep = new Pen(Brush("#f0f0f0"), 1);
         var hovFill = Brush("#a41626", 0.08);
-        var selFill = Brush("#a41626", 0.16);
+        var selFill = Brush("#edfeef");
         var selEdge = new Pen(Brush("#a41626"), 1);
         var num = Brush("#c2c2c2");
         var numOn = Brush("#a41626");
