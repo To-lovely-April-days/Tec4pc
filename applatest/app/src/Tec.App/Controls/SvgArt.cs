@@ -206,9 +206,7 @@ public sealed class SvgArt
                 {
                     var d = el.Attribute("d")?.Value;
                     if (string.IsNullOrWhiteSpace(d)) break;
-                    Geometry geo;
-                    try { geo = Geometry.Parse(d); }
-                    catch { break; }
+                    if (Path(d) is not { } geo) break;
                     ctx.DrawGeometry(fill, pen, geo);
                     break;
                 }
@@ -243,6 +241,36 @@ public sealed class SvgArt
             pushedTransform?.Dispose();
             pushedOpacity?.Dispose();
         }
+    }
+
+    /// <summary>
+    /// path 的 d 串 → Geometry，**认串缓存**。
+    ///
+    /// 从前每次 Render 都现解析一遍：Geometry.Parse 是把一条 "M 12,3 L…" 的
+    /// 字符串重新走一遍语法、重新建一份几何。而 Render 是**重画就调**——
+    /// 鼠标扫过谁、谁被作废一次，就重新解析一遍。一枚指令图标里十来条 path，
+    /// 一栏三十一枚，鼠标划过去一趟就是几千次无谓的字符串解析，
+    /// 外加同样多份短命的几何对象喂给 GC。
+    ///
+    /// 几何是不动的，认串缓存就够：同一条 d 串永远出同一份几何，
+    /// 大小写、空格都一模一样才算同一条（Ordinal）。缓存的是形状，
+    /// 不是颜色、不是缩放——那两样每次照旧现算，画出来一个像素不差。
+    ///
+    /// 解析不出来的（不该有，但 SVG 是外面来的）记一个 null 进去，
+    /// 免得一条坏串每帧都去撞一次异常。
+    ///
+    /// 只在界面线程上碰（Render / Measure 都是），所以不用锁。
+    /// </summary>
+    private static readonly Dictionary<string, Geometry?> Paths = new(StringComparer.Ordinal);
+
+    private static Geometry? Path(string d)
+    {
+        if (Paths.TryGetValue(d, out var hit)) return hit;
+        Geometry? geo;
+        try { geo = Geometry.Parse(d); }
+        catch { geo = null; }
+        Paths[d] = geo;
+        return geo;
     }
 
     private IBrush? FillBrush(XElement el, Paint paint, Style style, string? run)
@@ -398,6 +426,10 @@ public sealed class SvgArt
             geo.Transform = new MatrixTransform(m);
         return geo;
 
+        // **这一条不走缓存。**下面几行会往返回的几何上挂 Transform，
+        // 而缓存里那一份是所有人共用的——挂上去就把别人的形状一起改了。
+        // 这条路只服务 clip-path（每张图至多一两处，还不是每帧都走），
+        // 不值得为它去做一份可变的副本
         static Geometry? Safe(string d)
         {
             try { return Geometry.Parse(d); }
