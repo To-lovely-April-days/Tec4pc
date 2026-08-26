@@ -7,6 +7,7 @@ using Avalonia.Rendering;
 using Avalonia.Threading;
 using System.Diagnostics;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using Tec.App.ViewModels;
 
 namespace Tec.App.Views;
@@ -21,7 +22,44 @@ public partial class MainWindow : Window
         InitializeComponent();
         // 隧道阶段挂：F12 在输入框里按下时也要收得到，冒泡上来之前就可能被吃掉
         AddHandler(KeyDownEvent, OnDiagKey, RoutingStrategies.Tunnel);
+        // 句柄要等窗口真的建出来才有
+        Opened += (_, _) => RoundCornersOnWindows11();
     }
+
+    /// <summary>
+    /// 让 Windows 11 把这扇窗的四角切圆。
+    ///
+    /// **这是「不透明窗」的配套。**从前圆角是自己裁的：整扇窗开透明通道，
+    /// 里面用一个 8px 圆角的 Border 兜住内容，外面那一圈露桌面。代价是
+    /// 每一帧 DWM 都要按 alpha 混合整窗——现场实测就是这一条把鼠标拖卡的。
+    /// 窗改成不透明之后自己就不能再裁了（裁了就是四个白角），
+    /// 圆角这件事交回给系统：DWMWA_WINDOW_CORNER_PREFERENCE = DWMWCP_ROUND，
+    /// 它削的是整扇窗，我们里面照旧画方的。
+    ///
+    /// Windows 11（22000+）才有这个属性；Windows 10 和别的系统上这一句
+    /// 直接失败，那就是方角——跟那些系统上别的程序一样，本来也没有圆角。
+    /// 所以整段包在 try 里，失败不管：它只关乎四个角好不好看。
+    /// </summary>
+    private void RoundCornersOnWindows11()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        try
+        {
+            if (TryGetPlatformHandle()?.Handle is not { } h || h == IntPtr.Zero) return;
+            var round = DwmWindowCornerRound;
+            DwmSetWindowAttribute(h, DwmWindowCornerPreference, ref round, sizeof(int));
+        }
+        catch
+        {
+            // 老系统没有这个属性，方角就方角
+        }
+    }
+
+    private const int DwmWindowCornerPreference = 33;   // DWMWA_WINDOW_CORNER_PREFERENCE
+    private const int DwmWindowCornerRound = 2;         // DWMWCP_ROUND
+
+    [DllImport("dwmapi.dll", ExactSpelling = true)]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
 
     // ── 性能自检（F12 / Shift+F12）─────────────────────────────────────
     //
@@ -36,10 +74,13 @@ public partial class MainWindow : Window
     //   · 每帧实际用了多少毫秒（Avalonia 自带的 Fps / RenderTimeGraph 浮层）。
     //     16.7 ms 是 60 Hz 的一格，Avg 越过它就是人能感觉到的顿。
     //
-    // Shift+F12 是给「窗口透明」单独留的开关。这扇窗为了 8px 圆角整个是
-    // 带透明通道的（TransparencyLevelHint=Transparent + 自绘标题栏），
-    // 在 Windows 上这意味着 DWM 每帧都要把整窗混合一遍。值不值这个圆角，
-    // 按一下就知道——切成不透明，圆角同时没了，这是同一件事的两面。
+    // Shift+F12 把窗口在「不透明」和「透明」之间切。
+    //
+    // **这个开关已经把病因问出来了。**从前这扇窗为了 8px 圆角整个带透明通道，
+    // 现场按下 Shift+F12 切成不透明，鼠标当场「顺了很多」——一句话定案。
+    // 所以默认已经改成不透明（见 axaml 顶上那段），圆角交给 Windows 自己切。
+    // 开关留着，是为了下次再有人说卡时能立刻回到透明那一档对照一下：
+    // 同一套操作、只差这一个变量，比什么日志都快。
     //
     // **Fps / Render / Layout 三个浮层量的都是渲染线程那一头。**现场两次回来的数：
     //
@@ -59,7 +100,7 @@ public partial class MainWindow : Window
     // 换页那几帧，不是「鼠标划着的时候」。要抓那一刻，得**正卡着的时候截图**，
     // 看下面那个「近 1 秒最大」。
     private bool _diag;
-    private bool _opaque;
+    private bool _opaque = true;    // 窗口默认不透明，见上
     private DispatcherTimer? _lagTimer;
     private double _qMax, _qMaxWin, _qSum;
     private int _qN, _refresh;
@@ -89,7 +130,7 @@ public partial class MainWindow : Window
             if (_diag) StartLagMeter(); else StopLagMeter();
         }
 
-        DiagLine.IsVisible = _diag || _opaque;
+        DiagLine.IsVisible = _diag || !_opaque;   // 透明是非默认档，露出来提醒一句
         if (DiagLine.IsVisible) DiagLine.Text = DiagText();
     }
 

@@ -6,16 +6,28 @@
         Title="TecStudio 平行合成工作站 - PSW-4"
         Width="1500" Height="940" MinWidth="1280" MinHeight="720"
         FontFamily="{StaticResource UiFont}" FontSize="12"
-        Foreground="#303337" Background="Transparent"
-        TransparencyLevelHint="Transparent"
+        Foreground="#303337" Background="White"
+        TransparencyLevelHint="None"
         ExtendClientAreaToDecorationsHint="True"
         ExtendClientAreaChromeHints="NoChrome"
         ExtendClientAreaTitleBarHeightHint="-1">
 
   <!--
-    窗口圆角自绘：Windows 11 的 DWM 只给还原态窗口加圆角，最大化一律方角，
-    应用改不了它的行为——所以圆角由这里裁。裁多少见下面 Window.Styles 里
-    那两条：还原态 8，最大化 0（跟 DWM 的行为一致，也不会从四角漏出桌面）。
+    **这扇窗是不透明的，圆角交给 Windows 自己去切。**
+
+    从前不是：为了自己裁一圈 8px 圆角，整扇窗开了透明通道
+    （TransparencyLevelHint=Transparent + Background=Transparent），
+    于是每一帧 DWM 都要把整窗按 alpha 混合一遍。现场那台 1500×940 @1.5×
+    ——实际 2250×1410 个像素——鼠标一动就卡，切成不透明当场就顺了
+    （见 MainWindow.axaml.cs 顶上那段自检的记录）。一圈 8px 的圆角，
+    换整台机器的手感，不值。
+
+    圆角没丢：Windows 11 的 DWM 本来就会给窗口切圆角，代码里按
+    DWMWA_WINDOW_CORNER_PREFERENCE 明说一句「切圆的」（见 axaml.cs 的
+    RoundCornersOnWindows11）。它切的是**整扇窗**，所以我们自己这一层
+    不用也不该再裁——里面照旧画方的，外面那一圈由系统削。
+    Windows 10 上没有这套 API，那就是方角，跟那个系统上别的程序一样。
+
     OffScreenMargin 是最大化时窗口超出工作区的那一圈（自绘标题栏必须自己补），
     不补的话四边各有几像素内容跑到屏幕外面。
   -->
@@ -305,18 +317,10 @@
 
   <Window.Styles>
     <!--
-      窗口圆角。**不能写成 Border 上的内联属性**：内联值压得过样式，
-      写在标签上之后最大化那条规则永远上不了。
-      两条的先后不能反：Avalonia 同优先级按源码顺序，后写的赢。
+      这里从前有两条给 Border#Shell 裁圆角的规则（还原态 8、最大化 0）。
+      两条一起撤了：圆角改由 Windows 自己切（见文件顶上那段），
+      我们这一层再裁一次只会在不透明的窗上留四个白角。
     -->
-    <Style Selector="Border#Shell">
-      <Setter Property="CornerRadius" Value="8" />
-    </Style>
-    <!-- 最大化：四角切平。窗口这时候是贴着屏幕边的，圆角会把桌面从四个角
-         露出来——那是「窗口没铺满」的样子，跟最大化要表达的正相反 -->
-    <Style Selector="Window[WindowState=Maximized] Border#Shell">
-      <Setter Property="CornerRadius" Value="0" />
-    </Style>
 
     <!-- 标题栏左上那两个图标按钮：只有指针悬停时才显出底色，平时和标题栏一体 -->
     <Style Selector="Button.tbico">
