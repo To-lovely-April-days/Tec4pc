@@ -852,7 +852,37 @@
       </Setter>
     </Style>
 
+    <!--
+      那一笔勾加粗。
 
+      Fluent 那个勾是**填充**出来的（Path 只有 Fill，Data 是勾的外轮廓，
+      由主题按状态往 Path#CheckGlyph 上写），所以没有「线宽」可调。
+      加粗的办法是在同一条路径上再描一道边：描边骑在轮廓线上，
+      一半朝外一半朝内，1.4 的线宽等于整笔胖了 1.4。
+      比换一份更粗的 Data 稳——Data 仍旧由 Fluent 按状态给，
+      勾没勾 / 能不能点这些逻辑一点不用碰。
+
+      描边颜色得跟着 Fill 分状态给，不能在模板里写死：
+      写死黑的话，禁用又勾着的那种（导出页灰掉的数据项）会是「灰勾 + 黑边」。
+      没勾的时候整个 Path 的 Opacity 是 0（Fluent 缺省如此），描边跟着一起看不见。
+    -->
+    <Style Selector="CheckBox /template/ Path#CheckGlyph">
+      <Setter Property="StrokeThickness" Value="1.4" />
+      <Setter Property="StrokeJoin" Value="Round" />
+      <Setter Property="StrokeLineCap" Value="Round" />
+    </Style>
+    <Style Selector="CheckBox:checked /template/ Path#CheckGlyph">
+      <Setter Property="Stroke" Value="{DynamicResource CheckBoxCheckGlyphForegroundChecked}" />
+    </Style>
+    <Style Selector="CheckBox:checked:pointerover /template/ Path#CheckGlyph">
+      <Setter Property="Stroke" Value="{DynamicResource CheckBoxCheckGlyphForegroundCheckedPointerOver}" />
+    </Style>
+    <Style Selector="CheckBox:checked:pressed /template/ Path#CheckGlyph">
+      <Setter Property="Stroke" Value="{DynamicResource CheckBoxCheckGlyphForegroundCheckedPressed}" />
+    </Style>
+    <Style Selector="CheckBox:checked:disabled /template/ Path#CheckGlyph">
+      <Setter Property="Stroke" Value="{DynamicResource CheckBoxCheckGlyphForegroundCheckedDisabled}" />
+    </Style>
 
     <!-- 会丢数据的那种圆钮：描边染红，指上去也是红的，不跟别的钮一样变蓝。
          按之前一定会弹框问一遍，但在按之前就该看出来这颗跟旁边那几颗不是一回事。
