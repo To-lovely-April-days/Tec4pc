@@ -684,6 +684,19 @@ public sealed class RecipeViewModel : ViewModelBase
     /// <summary>面板里当下显示的那几行（受「仅错误」开关过滤）。</summary>
     public ObservableCollection<IssueRow> PanelRows { get; } = new();
 
+    /// <summary>
+    /// 上面那几行按通道分好组的样子。面板列的是四条泳道的事，
+    /// 从前每一行右边挂一枚「机A · CH1」的小牌子说自己属于谁——
+    /// 同一条通道连着五行，那块牌子就重复五遍，而且行是可点的，
+    /// 牌子和「定位」挤在同一侧，右半边很闹。
+    /// 改成一条通道一个组头：通道名只说一次，还能顺带报这条通道各有几错几提醒。
+    /// </summary>
+    public ObservableCollection<IssueGroup> PanelGroups { get; } = new();
+
+    /// <summary>分段控件上那两个数。灰着摆在字后面，不点开也知道各有多少条。</summary>
+    public string AllCountText => Problems.Count.ToString();
+    public string ErrCountText => ErrorCount.ToString();
+
     public int ErrorCount => Problems.Count(p => p.IsError);
     public int WarnCount => Problems.Count - ErrorCount;
     public bool HasErrors => ErrorCount > 0;
@@ -737,11 +750,22 @@ public sealed class RecipeViewModel : ViewModelBase
         PanelRows.Clear();
         foreach (var r in Problems)
             if (!_onlyErrors || r.IsError) PanelRows.Add(r);
+
+        // 分组：通道号从小到大。组**内**照旧是「错误在前」——
+        // Problems 本来就那么排着，Where 是稳定的，顺序原样带过来
+        PanelGroups.Clear();
+        foreach (var ch in PanelRows.Select(r => r.Channel).Distinct().OrderBy(x => x))
+        {
+            var rows = PanelRows.Where(r => r.Channel == ch).ToList();
+            PanelGroups.Add(new IssueGroup(rows[0].ChannelLabel, IssueGroup.ColorOf(ch), rows));
+        }
+
         // 一条问题都没有了就自己收起来：改完最后一处还挂着一块空面板，
         // 人会以为它没刷新。这也让下面那句空态话只可能出现在「仅错误」筛下
         if (Problems.Count == 0) PanelOpen = false;
         RaiseAll(nameof(AllTab), nameof(OnlyErrors), nameof(PanelEmpty),
-                 nameof(PanelEmptyAll), nameof(PanelEmptyText));
+                 nameof(PanelEmptyAll), nameof(PanelEmptyText),
+                 nameof(AllCountText), nameof(ErrCountText));
     }
 
     /// <summary>「仅错误」筛完一条不剩：说一句，别留一块空白让人以为没加载出来。</summary>
@@ -1738,11 +1762,49 @@ public sealed record IssueRow(ValidationIssue Issue, int Channel, string Channel
 {
     public bool IsError => Issue.Level == IssueLevel.Error;
     public string Text => Issue.Message;
-    public string Dot => IsError ? "#a81e15" : "#dba32c";
+    /// <summary>
+    /// 行首那枚 15px 的圆「!」。从前是一颗 8px 实心小点——
+    /// 点只说得出「这里有一条」，说不出严重到什么程度；
+    /// 圆圈里那个「!」跟步骤卡上的徽记、chip 上的记号是同一个形，认得出是一家。
+    /// 红底配白字、琥珀底配深棕字：琥珀上压白字读不动。
+    /// </summary>
+    public string BadgeBg => IsError ? "#C42B1C" : "#DA9E00";
+    public string BadgeInk => IsError ? "#FFFFFF" : "#4A3200";
     public string? Hint => IssueHints.Of(Issue.Code);
     public bool HasHint => Hint is not null;
     /// <summary>能定位到具体某一步的才可点。</summary>
     public bool CanGo => Issue.StepId is not null;
+}
+
+/// <summary>
+/// 校验面板里的一组：同一条通道的问题归在一个组头底下。
+/// 组头自己报这条通道有几错几提醒——不用挨行数。
+/// </summary>
+public sealed class IssueGroup
+{
+    public IssueGroup(string channelLabel, string colorHex, IReadOnlyList<IssueRow> rows)
+    {
+        ChannelLabel = channelLabel;
+        ColorHex = colorHex;
+        Rows = rows;
+        var e = rows.Count(r => r.IsError);
+        var w = rows.Count - e;
+        var parts = new List<string>(2);
+        if (e > 0) parts.Add($"{e} 错误");
+        if (w > 0) parts.Add($"{w} 提醒");
+        CountText = string.Join(" · ", parts);
+    }
+
+    public string ChannelLabel { get; }
+    /// <summary>通道色，跟台面通道总表、报警页、导出页同一套四色。</summary>
+    public string ColorHex { get; }
+    public string CountText { get; }
+    public IReadOnlyList<IssueRow> Rows { get; }
+
+    public static string ColorOf(int channel) => channel switch
+    {
+        1 => "#2f7ed8", 2 => "#2aa87a", 3 => "#c9772b", _ => "#8a63d2"
+    };
 }
 
 /// <summary>
