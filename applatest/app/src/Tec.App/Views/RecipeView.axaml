@@ -552,14 +552,11 @@
                                    左上一枚 27px 红方块图标，右边整句描述；底下一条
                                    1px #dedede 把「这一步做什么」和「什么时候做」分开。
 
-                                   里面那层 stepwrap 是原型那个 3px padding 的壳：
-                                   选中环画在壳的外沿，卡片自己的宽度不变，
-                                   描述不会因为选中而重新折行。
-
-                                   选中环是一条 Rectangle 不是 Border 的描边：
-                                   要的是黑色虚线，而 Border 的 BorderBrush 画不出虚线，
-                                   只有 Shape 才有 StrokeDashArray。它铺在卡片之上，
-                                   所以必须 IsHitTestVisible=False，不然点不着底下的卡。
+                                   里面那层 stepwrap 是原型那个 3px padding 的壳，
+                                   卡片四周那 5px 的空当就是它撑的（padding 3 + 描边 2，
+                                   描边不着色）。选中环从前画在这层壳的外沿，
+                                   现在选中改成卡片自己那圈描边了，壳只剩下留白这一个作用——
+                                   留着是因为卡片的宽高、卡与卡之间的疏密全靠它，去掉版面就变了。
 
                                    竖排模块名去掉了：描述本来就是一整句工艺语句，
                                    模块名在里头基本重复。模块身份留在左边那条 6px 色条上。 -->
@@ -568,7 +565,7 @@
                                      PointerPressed="OnStepPressed">
                               <Border Classes="stepwrap">
                                 <Border Classes="step"
-                                        Classes.stepErr="{Binding HasStepError}">
+                                        Classes.stepSel="{Binding IsSelected}">
                                 <Grid ColumnDefinitions="6,*">
                                   <Border Grid.Column="0" Background="{Binding ModuleColor}" />
                                   <!-- 第一行留星号：卡片有最小高度，多出来的空当落在这一行，
@@ -638,7 +635,6 @@
                                 </Grid>
                                 </Border>
                               </Border>
-                              <Rectangle Classes="selring" IsVisible="{Binding IsSelected}" />
                               </Panel>
                               </StackPanel>
                             </StackPanel>
@@ -1173,8 +1169,10 @@
          最小高度 75 = 上下 1px 描边 + 6 + 图标 27 + 6 + 分隔线 1 + 3 + 删除钮 24 + 5 -->
     <Style Selector="Border.step">
       <Setter Property="MinHeight" Value="75" />
+      <!-- 粗细恒为 1、平时不着色。**不能改成 0**：粗细一变，卡片的内容盒跟着变，
+           选中那一刻描述会重新折行、卡片抖一下。所以「没有边框」是画一圈透明的 -->
       <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="BorderBrush" Value="#5cbfe0" />
+      <Setter Property="BorderBrush" Value="Transparent" />
       <Setter Property="Cursor" Value="Hand" />
       <!-- 实底 #82dcfe（甲方给的），不是从前那道白→灰的渐变：
            渐变是拿来在白画布上「浮」一张白卡的，卡本身有颜色之后，
@@ -1183,6 +1181,11 @@
     </Style>
     <Style Selector="Border.step:pointerover">
       <Setter Property="Background" Value="#6ad2f8" />
+    </Style>
+    <!-- 选中：卡片自己那圈描边染黑。**必须排在 Border.step 后面**——
+         Avalonia 的样式按源码顺序决胜，不看选择器谁更具体 -->
+    <Style Selector="Border.step.stepSel">
+      <Setter Property="BorderBrush" Value="#000000" />
     </Style>
 
     <!-- 泳道头里的输入：原型 .hsel，22 高、白底、#a9adb1 描边 -->
@@ -1508,30 +1511,16 @@
       <Setter Property="Background" Value="Transparent" />
     </Style>
 
-    <!-- 选中环：黑色虚线，铺在卡片之上。
-         用 Rectangle 而不是 Border 的描边，因为 Border 画不出虚线
-         （StrokeDashArray 是 Shape 才有的）。Shape 的 dash 单位是描边宽度的倍数，
-         2,1.6 配 2px 就是 4px 实、3.2px 虚。
-         底下垫一层 5% 的黑：四条泳道并排时只有一圈 2px 的线太细，
-         扫一眼分不出选中的是哪张。
+    <!--
+      步骤卡的描边只说一件事：**这一张是不是当前选中的**。见上面 Border.step.stepSel。
 
-         「哪一步」用这圈虚线说，「哪一条通道」不再另画一圈——
-         整条泳道框一圈黑实线太重，去掉了（见 laneSel）。 -->
-    <Style Selector="Rectangle.selring">
-      <Setter Property="Stroke" Value="#17191c" />
-      <Setter Property="StrokeThickness" Value="2" />
-      <Setter Property="StrokeDashArray" Value="2,1.6" />
-      <Setter Property="Fill" Value="#0d000000" />
-      <!-- 描边是骑在几何边线上画的，一半在外——留 1px 让它整条落在盒子里 -->
-      <Setter Property="Margin" Value="1" />
-      <Setter Property="IsHitTestVisible" Value="False" />
-    </Style>
-
-    <!-- 出错只换描边、不染底：一条配方里出错的常常是好几步，每张都染一层粉，
-         整条泳道会糊成一片红，反倒看不出哪张是当前选中的那一张。
-         这条红跟选中那圈黑虚线互不相干，可以同时出现在一张卡上 -->
-    <Style Selector="Border.step.stepErr">
-      <Setter Property="BorderBrush" Value="#d93025" />
-    </Style>
+      去掉的两条，记在这儿免得又加回来：
+      · 选中环（Rectangle.selring）——黑虚线 2px + 5% 黑铺底，盖在卡片之上。
+        现在选中改成卡片自己那圈描边染黑，一条实线，不再另铺一层。
+      · 出错红框（Border.step.stepErr）——描边染 #d93025。
+        「这一步有事」改由卡片右上那枚红色感叹号徽记单说（它本来就在，
+        还带 ToolTip 说得出是什么事）；描边腾出来专给选中用，
+        一张卡上不会再同时挂两种意思的框。
+    -->
   </UserControl.Styles>
 </UserControl>

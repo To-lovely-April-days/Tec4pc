@@ -292,19 +292,19 @@ public sealed class StepViewModel : ViewModelBase
     public string? IssueTip
     {
         get => _issueTip;
-        set { if (Set(ref _issueTip, value)) RaiseAll(nameof(HasIssue), nameof(IssueWarn), nameof(HasStepError)); }
+        set { if (Set(ref _issueTip, value)) RaiseAll(nameof(HasIssue), nameof(IssueWarn)); }
     }
 
-    /// <summary>挂着的问题里有 Error。只有提醒的那些不描红边——它不挡启动。</summary>
+    /// <summary>挂着的问题里有 Error（徽记染红还是染琥珀就看它）。</summary>
     public bool IssueIsError
     {
         get => _issueIsError;
-        set { if (Set(ref _issueIsError, value)) RaiseAll(nameof(IssueWarn), nameof(HasStepError)); }
+        set { if (Set(ref _issueIsError, value)) Raise(nameof(IssueWarn)); }
     }
 
     public bool HasIssue => _issueTip is not null;
     public bool IssueWarn => HasIssue && !_issueIsError;
-    public bool HasStepError => HasIssue && _issueIsError;
+    // HasStepError 没了：它从前只喂卡片那圈红描边，描边现在专给「选中」用
 }
 
 /// <summary>一条泳道 = 一个通道的配方（原型 .lane）。</summary>
