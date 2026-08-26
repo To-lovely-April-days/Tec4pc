@@ -1,6 +1,10 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Media;
+using Avalonia.Rendering;
+using System.Reflection;
 using Tec.App.ViewModels;
 
 namespace Tec.App.Views;
@@ -10,7 +14,96 @@ public partial class MainWindow : Window
     /// <summary>已经问过「要不要保存」了，这次关窗直接放行，别再问一遍。</summary>
     private bool _confirmed;
 
-    public MainWindow() => InitializeComponent();
+    public MainWindow()
+    {
+        InitializeComponent();
+        // 隧道阶段挂：F12 在输入框里按下时也要收得到，冒泡上来之前就可能被吃掉
+        AddHandler(KeyDownEvent, OnDiagKey, RoutingStrategies.Tunnel);
+    }
+
+    // ── 性能自检（F12 / Shift+F12）─────────────────────────────────────
+    //
+    // 「界面卡」这件事，卡在哪一层不是看出来的，是量出来的，而这两个数只有
+    // 在**出问题的那台机器上**才有意义：
+    //
+    //   · 走的哪条渲染路。Avalonia 拿得到显卡就交给显卡合成，拿不到就退回
+    //     软件逐帧重画整窗。后者一帧的代价跟窗口面积成正比、跟脏了多大一块无关
+    //     ——鼠标扫过任何有悬停反应的东西都会摊上一整窗。开发这边在没有显卡的
+    //     环境里实测：一帧 27–34 ms，八成的时间花在「清空整窗 + 整窗拷出去」上，
+    //     真正画东西只占 3%。这条路上再怎么省画法都是白省，得先知道是不是它。
+    //   · 每帧实际用了多少毫秒（Avalonia 自带的 Fps / RenderTimeGraph 浮层）。
+    //     16.7 ms 是 60 Hz 的一格，Avg 越过它就是人能感觉到的顿。
+    //
+    // Shift+F12 是给「窗口透明」单独留的开关。这扇窗为了 8px 圆角整个是
+    // 带透明通道的（TransparencyLevelHint=Transparent + 自绘标题栏），
+    // 在 Windows 上这意味着 DWM 每帧都要把整窗混合一遍。值不值这个圆角，
+    // 按一下就知道——切成不透明，圆角同时没了，这是同一件事的两面。
+    private bool _diag;
+    private bool _opaque;
+
+    private void OnDiagKey(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.F12) return;
+        e.Handled = true;
+
+        if (e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+        {
+            _opaque = !_opaque;
+            TransparencyLevelHint = new[]
+            {
+                _opaque ? WindowTransparencyLevel.None : WindowTransparencyLevel.Transparent
+            };
+            Background = _opaque ? Brushes.White : Brushes.Transparent;
+        }
+        else
+        {
+            _diag = !_diag;
+            RendererDiagnostics.DebugOverlays = _diag
+                ? RendererDebugOverlays.Fps | RendererDebugOverlays.RenderTimeGraph
+                : RendererDebugOverlays.None;
+        }
+
+        DiagLine.IsVisible = _diag || _opaque;
+        if (DiagLine.IsVisible) DiagLine.Text = DiagText();
+    }
+
+    /// <summary>自检行写什么。全是当场问出来的，没有一个是写死的。</summary>
+    private string DiagText()
+        => $"F12 自检 · 渲染 {GraphicsBackend()} · 透明 {ActualTransparencyLevel} · "
+         + $"窗口 {Bounds.Width:0}×{Bounds.Height:0} @ {RenderScaling:0.##}× · "
+         + $"浮层 {(_diag ? "开" : "关")}（Shift+F12 切透明）";
+
+    /// <summary>
+    /// 走的是显卡还是软件。
+    ///
+    /// **只能靠反射问**：Avalonia 11.2 把 AvaloniaLocator 收成了内部类型，
+    /// 公开 API 里没有一处说得出「这次用的是哪个图形后端」。拿不到
+    /// IPlatformGraphics 就说明根本没有显卡后端，整窗由 CPU 逐帧重画。
+    ///
+    /// 反射失败一律写「未知」——这一行是拿来看的，不参与任何判断，
+    /// 换 Avalonia 版本以后就算问不出来了，也只是少一行字，不会影响程序。
+    /// </summary>
+    private static string GraphicsBackend()
+    {
+        try
+        {
+            var locator = Type.GetType("Avalonia.AvaloniaLocator, Avalonia.Base");
+            var current = locator?
+                .GetProperty("Current", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)?
+                .GetValue(null);
+            var iface = Type.GetType("Avalonia.Platform.IPlatformGraphics, Avalonia.Base");
+            if (current is null || iface is null) return "未知";
+
+            var svc = current.GetType()
+                .GetMethod("GetService", new[] { typeof(Type) })?
+                .Invoke(current, new object?[] { iface });
+            return svc is null ? "软件整窗重画" : "GPU 合成 · " + svc.GetType().Name;
+        }
+        catch
+        {
+            return "未知";
+        }
+    }
 
     /// <summary>自绘标题栏要自己负责拖动。</summary>
     private void OnTitlebarPressed(object? sender, PointerPressedEventArgs e)

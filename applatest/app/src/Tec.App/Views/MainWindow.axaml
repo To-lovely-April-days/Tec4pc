@@ -90,12 +90,20 @@
       （Opened Documentation）。别往里塞它拿不到的东西：这一层能实时跟得住的
       只有 Store.Changed 这一路信号，凑数写上去的字要么是死的、要么是编的。
       要加运行状态 / 通道数得先把那几路的变更通知接到这一层来，是另一件事。
+
+      右边那条是自检行，平时不在（IsVisible=False），按 F12 才出来。
+      详见 MainWindow.axaml.cs 里 OnDiagKey 那一段。
     -->
     <Border DockPanel.Dock="Bottom" Height="22" Background="{StaticResource Chrome}">
-      <TextBlock VerticalAlignment="Center" Margin="12,0" FontSize="11" Foreground="White"
-                 TextTrimming="CharacterEllipsis">
-        <Run Text="已打开 " /><Run Text="{Binding DocTitle}" />
-      </TextBlock>
+      <Grid ColumnDefinitions="*,Auto" Margin="12,0">
+        <TextBlock VerticalAlignment="Center" FontSize="11" Foreground="White"
+                   TextTrimming="CharacterEllipsis">
+          <Run Text="已打开 " /><Run Text="{Binding DocTitle}" />
+        </TextBlock>
+        <TextBlock Grid.Column="1" Name="DiagLine" IsVisible="False"
+                   VerticalAlignment="Center" Margin="16,0,0,0"
+                   FontSize="11" Foreground="#FFCF00" />
+      </Grid>
     </Border>
 
     <!-- 主菜单栏：44px，底色 #bfc9d7；右侧运行控制与用户区叠在同一行。
