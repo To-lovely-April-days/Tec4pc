@@ -66,12 +66,22 @@
     </Style>
   </UserControl.Styles>
 
-  <Grid ColumnDefinitions="*,342">
+  <!-- 底色写成白的：右边那道 6px 白缝露的就是它。
+       缝不能靠「后面碰巧是白的」来实现——那是把一件确定的事托付给别处 -->
+  <Grid ColumnDefinitions="*,342" Background="White">
 
-    <DockPanel Grid.Column="0" Background="White">
+    <!-- 右边留 6px 白缝，跟属性栏断开。**这条缝就是分界，属性栏那边那条
+         1px 竖线一起去掉了**——白缝旁边再压一条比它暗的线，等于把一道缝
+         描了个边。缝罩着这一栏里的每一块：工具条、问题条、表，
+         它们的底色跟属性栏里那块内容底是同一支，不留缝会连成一片。
+         6 是全程序说「这里断开」的唯一尺寸，化合物页刚照这一套改过 -->
+    <DockPanel Grid.Column="0" Background="White" Margin="0,0,6,0">
 
-      <!-- 工具条：通道 + 四个动作 + 釜容 + 状态 -->
-      <Border DockPanel.Dock="Top" Height="58" Background="{StaticResource ThemeFill}">
+      <!-- 工具条：通道 + 四个动作 + 釜容 + 状态。
+           58 → 48：跟配方页、化合物页那两条工具条同高。这条带子里最高的是
+           32px 的删除钮，58 的时候上下各空 13，空得比带子里的东西还显眼；
+           48 上下各留 8。三页的工具条同高，来回切页时下面那条表头不会跳 -->
+      <Border DockPanel.Dock="Top" Height="48" Background="{StaticResource ThemeFill}">
         <StackPanel Orientation="Horizontal" Spacing="10" Margin="14,0" VerticalAlignment="Center">
           <TextBlock Text="通道：" FontSize="12" Foreground="#414448" VerticalAlignment="Center" />
           <ComboBox Classes="sel" Width="92" ItemsSource="{Binding Channels}"
@@ -124,9 +134,21 @@
         </StackPanel>
       </Border>
 
-      <!-- 问题条：有一条说一条，不汇总成「有问题」 -->
+      <!-- 工具条与下面那一摞之间的白缝，6px。**常驻**：不管问题条在不在，
+           工具条底下都该断开一次 -->
+      <Border DockPanel.Dock="Top" Height="6" Background="White" />
+
+      <!-- 问题条：有一条说一条，不汇总成「有问题」。
+           **摆在工具条与表之间，自成一块。**它讲的是下面这张表跟配方对不上的
+           地方，挨着表才有意义；摆到页底就成了「随手扫一眼」的东西，
+           而这几句是要人去改表的。它来去无常（HasProblems），
+           在这个位置来去只是把表往下推一截，不会让别处的东西错位。
+
+           **描一圈边，不是只描底下那条。**这块底色 #FDF6E3 跟白只差几级，
+           两边一留白缝，光靠底色说不清它从哪儿起到哪儿止——
+           别处的块能省掉边框是因为它们的底色跟白拉得开，这块拉不开。 -->
       <Border DockPanel.Dock="Top" Background="#fdf6e3" BorderBrush="#e8d9a8"
-              BorderThickness="0,0,0,1" IsVisible="{Binding HasProblems}" Padding="14,8">
+              BorderThickness="1" IsVisible="{Binding HasProblems}" Padding="14,8">
         <ItemsControl ItemsSource="{Binding Problems}">
           <ItemsControl.ItemTemplate>
             <DataTemplate>
@@ -136,6 +158,11 @@
           </ItemsControl.ItemTemplate>
         </ItemsControl>
       </Border>
+
+      <!-- 问题条与表之间的白缝，6px。**跟问题条一起显隐**：
+           没有问题时问题条不在，这条缝也不该单独留着（工具条底下那条已经断过一次了）-->
+      <Border DockPanel.Dock="Top" Height="6" Background="White"
+              IsVisible="{Binding HasProblems}" />
 
       <!-- 表头（单表模式） -->
       <Border DockPanel.Dock="Top" Background="#fafafa"
@@ -279,8 +306,8 @@
     </DockPanel>
 
     <!-- ========== 右栏：这一行的详情 + 合计 ========== -->
-    <Border Grid.Column="1" Background="{StaticResource ThemeGap}"
-            BorderBrush="#d0d2cf" BorderThickness="1,0,0,0">
+    <!-- 左边那条 1px 竖线去掉了：左栏现在留着 6px 白缝，缝就是分界 -->
+    <Border Grid.Column="1" Background="{StaticResource ThemeGap}">
       <ScrollViewer>
         <StackPanel>
 
