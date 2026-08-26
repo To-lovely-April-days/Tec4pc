@@ -86,13 +86,26 @@
     </Style>
   </UserControl.Styles>
 
-  <Grid ColumnDefinitions="*,342">
+  <!-- 底色写成白的：右边那道 6px 白缝露的就是它。
+       缝不能靠「后面碰巧是白的」来实现——那是把一件确定的事托付给别处 -->
+  <Grid ColumnDefinitions="*,342" Background="White">
 
-    <!-- ========== .cmain ========== -->
-    <DockPanel Grid.Column="0" Background="White">
+    <!-- ========== .cmain ==========
+         右边留 6px 白缝，跟属性栏断开。**这条缝就是分界，属性栏那边那条
+         1px 竖线一起去掉了**——白缝旁边再压一条比它暗的线，等于把一道缝
+         描了个边。6 这个数是全程序说「这里断开」的唯一尺寸（属性栏左边那条
+         色条、菜单栏底下那条缝、配方页中列左右两侧，都是 6）。
+         缝也罩着工具条：工具条那条面色跟属性栏里那块内容底是同一支，
+         不留缝两块会连成一片。 -->
+    <DockPanel Grid.Column="0" Background="White" Margin="0,0,6,0">
 
-      <!-- .ctool：58px 高，#ecedea -->
-      <Border DockPanel.Dock="Top" Height="58" Background="{StaticResource ThemeFill}">
+      <!-- .ctool：48px 高，#ecedea。
+           58 → 48：跟配方页那条工具条同高。这条带子里最高的是 30px 的圆钮，
+           58 的时候上下各空 14，空得比带子里的东西还显眼；48 上下各留 9，
+           跟配方页（34 的钮 + 48 的带子 = 各留 7）看着是同一档留白。
+           两页的工具条同高这件事比「各自算各自的舒服」重要——
+           来回切页的时候，下面那条表头会不会跳，一眼就看得出来 -->
+      <Border DockPanel.Dock="Top" Height="48" Background="{StaticResource ThemeFill}">
         <StackPanel Orientation="Horizontal" Spacing="10" Margin="14,0" VerticalAlignment="Center">
           <TextBlock Text="检索：" FontSize="12" Foreground="#414448" VerticalAlignment="Center" />
           <Panel Width="260">
@@ -133,6 +146,11 @@
                      TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Status}" />
         </StackPanel>
       </Border>
+
+      <!-- 工具条与表格之间的白缝，6px，同全程序那一个尺寸。
+           工具条是 #ecedea、表头是 #fafafa，两块浅色贴着的时候边界含糊，
+           像同一块底上深了一道；断开之后「上面是工具、下面是表」才立得住 -->
+      <Border DockPanel.Dock="Top" Height="6" Background="White" />
 
       <!-- 表头（.crow.head）：常驻顶部 -->
       <Border DockPanel.Dock="Top" Background="#fafafa"
@@ -191,8 +209,10 @@
     <!-- ========== 右侧物性详情 ========== -->
     <!-- 与台面属性同一套观感：白底面板 + 浅紫内容块。
          从前这一整栏是 #ebece9 的灰，跟台面 / 配方 / 配方库那三页对不上 -->
-    <Border Grid.Column="1" Background="{StaticResource ThemeGap}"
-            BorderBrush="#d0d2cf" BorderThickness="1,0,0,0">
+    <!-- 左边那条 1px 竖线去掉了：左栏现在留着 6px 白缝，缝就是分界。
+         白缝旁边再压一条比它暗的线，等于把一道缝描了个边（配方页那两栏
+         之间是同样的处理，见 RecipeView 中列那一段） -->
+    <Border Grid.Column="1" Background="{StaticResource ThemeGap}">
       <ScrollViewer>
         <Border Background="{StaticResource ThemeFill}" Padding="18,16,18,20">
         <Panel>
