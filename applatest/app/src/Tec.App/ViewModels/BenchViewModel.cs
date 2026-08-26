@@ -258,20 +258,9 @@ public sealed class BenchViewModel : ViewModelBase
     public bool WellsOpen { get => _wellsOpen; set => Set(ref _wellsOpen, value); }
     public bool ChTableOpen { get => _chOpen; set => Set(ref _chOpen, value); }
 
-    /// <summary>台面名称与设备数（原型未选中设备时的两行）。</summary>
-    public string BenchName
-    {
-        get => _ws.Bench.Name;
-        set { if (value is { Length: > 0 }) { _ws.Bench.Name = value; Raise(); } }
-    }
-
-    /// <summary>
-    /// 分隔符跟画布右下角的 <see cref="BenchSummary"/> 一样用「·」，不用「（…，…）」：
-    /// 一对全角括号加一个全角逗号就是 36px，属性栏收到 312 之后这一句会被切在框里
-    /// （实测切掉末尾的「）」）。同一份数字在两处露面，写法本来就该一致。
-    /// </summary>
-    public string DeviceCountText
-        => $"{_ws.Bench.Devices.Count} 台 · {_ws.Channels.Count} 通道 · {_ws.Channels.Count(c => c.Enabled)} 启用";
+    // BenchName / DeviceCountText 都撤了，属性栏上那两行不再显示。
+    // 设备数那句画布右下角的 BenchSummary 已经在说；
+    // 台面名（_ws.Bench.Name）还照旧写进运行记录与报告，只是界面上暂时没有入口改它。
 
     /// <summary>设备库里点中的那一项。真正的拖拽落位下一轮做。</summary>
     public LibraryItemViewModel? PickedFromLibrary
@@ -745,8 +734,7 @@ public sealed class BenchViewModel : ViewModelBase
         foreach (var n in _selected.Channels.OrderBy(x => x))
         {
             if (_ws.ChannelOf(n) is not { } ch) continue;
-            Wells.Add(new ChannelRowViewModel(ch, $"{(i == 0 ? "A" : "B")} 孔 → 通道 CH{n}",
-                                              Array.Empty<string>()));
+            Wells.Add(new ChannelRowViewModel(ch, $"{(i == 0 ? "A" : "B")} 孔 → 通道 CH{n}"));
             i++;
         }
     }
@@ -788,22 +776,11 @@ public sealed class BenchViewModel : ViewModelBase
             // 所以这句只写一处——两页各写一遍，同一个孔迟早在两页里叫出两个名字
             var host = WellLabel.Of(_ws, ch.Number);
 
-            // 绑到该通道的探头，短名去掉"在线检测/在线"（原型 ptag 的写法）
-            var probes = _ws.Bench.Bindings
-                .Where(b => b.ChannelNumber == ch.Number)
-                .Select(b => _ws.Bench.Device(b.DeviceId))
-                .Where(d => d is not null)
-                .Select(d => _ws.Drivers.Driver(d!.DriverId))
-                .Where(dr => dr is { Info.ChannelsPerDevice: 0 })
-                .Select(dr => dr!.Info.Name.Replace(" 在线检测", "").Replace("在线", ""))
-                .Distinct().ToList();
-
-            ChannelRows.Add(new ChannelRowViewModel(ch, host, probes));
+            ChannelRows.Add(new ChannelRowViewModel(ch, host));
         }
 
-        // 台面属性里的「设备数」也得跟着变——拖进来一台反应器，右栏还写着 0 台，
-        // 而底下状态条已经是「1 台设备 · 2 个通道」，两处对不上
-        RaiseAll(nameof(BenchSummary), nameof(DeviceCountText));
+        // 画布右下角那句「N 台设备 · M 个通道」得跟着变
+        Raise(nameof(BenchSummary));
     }
 
     /// <summary>
@@ -874,11 +851,10 @@ public sealed class BenchViewModel : ViewModelBase
 /// <summary>通道总表的一行（原型 .chtable .row）：色块 · CHn · 来源 · 探头标签 · 启停。</summary>
 public sealed class ChannelRowViewModel : ViewModelBase
 {
-    public ChannelRowViewModel(Channel ch, string host, IReadOnlyList<string> probes)
+    public ChannelRowViewModel(Channel ch, string host)
     {
         Channel = ch;
         Host = host;
-        Probes = probes;
         Capabilities = string.Join("、", ch.Capabilities.All.Select(Friendly).Distinct());
     }
 
@@ -886,8 +862,7 @@ public sealed class ChannelRowViewModel : ViewModelBase
     public string Name => Channel.Name;
     /// <summary>机A · A 孔（原型 devLabel + 孔位字母）。</summary>
     public string Host { get; }
-    /// <summary>挂在这个通道上的探头短名（原型 .ptag）。</summary>
-    public IReadOnlyList<string> Probes { get; }
+    // Probes（挂在这个通道上的探头短名，原型 .ptag）撤了：总表里那一列小标签不再显示
     public string Capabilities { get; }
     public string ColorHex => Channel.Number switch
     {
