@@ -53,6 +53,15 @@
           <Path Data="M 0,0 L 9,9 M 9,0 L 0,9" Stroke="White" StrokeThickness="1.2" />
         </Button>
       </StackPanel>
+
+      <!-- 性能自检行：平时不在，按 F12 才出来。**登录窗也要有**——
+           现场报的是「登录界面移动鼠标都是卡卡的」，这扇窗只有一张图和
+           几个输入框，量表挂不到这儿就够不着那个现象。详见 Services/PerfProbe -->
+      <Border Name="DiagBar" IsVisible="False" VerticalAlignment="Bottom"
+              Background="#333333" Padding="8,3">
+        <TextBlock Name="DiagLine" FontSize="10" Foreground="#FFCF00"
+                   TextWrapping="Wrap" />
+      </Border>
     </Panel>
   </Border>
 </Window>
