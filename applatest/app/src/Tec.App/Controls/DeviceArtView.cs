@@ -12,6 +12,14 @@ public static class DeviceArtCache
     /// <summary>设备线稿由原型导出，与 tecstudio.html 上的是同一份图。</summary>
     public static SvgArt? Get(string key)
     {
+        // 空名字直接回绝。**不是防御性写法，是堵一条真的在飞的异常**：
+        // 实测清点整个会话的首发异常，一共三条，其中一条就是这儿——
+        // 有人拿空的 ArtKey 进来（模板先于数据实例化时会有这么一下），
+        // 于是去开 avares://…/devices/.svg，开不着，抛一个 FileNotFoundException，
+        // 再被下面那个 catch 悄悄吞掉。功能上没事，可挂着调试器的时候
+        // 每一次抛都要停下来跟调试器通一次气。**能不抛就别抛。**
+        if (string.IsNullOrWhiteSpace(key)) return null;
+
         if (Cache.TryGetValue(key, out var art)) return art;
         try
         {
