@@ -167,7 +167,15 @@ public sealed class PerfProbe
         var fAll = _fN > 0 ? _fSum / _fN : 0;
         var mb = (GC.GetTotalAllocatedBytes(false) - _alloc0) / 1024.0 / 1024.0;
         return new StringBuilder()
-            .Append("F12 自检 · 渲染 ").Append(Backend())
+            .Append("F12 自检")
+            // **头一格就写调试器。**现场绕了十来轮才发现：从 bin\Debug 里直接
+            // 双击 exe 跑一点都不卡，卡的是挂着调试器跑的那次。调试器要拦下
+            // 每一个首发异常、挂着诊断工具持续采样、把 Trace 往输出窗口灌，
+            // 这些全压在渲染和输入这条路上，而且是断断续续的——「有时候顺
+            // 有时候卡」就是这么来的。上面那些毫秒数在挂着调试器的时候
+            // **一概不能当程序自己的成绩**，所以这一格得排在最前面，一眼看见。
+            .Append(Debugger.IsAttached ? " · **调试器已挂：以下数字都不算数**" : "")
+            .Append(" · 渲染 ").Append(Backend())
             .Append(" · 出帧 ").Append(Timer())
             .Append(" · 透明 ").Append(_win.ActualTransparencyLevel)
             .Append(" · 窗口 ").Append($"{_win.Bounds.Width:0}×{_win.Bounds.Height:0}")
