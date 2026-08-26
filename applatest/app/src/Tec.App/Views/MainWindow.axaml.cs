@@ -41,22 +41,28 @@ public partial class MainWindow : Window
     // 在 Windows 上这意味着 DWM 每帧都要把整窗混合一遍。值不值这个圆角，
     // 按一下就知道——切成不透明，圆角同时没了，这是同一件事的两面。
     //
-    // **那三个浮层量的都是渲染线程。**现场回来的数是 GPU 合成、Render Avg 3.68 ms
-    // ——16.7 ms 的预算只用了两成，画这一头是干净的。可人还是觉得卡，
-    // 那就只剩界面线程：命中测试、悬停换样式、布局、绑定、还有 GC 的停顿，
-    // 全挤在这一根线程上，它一堵，鼠标就跟不上手。渲染浮层看不见这些。
+    // **Fps / Render / Layout 三个浮层量的都是渲染线程那一头。**现场两次回来的数：
     //
-    // 所以自检行自己带一支 16 ms 的表来量这根线程堵不堵：
-    // 表该什么时候响是定死的，实际什么时候轮到它，差出来的那一截就是
-    // 「界面线程当时正忙着，顾不上」——**人手上感觉到的那一下顿，就是这个数**。
+    //   第一次：GPU 合成 · D3D11Angle · Render Avg 3.68 / Max 13.47 ms
+    //   第二次：同上 · Layout Avg 1.31 / Max 16.65 · Render Avg 7.09 / Max 41.72
+    //           · RUpdate Avg 0.51 · GC 4/3/1 · 已分配 26 MB · Frame #86
+    //
+    // 三件事就此排掉：**不是软件渲染**（是 GPU 合成）、**不是 GC**（一共才 4/3/1 次，
+    // 26 MB）、**不是布局**（Avg 1.31 ms）。剩下的嫌疑在两处：渲染那一头的 Avg
+    // 从 3.68 涨到 7.09、Max 41.72（掉帧），以及界面线程自己堵不堵——
+    // 命中测试、悬停换样式、绑定求值全在那根线程上，浮层看不见它们。
+    //
     // 一起报 GC 次数与已分配总量：二代 GC 会把界面线程整个停住，
-    // 分配量大就说明有一路在per帧造垃圾，那是另一种卡法。
+    // 分配量大就说明有一路在按帧造垃圾，那是另一种卡法。现场这两个数都很干净。
+    //
+    // 注意 Frame #86：截图那一刻渲染线程几乎没在出帧，所以那几个 Avg 讲的是
+    // 换页那几帧，不是「鼠标划着的时候」。要抓那一刻，得**正卡着的时候截图**，
+    // 看下面那个「近 1 秒最大」。
     private bool _diag;
     private bool _opaque;
     private DispatcherTimer? _lagTimer;
-    private long _lastTick;
-    private double _lagMax, _lagSum;
-    private int _lagN, _refresh;
+    private double _qMax, _qMaxWin, _qSum;
+    private int _qN, _refresh;
 
     private void OnDiagKey(object? sender, KeyEventArgs e)
     {
@@ -88,32 +94,55 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 界面线程堵不堵：一支 16 ms 的表，量它每次「迟到」多少。
+    /// 界面线程堵不堵：量一件小事**排队排多久**。
     ///
-    /// 用普通优先级——输入、布局、渲染提交都排在它前面，正好让它替人
-    /// 站在队尾感受一下要等多久。迟到 2 ms 是正常抖动；迟到几十上百毫秒，
-    /// 就是那一刻界面线程被谁占死了，鼠标在那一下就是跟不上手的。
+    /// **上一版量错了，这一版换了量法。**上一版量的是「一支 16 ms 的表迟到多少」，
+    /// 现场读回来平均 5.5 ms，看着像界面线程忙——可 Windows 的默认时钟粒度
+    /// 就是 15.625 ms，跟 16 ms 一错位，平均迟个几毫秒是**时钟本身的事**，
+    /// 跟界面线程忙不忙没关系。开发这边（Linux，粒度 1 ms）读出来 1.2 ms，
+    /// 两个数根本不能比。那 5.5 ms 作废，别拿它下结论。
+    ///
+    /// 换成这样：定时往界面线程的队列里塞一件**最低优先级**的小事，
+    /// 量它从「塞进去」到「轮到它」隔了多久。输入、布局、渲染提交全排在它前面，
+    /// 所以这个数就是「界面线程手上还压着多少活」——**人手上感觉到的那一下顿，
+    /// 就是这个数**。塞进去的时机由表决定（粒度不影响），量的是塞进去之后
+    /// 等了多久，时钟粒度这一层被绕开了。
+    ///
+    /// 闲着的时候应该是 0–1 ms。几十毫秒就是那一刻界面线程被谁占死了。
+    ///
+    /// 报三个数：平均、**近 1 秒最大**、全程最大。近 1 秒那个是为了让你
+    /// 「正卡着的时候截一张图」就够用——不用先按两下 F12 把统计清零。
     /// </summary>
     private void StartLagMeter()
     {
-        _lagMax = _lagSum = 0;
-        _lagN = _refresh = 0;
+        _qMax = _qMaxWin = _qSum = 0;
+        _qN = _refresh = 0;
         _gc0 = GC.CollectionCount(0);
         _gc1 = GC.CollectionCount(1);
         _gc2 = GC.CollectionCount(2);
         _alloc0 = GC.GetTotalAllocatedBytes(false);
-        _lastTick = Stopwatch.GetTimestamp();
 
-        _lagTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
+        _lagTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(15) };
         _lagTimer.Tick += (_, _) =>
         {
-            var now = Stopwatch.GetTimestamp();
-            var late = (now - _lastTick) * 1000.0 / Stopwatch.Frequency - 16;
-            _lastTick = now;
-            if (late > 0) { _lagSum += late; if (late > _lagMax) _lagMax = late; }
-            _lagN++;
-            // 一秒刷一次字，不然自检行自己就成了每帧重画的那一路
-            if (++_refresh >= 60) { _refresh = 0; DiagLine.Text = DiagText(); }
+            var t0 = Stopwatch.GetTimestamp();
+            Dispatcher.UIThread.Post(() =>
+            {
+                var wait = (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency;
+                _qSum += wait;
+                _qN++;
+                if (wait > _qMax) _qMax = wait;
+                if (wait > _qMaxWin) _qMaxWin = wait;
+            }, DispatcherPriority.Background);
+
+            // 一秒刷一次字（表最快也就 15 ms 一跳，Windows 上更慢，按次数数够用）：
+            // 刷太勤的话这一行自己就成了每帧重画的那一路
+            if (++_refresh >= 60)
+            {
+                _refresh = 0;
+                DiagLine.Text = DiagText();
+                _qMaxWin = 0;               // 近 1 秒的最大值，报完就清
+            }
         };
         _lagTimer.Start();
     }
@@ -134,10 +163,10 @@ public partial class MainWindow : Window
                  + $"窗口 {Bounds.Width:0}×{Bounds.Height:0} @ {RenderScaling:0.##}×";
         if (!_diag) return head + " · 浮层 关（Shift+F12 切透明）";
 
-        var avg = _lagN > 0 ? _lagSum / _lagN : 0;
+        var avg = _qN > 0 ? _qSum / _qN : 0;
         var mb = (GC.GetTotalAllocatedBytes(false) - _alloc0) / 1024.0 / 1024.0;
         return head
-             + $" · 界面线程迟到 平均 {avg:0.0} ms / 最大 {_lagMax:0} ms"
+             + $" · 界面线程排队 平均 {avg:0.0} / 近 1 秒最大 {_qMaxWin:0} / 全程最大 {_qMax:0} ms"
              + $" · GC {GC.CollectionCount(0) - _gc0}/{GC.CollectionCount(1) - _gc1}/{GC.CollectionCount(2) - _gc2}"
              + $" · 已分配 {mb:0} MB";
     }
