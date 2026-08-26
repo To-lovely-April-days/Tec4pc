@@ -265,12 +265,19 @@
     <SolidColorBrush x:Key="ThemeGap" Color="#ffffff" />
     <SolidColorBrush x:Key="ThemeLine" Color="#d0d2cf" />
 
-    <!-- 选中态四件套：实线边 / 底色 / 柔环 / 深色字。
-         选中底用最浅的 tint 而不是饱和红——同上，纪律第一条 -->
+    <!-- 选中态四件套：实线边 / 底色 / 柔环 / 选中行的字色。
+
+         **底色跟下拉列表统一**：选中 #C0CAD3、悬停 #D5DDE4，
+         跟展开的下拉里那两档一模一样（见主题字典里 ComboBoxItemBackground*）。
+         从前选中是最浅的红 tint #FAF2F3、悬停是中性灰 #F0F0EE——
+         同一个程序里「这一条是选中的」不该在下拉里是一副样子、在列表里是另一副。
+
+         选中行的字跟着从深红 #7E0F1C 回到正文黑：底不是红的了，字再红就没来由，
+         而且深红压在 #C0CAD3 上读着发闷。 -->
     <SolidColorBrush x:Key="SelBd" Color="#a41626" />
-    <SolidColorBrush x:Key="SelBg" Color="#faf2f3" />
+    <SolidColorBrush x:Key="SelBg" Color="#c0cad3" />
     <SolidColorBrush x:Key="SelRing" Color="#38a41626" />
-    <SolidColorBrush x:Key="SelTx" Color="#7e0f1c" />
+    <SolidColorBrush x:Key="SelTx" Color="#1b1b1b" />
     <!-- 属性栏里那条 6px 左竖条（台面 / 配方 / 配方库共四处）。
          它标的是「下面这一块讲的是当前选中的那个东西」。
          这是全程序唯一一处蓝：换过品牌红（太抢，那条挨着一整栏参数）、
@@ -280,7 +287,7 @@
     <SolidColorBrush x:Key="PropsBar" Color="#1a7fc4" />
     <!-- 悬停保持中性：悬停是「指针在这儿」，不是「选中了」，
          两个都染品牌色的话，扫一眼分不出哪行是真选中 -->
-    <SolidColorBrush x:Key="HovBg" Color="#f0f0ee" />
+    <SolidColorBrush x:Key="HovBg" Color="#d5dde4" />
 
     <!-- 中性四档，对应原型的 ink / ink-2 / ink-3 / ink-4。
          暗端偏冷、亮端偏暖绿，是原型自己的调子，不是纯灰 -->

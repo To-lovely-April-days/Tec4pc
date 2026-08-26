@@ -27,7 +27,7 @@
       <Setter Property="Cursor" Value="Hand" />
     </Style>
     <Style Selector="Border.rxitem:pointerover">
-      <Setter Property="Background" Value="#f4e0e2" />
+      <Setter Property="Background" Value="{StaticResource HovBg}" />
     </Style>
     <Style Selector="Border.rxitem.sel">
       <Setter Property="Background" Value="{StaticResource SelBg}" />
@@ -128,7 +128,7 @@
       <Setter Property="Cursor" Value="Hand" />
     </Style>
     <Style Selector="Border.card:pointerover">
-      <Setter Property="Background" Value="#f0f0ee" />
+      <Setter Property="Background" Value="{StaticResource HovBg}" />
     </Style>
     <Style Selector="Border.card.sel">
       <Setter Property="Background" Value="{StaticResource SelBg}" />
