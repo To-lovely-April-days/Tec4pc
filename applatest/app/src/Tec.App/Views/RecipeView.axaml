@@ -415,13 +415,13 @@
             <ItemsControl.ItemTemplate>
               <DataTemplate>
                 <!-- 一条泳道 = 一块自己的底色（原型每一列都坐在一块灰上），
-                     展开 244 宽、收起 52。竖着拉满：底色那一块要从上通到底，
+                     展开 232 宽、收起 52。竖着拉满：底色那一块要从上通到底，
                      几条并排才像几根柱子；收起的那条也就跟着一样高。
-                     内容 232 宽（算式见 SlabWidth 的注释）。
+                     内容 222 宽，Padding 3（从 5 收的，算式见 SlabWidth 的注释）。
 
                      BorderBrush 不写在这儿、走 laneBox 那条样式：内联值压得过样式，
                      写死成 Transparent 之后 laneSel 和 laneDrop 的描边永远上不了色。 -->
-                <Border Width="{Binding SlabWidth}" Padding="5" CornerRadius="4"
+                <Border Width="{Binding SlabWidth}" Padding="3" CornerRadius="4"
                         BorderThickness="1.6" Tag="lane" Classes="laneBox"
                         VerticalAlignment="Stretch"
                         Classes.laneSel="{Binding IsCurrent}"
@@ -532,8 +532,8 @@
                                 <Path Classes="droparrow" IsVisible="{Binding DropBefore}" />
                               </Panel>
                               <!-- 循环体缩进：每套一层让出 14px，并在让出的位置画一条竖线。
-                                   泳道整体仍是 232 宽，各条泳道对得齐 -->
-                              <StackPanel Orientation="Horizontal" Width="232">
+                                   泳道整体仍是 222 宽，各条泳道对得齐 -->
+                              <StackPanel Orientation="Horizontal" Width="222">
                               <ItemsControl ItemsSource="{Binding Spines}">
                                 <ItemsControl.ItemsPanel>
                                   <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
@@ -604,7 +604,8 @@
                                     <!-- 排期这一行：左边预计开始，中间耗时，垃圾桶收在最右。
                                          这一行就是泳道宽度的下限——实测「预计开始 00:00:00」
                                          占 ≈100、「耗时 0:20:00」≈76，加上列间距 10、桶 20、
-                                         卡内边距 14、色条 6，一共 ≈226；泳道内容取 232 留 6 富余，
+                                         卡内边距 14、色条 6，一共 ≈226 —— 这是估上限，
+                                         实际卡片画出来 222 就排得下（一行不断），
                                          「耗时」是 Auto 列，真到摆不下的时候先截「预计开始」，
                                          不会把行挤散。
 
@@ -652,7 +653,7 @@
                       </Panel>
                       <!-- 空泳道还是得有句话告诉人往哪儿放，但只留字、不再是一张卡 -->
                       <TextBlock Text="{Binding DropHint}" IsVisible="{Binding ShowHint}"
-                                 FontSize="11" Foreground="#888d92" Width="232"
+                                 FontSize="11" Foreground="#888d92" Width="222"
                                  TextAlignment="Center" TextWrapping="Wrap" Margin="0,10,0,4" />
                     </StackPanel>
 
@@ -1022,7 +1023,7 @@
     <Canvas Grid.Column="0" Grid.ColumnSpan="3" IsHitTestVisible="False">
       <Border IsVisible="{Binding Dragging}"
               Canvas.Left="{Binding DragX}" Canvas.Top="{Binding DragY}"
-              Width="232" Background="White" BorderBrush="{StaticResource MenuBlue}" BorderThickness="1.5"
+              Width="222" Background="White" BorderBrush="{StaticResource MenuBlue}" BorderThickness="1.5"
               Padding="7,6" Opacity="0.96"
               BoxShadow="0 5 16 0 #33000000">
         <StackPanel Orientation="Horizontal" Spacing="7">
@@ -1157,7 +1158,7 @@
       尺寸：箭头本身 56 宽 × 72 长，其中杆 24 宽 44 长、三角 56 宽 28 长。
       一路收窄拉长过来的：172×20 → 108×32 → 68×44 → 56×72。
       最后这一档是「三角再窄一点、杆加长」：三角 68 → 56，杆 16 → 44。
-      外框仍是 232（跟卡片同宽），图形画在框中间，见下面「画法」那段。
+      外框跟卡片同宽（现在 222），图形画在框中间，见下面「画法」那段。
       可它待的那一格只有 14 高——那 14 是两张卡之间的连接线，
       **不能为了放箭头就把它撑开**，一撑开，鼠标在两个落点之间来回移，
       底下整列跟着上下弹。所以箭头不占布局，多出来的 58 靠负外边距**只往上溢**：
@@ -1175,8 +1176,8 @@
       （试过 ZIndex=5，箭头尖照样被卡片吃掉）。往上溢就没这问题——
       上面那张卡是**更早**的一个 item（或者泳道头），我们画得比它晚，压得住。
 
-      画法：Stretch=None，外框写死 232×72，图形按自己的坐标画，
-      横向中点 116 就是 232 的一半——Path 的 HorizontalAlignment 是不管用的
+      画法：Stretch=None，外框写死 222×72，图形按自己的坐标画，
+      横向中点 111 就是 222 的一半——Path 的 HorizontalAlignment 是不管用的
       （Shape 在 Stretch=None 下按 geometry.Bounds.Right 量宽），只能拿坐标对齐。
 
       渐变：左 #42A0D3 → 中 #50BBEB → 右 #319FD8，横向。
@@ -1185,21 +1186,21 @@
       用不着两支这么接近的深色。所以按横向三段铺，箭头看着像根圆棍。
 
       端点就是 0% 和 100%。这里有个容易想岔的地方：**渐变量的是图形自己的包围盒
-      （箭头那 56 宽），不是控件框那 232**。所以不用为了「让三个色都露出来」
-      去按 (116±28)/232 折算端点——试过折算（那会儿箭头 108 宽，写 26.7%/73.3%），
+      （箭头那 56 宽），不是控件框那 222**。所以不用为了「让三个色都露出来」
+      去按 (111±28)/222 折算端点——试过折算（那会儿箭头 108 宽，写 26.7%/73.3%），
       结果渐变缩到中间一半：两头各平铺一块死色，只有当中 56px 在过渡。
       写 0/100% 反而正好铺满箭身。
     -->
     <Style Selector="Path.droparrow">
-      <Setter Property="Width" Value="232" />
+      <Setter Property="Width" Value="222" />
       <Setter Property="Height" Value="72" />
       <Setter Property="Stretch" Value="None" />
       <Setter Property="VerticalAlignment" Value="Top" />
       <Setter Property="Margin" Value="0,-58,0,0" />
-      <!-- 杆 24 宽 44 长（x 104..128，y 0..44），三角 56 宽 28 长（x 88..144，尖在 116,72）。
+      <!-- 杆 24 宽 44 长（x 99..123，y 0..44），三角 56 宽 28 长（x 83..139，尖在 111,72）。
            三角只比杆宽出两侧各 16——再窄下去就不像箭头、像根钉子了。
-           116 是 232 的一半，靠这个居中——Path 的 HorizontalAlignment 不管用 -->
-      <Setter Property="Data" Value="M 104,0 L 128,0 L 128,44 L 144,44 L 116,72 L 88,44 L 104,44 Z" />
+           111 是 222 的一半，靠这个居中——Path 的 HorizontalAlignment 不管用 -->
+      <Setter Property="Data" Value="M 99,0 L 123,0 L 123,44 L 139,44 L 111,72 L 83,44 L 99,44 Z" />
       <Setter Property="Fill">
         <LinearGradientBrush StartPoint="0%,50%" EndPoint="100%,50%">
           <GradientStop Color="#42A0D3" Offset="0" />
@@ -1626,11 +1627,19 @@
       <Setter Property="Background" Value="#f5f9ff" />
     </Style>
 
-    <!-- 步骤卡外面那层壳（原型给卡片留的 3px padding）：把选中环那 2+3 的位置
-         先占住，卡片自己的宽高一点不动，选中不会让描述重新折行 -->
+    <!--
+      步骤卡外面那层壳。**横向那 10 撤了，只留竖向的 5。**
+
+      它当初是给选中环占位的（环画在壳的外沿，2 的描边 + 3 的内边距，每边 5），
+      这样选不选中卡片的宽高都不变、描述不会重新折行。选中改到卡片自己那圈描边
+      之后（见 Border.step.stepSel），横向这 10 就纯粹是白让的了——
+      卡片 222，泳道内容却得留 232，头卡还比步骤卡宽出 10。
+
+      竖向那 5 留着：卡与卡之间的疏密全靠它（14 的连接线 + 上下各 5 = 24），
+      撤了整列会紧一档，那不是这次要动的东西。 -->
     <Style Selector="Border.stepwrap">
-      <Setter Property="Padding" Value="3" />
-      <Setter Property="BorderThickness" Value="2" />
+      <Setter Property="Padding" Value="0,5" />
+      <Setter Property="BorderThickness" Value="0" />
       <Setter Property="BorderBrush" Value="Transparent" />
       <Setter Property="Background" Value="Transparent" />
     </Style>

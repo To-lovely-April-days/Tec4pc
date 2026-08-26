@@ -177,10 +177,10 @@ public sealed class StepViewModel : ViewModelBase
     public IReadOnlyList<int> Spines => Enumerable.Range(0, Depth).ToList();
 
     /// <summary>
-    /// 卡片宽度让出缩进，泳道整体还是 232（见 LaneViewModel.SlabWidth），各条泳道对得齐。
+    /// 卡片宽度让出缩进，泳道整体还是 222（见 LaneViewModel.SlabWidth），各条泳道对得齐。
     /// 232 = 排期那一行的下限 ≈226 再留 6 富余，算式见 RecipeView 里那一行的注释。
     /// </summary>
-    public double CardWidth => 232 - Depth * 14;
+    public double CardWidth => 222 - Depth * 14;
 
     public ScheduleEntry Entry { get; }
     public CommandDescriptor? Descriptor { get; }
@@ -418,13 +418,20 @@ public sealed class LaneViewModel : ViewModelBase
     public bool Closed => !_open;
 
     /// <summary>
-    /// 整条泳道（连底色那一块）多宽：展开 244，收起 52。
+    /// 整条泳道（连底色那一块）多宽：展开 232，收起 52。
     ///
-    /// 258 → 244：排期仍是一行（「预计开始 + 耗时 + 桶」），所以下限还在，
-    /// 只是那颗桶去掉圈之后从 24 收到 20、少占 4，内容跟着从 246 收到 232。
-    /// 244 = 内容 232 + Padding 5×2 + 描边 1.6×2，跟从前 258 = 246 + 12 同一个算式。
+    /// 244 → 232，而**卡片一点没窄**（画出来仍是 222 宽）——省下来的 12 全是空转的：
+    ///   · 10 是步骤卡外面那层 stepwrap 的横向内缩（Padding 3 + 描边 2，每边 5）。
+    ///     它当初是给选中环占位的；选中改到卡片自己那圈描边之后（见 Border.step.stepSel），
+    ///     横向这 10 就纯粹是白让的了。竖向那份留着，卡与卡之间的疏密不变。
+    ///   · 4 是泳道自己的 Padding，5 收到 3。
+    /// 于是 232 = 内容 222 + Padding 3×2 + 描边 1.6×2（≈231.2，取整 232）。
+    /// 卡片占泳道的比例从 222/246 ≈ 90% 提到 222/232 ≈ 96%。
+    ///
+    /// 顺带把泳道头卡跟步骤卡对齐了：头卡是撑满泳道内宽的，从前 232.8，
+    /// 比 222 的步骤卡宽出 10，一眼看得出头比身子宽。
     /// </summary>
-    public double SlabWidth => _open ? 244 : 52;
+    public double SlabWidth => _open ? 232 : 52;
 
     /// <summary>
     /// 竖排的泳道名：汉字一个个正着摞，不是把整行转 90°——
