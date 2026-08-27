@@ -843,10 +843,14 @@ public sealed class BenchViewModel : ViewModelBase
         // 读数框不再按演示原尺寸贴在探头旁：64×32 乘上主机比例只剩 34×17、
         // 字 8px，看不清（用户提出）。改成**提示框式的引出**：框固定 84×34、
         // 字 16，从探头头部拉一根引线伸出去——搅拌器左侧的 Tr 往左上角引、
-        // 右边的 pH 往右上角引（用户定的方向），**四个框同一排浮在主机上方**，
-        // 不压任何探头。pH 的横向偏移（+48）比 Tr（−18）大：两工位相距
-        // 107px、框宽 84，工位 1 的 pH 框得推远一点才让得开工位 2 的 Tr 框——
-        // 推完四框正好一排排开（−27..57 / 80..164 / 166..250 / 273..357）。
+        // 右边的 pH 往右上角引（用户定的方向）。
+        //
+        // **两排，四条引线两两不交叉**：单排摆的话工位 1 的 pH 框和工位 2 的
+        // Tr 框要在中间换位，两根引线必然打叉，看的人会把一通道的数错认成
+        // 二通道的（用户指出）。现在 Tr 一排在上（引线落点 head−24，往左上）、
+        // pH 一排在下（落点 head+30，往右上，框比落点往左长——框再往右挪
+        // 就会挡住邻位 Tr 引线上行的走廊 161..174）。逐条验过：四条引线的
+        // 横向区间两两不重叠，也没有一条从别的框底下穿过。
         // 探头头顶在主机坐标里：Tr (140,31)、pH (220,31)（斜 9.6° 转完的位置），
         // 工位 2 整体右移 200。
         const double TW = 84, TH = 34;
@@ -862,18 +866,19 @@ public sealed class BenchViewModel : ViewModelBase
             var hx = (a.Accept == "tr" ? 140.0 : 220.0) + (a.Slot == 1 ? 200 : 0);
             var head = new Point(host.X + BenchDock.NodePad + hx * s,
                                  host.Y + BenchDock.NodePad + 31 * s);
-            double x, ax;
+            double x, y, ax;
             if (a.Accept == "tr")
             {
-                x = head.X - TW - 18;
-                ax = x + TW - 10;      // 引线接在框的右下角附近
+                x = head.X - 98;           // 框 [head−98, head−14]，引线落它右下角
+                ax = head.X - 24;
+                y = head.Y - TH - 65;      // 上排
             }
             else
             {
-                x = head.X + 48;
-                ax = x + 10;           // 引线接在框的左下角附近
+                x = head.X - 44;           // 框 [head−44, head+40]，引线落它右下角
+                ax = head.X + 30;
+                y = head.Y - TH - 23;      // 下排
             }
-            var y = head.Y - TH - 44;  // 一整排都在主机上方，探头一根不挡
             var ay = y + TH;
             Tags.Add(new ReadTagViewModel(a.Accept, host.Channels.ElementAtOrDefault(a.Slot))
             {
@@ -964,8 +969,9 @@ public sealed class BenchViewModel : ViewModelBase
                 {
                     var sensor = ch.Capabilities.All.OfType<IScalarSensor>()
                                    .FirstOrDefault(s => s.Tags.Any(g => g.Tag == "pH"));
+                    // 带上量的名目（用户要求数值带单位）：pH 本身无量纲，名目就是 pH
                     if (sensor is not null && sensor.TryReadLatest("pH", out var smp))
-                        txt = smp.Value.ToString("F2");
+                        txt = $"pH {smp.Value:F2}";
                 }
             }
             t.Text = txt;
