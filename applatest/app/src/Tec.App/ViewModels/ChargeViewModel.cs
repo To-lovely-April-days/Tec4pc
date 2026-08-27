@@ -42,7 +42,17 @@ public sealed class ChargeRowViewModel : ViewModelBase
         }
     }
 
-    public bool IsSelected { get => _sel; set => Set(ref _sel, value); }
+    public bool IsSelected
+    {
+        get => _sel;
+        set
+        {
+            if (!Set(ref _sel, value)) return;
+            // 「提示」和「偏差」两列的字色是在标签上内联绑定的（LocalValue），
+            // 样式表压不过它——底色一换，这两列得自己跟着换深浅，见下面两个属性
+            RaiseAll(nameof(HintColorHex), nameof(DeviationColorHex));
+        }
+    }
 
     /// <summary>
     /// 整行重读一遍。**不经过属性设置器改了模型之后必须调它**——
@@ -189,15 +199,30 @@ public sealed class ChargeRowViewModel : ViewModelBase
     public string DeviationText => _line?.MassDeviation is { } d
         ? (d >= 0 ? "+" : "") + d.ToString("0.#", CultureInfo.InvariantCulture) + " %" : "";
     public bool HasDeviation => _line?.MassDeviation is not null;
-    /// <summary>差得超过 2 % 标红：称量误差到这个量级就该被看见了。</summary>
-    public string DeviationColorHex => Math.Abs(_line?.MassDeviation ?? 0) > 2 ? "#d93025" : "#757a7f";
+    /// <summary>
+    /// 差得超过 2 % 标红：称量误差到这个量级就该被看见了。
+    /// 选中那一行底色是 #A4D5F2，红要压深一档、灰要压到近正文黑，理由见 HintColorHex。
+    /// </summary>
+    public string DeviationColorHex => Math.Abs(_line?.MassDeviation ?? 0) > 2
+        ? (IsSelected ? "#a41626" : "#d93025")
+        : (IsSelected ? "#3a3d41" : "#757a7f");
 
     /// <summary>缺什么 / 按什么假设算的。表格最后一列。</summary>
     public string Hint => string.Join("；", (_line?.Missing ?? new List<string>())
                                      .Concat(_line?.Assumptions ?? new List<string>()));
     public bool HasHint => Hint.Length > 0;
-    /// <summary>缺东西是红的，只是「按 100 % 计」这种假设是灰的——两者严重程度不同。</summary>
-    public string HintColorHex => _line?.Missing.Count > 0 ? "#d93025" : "#8a6100";
+    /// <summary>
+    /// 缺东西是红的，只是「按 100 % 计」这种假设是黄褐的——两者严重程度不同。
+    ///
+    /// 选中那一行的底色从最浅的红 tint 换成 #A4D5F2 之后，原来那两支颜色在
+    /// 蓝底上都站不住了：#D93025 只剩 3.0:1，#8A6100 只剩 3.5:1，而这是
+    /// 11 px 的字。所以选中时各压深一档——#A41626 是 4.9:1、#6B4B00 是 5.1:1，
+    /// 都过 4.5。**深浅换了，红黄之分没换**：哪一档是「缺东西」、哪一档是
+    /// 「按假设算的」，看颜色仍然分得开。
+    /// </summary>
+    public string HintColorHex => _line?.Missing.Count > 0
+        ? (IsSelected ? "#a41626" : "#d93025")
+        : (IsSelected ? "#6b4b00" : "#8a6100");
 
     /// <summary>右栏顶上那句：这一行的物性是从哪来的。</summary>
     public string RowNote

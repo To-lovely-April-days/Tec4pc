@@ -3,7 +3,14 @@
              xmlns:ctl="clr-namespace:Tec.App.Controls"
              x:Class="Tec.App.Views.ChargeView">
   <UserControl.Styles>
-    <!-- 表格行：与化合物库同一套（白底 + 悬停浅灰 + 选中淡蓝） -->
+    <!-- 表格行：与化合物库、数据导出那两张表同一套。
+         白底 + 悬停 HovBg #D5DDE4 + 选中 SelBg #A4D5F2 + 选中字 SelTx #1B1B1B。
+         从前这儿是自己一套：悬停中性灰 #F5F5F4、选中最浅的红 tint #FAF2F3
+         配深红字 #7E0F1C——同一个程序里「这一条是选中的」不该有第二种说法。
+
+         **两条的先后不能反**：Avalonia 同优先级按源码顺序，后写的赢。
+         .sel 必须写在 :pointerover 后面，鼠标扫过选中那一行时它才还是选中色，
+         不会一碰就褪成悬停色。 -->
     <Style Selector="Border.grow">
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderBrush" Value="#ebece9" />
@@ -11,10 +18,10 @@
       <Setter Property="Cursor" Value="Hand" />
     </Style>
     <Style Selector="Border.grow:pointerover">
-      <Setter Property="Background" Value="#f5f5f4" />
+      <Setter Property="Background" Value="{StaticResource HovBg}" />
     </Style>
     <Style Selector="Border.grow.sel">
-      <Setter Property="Background" Value="#faf2f3" />
+      <Setter Property="Background" Value="{StaticResource SelBg}" />
       <Setter Property="BorderBrush" Value="#ebece9" />
     </Style>
     <Style Selector="Border.grow TextBlock">
@@ -24,8 +31,11 @@
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
+    <!-- 选中行的字跟着底色一起回到正文黑：底不是红的了，字再红就没来由，
+         而且深红压在这层淡蓝上读着发闷。加粗留着——那是「这一条是选中的」
+         第二个说法，光靠底色一种在长表里容易看丢 -->
     <Style Selector="Border.grow.sel TextBlock">
-      <Setter Property="Foreground" Value="#7e0f1c" />
+      <Setter Property="Foreground" Value="{StaticResource SelTx}" />
       <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
     <!-- 算出来的那几列排等宽数字，扫一眼对得齐 -->
@@ -35,7 +45,7 @@
       <Setter Property="HorizontalAlignment" Value="Right" />
     </Style>
     <Style Selector="Border.grow.sel TextBlock.calc">
-      <Setter Property="Foreground" Value="#7e0f1c" />
+      <Setter Property="Foreground" Value="{StaticResource SelTx}" />
     </Style>
     <Style Selector="TextBlock.chd">
       <Setter Property="FontSize" Value="11" />
