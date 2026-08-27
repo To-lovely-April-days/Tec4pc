@@ -61,23 +61,25 @@
 
           再从前一版是底 Transparent「坐在什么底上就露什么底」，
           可属性栏底色是 #F1F1F1，框里跟着灰，看不出那是个能点的框。
-          **现在一律白底 #DDDDDD 描边**：跟输入框一支笔、一个底色，
-          一列看下来「这几格是能改的」齐平。勾没勾、悬停、按下都是这一副样子，
+          **现在一律白底 #9AA0A6 描边**，勾没勾、悬停、按下都是这一副样子，
           「勾没勾」全靠里面那一笔纯黑 #000000 的勾说，框只是个占位。
+          描边从输入框那支 #DDDDDD 加深了一档：输入框是一大片白，在
+          #F1F1F1 的属性栏上认得出来；18px 的小框描 #DDDDDD 就隐形了——
+          没勾的框不悬停根本看不见（用户实测提出）。
           Fluent 的勾选框颜色不吃具名笔，只认这几个键。
         -->
         <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillUnchecked" Color="White" />
         <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillUncheckedPointerOver" Color="White" />
         <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillUncheckedPressed" Color="White" />
-        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeUnchecked" Color="#dddddd" />
-        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeUncheckedPointerOver" Color="#dddddd" />
-        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeUncheckedPressed" Color="#dddddd" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeUnchecked" Color="#9aa0a6" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeUncheckedPointerOver" Color="#9aa0a6" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeUncheckedPressed" Color="#9aa0a6" />
         <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked" Color="White" />
         <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" Color="White" />
         <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPressed" Color="White" />
-        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeChecked" Color="#dddddd" />
-        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPointerOver" Color="#dddddd" />
-        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPressed" Color="#dddddd" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeChecked" Color="#9aa0a6" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPointerOver" Color="#9aa0a6" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPressed" Color="#9aa0a6" />
         <!-- 禁用态也得跟着淡下来。Fluent 默认的禁用描边比 #DDDDDD 深，
              不改的话导出页那一列里「不可选」的框反倒比「可选」的框更显眼——
              实测灰掉的 pH 值 / 拉曼 / 红外 / 浊度四行框比上面勾着的几行还清楚。
@@ -157,23 +159,25 @@
 
           再从前一版是底 Transparent「坐在什么底上就露什么底」，
           可属性栏底色是 #F1F1F1，框里跟着灰，看不出那是个能点的框。
-          **现在一律白底 #DDDDDD 描边**：跟输入框一支笔、一个底色，
-          一列看下来「这几格是能改的」齐平。勾没勾、悬停、按下都是这一副样子，
+          **现在一律白底 #9AA0A6 描边**，勾没勾、悬停、按下都是这一副样子，
           「勾没勾」全靠里面那一笔纯黑 #000000 的勾说，框只是个占位。
+          描边从输入框那支 #DDDDDD 加深了一档：输入框是一大片白，在
+          #F1F1F1 的属性栏上认得出来；18px 的小框描 #DDDDDD 就隐形了——
+          没勾的框不悬停根本看不见（用户实测提出）。
           Fluent 的勾选框颜色不吃具名笔，只认这几个键。
         -->
         <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillUnchecked" Color="White" />
         <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillUncheckedPointerOver" Color="White" />
         <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillUncheckedPressed" Color="White" />
-        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeUnchecked" Color="#dddddd" />
-        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeUncheckedPointerOver" Color="#dddddd" />
-        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeUncheckedPressed" Color="#dddddd" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeUnchecked" Color="#9aa0a6" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeUncheckedPointerOver" Color="#9aa0a6" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeUncheckedPressed" Color="#9aa0a6" />
         <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillChecked" Color="White" />
         <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" Color="White" />
         <SolidColorBrush x:Key="CheckBoxCheckBackgroundFillCheckedPressed" Color="White" />
-        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeChecked" Color="#dddddd" />
-        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPointerOver" Color="#dddddd" />
-        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPressed" Color="#dddddd" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeChecked" Color="#9aa0a6" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPointerOver" Color="#9aa0a6" />
+        <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeCheckedPressed" Color="#9aa0a6" />
         <!-- 禁用态也得跟着淡下来。Fluent 默认的禁用描边比 #DDDDDD 深，
              不改的话导出页那一列里「不可选」的框反倒比「可选」的框更显眼——
              实测灰掉的 pH 值 / 拉曼 / 红外 / 浊度四行框比上面勾着的几行还清楚。
@@ -780,28 +784,52 @@
     </Style>
 
     <!--
-      勾选框勾上之后那个方框要留着。
+      方框的底和描边**每个状态都由这几条自己给**，一条不留给 Fluent。
 
-      上面主题字典里那几个 CheckBoxCheckBackground*Checked 只管**底**，
-      **描边却跟着一起没了**——实测勾上之后整个方框消失，只剩一个光秃秃的勾，
-      而没勾的时候是一个空方框：同一个控件，勾一下方框就不见了，
-      一列里勾的和没勾的两行对不齐。
+      换了模板之后（见下），模板里那块 Border#NormalRectangle 没写底色描边，
+      而 Fluent 的**常态**外观本来就写在它自家模板的字面属性上、
+      不在状态样式里——于是没勾又不悬停的框什么都不画，整个隐形；
+      鼠标一放上去（Fluent 的 :pointerover 状态样式写进来）才现形，
+      挪开又没了。全程序的勾选框都这毛病（用户实测提出）。
+      从前只压了 :checked 三条，恰好把「勾上之后方框消失」那一半治了，
+      没勾那一半一直空着。
 
-      所以直接压模板里那块 Border#NormalRectangle：白底、描边 1px #DDDDDD。
-      这样两个状态是同一个方框，区别只在里面有没有那一笔勾——本来就该是这样。
-      底和描边三个状态一模一样，悬停 / 按下都不变色。
+      底白、描边 #9AA0A6：原来那支 #DDDDDD 在 #F1F1F1 的属性栏上
+      只差 20 级，16px 的小框等于隐形。勾没勾、悬停、按下都是同一副样子；
+      禁用单独淡回 #DDDDDD（写在最后，压过前面的常态与勾选）——
+      禁用得看得出来，但不能反过来比可用的还显眼。
     -->
+    <Style Selector="CheckBox /template/ Border#NormalRectangle">
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderBrush" Value="#9aa0a6" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="CheckBox:pointerover /template/ Border#NormalRectangle">
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderBrush" Value="#9aa0a6" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="CheckBox:pressed /template/ Border#NormalRectangle">
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderBrush" Value="#9aa0a6" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
     <Style Selector="CheckBox:checked /template/ Border#NormalRectangle">
       <Setter Property="Background" Value="White" />
-      <Setter Property="BorderBrush" Value="#dddddd" />
+      <Setter Property="BorderBrush" Value="#9aa0a6" />
       <Setter Property="BorderThickness" Value="1" />
     </Style>
     <Style Selector="CheckBox:checked:pointerover /template/ Border#NormalRectangle">
       <Setter Property="Background" Value="White" />
-      <Setter Property="BorderBrush" Value="#dddddd" />
+      <Setter Property="BorderBrush" Value="#9aa0a6" />
       <Setter Property="BorderThickness" Value="1" />
     </Style>
     <Style Selector="CheckBox:checked:pressed /template/ Border#NormalRectangle">
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderBrush" Value="#9aa0a6" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="CheckBox:disabled /template/ Border#NormalRectangle">
       <Setter Property="Background" Value="White" />
       <Setter Property="BorderBrush" Value="#dddddd" />
       <Setter Property="BorderThickness" Value="1" />
