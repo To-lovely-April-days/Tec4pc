@@ -197,9 +197,16 @@ public sealed class RunEngine
         {
             ctx.Temperature = t.CurrentReactor;
             ctx.Jacket = t.CurrentJacket;
+            // 「尽快」按这台设备的真实最大变温能力估，不用缺省的 16
+            ctx.MaxTempRatePerMin = Math.Max(0.05, t.Limits.MaxRatePerMin);
         }
         if (ch.Capabilities.Get<IStirrer>() is { } s) ctx.Rpm = s.CurrentRpm;
-        if (ch.Capabilities.Get<IDosing>() is { } d) ctx.Volume = d.TotalVolume;
+        if (ch.Capabilities.Get<IDosing>() is { } d)
+        {
+            ctx.Volume = d.TotalVolume;
+            // 「一次加入」同理：按这台泵的最大流量估
+            ctx.MaxDoseRatePerMin = Math.Max(0.001, d.Limits.Max);
+        }
         return ctx;
     }
 

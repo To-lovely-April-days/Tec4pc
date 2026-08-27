@@ -62,6 +62,17 @@ public sealed class EstimationContext
     public double Rpm { get; set; }
     public double Volume { get; set; }
     public double Ph { get; set; } = 7;
+
+    /// <summary>
+    /// 「尽快」类任务（iControl 的 As fast as possible）按设备最大变温能力估算。
+    /// 启动时 RunEngine 从设备 Limits 播种真值；编辑器里还没有设备，
+    /// 按 RD105 的 16 ℃/min 估——这是排期的声明值，不是实测数据。
+    /// </summary>
+    public double MaxTempRatePerMin { get; set; } = 16;
+
+    /// <summary>「一次加入」按泵最大流量估算。播种同上，缺省按加料泵的 20 mL/min。</summary>
+    public double MaxDoseRatePerMin { get; set; } = 20;
+
     public Dictionary<string, double> Extra { get; } = new(StringComparer.Ordinal);
 
     public EstimationContext Clone()
@@ -72,7 +83,9 @@ public sealed class EstimationContext
             Jacket = Jacket,
             Rpm = Rpm,
             Volume = Volume,
-            Ph = Ph
+            Ph = Ph,
+            MaxTempRatePerMin = MaxTempRatePerMin,
+            MaxDoseRatePerMin = MaxDoseRatePerMin
         };
         foreach (var kv in Extra) c.Extra[kv.Key] = kv.Value;
         return c;

@@ -5,10 +5,11 @@ using Tec.Driver.Abi;
 namespace Tec.Core.Catalog;
 
 /// <summary>
-/// 通用（流程）指令，对应原型 CMDS.misc 的 8 条。由 Core 提供——它们不需要任何设备能力。
+/// 不需要任何设备能力的 9 条指令，由 Core 提供。货架分组照 iControl：
+/// 大半在流程控制组，采样提醒在采样组、改限值在安全组。
 ///
-/// 这一组与原型逐字对应：指令名、参数键、默认值、单位、步进、卡片摘要 sum、
-/// 整句描述 DESC、时长估算 SECS 都不改。改了就对不上原型了。
+/// 这一组源自原型 CMDS.misc：指令名、参数键、默认值、单位、步进、卡片摘要 sum、
+/// 整句描述 DESC、时长估算 SECS 尽量不动，动过的（改限值）由 RecipeMigration 兜着。
 ///
 /// 循环用配对标记而不是嵌套树：排期时用栈处理，甘特上循环体按第一轮展开，
 /// 循环开始行画一条覆盖全部轮次的跨度条（§6 第 2 条）。
@@ -29,8 +30,11 @@ public static class BuiltinCommands
     public const string Interlock = "tec.flow.interlock";  // 安全联锁
     public const string Finish = "tec.flow.finish";        // 结束实验
 
-    /// <summary>原型 GRP.misc.label。</summary>
-    public const string Module = "通用";
+    /// <summary>
+    /// 分组照 iControl：这 9 条大半是流程控制组，采样提醒归采样组、
+    /// 改限值归安全组。老组名「通用」不再用——模块名只活在运行时，文件无感。
+    /// </summary>
+    public const string Module = CommandSpecs.ModFlow;
 
     /// <summary>自然冷却按 0.5 ℃/min 估算（原型 PASSIVE）。</summary>
     public const double Passive = 0.5;
@@ -146,7 +150,7 @@ public static class BuiltinCommands
             p => $"标记事件「{p.Str("tag")}」")
         { IconKey = "mark", SupportsHotEdit = true },
 
-        new CommandDescriptor(Sampling, "采样提醒", Module, null,
+        new CommandDescriptor(Sampling, "采样提醒", CommandSpecs.ModSample, null,
             new ParameterSchema(new[]
             {
                 Field.Text("label", "取样标签", "中控样"),
@@ -160,7 +164,7 @@ public static class BuiltinCommands
 
         // 原名「安全联锁」，只写一行日志、什么都不联锁。现在它真的把这条限值
         // 交给安全层（SafetyMonitor）随时求值——Id 不动，存过盘的配方原样能开
-        new CommandDescriptor(Interlock, "改限值", Module, null,
+        new CommandDescriptor(Interlock, "改限值", CommandSpecs.ModSafety, null,
             new ParameterSchema(new[]
             {
                 Field.Sel("src", "监测量", InterlockSources, "釜内 Tr"),

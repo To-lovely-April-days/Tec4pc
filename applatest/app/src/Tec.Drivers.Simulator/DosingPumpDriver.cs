@@ -198,7 +198,9 @@ internal sealed class DoseHandler : ICommandHandler
             ctx.Note?.Invoke("泵未标定，加料量以命令值记录");
 
         var volume = Math.Max(0, p.Num("vol"));
-        var rate = Math.Max(0.001, p.Num("rate"));
+        // 「一次加入」（iControl 的 Add at Once）按泵的最大流量送——
+        // 用的是设备自己的 Limits.Max，泵送液要时间，没有真正的瞬时加入
+        var rate = CommandSpecs.DoseAtOnce(p) ? dosing.Limits.Max : Math.Max(0.001, p.Num("rate"));
         var began = ctx.Now();
         var startTotal = dosing.TotalVolume;
 

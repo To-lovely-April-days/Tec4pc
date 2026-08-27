@@ -309,6 +309,9 @@ internal static class TempHelp
 /// <summary>
 /// 控温。到达即结束；勾了"到达后等待稳定"再多等一个允差窗。
 /// 升温还是降温不用问——RampAsync 给的是目标值，往哪边走由当前温度决定。
+/// 到达方式三档（iControl 的 Task）：尽快 = 设备最大变温能力（读的是
+/// 设备自己的 Limits，不是编的数）；按时长 = 温差 ÷ 时长按当时实测现算；
+/// 按速率 = 老行为，也是没有 task 键的老配方的缺省。
 /// </summary>
 internal sealed class ControlHandler : ICommandHandler
 {
@@ -320,10 +323,21 @@ internal sealed class ControlHandler : ICommandHandler
         var kind = p.Str("obj", "釜内 Tr").Contains("Tj") ? TempChannelKind.Jacket : TempChannelKind.Reactor;
         var began = ctx.Now();
 
-        await temp.RampAsync(target, p.Num("rate", 2), kind, ct).ConfigureAwait(false);
+        var current = kind == TempChannelKind.Jacket ? temp.CurrentJacket : temp.CurrentReactor;
+        var rate = CommandSpecs.TempTaskOf(p) switch
+        {
+            "尽快" => temp.Limits.MaxRatePerMin,
+            // 时长填 0 当「尽快」处理——除零得到的不是快，是 NaN
+            "按时长" => p.Num("dur") > 0
+                ? Math.Min(temp.Limits.MaxRatePerMin, Math.Abs(target - current) / p.Num("dur"))
+                : temp.Limits.MaxRatePerMin,
+            _ => p.Num("rate", 2)
+        };
+        rate = Math.Max(rate, 0.05);
+
+        await temp.RampAsync(target, rate, kind, ct).ConfigureAwait(false);
         // 到不了的目标不能把通道永远挂住：兜底超时按"温差 / 速率"的 3 倍给
-        var budget = TimeSpan.FromMinutes(Math.Abs(target - temp.CurrentReactor)
-                                          / Math.Max(p.Num("rate", 2), 0.05) * 3 + 10);
+        var budget = TimeSpan.FromMinutes(Math.Abs(target - temp.CurrentReactor) / rate * 3 + 10);
         var reached = await temp.WaitReachedAsync(target, tol, budget, ct).ConfigureAwait(false);
 
         if (reached && p.Flag("wait", true))
@@ -402,7 +416,8 @@ internal sealed class StirHandler : ICommandHandler
         var stir = TempHelp.Stir(ctx);
         var began = ctx.Now();
         var rpm = p.Num("rpm");
-        var ramp = p.Num("ramp", 5);
+        // 「立即」走驱动的最短加减速（0.5 s 下限）；电机没有真正的零时间起停
+        var ramp = CommandSpecs.StirImmediate(p) ? 0.5 : p.Num("ramp", 5);
 
         if (stir is StirrerImpl impl) impl.SetRampSeconds(ramp);
         if (rpm <= 0) await stir.StopAsync(ct).ConfigureAwait(false);

@@ -51,7 +51,7 @@ public sealed class LibraryItemViewModel
 /// 6px 色条 + 52px 组头 + 两列格子，收起展开也一样。两页的左栏干的是同一件事
 /// （「从库里挑一个放到右边去」），长成两副样子没有道理。
 ///
-/// 色条直接借步骤库那张模块色表：控温类设备与「温度模块」那组指令是同一个
+/// 色条直接借步骤库那张模块色表：控温类设备与「温控」那组指令是同一个
 /// 物理子系统，两页给它同一个颜色，扫一眼就对得上。
 /// </summary>
 public sealed class DeviceGroup : ViewModelBase

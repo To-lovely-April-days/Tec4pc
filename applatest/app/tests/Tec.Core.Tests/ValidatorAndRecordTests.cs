@@ -56,14 +56,16 @@ public class ValidatorTests
         c.Register(new RamanProbeDriver().Commands);
         c.Register(new InfraredProbeDriver().Commands);
 
-        // 通用 9（原型 8 条 + 设定变量；按条件的等待并在「等待」里）
-        // · 温度 4 · 搅拌 1 · 加料 1 · pH 2 · 在线分析 4
+        // 分组照 iControl Recipe Library：流程控制 7（等待 / 循环 ×2 / 变量 /
+        // 提示 / 标记 / 结束）· 采样 2（采样提醒 + pH 采集）· 安全 1（改限值）
+        // · 温控 4 · 搅拌 1 · 加料 2（加料 + pH 反馈加料）· 在线分析 4
         Assert.Equal(21, c.All.Count);
-        Assert.Equal(9, c.InModule("通用").Count);
-        Assert.Equal(4, c.InModule("温度模块").Count);
+        Assert.Equal(7, c.InModule("流程控制").Count);
+        Assert.Equal(2, c.InModule("采样").Count);
+        Assert.Single(c.InModule("安全"));
+        Assert.Equal(4, c.InModule("温控").Count);
         Assert.Single(c.InModule("搅拌"));
-        Assert.Single(c.InModule("加料"));
-        Assert.Equal(2, c.InModule("pH 控制").Count);
+        Assert.Equal(2, c.InModule("加料").Count);
         Assert.Equal(4, c.InModule("在线分析").Count);
     }
 
@@ -127,10 +129,11 @@ public class ValidatorTests
     {
         var catalog = Catalog();
         Assert.True(catalog.TryGet(CommandSpecs.PhHold, out var d));
-        // 判据是 pH，泵只是执行机构：主能力落在检测上，加料是附加要求
+        // 判据是 pH，泵只是执行机构：主能力落在检测上，加料是附加要求。
+        // 货架上它摆在加料组（照 iControl 把 Control pH 放在加料组的排法）
         Assert.Equal(typeof(IScalarSensor), d.RequiredCapability);
         Assert.Contains(typeof(IDosing), d.AlsoRequires);
-        Assert.Equal(CommandSpecs.ModPh, d.Module);
+        Assert.Equal(CommandSpecs.ModDose, d.Module);
     }
 
     [Fact]

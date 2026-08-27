@@ -1039,7 +1039,8 @@ public sealed class RunViewModel : ViewModelBase
     private string ModuleColorOf(string commandId)
     {
         _ws.Catalog.TryGet(commandId, out var d);
-        return ModuleInfo.ColorOf(d?.Module ?? "通用");
+        // 指令不在目录里就用「不认识」那支灰，不冒充某个模块的颜色
+        return ModuleInfo.ColorOf(d?.Module ?? "—");
     }
 
     private string ShortName(string commandId)

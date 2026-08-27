@@ -36,7 +36,7 @@ public sealed class ProfileView : Control
     /// <summary>边距。与 TrendView 同一套比例：左让出温度刻度，下让出时间刻度。</summary>
     private const double L = 38, R = 12, T = 18, B = 24;
 
-    private const string Line = "#ec5a24";      // 温度模块色，与步骤卡图标同一个橙
+    private const string Line = "#ec5a24";      // 温控模块色，与步骤卡图标同一个橙
     private const string GridH = "#ececec";
     private const string GridV = "#f2f2f2";
     private const string AxisTx = "#8d8d8d";

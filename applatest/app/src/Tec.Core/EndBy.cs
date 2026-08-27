@@ -24,10 +24,9 @@ public static class EndBy
     /// <summary>指令名没列进表时按模块兜底（原型 endByOf 的 grp 分支）。</summary>
     private static string ByModule(string module) => module switch
     {
-        "温度模块" => "到达目标温度",
+        "温控" => "到达目标温度",
         "加料" => "加料完成",
         "搅拌" => "到达设定",
-        "pH 控制" => "条件满足",
         "在线分析" => "采集完成",
         _ => "执行完成"
     };
@@ -49,6 +48,6 @@ public static class EndBy
         var name = catalog.TryGet(step.CommandId, out var d) ? d.DisplayName : step.CommandId;
         return ByName.TryGetValue(name, out var t)
             ? t
-            : ByModule(catalog.TryGet(step.CommandId, out var m) ? m.Module : "通用");
+            : ByModule(catalog.TryGet(step.CommandId, out var m) ? m.Module : "");
     }
 }

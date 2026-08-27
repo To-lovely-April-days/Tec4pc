@@ -24,26 +24,47 @@ namespace Tec.App.ViewModels;
 /// 跟步骤卡左边那条 6px 色条、步骤库里的分类色条、甘特图上的色块
 /// 说的是同一件事——扫一眼就知道这一步归哪个模块管。
 ///
-/// ══ 通用从 #9AA4AB 换成 #10868F ══
-/// 老的灰蓝对白字只有 2.54:1，混在另外五支饱和色里像「这条被禁用了」；
-/// 而通用是**指令条数最多**的一组（等待 / 循环 / 变量 / 提示 / 联锁 /
-/// 标记 / 采样 / 联锁 / 结束共九条），它在库里出现得最频繁。
-/// 新的青 #10868F 对白字 4.35:1，且填进了色相环上最大的一段空白——
-/// 绿 128°（pH）到紫 252°（搅拌）之间整整 124° 原本没人占。
+/// ══ 流程控制（原「通用」）为什么是青 #10868F ══
+/// 老的灰蓝对白字只有 2.54:1，混在另外几支饱和色里像「这条被禁用了」；
+/// 而流程控制是**指令条数最多**的一组（等待 / 循环 ×2 / 变量 / 提示 /
+/// 标记 / 结束共七条），它在库里出现得最频繁。
+/// 青 #10868F 对白字 4.35:1，且填进了色相环上最大的一段空白——
+/// 绿 128°（采样）到紫 252°（搅拌）之间整整 124° 原本没人占。
 /// </summary>
 public static class ModuleInfo
 {
+    // 分组照 iControl Recipe Library 重排之后的色表。老三支色跟着指令走：
+    // 温控还是那支橙、搅拌还是紫、加料还是品红；采样接过 pH 组的绿
+    // （pH 采集搬了过来）、流程控制接过通用的青。安全是新组，
+    // 取 #3465c0 蓝——色相环 190°~250° 的蓝段原本没人占，对白字 5.6:1
     public static string ColorOf(string module) => module switch
     {
-        "通用" => "#10868f",
-        "温度模块" => "#ec5a24",
+        "温控" => "#ec5a24",
         "搅拌" => "#5b46bd",
         "加料" => "#c53a9d",
-        "pH 控制" => "#39b54a",
-        "在线分析" => "#dba32c",
+        "采样" => "#39b54a",
+        "流程控制" => "#10868f",
+        "安全" => "#3465c0",
+        "在线分析" => "#dba32c",   // 已下架，但老配方里的步骤卡还要认得它
         // 认不出的模块（StepViewModel.Module 在指令不在目录里时是「—」）留着老那支灰蓝。
         // 它现在不再是任何一个模块的颜色，正好专门表示「这条指令我不认识」
         _ => "#9aa4ab"
+    };
+
+    /// <summary>
+    /// 库里的分组次序，照 iControl Recipe Library 的排法：
+    /// 温控 → 搅拌 → 加料 → 采样 → 流程控制 → 安全。
+    /// Catalog.Modules 是注册序（内建的先到），不重排的话流程控制会顶在最上面。
+    /// </summary>
+    public static int RankOf(string module) => module switch
+    {
+        "温控" => 0,
+        "搅拌" => 1,
+        "加料" => 2,
+        "采样" => 3,
+        "流程控制" => 4,
+        "安全" => 5,
+        _ => 9
     };
 
     public static Color TintOf(string module) => Color.Parse(ColorOf(module));
@@ -503,7 +524,7 @@ public sealed class LaneViewModel : ViewModelBase
 
 /// <summary>
 /// 配方视图（原型 view-recipe 的 1:1）：
-/// 左 308px 工具箱（通用平铺 + 5 组折叠图标网格）｜中 配方工具条 + 一键复制条 + 多通道泳道｜
+/// 左 308px 工具箱（按 iControl 分组的折叠图标网格）｜中 配方工具条 + 一键复制条 + 多通道泳道｜
 /// 右 342px 步骤属性 + 应用配方库 + 通道状态。
 /// </summary>
 public sealed class RecipeViewModel : ViewModelBase
@@ -529,7 +550,7 @@ public sealed class RecipeViewModel : ViewModelBase
     {
         Workspace = ws;
 
-        foreach (var m in ws.Catalog.Modules)
+        foreach (var m in ws.Catalog.Modules.OrderBy(ModuleInfo.RankOf))
         {
             var group = new ModuleGroup(m);
             foreach (var c in ws.Catalog.InModule(m))
@@ -926,8 +947,8 @@ public sealed class RecipeViewModel : ViewModelBase
     /// <summary>属性栏标题上那枚图标：跟画布上那张卡同一枚方块，别用彩色插画版。</summary>
     public string StepTile => _selectedStep?.TileIcon ?? "tile-wait";
     /// <summary>方块的底 / 配角色，跟卡上那张一个模块色。见 ModuleInfo。</summary>
-    public IBrush StepTileBrush => ModuleInfo.BrushOf(_selectedStep?.Module ?? "通用");
-    public Color StepTileTint => ModuleInfo.TintOf(_selectedStep?.Module ?? "通用");
+    public IBrush StepTileBrush => ModuleInfo.BrushOf(_selectedStep?.Module ?? "流程控制");
+    public Color StepTileTint => ModuleInfo.TintOf(_selectedStep?.Module ?? "流程控制");
     public string StepChannel => LabelOf(_curCh);
 
     /// <summary>这条指令一个参数都没有（比如「循环结束」）。空着不说话会让人以为界面坏了。</summary>
@@ -1080,8 +1101,8 @@ public sealed class RecipeViewModel : ViewModelBase
     public string DragTile { get; private set; } = "tile-wait";
     public string DragColor { get; private set; } = "#10868f";
     /// <summary>幽灵卡上那枚方块的底 / 配角色。跟着 DragColor 一起换。</summary>
-    public IBrush DragTileBrush { get; private set; } = ModuleInfo.BrushOf("通用");
-    public Color DragTileTint { get; private set; } = ModuleInfo.TintOf("通用");
+    public IBrush DragTileBrush { get; private set; } = ModuleInfo.BrushOf("流程控制");
+    public Color DragTileTint { get; private set; } = ModuleInfo.TintOf("流程控制");
 
     /// <summary>从左边的步骤库拖出来。</summary>
     public void BeginDragCommand(CommandItemViewModel c)
