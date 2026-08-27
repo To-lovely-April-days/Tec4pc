@@ -166,7 +166,8 @@
                      插进工位的探头（Inserted）不写名字——演示里插入件旁只有读数框，
                      两行字会压在机器身上 -->
                 <ctl:DeviceArtView ArtKey="{Binding ArtKey}" ArtWidth="{Binding Width}"
-                                   Run1="{Binding Run1}" Run2="{Binding Run2}" />
+                                   Run1="{Binding Run1}" Run2="{Binding Run2}"
+                                   Spin="{Binding Spin}" />
                 <TextBlock Text="{Binding Title}" FontSize="11" Foreground="#383b3f"
                            HorizontalAlignment="Center" Margin="0,2,0,0"
                            IsVisible="{Binding !Inserted}" />
@@ -180,7 +181,8 @@
 
       <!-- 管路画在设备**之上**：接口开在釜盖那三个管口上，位置在图的中段，
            画在设备下面的话最后一截会被机身挡住，管子看着像停在机器边上 -->
-      <ctl:BenchLinks Links="{Binding Links}" IsHitTestVisible="False" />
+      <ctl:BenchLinks Links="{Binding Links}" FlowClock="{Binding FlowClock}"
+                      IsHitTestVisible="False" />
 
       <!-- 插上工位的 Tr / pH 的读数标签（交互演示 tag() 的 1:1）：
            白底 + #A41626 红框，值 + 单位。位置、大小、字号都已按主机比例
@@ -230,6 +232,101 @@
                          Foreground="{Binding ColorHex}" HorizontalAlignment="Center"
                          VerticalAlignment="Top" Margin="0,-18,0,0" />
             </Panel>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <!-- 泵控制小窗到泵的肘形引线（演示 chrome() 那条 #B4B4B4 折线 + 落点圆点） -->
+      <ctl:PanelTethers Panels="{Binding Panels}" IsHitTestVisible="False" />
+
+      <!-- 泵控制小窗（演示的泵控制面板，1:1；差别只有一处：改速率不弹屏幕键盘，
+           点数字直接物理键盘输入）。泵接上自动弹出，标题栏可拖，× 关窗，
+           点台面上那台泵再弹出来 -->
+      <ItemsControl ItemsSource="{Binding Panels}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate><Canvas /></ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.Styles>
+          <Style Selector="ItemsControl > ContentPresenter">
+            <Setter Property="Canvas.Left" Value="{Binding X}" />
+            <Setter Property="Canvas.Top" Value="{Binding Y}" />
+          </Style>
+        </ItemsControl.Styles>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <Border Classes="ppnl" Width="{Binding W}" Height="{Binding H}"
+                    IsVisible="{Binding !Closed}">
+              <DockPanel>
+                <Grid DockPanel.Dock="Top" Height="35" ColumnDefinitions="Auto,*,Auto"
+                      Background="Transparent" Cursor="SizeAll"
+                      PointerPressed="OnPanelHeaderPressed" PointerMoved="OnPanelHeaderMoved"
+                      PointerReleased="OnPanelHeaderReleased">
+                  <StackPanel Grid.Column="0" Spacing="3.4" VerticalAlignment="Center"
+                              Margin="15,0,10,0">
+                    <Border Width="9" Height="1.6" CornerRadius="0.8" Background="#B4B4B4" />
+                    <Border Width="9" Height="1.6" CornerRadius="0.8" Background="#B4B4B4" />
+                    <Border Width="9" Height="1.6" CornerRadius="0.8" Background="#B4B4B4" />
+                  </StackPanel>
+                  <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="13"
+                             Foreground="#1A1A1A" VerticalAlignment="Center" />
+                  <Button Grid.Column="2" Classes="pcl" Command="{Binding Close}"
+                          ToolTip.Tip="关闭（点泵可再打开）">
+                    <Path Data="M0,0 L10,10 M10,0 L0,10" Stroke="#8E8E8E" StrokeThickness="1.6"
+                          StrokeLineCap="Round" Width="10" Height="10" />
+                  </Button>
+                </Grid>
+                <Border DockPanel.Dock="Top" Height="1" Background="#ECECEC" />
+                <StackPanel Margin="18,8,18,0">
+                  <TextBlock Text="设定速率" FontSize="12" Foreground="#6F6F6F"
+                             IsVisible="{Binding !Editing}" />
+                  <TextBlock Text="范围 0.05 – 5.00 mL/min · 回车确定，Esc 取消" FontSize="10.5"
+                             Foreground="#8E8E8E" IsVisible="{Binding Editing}" />
+                  <Border Classes="prate" Classes.edit="{Binding Editing}" Height="42" Margin="0,5,0,0"
+                          Cursor="Hand" PointerPressed="OnRateBoxPressed">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBlock Grid.Column="0" Text="{Binding RateText}" FontSize="26"
+                                 Foreground="#1A1A1A" VerticalAlignment="Center" Margin="11,0,0,0"
+                                 IsVisible="{Binding !Editing}" />
+                      <TextBox Grid.Column="0" Classes="pedit" Text="{Binding EditText, Mode=TwoWay}"
+                               IsVisible="{Binding Editing}" KeyDown="OnRateKeyDown"
+                               LostFocus="OnRateLostFocus" />
+                      <TextBlock Grid.Column="1" Text="mL/min" FontSize="11.5" Foreground="#6F6F6F"
+                                 VerticalAlignment="Center" Margin="6,8,10,0" />
+                    </Grid>
+                  </Border>
+                  <Grid ColumnDefinitions="28,*,28" Height="28" Margin="0,11,0,0">
+                    <Button Grid.Column="0" Classes="pstep" Command="{Binding StepDown}">
+                      <Path Data="M0,0 H14" Stroke="#4A4A4A" StrokeThickness="1.7"
+                            StrokeLineCap="Round" Width="14" Height="1.7" VerticalAlignment="Center" />
+                    </Button>
+                    <Border Grid.Column="1" Width="104" Height="24" Background="Transparent"
+                            HorizontalAlignment="Center" VerticalAlignment="Center" Cursor="Hand"
+                            PointerPressed="OnSlidePressed" PointerMoved="OnSlideMoved"
+                            PointerReleased="OnSlideReleased">
+                      <Panel VerticalAlignment="Center">
+                        <Border Height="4" CornerRadius="2" Background="#ECECEC" />
+                        <Border Height="4" CornerRadius="2" Background="#4A4A4A"
+                                HorizontalAlignment="Left" Width="{Binding FillWidth}" />
+                        <Ellipse Width="16" Height="16" Fill="White" Stroke="#4A4A4A"
+                                 StrokeThickness="2" HorizontalAlignment="Left"
+                                 Margin="{Binding ThumbMargin}" />
+                      </Panel>
+                    </Border>
+                    <Button Grid.Column="2" Classes="pstep" Command="{Binding StepUp}">
+                      <Path Data="M0,7 H14 M7,0 V14" Stroke="#4A4A4A" StrokeThickness="1.7"
+                            StrokeLineCap="Round" Width="14" Height="14" />
+                    </Button>
+                  </Grid>
+                  <Grid ColumnDefinitions="*,Auto" Margin="0,13,0,0">
+                    <TextBlock Text="累计加料" FontSize="12" Foreground="#6F6F6F" />
+                    <TextBlock Grid.Column="1" Text="{Binding TotalText}" FontSize="13"
+                               Foreground="#1A1A1A" />
+                  </Grid>
+                  <Button Classes="prun" Classes.on="{Binding Running}" Command="{Binding ToggleRun}"
+                          Content="{Binding RunLabel}" Margin="0,9,0,0" />
+                </StackPanel>
+              </DockPanel>
+            </Border>
           </DataTemplate>
         </ItemsControl.ItemTemplate>
       </ItemsControl>
@@ -674,6 +771,100 @@
       <Setter Property="BorderThickness" Value="1.5" />
       <Setter Property="HorizontalAlignment" Value="Center" />
       <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <!-- ── 泵控制小窗（数值抄演示：白卡 r8、描边 #D4D4D4 1.2、投影 dy3 blur~10）── -->
+    <Style Selector="Border.ppnl">
+      <Setter Property="Background" Value="White" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="BorderBrush" Value="#D4D4D4" />
+      <Setter Property="BorderThickness" Value="1.2" />
+      <Setter Property="BoxShadow" Value="0 3 10 0 #24000000" />
+    </Style>
+    <!-- 速率框：平时 #ECECEC 细边；编辑态描黑加粗（演示 keypad 版输入框同款） -->
+    <Style Selector="Border.prate">
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderBrush" Value="#ECECEC" />
+      <Setter Property="BorderThickness" Value="1.4" />
+      <Setter Property="CornerRadius" Value="5" />
+    </Style>
+    <Style Selector="Border.prate.edit">
+      <Setter Property="BorderBrush" Value="#1A1A1A" />
+      <Setter Property="BorderThickness" Value="1.8" />
+    </Style>
+    <Style Selector="TextBox.pedit">
+      <Setter Property="FontSize" Value="22" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Padding" Value="8,0,0,0" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="TextAlignment" Value="Right" />
+    </Style>
+    <Style Selector="TextBox.pedit /template/ Border#PART_BorderElement">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="Button.pstep">
+      <Setter Property="Width" Value="28" />
+      <Setter Property="Height" Value="28" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="CornerRadius" Value="5" />
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderBrush" Value="#D4D4D4" />
+      <Setter Property="BorderThickness" Value="1.2" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.pstep:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#F5F5F4" />
+      <Setter Property="BorderBrush" Value="#B4B4B4" />
+    </Style>
+    <Style Selector="Button.pcl">
+      <Setter Property="Width" Value="24" />
+      <Setter Property="Height" Value="24" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="CornerRadius" Value="5" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Margin" Value="0,0,8,0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.pcl:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#14000000" />
+    </Style>
+    <!-- 启动/停止：停着 = 黑底白字「启 动」；跑着 = 白底黑边「停 止」（演示同款） -->
+    <Style Selector="Button.prun">
+      <Setter Property="Height" Value="32" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="CornerRadius" Value="5" />
+      <Setter Property="Background" Value="#2B2B2B" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="FontSize" Value="13.5" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.prun:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#1A1A1A" />
+    </Style>
+    <Style Selector="Button.prun.on">
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderBrush" Value="#4A4A4A" />
+      <Setter Property="BorderThickness" Value="1.4" />
+      <Setter Property="Foreground" Value="#1A1A1A" />
+    </Style>
+    <Style Selector="Button.prun.on:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#F5F5F4" />
+      <Setter Property="BorderBrush" Value="#000000" />
     </Style>
   </UserControl.Styles>
 </UserControl>

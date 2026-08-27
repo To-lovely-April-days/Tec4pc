@@ -58,9 +58,14 @@ public sealed class DeviceArtView : Control
     public static readonly StyledProperty<bool> Run2Property =
         AvaloniaProperty.Register<DeviceArtView, bool>(nameof(Run2));
 
+    /// <summary>转子角度（度）。泵在跑时外面驱动它，data-spin 那一组跟着转。</summary>
+    public static readonly StyledProperty<double> SpinProperty =
+        AvaloniaProperty.Register<DeviceArtView, double>(nameof(Spin));
+
     static DeviceArtView()
     {
-        AffectsRender<DeviceArtView>(ArtKeyProperty, Tint1Property, Tint2Property, Run1Property, Run2Property);
+        AffectsRender<DeviceArtView>(ArtKeyProperty, Tint1Property, Tint2Property,
+                                     Run1Property, Run2Property, SpinProperty);
         AffectsMeasure<DeviceArtView>(ArtKeyProperty, ArtWidthProperty, FitProperty);
     }
 
@@ -98,6 +103,12 @@ public sealed class DeviceArtView : Control
     {
         get => GetValue(Run2Property);
         set => SetValue(Run2Property, value);
+    }
+
+    public double Spin
+    {
+        get => GetValue(SpinProperty);
+        set => SetValue(SpinProperty, value);
     }
 
     /// <summary>
@@ -142,6 +153,6 @@ public sealed class DeviceArtView : Control
         }
         var (scale, dx, dy) = Place(art);
         using var _ = context.PushTransform(Matrix.CreateTranslation(dx, dy));
-        art.Render(context, scale, new SvgArt.Paint(Tint1, Tint2, Run1, Run2));
+        art.Render(context, scale, new SvgArt.Paint(Tint1, Tint2, Run1, Run2) { Spin = Spin });
     }
 }

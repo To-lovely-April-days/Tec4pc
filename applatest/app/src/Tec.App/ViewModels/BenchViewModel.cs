@@ -116,6 +116,10 @@ public sealed class DeviceNodeViewModel : ViewModelBase
     public bool Run1 { get => _run1; set => Set(ref _run1, value); }
     public bool Run2 { get => _run2; set => Set(ref _run2, value); }
 
+    private double _spin;
+    /// <summary>转子角度（度）。泵在跑时动画拍子推着走，data-spin 那一组跟着转。</summary>
+    public double Spin { get => _spin; set => Set(ref _spin, value); }
+
     public double X => Device.Position.X;
     public double Y => Device.Position.Y;
     public double Width => BenchDock.DisplayWidth(ArtKey);
@@ -304,6 +308,8 @@ public sealed class BenchViewModel : ViewModelBase
             if (prev is not null) prev.IsSelected = false;
             if (value is not null) value.IsSelected = true;
             else { Wells.Clear(); ConnectionForm = null; ConfigForm = null; }
+            // 关掉的泵控制小窗，点一下台面上那台泵就再弹出来
+            if (value is { } vn && _panels.TryGetValue(vn.Id, out var pp)) pp.Closed = false;
             Renaming = false;
             BuildForms();
             BuildBindTargets();
@@ -415,6 +421,52 @@ public sealed class BenchViewModel : ViewModelBase
 
     /// <summary>插上工位的 Tr / pH 各带一张读数标签（演示的 tag()：白底红框，值 + 单位）。</summary>
     public ObservableCollection<ReadTagViewModel> Tags { get; } = new();
+
+    /// <summary>每台接上的泵一扇控制小窗（演示的泵控制面板）。接上自动弹出，可拖、可关。</summary>
+    public ObservableCollection<PumpPanelViewModel> Panels { get; } = new();
+    private readonly Dictionary<string, PumpPanelViewModel> _panels = new(StringComparer.Ordinal);
+
+    private double _flowClock;
+    /// <summary>流动动画的时钟（秒）。泵在跑时 AnimTick 推着走，BenchLinks 按它挪虚线。</summary>
+    public double FlowClock { get => _flowClock; private set => Set(ref _flowClock, value); }
+
+    /// <summary>有泵在跑：视图据此起停动画拍子（不跑就一拍都不打，别学常驻心跳的教训）。</summary>
+    public bool AnyPumpRunning => Panels.Any(p => p.Running);
+
+    /// <summary>小窗上的启停按到了：重算管路（流动标志变了）并告诉视图起停动画。</summary>
+    internal void PumpRunChanged()
+    {
+        RebuildLinks();
+        Raise(nameof(AnyPumpRunning));
+    }
+
+    /// <summary>跑着改速率：流速跟着变（演示 pumpFx 调 animation-duration 同一件事）。</summary>
+    internal void PumpRateChanged(PumpPanelViewModel p)
+    {
+        if (p.Running) RebuildLinks();
+    }
+
+    /// <summary>小窗背后那台泵的加料能力——**操作走的就是驱动契约 IDosing**。</summary>
+    internal IDosing? DosingFor(PumpPanelViewModel p)
+        => p.Channel > 0 ? _ws.ChannelOf(p.Channel)?.Capabilities.Get<IDosing>() : null;
+
+    /// <summary>
+    /// 动画一拍：泵转子按速率转（演示 3.2 − 0.5×速率 秒一圈），流动时钟前进。
+    /// 返回 false = 没有泵在跑，视图就把拍子停了。
+    /// </summary>
+    public bool AnimTick(double dt)
+    {
+        var any = false;
+        foreach (var p in Panels)
+        {
+            if (!p.Running) continue;
+            any = true;
+            if (Devices.FirstOrDefault(d => d.Id == p.DeviceId) is { } node)
+                node.Spin = (node.Spin + 360 * dt / Math.Max(0.7, 3.2 - 0.5 * p.Rate)) % 360;
+        }
+        if (any) FlowClock += dt;
+        return any;
+    }
 
     public bool Dragging => _dragNew is not null || _dragNode is not null;
 
@@ -737,11 +789,17 @@ public sealed class BenchViewModel : ViewModelBase
         RebuildDecor();
 
         // 单条几何交给 BenchDock.Link——运行页的台面总览用的是同一个，
-        // 两边各写一份的话，同一台面在两页会画成两个样子
+        // 两边各写一份的话，同一台面在两页会画成两个样子。
+        // 泵在跑的那根管挂上流动标志：速度按演示的公式（32 单位走 1.6−0.24×速率 秒）
         void Add(string art, Point pos, double width, string? side,
                  string devId, DeviceNodeViewModel host, Anchor a)
-            => Links.Add(BenchDock.Link(art, pos, width, side, devId, host.Id,
-                                        new Point(host.X, host.Y), host.Width, host.Channels, a));
+        {
+            var l = BenchDock.Link(art, pos, width, side, devId, host.Id,
+                                   new Point(host.X, host.Y), host.Width, host.Channels, a);
+            if (l.Kind == LinkKind.Feed && _panels.TryGetValue(devId, out var p) && p.Running)
+                l = l with { Flow = true, FlowSpeed = 32.0 / Math.Max(0.3, 1.6 - 0.24 * p.Rate) };
+            Links.Add(l);
+        }
     }
 
     /// <summary>
@@ -788,6 +846,40 @@ public sealed class BenchViewModel : ViewModelBase
             h.Run1 = s0;
             h.Run2 = s1;
         }
+
+        // 泵控制小窗：接上的泵一台一扇，**接上那一刻自动在泵旁边弹出来**；
+        // 拔下或删掉就收走。窗随泵：肘形引线的落点跟着泵的当前位置走，
+        // 窗本身留在用户摆的地方（拖动窗头可以挪）
+        var live = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var node in Devices)
+        {
+            var dev = node.Device;
+            if (dev.DockHostId is null) continue;
+            if (BenchDock.AnchorById(dev.DockAnchor) is not { Accept: "feed" } a) continue;
+            if (Devices.FirstOrDefault(d => d.Id == dev.DockHostId) is not { } host) continue;
+            live.Add(dev.InstanceId);
+            if (!_panels.TryGetValue(dev.InstanceId, out var p))
+            {
+                p = new PumpPanelViewModel(this, dev.InstanceId)
+                {
+                    X = node.X + node.Width + BenchDock.NodePad * 2 + 26,
+                    Y = node.Y - 16
+                };
+                _panels[dev.InstanceId] = p;
+                Panels.Add(p);
+            }
+            p.SetDock(a.Slot, host.Channels.ElementAtOrDefault(a.Slot));
+            var t = BenchDock.PumpPanelTarget(new Point(node.X, node.Y), node.Width);
+            p.SetTarget(t.X, t.Y);
+        }
+        foreach (var id in _panels.Keys.Where(k => !live.Contains(k)).ToList())
+        {
+            var p = _panels[id];
+            p.MarkStopped();                // 泵已不在通道上，会话也随台面重建停了
+            _panels.Remove(id);
+            Panels.Remove(p);
+        }
+        Raise(nameof(AnyPumpRunning));
     }
 
     /// <summary>
@@ -819,6 +911,14 @@ public sealed class BenchViewModel : ViewModelBase
                 }
             }
             t.Text = txt;
+        }
+
+        // 小窗上的「累计加料」同拍刷新：读 IDosing.TotalVolume——
+        // 驱动模型自己积分出来的量（带起停加速段），不在界面上另攒一份
+        foreach (var p in Panels)
+        {
+            var cap = DosingFor(p);
+            p.SetTotal(cap is null ? "—" : $"{cap.TotalVolume:F2} mL");
         }
     }
 
@@ -923,6 +1023,10 @@ public sealed class BenchViewModel : ViewModelBase
             foreach (var it in items) g.Items.Add(it);
             Groups.Add(g);
         }
+
+        // 台面一动全部设备会话重开（RebuildChannelsAsync 的行为），跑着的泵
+        // 这一刻物理上已经停了——小窗如实归位到「启动」，不装作还在跑
+        foreach (var p in _panels.Values) p.MarkStopped();
 
         SyncDevices();
         RebuildLinks();
@@ -1087,6 +1191,154 @@ public sealed class ReadTagViewModel : ViewModelBase
 
     private string _text = "—";
     public string Text { get => _text; set => Set(ref _text, value); }
+}
+
+/// <summary>
+/// 泵控制小窗，1:1 照交互演示的泵控制面板：216×220 白卡、可拖标题栏、
+/// 肘形引线连到泵顶、设定速率（大数字 + ±0.05 + 滑杆，0.05–5.00 mL/min）、
+/// 累计加料、启动/停止。跟演示差一处（用户定的）：改速率不弹屏幕键盘，
+/// 点一下数字直接物理键盘输入，Enter 确定、Esc 取消。
+///
+/// **每一步操作最后走的都是驱动契约 IDosing**：启动 = SetRateAsync、
+/// 停止 = StopAsync、跑着改速率再 SetRateAsync 一次；累计加料读 TotalVolume。
+/// 界面不自己攒任何数。
+/// </summary>
+public sealed class PumpPanelViewModel : ViewModelBase
+{
+    public const double PanelW = 216, PanelH = 220, TrackW = 104;
+    private const double RateMin = 0.05, RateMax = 5.00;
+
+    private readonly BenchViewModel _owner;
+    private double _x, _y, _tx, _ty, _rate = 1.20;
+    private bool _running, _editing, _closed;
+    private string _editText = "", _total = "—";
+    private int _slot, _channel;
+
+    public PumpPanelViewModel(BenchViewModel owner, string deviceId)
+    {
+        _owner = owner;
+        DeviceId = deviceId;
+        StepDown = new RelayCommand(() => Nudge(-1));
+        StepUp = new RelayCommand(() => Nudge(+1));
+        ToggleRun = new RelayCommand(Run);
+        // 演示的 ×：编辑态下是取消，平时是关窗（点那台泵可再弹出）。
+        // 关窗不停泵——藏起一扇窗不该悄悄动执行器
+        Close = new RelayCommand(() => { if (Editing) CancelEdit(); else Closed = true; });
+    }
+
+    public string DeviceId { get; }
+    public double W => PanelW;
+    public double H => PanelH;
+
+    public RelayCommand StepDown { get; }
+    public RelayCommand StepUp { get; }
+    public RelayCommand ToggleRun { get; }
+    public RelayCommand Close { get; }
+
+    public double X { get => _x; set => Set(ref _x, value); }
+    public double Y { get => _y; set => Set(ref _y, value); }
+
+    /// <summary>肘形引线的落点（泵顶）。泵挪窝时台面重算喂进来。</summary>
+    public double TargetX => _tx;
+    public double TargetY => _ty;
+
+    public void SetTarget(double x, double y)
+    {
+        if (Math.Abs(_tx - x) < 0.01 && Math.Abs(_ty - y) < 0.01) return;
+        _tx = x;
+        _ty = y;
+        RaiseAll(nameof(TargetX), nameof(TargetY));
+    }
+
+    public int Slot => _slot;
+    public int Channel => _channel;
+
+    public void SetDock(int slot, int channel)
+    {
+        if (_slot == slot && _channel == channel) return;
+        _slot = slot;
+        _channel = channel;
+        Raise(nameof(Title));
+    }
+
+    public string Title => $"进料泵 · 工位 {_slot + 1}";
+
+    public double Rate => _rate;
+    public string RateText => _rate.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+    /// <summary>滑杆填充段的宽度与滑块位置，几何同演示（轨 104）。</summary>
+    public double FillWidth => (_rate - RateMin) / (RateMax - RateMin) * TrackW;
+    public Thickness ThumbMargin => new(FillWidth - 8, 0, 0, 0);
+
+    public bool Running { get => _running; private set { if (Set(ref _running, value)) Raise(nameof(RunLabel)); } }
+    public string RunLabel => _running ? "停 止" : "启 动";
+
+    public bool Editing { get => _editing; private set => Set(ref _editing, value); }
+    public string EditText { get => _editText; set => Set(ref _editText, value); }
+
+    public bool Closed { get => _closed; set => Set(ref _closed, value); }
+
+    public string TotalText { get => _total; private set => Set(ref _total, value); }
+    public void SetTotal(string text) => TotalText = text;
+
+    /// <summary>台面重建把会话换掉了：泵物理上停了，按钮如实回到「启动」。</summary>
+    public void MarkStopped() => Running = false;
+
+    // ── 速率 ────────────────────────────────────────────────────────
+    private void SetRate(double v)
+    {
+        v = Math.Clamp(v, RateMin, RateMax);
+        if (Math.Abs(v - _rate) < 0.0001) return;
+        _rate = v;
+        RaiseAll(nameof(Rate), nameof(RateText), nameof(FillWidth), nameof(ThumbMargin));
+        if (Running && _owner.DosingFor(this) is { } cap)
+            _ = cap.SetRateAsync(_rate, CancellationToken.None);
+        _owner.PumpRateChanged(this);
+    }
+
+    /// <summary>± 按钮：一格 0.05，跟演示一样吸到 0.05 的整数倍。</summary>
+    private void Nudge(int d) => SetRate(Math.Round((_rate + d * 0.05) / 0.05) * 0.05);
+
+    /// <summary>滑杆：x 为指针在轨上的横向位置（0..TrackW），吸 0.05。</summary>
+    public void SlideTo(double x)
+    {
+        var v = RateMin + Math.Clamp(x, 0, TrackW) / TrackW * (RateMax - RateMin);
+        SetRate(Math.Round(v / 0.05) * 0.05);
+    }
+
+    // ── 编辑（物理键盘直接输入） ─────────────────────────────────────
+    public void BeginEdit()
+    {
+        EditText = RateText;
+        Editing = true;
+    }
+
+    public void CommitEdit()
+    {
+        if (double.TryParse(EditText, System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out var v))
+            SetRate(Math.Round(v * 100) / 100);          // 演示 commit 同款：0.01 精度再夹进量程
+        Editing = false;
+    }
+
+    public void CancelEdit() => Editing = false;
+
+    // ── 启停 ────────────────────────────────────────────────────────
+    private void Run()
+    {
+        var cap = _owner.DosingFor(this);
+        if (cap is null) return;                          // 通道还没建好，按了也没有对象可指挥
+        if (Running)
+        {
+            _ = cap.StopAsync(CancellationToken.None);
+            Running = false;
+        }
+        else
+        {
+            _ = cap.SetRateAsync(_rate, CancellationToken.None);
+            Running = true;
+        }
+        _owner.PumpRunChanged();
+    }
 }
 
 /// <summary>拖拽时画在画布上的一个接口点。</summary>

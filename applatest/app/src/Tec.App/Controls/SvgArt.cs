@@ -60,6 +60,13 @@ public sealed class SvgArt
 
     public sealed record Paint(Color Tint1, Color Tint2, bool Run1, bool Run2)
     {
+        /// <summary>
+        /// data-spin 元素的旋转角（度）。泵的转子标着 data-spin="cx cy"，
+        /// 泵在跑时外面每拍把角度加一点，转子就转起来（演示 .rotor 的 spin 动画）。
+        /// 0 就不推变换，静态图零开销。
+        /// </summary>
+        public double Spin { get; init; }
+
         /// <summary>currentColor 解析成什么。图标的着色入口。</summary>
         public Color Current { get; init; } = Color.Parse("#3d3d3d");
 
@@ -153,6 +160,20 @@ public sealed class SvgArt
         IDisposable? pushedTransform = null;
         if (el.Attribute("transform")?.Value is { } tr && ParseTransform(tr) is { } m)
             pushedTransform = ctx.PushTransform(m);
+        // data-spin="cx cy"：绕给定点转 Spin 度（泵的转子）。角度为 0 时不推
+        IDisposable? pushedSpin = null;
+        if (paint.Spin != 0 && el.Attribute("data-spin")?.Value is { } sp)
+        {
+            var c = sp.Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries);
+            if (c.Length == 2)
+            {
+                double scx = Dbl(c[0], 0), scy = Dbl(c[1], 0);
+                pushedSpin = ctx.PushTransform(
+                    Matrix.CreateTranslation(-scx, -scy)
+                    * Matrix.CreateRotation(paint.Spin * Math.PI / 180)
+                    * Matrix.CreateTranslation(scx, scy));
+            }
+        }
         // clip-path="url(#id)"：不裁的话液面那颗椭圆会整颗露在液面之上
         IDisposable? pushedClip = null;
         if (ClipOf(el) is { } clipGeo) pushedClip = ctx.PushGeometryClip(clipGeo);
@@ -238,6 +259,7 @@ public sealed class SvgArt
         finally
         {
             pushedClip?.Dispose();
+            pushedSpin?.Dispose();
             pushedTransform?.Dispose();
             pushedOpacity?.Dispose();
         }

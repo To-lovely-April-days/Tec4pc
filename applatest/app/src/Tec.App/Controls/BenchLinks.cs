@@ -25,7 +25,20 @@ public sealed class BenchLinks : Control
     public static readonly StyledProperty<bool> ShowLabelsProperty =
         AvaloniaProperty.Register<BenchLinks, bool>(nameof(ShowLabels), true);
 
-    static BenchLinks() => AffectsRender<BenchLinks>(LinksProperty, ShowLabelsProperty);
+    /// <summary>
+    /// 流动动画的时钟（秒）。泵在跑时视图模型每拍推一点，带 Flow 的加料管
+    /// 里那条虚线按各自的 FlowSpeed 往前挪——同一个钟，各管各的速度。
+    /// </summary>
+    public static readonly StyledProperty<double> FlowClockProperty =
+        AvaloniaProperty.Register<BenchLinks, double>(nameof(FlowClock));
+
+    static BenchLinks() => AffectsRender<BenchLinks>(LinksProperty, ShowLabelsProperty, FlowClockProperty);
+
+    public double FlowClock
+    {
+        get => GetValue(FlowClockProperty);
+        set => SetValue(FlowClockProperty, value);
+    }
 
     /// <summary>
     /// 集合本身不变、只是内容增删时也要重画——AffectsRender 只认属性替换，
@@ -84,7 +97,7 @@ public sealed class BenchLinks : Control
                                             link.Kind == LinkKind.Probe ? 18
                                             : link.Kind == LinkKind.Feed ? Math.Max(24 * link.Scale, 10)
                                             : 24),
-                 1, ShowLabels);
+                 1, ShowLabels, FlowClock);
     }
 
     /// <summary>
@@ -96,7 +109,7 @@ public sealed class BenchLinks : Control
     /// <param name="scale">线宽与连接件按这个比例缩，太细的有下限兜着。</param>
     /// <param name="labels">画不画胶囊标签。总览那一格太小，胶囊会糊成一片。</param>
     public static void Draw(DrawingContext ctx, BenchLink link, IReadOnlyList<Point> pts,
-                            double scale, bool labels)
+                            double scale, bool labels, double flowClock = 0)
     {
         if (pts.Count < 2) return;
         var geo = Rounded(pts, (link.Kind == LinkKind.Probe ? 9
@@ -119,6 +132,22 @@ public sealed class BenchLinks : Control
                 var k = scale * link.Scale;
                 Stroke(ctx, geo, Color.Parse("#4A4A4A"), Math.Max(5 * k, 1.4));
                 Stroke(ctx, geo, Color.Parse("#F1F1F1"), Math.Max(2.4 * k, 0.7));
+                // 泵在跑：芯线上叠一条料液色的流动虚线（演示 .flow）。
+                // 8-8 的段距与 2.4 的线宽都是主机图单位；DashStyle 的段长和
+                // 相位都按「线宽的倍数」记，所以统一除以 2.4。相位随时钟推进；
+                // **正号**才是顺着路径方向（泵 → 加料口）走——负号实测出来
+                // 是往回流（横段上逐帧左移 3px，正好是一拍该走的量，方向反了）
+                if (link.Flow)
+                {
+                    var w = Math.Max(2.4 * k, 0.7);
+                    var dash = 8.0 / 2.4;
+                    var pen = new Pen(new SolidColorBrush(Color.Parse("#AE9498")), w)
+                    {
+                        DashStyle = new DashStyle(new[] { dash, dash },
+                                                  flowClock * link.FlowSpeed / 2.4)
+                    };
+                    ctx.DrawGeometry(null, pen, geo);
+                }
                 ctx.DrawRectangle(new SolidColorBrush(Color.Parse("#DCDCDC")),
                     new Pen(new SolidColorBrush(Color.Parse("#4A4A4A")), Math.Max(1.8 * k, 0.5)),
                     new Rect(to.X - 7 * k, to.Y - 6 * k, 14 * k, 12 * k), 2 * k, 2 * k);

@@ -39,6 +39,11 @@ public sealed record BenchLink(string DeviceId, string HostId, string AnchorId, 
     /// <summary>主机图单位 → 画布像素的比例。加料管的粗细、加料口的大小按它缩，
     /// 跟主机永远同一个比例——演示图里管宽 5 是主机坐标系里的 5。</summary>
     public double Scale { get; init; } = 1;
+
+    /// <summary>泵在跑：管内画流动虚线（演示 .flow）。</summary>
+    public bool Flow { get; init; }
+    /// <summary>流动速度（主机图单位/秒）。演示一圈 32 单位走 (1.6 − 0.24×速率) 秒。</summary>
+    public double FlowSpeed { get; init; }
 }
 
 /// <summary>
@@ -164,6 +169,17 @@ public static class BenchDock
         var vx = art?.ViewX ?? 0;
         var vy = art?.ViewY ?? 0;
         return new Point(hostPos.X + (vx + dx) * s, hostPos.Y + vy * s);
+    }
+
+    /// <summary>
+    /// 泵控制小窗肘形引线的落点：泵机身顶沿中部。演示 PTGT 取的是泵图 (150,154)，
+    /// 换算到 feedpump.svg 的 viewBox（原点 14,46）就是 (136,108)，再乘泵自己的比例。
+    /// </summary>
+    public static Point PumpPanelTarget(Point pumpPos, double pumpWidth)
+    {
+        var art = Controls.DeviceArtCache.Get("feedpump");
+        var s = art is null ? 1 : pumpWidth / art.ViewWidth;
+        return new Point(pumpPos.X + NodePad + 136 * s, pumpPos.Y + NodePad + 108 * s);
     }
 
     /// <summary>
