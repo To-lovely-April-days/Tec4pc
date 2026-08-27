@@ -233,6 +233,27 @@ public sealed class BenchViewModel : ViewModelBase
     /// <summary>画布可视区尺寸，由视图在尺寸变化时告诉它——「适应」要用。</summary>
     public void StageSize(Size s) => _stage = s;
 
+    /// <summary>
+    /// 画布可视区换算到世界坐标的矩形。画布**只有缩放没有平移**，
+    /// 拖出可视区的东西没有任何办法再看见——所以设备和泵小窗都夹在这个框里
+    /// （演示的面板拖动也是夹在画布内的，同一件事）。
+    /// </summary>
+    private Rect VisibleWorld()
+        => new(-PanX / Zoom, -PanY / Zoom,
+               Math.Max(_stage.Width, 120) / Zoom, Math.Max(_stage.Height, 120) / Zoom);
+
+    /// <summary>目标比可视区还大时保住左/上沿，别把东西夹没了。</summary>
+    private static double ClampAxis(double v, double min, double max)
+        => max <= min ? min : Math.Clamp(v, min, max);
+
+    /// <summary>把一扇泵小窗整个收进可视区（自动弹出、拖动、量出实际高度后都要夹）。</summary>
+    public void ClampPanel(PumpPanelViewModel p)
+    {
+        var vis = VisibleWorld();
+        p.X = ClampAxis(p.X, vis.X + 6, vis.Right - p.W - 6);
+        p.Y = ClampAxis(p.Y, vis.Y + 6, vis.Bottom - p.H - 6);
+    }
+
     private void Scale(double factor)
     {
         // 以可视区中心为锚点缩放，不然放大后看的是左上角
@@ -243,6 +264,7 @@ public sealed class BenchViewModel : ViewModelBase
         PanX = cx - (cx - PanX) * k;
         PanY = cy - (cy - PanY) * k;
         Zoom = next;
+        foreach (var p in Panels) ClampPanel(p);   // 可视区变了，小窗跟着收回来
     }
 
     /// <summary>适应：把所有设备的包围盒缩放平移到可视区里，留一圈边距。</summary>
@@ -263,6 +285,7 @@ public sealed class BenchViewModel : ViewModelBase
         Zoom = z;
         PanX = (_stage.Width - (x1 - x0) * z) / 2 - x0 * z;
         PanY = (_stage.Height - (y1 - y0) * z) / 2 - y0 * z;
+        foreach (var p in Panels) ClampPanel(p);
     }
 
     /// <summary>删除选中的设备。插在它身上的设备一并松开，绑定也清掉。</summary>
@@ -582,6 +605,14 @@ public sealed class BenchViewModel : ViewModelBase
         DragX = at.X - _grab.X;
         DragY = at.Y - _grab.Y;
 
+        // 整台设备（连底下两行名字）都夹在可视区里：半台机器悬在画布外
+        // 就是半台机器再也点不着（用户截到泵的瓶子被裁在设备库底下）
+        var vis = VisibleWorld();
+        var bw = DragWidth + BenchDock.NodePad * 2;
+        var bh = DragHeight + BenchDock.NodePad * 2 + 26;
+        DragX = ClampAxis(DragX, vis.X, vis.Right - bw);
+        DragY = ClampAxis(DragY, vis.Y, vis.Bottom - bh);
+
         // 台面上已有的设备直接跟着手走。原来是把设备留在原地、另画一个幽灵，
         // 看着就像拖不动——设备本来就在画布上，让它自己动才对
         _dragNode?.MoveTo(new Point(DragX, DragY));
@@ -860,11 +891,14 @@ public sealed class BenchViewModel : ViewModelBase
             live.Add(dev.InstanceId);
             if (!_panels.TryGetValue(dev.InstanceId, out var p))
             {
-                p = new PumpPanelViewModel(this, dev.InstanceId)
-                {
-                    X = node.X + node.Width + BenchDock.NodePad * 2 + 26,
-                    Y = node.Y - 16
-                };
+                // 默认弹在泵右边；右边放不下（泵靠着画布右缘）就翻到左边，
+                // 最后整扇夹进可视区——弹出来就得整扇看得见
+                var vis0 = VisibleWorld();
+                var px = node.X + node.Width + BenchDock.NodePad * 2 + 26;
+                if (px + PumpPanelViewModel.PanelW + 6 > vis0.Right)
+                    px = node.X - PumpPanelViewModel.PanelW - 26;
+                p = new PumpPanelViewModel(this, dev.InstanceId) { X = px, Y = node.Y - 16 };
+                ClampPanel(p);
                 _panels[dev.InstanceId] = p;
                 Panels.Add(p);
             }
@@ -1240,7 +1274,9 @@ public sealed class PumpPanelViewModel : ViewModelBase
 
     public void SetMeasuredHeight(double h)
     {
-        if (h > 40) H = h;
+        if (h <= 40) return;
+        H = h;
+        _owner.ClampPanel(this);   // 实际高度到了再夹一次，免得量完才发现底边出了可视区
     }
 
     public RelayCommand StepDown { get; }
