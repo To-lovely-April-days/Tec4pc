@@ -1013,6 +1013,66 @@
                   </Grid>
                 </StackPanel>
               </StackPanel>
+
+              <!-- 本步安全覆盖（iControl 每步的 Advanced 层）：执行期间临时收紧的限值，
+                   开始挂进安全层、结束自动撤下还原。三层限值同时求值，只能收紧 -->
+              <StackPanel Margin="0,10,0,0" Spacing="6">
+                <Button Classes="secbtn" Command="{Binding GuardSection.Toggle}">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Border Classes="exp3s" Classes.up="{Binding GuardSection.Open}">
+                      <ctl:TecIcon Key="ui-chev-down" Tint="#51555a" Size="10" />
+                    </Border>
+                    <TextBlock Text="本步安全覆盖" Classes="acc" VerticalAlignment="Center" />
+                    <!-- 折叠着也要看得出有覆盖在生效，颜色用安全组那支蓝 -->
+                    <Border IsVisible="{Binding GuardActive}" Background="#3465c0" CornerRadius="2"
+                            Padding="5,1" VerticalAlignment="Center">
+                      <TextBlock Text="已设" FontSize="10" Foreground="White" />
+                    </Border>
+                  </StackPanel>
+                </Button>
+                <StackPanel IsVisible="{Binding GuardSection.Open}" Spacing="6">
+                  <TextBlock Text="这一步执行期间临时加的限值，结束自动撤下还原。留空 = 不设那一条；与底线、配方限值同时求值，只能收紧不能放宽。"
+                             FontSize="10.5" Foreground="#888d92" LineHeight="15" TextWrapping="Wrap" />
+                  <Grid ColumnDefinitions="76,*,14,*,40" RowDefinitions="18,Auto,6,Auto,6,Auto"
+                        Margin="0,2,0,0">
+                    <TextBlock Grid.Row="0" Grid.Column="1" Text="下限" FontSize="10" Foreground="#959a9f" />
+                    <TextBlock Grid.Row="0" Grid.Column="3" Text="上限" FontSize="10" Foreground="#959a9f" />
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="釜内 Tr" FontSize="12" Foreground="#3a3d41"
+                               VerticalAlignment="Center" />
+                    <TextBox Grid.Row="1" Grid.Column="1" Classes="gin"
+                             Text="{Binding GuardTrMin, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                    <TextBox Grid.Row="1" Grid.Column="3" Classes="gin"
+                             Text="{Binding GuardTrMax, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                    <TextBlock Grid.Row="1" Grid.Column="4" Text="℃" FontSize="11" Foreground="#888d92"
+                               VerticalAlignment="Center" Margin="6,0,0,0" />
+
+                    <TextBlock Grid.Row="3" Grid.Column="0" Text="夹套 Tj" FontSize="12" Foreground="#3a3d41"
+                               VerticalAlignment="Center" />
+                    <TextBox Grid.Row="3" Grid.Column="1" Classes="gin"
+                             Text="{Binding GuardTjMin, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                    <TextBox Grid.Row="3" Grid.Column="3" Classes="gin"
+                             Text="{Binding GuardTjMax, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                    <TextBlock Grid.Row="3" Grid.Column="4" Text="℃" FontSize="11" Foreground="#888d92"
+                               VerticalAlignment="Center" Margin="6,0,0,0" />
+
+                    <TextBlock Grid.Row="5" Grid.Column="0" Text="pH" FontSize="12" Foreground="#3a3d41"
+                               VerticalAlignment="Center" />
+                    <TextBox Grid.Row="5" Grid.Column="1" Classes="gin"
+                             Text="{Binding GuardPhMin, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                    <TextBox Grid.Row="5" Grid.Column="3" Classes="gin"
+                             Text="{Binding GuardPhMax, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                  </Grid>
+                  <Grid ColumnDefinitions="76,*,40" Margin="0,2,0,0">
+                    <TextBlock Grid.Column="0" Text="触发动作" FontSize="12" Foreground="#3a3d41"
+                               VerticalAlignment="Center" />
+                    <ComboBox Grid.Column="1" Classes="sel" HorizontalAlignment="Stretch"
+                              ItemsSource="{Binding GuardActions}"
+                              SelectedItem="{Binding GuardAction, Mode=TwoWay}"
+                              ToolTip.Tip="越限（或读不到值）时安全层执行的动作，与「改限值」的五档一致" />
+                  </Grid>
+                </StackPanel>
+              </StackPanel>
             </StackPanel>
           </Border>
         </StackPanel>
@@ -1041,6 +1101,23 @@
 
   <UserControl.Styles>
     <!-- ══ 步骤库（原型 iControl 6.2 的 Recipe Library）══ -->
+
+    <!-- 本步安全覆盖的小数字框，样式与 SchemaForm 的 fin 一族同一张脸 -->
+    <Style Selector="TextBox.gin">
+      <Setter Property="Height" Value="23" />
+      <Setter Property="MinHeight" Value="23" />
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Padding" Value="6,0" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="BorderBrush" Value="#dddddd" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="2" />
+      <Setter Property="Background" Value="White" />
+      <Setter Property="Foreground" Value="#202225" />
+    </Style>
+    <Style Selector="TextBox.gin:focus">
+      <Setter Property="BorderBrush" Value="#acc3df" />
+    </Style>
 
     <!-- 搜索框：原型是 29×21 的白底细框 -->
     <Style Selector="TextBox.lfind">

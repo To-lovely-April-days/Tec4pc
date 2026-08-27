@@ -3,6 +3,7 @@ using Tec.Core.Catalog;
 using Tec.Core.Chemistry;
 using Tec.Core.Records;
 using Tec.Core.Recipes;
+using Tec.Core.Safety;
 using Tec.Core.Scheduling;
 using Tec.Driver.Abi;
 
@@ -57,6 +58,14 @@ public sealed class ChannelRunner
 
     public Channel Channel => _channel;
     public int Number => _channel.Number;
+
+    /// <summary>
+    /// 安全层。挂上之后，带 Guard 的步骤执行期间会把它那几条临时限值
+    /// 注册进来、结束撤下。属性注入：执行器由引擎创建，安全层也挂在引擎上，
+    /// Attach 时补这一针。没挂（裸执行器、部分单测）时 Guard 只记录不生效，会写明。
+    /// </summary>
+    public Tec.Core.Safety.SafetyMonitor? Safety { get; set; }
+
     public ChannelRunState State { get; private set; } = ChannelRunState.Idle;
     public ChannelRun? Run { get; private set; }
     public string? Operator { get; private set; }
@@ -398,6 +407,10 @@ public sealed class ChannelRunner
                 : _cts is { IsCancellationRequested: true } ? ChannelRunState.Aborted
                 : ChannelRunState.Completed;
 
+            // 步骤层的临时限值兜底清场：ExecuteStepAsync 的 finally 已经各撤各的，
+            // 这里再扫一遍是防御——一步都不许把限值留过这一趟的生命期
+            Safety?.RemoveStepLimits(Number);
+
             // 非正常结束才把设备收到安全态。中止只取消了配方的执行循环，
             // 机器不会因此停下来——温控器还守着最后那个设定值，泵还在打。
             // 正常跑完不动它：收尾状态是配方作者定的（降温结晶跑完就该保持在 5 ℃）
@@ -584,6 +597,11 @@ public sealed class ChannelRunner
                     $"等待 {need.ResourceId} {Fmt.Hms(waited)}", Operator, rec.StepId);
         }
 
+        // 本步的临时安全限值（iControl 每步的 Advanced 覆盖层）：
+        // 真开始执行才挂上（排资源队的时候这一步还没在跑），finally 里撤下——
+        // 成功、失败、中止、异常，哪种收场都不许把它留过这一步的生命期
+        var guarded = ArmGuard(step, rec);
+
         try
         {
             var ctx = new CommandContext
@@ -613,9 +631,42 @@ public sealed class ChannelRunner
         }
         finally
         {
+            if (guarded)
+            {
+                Safety!.RemoveStepLimits(Number, step.StepId);
+                Log(EventKind.Note, "本步临时限值已撤下，恢复原有限值", null, rec.StepId);
+            }
             lease?.Dispose();
         }
         return rec;
+    }
+
+    /// <summary>
+    /// 把这一步的临时限值挂进安全层。返回「真的挂上了」——finally 按它决定要不要撤。
+    /// 三层限值同时求值，这一层只可能收紧；去抖 3 秒，与底线一致。
+    /// </summary>
+    private bool ArmGuard(Step step, StepRecord rec)
+    {
+        if (step.Guard is not { IsEmpty: false } g) return false;
+
+        var text = string.Join("、", g.Bounds().Select(b =>
+            b.Min is { } lo && b.Max is { } hi ? $"{b.Tag} {Fmt.Num(lo)}~{Fmt.Num(hi)}"
+            : b.Min is { } l2 ? $"{b.Tag} ≥ {Fmt.Num(l2)}"
+            : $"{b.Tag} ≤ {Fmt.Num(b.Max!.Value)}"));
+
+        if (Safety is null)
+        {
+            // 没挂安全层就不能装作在盯：写明只记录了、没生效
+            Log(EventKind.Note, $"本步声明了临时限值（{text}），但本会话没有安全层，仅记录", null, rec.StepId);
+            return false;
+        }
+
+        var action = SafetyActionWords.Parse(g.Action);
+        Safety.SetStepLimits(Number, step.StepId, g.Bounds().Select(b =>
+            new SafetyLimit(Number, b.Tag, b.Min, b.Max, null, TimeSpan.FromSeconds(3), action)
+            { Note = $"「{rec.Title}」执行期间的临时限值" }));
+        Log(EventKind.Note, $"本步临时限值已挂上：{text}（越限则{SafetyActionWords.Of(action)}）", null, rec.StepId);
+        return true;
     }
 
     private static StepStatus StatusOf(EndReason r) => r switch

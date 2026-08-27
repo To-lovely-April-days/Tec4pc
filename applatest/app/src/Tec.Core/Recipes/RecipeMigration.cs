@@ -135,6 +135,7 @@ public static class RecipeMigration
         // 这两项从前抄漏了：翻译一步，操作人关掉的「失败时暂停」自己又开回默认、
         // 标好的工艺阶段消失。翻译只换说法，不改这一步的其它任何设置
         PauseOnFault = step.PauseOnFault,
-        Phase = step.Phase
+        Phase = step.Phase,
+        Guard = step.Guard?.Clone()
     };
 }

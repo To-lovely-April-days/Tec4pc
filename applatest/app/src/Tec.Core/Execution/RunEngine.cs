@@ -151,7 +151,9 @@ public sealed class RunEngine
         }
         var r = new ChannelRunner(channel, Catalog, Builtins, Arbiter, Now, (ch, id) => ResourceOf(ch, id))
         {
-            TimeScale = TimeScale
+            TimeScale = TimeScale,
+            // 带 Guard 的步骤执行期间要往安全层挂临时限值，撤挂都由执行器自己管
+            Safety = Safety
         };
         r.Changed += (_, _) => Changed?.Invoke(this, EventArgs.Empty);
         _runners[channel.Number] = r;

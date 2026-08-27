@@ -33,6 +33,45 @@ public sealed record SafetyLimit(
     /// 底线独立于配方永远在，这种只活到下一次启动运行（那时被清掉重来）。
     /// </summary>
     public bool FromRecipe { get; init; }
+
+    /// <summary>
+    /// 某一步执行期间的临时限值（iControl 每步的 Advanced 覆盖层）。
+    /// 值是那一步的 StepId：步骤开始时挂上，结束（不论怎么结束）立刻撤下。
+    /// 三层并存同时求值——底线 / 配方 / 本步——所以这一层**只能收紧不可能放宽**：
+    /// 多一条限值只会多一双眼睛，撤下即还原。
+    /// </summary>
+    public string? StepScope { get; init; }
+}
+
+/// <summary>
+/// 触发动作的措辞 ↔ 枚举。「改限值」步骤、每步的临时限值、界面下拉共用这一份——
+/// 各写一份对照表的话，迟早出现「界面写着停加料、执行的是仅报警」。
+/// </summary>
+public static class SafetyActionWords
+{
+    /// <summary>五档的下拉选项，顺序即界面顺序。</summary>
+    public static readonly string[] All = { "仅报警", "停止加料", "停止加热", "中止本通道", "中止全部通道" };
+
+    public static string Of(SafetyAction a) => a switch
+    {
+        SafetyAction.Alarm => "仅报警",
+        SafetyAction.StopDosing => "停止加料",
+        SafetyAction.StopHeating => "停止加热",
+        SafetyAction.StopAll => "中止全部通道",
+        _ => "中止本通道"
+    };
+
+    /// <summary>老配方的「停止实验 / 暂停实验」也在这儿兜底翻译，别处不用各自记。</summary>
+    public static SafetyAction Parse(string word) => word switch
+    {
+        "仅报警" => SafetyAction.Alarm,
+        "停止加料" => SafetyAction.StopDosing,
+        "停止加热" => SafetyAction.StopHeating,
+        "中止全部通道" => SafetyAction.StopAll,
+        // 引擎没有「暂停」这一档，最接近本意（先停下来等人看）的是报警
+        "暂停实验" => SafetyAction.Alarm,
+        _ => SafetyAction.AbortChannel      // 中止本通道；老值「停止实验」也是这个意思
+    };
 }
 
 public sealed record SafetyEvent(DateTimeOffset At, int Channel, SafetyLimit Limit, string Message, double? Value);
@@ -84,8 +123,16 @@ public sealed class SafetyMonitor
     /// <summary>信号沉默多久算失效。断线不报警是最危险的失败模式。</summary>
     public TimeSpan SignalTimeout { get; set; } = TimeSpan.FromSeconds(30);
 
-    /// <summary>一条限值在册上的身份。报警本按它认「还是那一条」。</summary>
-    public static string KeyOf(SafetyLimit lim) => $"{lim.Channel}|{lim.Tag}|{lim.Action}";
+    /// <summary>
+    /// 一条限值在册上的身份。报警本按它认「还是那一条」。
+    /// **分层去撞**：底线、配方、本步三层可以在同一通道同一监测量上同动作并存
+    /// （配方把 Tr 收到 80、底线还守着 181，动作都是中止本通道），
+    /// 不带层标的话三条共用一份去抖与「在报」状态——后越限的那条永远发不出来。
+    /// </summary>
+    public static string KeyOf(SafetyLimit lim)
+        => $"{lim.Channel}|{lim.Tag}|{lim.Action}"
+           + (lim.FromRecipe ? "|recipe" : "")
+           + (lim.StepScope is { } s ? $"|step:{s}" : "");
 
     public IReadOnlyList<SafetyLimit> Limits
     {
@@ -125,6 +172,32 @@ public sealed class SafetyMonitor
     public int RemoveRecipeLimits(int channel)
     {
         lock (_gate) return _limits.RemoveAll(l => l.FromRecipe && l.Channel == channel);
+    }
+
+    /// <summary>
+    /// 某一步执行期间的临时限值（每步的 Advanced 覆盖层）。同一步重进
+    /// （循环体里那一步每一轮都会再挂一次）先撤旧的再挂新的，不叠加。
+    /// </summary>
+    public void SetStepLimits(int channel, string stepId, IEnumerable<SafetyLimit> limits)
+    {
+        lock (_gate)
+        {
+            _limits.RemoveAll(l => l.StepScope == stepId && l.Channel == channel);
+            foreach (var lim in limits)
+                _limits.Add(lim with { Channel = channel, StepScope = stepId });
+        }
+    }
+
+    /// <summary>
+    /// 撤某一步的临时限值；stepId 为 null 撤这条通道全部步骤层限值
+    /// （运行收尾时兜底清场——一步都不许把限值留过自己的生命期）。
+    /// 正在报的由 EvaluateCore 里「限值不在册」那段收尾。
+    /// </summary>
+    public int RemoveStepLimits(int channel, string? stepId = null)
+    {
+        lock (_gate)
+            return _limits.RemoveAll(l => l.StepScope is not null && l.Channel == channel
+                                          && (stepId is null || l.StepScope == stepId));
     }
 
     /// <summary>联锁余量：温度 ±1 ℃，变化率 +25%。</summary>

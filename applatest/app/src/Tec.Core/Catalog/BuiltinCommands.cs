@@ -47,8 +47,9 @@ public static class BuiltinCommands
     private static readonly string[] InterlockSources = { "釜内 Tr", "夹套 Tj", "pH" };
     private static readonly string[] InterlockOps = { ">", "<" };
     /// <summary>触发动作**与安全层的五档一一对应**（RunEngine 真会执行的那五个），
-    /// 不再有引擎做不出来的「暂停实验」。老配方的旧值由 RecipeMigration 翻译。</summary>
-    private static readonly string[] InterlockActions = { "仅报警", "停止加料", "停止加热", "中止本通道", "中止全部通道" };
+    /// 不再有引擎做不出来的「暂停实验」。老配方的旧值由 RecipeMigration 翻译。
+    /// 措辞表在 SafetyActionWords 一处，界面下拉与执行走同一份。</summary>
+    private static readonly string[] InterlockActions = SafetyActionWords.All;
     private static readonly string[] TimeoutActions = { "暂停并报警", "继续执行", "按失败处理" };
 
     /// <summary>「设定变量」的取值来源。「数值」以外都是实时量，键与 Cond.SensorKeys 对应。</summary>
@@ -356,19 +357,10 @@ public sealed class BuiltinCommandProvider : ICommandProvider
             _ => null
         };
 
-        /// <summary>触发动作 → 安全层的档位。新五档逐字对应；
-        /// 老配方的「停止实验 / 暂停实验」这里兜底翻译（RecipeMigration
+        /// <summary>触发动作 → 安全层的档位。对照表在 SafetyActionWords 一处，
+        /// 老配方的「停止实验 / 暂停实验」也由它兜底翻译（RecipeMigration
         /// 只在打开文件时改一次，跳过迁移直接跑的老测试数据也不能跑偏）。</summary>
-        private static SafetyAction ActOf(string act) => act switch
-        {
-            "仅报警" => SafetyAction.Alarm,
-            "停止加料" => SafetyAction.StopDosing,
-            "停止加热" => SafetyAction.StopHeating,
-            "中止全部通道" => SafetyAction.StopAll,
-            // 引擎没有「暂停」这一档，最接近本意（先停下来等人看）的是报警
-            "暂停实验" => SafetyAction.Alarm,
-            _ => SafetyAction.AbortChannel      // 中止本通道；老值「停止实验」也是这个意思
-        };
+        private static SafetyAction ActOf(string act) => SafetyActionWords.Parse(act);
 
         public Task<CommandOutcome> ExecuteAsync(CommandContext ctx, CommandInput p, CancellationToken ct)
         {

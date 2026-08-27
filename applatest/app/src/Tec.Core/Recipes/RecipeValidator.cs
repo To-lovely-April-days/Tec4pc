@@ -72,6 +72,15 @@ public static class RecipeValidator
                         $"第 {i + 1} 步 {f.Label} = {Fmt.Num(v)} 高于上限 {Fmt.Num(max)}") { StepId = s.StepId });
             }
 
+            // 本步临时限值：上下限颠倒的一对会让安全层永远在报（哪个值都同时
+            // 低于下限又高于上限），等于这一步一开始就中止
+            if (s.Guard is { IsEmpty: false } g)
+                foreach (var b in g.Bounds())
+                    if (b.Min is { } lo && b.Max is { } hi && lo > hi)
+                        issues.Add(new ValidationIssue(IssueLevel.Error, "guard-range",
+                            $"第 {i + 1} 步的临时限值 {b.Tag} 下限 {Fmt.Num(lo)} 高于上限 {Fmt.Num(hi)}")
+                        { StepId = s.StepId });
+
             // 超时保护：到不了的目标不能把通道永远挂住（§4.3）。
             // 只有声明了 timeout 字段的指令才查——原型的参数表里并非每条都有。
             // 结束方式按参数问：等待只有「按条件」那一种才要超时
@@ -389,6 +398,24 @@ public static class RecipeValidator
                 issues.Add(new ValidationIssue(IssueLevel.Error, "device-limit",
                     $"第 {i + 1} 步 {f.Label} = {Fmt.Num(v)} 低于设备下限 {Fmt.Num(bound.Value)}") { StepId = s.StepId });
         }
+
+        // 本步临时限值盯的那一路在这条通道上得有信号来源。没有的话安全层
+        // 会按「传感器失效」触发（读不到值绝不当作正常，§7.5）——这一步
+        // 一开始就会被中止，而编配方的人多半以为自己只是加了道保险
+        if (s.Guard is { IsEmpty: false } guard)
+            foreach (var b in guard.Bounds())
+            {
+                var ok = b.Tag switch
+                {
+                    "Tr" or "Tj" => channel.Capabilities.Has<ITemperatureControl>(),
+                    _ => HasScalarTag(channel, b.Tag)
+                };
+                if (!ok)
+                    issues.Add(new ValidationIssue(IssueLevel.Warning, "guard-no-signal",
+                        $"第 {i + 1} 步的临时限值盯着 {b.Tag}，但 CH{channel.Number} 没有这一路信号——"
+                        + "读不到值会按传感器失效触发，这一步一开始就会执行触发动作")
+                    { StepId = s.StepId, Channel = channel.Number });
+            }
 
         // 标定：未标定或过期的设备，编排到配方里要拦下来（§10.3）
         if (d.RequiredCapability == typeof(IDosing) && channel.Capabilities.Get<IDosing>() is { } dosing)

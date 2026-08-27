@@ -73,7 +73,15 @@ public static class TecFiles
                 Enabled = s.Enabled,
                 PauseOnFault = s.PauseOnFault,
                 Comment = s.Comment,
-                Phase = s.Phase
+                Phase = s.Phase,
+                // 全空的覆盖不落盘：文件里一段全 null 的 Guard 只会让人猜它是什么
+                Guard = s.Guard is { IsEmpty: false } g
+                    ? new GuardDoc
+                      {
+                          TrMax = g.TrMax, TrMin = g.TrMin, TjMax = g.TjMax,
+                          TjMin = g.TjMin, PhMax = g.PhMax, PhMin = g.PhMin, Action = g.Action
+                      }
+                    : null
             });
         return doc;
     }
@@ -198,7 +206,15 @@ public static class TecFiles
                 Enabled = s.Enabled,
                 PauseOnFault = s.PauseOnFault,
                 Comment = s.Comment,
-                Phase = s.Phase
+                Phase = s.Phase,
+                Guard = s.Guard is { } g
+                    ? new StepGuard
+                      {
+                          TrMax = g.TrMax, TrMin = g.TrMin, TjMax = g.TjMax,
+                          TjMin = g.TjMin, PhMax = g.PhMax, PhMin = g.PhMin,
+                          Action = g.Action.Length > 0 ? g.Action : "中止本通道"
+                      }
+                    : null
             });
         }
         if (doc.Variables is { } vars)

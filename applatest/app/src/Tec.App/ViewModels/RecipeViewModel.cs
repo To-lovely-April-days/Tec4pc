@@ -9,6 +9,7 @@ using Tec.Core.Catalog;
 using Tec.Core.Chemistry;
 using Tec.Core.Persistence;
 using Tec.Core.Recipes;
+using Tec.Core.Safety;
 using Tec.Core.Scheduling;
 using Tec.Driver.Abi;
 using Tec.Drivers.Simulator;
@@ -927,6 +928,7 @@ public sealed class RecipeViewModel : ViewModelBase
                      nameof(StepTile), nameof(StepTileBrush), nameof(StepTileTint),
                      nameof(StepChannel), nameof(NoParams), nameof(PauseOnFault),
                      nameof(StepSkipped), nameof(StepPhase));
+            RaiseGuard();
         }
     }
 
@@ -1028,6 +1030,69 @@ public sealed class RecipeViewModel : ViewModelBase
             Raise();
         }
     }
+
+    // ── 本步安全覆盖（iControl 每步的 Advanced 层）────────────────────
+    //
+    // 这一步执行期间临时收紧的限值：开始挂进安全层、结束（无论怎么结束）撤下还原。
+    // 三层限值同时求值（设备底线 / 配方「改限值」/ 这一层），所以只能收紧不能放宽。
+    // 文本框留空 = 不覆盖那一条；全空 = 这一步没有覆盖（不落盘）。
+
+    public SectionViewModel GuardSection { get; } = new(false);
+
+    public IReadOnlyList<string> GuardActions => SafetyActionWords.All;
+
+    /// <summary>折叠着也看得出这一步有没有覆盖——展开才能发现的开关等于没有。</summary>
+    public bool GuardActive => _selectedStep?.Step.Guard is { IsEmpty: false };
+
+    public string GuardTrMax { get => GuardText(g => g.TrMax); set => SetGuard((g, v) => g.TrMax = v, value); }
+    public string GuardTrMin { get => GuardText(g => g.TrMin); set => SetGuard((g, v) => g.TrMin = v, value); }
+    public string GuardTjMax { get => GuardText(g => g.TjMax); set => SetGuard((g, v) => g.TjMax = v, value); }
+    public string GuardTjMin { get => GuardText(g => g.TjMin); set => SetGuard((g, v) => g.TjMin = v, value); }
+    public string GuardPhMax { get => GuardText(g => g.PhMax); set => SetGuard((g, v) => g.PhMax = v, value); }
+    public string GuardPhMin { get => GuardText(g => g.PhMin); set => SetGuard((g, v) => g.PhMin = v, value); }
+
+    public string GuardAction
+    {
+        get => _selectedStep?.Step.Guard?.Action ?? "中止本通道";
+        set
+        {
+            if (_selectedStep is not { } s || string.IsNullOrEmpty(value)) return;
+            var g = s.Step.Guard;
+            if ((g?.Action ?? "中止本通道") == value) return;
+            Record();
+            (g ??= s.Step.Guard = new StepGuard()).Action = value;
+            Workspace.Store.MarkDirty();
+            RaiseGuard();
+        }
+    }
+
+    private string GuardText(Func<StepGuard, double?> read)
+        => _selectedStep?.Step.Guard is { } g && read(g) is { } v ? Txt.Fx(v) : "";
+
+    private void SetGuard(Action<StepGuard, double?> write, string raw)
+    {
+        if (_selectedStep is not { } s) return;
+        // 解析不了的输入当「不设」：getter 会把框重画成空，看得见没被收下
+        double? v = double.TryParse(raw.Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out var d)
+            ? d : null;
+        var next = s.Step.Guard?.Clone() ?? new StepGuard();
+        write(next, v);
+        var result = next.IsEmpty ? null : next;   // 全空就撤掉整段，文件里不留空壳
+        if (Sig(result) == Sig(s.Step.Guard)) { RaiseGuard(); return; }
+
+        Record();
+        s.Step.Guard = result;
+        Workspace.Store.MarkDirty();
+        RaiseGuard();
+    }
+
+    /// <summary>覆盖段的指纹，改没改按它判——六个字段共用一套写法，不各配读法。</summary>
+    private static string Sig(StepGuard? g) => g is null ? ""
+        : $"{g.TrMax}|{g.TrMin}|{g.TjMax}|{g.TjMin}|{g.PhMax}|{g.PhMin}|{g.Action}";
+
+    private void RaiseGuard()
+        => RaiseAll(nameof(GuardTrMax), nameof(GuardTrMin), nameof(GuardTjMax), nameof(GuardTjMin),
+                    nameof(GuardPhMax), nameof(GuardPhMin), nameof(GuardAction), nameof(GuardActive));
 
     /// <summary>
     /// 当前泳道的配方。台面上一个通道都没有时给一条不入库的空配方顶着，

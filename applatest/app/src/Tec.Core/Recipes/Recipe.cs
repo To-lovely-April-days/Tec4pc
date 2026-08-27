@@ -4,6 +4,43 @@ using Tec.Driver.Abi;
 namespace Tec.Core.Recipes;
 
 /// <summary>
+/// 一步执行期间的临时安全限值（iControl 每步的 Advanced 覆盖层）。
+/// 步骤开始时挂进安全层、结束（成功、失败、跳过、中止都算）立刻撤下还原。
+/// 三层限值并存同时求值——设备底线、配方「改限值」、这一层——所以它
+/// **只能在前两层之内再收紧**：多一条限值只会多一双眼睛，撤下即还原。
+/// 空着的字段就是不加那一条；全空 = 这一步没有覆盖。
+/// </summary>
+public sealed class StepGuard
+{
+    public double? TrMax { get; set; }
+    public double? TrMin { get; set; }
+    public double? TjMax { get; set; }
+    public double? TjMin { get; set; }
+    public double? PhMax { get; set; }
+    public double? PhMin { get; set; }
+
+    /// <summary>触发动作，SafetyActionWords 的五档措辞；缺省中止本通道。</summary>
+    public string Action { get; set; } = "中止本通道";
+
+    public bool IsEmpty => TrMax is null && TrMin is null && TjMax is null
+                           && TjMin is null && PhMax is null && PhMin is null;
+
+    public StepGuard Clone() => new()
+    {
+        TrMax = TrMax, TrMin = TrMin, TjMax = TjMax,
+        TjMin = TjMin, PhMax = PhMax, PhMin = PhMin, Action = Action
+    };
+
+    /// <summary>盯了哪几路，报给校验器与记录用：("Tr", min, max)…只含非空的。</summary>
+    public IEnumerable<(string Tag, double? Min, double? Max)> Bounds()
+    {
+        if (TrMin is not null || TrMax is not null) yield return ("Tr", TrMin, TrMax);
+        if (TjMin is not null || TjMax is not null) yield return ("Tj", TjMin, TjMax);
+        if (PhMin is not null || PhMax is not null) yield return ("pH", PhMin, PhMax);
+    }
+}
+
+/// <summary>
 /// 一条步骤。存的是 CommandId + ParameterSet，不是设备实例——
 /// 这样同一条配方能在任何满足 RequiredCapability 的通道上跑（§4.1 / §6）。
 /// </summary>
@@ -33,6 +70,9 @@ public sealed class Step
     /// </summary>
     public string? Phase { get; set; }
 
+    /// <summary>这一步执行期间的临时安全限值。null 或 IsEmpty = 没有覆盖。</summary>
+    public StepGuard? Guard { get; set; }
+
     /// <summary>换一个新 Id 的副本（粘贴、复制到别的通道）。</summary>
     public Step Clone() => CopyWith(Guid.NewGuid().ToString("N")[..8]);
 
@@ -52,7 +92,8 @@ public sealed class Step
         Enabled = Enabled,
         PauseOnFault = PauseOnFault,
         Comment = Comment,
-        Phase = Phase
+        Phase = Phase,
+        Guard = Guard?.Clone()
     };
 }
 

@@ -68,6 +68,20 @@ public sealed class StepDoc
     public string? Comment { get; set; }
     /// <summary>工艺阶段。老文件里没有，读回来是 null，就是「没标」。</summary>
     public string? Phase { get; set; }
+    /// <summary>本步执行期间的临时安全限值。老文件没有，null = 没有覆盖。</summary>
+    public GuardDoc? Guard { get; set; }
+}
+
+/// <summary>StepGuard 的文档形。全空的不落盘（ToDoc 时省成 null）。</summary>
+public sealed class GuardDoc
+{
+    public double? TrMax { get; set; }
+    public double? TrMin { get; set; }
+    public double? TjMax { get; set; }
+    public double? TjMin { get; set; }
+    public double? PhMax { get; set; }
+    public double? PhMin { get; set; }
+    public string Action { get; set; } = "中止本通道";
 }
 
 /// <summary>配方级变量。</summary>
