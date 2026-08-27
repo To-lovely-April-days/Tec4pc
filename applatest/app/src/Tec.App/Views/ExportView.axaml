@@ -340,8 +340,17 @@
                                 BorderBrush="#000000" BorderThickness="1"
                                 HorizontalAlignment="Right" VerticalAlignment="Top"
                                 Margin="0,-2,-2,0" IsVisible="{Binding On}">
-                          <Path Data="M4.4,9.2 L7.5,12.2 L13.2,5.8" Stroke="#000000" StrokeThickness="2.4"
-                                StrokeLineCap="Round" StrokeJoin="Round" />
+                          <!-- **靠几何坐标居中，不靠对齐属性。**Shape 的 Stretch=None
+                               量出来的是 geometry.Bounds.Right/Bottom——从原点一直算到
+                               最右下，所以原来那条 M4.4,9.2… 的框里左上角有一大片空，
+                               居中居的是那个框，笔画自然偏右下（配方页那支落点箭头
+                               踩过同一个坑）。这里把几何整体挪到 (0,0) 起画：
+                               笔画外沿正好贴着框，再钉死 11.2×8.8 的框居中，才是真居中。
+                               11.2 = 墨迹宽 8.8 + 两头各半个 2.4 的笔宽；8.8 同理 -->
+                          <Path Data="M 1.2,4.6 L 4.3,7.6 L 10,1.2" Stroke="#000000" StrokeThickness="2.4"
+                                StrokeLineCap="Round" StrokeJoin="Round"
+                                Width="11.2" Height="8.8"
+                                HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
                       </Panel>
                     </Border>
@@ -460,7 +469,7 @@
                             PointerPressed="OnTemplatePressed">
                       <StackPanel Orientation="Horizontal" Spacing="8">
                         <Border Classes="rd" Classes.on="{Binding On}">
-                          <Ellipse Width="7" Height="7" Fill="#a41626" IsVisible="{Binding On}" />
+                          <Ellipse Width="7" Height="7" Fill="#000000" IsVisible="{Binding On}" />
                         </Border>
                         <StackPanel>
                           <TextBlock Text="{Binding Name}" FontSize="12" Foreground="#292b2e" />
@@ -505,7 +514,7 @@
                       PointerPressed="OnDestLocal">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                   <Border Classes="rd" Classes.on="{Binding DestLocal}">
-                    <Ellipse Width="7" Height="7" Fill="#a41626" IsVisible="{Binding DestLocal}" />
+                    <Ellipse Width="7" Height="7" Fill="#000000" IsVisible="{Binding DestLocal}" />
                   </Border>
                   <StackPanel>
                     <TextBlock Text="本地文件夹" FontSize="12" Foreground="#292b2e" />
@@ -519,7 +528,7 @@
                       PointerPressed="OnDestUsb">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                   <Border Classes="rd" Classes.on="{Binding DestUsb}">
-                    <Ellipse Width="7" Height="7" Fill="#a41626" IsVisible="{Binding DestUsb}" />
+                    <Ellipse Width="7" Height="7" Fill="#000000" IsVisible="{Binding DestUsb}" />
                   </Border>
                   <StackPanel>
                     <TextBlock Text="USB 记忆盘" FontSize="12" Foreground="#292b2e" />
@@ -914,10 +923,12 @@
       <Setter Property="BorderBrush" Value="#868b90" />
       <Setter Property="Background" Value="#f0f0ee" />
     </Style>
+    <!-- 报告类型那三张卡、导出目标那两行，用的都是这一个类。
+         选中 = 一圈黑边，跟格式卡同一个说法；那圈 #38A41626 的红辉光撤掉，
+         理由同格式卡（蓝灰底上浮一层红雾） -->
     <Style Selector="Border.dest.on, Border.dest.on:pointerover">
-      <Setter Property="BorderBrush" Value="#a41626" />
+      <Setter Property="BorderBrush" Value="#000000" />
       <Setter Property="Background" Value="#c0cad3" />
-      <Setter Property="BoxShadow" Value="0 0 0 2 #38a41626" />
     </Style>
     <Style Selector="Border.rd">
       <Setter Property="Width" Value="14" />
@@ -928,8 +939,11 @@
       <Setter Property="VerticalAlignment" Value="Top" />
       <Setter Property="Margin" Value="0,2,0,0" />
     </Style>
+    <!-- 选中的那颗单选圈：描边跟着卡片一起改黑。里头那颗实心点在标签上
+         写着（三处），也一并改黑——一颗红点配一圈黑边，红就成了这张卡上
+         唯一没来由的颜色 -->
     <Style Selector="Border.rd.on">
-      <Setter Property="BorderBrush" Value="#a41626" />
+      <Setter Property="BorderBrush" Value="#000000" />
     </Style>
     <Style Selector="Border.rd > Ellipse">
       <Setter Property="HorizontalAlignment" Value="Center" />
