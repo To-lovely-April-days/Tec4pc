@@ -35,8 +35,12 @@ public sealed class Workspace
         Pipeline = new DataPipeline();
         Arbiter = new ResourceArbiter();
         OperatorGate = new UiOperatorGate();
-        Builtins = new BuiltinCommandProvider(OperatorGate, (ch, text) => MarkRequested?.Invoke(ch, text));
+        var builtins = new BuiltinCommandProvider(OperatorGate, (ch, text) => MarkRequested?.Invoke(ch, text));
+        Builtins = builtins;
         Engine = new RunEngine(Catalog, Builtins, Arbiter, Pipeline, Clock.Func);
+        // 「改限值」步骤要往安全层登记，而安全层挂在引擎上、引擎又要先拿到
+        // 指令来源才能构造——只能建完引擎回头补这一针
+        builtins.Safety = Engine.Safety;
         Bench = new Bench { Name = "四通道平行合成台面" };
     }
 

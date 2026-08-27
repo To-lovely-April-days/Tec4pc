@@ -179,6 +179,10 @@ public sealed class RunEngine
             ? found
             : throw new InvalidOperationException($"CH{channel} 不在台面上。");
         r.TimeScale = TimeScale;
+        // 上一炉「改限值」步骤收紧的配方限值到此为止——每炉从底线重新出发。
+        // 特意只在**下一次启动**才清：上一炉结束后通道还热着，
+        // 那时就撤限值等于在最需要盯的时段不盯
+        Safety.RemoveRecipeLimits(channel);
         var run = r.Start(recipe, seed ?? SeedFor(r.Channel), user, charge);
         Record.Append(run);
         Changed?.Invoke(this, EventArgs.Empty);

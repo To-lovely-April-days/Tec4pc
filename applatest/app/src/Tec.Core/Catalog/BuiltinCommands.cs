@@ -1,4 +1,5 @@
 using Tec.Core.Recipes;
+using Tec.Core.Safety;
 using Tec.Driver.Abi;
 
 namespace Tec.Core.Catalog;
@@ -37,9 +38,13 @@ public static class BuiltinCommands
     public static bool IsLoopBegin(string id) => id == LoopBegin;
     public static bool IsLoopEnd(string id) => id == LoopEnd;
 
-    private static readonly string[] InterlockSources = { "釜内 Tr", "夹套 Tj", "pH", "浊度" };
+    // 浊度从监测量里撤了：设备库里已经没有浊度探头，选出来也没有那一路信号——
+    // 安全层见不到数会按「传感器失效」触发，那不是操作人想要的
+    private static readonly string[] InterlockSources = { "釜内 Tr", "夹套 Tj", "pH" };
     private static readonly string[] InterlockOps = { ">", "<" };
-    private static readonly string[] InterlockActions = { "停止实验", "暂停实验", "停止加料", "仅报警" };
+    /// <summary>触发动作**与安全层的五档一一对应**（RunEngine 真会执行的那五个），
+    /// 不再有引擎做不出来的「暂停实验」。老配方的旧值由 RecipeMigration 翻译。</summary>
+    private static readonly string[] InterlockActions = { "仅报警", "停止加料", "停止加热", "中止本通道", "中止全部通道" };
     private static readonly string[] TimeoutActions = { "暂停并报警", "继续执行", "按失败处理" };
 
     /// <summary>「设定变量」的取值来源。「数值」以外都是实时量，键与 Cond.SensorKeys 对应。</summary>
@@ -153,19 +158,23 @@ public static class BuiltinCommands
             p => $"提醒取样 {Txt.Fx(p.Num("vol"))} mL（{p.Str("label")}）")
         { IconKey = "sample", SupportsHotEdit = true },
 
-        new CommandDescriptor(Interlock, "安全联锁", Module, null,
+        // 原名「安全联锁」，只写一行日志、什么都不联锁。现在它真的把这条限值
+        // 交给安全层（SafetyMonitor）随时求值——Id 不动，存过盘的配方原样能开
+        new CommandDescriptor(Interlock, "改限值", Module, null,
             new ParameterSchema(new[]
             {
                 Field.Sel("src", "监测量", InterlockSources, "釜内 Tr"),
                 Field.Sel("op", "条件", InterlockOps, ">"),
                 Field.Num("val", "阈值", 100, "", null, null, 0.1),
-                Field.Sel("act", "触发动作", InterlockActions, "停止实验")
+                Field.Sel("act", "触发动作", InterlockActions, "中止本通道")
             }),
             TerminationKind.Immediate,
             (_, _) => TimeSpan.Zero,
             p => $"当 {p.Str("src")} {p.Str("op")} {Txt.Fx(p.Num("val"))} 时{p.Str("act")}")
         { IconKey = "interlock",
-          Tip = "这一条是工艺逻辑，不是安全功能。真正的安全层独立于配方、优先于一切（§7.5）。" },
+          Tip = "执行到这一步，把这条限值加进本通道的安全层，由它独立于配方持续盯着；"
+              + "同一监测量再改一次就是换成新值。底线限值由设备范围推导、只能在其内收紧，"
+              + "配方加的限值到下一次启动运行前自动清掉（§7.5）。" },
 
         new CommandDescriptor(Finish, "结束实验", Module, null,
             new ParameterSchema(new[]
@@ -243,6 +252,13 @@ public sealed class BuiltinCommandProvider : ICommandProvider
         _onMark = onMark;
     }
 
+    /// <summary>
+    /// 「改限值」往哪儿登记。属性注入：这个 provider 在引擎之前建
+    /// （引擎构造要拿它当指令来源），SafetyMonitor 又挂在引擎上，
+    /// 只能等引擎建好再补上。没补上时该步骤只记录不生效，且会写明。
+    /// </summary>
+    public SafetyMonitor? Safety { get; set; }
+
     public IReadOnlyList<CommandDescriptor> Commands => BuiltinCommands.All;
 
     public ICommandHandler? Resolve(string commandId) => commandId switch
@@ -251,7 +267,7 @@ public sealed class BuiltinCommandProvider : ICommandProvider
         BuiltinCommands.Message => new PromptHandler(_gate, "msg"),
         BuiltinCommands.Sampling => new PromptHandler(_gate, "label"),
         BuiltinCommands.Mark => new MarkHandler(_onMark, "tag"),
-        BuiltinCommands.Interlock => new NoteHandler(p => $"安全联锁生效：{BuiltinCommands.Summary(BuiltinCommands.Interlock, p)}"),
+        BuiltinCommands.Interlock => new LimitHandler(Safety),
         BuiltinCommands.Finish => new FinishHandler(),
         // 循环标记由执行引擎处理，没有 handler
         _ => null
@@ -314,14 +330,74 @@ public sealed class BuiltinCommandProvider : ICommandProvider
         }
     }
 
-    private sealed class NoteHandler : ICommandHandler
+    /// <summary>
+    /// 「改限值」：把这条限值登记进本通道的安全层，之后由 SafetyMonitor
+    /// 独立于配方 1 Hz 求值。指令本身瞬时完成——它改的是「谁在盯」，
+    /// 不是「现在做什么」。同通道同监测量再执行一次是**换值**不是叠加
+    /// （SetRecipeLimit 的语义），底线限值不受影响。
+    /// </summary>
+    private sealed class LimitHandler : ICommandHandler
     {
-        private readonly Func<CommandInput, string> _text;
-        public NoteHandler(Func<CommandInput, string> text) => _text = text;
+        private readonly SafetyMonitor? _safety;
+        public LimitHandler(SafetyMonitor? safety) => _safety = safety;
+
+        /// <summary>监测量选项 → 数据管线里那一路信号的名字。
+        /// 「浊度」已从下拉里撤了，但存过盘的老配方还带着，得认。</summary>
+        private static string? TagOf(string src) => src switch
+        {
+            "釜内 Tr" => "Tr",
+            "夹套 Tj" => "Tj",
+            "pH" => "pH",
+            "浊度" => "turb",
+            _ => null
+        };
+
+        /// <summary>触发动作 → 安全层的档位。新五档逐字对应；
+        /// 老配方的「停止实验 / 暂停实验」这里兜底翻译（RecipeMigration
+        /// 只在打开文件时改一次，跳过迁移直接跑的老测试数据也不能跑偏）。</summary>
+        private static SafetyAction ActOf(string act) => act switch
+        {
+            "仅报警" => SafetyAction.Alarm,
+            "停止加料" => SafetyAction.StopDosing,
+            "停止加热" => SafetyAction.StopHeating,
+            "中止全部通道" => SafetyAction.StopAll,
+            // 引擎没有「暂停」这一档，最接近本意（先停下来等人看）的是报警
+            "暂停实验" => SafetyAction.Alarm,
+            _ => SafetyAction.AbortChannel      // 中止本通道；老值「停止实验」也是这个意思
+        };
 
         public Task<CommandOutcome> ExecuteAsync(CommandContext ctx, CommandInput p, CancellationToken ct)
         {
-            ctx.Note?.Invoke(_text(p));
+            var summary = BuiltinCommands.Summary(BuiltinCommands.Interlock, p);
+            if (TagOf(p.Str("src")) is not { } tag)
+            {
+                ctx.Note?.Invoke($"改限值没认出监测量「{p.Str("src")}」，这一条没有生效");
+                return Task.FromResult(CommandOutcome.Instant());
+            }
+
+            var op = p.Str("op", ">");
+            var val = p.Num("val");
+            var lim = new SafetyLimit(ctx.Channel, tag,
+                Min: op == "<" ? val : null,
+                Max: op == "<" ? null : val,
+                MaxRatePerMin: null,
+                Debounce: TimeSpan.FromSeconds(3),
+                Action: ActOf(p.Str("act")))
+            {
+                FromRecipe = true,
+                Note = "配方「改限值」步骤设定"
+            };
+
+            if (_safety is null)
+            {
+                // 没挂安全层的场合（裸执行器、部分单测）不能装作生效了
+                ctx.Note?.Invoke($"改限值：{summary}（本会话没有安全层，仅记录）");
+            }
+            else
+            {
+                _safety.SetRecipeLimit(lim);
+                ctx.Note?.Invoke($"改限值已交给安全层：{summary}");
+            }
             return Task.FromResult(CommandOutcome.Instant());
         }
     }

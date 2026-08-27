@@ -33,7 +33,7 @@ public sealed class TempProfile
     /// 会留下持续状态的指令，以及甘特条上怎么称呼它。
     ///
     /// 判据只有一条：**这一步结束之后，它设的东西还在起作用**。搅拌设了转速，
-    /// 步骤结束搅拌照转；安全联锁挂上之后一直盯着。控温不算——控温到达即结束，
+    /// 步骤结束搅拌照转；「改限值」设的限值挂进安全层一直盯着。控温不算——控温到达即结束，
     /// 之后温度归温度曲线管，不是一条「一直在生效的设定」。
     /// </summary>
     private static readonly string[] Persistent = { CommandSpecs.Stir, BuiltinCommands.Interlock };

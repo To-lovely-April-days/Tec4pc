@@ -28,6 +28,11 @@ public sealed record SafetyLimit(
     public string? Note { get; init; }
     /// <summary>操作人只能收紧不能放宽——界面据此校验。</summary>
     public bool FromDeviceLimits { get; init; }
+    /// <summary>
+    /// 配方「改限值」步骤加的。跟底线（FromDeviceLimits）分开记：
+    /// 底线独立于配方永远在，这种只活到下一次启动运行（那时被清掉重来）。
+    /// </summary>
+    public bool FromRecipe { get; init; }
 }
 
 public sealed record SafetyEvent(DateTimeOffset At, int Channel, SafetyLimit Limit, string Message, double? Value);
@@ -95,6 +100,31 @@ public sealed class SafetyMonitor
     public void Clear()
     {
         lock (_gate) { _limits.Clear(); _pending.Clear(); _last.Clear(); _firing.Clear(); }
+    }
+
+    /// <summary>
+    /// 配方「改限值」步骤设定一条限值。同一通道同一监测量的**配方**限值
+    /// 只留最新一条（后面的步骤改的是同一条限值，不是叠一条新的）；
+    /// 底线限值（FromDeviceLimits）不受影响——两条同时求值，
+    /// 配方只能在底线之内再收紧，放宽是放不动的。
+    /// </summary>
+    public void SetRecipeLimit(SafetyLimit limit)
+    {
+        var lim = limit with { FromRecipe = true };
+        lock (_gate)
+        {
+            _limits.RemoveAll(l => l.FromRecipe && l.Channel == lim.Channel && l.Tag == lim.Tag);
+            _limits.Add(lim);
+        }
+    }
+
+    /// <summary>
+    /// 撤掉某通道全部配方限值（下一炉启动前清场，上一炉收紧的不带进来）。
+    /// 撤掉之后正在报的那条由 EvaluateCore 里「限值不在册」那段收尾。
+    /// </summary>
+    public int RemoveRecipeLimits(int channel)
+    {
+        lock (_gate) return _limits.RemoveAll(l => l.FromRecipe && l.Channel == channel);
     }
 
     /// <summary>联锁余量：温度 ±1 ℃，变化率 +25%。</summary>

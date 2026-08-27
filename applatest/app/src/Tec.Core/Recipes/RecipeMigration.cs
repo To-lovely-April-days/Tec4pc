@@ -109,6 +109,16 @@ public static class RecipeMigration
                 how = "「条件等待」→「等待」（等待方式 = 按条件）";
                 return With(step, Catalog.BuiltinCommands.Wait, p);
 
+            // 「安全联锁」改成「改限值」时，触发动作换成了引擎真做得出的五档。
+            // Id 和其余参数键都没动，只有旧动作值要翻：「停止实验」本来就是
+            // 中止这一路的意思；「暂停」引擎没有这一档，最接近本意的是报警等人。
+            case Catalog.BuiltinCommands.Interlock when p.Str("act") is "停止实验" or "暂停实验":
+                var oldAct = p.Str("act");
+                var newAct = oldAct == "停止实验" ? "中止本通道" : "仅报警";
+                p["act"] = newAct;
+                how = $"「安全联锁」的触发动作「{oldAct}」→「改限值」的「{newAct}」";
+                return With(step, Catalog.BuiltinCommands.Interlock, p);
+
             default:
                 return null;
         }

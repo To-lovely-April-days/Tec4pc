@@ -102,17 +102,17 @@ public class TempProfileTests
     }
 
     [Fact]
-    public void 安全联锁挂上就一直生效()
+    public void 改限值挂上就一直生效()
     {
         var r = Harness.RecipeOf("联锁",
             Harness.Mk(BuiltinCommands.Wait, ("dur", 5d)),
             Harness.Mk(BuiltinCommands.Interlock, ("src", "釜内 Tr"), ("op", ">"), ("val", 100d),
-                       ("act", "停止实验")),
+                       ("act", "中止本通道")),
             Harness.Mk(BuiltinCommands.Wait, ("dur", 5d)));
         var p = Of(r);
 
         var st = Assert.Single(p.States);
-        Assert.Equal("安全联锁", st.Name);
+        Assert.Equal("改限值", st.Name);
         Assert.Contains("100", st.Value);
         Assert.Equal(TimeSpan.FromMinutes(5), st.Start);
         Assert.Equal(p.Total, st.End);

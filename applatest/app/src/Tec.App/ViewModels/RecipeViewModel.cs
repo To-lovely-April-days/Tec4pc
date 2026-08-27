@@ -515,6 +515,16 @@ public sealed class RecipeViewModel : ViewModelBase
     private SchemaFormViewModel? _form;
     private readonly RecipeHistory _history = new();
 
+    /// <summary>
+    /// 下架的步骤：设备库精简成四件后，这几路探头没有对应设备，编出来也跑不了。
+    /// **只从库里摘牌**——指令、驱动、执行器都还注册着，存过盘的老配方
+    /// 照样打得开、显示得出这些步骤，只是新配方不再往里加。
+    /// </summary>
+    private static readonly HashSet<string> Shelved = new(StringComparer.Ordinal)
+    {
+        CommandSpecs.Turbidity, CommandSpecs.Solubility, CommandSpecs.Raman, CommandSpecs.Infrared
+    };
+
     public RecipeViewModel(Workspace ws)
     {
         Workspace = ws;
@@ -522,8 +532,13 @@ public sealed class RecipeViewModel : ViewModelBase
         foreach (var m in ws.Catalog.Modules)
         {
             var group = new ModuleGroup(m);
-            foreach (var c in ws.Catalog.InModule(m)) group.All.Add(new CommandItemViewModel(c));
-            Groups.Add(group);
+            foreach (var c in ws.Catalog.InModule(m))
+            {
+                if (Shelved.Contains(c.Id)) continue;
+                group.All.Add(new CommandItemViewModel(c));
+            }
+            // 一个成员都不剩的分类别挂空壳（在线分析四条下架后就是这种情况）
+            if (group.All.Count > 0) Groups.Add(group);
         }
         ApplyLibFilter();
 
