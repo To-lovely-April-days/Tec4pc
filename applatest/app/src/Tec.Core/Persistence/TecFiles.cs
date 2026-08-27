@@ -74,6 +74,7 @@ public static class TecFiles
                 PauseOnFault = s.PauseOnFault,
                 Comment = s.Comment,
                 Phase = s.Phase,
+                Parallel = s.Parallel,
                 // 全空的覆盖不落盘：文件里一段全 null 的 Guard 只会让人猜它是什么
                 Guard = s.Guard is { IsEmpty: false } g
                     ? new GuardDoc
@@ -207,6 +208,7 @@ public static class TecFiles
                 PauseOnFault = s.PauseOnFault,
                 Comment = s.Comment,
                 Phase = s.Phase,
+                Parallel = s.Parallel,
                 Guard = s.Guard is { } g
                     ? new StepGuard
                       {

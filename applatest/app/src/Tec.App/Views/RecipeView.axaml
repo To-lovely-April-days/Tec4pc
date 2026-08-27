@@ -583,16 +583,26 @@
                                                  MaxLines="4" TextTrimming="CharacterEllipsis"
                                                  VerticalAlignment="Top" />
 
-                                      <!-- 徽记（原型 .sbadge）。悬停能读到具体哪儿不对——
-                                           红框只说「这一步有事」，是什么事得说得出来，
-                                           不然人还得回面板里对 -->
-                                      <Border Grid.Column="3" Classes="sev"
-                                              Classes.warn="{Binding IssueWarn}"
-                                              VerticalAlignment="Top" Margin="6,0,0,0"
-                                              IsVisible="{Binding HasIssue}"
-                                              ToolTip.Tip="{Binding IssueTip}">
-                                        <ctl:TecIcon Key="ui-alert" />
-                                      </Border>
+                                      <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4"
+                                                  VerticalAlignment="Top" Margin="6,0,0,0">
+                                        <!-- 并行标记：这一步与上一步同一时刻开跑（组内全结束才走下一组） -->
+                                        <Border IsVisible="{Binding IsParallel}" Background="#10868f"
+                                                CornerRadius="2" Padding="4,0" Height="14"
+                                                ToolTip.Tip="与上一步并行启动：同一时刻开跑，整组都结束才进下一步">
+                                          <TextBlock Text="∥" FontSize="10" FontWeight="Bold"
+                                                     Foreground="White" VerticalAlignment="Center" />
+                                        </Border>
+                                        <!-- 徽记（原型 .sbadge）。悬停能读到具体哪儿不对——
+                                             红框只说「这一步有事」，是什么事得说得出来，
+                                             不然人还得回面板里对 -->
+                                        <Border Classes="sev"
+                                                Classes.warn="{Binding IssueWarn}"
+                                                VerticalAlignment="Top"
+                                                IsVisible="{Binding HasIssue}"
+                                                ToolTip.Tip="{Binding IssueTip}">
+                                          <ctl:TecIcon Key="ui-alert" />
+                                        </Border>
+                                      </StackPanel>
                                     </Grid>
 
                                     <!-- 分隔线用半透明黑，不写死浅灰：卡底从白换成
@@ -1001,6 +1011,10 @@
                             IsChecked="{Binding PauseOnFault, Mode=TwoWay}" />
                   <CheckBox Classes="chk2" Content="跳过该步骤（不执行、不计入排期）"
                             IsChecked="{Binding StepSkipped, Mode=TwoWay}" />
+                  <CheckBox Classes="chk2" Content="与上一步并行启动"
+                            IsChecked="{Binding StepParallel, Mode=TwoWay}"
+                            IsVisible="{Binding CanParallel}"
+                            ToolTip.Tip="iControl 的 Series/Parallel：勾上后这一步与上一步同一时刻开跑；一组并行步全部结束，下一步才开始。第一步、循环标记、起始步骤不能并行" />
                   <!-- 工艺阶段：设备不知道这一段在结晶还是在蒸馏，只有人知道。
                        标了就进记录、进报告，报告里注明是操作人标的 -->
                   <Grid ColumnDefinitions="76,*,40" Margin="0,4,0,0">

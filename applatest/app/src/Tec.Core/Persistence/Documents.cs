@@ -70,6 +70,8 @@ public sealed class StepDoc
     public string? Phase { get; set; }
     /// <summary>本步执行期间的临时安全限值。老文件没有，null = 没有覆盖。</summary>
     public GuardDoc? Guard { get; set; }
+    /// <summary>与上一步并行启动。老文件没有，缺省 false = 串行（老行为）。</summary>
+    public bool Parallel { get; set; }
 }
 
 /// <summary>StepGuard 的文档形。全空的不落盘（ToDoc 时省成 null）。</summary>

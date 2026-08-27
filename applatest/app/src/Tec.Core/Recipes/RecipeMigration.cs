@@ -136,6 +136,7 @@ public static class RecipeMigration
         // 标好的工艺阶段消失。翻译只换说法，不改这一步的其它任何设置
         PauseOnFault = step.PauseOnFault,
         Phase = step.Phase,
-        Guard = step.Guard?.Clone()
+        Guard = step.Guard?.Clone(),
+        Parallel = step.Parallel
     };
 }

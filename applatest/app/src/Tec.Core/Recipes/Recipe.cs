@@ -73,6 +73,14 @@ public sealed class Step
     /// <summary>这一步执行期间的临时安全限值。null 或 IsEmpty = 没有覆盖。</summary>
     public StepGuard? Guard { get; set; }
 
+    /// <summary>
+    /// 与上一步并行启动（iControl 的 Alignment = Parallel）。
+    /// 一个「并行组」= 一条串行步 + 紧随其后的若干并行步：组内所有步骤
+    /// 同时开跑，**全部结束**下一组才开始——这正是 iControl 的 Phase 同步语义。
+    /// 第一步、循环标记、起始步骤不能并行（校验器把关）。缺省串行 = 老行为。
+    /// </summary>
+    public bool Parallel { get; set; }
+
     /// <summary>换一个新 Id 的副本（粘贴、复制到别的通道）。</summary>
     public Step Clone() => CopyWith(Guid.NewGuid().ToString("N")[..8]);
 
@@ -93,7 +101,8 @@ public sealed class Step
         PauseOnFault = PauseOnFault,
         Comment = Comment,
         Phase = Phase,
-        Guard = Guard?.Clone()
+        Guard = Guard?.Clone(),
+        Parallel = Parallel
     };
 }
 

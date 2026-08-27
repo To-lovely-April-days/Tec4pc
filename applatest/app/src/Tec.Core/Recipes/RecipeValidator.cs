@@ -98,6 +98,7 @@ public static class RecipeValidator
                 $"第 {openAt + 1} 步的循环开始没有对应的循环结束") { StepId = recipe.Steps[openAt].StepId });
 
         ValidateFirstFill(issues, recipe);
+        ValidateParallel(issues, recipe);
 
         var schedule = Schedule.Build(recipe, catalog, seed);
         issues.Add(new ValidationIssue(IssueLevel.Info, "duration",
@@ -159,6 +160,57 @@ public static class RecipeValidator
         if (!seen && anyEnabled)
             issues.Add(new ValidationIssue(IssueLevel.Warning, "firstfill-missing",
                 "配方没有以「起始装料与限值」开头——初始投料、初始状态与起始限值建议从它立起（老配方可照跑）"));
+    }
+
+    /// <summary>
+    /// 并行步骤的位置规矩。「与上一步并行」得真有一条能当组头的上一步：
+    /// · 第一条启用步不能并行——没有可并的对象；
+    /// · 循环标记不能并行，也不能给并行步当组头——循环体的边界必须是同步点，
+    ///   不然「循环再来一轮」和「组还没收尾」会在同一个时刻打架；
+    /// · 起始步骤独走——它的意义就是「起点条件全部就绪」，谁都不能跟它并行。
+    /// </summary>
+    private static void ValidateParallel(List<ValidationIssue> issues, Recipe recipe)
+    {
+        string? headKind = null;    // 上一条启用步的身份：null=没有 / "plain" / "marker" / "firstfill"
+
+        for (var i = 0; i < recipe.Steps.Count; i++)
+        {
+            var s = recipe.Steps[i];
+            if (!s.Enabled) continue;
+
+            var isMarker = BuiltinCommands.IsLoopBegin(s.CommandId) || BuiltinCommands.IsLoopEnd(s.CommandId);
+            if (s.Parallel)
+            {
+                if (isMarker)
+                    issues.Add(new ValidationIssue(IssueLevel.Error, "parallel-order",
+                        $"第 {i + 1} 步是循环标记，不能并行——循环边界必须是同步点") { StepId = s.StepId });
+                else if (s.CommandId == BuiltinCommands.FirstFill)
+                    issues.Add(new ValidationIssue(IssueLevel.Error, "parallel-order",
+                        $"第 {i + 1} 步是起始步骤，不能并行") { StepId = s.StepId });
+                else switch (headKind)
+                {
+                    case null:
+                        issues.Add(new ValidationIssue(IssueLevel.Error, "parallel-order",
+                            $"第 {i + 1} 步设了「与上一步并行」，但它前面没有可并行的步骤") { StepId = s.StepId });
+                        break;
+                    case "marker":
+                        issues.Add(new ValidationIssue(IssueLevel.Error, "parallel-order",
+                            $"第 {i + 1} 步不能与循环标记并行——循环体的第一步是组头，从它往后才能并") { StepId = s.StepId });
+                        break;
+                    case "firstfill":
+                        issues.Add(new ValidationIssue(IssueLevel.Error, "parallel-order",
+                            $"第 {i + 1} 步不能与起始步骤并行——起点条件全部就绪之后才轮到别的动作") { StepId = s.StepId });
+                        break;
+                }
+                // 并行步不改组头身份：后面的并行步依旧并在同一个组头上
+                if (isMarker) headKind = "marker";
+                continue;
+            }
+
+            headKind = isMarker ? "marker"
+                     : s.CommandId == BuiltinCommands.FirstFill ? "firstfill"
+                     : "plain";
+        }
     }
 
     /// <summary>

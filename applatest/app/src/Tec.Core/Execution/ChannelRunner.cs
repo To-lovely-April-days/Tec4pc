@@ -372,19 +372,58 @@ public sealed class ChannelRunner
                 }
 
                 var iteration = loops.Count > 0 ? loops.Peek().Iteration : 1;
-                var done = await ExecuteStepAsync(run, step, entry, planShift, iteration, ct)
-                                 .ConfigureAwait(false);
-                pc++;
 
-                // 这一步没做成，接下来的步骤多半是建立在它做成了的前提上——
-                // 「升温失败了照样往下加料」是实打实的事故。默认停下来等人看一眼；
-                // 明确勾掉的（比如一条可有可无的采集）才继续跑
-                if (done.Status == StepStatus.Failed && step.PauseOnFault)
+                // 并行组（iControl 的 Alignment = Parallel）：这一条串行步 +
+                // 紧随其后的并行步一起开跑，**全部结束**下一组才开始——
+                // 正是 iControl「归入同一 Phase 的并行操作在 Phase 起点同时启动」的语义。
+                // 组中间停用的步骤照常跳过，不隔断组
+                var group = new List<(Step Step, ScheduleEntry? Entry)> { (step, entry) };
+                var next = pc + 1;
+                while (next < steps.Count)
                 {
-                    Log(EventKind.Alarm,
-                        $"第 {pc} 步「{done.Title}」失败，已暂停：{done.Note ?? "未说明原因"}",
-                        null);
-                    Pause();
+                    var s2 = steps[next];
+                    if (!s2.Enabled) { next++; continue; }
+                    if (!s2.Parallel || BuiltinCommands.IsLoopBegin(s2.CommandId)
+                                     || BuiltinCommands.IsLoopEnd(s2.CommandId)) break;
+                    group.Add((s2, next < schedule.Entries.Count ? schedule.Entries[next] : null));
+                    next++;
+                }
+
+                if (group.Count == 1)
+                {
+                    var done = await ExecuteStepAsync(run, step, entry, planShift, iteration, ct)
+                                     .ConfigureAwait(false);
+                    pc++;
+
+                    // 这一步没做成，接下来的步骤多半是建立在它做成了的前提上——
+                    // 「升温失败了照样往下加料」是实打实的事故。默认停下来等人看一眼；
+                    // 明确勾掉的（比如一条可有可无的采集）才继续跑
+                    if (done.Status == StepStatus.Failed && step.PauseOnFault)
+                    {
+                        Log(EventKind.Alarm,
+                            $"第 {pc} 步「{done.Title}」失败，已暂停：{done.Note ?? "未说明原因"}",
+                            null);
+                        Pause();
+                    }
+                }
+                else
+                {
+                    // Task.WhenAll 等**全部**成员收尾才返回（哪怕有人先抛了异常）——
+                    // 组的完成语义靠的正是这一点。记录链的 Append 自带锁，成员并发追加安全
+                    var results = await Task.WhenAll(group.Select(g =>
+                            ExecuteStepAsync(run, g.Step, g.Entry, planShift, iteration, ct)))
+                        .ConfigureAwait(false);
+                    pc = next;
+
+                    for (var k = 0; k < results.Length; k++)
+                        if (results[k].Status == StepStatus.Failed && group[k].Step.PauseOnFault)
+                        {
+                            Log(EventKind.Alarm,
+                                $"并行组里「{results[k].Title}」失败，已暂停：{results[k].Note ?? "未说明原因"}",
+                                null);
+                            Pause();
+                            break;
+                        }
                 }
             }
         }

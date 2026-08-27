@@ -144,7 +144,51 @@ public sealed class Schedule
 
             entries.Add(new ScheduleEntry(i, s.StepId, s.CommandId, t, dur, TimeSpan.Zero, 0, title, kind, known)
             { StartTemp = before, EndTemp = ctx.Temperature });
-            t += dur;
+
+            // 并行组（iControl 的 Alignment = Parallel）：紧随其后的并行步与这一步
+            // 同一起点，组时长取最长成员——**全部结束下一组才开始**。
+            // 各成员的估算仍按书写顺序共享上下文推进（温度接力是近似，但
+            // 「组结束时的状态」与顺序执行一致，后面的估算不会漂）。
+            var groupDur = dur;
+            while (i + 1 < recipe.Steps.Count)
+            {
+                var s2 = recipe.Steps[i + 1];
+                if (!s2.Enabled)
+                {
+                    // 组中间停用的步骤照常吐一条零长条目——它不执行，
+                    // 但也不能把后面的并行步隔成一个新组
+                    i++;
+                    var kn = catalog.TryGet(s2.CommandId, out var dd);
+                    if (!kn && !missing.Contains(s2.CommandId)) missing.Add(s2.CommandId);
+                    var pin = new CommandInput(s2.Parameters, s2.Rows);
+                    entries.Add(new ScheduleEntry(i, s2.StepId, s2.CommandId, t, TimeSpan.Zero,
+                        TimeSpan.Zero, 0, kn ? SafeDescribe(dd, pin) : $"缺少驱动：{s2.CommandId}",
+                        kn ? dd.TerminationOf(pin) : TerminationKind.Immediate, kn));
+                    continue;
+                }
+                if (!s2.Parallel || BuiltinCommands.IsLoopBegin(s2.CommandId)
+                                 || BuiltinCommands.IsLoopEnd(s2.CommandId)) break;
+
+                i++;
+                var known2 = catalog.TryGet(s2.CommandId, out var d2);
+                if (!known2 && !missing.Contains(s2.CommandId)) missing.Add(s2.CommandId);
+                var input2 = new CommandInput(s2.Parameters, s2.Rows);
+                var dur2 = TimeSpan.Zero;
+                var before2 = ctx.Temperature;
+                if (known2)
+                {
+                    try { dur2 = d2.Estimate(input2, ctx); }
+                    catch { dur2 = TimeSpan.Zero; }
+                    if (dur2 < TimeSpan.Zero) dur2 = TimeSpan.Zero;
+                }
+                entries.Add(new ScheduleEntry(i, s2.StepId, s2.CommandId, t, dur2, TimeSpan.Zero, 0,
+                    known2 ? SafeDescribe(d2, input2) : $"缺少驱动：{s2.CommandId}",
+                    known2 ? d2.TerminationOf(input2) : TerminationKind.Immediate, known2)
+                { StartTemp = before2, EndTemp = ctx.Temperature });
+                if (dur2 > groupDur) groupDur = dur2;
+            }
+
+            t += groupDur;
         }
 
         // 循环开始没配对：把它当普通零长行，排期照样能算出来，校验器负责报错

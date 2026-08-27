@@ -218,6 +218,8 @@ public sealed class StepViewModel : ViewModelBase
     public string TileIcon => "tile-" + (Descriptor?.IconKey ?? "wait");
     /// <summary>整句工艺语句（原型 stepDesc → DESC）。</summary>
     public string Desc => Entry.Title;
+    /// <summary>与上一步并行启动。卡片右上角画一枚「∥」，同组同起点一眼可辨。</summary>
+    public bool IsParallel => Step.Parallel;
     /// <summary>卡片摘要（原型 PSPEC.sum）。</summary>
     public string Summary => Descriptor is null
         ? "缺少驱动"
@@ -927,7 +929,7 @@ public sealed class RecipeViewModel : ViewModelBase
             RaiseAll(nameof(HasSelection), nameof(NoSelection), nameof(StepName), nameof(StepIcon),
                      nameof(StepTile), nameof(StepTileBrush), nameof(StepTileTint),
                      nameof(StepChannel), nameof(NoParams), nameof(PauseOnFault),
-                     nameof(StepSkipped), nameof(StepPhase));
+                     nameof(StepSkipped), nameof(StepPhase), nameof(StepParallel), nameof(CanParallel));
             RaiseGuard();
         }
     }
@@ -1030,6 +1032,31 @@ public sealed class RecipeViewModel : ViewModelBase
             Raise();
         }
     }
+
+    /// <summary>
+    /// 与上一步并行启动（iControl 的 Alignment = Parallel）。勾上后这一步
+    /// 与上一步同一时刻开跑，整组并行步**全部结束**下一步才开始。
+    /// 位置合不合规矩由校验器把关（第一步 / 循环标记 / 起始步骤不能并）。
+    /// </summary>
+    public bool StepParallel
+    {
+        get => _selectedStep?.Step.Parallel ?? false;
+        set
+        {
+            if (_selectedStep is not { } s || s.Step.Parallel == value) return;
+            Record();
+            s.Step.Parallel = value;
+            Workspace.Store.MarkDirty();
+            RefreshAll();          // 排期跟着变：并行成员同一起点
+            Raise();
+        }
+    }
+
+    /// <summary>循环标记与起始步骤根本没有并行一说，开关都不给看。</summary>
+    public bool CanParallel => _selectedStep is { } s
+        && !BuiltinCommands.IsLoopBegin(s.Step.CommandId)
+        && !BuiltinCommands.IsLoopEnd(s.Step.CommandId)
+        && s.Step.CommandId != BuiltinCommands.FirstFill;
 
     // ── 本步安全覆盖（iControl 每步的 Advanced 层）────────────────────
     //
