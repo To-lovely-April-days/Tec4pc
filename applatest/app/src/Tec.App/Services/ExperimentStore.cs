@@ -12,7 +12,7 @@ namespace Tec.App.Services;
 /// </summary>
 public sealed class ThumbPart
 {
-    public string Art { get; set; } = "reactor2";
+    public string Art { get; set; } = "rd105";
     public double X { get; set; }
     public double Y { get; set; }
     public double W { get; set; }
@@ -461,7 +461,7 @@ public sealed class ExperimentStore
     private List<ThumbPart> ThumbOf()
         => _ws.Bench.Devices.Select(d =>
         {
-            var art = _ws.Drivers.Driver(d.DriverId)?.Info.IconKey ?? "reactor2";
+            var art = _ws.Drivers.Driver(d.DriverId)?.Info.IconKey ?? "rd105";
             return new ThumbPart
             {
                 Id = d.InstanceId,

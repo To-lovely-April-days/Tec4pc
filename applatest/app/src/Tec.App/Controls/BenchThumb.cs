@@ -32,6 +32,16 @@ public sealed class BenchThumb : Control
         return a is null ? w * 0.8 : w * a.ViewHeight / a.ViewWidth;
     }
 
+    /// <summary>
+    /// 卡片上实际画哪张图、多宽：插在工位上的 Tr / pH 画插入形态（斜 9.6° 那支），
+    /// 宽度按插入图重取——存的 W 是独立形态的。跟画布、运行页总览同一副样子，
+    /// 这张缩略图的全部意义就是「这份实验的台面长什么样」。
+    /// </summary>
+    private static (string Art, double W) EffectiveArt(ThumbPart p)
+        => Services.BenchDock.InsertArtFor(p.Art, p.Anchor) is { } ins
+            ? (ins, Services.BenchDock.DisplayWidth(ins))
+            : (p.Art, p.W);
+
     public override void Render(DrawingContext ctx)
     {
         var parts = Parts?.OfType<ThumbPart>().ToList() ?? new List<ThumbPart>();
@@ -41,10 +51,11 @@ public sealed class BenchThumb : Control
         double x0 = double.MaxValue, y0 = double.MaxValue, x1 = double.MinValue, y1 = double.MinValue;
         foreach (var p in parts)
         {
+            var (art, w) = EffectiveArt(p);
             x0 = Math.Min(x0, p.X);
             y0 = Math.Min(y0, p.Y);
-            x1 = Math.Max(x1, p.X + p.W + BenchDockPad);
-            y1 = Math.Max(y1, p.Y + HeightOf(p.Art, p.W) + BenchDockPad);
+            x1 = Math.Max(x1, p.X + w + BenchDockPad);
+            y1 = Math.Max(y1, p.Y + HeightOf(art, w) + BenchDockPad);
         }
         var bw = Math.Max(x1 - x0, 1);
         var bh = Math.Max(y1 - y0, 1);
@@ -56,55 +67,45 @@ public sealed class BenchThumb : Control
 
         Point At(double x, double y) => new(ox + x * s, oy + y * s);
 
-        // 先画管路，压在设备下面
+        // 先画设备。宿主画在最下面，探头压在上面，和画布一个叠放顺序
+        foreach (var p in parts.OrderBy(p => Services.BenchDock.IsHost(p.Art) ? 0 : 1))
+        {
+            var (key, w) = EffectiveArt(p);
+            var art = DeviceArtCache.Get(key);
+            var at = At(p.X + BenchDockPad / 2.0, p.Y + BenchDockPad / 2.0);
+            if (art is null)
+            {
+                ctx.DrawRectangle(new SolidColorBrush(Color.Parse("#e9ecef")), null,
+                    new Rect(at.X, at.Y, w * s, HeightOf(key, w) * s), 2, 2);
+                continue;
+            }
+            using var _ = ctx.PushTransform(Matrix.CreateTranslation(at.X, at.Y));
+            art.Render(ctx, w * s / art.ViewWidth,
+                       new SvgArt.Paint(Color.Parse("#c2c2c2"), Color.Parse("#c2c2c2"), false, false));
+        }
+
+        // 管路画在设备之上，**画法用画布那一份（BenchLinks.Draw）**：
+        // 从前这里自己描一条细彩线，泵的管子在卡片上是品红一划、
+        // 到了画布上却是深描边浅芯的那根管——同一份台面两副样子。
+        // Tr / pH 没有管子（插入件画在工位上），跳过，跟画布一致。
         var byId = parts.Where(p => p.Id.Length > 0)
                         .GroupBy(p => p.Id).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
         foreach (var p in parts)
         {
             if (p.Host is null || p.Anchor is null) continue;
             if (!byId.TryGetValue(p.Host, out var host)) continue;
-            var a = Services.BenchDock.Anchors.FirstOrDefault(x => x.Id == p.Anchor);
-            if (a is null) continue;
+            var a = Services.BenchDock.AnchorById(p.Anchor);
+            if (a is null || a.Accept is "tr" or "ph") continue;
 
-            var to = Services.BenchDock.AnchorWorld(new Point(host.X, host.Y), host.W, a);
-            var from = Services.BenchDock.PlugWorld(new Point(p.X, p.Y), p.W, p.Art, p.Side);
-            var kind = Services.BenchDock.LinkOf(p.Art);
-            var pts = Services.BenchDock.Route(from, Services.BenchDock.ExitDir(p.Art, from, to),
-                                               to, a.Dir, 18)
+            var link = Services.BenchDock.Link(p.Art, new Point(p.X, p.Y), p.W, p.Side,
+                                               p.Id, host.Id, new Point(host.X, host.Y), host.W,
+                                               Array.Empty<int>(), a);
+            var pts = Services.BenchDock.Route(link.From, link.FromDir, link.To, link.ToDir,
+                                               link.Kind == LinkKind.Probe ? 18
+                                               : link.Kind == LinkKind.Feed ? Math.Max(24 * link.Scale, 10)
+                                               : 24)
                               .Select(q => At(q.X, q.Y)).ToList();
-
-            var geo = new StreamGeometry();
-            using (var g = geo.Open())
-            {
-                g.BeginFigure(pts[0], false);
-                for (var i = 1; i < pts.Count; i++) g.LineTo(pts[i]);
-                g.EndFigure(false);
-            }
-            var col = kind switch
-            {
-                LinkKind.Probe => Color.Parse("#8d9298"),
-                LinkKind.Feed => Color.Parse("#c53a9d"),
-                LinkKind.Sample => Color.Parse("#dba32c"),
-                _ => Color.Parse("#b6bbc0")
-            };
-            ctx.DrawGeometry(null, new Pen(new SolidColorBrush(col, 0.85), Math.Max(1, 1.6 * s))
-            { LineCap = PenLineCap.Round, LineJoin = PenLineJoin.Round }, geo);
-        }
-
-        // 再画设备。宿主画在最下面，探头压在上面，和画布一个叠放顺序
-        foreach (var p in parts.OrderBy(p => Services.BenchDock.IsHost(p.Art) ? 0 : 1))
-        {
-            var art = DeviceArtCache.Get(p.Art);
-            var at = At(p.X + BenchDockPad / 2.0, p.Y + BenchDockPad / 2.0);
-            if (art is null)
-            {
-                ctx.DrawRectangle(new SolidColorBrush(Color.Parse("#e9ecef")), null,
-                    new Rect(at.X, at.Y, p.W * s, HeightOf(p.Art, p.W) * s), 2, 2);
-                continue;
-            }
-            using var _ = ctx.PushTransform(Matrix.CreateTranslation(at.X, at.Y));
-            art.Render(ctx, p.W * s / art.ViewWidth,
-                       new SvgArt.Paint(Color.Parse("#c2c2c2"), Color.Parse("#c2c2c2"), false, false));
+            BenchLinks.Draw(ctx, link, pts, s, labels: false);
         }
     }
 
