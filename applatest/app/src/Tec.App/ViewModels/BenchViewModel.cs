@@ -835,11 +835,18 @@ public sealed class BenchViewModel : ViewModelBase
 
     /// <summary>
     /// 跟着停靠关系走的两样点缀：插上工位的探头各一张读数标签
-    /// （演示 tag()：白底 #A41626 红框，值 + 单位），主机的工位 LED
+    /// （白底灰框的提示式读数框，一根引线从探头头部引出去），主机的工位 LED
     /// （工位上挂了任何配件就点亮，演示 render() 里 led 那一句）。
     /// </summary>
     private void RebuildDecor()
     {
+        // 读数框不再按演示原尺寸贴在探头旁：64×32 乘上主机比例只剩 34×17、
+        // 字 8px，看不清（用户提出）。改成**提示框式的引出**：框固定 84×34、
+        // 字 16，从探头头部拉一根引线伸出去——Tr 往左上、pH 往右横出，
+        // 两排高度错开，相邻工位的框不相撞（演示纵向错开是同一个用意）。
+        // 探头头顶在主机坐标里：Tr (140,31)、pH (220,31)（斜 9.6° 转完的位置），
+        // 工位 2 整体右移 200。
+        const double TW = 84, TH = 34;
         Tags.Clear();
         foreach (var node in Devices)
         {
@@ -849,16 +856,32 @@ public sealed class BenchViewModel : ViewModelBase
             if (Devices.FirstOrDefault(d => d.Id == dev.DockHostId) is not { } host) continue;
 
             var s = host.Width / BenchDock.MachineVw;
-            var r = BenchDock.TagRect(a);
+            var hx = (a.Accept == "tr" ? 140.0 : 220.0) + (a.Slot == 1 ? 200 : 0);
+            var head = new Point(host.X + BenchDock.NodePad + hx * s,
+                                 host.Y + BenchDock.NodePad + 31 * s);
+            double x, y, ax, ay;
+            if (a.Accept == "tr")
+            {
+                x = head.X - TW - 18;
+                y = head.Y - TH - 34;
+                ax = x + TW - 10;      // 引线接在框的右下角附近
+                ay = y + TH;
+            }
+            else
+            {
+                x = head.X + 18;
+                y = head.Y - TH + 16;
+                ax = x;                // 引线横着接进框的左沿中点
+                ay = y + TH / 2;
+            }
             Tags.Add(new ReadTagViewModel(a.Accept, host.Channels.ElementAtOrDefault(a.Slot))
             {
-                X = host.X + BenchDock.NodePad + r.X * s,
-                Y = host.Y + BenchDock.NodePad + r.Y * s,
-                W = r.Width * s,
-                H = r.Height * s,
-                FontSize = 15 * s,
-                BorderW = new Thickness(2 * s),
-                Radius = new CornerRadius(3 * s)
+                X = x, Y = y, W = TW, H = TH,
+                FontSize = 16,
+                BorderW = new Thickness(1.6),
+                Radius = new CornerRadius(4),
+                AnchorX = head.X, AnchorY = head.Y,
+                AttachX = ax, AttachY = ay
             });
         }
         RefreshTagValues();
@@ -1199,9 +1222,10 @@ public sealed class ChannelRowViewModel : ViewModelBase
 }
 
 /// <summary>
-/// 插上工位的 Tr / pH 的读数标签，1:1 照交互演示的 tag()：
-/// 白底、#A41626 红框 2、圆角 3、字 15——这些是主机图单位，
-/// 建的时候已按主机比例折成画布像素。数值见 RefreshTagValues：真数或「—」。
+/// 插上工位的 Tr / pH 的读数框：白底灰框（#4A4A4A，同新版演示的 tag()），
+/// 提示框式地从探头头部引一根线伸出去，框 84×34、字 16——不再按主机比例缩，
+/// 缩完只剩 8px 的字看不清（用户提出改成引出式）。
+/// 数值见 RefreshTagValues：真数或「—」。
 /// </summary>
 public sealed class ReadTagViewModel : ViewModelBase
 {
@@ -1222,6 +1246,12 @@ public sealed class ReadTagViewModel : ViewModelBase
     public double FontSize { get; init; }
     public Thickness BorderW { get; init; }
     public CornerRadius Radius { get; init; }
+
+    /// <summary>引线的两端：探头头顶 → 框沿上的接点（TagLeaders 画）。</summary>
+    public double AnchorX { get; init; }
+    public double AnchorY { get; init; }
+    public double AttachX { get; init; }
+    public double AttachY { get; init; }
 
     private string _text = "—";
     public string Text { get => _text; set => Set(ref _text, value); }

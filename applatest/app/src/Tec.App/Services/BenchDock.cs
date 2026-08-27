@@ -182,19 +182,6 @@ public static class BenchDock
         return new Point(pumpPos.X + NodePad + 136 * s, pumpPos.Y + NodePad + 108 * s);
     }
 
-    /// <summary>
-    /// 读数标签的位置与大小（主机图单位）。跟演示的 tag() 一字不差：
-    /// Tr 贴在探头头部左边（cx−49−64, 26），pH 在右边（cx+49, 70），
-    /// 纵向错开免得相邻工位的标签相撞；框 64×32。
-    /// </summary>
-    public static Rect TagRect(Anchor a)
-    {
-        var cx = a.Slot == 1 ? Cx1 : Cx0;
-        return a.Accept == "tr"
-            ? new Rect(cx - 49 - 64, 26, 64, 32)
-            : new Rect(cx + 49, 70, 64, 32);
-    }
-
     /// <summary>算出一条管路的几何。台面画布与运行页的台面总览共用这一个。</summary>
     public static BenchLink Link(string artKey, Point pos, double width, string? side,
                                  string deviceId, string hostId, Point hostPos, double hostWidth,

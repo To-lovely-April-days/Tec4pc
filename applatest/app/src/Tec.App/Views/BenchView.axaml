@@ -184,9 +184,10 @@
       <ctl:BenchLinks Links="{Binding Links}" FlowClock="{Binding FlowClock}"
                       IsHitTestVisible="False" />
 
-      <!-- 插上工位的 Tr / pH 的读数标签（交互演示 tag() 的 1:1）：
-           白底 + #A41626 红框，值 + 单位。位置、大小、字号都已按主机比例
-           折算好放在视图模型里，这里只照着画 -->
+      <!-- 插上工位的 Tr / pH 的读数框：白底灰框（#4A4A4A，新版演示 tag() 的描边色），
+           提示框式地从探头头部引一根线伸出去——框放大到 84×34、字 16，
+           不再按主机比例缩到看不清。引线由 TagLeaders 画 -->
+      <ctl:TagLeaders Tags="{Binding Tags}" IsHitTestVisible="False" />
       <ItemsControl ItemsSource="{Binding Tags}" IsHitTestVisible="False">
         <ItemsControl.ItemsPanel>
           <ItemsPanelTemplate><Canvas /></ItemsPanelTemplate>
@@ -200,7 +201,7 @@
         <ItemsControl.ItemTemplate>
           <DataTemplate>
             <Border Width="{Binding W}" Height="{Binding H}" Background="White"
-                    BorderBrush="#A41626" BorderThickness="{Binding BorderW}"
+                    BorderBrush="#4A4A4A" BorderThickness="{Binding BorderW}"
                     CornerRadius="{Binding Radius}">
               <TextBlock Text="{Binding Text}" FontSize="{Binding FontSize}" Foreground="#1A1A1A"
                          HorizontalAlignment="Center" VerticalAlignment="Center" />
@@ -228,8 +229,9 @@
                        Fill="White" Stroke="{Binding ColorHex}" StrokeThickness="1.8" />
               <Ellipse Width="5" Height="5" Fill="{Binding ColorHex}"
                        HorizontalAlignment="Center" VerticalAlignment="Center" />
+              <!-- 口名用正文黑，不跟圆点的颜色走——彩色小字浮在画布上看不清（用户提出） -->
               <TextBlock Text="{Binding Label}" IsVisible="{Binding Hot}" FontSize="10.5"
-                         Foreground="{Binding ColorHex}" HorizontalAlignment="Center"
+                         Foreground="#1A1A1A" HorizontalAlignment="Center"
                          VerticalAlignment="Top" Margin="0,-18,0,0" />
             </Panel>
           </DataTemplate>
