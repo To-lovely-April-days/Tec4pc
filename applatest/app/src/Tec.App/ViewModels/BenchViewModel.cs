@@ -842,8 +842,11 @@ public sealed class BenchViewModel : ViewModelBase
     {
         // 读数框不再按演示原尺寸贴在探头旁：64×32 乘上主机比例只剩 34×17、
         // 字 8px，看不清（用户提出）。改成**提示框式的引出**：框固定 84×34、
-        // 字 16，从探头头部拉一根引线伸出去——Tr 往左上、pH 往右横出，
-        // 两排高度错开，相邻工位的框不相撞（演示纵向错开是同一个用意）。
+        // 字 16，从探头头部拉一根引线伸出去——搅拌器左侧的 Tr 往左上角引、
+        // 右边的 pH 往右上角引（用户定的方向），**四个框同一排浮在主机上方**，
+        // 不压任何探头。pH 的横向偏移（+48）比 Tr（−18）大：两工位相距
+        // 107px、框宽 84，工位 1 的 pH 框得推远一点才让得开工位 2 的 Tr 框——
+        // 推完四框正好一排排开（−27..57 / 80..164 / 166..250 / 273..357）。
         // 探头头顶在主机坐标里：Tr (140,31)、pH (220,31)（斜 9.6° 转完的位置），
         // 工位 2 整体右移 200。
         const double TW = 84, TH = 34;
@@ -859,21 +862,19 @@ public sealed class BenchViewModel : ViewModelBase
             var hx = (a.Accept == "tr" ? 140.0 : 220.0) + (a.Slot == 1 ? 200 : 0);
             var head = new Point(host.X + BenchDock.NodePad + hx * s,
                                  host.Y + BenchDock.NodePad + 31 * s);
-            double x, y, ax, ay;
+            double x, ax;
             if (a.Accept == "tr")
             {
                 x = head.X - TW - 18;
-                y = head.Y - TH - 34;
                 ax = x + TW - 10;      // 引线接在框的右下角附近
-                ay = y + TH;
             }
             else
             {
-                x = head.X + 18;
-                y = head.Y - TH + 16;
-                ax = x;                // 引线横着接进框的左沿中点
-                ay = y + TH / 2;
+                x = head.X + 48;
+                ax = x + 10;           // 引线接在框的左下角附近
             }
+            var y = head.Y - TH - 44;  // 一整排都在主机上方，探头一根不挡
+            var ay = y + TH;
             Tags.Add(new ReadTagViewModel(a.Accept, host.Channels.ElementAtOrDefault(a.Slot))
             {
                 X = x, Y = y, W = TW, H = TH,
