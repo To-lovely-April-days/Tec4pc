@@ -161,7 +161,7 @@ public partial class BenchView : UserControl
         var at = e.GetPosition(World);
         p.X = at.X - _panelGrab.X;
         p.Y = at.Y - _panelGrab.Y;
-        Vm?.ClampPanel(p);            // 小窗也不许拖出可视区（演示同款夹法）
+        Vm?.PanelMoved(p);            // 夹进可视区 + 位置记到设备上随 .tec 落盘
         e.Handled = true;
     }
 

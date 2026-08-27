@@ -26,6 +26,10 @@ public sealed class DeviceDoc
     public int DockSlot { get; set; }
     public string? DockAnchor { get; set; }
     public string? DockSideTag { get; set; }
+
+    // 泵控制小窗被挪到的位置。空 = 没挪过（老文件也没有这两个字段）
+    public double? PanelX { get; set; }
+    public double? PanelY { get; set; }
 }
 
 public sealed class BindingDoc

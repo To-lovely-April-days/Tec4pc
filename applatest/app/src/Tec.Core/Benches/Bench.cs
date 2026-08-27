@@ -47,6 +47,14 @@ public sealed class DeviceInstance
     /// <summary>用仿真会话而不是真硬件。仿真数据全部带 Quality.Simulated。</summary>
     public bool Simulated { get; set; } = true;
 
+    /// <summary>
+    /// 泵控制小窗被用户挪到的位置（画布世界坐标）。空 = 没挪过，按默认摆。
+    /// 挪过要存——存盘再开，窗子跳回默认位置就等于没挪（用户实测提出）。
+    /// 只有泵有小窗，别的设备这两个字段恒空。
+    /// </summary>
+    public double? PanelX { get; set; }
+    public double? PanelY { get; set; }
+
     public string Display => string.IsNullOrWhiteSpace(Label) ? InstanceId : Label!;
 }
 

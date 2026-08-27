@@ -231,7 +231,25 @@ public sealed class BenchViewModel : ViewModelBase
     public string ZoomText => $"{Zoom * 100:F0}%";
 
     /// <summary>画布可视区尺寸，由视图在尺寸变化时告诉它——「适应」要用。</summary>
-    public void StageSize(Size s) => _stage = s;
+    public void StageSize(Size s)
+    {
+        var changed = Math.Abs(_stage.Width - s.Width) > 0.5 || Math.Abs(_stage.Height - s.Height) > 0.5;
+        _stage = s;
+        if (!changed) return;
+        // 可视区刚定下来（页面首次量出尺寸 / 窗口改了大小）：把小窗放回
+        // 存档的位置再夹。开档时 Reload 先于页面布局跑，那一刻夹用的还是
+        // 缺省的 900×700——存在画布右半边的窗会被错误地拽回左边（实测踩到）。
+        // 挪动是随手落盘的（PanelMoved），所以放回存档位置不会丢在场的挪动
+        foreach (var p in Panels)
+        {
+            if (_ws.Bench.Device(p.DeviceId) is { PanelX: { } px, PanelY: { } py })
+            {
+                p.X = px;
+                p.Y = py;
+            }
+            ClampPanel(p);
+        }
+    }
 
     /// <summary>
     /// 画布可视区换算到世界坐标的矩形。画布**只有缩放没有平移**，
@@ -252,6 +270,20 @@ public sealed class BenchViewModel : ViewModelBase
         var vis = VisibleWorld();
         p.X = ClampAxis(p.X, vis.X + 6, vis.Right - p.W - 6);
         p.Y = ClampAxis(p.Y, vis.Y + 6, vis.Bottom - p.H - 6);
+    }
+
+    /// <summary>
+    /// 用户拖动小窗：夹进可视区之后把位置**记到设备上**——它随 .tec 一起落盘，
+    /// 下次打开窗子还在挪去的地方。位置变了也算实验改动，脏标记点上。
+    /// </summary>
+    public void PanelMoved(PumpPanelViewModel p)
+    {
+        ClampPanel(p);
+        if (_ws.Bench.Device(p.DeviceId) is not { } dev) return;
+        if (dev.PanelX == p.X && dev.PanelY == p.Y) return;
+        dev.PanelX = p.X;
+        dev.PanelY = p.Y;
+        _ws.Store.MarkDirty();
     }
 
     private void Scale(double factor)
@@ -920,13 +952,19 @@ public sealed class BenchViewModel : ViewModelBase
             live.Add(dev.InstanceId);
             if (!_panels.TryGetValue(dev.InstanceId, out var p))
             {
-                // 默认弹在泵右边；右边放不下（泵靠着画布右缘）就翻到左边，
-                // 最后整扇夹进可视区——弹出来就得整扇看得见
+                // 用户挪过的位置存在设备上（随 .tec 落盘），有就用它——
+                // 存盘再开窗子跳回默认位置就等于没挪（用户实测提出）。
+                // 没挪过按默认弹在泵右边；右边放不下（泵靠着画布右缘）
+                // 就翻到左边，最后整扇夹进可视区——弹出来就得整扇看得见
                 var vis0 = VisibleWorld();
                 var px = node.X + node.Width + BenchDock.NodePad * 2 + 26;
                 if (px + PumpPanelViewModel.PanelW + 6 > vis0.Right)
                     px = node.X - PumpPanelViewModel.PanelW - 26;
-                p = new PumpPanelViewModel(this, dev.InstanceId) { X = px, Y = node.Y - 16 };
+                p = new PumpPanelViewModel(this, dev.InstanceId)
+                {
+                    X = dev.PanelX ?? px,
+                    Y = dev.PanelY ?? node.Y - 16
+                };
                 ClampPanel(p);
                 _panels[dev.InstanceId] = p;
                 Panels.Add(p);

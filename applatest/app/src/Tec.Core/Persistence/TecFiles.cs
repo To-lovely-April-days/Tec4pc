@@ -36,7 +36,9 @@ public static class TecFiles
                 Dock = d.Dock,
                 DockSlot = d.DockSlot,
                 DockAnchor = d.DockAnchor,
-                DockSideTag = d.DockSideTag
+                DockSideTag = d.DockSideTag,
+                PanelX = d.PanelX,
+                PanelY = d.PanelY
             });
         foreach (var b in bench.Bindings)
             doc.Bindings.Add(new BindingDoc
@@ -143,7 +145,9 @@ public static class TecFiles
                 Dock = d.Dock,
                 DockSlot = d.DockSlot,
                 DockAnchor = d.DockAnchor,
-                DockSideTag = d.DockSideTag
+                DockSideTag = d.DockSideTag,
+                PanelX = d.PanelX,
+                PanelY = d.PanelY
             });
         }
 
