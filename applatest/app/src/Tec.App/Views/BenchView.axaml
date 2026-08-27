@@ -162,11 +162,16 @@
             <Border Classes="dev" Classes.sel="{Binding IsSelected}"
                     PointerPressed="OnDevicePressed">
               <StackPanel>
-                <ctl:DeviceArtView ArtKey="{Binding ArtKey}" ArtWidth="{Binding Width}" />
+                <!-- Run1/Run2 点的是主机上两颗工位 LED：工位挂了配件就变绿（演示同款）。
+                     插进工位的探头（Inserted）不写名字——演示里插入件旁只有读数框，
+                     两行字会压在机器身上 -->
+                <ctl:DeviceArtView ArtKey="{Binding ArtKey}" ArtWidth="{Binding Width}"
+                                   Run1="{Binding Run1}" Run2="{Binding Run2}" />
                 <TextBlock Text="{Binding Title}" FontSize="11" Foreground="#383b3f"
-                           HorizontalAlignment="Center" Margin="0,2,0,0" />
+                           HorizontalAlignment="Center" Margin="0,2,0,0"
+                           IsVisible="{Binding !Inserted}" />
                 <TextBlock Text="{Binding ChannelText}" FontSize="10" Foreground="#959a9f"
-                           HorizontalAlignment="Center" />
+                           HorizontalAlignment="Center" IsVisible="{Binding !Inserted}" />
               </StackPanel>
             </Border>
           </DataTemplate>
@@ -176,6 +181,31 @@
       <!-- 管路画在设备**之上**：接口开在釜盖那三个管口上，位置在图的中段，
            画在设备下面的话最后一截会被机身挡住，管子看着像停在机器边上 -->
       <ctl:BenchLinks Links="{Binding Links}" IsHitTestVisible="False" />
+
+      <!-- 插上工位的 Tr / pH 的读数标签（交互演示 tag() 的 1:1）：
+           白底 + #A41626 红框，值 + 单位。位置、大小、字号都已按主机比例
+           折算好放在视图模型里，这里只照着画 -->
+      <ItemsControl ItemsSource="{Binding Tags}" IsHitTestVisible="False">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate><Canvas /></ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.Styles>
+          <Style Selector="ItemsControl > ContentPresenter">
+            <Setter Property="Canvas.Left" Value="{Binding X}" />
+            <Setter Property="Canvas.Top" Value="{Binding Y}" />
+          </Style>
+        </ItemsControl.Styles>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <Border Width="{Binding W}" Height="{Binding H}" Background="White"
+                    BorderBrush="#A41626" BorderThickness="{Binding BorderW}"
+                    CornerRadius="{Binding Radius}">
+              <TextBlock Text="{Binding Text}" FontSize="{Binding FontSize}" Foreground="#1A1A1A"
+                         HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
 
       <!-- 拖拽中：可插的口 + 跟手的幽灵设备 -->
       <ItemsControl ItemsSource="{Binding Ports}" IsHitTestVisible="False">

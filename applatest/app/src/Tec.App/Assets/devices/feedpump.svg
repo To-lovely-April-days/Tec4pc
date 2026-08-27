@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="14 46 202 264">
+<!-- 进料泵（蠕动式）：试剂瓶 + 蠕动泵 + 瓶到泵的吸液管。
+     几何 1:1 取自交互演示 pump(false)——**不带出口管**：
+     出口那一段是「泵 → 釜盖加料口」的连线，接上哪个工位才画哪条
+     （BenchLinks 的 Feed 画法），跟演示里 g-tube 是独立元素一个道理 -->
+<defs>
+  <clipPath id="btl"><path d="M20 176Q20 150 42 134H62Q84 150 84 176V296q0 8-8 8H28q-8 0-8-8Z"/></clipPath>
+</defs>
+<g fill="none" stroke="#4A4A4A" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round">
+  <!-- 试剂瓶 -->
+  <rect x="40" y="85" width="9" height="12" rx="2.5" fill="#DCDCDC" stroke-width="1.2"/>
+  <rect x="56" y="85" width="9" height="12" rx="2.5" fill="#DCDCDC" stroke-width="1.2"/>
+  <rect x="33" y="96" width="38" height="22" rx="2.5" fill="#C9C9C9" stroke-width="2.6"/>
+  <path d="M40 100v14M52 100v14M64 100v14" stroke-width="1"/>
+  <rect x="42" y="118" width="20" height="16" fill="#F1F1F1" stroke-width="1.8"/>
+  <path d="M20 176Q20 150 42 134H62Q84 150 84 176V296q0 8-8 8H28q-8 0-8-8Z" fill="#F9F9F9" stroke-width="2.6"/>
+  <g clip-path="url(#btl)"><path d="M16 214q26 7 52 0 26-7 26 0v100H16Z" fill="#AE9498"/></g>
+  <path d="M22 213q26 7 52 0" stroke="#7E5F65" stroke-width="1.8"/>
+  <path d="M74 190h8M76 206h6M74 222h8M76 238h6M74 254h8" stroke-width="1.2"/>
+  <path d="M44.5 97V288" stroke-width="2.2"/>
+  <!-- 蠕动泵 -->
+  <rect x="116" y="154" width="92" height="146" rx="4" fill="#F9F9F9" stroke-width="2.6"/>
+  <rect x="124" y="162" width="76" height="8" rx="2" fill="#DCDCDC" stroke-width="1.2"/>
+  <circle cx="162" cy="210" r="36" fill="#F1F1F1" stroke-width="2.6"/>
+  <circle cx="162" cy="210" r="30" fill="#FFFFFF" stroke-width="1.2"/>
+  <path d="M134 210A28 28 0 0 0 190 210" stroke="#4A4A4A" stroke-width="5"/>
+  <path d="M134 210A28 28 0 0 0 190 210" stroke="#F1F1F1" stroke-width="2.4"/>
+  <circle cx="162" cy="210" r="20" fill="#DCDCDC" stroke-width="1.8"/>
+  <circle cx="162" cy="234" r="6.5" fill="#FFFFFF" stroke-width="1.4"/>
+  <circle cx="141.2" cy="198" r="6.5" fill="#FFFFFF" stroke-width="1.4"/>
+  <circle cx="182.8" cy="198" r="6.5" fill="#FFFFFF" stroke-width="1.4"/>
+  <circle cx="162" cy="210" r="3" fill="#C9C9C9" stroke-width="1.2"/>
+  <rect x="126" y="262" width="46" height="24" rx="2" fill="#3A3A3A" stroke-width="1.2"/>
+  <path d="M132 270h16M132 279h10M154 270h12M154 279h12" stroke="#C9C9C9" stroke-width="1.2"/>
+  <circle cx="190" cy="274" r="11" fill="#C9C9C9" stroke-width="1.8"/>
+  <circle cx="190" cy="274" r="4" fill="#F9F9F9" stroke-width="1.2"/>
+  <rect x="124" y="300" width="18" height="6" rx="1.5" fill="#C9C9C9" stroke-width="1.2"/>
+  <rect x="182" y="300" width="18" height="6" rx="1.5" fill="#C9C9C9" stroke-width="1.2"/>
+  <!-- 瓶 → 泵的吸液管：深描边 + 浅芯线 -->
+  <g stroke="#4A4A4A" stroke-width="5"><path d="M44.5 85V64Q44.5 54 55 54H94Q104 54 104 64V200Q104 210 114 210H136"/></g>
+  <g stroke="#F1F1F1" stroke-width="2.4"><path d="M44.5 85V64Q44.5 54 55 54H94Q104 54 104 64V200Q104 210 114 210H136"/></g>
+</g>
+</svg>

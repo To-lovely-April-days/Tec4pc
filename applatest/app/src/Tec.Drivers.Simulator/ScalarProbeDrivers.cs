@@ -138,11 +138,11 @@ public sealed class PhProbeDriver : ScalarProbeDriver
 {
     public const string DriverId = "tec.probe.ph";
 
-    public override DriverInfo Info { get; } = new(DriverId, "pH 在线检测", "Tec", "1.0.0")
+    public override DriverInfo Info { get; } = new(DriverId, "pH 玻璃电极", "Tec", "1.0.0")
     {
         ChannelsPerDevice = 0,
-        IconKey = "ph",
-        Description = "原位电极 + 变送器；提供 pH 判据与反馈加料的输入。",
+        IconKey = "phel",
+        Description = "复合电极 · ⌀14；提供 pH 判据与反馈加料的输入。",
         Capabilities = new[] { nameof(IScalarSensor) }
     };
 

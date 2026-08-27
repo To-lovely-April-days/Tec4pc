@@ -81,7 +81,9 @@ public sealed class BenchLinks : Control
 
         foreach (var link in Links.OfType<BenchLink>())
             Draw(ctx, link, BenchDock.Route(link.From, link.FromDir, link.To, link.ToDir,
-                                            link.Kind == LinkKind.Probe ? 18 : 24),
+                                            link.Kind == LinkKind.Probe ? 18
+                                            : link.Kind == LinkKind.Feed ? Math.Max(24 * link.Scale, 10)
+                                            : 24),
                  1, ShowLabels);
     }
 
@@ -97,7 +99,9 @@ public sealed class BenchLinks : Control
                             double scale, bool labels)
     {
         if (pts.Count < 2) return;
-        var geo = Rounded(pts, (link.Kind == LinkKind.Probe ? 9 : 12) * scale);
+        var geo = Rounded(pts, (link.Kind == LinkKind.Probe ? 9
+                                : link.Kind == LinkKind.Feed ? 14 * link.Scale
+                                : 12) * scale);
         var col = ColorOf(link.Kind);
         var chc = ChColors[Math.Clamp(link.Channel - 1, 0, 3)];
         var to = pts[^1];
@@ -105,6 +109,22 @@ public sealed class BenchLinks : Control
 
         switch (link.Kind)
         {
+            // 进料管照交互演示的 g-tube：深描边 #4A4A4A 5 + 浅芯线 #F1F1F1 2.4，
+            // 宽度写的是**主机图单位**（乘 link.Scale），跟主机永远同一个比例。
+            // 釜盖那头压一块 14×12 的加料口小方块（演示 dosePort）——
+            // 它跟管子一起出现、一起消失：泵没接上时釜盖上本来就没有这个口。
+            // 不画箭头、不画胶囊标签，演示里都没有。
+            case LinkKind.Feed:
+            {
+                var k = scale * link.Scale;
+                Stroke(ctx, geo, Color.Parse("#4A4A4A"), Math.Max(5 * k, 1.4));
+                Stroke(ctx, geo, Color.Parse("#F1F1F1"), Math.Max(2.4 * k, 0.7));
+                ctx.DrawRectangle(new SolidColorBrush(Color.Parse("#DCDCDC")),
+                    new Pen(new SolidColorBrush(Color.Parse("#4A4A4A")), Math.Max(1.8 * k, 0.5)),
+                    new Rect(to.X - 7 * k, to.Y - 6 * k, 14 * k, 12 * k), 2 * k, 2 * k);
+                break;
+            }
+
             case LinkKind.Probe:
                 Stroke(ctx, geo, Color.Parse("#5c5e60"), W(5.8));
                 Stroke(ctx, geo, Color.Parse("#e6e9eb"), W(3));
@@ -132,7 +152,7 @@ public sealed class BenchLinks : Control
                 break;
         }
 
-        if (labels) Label(ctx, pts, link, chc);
+        if (labels && link.Kind != LinkKind.Feed) Label(ctx, pts, link, chc);
     }
 
     private static void Stroke(DrawingContext ctx, Geometry geo, Color c, double w,

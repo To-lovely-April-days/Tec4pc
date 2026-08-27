@@ -11,11 +11,11 @@ public sealed class DosingPumpDriver : IDeviceDriver
 {
     public const string DriverId = "tec.dosing.pump";
 
-    public DriverInfo Info { get; } = new(DriverId, "自动加料泵", "Tec", "1.0.0")
+    public DriverInfo Info { get; } = new(DriverId, "进料泵", "Tec", "1.0.0")
     {
         ChannelsPerDevice = 0,          // 不开通道，只能绑到别人的通道上
-        IconKey = "pump",
-        Description = "注射式定量加料；可共享给多个通道。",
+        IconKey = "feedpump",
+        Description = "蠕动式 · 两套；接到工位加料口，可共享给多个通道。",
         Capabilities = new[] { nameof(IDosing) }
     };
 

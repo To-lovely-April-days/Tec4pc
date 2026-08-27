@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 548">
+<!-- 双工位反应器 RD105（HT-RS2 主机，**裸机**）。
+     几何逐条取自交互演示 machine()（cx=180 / 380 代入），一笔没改；
+     两支斜插的 Tr / pH 不在这张图里——它们是独立设备（trprobe-in / phel-in），
+     插上哪个工位才画哪个，跟演示里勾选配件同一个道理。
+     两颗 LED 各叠一枚绿色圆（data-run）：工位上挂了配件才点亮，
+     对应演示的 led.setAttribute('#2F6B38')。 -->
+<defs>
+  <clipPath id="in0"><path d="M154 362V414q0 24 26 24t26-24V362Z"/></clipPath>
+  <clipPath id="in1"><path d="M354 362V414q0 24 26 24t26-24V362Z"/></clipPath>
+</defs>
+<g fill="none" stroke="#4A4A4A" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round">
+  <!-- 后置机箱 -->
+  <rect x="90" y="200" width="380" height="100" fill="#F9F9F9" stroke-width="2.6"/>
+  <rect x="90" y="193" width="380" height="7" fill="#C9C9C9" stroke-width="1.2"/>
+  <path d="M106 202v96M454 202v96" stroke="#C9C9C9" stroke-width="1.2"/>
+  <!-- 工位 1 反应釜（釜心 x=180） -->
+  <path d="M138 196v104M222 196v104" stroke-width="2.6"/>
+  <path d="M145 196v104M215 196v104" stroke-width="1.2"/>
+  <ellipse cx="180" cy="300" rx="42" ry="6" fill="#DCDCDC" stroke-width="1.8"/>
+  <rect x="136" y="184" width="88" height="12" rx="2" fill="#F1F1F1" stroke-width="1.8"/>
+  <rect x="130" y="162" width="100" height="22" rx="4" fill="#DCDCDC" stroke-width="2.6"/>
+  <path d="M146 166v14M164 166v14M196 166v14M214 166v14" stroke="#C9C9C9" stroke-width="1.2"/>
+  <path d="M180 96v66" stroke-width="3.4"/>
+  <rect x="173" y="82" width="14" height="14" rx="2.5" fill="#DCDCDC" stroke-width="1.2"/>
+  <rect x="168" y="24" width="24" height="58" rx="4" fill="#DCDCDC" stroke-width="2.6"/>
+  <rect x="173" y="32" width="14" height="34" rx="2.5" fill="#F9F9F9" stroke-width="1.2"/>
+  <!-- 工位 2 反应釜（釜心 x=380） -->
+  <path d="M338 196v104M422 196v104" stroke-width="2.6"/>
+  <path d="M345 196v104M415 196v104" stroke-width="1.2"/>
+  <ellipse cx="380" cy="300" rx="42" ry="6" fill="#DCDCDC" stroke-width="1.8"/>
+  <rect x="336" y="184" width="88" height="12" rx="2" fill="#F1F1F1" stroke-width="1.8"/>
+  <rect x="330" y="162" width="100" height="22" rx="4" fill="#DCDCDC" stroke-width="2.6"/>
+  <path d="M346 166v14M364 166v14M396 166v14M414 166v14" stroke="#C9C9C9" stroke-width="1.2"/>
+  <path d="M380 96v66" stroke-width="3.4"/>
+  <rect x="373" y="82" width="14" height="14" rx="2.5" fill="#DCDCDC" stroke-width="1.2"/>
+  <rect x="368" y="24" width="24" height="58" rx="4" fill="#DCDCDC" stroke-width="2.6"/>
+  <rect x="373" y="32" width="14" height="34" rx="2.5" fill="#F9F9F9" stroke-width="1.2"/>
+  <!-- 主机机体 -->
+  <rect x="30" y="300" width="500" height="170" rx="4" fill="#FFFFFF" stroke-width="2.6"/>
+  <rect x="31" y="301" width="498" height="39" fill="#E6E6E6" stroke="none"/>
+  <path d="M31 340h498" stroke-width="1.8"/>
+  <rect x="27" y="293" width="506" height="7" fill="#C9C9C9" stroke-width="1.2"/>
+  <circle cx="110" cy="320" r="5.5" fill="#C9C9C9" stroke-width="1.2"/>
+  <circle cx="110" cy="320" r="5.5" fill="#2F6B38" stroke-width="1.2" data-run="1"/>
+  <circle cx="310" cy="320" r="5.5" fill="#C9C9C9" stroke-width="1.2"/>
+  <circle cx="310" cy="320" r="5.5" fill="#2F6B38" stroke-width="1.2" data-run="2"/>
+  <!-- 观察窗 1：夹套双壁 · 涡流液面 · 斜叶桨 -->
+  <rect x="134" y="352" width="92" height="108" rx="6" fill="#DCDCDC" stroke-width="2.6"/>
+  <rect x="142" y="360" width="76" height="92" rx="5" fill="#3A3A3A" stroke-width="1.8"/>
+  <path d="M148 362v54q0 28 32 28t32-28v-54" fill="#F1F1F1" stroke-width="1.8"/>
+  <path d="M154 362v52q0 24 26 24t26-24v-52" fill="#FFFFFF" stroke-width="1.2"/>
+  <g clip-path="url(#in0)"><path d="M154 380q26 12 52 0v66h-52Z" fill="#AE9498"/></g>
+  <path d="M154 380q26 12 52 0" stroke="#7E5F65" stroke-width="2"/>
+  <path d="M180 362v32" stroke-width="2.4"/>
+  <path d="M158 401 176 394 176 400 158 407Z" fill="#F1F1F1" stroke-width="1.6"/>
+  <path d="M202 399 184 406 184 400 202 393Z" fill="#F1F1F1" stroke-width="1.6"/>
+  <rect x="176" y="394" width="8" height="12" rx="1.5" fill="#DCDCDC" stroke-width="1.6"/>
+  <!-- 观察窗 2 -->
+  <rect x="334" y="352" width="92" height="108" rx="6" fill="#DCDCDC" stroke-width="2.6"/>
+  <rect x="342" y="360" width="76" height="92" rx="5" fill="#3A3A3A" stroke-width="1.8"/>
+  <path d="M348 362v54q0 28 32 28t32-28v-54" fill="#F1F1F1" stroke-width="1.8"/>
+  <path d="M354 362v52q0 24 26 24t26-24v-52" fill="#FFFFFF" stroke-width="1.2"/>
+  <g clip-path="url(#in1)"><path d="M354 380q26 12 52 0v66h-52Z" fill="#AE9498"/></g>
+  <path d="M354 380q26 12 52 0" stroke="#7E5F65" stroke-width="2"/>
+  <path d="M380 362v32" stroke-width="2.4"/>
+  <path d="M358 401 376 394 376 400 358 407Z" fill="#F1F1F1" stroke-width="1.6"/>
+  <path d="M402 399 384 406 384 400 402 393Z" fill="#F1F1F1" stroke-width="1.6"/>
+  <rect x="376" y="394" width="8" height="12" rx="1.5" fill="#DCDCDC" stroke-width="1.6"/>
+  <!-- 侧向支架与底座 -->
+  <rect x="56" y="410" width="56" height="60" fill="#DCDCDC" stroke-width="2.6"/>
+  <rect x="448" y="410" width="56" height="60" fill="#DCDCDC" stroke-width="2.6"/>
+  <circle cx="84" cy="440" r="16" fill="#C9C9C9" stroke-width="1.8"/>
+  <circle cx="84" cy="440" r="6" fill="#F9F9F9" stroke-width="1.2"/>
+  <circle cx="476" cy="440" r="16" fill="#C9C9C9" stroke-width="1.8"/>
+  <circle cx="476" cy="440" r="6" fill="#F9F9F9" stroke-width="1.2"/>
+  <rect x="40" y="470" width="480" height="28" rx="3" fill="#F9F9F9" stroke-width="2.6"/>
+  <path d="M44 486h472" stroke="#C9C9C9" stroke-width="1.8"/>
+  <!-- 触摸屏控制台 -->
+  <rect x="180" y="470" width="200" height="52" rx="3" fill="#F1F1F1" stroke-width="2.6"/>
+  <rect x="191" y="476" width="178" height="31" rx="2.5" fill="#F9F9F9" stroke-width="1.8"/>
+  <rect x="199" y="481" width="162" height="21" rx="1.5" fill="#3A3A3A" stroke-width="1.2"/>
+  <path d="M206 487h20M206 497h13M240 487h37M240 497h26M291 487h37M291 497h26"
+        stroke="#C9C9C9" stroke-width="1.4"/>
+  <path d="M186 512h188" stroke-width="1.8"/>
+</g>
+</svg>

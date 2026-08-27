@@ -1,13 +1,27 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Threading;
 using Tec.App.ViewModels;
 
 namespace Tec.App.Views;
 
 public partial class BenchView : UserControl
 {
-    public BenchView() => InitializeComponent();
+    public BenchView()
+    {
+        InitializeComponent();
+        // 插上工位的读数标签每秒刷一次真值。页面不可见或一张标签都没有时
+        // 一拍只花一次布尔判断——别学从前运行页那个常驻 700ms 心跳的教训
+        _tick = new DispatcherTimer(TimeSpan.FromSeconds(1), DispatcherPriority.Background, (_, _) =>
+        {
+            if (IsEffectivelyVisible && Vm is { Tags.Count: > 0 } vm) vm.RefreshTagValues();
+        });
+        AttachedToVisualTree += (_, _) => _tick.Start();
+        DetachedFromVisualTree += (_, _) => _tick.Stop();
+    }
+
+    private readonly DispatcherTimer _tick;
 
     private BenchViewModel? Vm => DataContext as BenchViewModel;
 

@@ -186,6 +186,7 @@ public sealed class Workspace
         // 内置仿真驱动 + drivers/ 目录里的第三方包
         Drivers.RegisterBuiltin(new Rd105ReactorDriver());
         Drivers.RegisterBuiltin(new DosingPumpDriver());
+        Drivers.RegisterBuiltin(new TrProbeDriver());
         Drivers.RegisterBuiltin(new PhProbeDriver());
         Drivers.RegisterBuiltin(new TurbidityProbeDriver());
         Drivers.RegisterBuiltin(new RamanProbeDriver());

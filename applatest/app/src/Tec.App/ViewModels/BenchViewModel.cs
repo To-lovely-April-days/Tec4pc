@@ -90,7 +90,32 @@ public sealed class DeviceNodeViewModel : ViewModelBase
 
     public string Id => Device.InstanceId;
     public string Title => Device.Display;
-    public string ArtKey => Driver?.Info.IconKey ?? "reactor2";
+
+    /// <summary>驱动声明的设备图。插拔不改它，改的是下面的 ArtKey。</summary>
+    public string BaseArtKey => Driver?.Info.IconKey ?? "rd105";
+
+    /// <summary>
+    /// 画布上实际画哪张图：Tr / pH 插上工位就换成插入形态（斜 9.6° 的那支，
+    /// 与交互演示一致），拎起来（Lifted）或拔下来就换回独立形态。
+    /// </summary>
+    public string ArtKey
+        => !Lifted && BenchDock.InsertArtFor(BaseArtKey, Device.DockAnchor) is { } ins ? ins : BaseArtKey;
+
+    /// <summary>正被拖着走。拖动一开始就按独立形态画——插入件是长在工位上的样子，拎在手里不成立。</summary>
+    public bool Lifted { get; set; }
+
+    /// <summary>当前画的是插入形态（标签、名字都不画——演示里插入件旁只有读数框）。</summary>
+    public bool Inserted => ArtKey != BaseArtKey;
+
+    /// <summary>插拔 / 拎放之后把跟着图走的那几个属性一起刷一遍。</summary>
+    public void DockVisualChanged()
+        => RaiseAll(nameof(ArtKey), nameof(Width), nameof(Height), nameof(Inserted));
+
+    private bool _run1, _run2;
+    /// <summary>主机两颗工位 LED：工位上挂了配件就点亮（演示 led → #2F6B38）。</summary>
+    public bool Run1 { get => _run1; set => Set(ref _run1, value); }
+    public bool Run2 { get => _run2; set => Set(ref _run2, value); }
+
     public double X => Device.Position.X;
     public double Y => Device.Position.Y;
     public double Width => BenchDock.DisplayWidth(ArtKey);
@@ -388,6 +413,9 @@ public sealed class BenchViewModel : ViewModelBase
     /// <summary>台面上已接好的管路，交给 BenchLinks 画。</summary>
     public ObservableCollection<BenchLink> Links { get; } = new();
 
+    /// <summary>插上工位的 Tr / pH 各带一张读数标签（演示的 tag()：白底红框，值 + 单位）。</summary>
+    public ObservableCollection<ReadTagViewModel> Tags { get; } = new();
+
     public bool Dragging => _dragNew is not null || _dragNode is not null;
 
     /// <summary>
@@ -474,9 +502,16 @@ public sealed class BenchViewModel : ViewModelBase
     {
         _dragNode = node;
         _dragNew = null;
+        // 插在工位上的探头一拎就换回独立形态——插入件是长在工位上的样子，
+        // 拎在手里不成立。抓取点改按小样中心：插入件和独立图不一样大，
+        // 沿用按下时的偏移会让探头跳到手的斜下方
+        var wasInserted = node.Inserted;
+        node.Lifted = true;
+        node.DockVisualChanged();
         DragArtKey = node.ArtKey;
         DragWidth = node.Width;
-        _grab = new Point(at.X - node.X, at.Y - node.Y);
+        _grab = wasInserted ? new Point(DragWidth / 2, DragHeight / 2)
+                            : new Point(at.X - node.X, at.Y - node.Y);
         _origin = new Point(node.X, node.Y);
         Selected = node;
         StartDrag(at);
@@ -498,6 +533,10 @@ public sealed class BenchViewModel : ViewModelBase
         // 台面上已有的设备直接跟着手走。原来是把设备留在原地、另画一个幽灵，
         // 看着就像拖不动——设备本来就在画布上，让它自己动才对
         _dragNode?.MoveTo(new Point(DragX, DragY));
+
+        // 拖的是主机的话，插在它工位上的探头得跟着机器走——
+        // 它们画在机器身上，机器挪了探头留在原地就是拔了线的样子
+        if (_dragNode is { } hn && BenchDock.IsHost(hn.ArtKey)) SnapChildren(hn);
 
         PickHost();
         RebuildLinks();                    // 拖动时管路跟着手走
@@ -544,6 +583,18 @@ public sealed class BenchViewModel : ViewModelBase
         return BenchDock.PlugWorld(new Point(DragX, DragY), DragWidth, DragArtKey, side);
     }
 
+    /// <summary>把某台主机身上插着的探头都吸回各自工位的位置。</summary>
+    private void SnapChildren(DeviceNodeViewModel host)
+    {
+        foreach (var n in Devices)
+        {
+            if (n.Device.DockHostId != host.Id || n.Lifted) continue;
+            if (BenchDock.InsertArtFor(n.BaseArtKey, n.Device.DockAnchor) is not { } ins) continue;
+            if (BenchDock.AnchorById(n.Device.DockAnchor) is not { } a) continue;
+            n.MoveTo(BenchDock.SnapPosition(ins, a, new Point(host.X, host.Y), host.Width));
+        }
+    }
+
     /// <summary>Esc 撤销这次拖拽：设备既然是跟着手走的，就得把它送回原位。</summary>
     public void CancelDrag()
     {
@@ -554,6 +605,7 @@ public sealed class BenchViewModel : ViewModelBase
     /// <summary>只清拖拽状态，不动设备位置。落位成功后走这条。</summary>
     private void ClearDrag()
     {
+        if (_dragNode is { } n) { n.Lifted = false; n.DockVisualChanged(); }
         _dragNew = null;
         _dragNode = null;
         _hover = null;
@@ -562,17 +614,24 @@ public sealed class BenchViewModel : ViewModelBase
         RebuildLinks();
     }
 
-    /// <summary>松手：插上就吸附并连线，没插上就自由摆放。</summary>
+    /// <summary>
+    /// 松手：插上就吸附并连线，没插上就自由摆放。
+    /// Tr / pH 插上工位时**吸进机器**——位置换算到演示插入件画的那个地方，
+    /// 图换成斜插形态；泵留在放手的位置，靠管子连过去（两条都照交互演示）。
+    /// </summary>
     public void EndDrag(Point at)
     {
         if (!Dragging) return;
         DragTo(at);
         var anchor = Hover;
         var host = _host;
-        var dev = _dragNode?.Device ?? CreateDevice();
+        var baseKey = _dragNode?.BaseArtKey ?? _dragNew?.ArtKey ?? "";
+        var node = _dragNode;
+        var dev = node?.Device ?? CreateDevice();
         if (dev is null) { ClearDrag(); return; }
 
-        // 落点就是用户放的位置，设备不被吸走；变的是连线（用户明确要求）
+        // 落点就是用户放的位置，设备不被吸走；变的是连线（用户明确要求）。
+        // 唯一的例外是插进工位的探头，见下
         dev.Position = new BPoint(DragX, DragY);
 
         if (anchor is not null && host is not null)
@@ -584,6 +643,12 @@ public sealed class BenchViewModel : ViewModelBase
             dev.Dock = anchor.Kind == PortKind.Top ? DockSide.Top
                      : side == "L" ? DockSide.Left : DockSide.Right;
             dev.DockSlot = anchor.Slot;
+
+            if (BenchDock.InsertArtFor(baseKey, anchor.Id) is { } ins)
+            {
+                var p = BenchDock.SnapPosition(ins, anchor, new Point(host.X, host.Y), host.Width);
+                dev.Position = new BPoint(p.X, p.Y);
+            }
 
             var ch = host.Channels.ElementAtOrDefault(anchor.Slot);
             Rebind(dev.InstanceId, ch > 0 ? new[] { ch } : Array.Empty<int>(),
@@ -597,6 +662,7 @@ public sealed class BenchViewModel : ViewModelBase
             _ws.Bench.Bindings.RemoveAll(b => b.DeviceId == dev.InstanceId);
         }
 
+        node?.MoveTo(new Point(dev.Position.X, dev.Position.Y));
         ClearDrag();
         RebuildLinks();
         _ = _ws.RebuildChannelsAsync();
@@ -651,18 +717,24 @@ public sealed class BenchViewModel : ViewModelBase
             if (_dragNode is not null && dev.InstanceId == _dragNode.Id) continue;   // 由预览接管
             var host = Devices.FirstOrDefault(d => d.Id == dev.DockHostId);
             if (host is null) continue;
-            var a = BenchDock.Anchors.FirstOrDefault(x => x.Id == dev.DockAnchor);
+            var a = BenchDock.AnchorById(dev.DockAnchor);
             if (a is null) continue;
+            // Tr / pH 是插进工位的，没有管子——插入件本身画在工位上，
+            // 它的「连接」由插入形态 + 读数标签表达（见 RebuildDecor）
+            if (a.Accept is "tr" or "ph") continue;
             Add(node.ArtKey, new Point(node.X, node.Y), node.Width, dev.DockSideTag,
                 dev.InstanceId, host, a);
         }
 
-        if (Dragging && Hover is { } ha && _host is { } hh && !BenchDock.IsHost(DragArtKey))
+        // 拖动预览只给泵：探头插上前没有管线可预览，接到哪个口由接口圆点说
+        if (Dragging && Hover is { } ha && _host is { } hh && ha.Accept == "feed")
         {
             var side = ha.Side ?? (DragX + DragWidth / 2 < hh.X + hh.Width / 2 ? "L" : "R");
             Add(DragArtKey, new Point(DragX, DragY), DragWidth, side,
                 _dragNode?.Id ?? "?", hh, ha);
         }
+
+        RebuildDecor();
 
         // 单条几何交给 BenchDock.Link——运行页的台面总览用的是同一个，
         // 两边各写一份的话，同一台面在两页会画成两个样子
@@ -670,6 +742,84 @@ public sealed class BenchViewModel : ViewModelBase
                  string devId, DeviceNodeViewModel host, Anchor a)
             => Links.Add(BenchDock.Link(art, pos, width, side, devId, host.Id,
                                         new Point(host.X, host.Y), host.Width, host.Channels, a));
+    }
+
+    /// <summary>
+    /// 跟着停靠关系走的两样点缀：插上工位的探头各一张读数标签
+    /// （演示 tag()：白底 #A41626 红框，值 + 单位），主机的工位 LED
+    /// （工位上挂了任何配件就点亮，演示 render() 里 led 那一句）。
+    /// </summary>
+    private void RebuildDecor()
+    {
+        Tags.Clear();
+        foreach (var node in Devices)
+        {
+            var dev = node.Device;
+            if (node.Lifted || dev.DockHostId is null) continue;
+            if (BenchDock.AnchorById(dev.DockAnchor) is not { Accept: "tr" or "ph" } a) continue;
+            if (Devices.FirstOrDefault(d => d.Id == dev.DockHostId) is not { } host) continue;
+
+            var s = host.Width / BenchDock.MachineVw;
+            var r = BenchDock.TagRect(a);
+            Tags.Add(new ReadTagViewModel(a.Accept, host.Channels.ElementAtOrDefault(a.Slot))
+            {
+                X = host.X + BenchDock.NodePad + r.X * s,
+                Y = host.Y + BenchDock.NodePad + r.Y * s,
+                W = r.Width * s,
+                H = r.Height * s,
+                FontSize = 15 * s,
+                BorderW = new Thickness(2 * s),
+                Radius = new CornerRadius(3 * s)
+            });
+        }
+        RefreshTagValues();
+
+        foreach (var h in Devices)
+        {
+            if (!BenchDock.IsHost(h.ArtKey)) continue;
+            bool s0 = false, s1 = false;
+            foreach (var d in _ws.Bench.Devices)
+            {
+                if (d.DockHostId != h.Id) continue;
+                if (BenchDock.AnchorById(d.DockAnchor) is not { } a) continue;
+                if (a.Slot == 0) s0 = true;
+                else s1 = true;
+            }
+            h.Run1 = s0;
+            h.Run2 = s1;
+        }
+    }
+
+    /// <summary>
+    /// 把每张读数标签的数值刷一遍。**读的是真数**：
+    /// Tr 读所插通道 ITemperatureControl 的当前釜温——运行页曲线画的就是这一路；
+    /// pH 读该通道 IScalarSensor 里 pH 那一签的最新采样。
+    /// 没有通道、没有能力、还没有采样，就显示「—」，不编一个数出来。
+    /// 视图每秒叫一次（页面可见时），插拔后 RebuildDecor 也立即叫。
+    /// </summary>
+    public void RefreshTagValues()
+    {
+        foreach (var t in Tags)
+        {
+            var txt = "—";
+            var ch = t.Channel > 0 ? _ws.ChannelOf(t.Channel) : null;
+            if (ch is not null)
+            {
+                if (t.Kind == "tr")
+                {
+                    if (ch.Capabilities.Get<ITemperatureControl>() is { } tc)
+                        txt = $"{tc.CurrentReactor:F1} ℃";
+                }
+                else
+                {
+                    var sensor = ch.Capabilities.All.OfType<IScalarSensor>()
+                                   .FirstOrDefault(s => s.Tags.Any(g => g.Tag == "pH"));
+                    if (sensor is not null && sensor.TryReadLatest("pH", out var smp))
+                        txt = smp.Value.ToString("F2");
+                }
+            }
+            t.Text = txt;
+        }
     }
 
     private void Rebind(string deviceId, IReadOnlyList<int> channels, bool exclusive)
@@ -680,18 +830,13 @@ public sealed class BenchViewModel : ViewModelBase
                 exclusive ? BindingMode.Exclusive : BindingMode.Shared));
     }
 
-    /// <summary>台面上的编号前缀，沿用预置台面的写法（R1/P1/PH1/TU1…）。</summary>
+    /// <summary>台面上的编号前缀，沿用预置台面的写法（R1/P1/PH1…）。</summary>
     private static string PrefixOf(string artKey) => artKey switch
     {
-        "reactor2" => "R",
-        "pump" => "P",
-        "ph" => "PH",
-        "turb" => "TU",
-        "raman" => "RA",
-        "ir" => "IR",
-        "psd" => "PS",
-        "sampler" => "SA",
-        "hplc" => "HP",
+        "rd105" => "R",
+        "feedpump" => "P",
+        "phel" => "PH",
+        "trprobe" => "TR",
         _ => "D"
     };
 
@@ -745,10 +890,24 @@ public sealed class BenchViewModel : ViewModelBase
     /// </summary>
     private static readonly string[] CategoryOrder = { "反应与控温", "加料", "在线检测", "其他" };
 
+    /// <summary>
+    /// 设备库暂时只上这四件（用户定的：先有这四个，其余后期再添加）。
+    /// 驱动照旧全部注册——老台面里摆过的浊度 / 拉曼 / 红外还能开会话、
+    /// 配方里的对应步骤还在，只是库里暂时不再往台面上发新的。
+    /// </summary>
+    private static readonly string[] LibraryIds =
+    {
+        Tec.Drivers.Simulator.Rd105ReactorDriver.DriverId,
+        Tec.Drivers.Simulator.TrProbeDriver.DriverId,
+        Tec.Drivers.Simulator.PhProbeDriver.DriverId,
+        Tec.Drivers.Simulator.DosingPumpDriver.DriverId
+    };
+
     public void Reload()
     {
         Library.Clear();
-        foreach (var p in _ws.Drivers.ForLibrary()) Library.Add(new LibraryItemViewModel(p));
+        foreach (var p in _ws.Drivers.ForLibrary())
+            if (LibraryIds.Contains(p.Id)) Library.Add(new LibraryItemViewModel(p));
 
         // 收起 / 展开的状态得带过来。Reload 是台面一有风吹草动就跑一遍的
         // （BenchChanged），而设备库本身跟台面上摆了什么无关——不记着的话，
@@ -816,6 +975,18 @@ public sealed class BenchViewModel : ViewModelBase
                 Devices[at].SetChannels(chs);
                 if (at != i && i < Devices.Count) Devices.Move(at, i);
             }
+        }
+
+        // 插在工位上的探头把位置对回工位（读盘进来的位置可能是旧比例下存的），
+        // 图与尺寸也刷一遍——插拔状态可能在这次重建里变了
+        foreach (var n in Devices)
+        {
+            if (!n.Lifted
+                && BenchDock.InsertArtFor(n.BaseArtKey, n.Device.DockAnchor) is { } ins
+                && BenchDock.AnchorById(n.Device.DockAnchor) is { } a
+                && Devices.FirstOrDefault(h => h.Id == n.Device.DockHostId) is { } host)
+                n.MoveTo(BenchDock.SnapPosition(ins, a, new Point(host.X, host.Y), host.Width));
+            n.DockVisualChanged();
         }
 
         // 选中的那台如果被摘掉了，右栏得跟着清空
@@ -887,6 +1058,35 @@ public sealed class ChannelRowViewModel : ViewModelBase
         IImageSource => "图像",
         _ => c.GetType().Name
     };
+}
+
+/// <summary>
+/// 插上工位的 Tr / pH 的读数标签，1:1 照交互演示的 tag()：
+/// 白底、#A41626 红框 2、圆角 3、字 15——这些是主机图单位，
+/// 建的时候已按主机比例折成画布像素。数值见 RefreshTagValues：真数或「—」。
+/// </summary>
+public sealed class ReadTagViewModel : ViewModelBase
+{
+    public ReadTagViewModel(string kind, int channel)
+    {
+        Kind = kind;
+        Channel = channel;
+    }
+
+    /// <summary>tr / ph，决定去通道上读哪一路。</summary>
+    public string Kind { get; }
+    public int Channel { get; }
+
+    public double X { get; init; }
+    public double Y { get; init; }
+    public double W { get; init; }
+    public double H { get; init; }
+    public double FontSize { get; init; }
+    public Thickness BorderW { get; init; }
+    public CornerRadius Radius { get; init; }
+
+    private string _text = "—";
+    public string Text { get => _text; set => Set(ref _text, value); }
 }
 
 /// <summary>拖拽时画在画布上的一个接口点。</summary>

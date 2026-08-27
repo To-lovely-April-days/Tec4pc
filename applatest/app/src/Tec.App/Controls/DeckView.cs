@@ -55,7 +55,10 @@ public sealed class DeckView : Control
         foreach (var dev in ws.Bench.Devices)
         {
             var driver = ws.Drivers.Driver(dev.DriverId);
-            var key = driver?.Info.IconKey ?? "reactor2";
+            var key = driver?.Info.IconKey ?? "rd105";
+            // 插上工位的 Tr / pH 画插入形态（斜 9.6° 那支），跟台面画布同一副样子——
+            // 这张总览的全部意义就是「现在台面长什么样」
+            if (BenchDock.InsertArtFor(key, dev.DockAnchor) is { } ins) key = ins;
             var art = DeviceArtCache.Get(key);
             var w = BenchDock.DisplayWidth(key);
             var h = art is null ? w * 0.8 : w * art.ViewHeight / art.ViewWidth;
@@ -134,15 +137,19 @@ public sealed class DeckView : Control
         foreach (var link in BenchDock.LinksOf(ws))
         {
             var pts = BenchDock.Route(link.From, link.FromDir, link.To, link.ToDir,
-                                      link.Kind == LinkKind.Probe ? 18 : 24)
+                                      link.Kind == LinkKind.Probe ? 18
+                                      : link.Kind == LinkKind.Feed ? Math.Max(24 * link.Scale, 10)
+                                      : 24)
                                .Select(At).ToList();
             BenchLinks.Draw(ctx, link, pts, s, labels: false);
         }
 
         // 3. 设备名。字号不跟着缩——缩到 6px 就没人看得见了，
-        //    这张图是给人看「哪台在跑」的，名字得认得出
+        //    这张图是给人看「哪台在跑」的，名字得认得出。
+        //    插进工位的探头不写：字会落在主机身上
         foreach (var n in nodes)
         {
+            if (n.ArtKey.EndsWith("-in", StringComparison.Ordinal)) continue;
             var at = At(new Point(n.Pos.X + BenchDock.NodePad, n.Pos.Y + BenchDock.NodePad));
             var ft = new FormattedText(n.Title, CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
                 new Typeface("Segoe UI"), 11, new SolidColorBrush(Color.Parse("#8d8d8d")));

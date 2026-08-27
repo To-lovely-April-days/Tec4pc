@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="184 24 50 142">
+<!-- pH 电极插进工位后的形态：向右斜 9.6°，插点在 (198,162)。
+     几何 1:1 取自交互演示 probePh(cx=180)，坐标系同 trprobe-in.svg 的说明 -->
+<g fill="none" stroke="#4A4A4A" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round">
+  <g transform="rotate(9.6 198 162)">
+    <rect x="190" y="30" width="16" height="40" rx="4" fill="#DCDCDC" stroke-width="1.8"/>
+    <rect x="193.5" y="36" width="9" height="27" rx="2" fill="#F9F9F9" stroke-width="1.2"/>
+    <rect x="192" y="70" width="12" height="12" rx="2" fill="#F1F1F1" stroke-width="1.2"/>
+    <path d="M198 82v80" stroke-width="3.4"/>
+  </g>
+</g>
+</svg>

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="28 0 32 296">
+<!-- Tr 温度探头（Pt100 · ⌀6），设备库与台面上的独立形态。
+     几何 1:1 取自 parts_current 里 translate(454,56) 那一组 -->
+<g fill="none" stroke="#4A4A4A" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round">
+  <path d="M44 4V9" stroke-width="2.6"/>
+  <rect x="31" y="9" width="26" height="28" rx="4" fill="#DCDCDC" stroke-width="2.6"/>
+  <rect x="36" y="14" width="16" height="18" rx="2" fill="#F9F9F9" stroke-width="1.2"/>
+  <path d="M37 37 39 50H49L51 37Z" fill="#F1F1F1" stroke-width="1.2"/>
+  <rect x="31" y="50" width="26" height="17" rx="2" fill="#C9C9C9" stroke-width="1.8"/>
+  <path d="M37 53v11M44 53v11M51 53v11" stroke-width="1"/>
+  <path d="M35 67 38 80H50L53 67Z" fill="#DCDCDC" stroke-width="1.2"/>
+  <rect x="41" y="80" width="6" height="202" fill="#F1F1F1" stroke-width="1.8"/>
+  <path d="M41 282v4q0 7 3 7t3-7v-4Z" fill="#4A4A4A" stroke-width="1.2"/>
+</g>
+</svg>

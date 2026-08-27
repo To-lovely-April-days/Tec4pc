@@ -170,8 +170,8 @@
              #bfc9d7，菜单栏底色哪天再动，这个圈自己就跟上了 -->
         <Border Width="34" Height="34" CornerRadius="17" Background="Transparent"
                 BorderBrush="#474a4e" BorderThickness="2" ClipToBounds="True"
-                VerticalAlignment="Center" ToolTip.Tip="双通道反应器 RD-105">
-          <ctl:DeviceArtView ArtKey="reactor2" Fit="True" Width="24" Height="22"
+                VerticalAlignment="Center" ToolTip.Tip="双工位反应器 RD105">
+          <ctl:DeviceArtView ArtKey="rd105" Fit="True" Width="24" Height="22"
                              HorizontalAlignment="Center" VerticalAlignment="Center" />
         </Border>
         <!-- 用户区（照 gbg-account 原型 .um-anchor / .um-menu 重做）：

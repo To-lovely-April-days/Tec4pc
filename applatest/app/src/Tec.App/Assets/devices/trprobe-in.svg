@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="126 24 50 142">
+<!-- Tr 探头插进工位后的形态：向左斜 9.6°，插点在 (162,162)。
+     几何 1:1 取自交互演示 probeTr(cx=180)；坐标沿用主机（rd105.svg）
+     的坐标系，摆放时按 viewBox 原点对回主机即可（BenchDock.SnapPosition）。
+     工位 2 用同一张图整体右移 200。 -->
+<g fill="none" stroke="#4A4A4A" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round">
+  <g transform="rotate(-9.6 162 162)">
+    <rect x="154" y="30" width="16" height="40" rx="4" fill="#DCDCDC" stroke-width="1.8"/>
+    <rect x="157.5" y="36" width="9" height="27" rx="2" fill="#F9F9F9" stroke-width="1.2"/>
+    <rect x="156" y="70" width="12" height="12" rx="2" fill="#F1F1F1" stroke-width="1.2"/>
+    <path d="M162 82v80" stroke-width="2.6"/>
+  </g>
+</g>
+</svg>

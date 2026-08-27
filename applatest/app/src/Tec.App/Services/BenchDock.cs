@@ -8,21 +8,23 @@ namespace Tec.App.Services;
 /// <summary>接口种类：上方管口 / 侧口 / 控制总线。</summary>
 public enum PortKind { Top, Side, Bus }
 
-/// <summary>管路类型，决定连线怎么画（原型 LT）。</summary>
+/// <summary>管路类型，决定连线怎么画。</summary>
 public enum LinkKind { Probe, Feed, Sample, Signal }
 
 /// <summary>设备身上的插头：自身图坐标里的一点 + 出线方向。</summary>
 public readonly record struct Plug(double X, double Y, string Dir);
 
 /// <summary>
-/// 反应器上的一个具名接口（原型 anchors）。一个接口同时只接一台设备。
+/// 反应器上的一个具名接口。一个接口同时只接一台设备。
 /// </summary>
 public sealed record Anchor(string Id, PortKind Kind, double X, double Y, string Dir, string Label)
 {
-    /// <summary>属于哪个孔位（0 = A 孔 / 通道 1，1 = B 孔 / 通道 2）。总线不属于任何孔位。</summary>
+    /// <summary>属于哪个工位（0 = 工位 1 / 通道 1，1 = 工位 2 / 通道 2）。</summary>
     public int Slot { get; init; }
     /// <summary>侧口在左还是右。</summary>
     public string? Side { get; init; }
+    /// <summary>这个口收什么设备：tr / ph / feed。同为顶口，Tr 探头不能插进 pH 口。</summary>
+    public string Accept { get; init; } = "";
 }
 
 /// <summary>台面上一条已接好的管路。</summary>
@@ -34,88 +36,86 @@ public sealed record BenchLink(string DeviceId, string HostId, string AnchorId, 
     public required string ToDir { get; init; }
     public int Channel { get; init; }
     public string Label { get; init; } = "";
+    /// <summary>主机图单位 → 画布像素的比例。加料管的粗细、加料口的大小按它缩，
+    /// 跟主机永远同一个比例——演示图里管宽 5 是主机坐标系里的 5。</summary>
+    public double Scale { get; init; } = 1;
 }
 
 /// <summary>
-/// 停靠几何：反应器开哪些口、什么设备能插、插上以后摆在哪儿、管路怎么走。
-/// 数据照 tecstudioworkcell 原型的 anchors / plug 逐条搬过来（同一套设备图，
-/// 坐标可以直接用）。
+/// 停靠几何：主机开哪些口、什么设备能插、插上以后摆在哪儿、管路怎么走。
+/// 坐标全部来自 HT-RS2 交互演示（machine / probeTr / probePh / dosePort / tube），
+/// 设备图与它是同一份几何，数值可以直接抄。
 /// </summary>
 public static class BenchDock
 {
     public const double NodePad = 7;
-    private const double ArtVw = 169.8, ArtVh = 179.93;
+
+    /// <summary>主机（rd105.svg）的 viewBox 尺寸。接口坐标都写在这个坐标系里。</summary>
+    public const double MachineVw = 560, MachineVh = 548;
+    /// <summary>两个工位的釜心，与演示的 CX=[180,380] 同值。工位间距 200。</summary>
+    private const double Cx0 = 180, Cx1 = 380;
 
     /// <summary>
-    /// 设备在画布上的显示宽度。接口坐标按 ArtVw 等比换算，这里改宽度不会让管路错位。
-    /// 三处（画布节点、拖拽幽灵、卡片缩略图）从前各写各的，现在只此一份。
-    ///
-    /// 从 300 / 120 对半收到 150 / 60：从前一台反应器就占掉画布小半张，
-    /// 摆两台就得靠滚动，看不到整个台面长什么样。
-    /// 注意这不是「换个显示比例」那么轻——**已存盘的台面里，设备位置是用户
-    /// 当初摆的绝对坐标**（松手落在哪儿就是哪儿，不吸附，见 EndDrag 的注释）。
-    /// 机器缩了一半而坐标没动，老台面上插着的探头会显得离反应器远了些；
-    /// 管路仍然连得上（连线是按当前宽度重算的），只是不如当初摆得紧凑。
+    /// 设备在画布上的显示宽度。三处（画布节点、拖拽幽灵、卡片缩略图）只此一份。
+    /// 主机 300：插入形态（*-in）与读数标签都按 300/560 这一个比例缩，
+    /// 探头 18 / 泵 110 也是照同一比例给的——四件东西摆在一起大小关系
+    /// 跟 parts_current 那张总图一致。
     /// </summary>
-    public static double DisplayWidth(string artKey) => artKey == "reactor2" ? 150 : 60;
+    public static double DisplayWidth(string artKey) => artKey switch
+    {
+        "rd105" => 300,
+        "feedpump" => 110,
+        "trprobe" or "phel" => 18,
+        // 插入形态的宽 = 它的 viewBox 宽（50）按主机比例缩，落到主机上不差一个像素
+        "trprobe-in" or "phel-in" => 300.0 / MachineVw * 50,
+        _ => 60
+    };
 
     /// <summary>
-    /// 反应器的 11 个接口。坐标是量出来的，不是估的：把设备图按 viewBox 宽 1:1
-    /// 渲染成 1018px（5.9953 px/单位），逐点找釜盖上那三个凸出的管口——
-    /// 左颈、中间那个套着搅拌轴的主口、右颈（带红帽的那个），再除回单位。
-    /// 两个通道的图完全一样，间距 80 单位（channel-mount 的 translate 差值）。
-    ///
-    /// 编号沿用旧图的 T1a/T1b/T1c，别改：已存盘的 .tec 里记的就是这些 id，
-    /// 改了名老台面上的探头就找不着自己插在哪儿了。
+    /// 主机上的六个口：每个工位一个 Tr 插口、一个 pH 插口、一个加料口。
+    /// Tr / pH 的插点取演示插入件的旋转中心（cx∓18, 162）；
+    /// 加料口取 dosePort 那块小方块的中心——工位 1 开在釜盖左伸出端、
+    /// 工位 2 开在右伸出端，跟演示 dosePort(CX[0],-1) / (CX[1],+1) 一致。
     /// </summary>
     public static readonly IReadOnlyList<Anchor> Anchors = new[]
     {
-        new Anchor("T1a", PortKind.Top, 29.4, 71.0, "up", "通道1 · 左管口") { Slot = 0 },
-        new Anchor("T1b", PortKind.Top, 41.7, 70.9, "up", "通道1 · 主口") { Slot = 0 },
-        new Anchor("T1c", PortKind.Top, 61.5, 65.1, "up", "通道1 · 右管口") { Slot = 0 },
-        new Anchor("T2a", PortKind.Top, 109.4, 71.0, "up", "通道2 · 左管口") { Slot = 1 },
-        new Anchor("T2b", PortKind.Top, 121.7, 70.9, "up", "通道2 · 主口") { Slot = 1 },
-        new Anchor("T2c", PortKind.Top, 141.5, 65.1, "up", "通道2 · 右管口") { Slot = 1 },
-        // 侧口开在机身外壁上，总线在底座下沿。x/y 取的是整幅图的**墨迹**边界
-        // （2.3..167.5 / 2.8..167.3），不是 viewBox 边界——这张图底下空了 12 个
-        // 单位，照 viewBox 摆总线会飘在机器外面
-        new Anchor("L1", PortKind.Side, 2.6, 112, "left", "左侧口 · 通道1") { Slot = 0, Side = "L" },
-        new Anchor("L2", PortKind.Side, 2.6, 132, "left", "左侧口 · 通道2") { Slot = 1, Side = "L" },
-        new Anchor("R1", PortKind.Side, 167.2, 112, "right", "右侧口 · 通道1") { Slot = 0, Side = "R" },
-        new Anchor("R2", PortKind.Side, 167.2, 132, "right", "右侧口 · 通道2") { Slot = 1, Side = "R" },
-        new Anchor("BUS", PortKind.Bus, 84.9, 166.5, "down", "控制总线")
+        new Anchor("S1TR", PortKind.Top, Cx0 - 18, 163, "up", "工位1 · Tr") { Slot = 0, Accept = "tr" },
+        new Anchor("S1PH", PortKind.Top, Cx0 + 18, 163, "up", "工位1 · pH") { Slot = 0, Accept = "ph" },
+        new Anchor("S1FD", PortKind.Side, Cx0 - 57, 171, "left", "工位1 · 加料口") { Slot = 0, Side = "L", Accept = "feed" },
+        new Anchor("S2TR", PortKind.Top, Cx1 - 18, 163, "up", "工位2 · Tr") { Slot = 1, Accept = "tr" },
+        new Anchor("S2PH", PortKind.Top, Cx1 + 18, 163, "up", "工位2 · pH") { Slot = 1, Accept = "ph" },
+        new Anchor("S2FD", PortKind.Side, Cx1 + 57, 171, "right", "工位2 · 加料口") { Slot = 1, Side = "R", Accept = "feed" }
     };
 
-    /// <summary>各设备的插头位置与出线方向（原型 plug / plugL）。</summary>
-    private static readonly Dictionary<string, (Plug Plug, Plug? Left, PortKind Attach, LinkKind Link)> Defs =
+    public static Anchor? AnchorById(string? id)
+        => id is null ? null : Anchors.FirstOrDefault(a => a.Id == id);
+
+    /// <summary>
+    /// 各设备的插头（相对各自 viewBox 原点）与它要找的口。
+    /// 探头的插头是尖端；泵的插头是滚轮出口（演示 g-tube 就从 (190,210) 出发），
+    /// 出线方向恒为向上——演示里管子先竖着升到釜盖高度再拐过去。
+    /// </summary>
+    private static readonly Dictionary<string, (Plug Plug, string Accept, LinkKind Link)> Defs =
         new(StringComparer.Ordinal)
         {
-            ["ph"] = (new Plug(90, 128.2, "down"), null, PortKind.Top, LinkKind.Probe),
-            ["turb"] = (new Plug(80, 125.8, "down"), null, PortKind.Top, LinkKind.Probe),
-            ["raman"] = (new Plug(102, 131.8, "down"), null, PortKind.Top, LinkKind.Probe),
-            ["ir"] = (new Plug(104, 131.8, "down"), null, PortKind.Top, LinkKind.Probe),
-            ["psd"] = (new Plug(104, 130.8, "down"), null, PortKind.Top, LinkKind.Probe),
-            ["pump"] = (new Plug(46, 124.6, "down"), null, PortKind.Side, LinkKind.Feed),
-            ["sampler"] = (new Plug(30, 136, "down"), new Plug(138, 130, "right"), PortKind.Side, LinkKind.Sample),
-            ["hplc"] = (new Plug(9, 136, "left"), new Plug(127, 136, "right"), PortKind.Side, LinkKind.Sample),
-            ["host"] = (new Plug(84.9, 6, "up"), null, PortKind.Bus, LinkKind.Signal)
+            ["trprobe"] = (new Plug(16, 293, "down"), "tr", LinkKind.Probe),
+            ["trprobe-in"] = (new Plug(36, 138, "down"), "tr", LinkKind.Probe),
+            ["phel"] = (new Plug(17, 291, "down"), "ph", LinkKind.Probe),
+            ["phel-in"] = (new Plug(14, 138, "down"), "ph", LinkKind.Probe),
+            ["feedpump"] = (new Plug(176, 164, "up"), "feed", LinkKind.Feed)
         };
 
-    public static bool IsHost(string artKey) => artKey == "reactor2";
+    public static bool IsHost(string artKey) => artKey == "rd105";
     public static bool Known(string artKey) => Defs.ContainsKey(artKey);
-    public static PortKind AttachOf(string artKey)
-        => Defs.TryGetValue(artKey, out var d) ? d.Attach : PortKind.Side;
+    public static string? AcceptOf(string artKey)
+        => Defs.TryGetValue(artKey, out var d) ? d.Accept : null;
     public static LinkKind LinkOf(string artKey)
         => Defs.TryGetValue(artKey, out var d) ? d.Link : LinkKind.Signal;
 
-    /// <summary>取插头。停在左侧且该设备有左侧插头时用左侧那个（取样、液相两侧走线不同）。</summary>
     public static Plug PlugOf(string artKey, string? side)
-    {
-        if (!Defs.TryGetValue(artKey, out var d)) return new Plug(0, 0, "down");
-        return side == "L" && d.Left is { } l ? l : d.Plug;
-    }
+        => Defs.TryGetValue(artKey, out var d) ? d.Plug : new Plug(0, 0, "down");
 
-    private static double ScaleOf(double width) => width / ArtVw;
+    private static double ScaleOf(double hostWidth) => hostWidth / MachineVw;
 
     /// <summary>接口在画布上的位置。</summary>
     public static Point AnchorWorld(Point hostPos, double hostWidth, Anchor a)
@@ -132,13 +132,54 @@ public static class BenchDock
         return new Point(devPos.X + NodePad + p.X * s, devPos.Y + NodePad + p.Y * s);
     }
 
-    public static bool Accepts(string artKey, Anchor a) => AttachOf(artKey) == a.Kind;
+    public static bool Accepts(string artKey, Anchor a) => AcceptOf(artKey) == a.Accept;
 
     /// <summary>
-    /// 算出一条管路的几何。台面画布与运行页的台面总览共用这一个——
-    /// 两处各算一遍的话，同一份台面在两页会画成两个样子，
-    /// 而运行页那张图的全部意义就是「现在台面长什么样」。
+    /// 探头插上工位后的**独立插入图**（trprobe-in / phel-in）。
+    /// 这两张图沿用主机的坐标系，所以设备一插上就把节点吸到
+    /// <see cref="SnapPosition"/> 算出的位置，插入件正好落在演示画的那个地方。
+    /// 泵不换图也不吸附——它留在放手的地方，靠管子连过去。
     /// </summary>
+    public static string? InsertArtFor(string artKey, string? anchorId)
+    {
+        if (AnchorById(anchorId) is null) return null;
+        return artKey switch
+        {
+            "trprobe" => "trprobe-in",
+            "phel" => "phel-in",
+            _ => null
+        };
+    }
+
+    /// <summary>
+    /// 插入图的节点位置：插入图的 viewBox 写的就是主机坐标（工位 1），
+    /// 所以位置 = 主机位置 + viewBox 原点 × 主机比例；工位 2 整体右移 200。
+    /// 节点内边距（NodePad）两边相同，正好抵消。
+    /// </summary>
+    public static Point SnapPosition(string insertArtKey, Anchor a, Point hostPos, double hostWidth)
+    {
+        var art = Controls.DeviceArtCache.Get(insertArtKey);
+        var s = ScaleOf(hostWidth);
+        var dx = a.Slot == 1 ? Cx1 - Cx0 : 0;
+        var vx = art?.ViewX ?? 0;
+        var vy = art?.ViewY ?? 0;
+        return new Point(hostPos.X + (vx + dx) * s, hostPos.Y + vy * s);
+    }
+
+    /// <summary>
+    /// 读数标签的位置与大小（主机图单位）。跟演示的 tag() 一字不差：
+    /// Tr 贴在探头头部左边（cx−49−64, 26），pH 在右边（cx+49, 70），
+    /// 纵向错开免得相邻工位的标签相撞；框 64×32。
+    /// </summary>
+    public static Rect TagRect(Anchor a)
+    {
+        var cx = a.Slot == 1 ? Cx1 : Cx0;
+        return a.Accept == "tr"
+            ? new Rect(cx - 49 - 64, 26, 64, 32)
+            : new Rect(cx + 49, 70, 64, 32);
+    }
+
+    /// <summary>算出一条管路的几何。台面画布与运行页的台面总览共用这一个。</summary>
     public static BenchLink Link(string artKey, Point pos, double width, string? side,
                                  string deviceId, string hostId, Point hostPos, double hostWidth,
                                  IReadOnlyList<int> hostChannels, Anchor a)
@@ -152,14 +193,14 @@ public static class BenchDock
             To = to,
             ToDir = a.Dir,
             Channel = hostChannels.ElementAtOrDefault(a.Slot),
-            Label = a.Label
+            Label = a.Label,
+            Scale = ScaleOf(hostWidth)
         };
     }
 
     /// <summary>
-    /// 台面上现有的全部管路。运行页那张总览直接照这份画——
-    /// 台面画布另有一条路（它还要处理拖拽预览、排除正在拖的那台），
-    /// 但两边算单条几何走的是上面同一个 <see cref="Link"/>。
+    /// 台面上现有的全部管路。运行页那张总览直接照这份画。
+    /// Tr / pH 是插进工位的，没有管子——插入件本身就画在工位上，这里跳过。
     /// </summary>
     public static List<BenchLink> LinksOf(Workspace ws)
     {
@@ -169,11 +210,11 @@ public static class BenchDock
             if (dev.DockAnchor is null || dev.DockHostId is null) continue;
             var host = ws.Bench.Devices.FirstOrDefault(d => d.InstanceId == dev.DockHostId);
             if (host is null) continue;
-            var a = Anchors.FirstOrDefault(x => x.Id == dev.DockAnchor);
-            if (a is null) continue;
+            var a = AnchorById(dev.DockAnchor);
+            if (a is null || a.Accept is "tr" or "ph") continue;
 
-            var artKey = ws.Drivers.Driver(dev.DriverId)?.Info.IconKey ?? "reactor2";
-            var hostKey = ws.Drivers.Driver(host.DriverId)?.Info.IconKey ?? "reactor2";
+            var artKey = ws.Drivers.Driver(dev.DriverId)?.Info.IconKey ?? "rd105";
+            var hostKey = ws.Drivers.Driver(host.DriverId)?.Info.IconKey ?? "rd105";
             var hostChs = ws.Channels.Where(c => c.HostInstanceId == host.InstanceId)
                                      .Select(c => c.Number).OrderBy(x => x).ToList();
 
@@ -186,55 +227,47 @@ public static class BenchDock
     }
 
     /// <summary>
-    /// 管路从设备哪一侧出去。探头的电极永远朝下，所以固定向下；加料 / 取样 /
-    /// 液相这类设备摆在哪儿都可能，按接口相对它的方位取主轴方向——不这样的话
-    /// 泵放在反应器左上方，管路也会先往下绕一圈再拐回来。
+    /// 管路从设备哪一侧出去。探头尖端朝下、泵的出口管先竖直向上
+    /// （演示的 g-tube 就是先升到釜盖高度再拐），方向都写在插头定义里。
     /// </summary>
-    public static string ExitDir(string artKey, Point from, Point to)
-    {
-        if (AttachOf(artKey) == PortKind.Top) return "down";
-        var dx = to.X - from.X;
-        var dy = to.Y - from.Y;
-        return Math.Abs(dx) >= Math.Abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up");
-    }
+    public static string ExitDir(string artKey, Point from, Point to) => PlugOf(artKey, null).Dir;
 
     /// <summary>
-    /// 选接口（原型 pickAnchor）：探头只比上方管口的横向距离；侧接设备先按落点
-    /// 判左右，再在该侧取最近的；该侧占满就退到另一侧。已被占用的口不参与。
+    /// 探头插口的吸附半径（画布像素）。Tr / pH 是**插进**工位的：得把它拖到
+    /// 机器跟前才算要插，拖到空地上就是拔下来放着——没有这个门限的话，
+    /// 插上的探头永远拔不下来（放到哪儿都被吸回去）。
+    /// 150 约等于半台主机宽，跟着人的手感给的，不是量出来的。
+    /// 加料口**不设门限**：泵靠管子连，摆多远管子拉多长（演示里泵就在画面边上）。
     /// </summary>
-    /// <remarks>
-    /// 不设距离门限：放在画布哪儿都连得上，管路自己拉过去（原型 pickAnchor 同样
-    /// 不看距离）。接口全被占了才连不上。
-    /// </remarks>
+    private const double ProbeSnapRange = 150;
+
+    /// <summary>
+    /// 选接口：在**收这类设备**且空着的口里取离插头最近的那个——
+    /// 「拖过去，吸到最近的工位」就是这一条在管。
+    /// 同类接口全被占了连不上；探头离得太远（见 ProbeSnapRange）也不吸。
+    /// </summary>
     public static Anchor? Pick(string artKey, Point hostPos, double hostWidth, Point drop,
                                ISet<string> taken, string? keep = null)
     {
-        if (!Known(artKey)) return null;
-        var attach = AttachOf(artKey);
-        var side = drop.X < hostPos.X + NodePad + hostWidth / 2 ? "L" : "R";
+        var accept = AcceptOf(artKey);
+        if (accept is null) return null;
 
-        bool Free(Anchor a) => a.Id == keep || !taken.Contains(a.Id);
-
-        var cands = Anchors.Where(a => Free(a) && a.Kind == attach &&
-                                       (attach != PortKind.Side || a.Side == side)).ToList();
-        if (cands.Count == 0 && attach == PortKind.Side)
-            cands = Anchors.Where(a => a.Kind == PortKind.Side && Free(a)).ToList();
-        if (cands.Count == 0) return null;
-
-        Anchor best = cands[0];
+        Anchor? best = null;
         var bd = double.MaxValue;
-        foreach (var a in cands)
+        foreach (var a in Anchors)
         {
+            if (a.Accept != accept) continue;
+            if (a.Id != keep && taken.Contains(a.Id)) continue;
             var w = AnchorWorld(hostPos, hostWidth, a);
-            var dist = attach == PortKind.Top
-                ? Math.Abs(w.X - drop.X)
-                : Math.Abs(w.Y - drop.Y) * 1.4 + Math.Abs(w.X - drop.X) * 0.2;
-            if (dist < bd) { bd = dist; best = a; }
+            var d = (w.X - drop.X) * (w.X - drop.X) + (w.Y - drop.Y) * (w.Y - drop.Y);
+            if (d < bd) { bd = d; best = a; }
         }
+        if (best is not null && accept is "tr" or "ph" && bd > ProbeSnapRange * ProbeSnapRange)
+            return null;
         return best;
     }
 
-    // ── 正交折线 + 圆角（原型 orth / roundPath）─────────────────────
+    // ── 正交折线 + 圆角 ─────────────────────────────────────────────
     private static bool IsV(string dir) => dir is "up" or "down";
 
     private static Point StepOut(Point p, string dir, double n) => dir switch

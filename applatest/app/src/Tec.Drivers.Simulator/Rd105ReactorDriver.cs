@@ -11,12 +11,15 @@ public sealed class Rd105ReactorDriver : IDeviceDriver
 {
     public const string DriverId = "tec.reactor.rd105";
 
-    public DriverInfo Info { get; } = new(DriverId, "双通道反应器 RD-105", "Tec", "1.0.0")
+    // 名字与副标照 parts_current 那张配件总图：双工位、RD105 控制器控温。
+    // 设备图换成 HT-RS2 主机的裸机线稿（rd105.svg），Tr / pH 是独立设备，
+    // 插上哪个工位才画哪支——DriverId 不动，已存盘的台面还认得它
+    public DriverInfo Info { get; } = new(DriverId, "双工位反应器 RD105", "Tec", "1.0.0")
     {
         ChannelsPerDevice = 2,
         SimulatorIncluded = true,
-        IconKey = "reactor2",
-        Description = "整机自带；每孔提供 Tr/Tj 控温、磁力搅拌与 LED 背景灯。",
+        IconKey = "rd105",
+        Description = "100 mL 玻璃夹套釜 ×2 · 自带顶置搅拌 · −40…180 ℃；控温走 RD105 控制器。",
         Capabilities = new[] { nameof(ITemperatureControl), nameof(IStirrer), nameof(IIllumination) }
     };
 
