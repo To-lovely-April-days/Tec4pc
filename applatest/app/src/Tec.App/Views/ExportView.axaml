@@ -333,10 +333,14 @@
                         </StackPanel>
                         <!-- 选中的角上一个对勾。四张卡都是浅色的，只靠边框颜色分辨
                              要盯着看；一个勾隔着半米也认得出 -->
-                        <Border Width="18" Height="18" CornerRadius="9" Background="#a41626"
+                        <!-- 白底 + 一道加粗的黑勾。从前是红底白勾——卡片边框改黑
+                             之后，角上再顶一颗红点就成了这张卡上唯一的红，
+                             孤零零的。白底黑勾跟黑边是同一个说法 -->
+                        <Border Width="18" Height="18" CornerRadius="9" Background="White"
+                                BorderBrush="#000000" BorderThickness="1"
                                 HorizontalAlignment="Right" VerticalAlignment="Top"
                                 Margin="0,-2,-2,0" IsVisible="{Binding On}">
-                          <Path Data="M4.4,9.2 L7.5,12.2 L13.2,5.8" Stroke="White" StrokeThickness="1.9"
+                          <Path Data="M4.4,9.2 L7.5,12.2 L13.2,5.8" Stroke="#000000" StrokeThickness="2.4"
                                 StrokeLineCap="Round" StrokeJoin="Round" />
                         </Border>
                       </Panel>
@@ -592,17 +596,21 @@
       <Setter Property="CornerRadius" Value="3" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
+    <!-- 筛选那排（全部 / 近 7 天…）和预览那两颗（采样数据 / 步骤记录）都是它。
+         悬停 HovBg #D5DDE4、选中 #C0CAD3 + 一圈黑边 + 正文黑的字，
+         跟这一页别处的选中态（格式卡那圈黑边、记录表那条 #A4D5F2）说同一套话。
+         从前是浅红底 #F4E4E6 / #FAF2F3 配品牌红的边和深红的字 -->
     <Style Selector="Button.pill:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#f4e4e6" />
-      <Setter Property="BorderBrush" Value="#a41626" />
+      <Setter Property="Background" Value="{StaticResource HovBg}" />
+      <Setter Property="BorderBrush" Value="#868b90" />
     </Style>
     <!-- 选中态排在悬停后面：同权重后写的赢，写前面一悬停就被盖掉 -->
     <Style Selector="Button.pill.on /template/ ContentPresenter">
-      <Setter Property="Background" Value="#faf2f3" />
-      <Setter Property="BorderBrush" Value="#a41626" />
+      <Setter Property="Background" Value="#c0cad3" />
+      <Setter Property="BorderBrush" Value="#000000" />
     </Style>
     <Style Selector="Button.pill.on">
-      <Setter Property="Foreground" Value="#7e0f1c" />
+      <Setter Property="Foreground" Value="{StaticResource SelTx}" />
       <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
     <Style Selector="ComboBox.ftr">
@@ -748,9 +756,9 @@
       <Setter Property="Margin" Value="0,0,8,0" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
-    <Style Selector="Button.sech:pointerover Border.cir">
-      <Setter Property="BorderBrush" Value="#a41626" />
-    </Style>
+    <!-- 这儿从前有一条「鼠标压在小节标题上时，那个折叠圆圈描边变红」。
+         撤了：折叠钮是个开合的把手，不是选中态，没有必要在悬停时喊一声，
+         何况喊的还是这一页已经不用的红。圆圈照默认的 #B2B6B8 画 -->
     <Style Selector="Border.cir > :is(Control)">
       <Setter Property="HorizontalAlignment" Value="Center" />
       <Setter Property="VerticalAlignment" Value="Center" />
@@ -842,14 +850,19 @@
       <Setter Property="Padding" Value="6,8,6,7" />
       <Setter Property="Background" Value="White" />
     </Style>
+    <!-- 悬停只加深描边，不换成红的：这一页选中已经是黑边了，
+         悬停再冒一圈红，两种「被强调」的说法对不上 -->
     <Style Selector="Border.fmt:pointerover">
-      <Setter Property="BorderBrush" Value="#a41626" />
+      <Setter Property="BorderBrush" Value="#868b90" />
       <Setter Property="Background" Value="#f0f0ee" />
     </Style>
+    <!-- 选中 = 一圈黑边，别的什么都不加。
+         从前是品牌红的边加一圈 #38A41626 的红辉光；底色换成 #C0CAD3 之后
+         那圈红辉光变成了蓝灰底上浮的一层红雾。黑边在这层底上够清楚，
+         右上角还有个对勾，两个说法足够了——辉光一起撤掉 -->
     <Style Selector="Border.fmt.on, Border.fmt.on:pointerover">
-      <Setter Property="BorderBrush" Value="#a41626" />
+      <Setter Property="BorderBrush" Value="#000000" />
       <Setter Property="Background" Value="#c0cad3" />
-      <Setter Property="BoxShadow" Value="0 0 0 2 #38a41626" />
     </Style>
     <!-- 写不出来的格式：摆在那儿但按不下去，不假装能导 -->
     <Style Selector="Border.fmt.dis, Border.fmt.dis:pointerover">
@@ -866,8 +879,10 @@
       <Setter Property="Padding" Value="8,4,11,4" />
       <Setter Property="Background" Value="White" />
     </Style>
+    <!-- 悬停只加深描边，不换成红的：这一页选中已经是黑边了，
+         悬停再冒一圈红，两种「被强调」的说法对不上 -->
     <Style Selector="Border.chchip:pointerover">
-      <Setter Property="BorderBrush" Value="#a41626" />
+      <Setter Property="BorderBrush" Value="#868b90" />
       <Setter Property="Background" Value="#f0f0ee" />
     </Style>
     <Style Selector="Border.chchip.on, Border.chchip.on:pointerover">
@@ -893,8 +908,10 @@
       <Setter Property="Background" Value="White" />
       <Setter Property="Margin" Value="0,0,0,6" />
     </Style>
+    <!-- 悬停只加深描边，不换成红的：这一页选中已经是黑边了，
+         悬停再冒一圈红，两种「被强调」的说法对不上 -->
     <Style Selector="Border.dest:pointerover">
-      <Setter Property="BorderBrush" Value="#a41626" />
+      <Setter Property="BorderBrush" Value="#868b90" />
       <Setter Property="Background" Value="#f0f0ee" />
     </Style>
     <Style Selector="Border.dest.on, Border.dest.on:pointerover">

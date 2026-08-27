@@ -937,9 +937,21 @@
     </Style>
     <!-- 主操作 = 品牌红。绿只留给「在线 / 运行 / 通过」这一个意思；
          「导出」「保存」这类是动作不是状态，占了绿就分不清了 -->
+    <!--
+      主按钮（页面上「就按这一颗」的那一颗）。品牌红 #A41626 → 外壳靛 #352D6A。
+
+      **这一支是全程序共用的**，改它就是同时改五处：数据导出的「导出」、
+      化合物页「到配料表算饱和温度」、配料表「写入这条控温步骤」、
+      运行页改参数的「应用」、以及所有确认对话框的主按钮。列在这儿，
+      是因为下次谁再动它得先知道会波及谁。
+
+      为什么是外壳靛而不是另调一个：它是标题栏那一支，程序里本来就有，
+      白字压上去对比度足够（#352D6A 对白约 11:1）。主按钮要的是「一眼看见
+      该按哪颗」，靛蓝够重；再新调一个颜色只会给这套配色多添一个来源不明的值。
+    -->
     <Style Selector="Button.btn.primary">
-      <Setter Property="Background" Value="#a41626" />
-      <Setter Property="BorderBrush" Value="#7e0f1c" />
+      <Setter Property="Background" Value="#352d6a" />
+      <Setter Property="BorderBrush" Value="#2b2456" />
       <Setter Property="Foreground" Value="White" />
     </Style>
 
