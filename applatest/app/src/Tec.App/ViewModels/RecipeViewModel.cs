@@ -1107,10 +1107,23 @@ public sealed class RecipeViewModel : ViewModelBase
     private void AddCommand(CommandItemViewModel c)
     {
         if (NoLanes) return;                      // 没有通道就没有地方放这一步
+
+        // 起始步骤只有一条、只能在第一位：已经有了就把人带到那一条上去改，
+        // 不再添第二条（两条「起始」在打架，校验器也会拦）
+        if (c.Descriptor.Id == BuiltinCommands.FirstFill
+            && Current.Steps.FirstOrDefault(s => s.CommandId == BuiltinCommands.FirstFill) is { } had)
+        {
+            SelectedStep = Lanes.FirstOrDefault(l => l.Channel == _curCh)?
+                .Steps.FirstOrDefault(v => v.Step.StepId == had.StepId);
+            return;
+        }
+
         Record();
         var step = NewStep(c.Descriptor);
         var recipe = Current;
-        var at = _selectedStep is null ? recipe.Steps.Count : recipe.Steps.IndexOf(_selectedStep.Step) + 1;
+        var at = c.Descriptor.Id == BuiltinCommands.FirstFill
+            ? 0                                   // 起始步骤永远插在最前面
+            : _selectedStep is null ? recipe.Steps.Count : recipe.Steps.IndexOf(_selectedStep.Step) + 1;
         recipe.Steps.Insert(Math.Clamp(at, 0, recipe.Steps.Count), step);
         recipe.ModifiedAt = DateTimeOffset.Now;
         Workspace.Store.MarkDirty();
@@ -1132,6 +1145,9 @@ public sealed class RecipeViewModel : ViewModelBase
 
     private void Delete(StepViewModel s)
     {
+        // 起始步骤删不掉（iControl 的 [00] 同款规矩）：空釜跑配方没有意义。
+        // 不想要它的内容就把各项关掉，它不占时间
+        if (s.Step.CommandId == BuiltinCommands.FirstFill) return;
         Record();
         Current.Steps.Remove(s.Step);
         if (_selectedStep == s) SelectedStep = null;
@@ -1267,6 +1283,19 @@ public sealed class RecipeViewModel : ViewModelBase
         string keepId;
         if (cmd is not null)
         {
+            // 起始步骤拖进来也守同一套规矩：已有就选中那条，新添永远落在最前
+            if (cmd.Descriptor.Id == BuiltinCommands.FirstFill)
+            {
+                if (target.Steps.FirstOrDefault(x => x.CommandId == BuiltinCommands.FirstFill) is { } had)
+                {
+                    CurCh = ch;
+                    RefreshAll();
+                    SelectedStep = Lanes.FirstOrDefault(l => l.Channel == ch)?
+                                        .Steps.FirstOrDefault(v => v.Step.StepId == had.StepId);
+                    return;
+                }
+                at = 0;
+            }
             Record(ch);
             var made = NewStep(cmd.Descriptor);
             target.Steps.Insert(Math.Clamp(at, 0, target.Steps.Count), made);
@@ -1407,7 +1436,11 @@ public sealed class RecipeViewModel : ViewModelBase
         if (NoLanes) return;
         Record();
         var name = Workspace.LaneNames.TryGetValue(_curCh, out var n) ? n : "新配方";
-        Workspace.ChannelRecipes[_curCh] = new Recipe { Name = name };
+        var recipe = new Recipe { Name = name };
+        // 新配方自动以「起始装料与限值」开头（iControl 的 [00]：空白实验就带着它）
+        if (Workspace.Catalog.TryGet(BuiltinCommands.FirstFill, out var ff))
+            recipe.Steps.Add(NewStep(ff));
+        Workspace.ChannelRecipes[_curCh] = recipe;
         SelectedStep = null;
         Workspace.Store.MarkDirty();
         RefreshAll();

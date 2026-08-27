@@ -29,6 +29,9 @@ public static class BuiltinCommands
     public const string Sampling = "tec.flow.sampling";    // 采样提醒
     public const string Interlock = "tec.flow.interlock";  // 安全联锁
     public const string Finish = "tec.flow.finish";        // 结束实验
+    /// <summary>起始装料与限值（iControl 的 First Fill and Safety Limits）。
+    /// 新配方自动以它开头，必须是第一步且不可删除；老配方没有它照样能跑（校验只提醒）。</summary>
+    public const string FirstFill = "tec.flow.firstfill";
 
     /// <summary>
     /// 分组照 iControl：这 9 条大半是流程控制组，采样提醒归采样组、
@@ -46,6 +49,17 @@ public static class BuiltinCommands
     // 安全层见不到数会按「传感器失效」触发，那不是操作人想要的
     private static readonly string[] InterlockSources = { "釜内 Tr", "夹套 Tj", "pH" };
     private static readonly string[] InterlockOps = { ">", "<" };
+
+    /// <summary>监测量选项 → 数据管线里那一路信号的名字。「改限值」和起始限值
+    /// 共用这一份；「浊度」已从下拉里撤了，但存过盘的老配方还带着，得认。</summary>
+    public static string? InterlockTag(string src) => src switch
+    {
+        "釜内 Tr" => "Tr",
+        "夹套 Tj" => "Tj",
+        "pH" => "pH",
+        "浊度" => "turb",
+        _ => null
+    };
     /// <summary>触发动作**与安全层的五档一一对应**（RunEngine 真会执行的那五个），
     /// 不再有引擎做不出来的「暂停实验」。老配方的旧值由 RecipeMigration 翻译。
     /// 措辞表在 SafetyActionWords 一处，界面下拉与执行走同一份。</summary>
@@ -67,6 +81,56 @@ public static class BuiltinCommands
 
     public static IReadOnlyList<CommandDescriptor> All { get; } = Attach(new[]
     {
+        // iControl 的 [00] First Fill and Safety Limits：空白实验强制以它开头。
+        // 我们放宽半步——新配方自动带上、必须第一步、不可删除，但老配方没有它
+        // 照样能跑（校验只提醒不阻断，存过盘的东西不能因为程序升级就打不开）。
+        // 执行顺序：起始限值先立起来 → 按配料表投料并确认 → 开搅拌 → 到初温。
+        // 干搅空釜没意义也伤桨，所以搅拌在投料确认之后
+        new CommandDescriptor(FirstFill, "起始装料与限值", Module, null,
+            new ParameterSchema(new[]
+            {
+                Field.Bool("fill", "按配料表投料并确认", true),
+                Field.Num("stir", "初始搅拌转速", 0, "rpm", 0, 1000, 10),
+                Field.Bool("tempOn", "设定初始温度", false),
+                Field.Num("temp", "初始温度", 25, "℃", -40, 180, 0.1) with { VisibleWhen = "tempOn=true" }
+            })
+            {
+                Table = new TableSpec("起始限值", new[]
+                {
+                    Field.Sel("src", "监测量", InterlockSources, "釜内 Tr"),
+                    Field.Sel("op", "条件", InterlockOps, ">"),
+                    Field.Num("val", "阈值", 100, "", null, null, 0.1),
+                    Field.Sel("act", "触发动作", InterlockActions, "中止本通道")
+                }),
+                Tip = "整趟实验的起点：起始限值先交给安全层（活到下一次启动前），"
+                    + "再按配料表完成初始投料并确认，然后开搅拌、到初温。"
+                    + "转速填 0 就不开搅拌。这一步必须是第一步，删不掉——空釜跑配方没有意义。"
+            },
+            TerminationKind.Operator,
+            (p, ctx) =>
+            {
+                ctx.Rpm = p.Num("stir");
+                if (!p.Flag("tempOn")) return TimeSpan.Zero;
+                // 初温按设备最大变温能力估（真值启动时播种，编辑器用声明缺省）
+                var s = Math.Abs(p.Num("temp", 25) - ctx.Temperature)
+                        / Math.Max(ctx.MaxTempRatePerMin, 0.01) * 60;
+                ctx.Temperature = p.Num("temp", 25);
+                return TimeSpan.FromSeconds(s);
+            },
+            p =>
+            {
+                var bits = new List<string>();
+                if (p.Flag("fill", true)) bits.Add("按配料表投料");
+                if (p.Num("stir") > 0) bits.Add($"搅拌 {Txt.Fx(p.Num("stir"))} rpm");
+                if (p.Flag("tempOn")) bits.Add($"初温 {Txt.Fx(p.Num("temp"))} ℃");
+                if (p.RowsOrEmpty.Count > 0) bits.Add($"起始限值 {Txt.Fx(p.RowsOrEmpty.Count)} 条");
+                return bits.Count == 0 ? "起始步骤（未设内容）" : "起始：" + string.Join("，", bits);
+            })
+        { IconKey = "firstfill",
+          TerminationBy = p => p.Flag("fill", true) ? TerminationKind.Operator
+                             : p.Flag("tempOn") ? TerminationKind.Setpoint
+                             : TerminationKind.Immediate },
+
         // 等待的两种方式在属性里选（与循环开始「按次数 / 按条件」同一个做法），
         // 库里只占一格一张图
         new CommandDescriptor(Wait, "等待", Module, null,
@@ -215,6 +279,13 @@ public static class BuiltinCommands
     /// <summary>步骤卡上的一行摘要，对应原型 PSPEC[name].sum。</summary>
     public static string Summary(string commandId, CommandInput p) => commandId switch
     {
+        FirstFill => string.Join(" · ", new[]
+        {
+            p.Flag("fill", true) ? "投料" : null,
+            p.Num("stir") > 0 ? $"{Txt.Fx(p.Num("stir"))} rpm" : null,
+            p.Flag("tempOn") ? $"初温 {Txt.Fx(p.Num("temp"))} ℃" : null,
+            p.RowsOrEmpty.Count > 0 ? $"限值 {Txt.Fx(p.RowsOrEmpty.Count)} 条" : null
+        }.Where(x => x is not null)) is { Length: > 0 } s ? s : "未设内容",
         Wait => IsCondWait(p) ? $"等待直到 {p.Str("cond")}" : $"等待 {Txt.Fx(p.Num("dur"))} min",
         LoopBegin => p.Str("by") == "按次数" ? $"循环 ×{Txt.Fx(p.Num("n"))}" : $"循环直到 {p.Str("cond")}",
         LoopEnd => "",
@@ -258,11 +329,18 @@ public sealed class BuiltinCommandProvider : ICommandProvider
     }
 
     /// <summary>
-    /// 「改限值」往哪儿登记。属性注入：这个 provider 在引擎之前建
+    /// 「改限值」与起始限值往哪儿登记。属性注入：这个 provider 在引擎之前建
     /// （引擎构造要拿它当指令来源），SafetyMonitor 又挂在引擎上，
     /// 只能等引擎建好再补上。没补上时该步骤只记录不生效，且会写明。
     /// </summary>
     public SafetyMonitor? Safety { get; set; }
+
+    /// <summary>
+    /// 起始步骤「按配料表投料」要念的那份配料表：按通道号取当前工作配料表。
+    /// 由组合根注入（配料表挂在 Workspace 上，Core 不认识它放在哪）。
+    /// null 或取不到 = 没有配料表，提示按工艺单投料。
+    /// </summary>
+    public Func<int, Chemistry.ChargeTable?>? ChargeOf { get; set; }
 
     public IReadOnlyList<CommandDescriptor> Commands => BuiltinCommands.All;
 
@@ -273,6 +351,7 @@ public sealed class BuiltinCommandProvider : ICommandProvider
         BuiltinCommands.Sampling => new PromptHandler(_gate, "label"),
         BuiltinCommands.Mark => new MarkHandler(_onMark, "tag"),
         BuiltinCommands.Interlock => new LimitHandler(Safety),
+        BuiltinCommands.FirstFill => new FirstFillHandler(_gate, Safety, ChargeOf),
         BuiltinCommands.Finish => new FinishHandler(),
         // 循环标记由执行引擎处理，没有 handler
         _ => null
@@ -346,16 +425,7 @@ public sealed class BuiltinCommandProvider : ICommandProvider
         private readonly SafetyMonitor? _safety;
         public LimitHandler(SafetyMonitor? safety) => _safety = safety;
 
-        /// <summary>监测量选项 → 数据管线里那一路信号的名字。
-        /// 「浊度」已从下拉里撤了，但存过盘的老配方还带着，得认。</summary>
-        private static string? TagOf(string src) => src switch
-        {
-            "釜内 Tr" => "Tr",
-            "夹套 Tj" => "Tj",
-            "pH" => "pH",
-            "浊度" => "turb",
-            _ => null
-        };
+        private static string? TagOf(string src) => BuiltinCommands.InterlockTag(src);
 
         /// <summary>触发动作 → 安全层的档位。对照表在 SafetyActionWords 一处，
         /// 老配方的「停止实验 / 暂停实验」也由它兜底翻译（RecipeMigration
@@ -395,6 +465,107 @@ public sealed class BuiltinCommandProvider : ICommandProvider
                 ctx.Note?.Invoke($"改限值已交给安全层：{summary}");
             }
             return Task.FromResult(CommandOutcome.Instant());
+        }
+    }
+
+    /// <summary>
+    /// 起始装料与限值（iControl 的 First Fill and Safety Limits）。
+    /// 顺序有讲究：**限值先立起来**——投料、开搅拌、升初温都得在安全层的
+    /// 注视下发生；投料确认在开搅拌之前——干搅空釜没意义也伤桨。
+    /// 起始限值走 SetRecipeLimit（FromRecipe 层）：活到下一次启动运行前，
+    /// 不是只活这一步——它们是整趟实验的地板，不是这一步的临时覆盖。
+    /// </summary>
+    private sealed class FirstFillHandler : ICommandHandler
+    {
+        private readonly IOperatorGate _gate;
+        private readonly SafetyMonitor? _safety;
+        private readonly Func<int, Chemistry.ChargeTable?>? _chargeOf;
+
+        public FirstFillHandler(IOperatorGate gate, SafetyMonitor? safety,
+                                Func<int, Chemistry.ChargeTable?>? chargeOf)
+        {
+            _gate = gate;
+            _safety = safety;
+            _chargeOf = chargeOf;
+        }
+
+        public async Task<CommandOutcome> ExecuteAsync(CommandContext ctx, CommandInput p, CancellationToken ct)
+        {
+            var began = ctx.Now();
+
+            // 1) 起始限值
+            var armed = 0;
+            foreach (var row in p.RowsOrEmpty)
+            {
+                if (BuiltinCommands.InterlockTag(row.Str("src")) is not { } tag)
+                {
+                    ctx.Note?.Invoke($"起始限值没认出监测量「{row.Str("src")}」，这一条没有生效");
+                    continue;
+                }
+                var op = row.Str("op", ">");
+                var val = row.Num("val");
+                var lim = new SafetyLimit(ctx.Channel, tag,
+                    Min: op == "<" ? val : null, Max: op == "<" ? null : val,
+                    MaxRatePerMin: null, Debounce: TimeSpan.FromSeconds(3),
+                    Action: SafetyActionWords.Parse(row.Str("act")))
+                { FromRecipe = true, Note = "起始步骤设定" };
+
+                if (_safety is null)
+                    ctx.Note?.Invoke($"起始限值：{tag} {op} {Txt.Fx(val)}（本会话没有安全层，仅记录）");
+                else
+                {
+                    _safety.SetRecipeLimit(lim);
+                    armed++;
+                }
+            }
+            if (armed > 0) ctx.Note?.Invoke($"起始限值已交给安全层，共 {armed} 条");
+
+            // 2) 按配料表投料并确认
+            if (p.Flag("fill", true))
+            {
+                var charge = _chargeOf?.Invoke(ctx.Channel);
+                if (charge is { IsEmpty: false })
+                    ctx.Note?.Invoke($"初始投料 {charge.Items.Count} 行："
+                                     + string.Join("、", charge.Items.Select(i => i.Name)));
+                else
+                    ctx.Note?.Invoke("本通道没有配料表——请按工艺单完成初始投料");
+
+                var ok = await _gate.ConfirmAsync(ctx.Channel, "初始投料完成后请确认", TimeSpan.Zero, ct)
+                                    .ConfigureAwait(false);
+                if (!ok)
+                    return new CommandOutcome(EndReason.Timeout, ctx.Now() - began)
+                    { Note = "操作人未确认初始投料" };
+            }
+
+            // 3) 初始搅拌
+            var rpm = p.Num("stir");
+            if (rpm > 0)
+            {
+                if (ctx.Capabilities.Get<IStirrer>() is not { } stir)
+                    return new CommandOutcome(EndReason.Failed, ctx.Now() - began)
+                    { Note = "该通道没有搅拌能力，设不了初始搅拌" };
+                await stir.SetSpeedAsync(rpm, ct).ConfigureAwait(false);
+            }
+
+            // 4) 初始温度：按设备最大变温能力去，到了才算起点就绪
+            if (p.Flag("tempOn"))
+            {
+                if (ctx.Capabilities.Get<ITemperatureControl>() is not { } temp)
+                    return new CommandOutcome(EndReason.Failed, ctx.Now() - began)
+                    { Note = "该通道没有温度控制能力，设不了初始温度" };
+                var target = p.Num("temp", 25);
+                var rate = Math.Max(0.05, temp.Limits.MaxRatePerMin);
+                await temp.RampAsync(target, rate, TempChannelKind.Reactor, ct).ConfigureAwait(false);
+                var budget = TimeSpan.FromMinutes(Math.Abs(target - temp.CurrentReactor) / rate * 3 + 10);
+                var reached = await temp.WaitReachedAsync(target, 1.0, budget, ct).ConfigureAwait(false);
+                if (!reached)
+                    return new CommandOutcome(EndReason.Timeout, ctx.Now() - began)
+                    { Note = $"未在 {budget.TotalMinutes:F0} min 内到达初温 {target:F1} ℃" };
+            }
+
+            return new CommandOutcome(
+                p.Flag("fill", true) ? EndReason.OperatorConfirmed : EndReason.Completed,
+                ctx.Now() - began);
         }
     }
 

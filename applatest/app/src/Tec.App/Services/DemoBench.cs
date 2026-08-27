@@ -114,9 +114,21 @@ public static class DemoBench
         yield return Neutralize();
     }
 
+    /// <summary>演示配方也按新规矩以起始步骤开头：投料确认 + 一条起始限值。</summary>
+    private static Step FirstFill() => new()
+    {
+        CommandId = BuiltinCommands.FirstFill,
+        Parameters = ParameterSet.Of(("fill", true), ("stir", 0d), ("tempOn", false)),
+        Rows = new List<ParameterSet>
+        {
+            ParameterSet.Of(("src", "釜内 Tr"), ("op", ">"), ("val", 100d), ("act", "中止本通道"))
+        }
+    };
+
     private static Recipe Cooling()
     {
         var r = new Recipe { Name = "降温结晶", Author = "工程师" };
+        r.Steps.Add(FirstFill());
         r.Steps.Add(Mk(CommandSpecs.Stir, ("rpm", 400d), ("ramp", 5d)));
         r.Steps.Add(Mk(CommandSpecs.Control, ("target", 60d), ("rate", 2d),
                        ("obj", "釜内 Tr"), ("tol", 0.5d), ("wait", true)));
@@ -132,6 +144,7 @@ public static class DemoBench
     private static Recipe Neutralize()
     {
         var r = new Recipe { Name = "pH 反馈加料", Author = "工程师" };
+        r.Steps.Add(FirstFill());
         r.Steps.Add(Mk(CommandSpecs.Stir, ("rpm", 400d), ("ramp", 5d)));
         r.Steps.Add(Mk(CommandSpecs.Control, ("target", 60d), ("rate", 2d),
                        ("obj", "釜内 Tr"), ("tol", 0.5d), ("wait", true)));

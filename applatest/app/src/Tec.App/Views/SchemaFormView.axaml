@@ -62,13 +62,15 @@
           <DataTemplate>
             <Border Background="#f8f9fb" BorderBrush="#e5e8ec" BorderThickness="1"
                     CornerRadius="3" Padding="6" Margin="0,0,0,4">
+              <!-- 折行而不是横排：起始限值一行有四列（监测量/条件/阈值/动作），
+                   横排会把第四列挤出面板可视区，谁都不会发现那儿还有个下拉 -->
               <ItemsControl ItemsSource="{Binding}">
                 <ItemsControl.ItemsPanel>
-                  <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="6" /></ItemsPanelTemplate>
+                  <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
-                    <StackPanel Width="90">
+                    <StackPanel Width="90" Margin="0,0,6,4">
                       <TextBlock Text="{Binding Label}" FontSize="10" Foreground="#888d92" Margin="0,0,0,2" />
                       <TextBox Classes="fin" Text="{Binding NumberText, Mode=TwoWay}" IsVisible="{Binding IsNumber}" />
                       <TextBox Classes="fin" Text="{Binding DurationText, Mode=TwoWay}" IsVisible="{Binding IsDuration}" />

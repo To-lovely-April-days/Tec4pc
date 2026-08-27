@@ -41,6 +41,8 @@ public sealed class Workspace
         // 「改限值」步骤要往安全层登记，而安全层挂在引擎上、引擎又要先拿到
         // 指令来源才能构造——只能建完引擎回头补这一针
         builtins.Safety = Engine.Safety;
+        // 起始步骤「按配料表投料」要念的那份配料表：按通道号取当前工作表
+        builtins.ChargeOf = ch => ChannelCharges.TryGetValue(ch, out var t) && !t.IsEmpty ? t : null;
         Bench = new Bench { Name = "四通道平行合成台面" };
     }
 

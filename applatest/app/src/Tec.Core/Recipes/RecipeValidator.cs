@@ -97,6 +97,8 @@ public static class RecipeValidator
             issues.Add(new ValidationIssue(IssueLevel.Error, "loop-unbalanced",
                 $"第 {openAt + 1} 步的循环开始没有对应的循环结束") { StepId = recipe.Steps[openAt].StepId });
 
+        ValidateFirstFill(issues, recipe);
+
         var schedule = Schedule.Build(recipe, catalog, seed);
         issues.Add(new ValidationIssue(IssueLevel.Info, "duration",
             $"预计总时长 {Fmt.Hms(schedule.Total)}，共 {recipe.Steps.Count} 步"));
@@ -114,6 +116,49 @@ public static class RecipeValidator
         if (charge is not null) ValidateCharge(issues, recipe, catalog, charge, schedule);
 
         return issues;
+    }
+
+    /// <summary>
+    /// 起始步骤的位置规矩（iControl 的 [00]：强制存在且不可删除，我们放宽半步）：
+    /// · 有它就必须是第一条启用步——起始限值、初始投料排在别的动作后面就不叫起始；
+    /// · 只能有一条——两条「起始」在打架，后一条会把前一条的限值悄悄换掉；
+    /// · 没有它只提醒不阻断——存过盘的老配方不能因为程序升级就跑不了。
+    /// </summary>
+    private static void ValidateFirstFill(List<ValidationIssue> issues, Recipe recipe)
+    {
+        var seen = false;
+        var otherBefore = false;
+        var anyEnabled = false;
+
+        for (var i = 0; i < recipe.Steps.Count; i++)
+        {
+            var s = recipe.Steps[i];
+            if (!s.Enabled) continue;
+
+            if (s.CommandId == BuiltinCommands.FirstFill)
+            {
+                if (seen)
+                {
+                    issues.Add(new ValidationIssue(IssueLevel.Error, "firstfill-dup",
+                        $"第 {i + 1} 步又是一条起始步骤——一条配方只有一个起点") { StepId = s.StepId });
+                    continue;
+                }
+                seen = true;
+                if (otherBefore)
+                    issues.Add(new ValidationIssue(IssueLevel.Error, "firstfill-order",
+                        $"第 {i + 1} 步「起始装料与限值」前面已经有别的步骤——起始步骤必须是第一步")
+                    { StepId = s.StepId });
+            }
+            else
+            {
+                otherBefore = true;
+                anyEnabled = true;
+            }
+        }
+
+        if (!seen && anyEnabled)
+            issues.Add(new ValidationIssue(IssueLevel.Warning, "firstfill-missing",
+                "配方没有以「起始装料与限值」开头——初始投料、初始状态与起始限值建议从它立起（老配方可照跑）"));
     }
 
     /// <summary>
@@ -416,6 +461,34 @@ public static class RecipeValidator
                         + "读不到值会按传感器失效触发，这一步一开始就会执行触发动作")
                     { StepId = s.StepId, Channel = channel.Number });
             }
+
+        // 起始步骤声明了初始搅拌 / 初始温度，这条通道就得真有那份能力——
+        // 它不声明 RequiredCapability（只投料 + 限值的用法不需要任何设备），
+        // 所以按参数逐项查。起始限值盯的信号照「本步临时限值」同一条规矩提醒
+        if (s.CommandId == BuiltinCommands.FirstFill)
+        {
+            if (s.Parameters.Num("stir") > 0 && !channel.Capabilities.Has<IStirrer>())
+                issues.Add(new ValidationIssue(IssueLevel.Error, "capability",
+                    $"第 {i + 1} 步要开初始搅拌，但 CH{channel.Number} 没有搅拌能力")
+                { StepId = s.StepId, Channel = channel.Number });
+            if (s.Parameters.Flag("tempOn") && !channel.Capabilities.Has<ITemperatureControl>())
+                issues.Add(new ValidationIssue(IssueLevel.Error, "capability",
+                    $"第 {i + 1} 步要设初始温度，但 CH{channel.Number} 没有温度控制能力")
+                { StepId = s.StepId, Channel = channel.Number });
+            if (s.Rows is { } startRows)
+                foreach (var row in startRows)
+                {
+                    if (BuiltinCommands.InterlockTag(row.Str("src")) is not { } tag) continue;
+                    var ok = tag is "Tr" or "Tj"
+                        ? channel.Capabilities.Has<ITemperatureControl>()
+                        : HasScalarTag(channel, tag);
+                    if (!ok)
+                        issues.Add(new ValidationIssue(IssueLevel.Warning, "guard-no-signal",
+                            $"第 {i + 1} 步的起始限值盯着 {row.Str("src")}，但 CH{channel.Number} 没有这一路信号——"
+                            + "读不到值会按传感器失效触发")
+                        { StepId = s.StepId, Channel = channel.Number });
+                }
+        }
 
         // 标定：未标定或过期的设备，编排到配方里要拦下来（§10.3）
         if (d.RequiredCapability == typeof(IDosing) && channel.Capabilities.Get<IDosing>() is { } dosing)

@@ -49,18 +49,19 @@ public class ValidatorTests
     }
 
     [Fact]
-    public void 二十一条指令一条不多一条不少()
+    public void 二十二条指令一条不多一条不少()
     {
         var c = Catalog();
         c.Register(new TurbidityProbeDriver().Commands);
         c.Register(new RamanProbeDriver().Commands);
         c.Register(new InfraredProbeDriver().Commands);
 
-        // 分组照 iControl Recipe Library：流程控制 7（等待 / 循环 ×2 / 变量 /
-        // 提示 / 标记 / 结束）· 采样 2（采样提醒 + pH 采集）· 安全 1（改限值）
-        // · 温控 4 · 搅拌 1 · 加料 2（加料 + pH 反馈加料）· 在线分析 4
-        Assert.Equal(21, c.All.Count);
-        Assert.Equal(7, c.InModule("流程控制").Count);
+        // 分组照 iControl Recipe Library：流程控制 8（起始装料与限值 / 等待 /
+        // 循环 ×2 / 变量 / 提示 / 标记 / 结束）· 采样 2（采样提醒 + pH 采集）
+        // · 安全 1（改限值）· 温控 4 · 搅拌 1 · 加料 2（加料 + pH 反馈加料）
+        // · 在线分析 4
+        Assert.Equal(22, c.All.Count);
+        Assert.Equal(8, c.InModule("流程控制").Count);
         Assert.Equal(2, c.InModule("采样").Count);
         Assert.Single(c.InModule("安全"));
         Assert.Equal(4, c.InModule("温控").Count);
@@ -80,7 +81,7 @@ public class ValidatorTests
 
         foreach (var n in new[]
         {
-            "等待", "循环开始", "循环结束", "消息提示", "标记事件", "采样提醒", "改限值", "结束实验",
+            "起始装料与限值", "等待", "循环开始", "循环结束", "消息提示", "标记事件", "采样提醒", "改限值", "结束实验",
             "控温", "恒温保持", "梯度控温", "自然冷却",
             "搅拌",
             "加料",

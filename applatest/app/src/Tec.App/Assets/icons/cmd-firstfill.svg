@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"
+  viewBox="-56.25 -56.25 112.5 112.5">
+  <g transform="scale(0.92)">
+  <!-- 注入流：起始装料 -->
+  <path d="M 0,-48 L 0,-26" stroke="#10868F" stroke-width="7" stroke-linecap="round"/>
+  <path d="M -8,-32 L 0,-20 L 8,-32" fill="none" stroke="#10868F" stroke-width="6"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- 烧杯（投影 + 主体），画法照 cmd-dose 的那套 -->
+  <path d="M -23,-9 L -23,37 A 8,8 0 0 0 -15,45 L 21,45 A 8,8 0 0 0 29,37 L 29,-9"
+        fill="#000000" opacity="0.15"/>
+  <path d="M -26,-12 L -26,34 A 8,8 0 0 0 -18,42 L 18,42 A 8,8 0 0 0 26,34 L 26,-12"
+        fill="#E9EFF3" stroke="#5A6168" stroke-width="2.5"/>
+  <!-- 初始液面 -->
+  <path d="M -26,14 L 26,14 L 26,34 A 8,8 0 0 1 18,42 L -18,42 A 8,8 0 0 1 -26,34 Z"
+        fill="#10868F" opacity="0.88"/>
+  <!-- 高光与刻度 -->
+  <rect x="-23" y="-9" width="3.5" height="46" rx="1.7" fill="#FFFFFF" opacity="0.85"/>
+  <path d="M 18,2 L 26,2 M 18,14 L 26,14 M 18,26 L 26,26" stroke="#5A6168" stroke-width="2"/>
+  </g>
+</svg>
