@@ -6,31 +6,14 @@
   <!-- 原型 tecstudio-export-v2：页头 → wrap（主区 ｜ 342 右栏）→ 52px 页脚 -->
   <DockPanel Background="White">
 
-    <!-- pghead。右边两颗圆钮是**这一页整体**的动作（跟某一条记录无关），
-         所以摆在页头而不是工具条里——工具条那一排是筛选，性质不一样 -->
-    <Border DockPanel.Dock="Top" BorderBrush="#e1e3e0" BorderThickness="0,0,0,1" Padding="22,10,22,10">
-      <Grid ColumnDefinitions="Auto,*,Auto">
-        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="14">
-          <TextBlock Text="数据导出" FontSize="23" FontWeight="Light" Foreground="#292b2e"
-                     VerticalAlignment="Bottom" />
-          <TextBlock Text="从实验记录中选取一条或多条，配置导出内容后生成归档文件"
-                     FontSize="11.5" Foreground="#959a9f" VerticalAlignment="Bottom" Margin="0,0,0,4" />
-        </StackPanel>
+    <!-- 页头（「数据导出」大标题 + 一句说明 + 右边两颗圆钮）整块撤了。
+         标题是废话：人是点着菜单栏上的「数据导出」进来的，进来又被告知一遍
+         「这是数据导出」，那一条 44px 高的横带什么也没多说。撤掉之后
+         菜单栏底下那道 6px 白缝直接接上筛选条，表往上抬了一整条。
 
-        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
-          <!-- 刷新：这一页的记录是进来时读的，中途又跑了一炉就按它 -->
-          <Button Classes="tbtn sm" Command="{Binding DoReload}" ToolTip.Tip="刷新记录列表">
-            <ctl:TecIcon Key="ui-ex-refresh" />
-          </Button>
-          <!-- 打开导出文件夹：导出完只在页脚留一行路径，人还得自己去翻。
-               目录跟着「导出目标」走 -->
-          <Button Classes="tbtn sm" Command="{Binding OpenFolder}"
-                  ToolTip.Tip="{Binding OpenFolderTip}">
-            <ctl:TecIcon Key="ui-dest-local" Size="15" />
-          </Button>
-        </StackPanel>
-      </Grid>
-    </Border>
+         那两颗圆钮（刷新记录 / 打开导出文件夹）挪进了下面筛选条的末尾、
+         「只看有报警」前面——它们本来就是这一页的动作，跟筛选摆一排
+         不比单开一条横带差，还省下那条带子的高度。 -->
 
     <!-- foot 52px -->
     <Border DockPanel.Dock="Bottom" Height="52" Background="#fafafa" BorderBrush="#e1e3e0"
@@ -77,10 +60,15 @@
     </Border>
 
     <!-- wrap -->
-    <Grid ColumnDefinitions="*,342">
+    <!-- 底色写成白的：右边那道 6px 白缝露的就是它。
+         缝不能靠「后面碰巧是白的」来实现——那是把一件确定的事托付给别处 -->
+    <Grid ColumnDefinitions="*,342" Background="White">
 
-      <!-- 主区：工具条 → 记录表 → 分隔条 → 预览 -->
-      <DockPanel Grid.Column="0" Background="White">
+      <!-- 主区：工具条 → 记录表 → 分隔条 → 预览。
+           右边留 6px 白缝跟属性栏断开，属性栏那条 1px 竖线一起去掉——
+           缝就是分界，旁边再压一条比它暗的线等于把缝描了个边。
+           化合物页、配料表页刚照这一套改过，这是第三页 -->
+      <DockPanel Grid.Column="0" Background="White" Margin="0,0,6,0">
 
         <!-- tools -->
         <Border DockPanel.Dock="Top" BorderBrush="#ebece9" BorderThickness="0,0,0,1" Padding="16,9">
@@ -116,6 +104,17 @@
                         SelectedItem="{Binding FilterOp, Mode=TwoWay}" />
               <ComboBox Classes="ftr" Width="96" Margin="0,0,8,0" ItemsSource="{Binding StateOptions}"
                         SelectedItem="{Binding FilterState, Mode=TwoWay}" />
+              <!-- 从撤掉的页头挪下来的两颗：刷新记录列表、打开导出文件夹。
+                   摆在「只看有报警」前面——筛选那几个下拉是「看哪些」，
+                   这两颗是「这一页自己的动作」，一前一后分得开 -->
+              <Button Classes="tbtn sm" Command="{Binding DoReload}" Margin="0,0,6,0"
+                      VerticalAlignment="Center" ToolTip.Tip="刷新记录列表">
+                <ctl:TecIcon Key="ui-ex-refresh" />
+              </Button>
+              <Button Classes="tbtn sm" Command="{Binding OpenFolder}" Margin="0,0,12,0"
+                      VerticalAlignment="Center" ToolTip.Tip="{Binding OpenFolderTip}">
+                <ctl:TecIcon Key="ui-dest-local" Size="15" />
+              </Button>
               <CheckBox Content="只看有报警" FontSize="11.5" MinHeight="0" VerticalAlignment="Center"
                         Margin="0,0,14,0" IsChecked="{Binding OnlyAlarm, Mode=TwoWay}" />
             </WrapPanel>
@@ -294,8 +293,7 @@
 
       <!-- 右栏 342px。**白底面板 + 浅紫内容块**，与台面 / 配方 / 配方库的属性面板
            同一套观感：块与块之间用白缝分隔（App.axaml 里 ThemeGap / ThemeFill 那两支笔） -->
-      <Border Grid.Column="1" Background="{StaticResource ThemeGap}"
-              BorderBrush="#d0d2cf" BorderThickness="1,0,0,0">
+      <Border Grid.Column="1" Background="{StaticResource ThemeGap}">
         <ScrollViewer>
           <StackPanel Margin="0,0,0,24">
 
@@ -330,7 +328,7 @@
                           </Panel>
                           <TextBlock Text="{Binding Name}" FontSize="12" Foreground="#292b2e"
                                      TextAlignment="Center" Margin="0,3,0,0" />
-                          <TextBlock Text="{Binding Desc}" FontSize="9.5" Foreground="#959a9f"
+                          <TextBlock Text="{Binding Desc}" FontSize="9.5" Classes="onsub"
                                      TextAlignment="Center" Margin="0,2,0,0" />
                         </StackPanel>
                         <!-- 选中的角上一个对勾。四张卡都是浅色的，只靠边框颜色分辨
@@ -462,7 +460,7 @@
                         </Border>
                         <StackPanel>
                           <TextBlock Text="{Binding Name}" FontSize="12" Foreground="#292b2e" />
-                          <TextBlock Text="{Binding Desc}" FontSize="10.5" Foreground="#959a9f"
+                          <TextBlock Text="{Binding Desc}" FontSize="10.5" Classes="onsub"
                                      TextWrapping="Wrap" MaxWidth="250" Margin="0,2,0,0" />
                         </StackPanel>
                       </StackPanel>
@@ -507,7 +505,7 @@
                   </Border>
                   <StackPanel>
                     <TextBlock Text="本地文件夹" FontSize="12" Foreground="#292b2e" />
-                    <TextBlock Text="{Binding LocalDir}" FontSize="10.5" Foreground="#959a9f"
+                    <TextBlock Text="{Binding LocalDir}" FontSize="10.5" Classes="onsub"
                                TextTrimming="CharacterEllipsis" MaxWidth="240"
                                ToolTip.Tip="{Binding LocalDir}" Margin="0,2,0,0" />
                   </StackPanel>
@@ -521,7 +519,7 @@
                   </Border>
                   <StackPanel>
                     <TextBlock Text="USB 记忆盘" FontSize="12" Foreground="#292b2e" />
-                    <TextBlock Text="{Binding UsbNote}" FontSize="10.5" Foreground="#959a9f"
+                    <TextBlock Text="{Binding UsbNote}" FontSize="10.5" Classes="onsub"
                                Margin="0,2,0,0" />
                   </StackPanel>
                 </StackPanel>
@@ -667,11 +665,16 @@
       <Setter Property="BorderBrush" Value="#f1f2f0" />
       <Setter Property="BorderThickness" Value="0,0,0,1" />
     </Style>
+    <!-- 悬停 / 选中走全局那一对（SelBg #A4D5F2 / HovBg #D5DDE4），
+         跟化合物表、配方库、下拉列表是同一副样子。
+         从前是最浅的红 tint #FAF2F3 配中性灰 #F0F0EE。
+         `.on:pointerover` 也钉在选中色上：选中那一行不管鼠标在不在上面
+         都是同一个色，不会一碰就褪成悬停色 -->
     <Style Selector="Border.rrow:pointerover">
-      <Setter Property="Background" Value="#f0f0ee" />
+      <Setter Property="Background" Value="{StaticResource HovBg}" />
     </Style>
     <Style Selector="Border.rrow.on, Border.rrow.on:pointerover">
-      <Setter Property="Background" Value="#faf2f3" />
+      <Setter Property="Background" Value="{StaticResource SelBg}" />
     </Style>
 
     <!--
@@ -702,8 +705,11 @@
     <Style Selector="Border.rrow TextBlock.alm">
       <Setter Property="Foreground" Value="#d93025" />
     </Style>
+    <!-- 选中行的名字跟着底色一起回到正文黑：底不是红的了，字再红就没来由，
+         深红压在这层淡蓝上也读着发闷。加粗留着——那是「这一条是选中的」
+         第二个说法，长表里光靠底色容易看丢 -->
     <Style Selector="Border.rrow.on TextBlock.nm">
-      <Setter Property="Foreground" Value="#7e0f1c" />
+      <Setter Property="Foreground" Value="{StaticResource SelTx}" />
       <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
     <Style Selector="TextBlock.mono">
@@ -812,6 +818,23 @@
       <Setter Property="Background" Value="White" />
     </Style>
 
+    <!--
+      格式卡与「导出目标」那几行下面的小字。
+      **颜色必须写在样式里，不能内联**：内联值压得过样式（Avalonia 的
+      LocalValue > Style），写在标签上之后下面那条选中态的规则永远上不了。
+
+      为什么要有下面那条：选中底从最浅的红 tint #FAF2F3 换成 #C0CAD3 之后，
+      底色一下深了一大截，#959A9F 的小字压在上面对比度只剩 1.8:1，
+      「逐点数据表」这行字基本糊住了。选中时把它压到 #4C5157，
+      在这层底上重新读得清；没选中的照旧 #959A9F，白底上那是对的。
+    -->
+    <Style Selector="TextBlock.onsub">
+      <Setter Property="Foreground" Value="#959a9f" />
+    </Style>
+    <Style Selector="Border.fmt.on TextBlock.onsub, Border.dest.on TextBlock.onsub">
+      <Setter Property="Foreground" Value="#4c5157" />
+    </Style>
+
     <Style Selector="Border.fmt">
       <Setter Property="BorderBrush" Value="#d3d5d2" />
       <Setter Property="BorderThickness" Value="1" />
@@ -825,7 +848,7 @@
     </Style>
     <Style Selector="Border.fmt.on, Border.fmt.on:pointerover">
       <Setter Property="BorderBrush" Value="#a41626" />
-      <Setter Property="Background" Value="#faf2f3" />
+      <Setter Property="Background" Value="#c0cad3" />
       <Setter Property="BoxShadow" Value="0 0 0 2 #38a41626" />
     </Style>
     <!-- 写不出来的格式：摆在那儿但按不下去，不假装能导 -->
@@ -849,7 +872,7 @@
     </Style>
     <Style Selector="Border.chchip.on, Border.chchip.on:pointerover">
       <Setter Property="BorderBrush" Value="#a41626" />
-      <Setter Property="Background" Value="#faf2f3" />
+      <Setter Property="Background" Value="#c0cad3" />
     </Style>
     <Style Selector="Border.chchip.dis, Border.chchip.dis:pointerover">
       <Setter Property="Opacity" Value="0.4" />
@@ -876,7 +899,7 @@
     </Style>
     <Style Selector="Border.dest.on, Border.dest.on:pointerover">
       <Setter Property="BorderBrush" Value="#a41626" />
-      <Setter Property="Background" Value="#faf2f3" />
+      <Setter Property="Background" Value="#c0cad3" />
       <Setter Property="BoxShadow" Value="0 0 0 2 #38a41626" />
     </Style>
     <Style Selector="Border.rd">
