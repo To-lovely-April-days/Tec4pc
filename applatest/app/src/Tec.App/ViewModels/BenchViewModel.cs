@@ -1228,7 +1228,20 @@ public sealed class PumpPanelViewModel : ViewModelBase
 
     public string DeviceId { get; }
     public double W => PanelW;
-    public double H => PanelH;
+
+    private double _h = PanelH;
+    /// <summary>
+    /// 卡片的**实际**高度，由视图量了喂回来（SizeChanged）。
+    /// 高度不再写死 220：那是演示在它自家字体下排出来的数，换一台机器
+    /// 字体渲染高一点，「停止」按钮就顶出白卡了（用户实测截到）。
+    /// 卡片让内容自己撑，这个数只服务肘形引线的出线点。
+    /// </summary>
+    public double H { get => _h; private set => Set(ref _h, value); }
+
+    public void SetMeasuredHeight(double h)
+    {
+        if (h > 40) H = h;
+    }
 
     public RelayCommand StepDown { get; }
     public RelayCommand StepUp { get; }

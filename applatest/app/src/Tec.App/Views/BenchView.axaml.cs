@@ -225,4 +225,10 @@ public partial class BenchView : UserControl
     {
         if (sender is TextBox { DataContext: PumpPanelViewModel { Editing: true } p }) p.CommitEdit();
     }
+
+    /// <summary>卡片按内容自撑，量到的实际高度喂回去给肘形引线定出线点。</summary>
+    private void OnPanelSized(object? sender, SizeChangedEventArgs e)
+    {
+        if (sender is Border { DataContext: PumpPanelViewModel p }) p.SetMeasuredHeight(e.NewSize.Height);
+    }
 }

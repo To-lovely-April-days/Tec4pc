@@ -56,6 +56,7 @@ public sealed class PanelTethers : Control
     private void OnItemChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(PumpPanelViewModel.X) or nameof(PumpPanelViewModel.Y)
+            or nameof(PumpPanelViewModel.H)
             or nameof(PumpPanelViewModel.TargetX) or nameof(PumpPanelViewModel.TargetY)
             or nameof(PumpPanelViewModel.Closed))
             InvalidateVisual();

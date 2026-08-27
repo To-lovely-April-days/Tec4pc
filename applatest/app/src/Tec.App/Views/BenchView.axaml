@@ -254,8 +254,11 @@
         </ItemsControl.Styles>
         <ItemsControl.ItemTemplate>
           <DataTemplate>
-            <Border Classes="ppnl" Width="{Binding W}" Height="{Binding H}"
-                    IsVisible="{Binding !Closed}">
+            <!-- 高度不写死：220 是演示在它自家字体下排出来的数，字体一换行高
+                 就变，「停止」按钮会顶出卡片。让内容自己撑，量到的实际高度
+                 喂回视图模型给肘形引线用（SizeChanged） -->
+            <Border Classes="ppnl" Width="{Binding W}"
+                    IsVisible="{Binding !Closed}" SizeChanged="OnPanelSized">
               <DockPanel>
                 <Grid DockPanel.Dock="Top" Height="35" ColumnDefinitions="Auto,*,Auto"
                       Background="Transparent" Cursor="SizeAll"
@@ -276,7 +279,8 @@
                   </Button>
                 </Grid>
                 <Border DockPanel.Dock="Top" Height="1" Background="#ECECEC" />
-                <StackPanel Margin="18,8,18,0">
+                <!-- 底边距 14：从前是 0，卡高写死时按钮正好贴底，看着像挤出去了 -->
+                <StackPanel Margin="18,8,18,14">
                   <TextBlock Text="设定速率" FontSize="12" Foreground="#6F6F6F"
                              IsVisible="{Binding !Editing}" />
                   <TextBlock Text="范围 0.05 – 5.00 mL/min · 回车确定，Esc 取消" FontSize="10.5"
