@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using Tec.App.Controls;
 using Tec.App.Services;
 using Tec.Core;
+using Tec.Core.Data;
 using Tec.Core.Execution;
 using Tec.Core.Records;
 using Tec.Core.Recipes;
@@ -71,9 +72,12 @@ public sealed class HmiViewModel : ViewModelBase
     public bool ShowZGra => IsZone && _zTab == "gra";
     public bool ShowZSeq => IsZone && _zTab == "seq";
     public bool ShowZSaf => IsZone && _zTab == "saf";
-    /// <summary>通道页里还没接入的标签（头卡照常挂着，身子给一句实话）。</summary>
-    public bool ZStub => IsZone && !(ZCtl || _zTab is "gra" or "seq" or "saf");
-    public bool ShowStub => IsFiles || IsSys;
+    public bool ShowZExp => IsZone && _zTab == "exp";
+    public bool ShowFiles => IsFiles;
+    public bool ShowSys => IsSys;
+    /// <summary>兜底：认不出的标签给一句实话（正常路径全部页都已接入）。</summary>
+    public bool ZStub => IsZone && !(ZCtl || _zTab is "gra" or "seq" or "saf" or "exp");
+    public bool ShowStub => false;
 
     /// <summary>还没接入的页给一句实话，不摆一个点了没反应的空壳。</summary>
     public string StubText => "该页在下一补丁接入（本机数据照常记录）";
@@ -93,12 +97,15 @@ public sealed class HmiViewModel : ViewModelBase
                  nameof(IsFiles), nameof(IsSys), nameof(OnZ0), nameof(OnZ1), nameof(Cur),
                  nameof(OvApp), nameof(OvSeq), nameof(OvGra), nameof(ZCtl), nameof(ZOther),
                  nameof(ShowOvApp), nameof(ShowOvGra), nameof(ShowOvSeq), nameof(ShowZCtl),
-                 nameof(ShowZGra), nameof(ShowZSeq), nameof(ShowZSaf), nameof(ZStub),
-                 nameof(ShowStub));
-        // 切进曲线/序列/安全页别等下一拍——空一秒的页面看着像坏了
+                 nameof(ShowZGra), nameof(ShowZSeq), nameof(ShowZSaf), nameof(ShowZExp),
+                 nameof(ShowFiles), nameof(ShowSys), nameof(ZStub), nameof(ShowStub));
+        // 切页别等下一拍——空一秒的页面看着像坏了
         if (ShowZGra && Cur is { } z) z.RefreshGra();
         if (ShowZSeq && Cur is { } z2) z2.RefreshSeq();
         if (ShowZSaf && Cur is { } z3) z3.RefreshSaf();
+        if (ShowZExp) ExpRefresh(reloadArchive: true);   // 归档目录只在进页时读
+        if (ShowFiles) FilesRefresh();
+        if (ShowSys) SysRefresh();
         if (ShowOvGra) RefreshOvChart();
         if (ShowOvSeq) foreach (var zz in Zones) zz.RefreshTl();
     }
@@ -244,6 +251,216 @@ public sealed class HmiViewModel : ViewModelBase
     }
 
     public void TColClose() { TColOpen = false; Raise(nameof(TColOpen)); }
+
+    // ── 数据导出页（原型 zExp，0253）──────────────────────────────────
+    //
+    // 记录列表 = 本机这一开机的活批次 + 归档目录里的每一炉（跨次开机靠归档）。
+    // 导出走既有 RecordExporter（执行记录 / 事件 / 采样宽表），采样间隔就是
+    // 宽表的时间栅格——不另写一套导出器。
+
+    public sealed record ExpRow(string Id, string Name, string ChTag, string State,
+                                bool Live, string Dur, string Date, bool Sel);
+
+    public IReadOnlyList<ExpRow> ExpRows { get; private set; } = Array.Empty<ExpRow>();
+    public bool ExpEmpty => ExpRows.Count == 0;
+    private string? _expSel;
+    private IReadOnlyList<ArchivedRun>? _arch;
+    private int _expInt = 1;
+    public string ExpIntText => $"{_expInt} s";
+
+    public void ExpCycleInt()
+    {
+        _expInt = _expInt switch { 1 => 10, 10 => 60, _ => 1 };
+        Raise(nameof(ExpIntText));
+    }
+
+    public void ExpSelect(string id)
+    {
+        _expSel = id;
+        ExpRefresh(reloadArchive: false);
+    }
+
+    internal void ExpRefresh(bool reloadArchive)
+    {
+        if (reloadArchive || _arch is null)
+        {
+            // 归档整目录读一遍不便宜（带采样），只在进页/导出后做，不跟秒拍
+            try { _arch = _ws.Archive.Load(); }
+            catch { _arch = Array.Empty<ArchivedRun>(); }
+        }
+        var rows = new List<ExpRow>();
+        var rec = _ws.Engine.Record;
+        if (rec.Channels.Count > 0)
+        {
+            var running = rec.Channels.Any(c =>
+                c.State is ChannelRunState.Running or ChannelRunState.Paused);
+            var dur = rec.Channels.Max(c => c.Elapsed(_ws.Clock.Now));
+            rows.Add(new ExpRow("live", rec.Name,
+                string.Join(" ", rec.StartedChannels.Select(n => "CH" + n)),
+                running ? "运行中" : "本开机批次", running,
+                Fmt.Hms(dur), "—", _expSel is null or "live"));
+        }
+        foreach (var a in _arch.OrderByDescending(x => x.ArchivedAt))
+        {
+            var aborted = a.Record.Channels.Any(c => c.State is ChannelRunState.Aborted
+                                                              or ChannelRunState.Faulted);
+            var dur = a.Record.Channels.Count > 0
+                ? a.Record.Channels.Max(c => c.Elapsed(a.ArchivedAt)) : TimeSpan.Zero;
+            rows.Add(new ExpRow(a.Dir, a.Record.Name,
+                string.Join(" ", a.Record.StartedChannels.Select(n => "CH" + n)),
+                aborted ? "已中止" : "已完成", false,
+                Fmt.Hms(dur),
+                a.ArchivedAt.ToString("yyyy-MM-dd"),
+                _expSel == a.Dir)
+                { });
+        }
+        ExpRows = rows;
+        RaiseAll(nameof(ExpRows), nameof(ExpEmpty), nameof(ExpIntText));
+    }
+
+    /// <summary>导出所选：执行记录 + 事件 + 采样宽表（栅格 = 采样间隔）三份 CSV。</summary>
+    public void ExpDo()
+    {
+        var sel = ExpRows.FirstOrDefault(r => r.Sel) ?? ExpRows.FirstOrDefault();
+        if (sel is null) { Toast("还没有可导出的记录"); return; }
+        (RunRecord Rec, ISampleSource Src)? pick = sel.Id == "live"
+            ? (_ws.Engine.Record, _ws.Pipeline)
+            : _arch?.FirstOrDefault(a => a.Dir == sel.Id) is { } a2 ? (a2.Record, a2.Samples) : null;
+        if (pick is null) { Toast("这条记录已不在归档目录里"); return; }
+        var (rec, src) = pick.Value;
+        try
+        {
+            var dir = System.IO.Path.Combine(ExperimentStore.DataDir, "Exports",
+                $"{San(rec.Name)}-{_ws.Clock.Now:yyyyMMdd-HHmmss}");
+            System.IO.Directory.CreateDirectory(dir);
+            var opt = new Tec.Core.Export.ExportOptions
+            { Shape = Tec.Core.Export.TableShape.Wide, Grid = TimeSpan.FromSeconds(_expInt) };
+            if (_ws.Engine.Catalog is Tec.Core.Catalog.CommandCatalog cat)
+                System.IO.File.WriteAllText(System.IO.Path.Combine(dir, "execution.csv"),
+                    Tec.Core.Export.RecordExporter.ExecutionCsv(rec, Tec.Core.Export.TimeBase.Wall, cat),
+                    System.Text.Encoding.UTF8);
+            System.IO.File.WriteAllText(System.IO.Path.Combine(dir, "events.csv"),
+                Tec.Core.Export.RecordExporter.EventsCsv(rec, Tec.Core.Export.TimeBase.Wall),
+                System.Text.Encoding.UTF8);
+            System.IO.File.WriteAllText(System.IO.Path.Combine(dir, "samples.csv"),
+                Tec.Core.Export.RecordExporter.SamplesWideCsv(src, rec, opt),
+                System.Text.Encoding.UTF8);
+            _ws.Log.Write("导出", $"HMI 面板导出「{rec.Name}」→ {dir}（间隔 {_expInt} s）", _ws.Operator);
+            Toast($"已导出 3 份 CSV：{dir}");
+        }
+        catch (Exception ex) { Toast("导出失败：" + ex.Message); }
+    }
+
+    private static string San(string s)
+    {
+        foreach (var c in System.IO.Path.GetInvalidFileNameChars()) s = s.Replace(c, '_');
+        return s.Length == 0 ? "未命名" : s;
+    }
+
+    // ── 文件页（原型 pageFiles：实验方案 = 配方库）────────────────────
+
+    public sealed record FileRow(string Id, string Name, string ChTag, string State,
+                                 bool Live, bool Loaded, string Detail, bool Sel);
+
+    public IReadOnlyList<FileRow> FileRows { get; private set; } = Array.Empty<FileRow>();
+    public bool FilesEmpty => FileRows.Count == 0;
+    private string? _filePick;
+
+    internal void FilesRefresh()
+    {
+        var rows = new List<FileRow>();
+        // 「已加载到哪条通道」按泳道名对（应用时泳道名就是配方名）。
+        // 库里可能有几条同名——一条泳道只认领一次，不然满屏都标着已加载
+        var claimed = new HashSet<int>();
+        foreach (var r in _ws.Library)
+        {
+            var on = Zones.FirstOrDefault(z => !claimed.Contains(z.Number)
+                && _ws.LaneNames.TryGetValue(z.Number, out var n) && n == r.Name);
+            if (on is not null) claimed.Add(on.Number);
+            var live = on is { EngineRunning: true };
+            rows.Add(new FileRow(r.Id, r.Name,
+                on is null ? "—" : $"通道 {on.Index}",
+                live ? "运行中" : on is not null ? "已加载" : "已保存",
+                live, on is not null && !live,
+                $"{r.Steps.Count} 步" + (r.Charge is null ? "" : " · 含配料表"),
+                _filePick == r.Id));
+        }
+        FileRows = rows;
+        RaiseAll(nameof(FileRows), nameof(FilesEmpty));
+    }
+
+    public void FileSelect(string id) { _filePick = id; FilesRefresh(); }
+
+    /// <summary>→ 通道 N：把库里选中的方案应用到该通道（照工作站 DoApplyLib 那套）。</summary>
+    public void FileApply(int zoneIndex)
+    {
+        var pick = _ws.Library.FirstOrDefault(r => r.Id == _filePick);
+        if (pick is null) { Toast("先点选一条方案"); return; }
+        var z = Zones.ElementAtOrDefault(zoneIndex - 1);
+        if (z is null) return;
+        if (z.EngineRunning) { Toast($"通道 {z.Index} 正在运行——运行中的通道不可接收方案"); return; }
+        var copy = pick.CopyAs(pick.Name, pick.Author);
+        var adopted = _ws.AdoptCharge(z.Number, copy);
+        _ws.ChannelRecipes[z.Number] = copy;
+        _ws.LaneNames[z.Number] = copy.Name;
+        _ws.Store.MarkDirty();
+        _ws.Log.Write("配方", $"HMI 面板把「{copy.Name}」应用到 CH{z.Number}", _ws.Operator);
+        Toast($"已把「{copy.Name}」应用到通道 {z.Index}（{copy.Steps.Count} 步）"
+              + (adopted is null ? "" : "，" + adopted));
+        FilesRefresh();
+    }
+
+    public void FileDelete()
+    {
+        var pick = _ws.Library.FirstOrDefault(r => r.Id == _filePick);
+        if (pick is null) { Toast("先点选一条方案"); return; }
+        _ws.Library.Remove(pick);
+        _ws.Store.SaveLibrary();
+        _ws.Log.Write("配方", $"HMI 面板从配方库删除「{pick.Name}」", _ws.Operator);
+        Toast($"已从配方库删除「{pick.Name}」");
+        _filePick = null;
+        FilesRefresh();
+    }
+
+    // ── 系统页（原型 pageSys：只摆真有的东西）─────────────────────────
+
+    public sealed record SysRow(string K, string V, string D);
+
+    public IReadOnlyList<SysRow> SysRows { get; private set; } = Array.Empty<SysRow>();
+
+    internal void SysRefresh()
+    {
+        var rows = new List<SysRow>();
+        var scale = _ws.Engine.TimeScale;
+        rows.Add(new SysRow("网络", "本机模拟运行 · 未联网",
+            "接真机走 RS-485 Modbus RTU（串口在台面属性栏配置）"));
+        rows.Add(new SysRow("时间",
+            $"{_ws.Clock.Now:yyyy-MM-dd HH:mm}" + (scale > 1 ? $" · 仿真时钟 ×{scale:0}" : ""),
+            scale > 1 ? "演示模式下时钟加速；接真机为 1:1" : "本机时钟"));
+        rows.Add(new SysRow("语言与键盘", "简体中文 · QWERTY", "当前版本仅中文界面"));
+        try
+        {
+            var di = new System.IO.DriveInfo(System.IO.Path.GetPathRoot(ExperimentStore.DataDir)!);
+            rows.Add(new SysRow("本机存储",
+                $"剩余 {di.AvailableFreeSpace / 1024.0 / 1024 / 1024:0.0} GB",
+                $"数据目录 {ExperimentStore.DataDir}"));
+        }
+        catch { rows.Add(new SysRow("本机存储", "—", ExperimentStore.DataDir)); }
+        var tc = Zones.FirstOrDefault()?.TcVal;
+        rows.Add(new SysRow("冷却",
+            tc is { } t ? $"Tc {(t < 0 ? "−" : "")}{Math.Abs(t):0.0} ℃ · 冷媒正常" : "Tc 无信号",
+            "Tc 由安全层监视（限值见「反应釜与安全」页）"));
+        rows.Add(new SysRow("操作人", _ws.Operator, "登录 / 切换在工作站进行"));
+        var dev = Zones.FirstOrDefault()?.Number is { } n && _ws.ChannelOf(n) is { } ch
+            ? _ws.Bench.Device(ch.HostInstanceId) : null;
+        var drv = dev is null ? null : _ws.Drivers.Driver(dev.DriverId)?.Info;
+        var appVer = typeof(HmiViewModel).Assembly.GetName().Version?.ToString(3) ?? "?";
+        rows.Add(new SysRow("系统信息",
+            $"TecStudio {appVer}" + (drv is null ? "" : $" · 驱动 {drv.Name} {drv.Version}"),
+            drv is null ? "驱动未加载" : $"{drv.Vendor} · ABI {drv.Abi}"));
+        SysRows = rows;
+        Raise(nameof(SysRows));
+    }
 
     // ── 紧急程序报警层（原型 alarmBox）────────────────────────────────
     //
@@ -511,6 +728,9 @@ public sealed class HmiViewModel : ViewModelBase
             z.Refresh();
         }
         if (ShowOvGra) RefreshOvChart();
+        if (ShowZExp) ExpRefresh(reloadArchive: false);
+        if (ShowFiles) FilesRefresh();
+        if (ShowSys) SysRefresh();
         RefreshAlarm();
         if (_toastTtl > 0 && --_toastTtl == 0) Raise(nameof(ToastOpen));
         RaiseAll(nameof(AnyRun), nameof(RailState), nameof(OvRt), nameof(Cur));

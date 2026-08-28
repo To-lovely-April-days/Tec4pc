@@ -157,6 +157,18 @@ public partial class HmiView : UserControl
     private void OnAlarmAck(object? s, RoutedEventArgs e) => Vm?.AlarmAck();
     private void OnAlarmAckAll(object? s, RoutedEventArgs e) => Vm?.AlarmAckAll();
 
+    // ── 数据导出 / 文件 / 系统页 ────────────────────────────────────
+    private void OnExpInt(object? s, PointerPressedEventArgs e) { Vm?.ExpCycleInt(); e.Handled = true; }
+    private void OnExpRow(object? s, PointerPressedEventArgs e)
+    { if (s is Control { Tag: string id }) Vm?.ExpSelect(id); e.Handled = true; }
+    private void OnExpDo(object? s, RoutedEventArgs e) => Vm?.ExpDo();
+
+    private void OnFileRow(object? s, PointerPressedEventArgs e)
+    { if (s is Control { Tag: string id }) Vm?.FileSelect(id); e.Handled = true; }
+    private void OnFileApply(object? s, RoutedEventArgs e)
+    { if (s is Control { Tag: string n } && int.TryParse(n, out var i)) Vm?.FileApply(i); }
+    private void OnFileDelete(object? s, RoutedEventArgs e) => Vm?.FileDelete();
+
     private void OnGtCancel(object? s, RoutedEventArgs e) => Vm?.GtCancel();
     private void OnGtapMark(object? s, RoutedEventArgs e) => Vm?.GtapMark();
     private void OnGtapNote(object? s, RoutedEventArgs e) => Vm?.GtapNote();
