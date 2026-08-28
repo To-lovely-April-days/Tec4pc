@@ -401,7 +401,20 @@ public sealed class HmiViewModel : ViewModelBase
         return s.Length == 0 ? "未命名" : s;
     }
 
-    // ── 文件页（原型 pageFiles：实验方案 = 配方库）────────────────────
+    // ── 配方库页（原型 pageFiles）────────────────────────────────────
+    //
+    // **面板独立的序列库**，与工作站的配方库是两码事（用户定的）：
+    // 存的是面板 6 步序列，落设备本机 HmiPanel/library.json，
+    // 不读也不写工作站的 Library / ChannelRecipes / LaneNames。
+
+    /// <summary>库里一条：一份 6 步序列 + 名字 + 存入时刻。</summary>
+    public sealed class HmiSeqLibEntry
+    {
+        public string Id { get; set; } = Guid.NewGuid().ToString("N")[..8];
+        public string Name { get; set; } = "";
+        public DateTime SavedAt { get; set; }
+        public List<HmiZoneViewModel.HmiSeqStep> Steps { get; set; } = new();
+    }
 
     public sealed record FileRow(string Id, string Name, string ChTag, string State,
                                  bool Live, bool Loaded, string Detail, bool Sel);
@@ -409,25 +422,65 @@ public sealed class HmiViewModel : ViewModelBase
     public IReadOnlyList<FileRow> FileRows { get; private set; } = Array.Empty<FileRow>();
     public bool FilesEmpty => FileRows.Count == 0;
     private string? _filePick;
+    private List<HmiSeqLibEntry>? _lib;
+
+    private static string LibPath => System.IO.Path.Combine(
+        ExperimentStore.DataDir, "HmiPanel", "library.json");
+
+    private List<HmiSeqLibEntry> Lib
+    {
+        get
+        {
+            if (_lib is not null) return _lib;
+            try
+            {
+                _lib = System.IO.File.Exists(LibPath)
+                    ? Tec.Core.Persistence.TecJson.Read<List<HmiSeqLibEntry>>(
+                        System.IO.File.ReadAllText(LibPath))
+                    : new();
+            }
+            catch { _lib = new(); }   // 坏文件从空库开始，别把页面卡死
+            return _lib;
+        }
+    }
+
+    private void SaveLib()
+    {
+        try
+        {
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(LibPath)!);
+            System.IO.File.WriteAllText(LibPath, Tec.Core.Persistence.TecJson.Write(Lib));
+        }
+        catch { /* 存不上不拦操作，下次改动再试 */ }
+    }
+
+    private static bool SeqEq(IReadOnlyList<HmiZoneViewModel.HmiSeqStep> a,
+                              IReadOnlyList<HmiZoneViewModel.HmiSeqStep> b)
+        => a.Count == b.Count && a.Zip(b).All(p =>
+            p.First.Type == p.Second.Type && p.First.Mode == p.Second.Mode
+            && Math.Abs(p.First.Tgt - p.Second.Tgt) < 1e-9
+            && Math.Abs(p.First.Val - p.Second.Val) < 1e-9
+            && Math.Abs(p.First.Rpm - p.Second.Rpm) < 1e-9);
 
     internal void FilesRefresh()
     {
         var rows = new List<FileRow>();
-        // 「已加载到哪条通道」按泳道名对（应用时泳道名就是配方名）。
-        // 库里可能有几条同名——一条泳道只认领一次，不然满屏都标着已加载
+        // 「装到哪条通道」按内容对：通道草稿和库里这条一步不差才算已加载
+        // （装完改过一步就不再是库里那份，照实摘牌）。一条通道只认领一次。
+        var drafts = Zones.Select(z => (Zone: z, Steps: z.SeqSnapshot())).ToList();
         var claimed = new HashSet<int>();
-        foreach (var r in _ws.Library)
+        foreach (var e in Lib)
         {
-            var on = Zones.FirstOrDefault(z => !claimed.Contains(z.Number)
-                && _ws.LaneNames.TryGetValue(z.Number, out var n) && n == r.Name);
+            var on = drafts.FirstOrDefault(d => !claimed.Contains(d.Zone.Number)
+                                                && SeqEq(d.Steps, e.Steps)).Zone;
             if (on is not null) claimed.Add(on.Number);
             var live = on is { EngineRunning: true };
-            rows.Add(new FileRow(r.Id, r.Name,
+            rows.Add(new FileRow(e.Id, e.Name,
                 on is null ? "—" : $"通道 {on.Index}",
                 live ? "运行中" : on is not null ? "已加载" : "已保存",
                 live, on is not null && !live,
-                $"{r.Steps.Count} 步" + (r.Charge is null ? "" : " · 含配料表"),
-                _filePick == r.Id));
+                $"{e.Steps.Count} 步 · {e.SavedAt:MM-dd HH:mm} 存",
+                _filePick == e.Id));
         }
         FileRows = rows;
         RaiseAll(nameof(FileRows), nameof(FilesEmpty));
@@ -435,36 +488,59 @@ public sealed class HmiViewModel : ViewModelBase
 
     public void FileSelect(string id) { _filePick = id; FilesRefresh(); }
 
-    /// <summary>→ 通道 N：把库里选中的方案应用到该通道（照工作站 DoApplyLib 那套）。</summary>
+    /// <summary>→ 通道 N：把库里选中的序列装进该通道的 6 步草稿（整份替换）。</summary>
     public void FileApply(int zoneIndex)
     {
-        var pick = _ws.Library.FirstOrDefault(r => r.Id == _filePick);
-        if (pick is null) { Toast("先点选一条方案"); return; }
+        var pick = Lib.FirstOrDefault(e => e.Id == _filePick);
+        if (pick is null) { Toast("先点选一条序列"); return; }
         var z = Zones.ElementAtOrDefault(zoneIndex - 1);
         if (z is null) return;
-        if (z.EngineRunning) { Toast($"通道 {z.Index} 正在运行——运行中的通道不可接收方案"); return; }
-        var copy = pick.CopyAs(pick.Name, pick.Author);
-        var adopted = _ws.AdoptCharge(z.Number, copy);
-        _ws.ChannelRecipes[z.Number] = copy;
-        _ws.LaneNames[z.Number] = copy.Name;
-        _ws.Store.MarkDirty();
-        _ws.Log.Write("配方", $"HMI 面板把「{copy.Name}」应用到 CH{z.Number}", _ws.Operator);
-        Toast($"已把「{copy.Name}」应用到通道 {z.Index}（{copy.Steps.Count} 步）"
-              + (adopted is null ? "" : "，" + adopted));
+        if (!z.AdoptSeq(pick.Steps)) return;   // 序列锁定时里面已经照实提示
+        _ws.Log.Write("面板", $"HMI 面板配方库把「{pick.Name}」装到 CH{z.Number}"
+                              + $"（{pick.Steps.Count} 步）", _ws.Operator);
+        Toast($"已把「{pick.Name}」装到通道 {z.Index}（{pick.Steps.Count} 步）");
+        FilesRefresh();
+    }
+
+    /// <summary>
+    /// 存通道 N 序列：把该通道当前草稿整份入库。
+    /// HMI 只有数字键盘没有文本键盘，名字自动编（CHn 序列 k）。
+    /// </summary>
+    public void FileSave(int zoneIndex)
+    {
+        var z = Zones.ElementAtOrDefault(zoneIndex - 1);
+        if (z is null) return;
+        var steps = z.SeqSnapshot();
+        if (steps.Count == 0)
+        { Toast($"通道 {z.Index} 还没编排步骤——先在「任务序列」页编几步"); return; }
+        if (Lib.Any(e => SeqEq(e.Steps, steps)))
+        { Toast("一步不差的序列已经在库里"); return; }
+        var k = 1; string name;
+        do { name = $"CH{z.Number} 序列 {k++}"; } while (Lib.Any(e => e.Name == name));
+        var entry = new HmiSeqLibEntry { Name = name, SavedAt = DateTime.Now, Steps = steps };
+        Lib.Add(entry);
+        SaveLib();
+        _filePick = entry.Id;
+        _ws.Log.Write("面板", $"HMI 面板把 CH{z.Number} 的序列存入面板配方库"
+                              + $"「{name}」（{steps.Count} 步）", _ws.Operator);
+        Toast($"已存入「{name}」（{steps.Count} 步）");
         FilesRefresh();
     }
 
     public void FileDelete()
     {
-        var pick = _ws.Library.FirstOrDefault(r => r.Id == _filePick);
-        if (pick is null) { Toast("先点选一条方案"); return; }
-        _ws.Library.Remove(pick);
-        _ws.Store.SaveLibrary();
-        _ws.Log.Write("配方", $"HMI 面板从配方库删除「{pick.Name}」", _ws.Operator);
-        Toast($"已从配方库删除「{pick.Name}」");
+        var pick = Lib.FirstOrDefault(e => e.Id == _filePick);
+        if (pick is null) { Toast("先点选一条序列"); return; }
+        Lib.Remove(pick);
+        SaveLib();
+        _ws.Log.Write("面板", $"HMI 面板从面板配方库删除「{pick.Name}」", _ws.Operator);
+        Toast($"已删除「{pick.Name}」");
         _filePick = null;
         FilesRefresh();
     }
+
+    /// <summary>任务序列页「从配方库」：跳到面板自己的配方库页。</summary>
+    public void GoLibrary() => Page = "files";
 
     // ── 系统页（原型 pageSys：只摆真有的东西）─────────────────────────
 
@@ -2057,9 +2133,25 @@ public sealed class HmiZoneViewModel : ViewModelBase
         RefreshSeq();
     }
 
-    /// <summary>从文件：面板序列存在设备本机，长流程配方归工作站——照实说。</summary>
-    public void SeqFromFileHint()
-        => _owner.Toast("面板序列存在设备本机（改一步存一步）；长流程配方由工作站编排执行");
+    /// <summary>配方库存取用的草稿快照（深拷贝——库和草稿各自过日子）。</summary>
+    internal List<HmiSeqStep> SeqSnapshot()
+        => _seq.Select(s => new HmiSeqStep
+        { Type = s.Type, Tgt = s.Tgt, Mode = s.Mode, Val = s.Val, Rpm = s.Rpm }).ToList();
+
+    /// <summary>配方库「→ 通道 N」：整份替换 6 步草稿。序列锁定时拒绝并照实提示。</summary>
+    internal bool AdoptSeq(IReadOnlyList<HmiSeqStep> steps)
+    {
+        if (GuardSeqLocked()) return false;
+        _seq.Clear();
+        _seq.AddRange(steps.Take(MaxSeqSteps).Select(s => new HmiSeqStep
+        { Type = s.Type, Tgt = s.Tgt, Mode = s.Mode, Val = s.Val, Rpm = s.Rpm }));
+        _startedRecipeId = null;
+        _startedMap = null;
+        SaveSeq();
+        Log("序列", $"从配方库装入 {_seq.Count} 步");
+        RefreshSeq();
+        return true;
+    }
 
     // ── 面板序列：启动 / 继续 ───────────────────────────────────────
 

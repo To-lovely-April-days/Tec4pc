@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -17,7 +18,27 @@ public partial class HmiWindow : Window
     public HmiWindow()
     {
         InitializeComponent();
+        // 四角与主窗口非最大化时同一副样子：Windows 11 的 DWM 切整扇窗的
+        // 圆角（MainWindow.RoundCornersOnWindows11 同一套——无边框窗 DWM
+        // 默认不切，得明说一句）。Windows 10 没这属性就方角，失败不管。
+        Opened += (_, _) =>
+        {
+            if (!OperatingSystem.IsWindows()) return;
+            try
+            {
+                if (TryGetPlatformHandle()?.Handle is not { } h || h == IntPtr.Zero) return;
+                var round = DwmWindowCornerRound;
+                DwmSetWindowAttribute(h, DwmWindowCornerPreference, ref round, sizeof(int));
+            }
+            catch { /* 老系统没有这个属性，方角就方角 */ }
+        };
     }
+
+    private const int DwmWindowCornerPreference = 33;   // DWMWA_WINDOW_CORNER_PREFERENCE
+    private const int DwmWindowCornerRound = 2;         // DWMWCP_ROUND
+
+    [DllImport("dwmapi.dll", ExactSpelling = true)]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
 
     public static void Open(Workspace ws, string deviceId, string label, IReadOnlyList<int> channels)
     {

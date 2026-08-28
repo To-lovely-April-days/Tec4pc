@@ -146,7 +146,7 @@ public partial class HmiView : UserControl
     // ── 任务序列页 ──────────────────────────────────────────────────
     private void OnStartSeq(object? s, RoutedEventArgs e) => Vm?.Cur?.StartSeq();
     private void OnClearSeq(object? s, RoutedEventArgs e) => Vm?.Cur?.ClearSeq();
-    private void OnSeqFromFile(object? s, RoutedEventArgs e) => Vm?.Cur?.SeqFromFileHint();
+    private void OnSeqLib(object? s, RoutedEventArgs e) => Vm?.GoLibrary();
     private void OnSeqSlot(object? s, PointerPressedEventArgs e)
     {
         if (s is Control { Tag: int i }) Vm?.Cur?.SeqSlotTapped(i);
@@ -179,6 +179,8 @@ public partial class HmiView : UserControl
     { if (s is Control { Tag: string id }) Vm?.FileSelect(id); e.Handled = true; }
     private void OnFileApply(object? s, RoutedEventArgs e)
     { if (s is Control { Tag: string n } && int.TryParse(n, out var i)) Vm?.FileApply(i); }
+    private void OnFileSave(object? s, RoutedEventArgs e)
+    { if (s is Control { Tag: string n } && int.TryParse(n, out var i)) Vm?.FileSave(i); }
     private void OnFileDelete(object? s, RoutedEventArgs e) => Vm?.FileDelete();
 
     private void OnGtCancel(object? s, RoutedEventArgs e) => Vm?.GtCancel();
