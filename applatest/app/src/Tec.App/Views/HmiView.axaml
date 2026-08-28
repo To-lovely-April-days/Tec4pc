@@ -1210,28 +1210,31 @@
     </Border>
   </Border>
 
-  <!-- ══ 序列步骤类型弹窗（原型 tygrid）══ -->
+  <!-- ══ 序列步骤类型弹窗（原型 tygrid：2×3 六格，当前类型描边）══ -->
   <Border Background="#6B1A1A1A" IsVisible="{Binding TyOpen}" PointerPressed="OnMask">
-    <Border Width="400" HorizontalAlignment="Center" VerticalAlignment="Center"
+    <Border Width="640" HorizontalAlignment="Center" VerticalAlignment="Center"
             Background="White" BorderBrush="#6F6F6F" BorderThickness="1" CornerRadius="4"
             PointerPressed="OnDlgBody">
       <StackPanel>
         <Border Background="#2F8189" Padding="16,12">
           <StackPanel>
-            <TextBlock Text="选择步骤类型" FontSize="14.5" FontWeight="Medium" Foreground="White" />
+            <TextBlock Text="{Binding TyTitle}" FontSize="14.5" FontWeight="Medium" Foreground="White" />
             <TextBlock Text="{Binding TySub}" FontSize="11.5" Foreground="#B8DCDF" Margin="0,2,0,0" />
           </StackPanel>
         </Border>
-        <ItemsControl ItemsSource="{Binding TyRows}" Margin="18,15">
+        <ItemsControl ItemsSource="{Binding TyRows}" Margin="14,12">
           <ItemsControl.ItemsPanel>
-            <ItemsPanelTemplate><StackPanel Spacing="9" /></ItemsPanelTemplate>
+            <ItemsPanelTemplate><UniformGrid Columns="3" /></ItemsPanelTemplate>
           </ItemsControl.ItemsPanel>
           <ItemsControl.ItemTemplate>
             <DataTemplate>
-              <Button Classes="hopt" IsEnabled="{Binding Enabled}" Click="OnTyPick">
-                <StackPanel>
-                  <TextBlock Text="{Binding Name}" FontSize="13" />
-                  <TextBlock Text="{Binding Desc}" Classes="hsmall" HorizontalAlignment="Left" />
+              <Button Classes="htyc" Classes.cur="{Binding Cur}" Classes.off="{Binding !Enabled}"
+                      Click="OnTyPick">
+                <StackPanel Spacing="3" HorizontalAlignment="Center" VerticalAlignment="Center">
+                  <TextBlock Text="{Binding Name}" FontSize="15.5" FontWeight="Bold"
+                             HorizontalAlignment="Center" />
+                  <TextBlock Text="{Binding Desc}" FontSize="10.5" Foreground="#6F6F6F"
+                             HorizontalAlignment="Center" />
                 </StackPanel>
               </Button>
             </DataTemplate>
@@ -1700,6 +1703,26 @@
     <Style Selector="Button.hopt:pointerover">
       <Setter Property="BorderBrush" Value="#4FB1B8" /><Setter Property="Background" Value="#E4F4F4" />
     </Style>
+
+    <!-- 类型弹窗的六格（原型 tygrid 的格子）：cur = 这一步现在的类型，
+         off = 这台设备干不了的（压暗、点了照实说原因） -->
+    <Style Selector="Button.htyc">
+      <Setter Property="Height" Value="76" /><Setter Property="Margin" Value="5" />
+      <Setter Property="Background" Value="#FAFAFA" />
+      <Setter Property="BorderBrush" Value="#D5D5D5" /><Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.htyc:pointerover">
+      <Setter Property="BorderBrush" Value="#4FB1B8" /><Setter Property="Background" Value="#EFF8F8" />
+    </Style>
+    <Style Selector="Button.htyc.cur">
+      <Setter Property="BorderBrush" Value="#4FB1B8" /><Setter Property="BorderThickness" Value="1.6" />
+      <Setter Property="Background" Value="#EFF8F8" />
+    </Style>
+    <Style Selector="Button.htyc.off"><Setter Property="Opacity" Value="0.42" /></Style>
 
     <Style Selector="Button.hkp:pointerover /template/ ContentPresenter">
       <Setter Property="Background" Value="#EAEAEA" />

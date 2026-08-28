@@ -153,7 +153,7 @@ public partial class HmiView : UserControl
         e.Handled = true;
     }
     private void OnTyPick(object? s, RoutedEventArgs e)
-    { if (Vm is { } v && s is Control { DataContext: HmiViewModel.TyRow r }) v.TyPick(r.Key); }
+    { if (Vm is { } v && s is Control { DataContext: HmiViewModel.TyRow r }) v.TyPick(r); }
     private void OnTyClose(object? s, RoutedEventArgs e) => Vm?.TyClose();
 
     // ── 反应釜与安全页 + 报警层 ─────────────────────────────────────

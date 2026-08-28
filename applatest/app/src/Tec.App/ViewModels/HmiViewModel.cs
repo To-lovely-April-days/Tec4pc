@@ -259,11 +259,17 @@ public sealed class HmiViewModel : ViewModelBase
 
     public void TColClose() { TColOpen = false; Raise(nameof(TColOpen)); }
 
-    // ── 序列步骤类型弹窗（原型 tygrid）───────────────────────────────
+    // ── 序列步骤类型弹窗（原型 tygrid：2×3 六格）─────────────────────
+    //
+    // 原型的步骤库就这六个：Tr / Tj / TrTj / R / Wait / Dose。格子照摆全，
+    // 干不了的照实说：TrTj 蒸回流本驱动暂不支持（控制页同一句），
+    // Dose 只在这一路真接了泵时可用——点灰格子弹提示，不装死。
 
-    public sealed record TyRow(string Key, string Name, string Desc, bool Enabled);
+    public sealed record TyRow(string Key, string Name, string Desc,
+                               bool Enabled, bool Cur, string Why = "");
 
     public bool TyOpen { get; private set; }
+    public string TyTitle { get; private set; } = "";
     public string TySub { get; private set; } = "";
     public IReadOnlyList<TyRow> TyRows { get; private set; } = Array.Empty<TyRow>();
     private HmiZoneViewModel? _tyZone;
@@ -273,25 +279,30 @@ public sealed class HmiViewModel : ViewModelBase
     {
         _tyZone = z;
         _tyIndex = index;
-        TySub = $"步骤 {index + 1} · 选一种操作";
+        TyTitle = $"步骤 {index + 1}";
+        TySub = "选择操作类型 · 参数在步骤卡片中直接点击修改";
+        var cur = z.SeqTypeAt(index);   // 已有的步骤把当前类型描出来（原型 cur 态）
         var hasPump = z.HasPump;
         TyRows = new[]
         {
-            new TyRow("Tr", "控温 Tr", "釜内温度到目标（按速率 / 按时长）", true),
-            new TyRow("Tj", "控温 Tj", "夹套温度到目标（直接控恒温器）", true),
-            new TyRow("Wait", "保温", "保持当前温度一段时长", true),
-            new TyRow("R", "搅拌", "转速到目标（立即 / 按时长）", true),
-            new TyRow("Dose", "加料", hasPump ? "按速率或一次加入设定体积" : "这一路没接加料泵", hasPump),
+            new TyRow("Tr", "Tr", "釜内温度", true, cur == "Tr"),
+            new TyRow("Tj", "Tj", "夹套温度", true, cur == "Tj"),
+            new TyRow("TrTj", "TrTj", "蒸回流", false, cur == "TrTj",
+                      "蒸回流 Tj−Tr：本驱动暂不支持"),
+            new TyRow("R", "R", "搅拌转速", true, cur == "R"),
+            new TyRow("Wait", "Wait", "等待", true, cur == "Wait"),
+            new TyRow("Dose", "Dose", "加料", hasPump, cur == "Dose", "这一路没接加料泵"),
         };
         TyOpen = true;
-        RaiseAll(nameof(TyOpen), nameof(TySub), nameof(TyRows));
+        RaiseAll(nameof(TyOpen), nameof(TyTitle), nameof(TySub), nameof(TyRows));
     }
 
-    public void TyPick(string key)
+    public void TyPick(TyRow r)
     {
+        if (!r.Enabled) { Toast(r.Why); return; }   // 灰格子：说明为什么，弹窗留着
         TyOpen = false;
         Raise(nameof(TyOpen));
-        _tyZone?.SetSeqStep(_tyIndex, key);
+        _tyZone?.SetSeqStep(_tyIndex, r.Key);
     }
 
     public void TyClose() { TyOpen = false; Raise(nameof(TyOpen)); }
@@ -1842,13 +1853,14 @@ public sealed class HmiZoneViewModel : ViewModelBase
                     break;
             }
 
+            // 原型的叫法：卡片表头「加料」用中文，步骤条用代号 Dose
             var ty = SeqTypeNames.TryGetValue(s.Type, out var tn) ? tn : s.Type;
             cards.Add(new HmiSeqCard
             {
                 No = i + 1, Type = ty, State = st, StateText = text,
                 Rows = rows, T0 = t0, T1 = t1, Frac = frac,
             });
-            btns.Add(new SeqStepBtn(i, $"步骤 {i + 1}", ty,
+            btns.Add(new SeqStepBtn(i, $"步骤 {i + 1}", s.Type,
                 rows.Count > 0 ? rows[0].V : "", false,
                 st == "done", st == "act", st == "err"));
         }
@@ -1861,7 +1873,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
         SeqSub = SeqForeign
             ? "通道正被工作站程序控制——面板序列已锁定，结束后可编辑"
             : _seq.Count == 0
-                ? "最多 6 步 · 可用操作 Tr / Tj / 保温 / 搅拌 / 加料 · 点下方空位添加"
+                ? "最多 6 步 · 可用操作 Tr / Tj / Tr−Tj / R / Wait / 加料 · 点下方空位添加"
                 : $"{_seq.Count}/{MaxSeqSteps} 步 · 预计总时长 {Fmt.Hms(sched.Total)}";
         RaiseSeq();
     }
@@ -2014,10 +2026,15 @@ public sealed class HmiZoneViewModel : ViewModelBase
         _owner.OpenTyPicker(this, index);
     }
 
+    /// <summary>类型弹窗描当前类型用：这一格现在是什么（空位是 null）。</summary>
+    internal string? SeqTypeAt(int index) => index < _seq.Count ? _seq[index].Type : null;
+
     /// <summary>类型定了（类型弹窗回调）。已有的换类型保留该步转速，其余回缺省。</summary>
     internal void SetSeqStep(int index, string type)
     {
         if (GuardSeqLocked()) return;
+        // 点了它本来的类型 = 没改主意，参数原样留着（重置了才叫吓人）
+        if (index < _seq.Count && _seq[index].Type == type) return;
         var prevRpm = index > 0 && index - 1 < _seq.Count ? _seq[index - 1].Rpm
                     : _seq.Count > 0 ? _seq[^1].Rpm : Math.Max(200, Stir?.CurrentRpm ?? 200);
         var keep = index < _seq.Count ? _seq[index].Rpm : prevRpm;
