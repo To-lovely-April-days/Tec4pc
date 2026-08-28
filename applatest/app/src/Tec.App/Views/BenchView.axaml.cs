@@ -72,6 +72,16 @@ public partial class BenchView : UserControl
     private Point OnStage(PointerEventArgs e) => e.GetPosition(World);
 
     /// <summary>
+    /// 「手动控制面板」：给选中的反应器开 HMI 窗（设备自带触摸屏的还原）。
+    /// 通道顺序按号排——A 孔对小号、B 孔对大号，跟属性栏工位表同一个说法。
+    /// </summary>
+    private void OnOpenHmi(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is not { Selected: { } sel } vm || !vm.IsReactor) return;
+        HmiWindow.Open(vm.Ws, sel.Id, sel.Title, sel.Channels.OrderBy(x => x).ToArray());
+    }
+
+    /// <summary>
     /// 设备库的分类头：点一下收起 / 展开这一类。
     /// Handled 掉，不然这一下会顺着冒到画布上去（画布的 PointerPressed 是取消选中）。
     /// </summary>

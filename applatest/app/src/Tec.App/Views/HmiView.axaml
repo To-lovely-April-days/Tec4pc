@@ -1,0 +1,1003 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctl="clr-namespace:Tec.App.Controls"
+             xmlns:v="clr-namespace:Tec.App.Views"
+             x:Class="Tec.App.Views.HmiView"
+             Width="1280" Height="720"
+             FontFamily="{StaticResource UiFont}" FontSize="12" Foreground="#1A1A1A"
+             Background="White">
+
+  <UserControl.Resources>
+    <!-- 总览页的通道卡（原型 zoneCard）：头卡 + 装置图 + 深色读数板 -->
+    <DataTemplate x:Key="HmiZoneCard">
+      <DockPanel PointerPressed="OnZoneCard" Background="Transparent">
+        <Border DockPanel.Dock="Top" Classes="hcard" Height="62" Padding="13,9,13,0">
+          <Grid RowDefinitions="21,16,*">
+            <DockPanel Grid.Row="0">
+              <Ellipse Width="7" Height="7" VerticalAlignment="Center"
+                       Fill="{Binding EngineRunning, Converter={x:Static v:HmiView.DotFill}}" />
+              <TextBlock Text="{Binding Index, StringFormat=通道 {0}}" FontSize="10.5"
+                         Foreground="#6F6F6F" Margin="9,0,9,0" VerticalAlignment="Center" />
+              <TextBlock DockPanel.Dock="Right" Text="{Binding HeadRt}" FontSize="13.5"
+                         FontWeight="Medium" VerticalAlignment="Center" />
+              <TextBlock Text="{Binding HeadName}" FontSize="15" FontWeight="Bold"
+                         VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+            </DockPanel>
+            <DockPanel Grid.Row="1">
+              <TextBlock DockPanel.Dock="Right" Text="{Binding HeadNote}" FontSize="11"
+                         Foreground="#6F6F6F" />
+              <TextBlock Text="{Binding HeadRow2}" FontSize="11" Foreground="#6F6F6F" />
+            </DockPanel>
+            <ProgressBar Grid.Row="2" Classes="hpg" Value="{Binding HeadPct}"
+                         VerticalAlignment="Bottom" Margin="-13,0,-13,0" />
+          </Grid>
+        </Border>
+        <Border DockPanel.Dock="Bottom" Height="156" Margin="0,10,0,0" CornerRadius="3"
+                Padding="14,12" ClipToBounds="True">
+          <Border.Background>
+            <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+              <GradientStop Offset="0" Color="#4C4C4C" /><GradientStop Offset="1" Color="#4A4A4A" />
+            </LinearGradientBrush>
+          </Border.Background>
+          <Grid ColumnDefinitions="*,15,*" RowDefinitions="38,10,38,10,38">
+            <Grid Grid.Row="0" Grid.Column="0" ColumnDefinitions="22,9,*">
+              <ctl:TecIcon Key="hmi-r-therm" Size="20" Tint="White" VerticalAlignment="Center" />
+              <Border Grid.Column="2" Classes="hvbx" Classes.hi="{Binding TjHi}">
+                <DockPanel VerticalAlignment="Center">
+                  <TextBlock Classes="hvbxt" Text="Tj" />
+                  <TextBlock DockPanel.Dock="Right" Classes="hvbxn" Text="{Binding TjNote}" />
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBlock Classes="hvbxv" Text="{Binding TjBox}" />
+                    <TextBlock Classes="hvbxu" Text="℃" />
+                  </StackPanel>
+                </DockPanel>
+              </Border>
+            </Grid>
+            <Grid Grid.Row="0" Grid.Column="2" ColumnDefinitions="22,9,*">
+              <ctl:TecIcon Key="hmi-r-delta" Size="20" Tint="White" VerticalAlignment="Center" />
+              <Border Grid.Column="2" Classes="hvbx">
+                <DockPanel VerticalAlignment="Center">
+                  <TextBlock Classes="hvbxt" Text="Tr−Tj" />
+                  <TextBlock DockPanel.Dock="Right" Classes="hvbxn" Text="{Binding DtNote}" />
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBlock Classes="hvbxv" Text="{Binding DtBox}" />
+                    <TextBlock Classes="hvbxu" Text="K" />
+                  </StackPanel>
+                </DockPanel>
+              </Border>
+            </Grid>
+            <Grid Grid.Row="2" Grid.Column="0" ColumnDefinitions="22,9,*">
+              <ctl:TecIcon Key="hmi-r-stir" Size="20" Tint="White" VerticalAlignment="Center" />
+              <Border Grid.Column="2" Classes="hvbx" Classes.off="{Binding RpmOff}">
+                <DockPanel VerticalAlignment="Center">
+                  <TextBlock Classes="hvbxt" Text="搅拌" />
+                  <TextBlock DockPanel.Dock="Right" Classes="hvbxn" Text="{Binding RpmNote}" />
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBlock Classes="hvbxv" Text="{Binding RpmBox}" />
+                    <TextBlock Classes="hvbxu" Text="rpm" />
+                  </StackPanel>
+                </DockPanel>
+              </Border>
+            </Grid>
+            <Grid Grid.Row="2" Grid.Column="2" ColumnDefinitions="22,9,*">
+              <ctl:TecIcon Key="hmi-r-drop" Size="20" Tint="White" VerticalAlignment="Center" />
+              <Border Grid.Column="2" Classes="hvbx" Classes.off="{Binding DoseOff}">
+                <DockPanel VerticalAlignment="Center">
+                  <TextBlock Classes="hvbxt" Text="加料" />
+                  <TextBlock DockPanel.Dock="Right" Classes="hvbxn" Text="{Binding DoseNote}" />
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBlock Classes="hvbxv" Text="{Binding DoseBox}" />
+                    <TextBlock Classes="hvbxu" Text="mL/min" />
+                  </StackPanel>
+                </DockPanel>
+              </Border>
+            </Grid>
+            <Grid Grid.Row="4" Grid.Column="0" ColumnDefinitions="22,9,*">
+              <ctl:TecIcon Key="hmi-r-cool" Size="20" Tint="White" VerticalAlignment="Center" />
+              <Border Grid.Column="2" Classes="hvbx">
+                <DockPanel VerticalAlignment="Center">
+                  <TextBlock Classes="hvbxt" Text="Tc" />
+                  <TextBlock DockPanel.Dock="Right" Classes="hvbxn" Text="{Binding TcNote}" />
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBlock Classes="hvbxv" Text="{Binding TcBox}" />
+                    <TextBlock Classes="hvbxu" Text="℃" />
+                  </StackPanel>
+                </DockPanel>
+              </Border>
+            </Grid>
+            <Grid Grid.Row="4" Grid.Column="2" ColumnDefinitions="22,9,*">
+              <ctl:TecIcon Key="hmi-r-rate" Size="20" Tint="White" VerticalAlignment="Center" />
+              <Border Grid.Column="2" Classes="hvbx" Classes.off="{Binding RateOff}">
+                <DockPanel VerticalAlignment="Center">
+                  <TextBlock Classes="hvbxt" Text="变温" />
+                  <TextBlock DockPanel.Dock="Right" Classes="hvbxn" Text="{Binding RateNote}" />
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBlock Classes="hvbxv" Text="{Binding RateBox}" />
+                    <TextBlock Classes="hvbxu" Text="℃/min" />
+                  </StackPanel>
+                </DockPanel>
+              </Border>
+            </Grid>
+          </Grid>
+        </Border>
+        <ctl:HmiVesselView Margin="0,10,0,0"
+            Running="{Binding VesselRunning}" Rpm="{Binding RpmVal}"
+            PaddlePhase="{Binding PaddlePhase}"
+            ShowTr="{Binding TrOn}" ShowPh="{Binding PhOn}"
+            TrText="{Binding TrText}" TrSetText="{Binding TrSetText}"
+            PhText="{Binding PhText}" />
+      </DockPanel>
+    </DataTemplate>
+  </UserControl.Resources>
+
+  <!-- HTLAB_HMI v54 的 1280×720 屏幕（pad0）。左 80 侧栏 + 右屏幕区，
+       尺寸与字号逐条照原型 CSS，别看着不顺手就"顺手改好"——1:1 是唯一要求 -->
+  <Panel>
+  <Grid ColumnDefinitions="80,*">
+
+    <!-- ══ 侧栏（rail）══ -->
+    <Border Grid.Column="0" Background="#F1F1F1" BorderBrush="#CCCCCC" BorderThickness="0,0,1,0">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Bottom" Margin="0,0,0,8">
+          <Button Classes="hrb" Classes.on="{Binding IsSys}" Click="OnNavSys">
+            <Panel><ctl:TecIcon Key="hmi-gear" Size="25" Tint="#4C4C4C" /></Panel>
+          </Button>
+          <Border Height="40" Margin="0,6,1,0"
+                  Background="{Binding AnyRun, Converter={x:Static v:HmiView.RailStateBg}}"
+                  CornerRadius="3">
+            <TextBlock Text="{Binding RailState}" FontSize="11" FontWeight="Bold"
+                       LetterSpacing="1.4"
+                       Foreground="{Binding AnyRun, Converter={x:Static v:HmiView.RailStateFg}}"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+        </StackPanel>
+        <StackPanel Margin="0,8,0,0">
+          <Button Classes="hrb" Classes.on="{Binding IsOv}" Click="OnNavOv">
+            <Panel><ctl:TecIcon Key="hmi-grid" Size="25" Tint="#4C4C4C" /></Panel>
+          </Button>
+          <Border Classes="hsep" />
+          <!-- 角标数字与运行点要贴着**整个按钮**的角摆（原型 .n / .dot 是
+               absolute 定位）——Panel 得撑满按钮，不然只包住 25px 的图标 -->
+          <Button Classes="hrb" Classes.on="{Binding OnZ0}" Click="OnNavZ0">
+            <Panel Width="79" Height="72">
+              <ctl:TecIcon Key="{Binding Zones[0].RailIcon}" Size="25" Tint="#4C4C4C"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+              <TextBlock Classes="hrn" Text="1" />
+              <Ellipse Classes="hrun" IsVisible="{Binding Zones[0].RailRun}" />
+            </Panel>
+          </Button>
+          <Button Classes="hrb" Classes.on="{Binding OnZ1}" Click="OnNavZ1">
+            <Panel Width="79" Height="72">
+              <ctl:TecIcon Key="{Binding Zones[1].RailIcon}" Size="25" Tint="#4C4C4C"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+              <TextBlock Classes="hrn" Text="2" />
+              <Ellipse Classes="hrun" IsVisible="{Binding Zones[1].RailRun}" />
+            </Panel>
+          </Button>
+          <Border Classes="hsep" />
+          <Button Classes="hrb" Classes.on="{Binding IsFiles}" Click="OnNavFiles">
+            <Panel><ctl:TecIcon Key="hmi-folder" Size="25" Tint="#4C4C4C" /></Panel>
+          </Button>
+        </StackPanel>
+      </DockPanel>
+    </Border>
+
+    <!-- ══ 屏幕区 ══ -->
+    <Grid Grid.Column="1" Margin="10,8,10,6" RowDefinitions="46,*">
+
+      <!-- 顶栏：总览三页签 -->
+      <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="4" Margin="6,0,0,0"
+                  VerticalAlignment="Bottom" IsVisible="{Binding IsOv}">
+        <Button Classes="htab" Classes.on="{Binding OvApp}" Click="OnTabOvApp">
+          <Panel>
+          <Rectangle Classes="htop" />
+          <StackPanel Orientation="Horizontal" Spacing="9">
+            <Border Classes="htic"><ctl:TecIcon Key="hmi-reactor" Size="16" Tint="#4A4A4A" /></Border>
+            <TextBlock Text="装置总览" VerticalAlignment="Center" />
+          </StackPanel>
+          </Panel>
+        </Button>
+        <Button Classes="htab" Classes.on="{Binding OvSeq}" Click="OnTabOvSeq">
+          <Panel>
+          <Rectangle Classes="htop" />
+          <StackPanel Orientation="Horizontal" Spacing="9">
+            <Border Classes="htic"><ctl:TecIcon Key="hmi-profile" Size="16" Tint="#4A4A4A" /></Border>
+            <TextBlock Text="方案总览" VerticalAlignment="Center" />
+          </StackPanel>
+          </Panel>
+        </Button>
+        <Button Classes="htab" Classes.on="{Binding OvGra}" Click="OnTabOvGra">
+          <Panel>
+          <Rectangle Classes="htop" />
+          <StackPanel Orientation="Horizontal" Spacing="9">
+            <Border Classes="htic"><ctl:TecIcon Key="hmi-chart" Size="16" Tint="#4A4A4A" /></Border>
+            <TextBlock Text="曲线总览" VerticalAlignment="Center" />
+          </StackPanel>
+          </Panel>
+        </Button>
+      </StackPanel>
+
+      <!-- 顶栏：通道五页签 -->
+      <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="4" Margin="6,0,0,0"
+                  VerticalAlignment="Bottom" IsVisible="{Binding IsZone}">
+        <Button Classes="htab" Classes.on="{Binding ZCtl}" Click="OnTabZCtl">
+          <Panel>
+          <Rectangle Classes="htop" />
+          <StackPanel Orientation="Horizontal" Spacing="9">
+            <Border Classes="htic"><ctl:TecIcon Key="hmi-slider" Size="16" Tint="#4A4A4A" /></Border>
+            <TextBlock Text="控制" VerticalAlignment="Center" />
+          </StackPanel>
+          </Panel>
+        </Button>
+        <Button Classes="htab" Click="OnTabZStub" Tag="gra">
+          <Panel>
+          <Rectangle Classes="htop" />
+          <StackPanel Orientation="Horizontal" Spacing="9">
+            <Border Classes="htic"><ctl:TecIcon Key="hmi-chart" Size="16" Tint="#4A4A4A" /></Border>
+            <TextBlock Text="趋势曲线" VerticalAlignment="Center" />
+          </StackPanel>
+          </Panel>
+        </Button>
+        <Button Classes="htab" Click="OnTabZStub" Tag="seq">
+          <Panel>
+          <Rectangle Classes="htop" />
+          <StackPanel Orientation="Horizontal" Spacing="9">
+            <Border Classes="htic"><ctl:TecIcon Key="hmi-profile" Size="16" Tint="#4A4A4A" /></Border>
+            <TextBlock Text="任务序列" VerticalAlignment="Center" />
+          </StackPanel>
+          </Panel>
+        </Button>
+        <Button Classes="htab" Click="OnTabZStub" Tag="saf">
+          <Panel>
+          <Rectangle Classes="htop" />
+          <StackPanel Orientation="Horizontal" Spacing="9">
+            <Border Classes="htic"><ctl:TecIcon Key="hmi-shield" Size="16" Tint="#4A4A4A" /></Border>
+            <TextBlock Text="反应釜与安全" VerticalAlignment="Center" />
+          </StackPanel>
+          </Panel>
+        </Button>
+        <Button Classes="htab" Click="OnTabZStub" Tag="exp">
+          <Panel>
+          <Rectangle Classes="htop" />
+          <StackPanel Orientation="Horizontal" Spacing="9">
+            <Border Classes="htic"><ctl:TecIcon Key="hmi-export" Size="16" Tint="#4A4A4A" /></Border>
+            <TextBlock Text="数据导出" VerticalAlignment="Center" />
+          </StackPanel>
+          </Panel>
+        </Button>
+      </StackPanel>
+
+      <!-- 顶栏右侧：状态字 + 厂名（所有页共用）-->
+      <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="14"
+                  HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,6,0,0">
+        <TextBlock FontSize="11.5" Foreground="#6F6F6F" VerticalAlignment="Center"
+                   Text="{Binding OvRt}" IsVisible="{Binding IsOv}" />
+        <TextBlock FontSize="11.5" Foreground="#6F6F6F" VerticalAlignment="Center"
+                   Text="{Binding ZRt}" IsVisible="{Binding IsZone}" />
+        <Border Width="1" Height="16" Background="#DCDCDC" />
+        <TextBlock FontSize="11" Foreground="#6F6F6F" VerticalAlignment="Center"
+                   Text="上海霍桐实验仪器" />
+      </StackPanel>
+
+      <!-- ══ stage ══ -->
+      <Border Grid.Row="1" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="3" Padding="12">
+        <Panel>
+
+          <!-- 装置总览 -->
+          <Grid ColumnDefinitions="*,34,*" IsVisible="{Binding ShowOvApp}">
+            <ContentControl Grid.Column="0" Content="{Binding Zones[0]}"
+                            ContentTemplate="{StaticResource HmiZoneCard}" />
+            <ContentControl Grid.Column="2" Content="{Binding Zones[1]}"
+                            ContentTemplate="{StaticResource HmiZoneCard}" />
+          </Grid>
+
+          <!-- 通道 · 控制 -->
+          <DockPanel IsVisible="{Binding ShowZCtl}">
+            <!-- 头卡 -->
+            <Border DockPanel.Dock="Top" Classes="hcard" Height="72" Padding="13,9,10,0">
+              <Grid RowDefinitions="28,16,*">
+                <DockPanel Grid.Row="0">
+                  <Ellipse Width="7" Height="7" VerticalAlignment="Center"
+                           Fill="{Binding Cur.EngineRunning, Converter={x:Static v:HmiView.DotFill}}" />
+                  <TextBlock Text="{Binding Cur.Index, StringFormat=通道 {0}}" FontSize="10.5"
+                             Foreground="#6F6F6F" Margin="9,0,9,0" VerticalAlignment="Center" />
+                  <Button Classes="hbtn danger" DockPanel.Dock="Right" Content="■ 结束序列"
+                          IsVisible="{Binding Cur.EngineRunning}" Click="OnStopSeq" />
+                  <TextBlock DockPanel.Dock="Right" Text="{Binding Cur.HeadRt}" FontSize="13.5"
+                             FontWeight="Medium" Foreground="#1A1A1A" VerticalAlignment="Center"
+                             Margin="0,0,10,0" />
+                  <TextBlock Text="{Binding Cur.HeadName}" FontSize="16" FontWeight="Bold"
+                             VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                </DockPanel>
+                <DockPanel Grid.Row="1">
+                  <TextBlock DockPanel.Dock="Right" Text="{Binding Cur.HeadNote}" FontSize="11"
+                             Foreground="#6F6F6F" />
+                  <TextBlock Text="{Binding Cur.HeadRow2}" FontSize="11" Foreground="#6F6F6F" />
+                </DockPanel>
+                <ProgressBar Grid.Row="2" Classes="hpg" Value="{Binding Cur.HeadPct}"
+                             VerticalAlignment="Bottom" Margin="-13,0,-10,0" />
+              </Grid>
+            </Border>
+
+            <!-- 底部安全条 -->
+            <Border DockPanel.Dock="Bottom" Classes="hfoot" Margin="0,10,0,0">
+              <DockPanel VerticalAlignment="Center" Margin="12,0">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
+                  <Button Classes="hbt" Content="放弃修改" IsEnabled="{Binding Cur.HasCommit}"
+                          Click="OnDiscard" />
+                  <Button Classes="hbt pri" Content="{Binding Cur.CommitText}"
+                          IsEnabled="{Binding Cur.HasCommit}" Click="OnCommit" />
+                </StackPanel>
+                <ItemsControl ItemsSource="{Binding Cur.LimChipList}" VerticalAlignment="Center">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Border BorderBrush="#DEDEDE" BorderThickness="1" CornerRadius="3"
+                              Background="White" Padding="9,4" Margin="0,0,6,0">
+                        <TextBlock Text="{Binding}" FontSize="10.5" Foreground="#6F6F6F" />
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </DockPanel>
+            </Border>
+
+            <!-- 主区：装置图抽屉 + 控制列 -->
+            <Grid ColumnDefinitions="Auto,12,*" Margin="0,10,0,0">
+              <StackPanel Grid.Column="0" Orientation="Horizontal">
+                <Border Classes="hptab" PointerPressed="OnToggleArt">
+                  <StackPanel Spacing="10" Margin="0,8,0,0" HorizontalAlignment="Center">
+                    <Border Width="19" Height="19" CornerRadius="10" BorderBrush="#6F6F6F"
+                            BorderThickness="1.5">
+                      <TextBlock Text="{Binding ArtChevron}" FontSize="9" Foreground="#4C4C4C"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <StackPanel Spacing="2">
+                      <TextBlock Text="装" FontSize="12" Foreground="#4C4C4C" HorizontalAlignment="Center" />
+                      <TextBlock Text="置" FontSize="12" Foreground="#4C4C4C" HorizontalAlignment="Center" />
+                      <TextBlock Text="图" FontSize="12" Foreground="#4C4C4C" HorizontalAlignment="Center" />
+                    </StackPanel>
+                  </StackPanel>
+                </Border>
+                <Border Classes="hartbox" Width="376" IsVisible="{Binding ArtOpen}">
+                  <ctl:HmiVesselView Margin="6"
+                      Running="{Binding Cur.VesselRunning}" Rpm="{Binding Cur.RpmVal}"
+                      PaddlePhase="{Binding Cur.PaddlePhase}"
+                      ShowTr="{Binding Cur.TrOn}" ShowPh="{Binding Cur.PhOn}"
+                      TrText="{Binding Cur.TrText}" TrSetText="{Binding Cur.TrSetText}"
+                      PhText="{Binding Cur.PhText}" />
+                </Border>
+              </StackPanel>
+
+              <StackPanel Grid.Column="2" Spacing="9">
+                <!-- 模式三连 -->
+                <Border BorderBrush="#B4B4B4" BorderThickness="1" CornerRadius="3" Height="46"
+                        ClipToBounds="True">
+                  <Grid ColumnDefinitions="*,*,*">
+                    <Button Grid.Column="0" Classes="hmode" Classes.on="{Binding Cur.ModeTr}"
+                            Click="OnModeTr" BorderThickness="0,0,1,0">
+                      <StackPanel>
+                        <TextBlock Text="釜内温度 Tr" HorizontalAlignment="Center" />
+                        <TextBlock Text="反应热由夹套补偿" Classes="hsmall" />
+                      </StackPanel>
+                    </Button>
+                    <Button Grid.Column="1" Classes="hmode" Classes.on="{Binding Cur.ModeTj}"
+                            Click="OnModeTj" BorderThickness="0,0,1,0">
+                      <StackPanel>
+                        <TextBlock Text="夹套温度 Tj" HorizontalAlignment="Center" />
+                        <TextBlock Text="直接控恒温器" Classes="hsmall" />
+                      </StackPanel>
+                    </Button>
+                    <Button Grid.Column="2" Classes="hmode" Opacity="0.38" Click="OnModeTrTj"
+                            BorderThickness="0">
+                      <StackPanel>
+                        <TextBlock Text="蒸回流 Tj−Tr" HorizontalAlignment="Center" />
+                        <TextBlock Text="沸点未知时使用" Classes="hsmall" />
+                      </StackPanel>
+                    </Button>
+                  </Grid>
+                </Border>
+
+                <!-- 温度控制卡 -->
+                <Border Classes="hcd">
+                  <StackPanel Spacing="8">
+                    <DockPanel>
+                      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
+                        <Border Classes="hsw" Classes.on="{Binding Cur.TrOn}" PointerPressed="OnTogTr">
+                          <StackPanel Orientation="Horizontal" Spacing="7">
+                            <TextBlock Text="Tr 传感器" VerticalAlignment="Center" />
+                            <Border Classes="hswt"><Ellipse Classes="hswk" /></Border>
+                          </StackPanel>
+                        </Border>
+                        <Border Classes="hsw" Classes.on="{Binding Cur.PhOn}" PointerPressed="OnTogPh">
+                          <StackPanel Orientation="Horizontal" Spacing="7">
+                            <TextBlock Text="pH 电极" VerticalAlignment="Center" />
+                            <Border Classes="hswt"><Ellipse Classes="hswk" /></Border>
+                          </StackPanel>
+                        </Border>
+                        <Border Classes="hsw" Classes.on="{Binding Cur.TempOn}" PointerPressed="OnTogTemp">
+                          <StackPanel Orientation="Horizontal" Spacing="7">
+                            <TextBlock Text="温控" VerticalAlignment="Center" />
+                            <Border Classes="hswt"><Ellipse Classes="hswk" /></Border>
+                          </StackPanel>
+                        </Border>
+                      </StackPanel>
+                      <StackPanel Orientation="Horizontal" Spacing="9">
+                        <TextBlock Text="温度控制" FontSize="13" FontWeight="Bold" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding Cur.ModeName}" FontSize="10.5" Foreground="#6F6F6F"
+                                   VerticalAlignment="Center" />
+                      </StackPanel>
+                    </DockPanel>
+                    <DockPanel>
+                      <StackPanel DockPanel.Dock="Right" VerticalAlignment="Bottom">
+                        <TextBlock Classes="hnow" Text="{Binding Cur.NowLine1}" />
+                        <TextBlock Classes="hnow" Text="{Binding Cur.NowLine2}" />
+                      </StackPanel>
+                      <StackPanel Orientation="Horizontal" Spacing="11" VerticalAlignment="Bottom">
+                        <StackPanel>
+                          <TextBlock Classes="hlbl" Text="{Binding Cur.TargetLabel}" />
+                          <Border Classes="hvb" Classes.edit="{Binding Cur.TrPend}"
+                                  PointerPressed="OnVbTarget">
+                            <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                              <TextBlock Classes="hvbv" Text="{Binding Cur.VbTr}" />
+                              <TextBlock Classes="hvbu" Text="℃" />
+                            </StackPanel>
+                          </Border>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="11" Height="44"
+                                    VerticalAlignment="Bottom">
+                          <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center"
+                                      PointerPressed="OnRadRate">
+                            <Ellipse Classes="hrad" Classes.on="{Binding Cur.ByRate}" />
+                            <TextBlock Text="按速率" FontSize="11.5" Foreground="#6F6F6F"
+                                       VerticalAlignment="Center" />
+                          </StackPanel>
+                          <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center"
+                                      PointerPressed="OnRadDur">
+                            <Ellipse Classes="hrad" Classes.on="{Binding Cur.ByDur}" />
+                            <TextBlock Text="按时长" FontSize="11.5" Foreground="#6F6F6F"
+                                       VerticalAlignment="Center" />
+                          </StackPanel>
+                        </StackPanel>
+                        <StackPanel IsVisible="{Binding Cur.ByRate}">
+                          <TextBlock Classes="hlbl" Text="速率" />
+                          <Border Classes="hvb sm" Classes.edit="{Binding Cur.RatePend}"
+                                  PointerPressed="OnVbRate">
+                            <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                              <TextBlock Classes="hvbv sm" Text="{Binding Cur.VbRate}" />
+                              <TextBlock Classes="hvbu" Text="℃/min" />
+                            </StackPanel>
+                          </Border>
+                        </StackPanel>
+                        <StackPanel IsVisible="{Binding Cur.ByDur}">
+                          <TextBlock Classes="hlbl" Text="时长" />
+                          <Border Classes="hvb sm" Classes.edit="{Binding Cur.DurPend}"
+                                  PointerPressed="OnVbDur">
+                            <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                              <TextBlock Classes="hvbv sm" Text="{Binding Cur.VbDur}" />
+                            </StackPanel>
+                          </Border>
+                        </StackPanel>
+                      </StackPanel>
+                    </DockPanel>
+                  </StackPanel>
+                </Border>
+
+                <!-- 搅拌卡 -->
+                <Border Classes="hcd">
+                  <StackPanel Spacing="8">
+                    <DockPanel>
+                      <Border DockPanel.Dock="Right" Classes="hsw" Classes.on="{Binding Cur.StirOn}"
+                              PointerPressed="OnTogStir">
+                        <StackPanel Orientation="Horizontal" Spacing="7">
+                          <TextBlock Text="搅拌" VerticalAlignment="Center" />
+                          <Border Classes="hswt"><Ellipse Classes="hswk" /></Border>
+                        </StackPanel>
+                      </Border>
+                      <StackPanel Orientation="Horizontal" Spacing="9">
+                        <TextBlock Text="搅拌" FontSize="13" FontWeight="Bold" VerticalAlignment="Center" />
+                        <TextBlock Text="磁耦合顶置 · 桨式 · 50–1000 rpm · 扭矩上限 59 mN·m"
+                                   FontSize="10.5" Foreground="#6F6F6F" VerticalAlignment="Center" />
+                      </StackPanel>
+                    </DockPanel>
+                    <DockPanel>
+                      <TextBlock DockPanel.Dock="Right" Classes="hnow" VerticalAlignment="Bottom"
+                                 Text="{Binding Cur.StirNow}" />
+                      <StackPanel Orientation="Horizontal" Spacing="11">
+                        <StackPanel>
+                          <TextBlock Classes="hlbl" Text="转速" />
+                          <Border Classes="hvb sm" Classes.edit="{Binding Cur.RpmPend}"
+                                  PointerPressed="OnVbRpm">
+                            <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                              <TextBlock Classes="hvbv sm" Text="{Binding Cur.VbRpm}" />
+                              <TextBlock Classes="hvbu" Text="rpm" />
+                            </StackPanel>
+                          </Border>
+                        </StackPanel>
+                        <StackPanel>
+                          <TextBlock Classes="hlbl" Text="斜坡终值" />
+                          <Border Classes="hvb sm" Classes.edit="{Binding Cur.REndPend}"
+                                  PointerPressed="OnVbREnd">
+                            <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                              <TextBlock Classes="hvbv sm" Text="{Binding Cur.VbREnd}" />
+                              <TextBlock Classes="hvbu" Text="rpm" />
+                            </StackPanel>
+                          </Border>
+                        </StackPanel>
+                        <StackPanel>
+                          <TextBlock Classes="hlbl" Text="斜坡时长" />
+                          <Border Classes="hvb sm" Classes.edit="{Binding Cur.RDurPend}"
+                                  PointerPressed="OnVbRDur">
+                            <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                              <TextBlock Classes="hvbv sm" Text="{Binding Cur.VbRDur}" />
+                              <TextBlock Classes="hvbu" Text="min" />
+                            </StackPanel>
+                          </Border>
+                        </StackPanel>
+                      </StackPanel>
+                    </DockPanel>
+                  </StackPanel>
+                </Border>
+
+                <!-- 手动操作卡 -->
+                <Border Classes="hcd">
+                  <StackPanel Spacing="8">
+                    <StackPanel Orientation="Horizontal" Spacing="9">
+                      <TextBlock Text="手动操作" FontSize="13" FontWeight="Bold" />
+                      <TextBlock Text="记入实验记录并在曲线上标注" FontSize="10.5" Foreground="#6F6F6F"
+                                 VerticalAlignment="Center" />
+                    </StackPanel>
+                    <Grid ColumnDefinitions="*,7,*,7,*,7,*">
+                      <Button Grid.Column="0" Classes="hab" Click="OnActDose">
+                        <StackPanel>
+                          <TextBlock Text="加料 Dose / Charge" HorizontalAlignment="Center" />
+                          <TextBlock Text="物质 · 批号 · 量 · 速率" Classes="hsmall" />
+                        </StackPanel>
+                      </Button>
+                      <Button Grid.Column="2" Classes="hab" Click="OnActSample">
+                        <StackPanel>
+                          <TextBlock Text="取样 Sample" HorizontalAlignment="Center" />
+                          <TextBlock Text="命名 + 时间戳" Classes="hsmall" />
+                        </StackPanel>
+                      </Button>
+                      <Button Grid.Column="4" Classes="hab mark" Click="OnActMarker">
+                        <StackPanel>
+                          <TextBlock Text="时间标记" HorizontalAlignment="Center" />
+                          <TextBlock Text="记录关键时刻" Classes="hsmall" />
+                        </StackPanel>
+                      </Button>
+                      <Button Grid.Column="6" Classes="hab" Click="OnActNote">
+                        <StackPanel>
+                          <TextBlock Text="备注 Notes" HorizontalAlignment="Center" />
+                          <TextBlock Text="进实验记录" Classes="hsmall" />
+                        </StackPanel>
+                      </Button>
+                    </Grid>
+                    <TextBlock Text="{Binding Cur.LastLog}" FontSize="10.5" Foreground="#6F6F6F"
+                               TextTrimming="CharacterEllipsis" />
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+            </Grid>
+          </DockPanel>
+
+          <!-- 还没接入的页 -->
+          <TextBlock Text="{Binding StubText}" FontSize="13" Foreground="#6F6F6F"
+                     HorizontalAlignment="Center" VerticalAlignment="Center"
+                     IsVisible="{Binding ShowStub}" />
+        </Panel>
+      </Border>
+    </Grid>
+  </Grid>
+
+  <!-- ══ 数字键盘弹窗 ══ -->
+  <Border Background="#6B1A1A1A" IsVisible="{Binding KpOpen}" PointerPressed="OnMask">
+    <Border Width="330" HorizontalAlignment="Center" VerticalAlignment="Center"
+            Background="White" BorderBrush="#6F6F6F" BorderThickness="1" CornerRadius="4"
+            PointerPressed="OnDlgBody">
+      <StackPanel>
+        <Border Background="#2F8189" Padding="16,12">
+          <TextBlock Text="{Binding KpTitle}" FontSize="14.5" FontWeight="Medium" Foreground="White" />
+        </Border>
+        <StackPanel Margin="18,15">
+          <Border Height="54" BorderBrush="#4FB1B8" BorderThickness="2" CornerRadius="3"
+                  Background="#E4F4F4" Padding="14,0">
+            <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right"
+                        VerticalAlignment="Center">
+              <TextBlock Text="{Binding KpBuf}" FontSize="26" FontWeight="Medium" Foreground="#215F65" />
+              <TextBlock Text="{Binding KpUnit}" FontSize="13" Foreground="#8E8E8E"
+                         VerticalAlignment="Center" />
+            </StackPanel>
+          </Border>
+          <TextBlock Text="{Binding KpRange}" FontSize="11" Foreground="#6F6F6F" Margin="0,9,0,11" />
+          <UniformGrid Columns="3" Rows="4">
+            <Button Classes="hkp" Content="1" Click="OnKp" /><Button Classes="hkp" Content="2" Click="OnKp" />
+            <Button Classes="hkp" Content="3" Click="OnKp" /><Button Classes="hkp" Content="4" Click="OnKp" />
+            <Button Classes="hkp" Content="5" Click="OnKp" /><Button Classes="hkp" Content="6" Click="OnKp" />
+            <Button Classes="hkp" Content="7" Click="OnKp" /><Button Classes="hkp" Content="8" Click="OnKp" />
+            <Button Classes="hkp" Content="9" Click="OnKp" /><Button Classes="hkp" Content="±" Click="OnKp" />
+            <Button Classes="hkp" Content="0" Click="OnKp" /><Button Classes="hkp" Content="." Click="OnKp" />
+          </UniformGrid>
+        </StackPanel>
+        <Border BorderBrush="#DCDCDC" BorderThickness="0,1,0,0" Padding="18,11,18,15">
+          <StackPanel Orientation="Horizontal" Spacing="9" HorizontalAlignment="Right">
+            <Button Classes="hbt" Content="⌫" Click="OnKpBack" />
+            <Button Classes="hbt" Content="取消" Click="OnKpCancel" />
+            <Button Classes="hbt pri" Content="Apply" Click="OnKpOk" MinWidth="86" />
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </Border>
+  </Border>
+
+  <!-- ══ 手动操作弹窗（加料 / 取样 / 标记 / 备注 共用）══ -->
+  <Border Background="#6B1A1A1A" IsVisible="{Binding ActOpen}" PointerPressed="OnMask">
+    <Border Width="430" HorizontalAlignment="Center" VerticalAlignment="Center"
+            Background="White" BorderBrush="#6F6F6F" BorderThickness="1" CornerRadius="4"
+            PointerPressed="OnDlgBody">
+      <StackPanel>
+        <Border Background="#2F8189" Padding="16,12">
+          <StackPanel>
+            <TextBlock Text="{Binding ActTitle}" FontSize="14.5" FontWeight="Medium" Foreground="White" />
+            <TextBlock Text="将记入实验记录" FontSize="11.5" Foreground="#B8DCDF" Margin="0,2,0,0" />
+          </StackPanel>
+        </Border>
+        <StackPanel Margin="18,15" Spacing="9">
+          <DockPanel>
+            <TextBlock Text="{Binding ActLabel1}" Width="96" FontSize="13" Foreground="#6F6F6F"
+                       VerticalAlignment="Center" />
+            <TextBox x:Name="ActIn1" Classes="hin" Text="{Binding ActVal1, Mode=TwoWay}" />
+          </DockPanel>
+          <DockPanel IsVisible="{Binding ActIsDose}">
+            <TextBlock Text="加入量" Width="96" FontSize="13" Foreground="#6F6F6F"
+                       VerticalAlignment="Center" />
+            <TextBlock DockPanel.Dock="Right" Text="mL" Width="56" FontSize="11.5" Foreground="#6F6F6F"
+                       VerticalAlignment="Center" Margin="10,0,0,0" />
+            <TextBox Classes="hin" Text="{Binding ActVol, Mode=TwoWay}" />
+          </DockPanel>
+          <DockPanel IsVisible="{Binding ActIsDose}">
+            <TextBlock Text="速率" Width="96" FontSize="13" Foreground="#6F6F6F"
+                       VerticalAlignment="Center" />
+            <TextBlock DockPanel.Dock="Right" Text="mL/min" Width="56" FontSize="11.5" Foreground="#6F6F6F"
+                       VerticalAlignment="Center" Margin="10,0,0,0" />
+            <TextBox Classes="hin" Text="{Binding ActRate, Mode=TwoWay}" />
+          </DockPanel>
+          <TextBlock Text="{Binding ActHint}" FontSize="12" Foreground="#6F6F6F" TextWrapping="Wrap" />
+        </StackPanel>
+        <Border BorderBrush="#DCDCDC" BorderThickness="0,1,0,0" Padding="18,11,18,15">
+          <StackPanel Orientation="Horizontal" Spacing="9" HorizontalAlignment="Right">
+            <Button Classes="hbt" Content="取消" Click="OnActCancel" />
+            <Button Classes="hbt pri" Content="{Binding ActOk}" Click="OnActOk" MinWidth="100" />
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </Border>
+  </Border>
+
+  <!-- toast -->
+  <Border IsVisible="{Binding ToastOpen}" Background="#EB1A1A1A" CornerRadius="16"
+          Padding="17,8" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,15">
+    <TextBlock Text="{Binding ToastText}" FontSize="12" Foreground="White" />
+  </Border>
+  </Panel>
+
+  <UserControl.Styles>
+    <!-- 侧栏钮 -->
+    <Style Selector="Button.hrb">
+      <Setter Property="Width" Value="79" /><Setter Property="Height" Value="72" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" /><Setter Property="CornerRadius" Value="0" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Padding" Value="0" />
+    </Style>
+    <Style Selector="Button.hrb:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#EAEAEA" />
+    </Style>
+    <Style Selector="Button.hrb.on /template/ ContentPresenter">
+      <Setter Property="Background" Value="#4FB1B8" />
+    </Style>
+    <Style Selector="Button.hrb.on ctl|TecIcon"><Setter Property="Tint" Value="White" /></Style>
+    <Style Selector="Button.hrb.on TextBlock.hrn"><Setter Property="Foreground" Value="White" /></Style>
+    <Style Selector="TextBlock.hrn">
+      <Setter Property="FontSize" Value="11" /><Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="Foreground" Value="#4C4C4C" />
+      <Setter Property="Margin" Value="0,9,12,0" />
+      <Setter Property="HorizontalAlignment" Value="Right" /><Setter Property="VerticalAlignment" Value="Top" />
+    </Style>
+    <Style Selector="Ellipse.hrun">
+      <Setter Property="Width" Value="7" /><Setter Property="Height" Value="7" />
+      <Setter Property="Fill" Value="#2F6B38" />
+      <Setter Property="Margin" Value="13,12,0,0" />
+      <Setter Property="HorizontalAlignment" Value="Left" /><Setter Property="VerticalAlignment" Value="Top" />
+    </Style>
+    <Style Selector="Border.hsep">
+      <Setter Property="Width" Value="34" /><Setter Property="Height" Value="1" />
+      <Setter Property="Background" Value="#DCDCDC" /><Setter Property="Margin" Value="0,5" />
+    </Style>
+
+    <!-- 页签 -->
+    <Style Selector="Button.htab">
+      <Setter Property="Height" Value="40" />
+      <Setter Property="Background" Value="#F1F1F1" />
+      <Setter Property="BorderBrush" Value="#CCCCCC" /><Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="3,3,0,0" />
+      <Setter Property="Padding" Value="9,0,17,0" />
+      <Setter Property="FontSize" Value="13.5" /><Setter Property="Foreground" Value="#3D3D3D" />
+      <Setter Property="VerticalAlignment" Value="Bottom" />
+    </Style>
+    <Style Selector="Button.htab:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#E6E6E6" />
+    </Style>
+    <Style Selector="Button.htab.on">
+      <Setter Property="Height" Value="42" />
+      <Setter Property="Background" Value="White" />
+      <Setter Property="Margin" Value="0,0,0,-1" />
+      <Setter Property="FontWeight" Value="Medium" />
+      <Setter Property="BorderThickness" Value="1,1,1,0" />
+    </Style>
+    <Style Selector="Button.htab.on:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="White" />
+    </Style>
+    <Style Selector="Border.htic">
+      <Setter Property="Width" Value="26" /><Setter Property="Height" Value="26" />
+      <Setter Property="BorderBrush" Value="#C9C9C9" /><Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="3" /><Setter Property="Background" Value="White" />
+    </Style>
+    <Style Selector="Button.htab.on Border.htic">
+      <Setter Property="Background" Value="#4FB1B8" /><Setter Property="BorderBrush" Value="#4FB1B8" />
+    </Style>
+    <Style Selector="Button.htab.on Border.htic ctl|TecIcon"><Setter Property="Tint" Value="#0D3236" /></Style>
+    <Style Selector="Border.htic ctl|TecIcon">
+      <Setter Property="HorizontalAlignment" Value="Center" /><Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <!-- 选中页签的蓝顶线（原型 inset 0 2px 0 的那道 blue）-->
+    <Style Selector="Rectangle.htop">
+      <Setter Property="Height" Value="2" /><Setter Property="Fill" Value="#4FB1B8" />
+      <Setter Property="VerticalAlignment" Value="Top" />
+      <Setter Property="Margin" Value="-9,0,-17,0" />
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="Button.htab.on Rectangle.htop"><Setter Property="IsVisible" Value="True" /></Style>
+
+    <!-- 深色读数板里的读数框（vbx）-->
+    <Style Selector="Border.hvbx">
+      <Setter Property="Height" Value="38" />
+      <Setter Property="BorderBrush" Value="#B4B4B4" /><Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="3" /><Setter Property="Background" Value="#C9C9C9" />
+      <Setter Property="Padding" Value="10,0" />
+    </Style>
+    <Style Selector="Border.hvbx.hi">
+      <Setter Property="BorderBrush" Value="#4FB1B8" /><Setter Property="BorderThickness" Value="2" />
+      <Setter Property="Background" Value="White" />
+    </Style>
+    <Style Selector="Border.hvbx.off"><Setter Property="Background" Value="#A3A3A3" /></Style>
+    <Style Selector="TextBlock.hvbxt">
+      <Setter Property="FontSize" Value="11" /><Setter Property="Foreground" Value="#6F6F6F" />
+      <Setter Property="VerticalAlignment" Value="Center" /><Setter Property="Margin" Value="0,0,6,0" />
+    </Style>
+    <Style Selector="Border.hvbx.hi TextBlock.hvbxt"><Setter Property="Foreground" Value="#2F8189" /></Style>
+    <Style Selector="TextBlock.hvbxv">
+      <Setter Property="FontSize" Value="15.5" /><Setter Property="Foreground" Value="#1A1A1A" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.hvbx.off TextBlock.hvbxv"><Setter Property="Foreground" Value="#6F6F6F" /></Style>
+    <Style Selector="TextBlock.hvbxu">
+      <Setter Property="FontSize" Value="11.5" /><Setter Property="Foreground" Value="#6F6F6F" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TextBlock.hvbxn">
+      <Setter Property="FontSize" Value="10.5" /><Setter Property="Foreground" Value="#6F6F6F" />
+      <Setter Property="VerticalAlignment" Value="Center" /><Setter Property="Margin" Value="6,0,0,0" />
+    </Style>
+
+    <!-- 卡片与读数 -->
+    <Style Selector="Border.hcard">
+      <Setter Property="BorderBrush" Value="#C9C9C9" /><Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="3" /><Setter Property="Background" Value="White" />
+      <Setter Property="ClipToBounds" Value="True" />
+    </Style>
+    <Style Selector="Border.hcd">
+      <Setter Property="BorderBrush" Value="#C9C9C9" /><Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="3" /><Setter Property="Padding" Value="12,9,12,11" />
+    </Style>
+    <Style Selector="Border.hfoot">
+      <Setter Property="Height" Value="54" />
+      <Setter Property="BorderBrush" Value="#C9C9C9" /><Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="3" /><Setter Property="Background" Value="#F9F9F9" />
+    </Style>
+    <Style Selector="Border.hptab">
+      <Setter Property="Width" Value="28" />
+      <Setter Property="Background" Value="#F1F1F1" />
+      <Setter Property="BorderBrush" Value="#C9C9C9" /><Setter Property="BorderThickness" Value="1,1,0,1" />
+      <Setter Property="CornerRadius" Value="3,0,0,3" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Border.hartbox">
+      <Setter Property="Background" Value="#FBFBFB" />
+      <Setter Property="BorderBrush" Value="#DCDCDC" /><Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="0,3,3,0" />
+      <Setter Property="ClipToBounds" Value="True" />
+    </Style>
+    <Style Selector="ProgressBar.hpg">
+      <Setter Property="Height" Value="4" /><Setter Property="MinHeight" Value="4" />
+      <Setter Property="Background" Value="#F1F1F1" /><Setter Property="Foreground" Value="#4FB1B8" />
+      <Setter Property="CornerRadius" Value="0" />
+    </Style>
+
+    <!-- 模式钮 -->
+    <Style Selector="Button.hmode">
+      <Setter Property="Background" Value="#F1F1F1" />
+      <Setter Property="BorderBrush" Value="#C9C9C9" />
+      <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="FontSize" Value="13" /><Setter Property="Foreground" Value="#3A3A3A" />
+      <!-- 三格等分、整格铺满（原型 flex:1）：按钮不撑满格子的话，
+           选中的青底就只描着字走，成了个小胶囊 -->
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="VerticalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.hmode:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#EAEAEA" />
+    </Style>
+    <Style Selector="Button.hmode.on">
+      <Setter Property="Background" Value="#4FB1B8" /><Setter Property="Foreground" Value="#0D3236" />
+      <Setter Property="FontWeight" Value="Medium" />
+    </Style>
+    <Style Selector="Button.hmode.on:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#4FB1B8" />
+    </Style>
+    <Style Selector="TextBlock.hsmall">
+      <Setter Property="FontSize" Value="9.5" /><Setter Property="Opacity" Value="0.7" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+    </Style>
+
+    <!-- 开关（sw）-->
+    <Style Selector="Border.hsw">
+      <Setter Property="BorderBrush" Value="#B4B4B4" /><Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="3" /><Setter Property="Background" Value="#F1F1F1" />
+      <Setter Property="Padding" Value="11,4,6,4" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Border.hsw TextBlock"><Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Foreground" Value="#6F6F6F" /></Style>
+    <Style Selector="Border.hsw.on TextBlock"><Setter Property="Foreground" Value="#1A1A1A" /></Style>
+    <Style Selector="Border.hswt">
+      <Setter Property="Width" Value="33" /><Setter Property="Height" Value="19" />
+      <Setter Property="CornerRadius" Value="10" /><Setter Property="Background" Value="#C9C9C9" />
+    </Style>
+    <Style Selector="Border.hsw.on Border.hswt"><Setter Property="Background" Value="#4FB1B8" /></Style>
+    <Style Selector="Ellipse.hswk">
+      <Setter Property="Width" Value="15" /><Setter Property="Height" Value="15" />
+      <Setter Property="Fill" Value="White" />
+      <Setter Property="HorizontalAlignment" Value="Left" /><Setter Property="Margin" Value="2,0,0,0" />
+    </Style>
+    <Style Selector="Border.hsw.on Ellipse.hswk">
+      <Setter Property="HorizontalAlignment" Value="Right" /><Setter Property="Margin" Value="0,0,2,0" />
+    </Style>
+
+    <!-- 设定值框（vb）与标签 -->
+    <Style Selector="TextBlock.hlbl">
+      <Setter Property="FontSize" Value="10.5" /><Setter Property="Foreground" Value="#6F6F6F" />
+      <Setter Property="Margin" Value="0,0,0,3" />
+    </Style>
+    <Style Selector="Border.hvb">
+      <Setter Property="Height" Value="44" /><Setter Property="MinWidth" Value="104" />
+      <Setter Property="BorderBrush" Value="#B4B4B4" /><Setter Property="BorderThickness" Value="2" />
+      <Setter Property="CornerRadius" Value="3" /><Setter Property="Background" Value="#F1F1F1" />
+      <Setter Property="Padding" Value="11,0" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Border.hvb:pointerover"><Setter Property="BorderBrush" Value="#4FB1B8" /></Style>
+    <Style Selector="Border.hvb.sm">
+      <Setter Property="Height" Value="34" /><Setter Property="MinWidth" Value="72" />
+    </Style>
+    <Style Selector="Border.hvb.edit">
+      <Setter Property="BorderBrush" Value="#C88A00" /><Setter Property="Background" Value="#FDF6EA" />
+    </Style>
+    <Style Selector="Border.hvb StackPanel"><Setter Property="HorizontalAlignment" Value="Right" /></Style>
+    <Style Selector="TextBlock.hvbv">
+      <Setter Property="FontSize" Value="21" /><Setter Property="FontWeight" Value="Medium" />
+    </Style>
+    <Style Selector="TextBlock.hvbv.sm"><Setter Property="FontSize" Value="15" /></Style>
+    <Style Selector="Border.hvb.edit TextBlock.hvbv"><Setter Property="Foreground" Value="#C88A00" /></Style>
+    <Style Selector="TextBlock.hvbu">
+      <Setter Property="FontSize" Value="11" /><Setter Property="Foreground" Value="#6F6F6F" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Ellipse.hrad">
+      <Setter Property="Width" Value="14" /><Setter Property="Height" Value="14" />
+      <Setter Property="Stroke" Value="#C9C9C9" /><Setter Property="StrokeThickness" Value="2" />
+      <Setter Property="Fill" Value="White" />
+    </Style>
+    <Style Selector="Ellipse.hrad.on">
+      <Setter Property="Stroke" Value="#4FB1B8" /><Setter Property="Fill" Value="#4FB1B8" />
+    </Style>
+    <Style Selector="TextBlock.hnow">
+      <Setter Property="FontSize" Value="11" /><Setter Property="Foreground" Value="#6F6F6F" />
+      <Setter Property="TextAlignment" Value="Right" /><Setter Property="LineHeight" Value="18" />
+    </Style>
+
+    <!-- 手动操作四钮 -->
+    <Style Selector="Button.hab">
+      <Setter Property="Height" Value="44" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="BorderBrush" Value="#B4B4B4" /><Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Background" Value="#F1F1F1" /><Setter Property="CornerRadius" Value="3" />
+      <Setter Property="FontSize" Value="12.5" /><Setter Property="Foreground" Value="#2E2E2E" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.hab:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#EAEAEA" />
+    </Style>
+    <Style Selector="Button.hab.mark">
+      <Setter Property="BorderBrush" Value="#4FB1B8" /><Setter Property="Background" Value="#E4F4F4" />
+      <Setter Property="Foreground" Value="#2F8189" />
+    </Style>
+    <Style Selector="Button.hab TextBlock.hsmall"><Setter Property="Foreground" Value="#6F6F6F" />
+      <Setter Property="Opacity" Value="1" /></Style>
+
+    <!-- 底部按钮 -->
+    <Style Selector="Button.hbt">
+      <Setter Property="Height" Value="38" /><Setter Property="Padding" Value="17,0" />
+      <Setter Property="BorderBrush" Value="#B4B4B4" /><Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Background" Value="#F1F1F1" /><Setter Property="CornerRadius" Value="3" />
+      <Setter Property="FontSize" Value="13" /><Setter Property="Foreground" Value="#3D3D3D" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.hbt:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#EAEAEA" />
+    </Style>
+    <Style Selector="Button.hbt.pri">
+      <Setter Property="Background" Value="#4FB1B8" /><Setter Property="BorderBrush" Value="#4FB1B8" />
+      <Setter Property="Foreground" Value="#0D3236" /><Setter Property="FontWeight" Value="Medium" />
+      <Setter Property="Padding" Value="22,0" />
+    </Style>
+    <Style Selector="Button.hbt.pri:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#2F8189" />
+    </Style>
+    <Style Selector="Button.hbt:disabled">
+      <Setter Property="Foreground" Value="#C9C9C9" /><Setter Property="Background" Value="#F9F9F9" />
+      <Setter Property="BorderBrush" Value="#DCDCDC" />
+    </Style>
+    <Style Selector="Button.hbtn">
+      <Setter Property="Height" Value="28" /><Setter Property="Padding" Value="14,0" />
+      <Setter Property="BorderBrush" Value="#B4B4B4" /><Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Background" Value="#F1F1F1" /><Setter Property="CornerRadius" Value="3" />
+      <Setter Property="FontSize" Value="12.5" /><Setter Property="Foreground" Value="#3A3A3A" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.hbtn.danger">
+      <Setter Property="BorderBrush" Value="#C42B1C" /><Setter Property="Background" Value="#FBEBE9" />
+      <Setter Property="Foreground" Value="#9B2115" />
+    </Style>
+
+    <!-- 键盘/弹窗 -->
+    <Style Selector="Button.hkp">
+      <!-- 键要**铺满**格子（原型 grid 三等分），不是缩成小方块居中 -->
+      <Setter Property="Height" Value="47" /><Setter Property="Margin" Value="0,0,7,7" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="BorderBrush" Value="#C9C9C9" /><Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Background" Value="#F1F1F1" /><Setter Property="CornerRadius" Value="3" />
+      <Setter Property="FontSize" Value="18" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.hkp:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#EAEAEA" />
+    </Style>
+    <Style Selector="TextBox.hin">
+      <Setter Property="Height" Value="34" /><Setter Property="MinHeight" Value="34" />
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="BorderBrush" Value="#C9C9C9" /><Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="3" /><Setter Property="Background" Value="White" />
+      <Setter Property="Padding" Value="9,0" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+  </UserControl.Styles>
+</UserControl>

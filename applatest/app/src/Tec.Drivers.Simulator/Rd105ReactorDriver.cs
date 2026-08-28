@@ -89,7 +89,13 @@ internal sealed class Rd105Session : SimSession
         new TagDescriptor("duty", "控温输出", "%", DataShape.Scalar)
             { Nominal = new ValueRange(-100, 100), Period = TimeSpan.FromSeconds(1) },
         new TagDescriptor("rpm", "搅拌转速", "rpm", DataShape.Scalar)
-            { Nominal = new ValueRange(0, 1200), Period = TimeSpan.FromSeconds(1) }
+            { Nominal = new ValueRange(0, 1200), Period = TimeSpan.FromSeconds(1) },
+        // 手动控制面板（HMI）读的两路：面板上的每个数都要有真来源，
+        // 不能因为「原型上画了」就在界面里编一个
+        new TagDescriptor("Tc", "冷媒温度", "℃", DataShape.Scalar)
+            { Nominal = new ValueRange(0, 40), Period = TimeSpan.FromSeconds(1) },
+        new TagDescriptor("torque", "搅拌扭矩", "mN·m", DataShape.Scalar)
+            { Nominal = new ValueRange(0, 59), Period = TimeSpan.FromSeconds(1) }
     };
 
     public override IReadOnlyList<ICapability> CapabilitiesOf(int well)
@@ -168,6 +174,8 @@ internal sealed class ReactorWell : ITemperatureControl
     public double CurrentJacket { get; private set; } = 25;
     /// <summary>控温输出占比 %，正加热负制冷。停控时为 0。</summary>
     public double Duty { get; private set; }
+    /// <summary>冷媒温度：自来水回路，随出力略微抬升（换热带走的热进了冷媒）。</summary>
+    public double Coolant { get; private set; } = 18.6;
     public IObservable<Sample> Temperature => _temp;
 
     public Task SetTargetAsync(TempTarget target, CancellationToken ct)
@@ -226,10 +234,15 @@ internal sealed class ReactorWell : ITemperatureControl
         CurrentReactor += noise;
         CurrentJacket += noise * 1.4;
 
+        // 冷媒：18.6 ℃ 上下的自来水，制冷出力越大回水越热（缓慢跟随），停控回落
+        var coolTgt = 18.6 + Math.Abs(Math.Min(0, Duty)) / 100.0 * 2.2;
+        Coolant += (coolTgt - Coolant) * Math.Min(1, dt / 30.0) + noise * 0.3;
+
         _emit(Channel, "Tr", Math.Round(CurrentReactor, 2));
         _emit(Channel, "Tj", Math.Round(CurrentJacket, 2));
         _emit(Channel, "dT", Math.Round(CurrentReactor - CurrentJacket, 2));
         _emit(Channel, "duty", Math.Round(Duty, 1));
+        _emit(Channel, "Tc", Math.Round(Coolant, 2));
         // 设定温度只在控温时才存在：停控（自然冷却）没有设定值，
         // 这一路断掉比拿釜温顶替诚实——导出的是要签进记录的数据。
         if (_controlling) _emit(Channel, "Tset", Math.Round(_target, 2));
@@ -237,7 +250,9 @@ internal sealed class ReactorWell : ITemperatureControl
     }
 }
 
-internal sealed class StirrerImpl : IStirrer
+/// <summary>公开的原因只有一个：手动控制面板要调 SetRampSeconds 做转速斜坡——
+/// 那不是 IStirrer 的一部分（真机各有各的加减速寄存器），面板按具体类型问。</summary>
+public sealed class StirrerImpl : IStirrer
 {
     private readonly Action<int, string, double> _emit;
     private readonly Broadcast<Sample> _speed = new();
@@ -253,6 +268,8 @@ internal sealed class StirrerImpl : IStirrer
     public int Channel { get; }
     public SpeedLimits Limits { get; } = new(0, 1000);
     public double CurrentRpm { get; private set; }
+    /// <summary>搅拌扭矩 mN·m：静摩擦底数 + 随转速上升，转着才有；上限 59（磁耦合打滑点）。</summary>
+    public double Torque { get; private set; }
     public IObservable<Sample> Speed => _speed;
 
     public Task SetSpeedAsync(double rpm, CancellationToken ct)
@@ -274,7 +291,12 @@ internal sealed class StirrerImpl : IStirrer
     {
         var step = Limits.Max * dt / _rampSeconds;
         CurrentRpm += Math.Clamp(_target - CurrentRpm, -step, step);
+        // 扭矩从转速模型推：4 mN·m 静摩擦底数 + 0.031/rpm 的黏性项（450 rpm ≈ 18），
+        // 一阶惯性跟随，停转归零。它是模型算出来的量，不是为了面板好看另编的一路
+        var tq = CurrentRpm > 1 ? Math.Min(59, 4 + CurrentRpm * 0.031) : 0;
+        Torque += (tq - Torque) * Math.Min(1, dt / 2.0);
         _emit(Channel, "rpm", Math.Round(CurrentRpm, 0));
+        _emit(Channel, "torque", Math.Round(Torque, 1));
     }
 }
 

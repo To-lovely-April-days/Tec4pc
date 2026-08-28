@@ -384,7 +384,8 @@
                        TextAlignment="Center" Margin="0,0,0,8" />
             <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center"
                         Margin="0,0,0,10" IsVisible="{Binding HasSelection}">
-              <Button Classes="pill" Content="手动控制面板" IsVisible="{Binding IsReactor}" />
+              <Button Classes="pill" Content="手动控制面板" IsVisible="{Binding IsReactor}"
+                      Click="OnOpenHmi" />
               <Button Classes="pill" Content="测试连接" Command="{Binding Probe}" />
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center">

@@ -1,0 +1,63 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:v="clr-namespace:Tec.App.Views"
+        x:Class="Tec.App.Views.HmiWindow"
+        Width="1282" Height="752" CanResize="False"
+        WindowStartupLocation="CenterScreen"
+        SystemDecorations="None" Background="White"
+        FontFamily="{StaticResource UiFont}" FontSize="12" Foreground="#303337">
+
+  <!--
+    HMI 手动控制面板的外壳。里面那页 HmiView 是设备自带 10.1″ 触摸屏的
+    1:1 还原，**必须保持 1280×720 一个像素不差**——所以窗子定死
+    1282×752：四周 1px 描边 + 顶上 30px 标题条，余下正好 1280×720。
+    没有最大化（用户定的：只留最小化和关闭），也不给拉边框。
+    标题条照 LoginWindow 那套：无系统边框，深紫条可拖动，窗钮用
+    Path 画线条，不用 ✕ — 这类随字体走样的字符。
+  -->
+
+  <Window.Styles>
+    <Style Selector="Button.lwin">
+      <Setter Property="Width" Value="30" />
+      <Setter Property="Height" Value="24" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.lwin:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#2effffff" />
+    </Style>
+    <Style Selector="Button.lwin.close:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#e81123" />
+    </Style>
+  </Window.Styles>
+
+  <Border BorderBrush="#3a0a0f" BorderThickness="1">
+    <DockPanel>
+      <Panel DockPanel.Dock="Top" Height="30">
+        <Border Background="{StaticResource Shell}" />
+        <TextBlock VerticalAlignment="Center" Margin="12,0,0,0"
+                   Foreground="White" FontSize="12"
+                   Text="{Binding DeviceLabel, StringFormat='{}{0} · 手动控制面板'}" />
+        <!-- 拖动区不盖右侧窗钮：右边 68px 留给最小化 / 关闭 -->
+        <Border Background="Transparent" Margin="0,0,68,0"
+                PointerPressed="OnTitlebarPressed" />
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top"
+                    Margin="0,3,2,0">
+          <Button Classes="lwin" Click="OnMinimize" ToolTip.Tip="最小化">
+            <Path Data="M 0,0 H 11" Stroke="White" StrokeThickness="1.2" />
+          </Button>
+          <Button Classes="lwin close" Click="OnClose" ToolTip.Tip="关闭">
+            <Path Data="M 0,0 L 9,9 M 9,0 L 0,9" Stroke="White" StrokeThickness="1.2" />
+          </Button>
+        </StackPanel>
+      </Panel>
+
+      <v:HmiView />
+    </DockPanel>
+  </Border>
+</Window>

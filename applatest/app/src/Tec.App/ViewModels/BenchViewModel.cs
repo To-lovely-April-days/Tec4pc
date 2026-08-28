@@ -192,6 +192,9 @@ public sealed class BenchViewModel : ViewModelBase
     public ObservableCollection<DeviceNodeViewModel> Devices { get; } = new();
     public ObservableCollection<ChannelRowViewModel> ChannelRows { get; } = new();
 
+    /// <summary>HMI 手动控制面板要挂在同一份工作台上（视图代码开窗用）。</summary>
+    internal Workspace Ws => _ws;
+
     /// <summary>底部那个保存：存实验。原来只是个图标，点了没反应。</summary>
     public RelayCommand SaveExperiment { get; }
 
