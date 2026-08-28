@@ -970,9 +970,23 @@ public sealed class HmiZoneViewModel : ViewModelBase
     public bool EngineRunning { get; private set; }
     public string HeadName { get; private set; } = "";
     public string HeadRt { get; private set; } = "待机";
-    public string HeadRow2 { get; private set; } = "";
+    public string HeadCtl { get; private set; } = "手动控制";
     public string HeadNote { get; private set; } = "";
     public double HeadPct { get; private set; }
+
+    // ── 升温/降温徽章(原型 v60 thermState)──────────────────────────
+    //
+    // 看的是夹套：面板 1 s 一拍现读的 Tj 攒最近 12 拍，比 12 拍前
+    // 高 0.25 K 以上算升温、低 0.25 K 以上算降温，其余恒温。
+    // 温控关着、或 Tj 根本读不回来（设备断了）就不显示——不猜。
+
+    private readonly List<double> _tjTrail = new();
+
+    /// <summary>0 = 无徽章；1 = 升温中；-1 = 降温中；2 = 恒温。</summary>
+    public int Therm { get; private set; }
+    public bool ThermOn => Therm != 0;
+    public string ThermText => Therm switch
+    { 1 => "升温中", -1 => "降温中", 2 => "恒温", _ => "" };
 
     public void Refresh()
     {
@@ -986,17 +1000,30 @@ public sealed class HmiZoneViewModel : ViewModelBase
         PhVal = ReadPh();
         TrRate = MeasuredTrRate();
 
+        if (TjVal is { } tjNow)
+        {
+            _tjTrail.Add(tjNow);
+            if (_tjTrail.Count > 13) _tjTrail.RemoveAt(0);
+        }
+        else _tjTrail.Clear();   // 断读就重攒，别拿旧数据算斜率
+        Therm = !TempOn || _tjTrail.Count == 0 ? 0
+            : (_tjTrail[^1] - _tjTrail[Math.Max(0, _tjTrail.Count - 12)]) switch
+              { > 0.25 => 1, < -0.25 => -1, _ => 2 };
+
         var r = _ws.Engine.Runner(Number);
         EngineRunning = r?.State is Tec.Core.Records.ChannelRunState.Running
                                   or Tec.Core.Records.ChannelRunState.Paused;
         var run = r?.Run;
         HeadName = EngineRunning && run is not null ? run.Baseline.Recipe.Name : $"通道 {Index}";
+        // 右上：跑着显示运行时钟；有徽章时「待机/控温中」让位给徽章（原型
+        // zhead 的 rt 段 thBadge||'待机'）；温控开着却读不到 Tj 才落回文字
         HeadRt = EngineRunning && run is not null
             ? Fmt.Hms(run.Elapsed(_ws.Clock.Now))
-            : TempOn ? "控温中" : "待机";
-        HeadRow2 = (EngineRunning ? "程序控制" : "手动控制") + " · " + ModeName;
+            : ThermOn ? "" : TempOn ? "控温中" : "待机";
+        HeadCtl = EngineRunning ? "程序控制" : "手动控制";
         // 有 t=0 标记时把「标记 X +时长」缀在右上（原型 zHead 的 rt 段）
-        if (MarkText.Length > 0) HeadRt = HeadRt + "　" + MarkText;
+        if (MarkText.Length > 0)
+            HeadRt = (HeadRt.Length > 0 ? HeadRt + "　" : "") + MarkText;
         if (WantGra) RefreshGra();
         if (WantSeq) RefreshSeq();
         if (WantSaf) RefreshSaf();
@@ -2317,7 +2344,8 @@ public sealed class HmiZoneViewModel : ViewModelBase
         nameof(DtBox), nameof(DtNote), nameof(RpmBox), nameof(RpmOff), nameof(RpmNote),
         nameof(DoseBox), nameof(DoseOff), nameof(DoseNote), nameof(TcBox), nameof(TcNote),
         nameof(RateBox), nameof(RateOff), nameof(RateNote), nameof(HeadName), nameof(HeadRt),
-        nameof(HeadRow2), nameof(HeadNote), nameof(HeadPct), nameof(EngineRunning),
+        nameof(HeadCtl), nameof(HeadNote), nameof(HeadPct), nameof(EngineRunning),
+        nameof(Therm), nameof(ThermOn), nameof(ThermText),
         nameof(Mode), nameof(ModeName), nameof(ModeTr), nameof(ModeTj), nameof(ByDur),
         nameof(TempOn), nameof(StirOn), nameof(TrOn), nameof(PhOn),
         nameof(RampBy), nameof(ByRate), nameof(TargetLabel), nameof(RampValLabel),

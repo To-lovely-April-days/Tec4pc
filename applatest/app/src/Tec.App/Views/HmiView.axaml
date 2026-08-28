@@ -18,15 +18,34 @@
                        Fill="{Binding EngineRunning, Converter={x:Static v:HmiView.DotFill}}" />
               <TextBlock Text="{Binding Index, StringFormat=通道 {0}}" FontSize="10.5"
                          Foreground="#6F6F6F" Margin="9,0,9,0" VerticalAlignment="Center" />
+              <!-- 右上：徽章顶「待机」的位（原型 zhead rt：thBadge||'待机'），跑着时钟在左 -->
+              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="4"
+                          VerticalAlignment="Center" IsVisible="{Binding ThermOn}">
+                <ctl:HmiThermIcon State="{Binding Therm}" Width="15" Height="15" />
+                <TextBlock Text="{Binding ThermText}" FontSize="13.5" FontWeight="SemiBold"
+                           Foreground="{Binding Therm, Converter={x:Static v:HmiView.ThermBrush}}"
+                           VerticalAlignment="Center" />
+              </StackPanel>
               <TextBlock DockPanel.Dock="Right" Text="{Binding HeadRt}" FontSize="13.5"
-                         FontWeight="Medium" VerticalAlignment="Center" />
+                         FontWeight="Medium" VerticalAlignment="Center" Margin="0,0,7,0" />
               <TextBlock Text="{Binding HeadName}" FontSize="15" FontWeight="Bold"
                          VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
             </DockPanel>
             <DockPanel Grid.Row="1">
               <TextBlock DockPanel.Dock="Right" Text="{Binding HeadNote}" FontSize="11"
                          Foreground="#6F6F6F" />
-              <TextBlock Text="{Binding HeadRow2}" FontSize="11" Foreground="#6F6F6F" />
+              <StackPanel Orientation="Horizontal">
+                <TextBlock Text="{Binding HeadCtl}" FontSize="11" Foreground="#6F6F6F" />
+                <StackPanel Orientation="Horizontal" IsVisible="{Binding ThermOn}">
+                  <TextBlock Text=" · " FontSize="11" Foreground="#6F6F6F" />
+                  <ctl:HmiThermIcon State="{Binding Therm}" Width="13" Height="13"
+                                    VerticalAlignment="Center" Margin="0,0,3,0" />
+                  <TextBlock Text="{Binding ThermText}" FontSize="11" FontWeight="SemiBold"
+                             Foreground="{Binding Therm, Converter={x:Static v:HmiView.ThermBrush}}" />
+                </StackPanel>
+                <TextBlock Text="{Binding ModeName, StringFormat='{} · {0}'}" FontSize="11"
+                           Foreground="#6F6F6F" />
+              </StackPanel>
             </DockPanel>
             <ProgressBar Grid.Row="2" Classes="hpg" Value="{Binding HeadPct}"
                          VerticalAlignment="Bottom" Margin="-13,0,-13,0" />
@@ -122,7 +141,7 @@
         </Border>
         <ctl:HmiVesselView Margin="0,10,0,0"
             Running="{Binding VesselRunning}" Rpm="{Binding RpmVal}"
-            PaddlePhase="{Binding PaddlePhase}"
+            PaddlePhase="{Binding PaddlePhase}" Therm="{Binding Therm}"
             ShowTr="{Binding TrOn}" ShowPh="{Binding PhOn}"
             TrText="{Binding TrText}" TrSetText="{Binding TrSetText}"
             PhText="{Binding PhText}" />
@@ -359,16 +378,35 @@
                              Foreground="#6F6F6F" Margin="9,0,9,0" VerticalAlignment="Center" />
                   <Button Classes="hbtn danger" DockPanel.Dock="Right" Content="■ 结束序列"
                           IsVisible="{Binding Cur.EngineRunning}" Click="OnStopSeq" />
+                  <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="4"
+                              VerticalAlignment="Center" IsVisible="{Binding Cur.ThermOn}"
+                              Margin="0,0,10,0">
+                    <ctl:HmiThermIcon State="{Binding Cur.Therm}" Width="15" Height="15" />
+                    <TextBlock Text="{Binding Cur.ThermText}" FontSize="13.5" FontWeight="SemiBold"
+                               Foreground="{Binding Cur.Therm, Converter={x:Static v:HmiView.ThermBrush}}"
+                               VerticalAlignment="Center" />
+                  </StackPanel>
                   <TextBlock DockPanel.Dock="Right" Text="{Binding Cur.HeadRt}" FontSize="13.5"
                              FontWeight="Medium" Foreground="#1A1A1A" VerticalAlignment="Center"
-                             Margin="0,0,10,0" />
+                             Margin="0,0,7,0" />
                   <TextBlock Text="{Binding Cur.HeadName}" FontSize="16" FontWeight="Bold"
                              VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                 </DockPanel>
                 <DockPanel Grid.Row="1">
                   <TextBlock DockPanel.Dock="Right" Text="{Binding Cur.HeadNote}" FontSize="11"
                              Foreground="#6F6F6F" />
-                  <TextBlock Text="{Binding Cur.HeadRow2}" FontSize="11" Foreground="#6F6F6F" />
+                  <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="{Binding Cur.HeadCtl}" FontSize="11" Foreground="#6F6F6F" />
+                    <StackPanel Orientation="Horizontal" IsVisible="{Binding Cur.ThermOn}">
+                      <TextBlock Text=" · " FontSize="11" Foreground="#6F6F6F" />
+                      <ctl:HmiThermIcon State="{Binding Cur.Therm}" Width="13" Height="13"
+                                        VerticalAlignment="Center" Margin="0,0,3,0" />
+                      <TextBlock Text="{Binding Cur.ThermText}" FontSize="11" FontWeight="SemiBold"
+                                 Foreground="{Binding Cur.Therm, Converter={x:Static v:HmiView.ThermBrush}}" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding Cur.ModeName, StringFormat='{} · {0}'}" FontSize="11"
+                               Foreground="#6F6F6F" />
+                  </StackPanel>
                 </DockPanel>
                 <ProgressBar Grid.Row="2" Classes="hpg" Value="{Binding Cur.HeadPct}"
                              VerticalAlignment="Bottom" Margin="-13,0,-10,0" />
@@ -425,7 +463,7 @@
                 <Border Classes="hartbox" Width="376" IsVisible="{Binding ArtOpen}">
                   <ctl:HmiVesselView Margin="6"
                       Running="{Binding Cur.VesselRunning}" Rpm="{Binding Cur.RpmVal}"
-                      PaddlePhase="{Binding Cur.PaddlePhase}"
+                      PaddlePhase="{Binding Cur.PaddlePhase}" Therm="{Binding Cur.Therm}"
                       ShowTr="{Binding Cur.TrOn}" ShowPh="{Binding Cur.PhOn}"
                       TrText="{Binding Cur.TrText}" TrSetText="{Binding Cur.TrSetText}"
                       PhText="{Binding Cur.PhText}" />

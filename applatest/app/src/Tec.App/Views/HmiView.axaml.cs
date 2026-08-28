@@ -23,6 +23,11 @@ public partial class HmiView : UserControl
     public static readonly IValueConverter PickOutline =
         new FuncValueConverter<bool, IBrush>(on => new SolidColorBrush(Color.Parse(on ? "#1A1A1A" : "#DCDCDC")));
 
+    /// <summary>升温/降温徽章的字色（原型 v60 TH_G）：橙 / 蓝 / 绿，图标见 HmiThermIcon。</summary>
+    public static readonly IValueConverter ThermBrush =
+        new FuncValueConverter<int, IBrush>(t => new SolidColorBrush(Color.Parse(
+            t switch { 1 => "#D9552B", -1 => "#2F7FD4", _ => "#2F6B38" })));
+
     private readonly DispatcherTimer _tick;
     private readonly DispatcherTimer _anim;
 

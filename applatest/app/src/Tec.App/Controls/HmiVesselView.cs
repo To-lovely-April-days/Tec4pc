@@ -65,10 +65,16 @@ public sealed class HmiVesselView : Control
         AvaloniaProperty.Register<HmiVesselView, string>(nameof(PhText), "—");
     public string PhText { get => GetValue(PhTextProperty); set => SetValue(PhTextProperty, value); }
 
+    public static readonly StyledProperty<int> ThermProperty =
+        AvaloniaProperty.Register<HmiVesselView, int>(nameof(Therm));
+    /// <summary>升温/降温状态（原型 v60）：1 = 升温夹套染暖色，-1 = 降温染冷色，其余原色。</summary>
+    public int Therm { get => GetValue(ThermProperty); set => SetValue(ThermProperty, value); }
+
     static HmiVesselView()
     {
         AffectsRender<HmiVesselView>(RunningProperty, RpmProperty, PaddlePhaseProperty,
-            ShowTrProperty, ShowPhProperty, TrTextProperty, TrSetTextProperty, PhTextProperty);
+            ShowTrProperty, ShowPhProperty, TrTextProperty, TrSetTextProperty, PhTextProperty,
+            ThermProperty);
     }
 
     public HmiVesselView() => ClipToBounds = true;
@@ -118,10 +124,11 @@ public sealed class HmiVesselView : Control
         ctx.DrawLine(ln18, new Point(161, 92), new Point(183, 92));
         ctx.DrawRectangle(B(Shell), ln18, new RoundedRect(new Rect(33, 103, 153, 20), 2));
 
-        // ── 夹套与釜体 ──
+        // ── 夹套与釜体 ──（升温夹套染暖、降温染冷，原型 v60 的 th 三态）
         const string outer = "M41 123 V236 Q41 273 109.5 273 Q178 273 178 236 V123 Z";
         const string inner = "M49 123 V233 Q49 266 109.5 266 Q170 266 170 233 V123 Z";
-        ctx.DrawGeometry(B(Shell), ln19, G(outer));
+        var jacket = Therm switch { 1 => "#EFDCCB", -1 => "#D8E7F2", _ => Shell };
+        ctx.DrawGeometry(B(jacket), ln19, G(outer));
         ctx.DrawGeometry(Brushes.White, ln17, G(inner));
 
         // ── 液体（釜体内裁剪；液面高度与波幅照原型公式）──
