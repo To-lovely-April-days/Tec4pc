@@ -120,6 +120,22 @@ public sealed class DeviceNodeViewModel : ViewModelBase
     /// <summary>转子角度（度）。泵在跑时动画拍子推着走，data-spin 那一组跟着转。</summary>
     public double Spin { get => _spin; set => Set(ref _spin, value); }
 
+    private int _therm1, _therm2;
+    /// <summary>两个工位的温控走向：1 升温 / −1 降温 / 0 没在变温。夹套染色与升降温标看它。</summary>
+    public int Therm1 { get => _therm1; set => Set(ref _therm1, value); }
+    public int Therm2 { get => _therm2; set => Set(ref _therm2, value); }
+
+    private double _rpm1, _rpm2;
+    /// <summary>两个工位的实测转速（rpm）。>0 才让桨叶摆，拍子也据此起停。</summary>
+    public double Rpm1 { get => _rpm1; set => Set(ref _rpm1, value); }
+    public double Rpm2 { get => _rpm2; set => Set(ref _rpm2, value); }
+    public bool Stirring => Rpm1 > 0 || Rpm2 > 0;
+
+    private double? _paddle1, _paddle2;
+    /// <summary>桨叶相位 0..1（动画拍推）；null = 这一路没在搅拌，桨叶静止。</summary>
+    public double? Paddle1 { get => _paddle1; set => Set(ref _paddle1, value); }
+    public double? Paddle2 { get => _paddle2; set => Set(ref _paddle2, value); }
+
     public double X => Device.Position.X;
     public double Y => Device.Position.Y;
     public double Width => BenchDock.DisplayWidth(ArtKey);
@@ -491,6 +507,9 @@ public sealed class BenchViewModel : ViewModelBase
     /// <summary>有泵在跑：视图据此起停动画拍子（不跑就一拍都不打，别学常驻心跳的教训）。</summary>
     public bool AnyPumpRunning => Panels.Any(p => p.Running);
 
+    /// <summary>有东西在动（泵转子或哪个工位的桨）：动画拍子的起停条件。</summary>
+    public bool AnyMotion => AnyPumpRunning || Devices.Any(d => d.Stirring);
+
     /// <summary>小窗上的启停按到了：重算管路（流动标志变了）并告诉视图起停动画。</summary>
     internal void PumpRunChanged()
     {
@@ -523,6 +542,15 @@ public sealed class BenchViewModel : ViewModelBase
                 node.Spin = (node.Spin + 360 * dt / Math.Max(0.7, 3.2 - 0.5 * p.Rate)) % 360;
         }
         if (any) FlowClock += dt;
+
+        // 观察窗里的桨：转速 >0 才摆，一圈 1.2 s——与 HMI 釜图同一拍
+        foreach (var node in Devices)
+        {
+            if (node.Rpm1 > 0) { node.Paddle1 = ((node.Paddle1 ?? 0) + dt / 1.2) % 1.0; any = true; }
+            else node.Paddle1 = null;
+            if (node.Rpm2 > 0) { node.Paddle2 = ((node.Paddle2 ?? 0) + dt / 1.2) % 1.0; any = true; }
+            else node.Paddle2 = null;
+        }
         return any;
     }
 
@@ -1025,6 +1053,50 @@ public sealed class BenchViewModel : ViewModelBase
             var cap = DosingFor(p);
             p.SetTotal(cap is null ? "—" : $"{cap.TotalVolume:F2} mL");
         }
+
+        RefreshStationState();
+    }
+
+    /// <summary>
+    /// 台面上主机两个工位的状态：升温 / 降温、有没有在搅拌。**全是实测值**——
+    /// 温控走向按「设定温度比现在的釜温高还是低」判：Tset 这一签只在控温时
+    /// 才发（停控没有设定值），所以它在不在就是「这一路在不在控温」，
+    /// 差值的方向就是升温还是降温；搅拌读 IStirrer 的实测转速。
+    ///
+    /// 两条走过弯路的路子记在这儿，别再绕回去：
+    /// **跟夹套走势判**（原型 v60 的做法）会读反——这台机器的夹套领先釜温，
+    /// 降温时 Tj 先冲到目标下方再回摆，降到一半标就翻成「升温」。
+    /// **跟 duty 判**会抖——控温输出稍有偏差就打满，到温后噪声让它在
+    /// ±100 % 之间跳，标跟着一闪一闪。差值带 0.5 K 死区，两样都没有。
+    /// </summary>
+    private void RefreshStationState()
+    {
+        var moved = false;
+        foreach (var node in Devices)
+        {
+            if (node.Channels.Count == 0) continue;
+            var chs = node.Channels.OrderBy(x => x).ToArray();   // 索引即工位号（与读数标签同一约定）
+            var (t1, r1) = StationState(chs.ElementAtOrDefault(0));
+            var (t2, r2) = StationState(chs.ElementAtOrDefault(1));
+            node.Therm1 = t1;
+            node.Therm2 = t2;
+            if ((node.Rpm1 > 0) != (r1 > 0) || (node.Rpm2 > 0) != (r2 > 0)) moved = true;
+            node.Rpm1 = r1;
+            node.Rpm2 = r2;
+        }
+        if (moved) Raise(nameof(AnyMotion));   // 桨转起来了：视图据此点火动画拍
+    }
+
+    private (int Therm, double Rpm) StationState(int channel)
+    {
+        if (channel <= 0 || _ws.ChannelOf(channel) is not { } ch) return (0, 0);
+        var rpm = ch.Capabilities.Get<IStirrer>()?.CurrentRpm ?? 0;
+        // 没有设定值 = 没在控温（也含采样过期、质量不好），什么都不点
+        if (!_ws.Pipeline.TryLatest(channel, "Tset", _ws.Clock.Now, out var s)
+            || s.Quality is not (Quality.Good or Quality.Simulated)) return (0, rpm);
+        if (ch.Capabilities.Get<ITemperatureControl>() is not { } tc) return (0, rpm);
+        var d = s.Value - tc.CurrentReactor;
+        return (d > 0.5 ? 1 : d < -0.5 ? -1 : 0, rpm);   // 0.5 K 死区：到温了就不再点
     }
 
     private void Rebind(string deviceId, IReadOnlyList<int> channels, bool exclusive)

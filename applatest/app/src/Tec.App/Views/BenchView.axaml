@@ -167,7 +167,9 @@
                      两行字会压在机器身上 -->
                 <ctl:DeviceArtView ArtKey="{Binding ArtKey}" ArtWidth="{Binding Width}"
                                    Run1="{Binding Run1}" Run2="{Binding Run2}"
-                                   Spin="{Binding Spin}" />
+                                   Spin="{Binding Spin}"
+                                   Therm1="{Binding Therm1}" Therm2="{Binding Therm2}"
+                                   Paddle1="{Binding Paddle1}" Paddle2="{Binding Paddle2}" />
                 <TextBlock Text="{Binding Title}" FontSize="11" Foreground="#383b3f"
                            HorizontalAlignment="Center" Margin="0,2,0,0"
                            IsVisible="{Binding !Inserted}" />

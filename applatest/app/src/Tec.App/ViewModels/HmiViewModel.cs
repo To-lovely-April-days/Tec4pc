@@ -976,9 +976,14 @@ public sealed class HmiZoneViewModel : ViewModelBase
 
     // ── 升温/降温徽章(原型 v60 thermState)──────────────────────────
     //
-    // 看的是夹套：面板 1 s 一拍现读的 Tj 攒最近 12 拍，比 12 拍前
-    // 高 0.25 K 以上算升温、低 0.25 K 以上算降温，其余恒温。
-    // 温控关着、或 Tj 根本读不回来（设备断了）就不显示——不猜。
+    // 温控关着又没在跑程序，就不显示——不猜。开着时按「设定温度比现在的
+    // 釜温高还是低」定方向（Tset 这一签只在控温时才发），0.5 K 死区之内
+    // 算恒温。
+    //
+    // **原型跟的是夹套走势**，在这台机器上会读反：夹套领先釜温，降温时
+    // Tj 先冲到目标下方再回摆，降到一半标就翻成「升温」。**跟 duty 也不行**：
+    // 控温输出稍有偏差就打满，到温后噪声让它在 ±100 % 之间跳。
+    // 没有 Tset 这一签的驱动才退回 Tj 走势（12 拍差 ±0.25 K，原型那把尺子）。
 
     private readonly List<double> _tjTrail = new();
 
@@ -1006,13 +1011,17 @@ public sealed class HmiZoneViewModel : ViewModelBase
             if (_tjTrail.Count > 13) _tjTrail.RemoveAt(0);
         }
         else _tjTrail.Clear();   // 断读就重攒，别拿旧数据算斜率
-        Therm = !TempOn || _tjTrail.Count == 0 ? 0
-            : (_tjTrail[^1] - _tjTrail[Math.Max(0, _tjTrail.Count - 12)]) switch
-              { > 0.25 => 1, < -0.25 => -1, _ => 2 };
 
         var r = _ws.Engine.Runner(Number);
         EngineRunning = r?.State is Tec.Core.Records.ChannelRunState.Running
                                   or Tec.Core.Records.ChannelRunState.Paused;
+        // 程序在跑 = 温控当然是开的，不用等面板那个开关也被按下
+        Therm = !(TempOn || EngineRunning) ? 0
+            : Tag("Tset") is { } sp && TrVal is { } tr
+                ? (sp - tr) switch { > 0.5 => 1, < -0.5 => -1, _ => 2 }
+            : _tjTrail.Count == 0 ? 0
+            : (_tjTrail[^1] - _tjTrail[Math.Max(0, _tjTrail.Count - 12)]) switch
+              { > 0.25 => 1, < -0.25 => -1, _ => 2 };
         var run = r?.Run;
         HeadName = EngineRunning && run is not null ? run.Baseline.Recipe.Name : $"通道 {Index}";
         // 右上：跑着显示运行时钟；有徽章时「待机/控温中」让位给徽章（原型

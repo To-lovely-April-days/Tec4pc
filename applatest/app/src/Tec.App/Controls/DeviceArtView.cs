@@ -62,10 +62,26 @@ public sealed class DeviceArtView : Control
     public static readonly StyledProperty<double> SpinProperty =
         AvaloniaProperty.Register<DeviceArtView, double>(nameof(Spin));
 
+    /// <summary>两个工位的温控走向：1 升温 / −1 降温 / 0 没在变温（夹套染色 + 升降温标）。</summary>
+    public static readonly StyledProperty<int> Therm1Property =
+        AvaloniaProperty.Register<DeviceArtView, int>(nameof(Therm1));
+
+    public static readonly StyledProperty<int> Therm2Property =
+        AvaloniaProperty.Register<DeviceArtView, int>(nameof(Therm2));
+
+    /// <summary>两个工位的桨叶相位 0..1；null = 没在搅拌，桨叶静止。</summary>
+    public static readonly StyledProperty<double?> Paddle1Property =
+        AvaloniaProperty.Register<DeviceArtView, double?>(nameof(Paddle1));
+
+    public static readonly StyledProperty<double?> Paddle2Property =
+        AvaloniaProperty.Register<DeviceArtView, double?>(nameof(Paddle2));
+
     static DeviceArtView()
     {
         AffectsRender<DeviceArtView>(ArtKeyProperty, Tint1Property, Tint2Property,
-                                     Run1Property, Run2Property, SpinProperty);
+                                     Run1Property, Run2Property, SpinProperty,
+                                     Therm1Property, Therm2Property,
+                                     Paddle1Property, Paddle2Property);
         AffectsMeasure<DeviceArtView>(ArtKeyProperty, ArtWidthProperty, FitProperty);
     }
 
@@ -111,6 +127,30 @@ public sealed class DeviceArtView : Control
         set => SetValue(SpinProperty, value);
     }
 
+    public int Therm1
+    {
+        get => GetValue(Therm1Property);
+        set => SetValue(Therm1Property, value);
+    }
+
+    public int Therm2
+    {
+        get => GetValue(Therm2Property);
+        set => SetValue(Therm2Property, value);
+    }
+
+    public double? Paddle1
+    {
+        get => GetValue(Paddle1Property);
+        set => SetValue(Paddle1Property, value);
+    }
+
+    public double? Paddle2
+    {
+        get => GetValue(Paddle2Property);
+        set => SetValue(Paddle2Property, value);
+    }
+
     /// <summary>
     /// 等比缩到给定格子里（设备库用）。设备图宽高比差得很远——探头细长、
     /// 反应器扁宽——按同一个宽度画出来就高矮不齐；固定格子、缩到格子内才齐整。
@@ -153,6 +193,11 @@ public sealed class DeviceArtView : Control
         }
         var (scale, dx, dy) = Place(art);
         using var _ = context.PushTransform(Matrix.CreateTranslation(dx, dy));
-        art.Render(context, scale, new SvgArt.Paint(Tint1, Tint2, Run1, Run2) { Spin = Spin });
+        art.Render(context, scale, new SvgArt.Paint(Tint1, Tint2, Run1, Run2)
+        {
+            Spin = Spin,
+            Therm1 = Therm1, Therm2 = Therm2,
+            Paddle1 = Paddle1, Paddle2 = Paddle2,
+        });
     }
 }

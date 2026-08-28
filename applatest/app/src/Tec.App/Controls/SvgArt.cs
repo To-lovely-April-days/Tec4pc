@@ -67,6 +67,23 @@ public sealed class SvgArt
         /// </summary>
         public double Spin { get; init; }
 
+        /// <summary>
+        /// 两个工位的温控走向：1 升温 / −1 降温 / 0 没在变温。
+        /// data-therm 的元素据此染色，data-show="n:heat|cool" 的元素据此画不画。
+        /// </summary>
+        public int Therm1 { get; init; }
+        public int Therm2 { get; init; }
+
+        /// <summary>
+        /// 两个工位的桨叶相位 0..1（data-paddle 的元素按它左右摆，同 HMI 釜图）。
+        /// null = 这一路没在搅拌，桨叶静止。
+        /// </summary>
+        public double? Paddle1 { get; init; }
+        public double? Paddle2 { get; init; }
+
+        internal int ThermOf(string slot) => slot == "2" ? Therm2 : Therm1;
+        internal double? PaddleOf(string slot) => slot == "2" ? Paddle2 : Paddle1;
+
         /// <summary>currentColor 解析成什么。图标的着色入口。</summary>
         public Color Current { get; init; } = Color.Parse("#3d3d3d");
 
@@ -152,6 +169,16 @@ public sealed class SvgArt
         if (run == "1" && !paint.Run1) return;
         if (run == "2" && !paint.Run2) return;
 
+        // data-show="1:heat" / "2:cool"：只有该工位真处于这个温控走向才画
+        // （升温 / 降温标）。没在变温时两枚都不画，不留一个灰的占位
+        if (el.Attribute("data-show")?.Value is { } show)
+        {
+            var f = show.Split(':');
+            if (f.Length != 2) return;
+            var want = f[1] switch { "heat" => 1, "cool" => -1, _ => 0 };
+            if (paint.ThermOf(f[0]) != want) return;
+        }
+
         var style = Merge(inherited, el);
 
         var opacity = Dbl(el.Attribute("opacity")?.Value, 1);
@@ -172,6 +199,22 @@ public sealed class SvgArt
                     Matrix.CreateTranslation(-scx, -scy)
                     * Matrix.CreateRotation(paint.Spin * Math.PI / 180)
                     * Matrix.CreateTranslation(scx, scy));
+            }
+        }
+        // data-paddle="工位 轴x"：桨叶按该工位的相位左右摆（scaleX，轴心不动），
+        // 与 HMI 釜图那把桨同一套动作；这一路没在搅拌就不推变换，图是静的
+        IDisposable? pushedPaddle = null;
+        if (el.Attribute("data-paddle")?.Value is { } pad)
+        {
+            var f = pad.Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries);
+            if (f.Length == 2 && paint.PaddleOf(f[0]) is { } phase)
+            {
+                var ax = Dbl(f[1], 0);
+                var sx = 0.6 + 0.4 * Math.Cos(phase * Math.PI * 2);
+                pushedPaddle = ctx.PushTransform(
+                    Matrix.CreateTranslation(-ax, 0)
+                    * Matrix.CreateScale(sx, 1)
+                    * Matrix.CreateTranslation(ax, 0));
             }
         }
         // clip-path="url(#id)"：不裁的话液面那颗椭圆会整颗露在液面之上
@@ -259,6 +302,7 @@ public sealed class SvgArt
         finally
         {
             pushedClip?.Dispose();
+            pushedPaddle?.Dispose();
             pushedSpin?.Dispose();
             pushedTransform?.Dispose();
             pushedOpacity?.Dispose();
@@ -304,6 +348,15 @@ public sealed class SvgArt
             return new SolidColorBrush(run == "2" ? paint.Tint2 : paint.Tint1, 0.30);
         if (el.Attribute("data-tint")?.Value is { } tint && el.Attribute("fill") is not null)
             return new SolidColorBrush(tint == "2" ? paint.Tint2 : paint.Tint1);
+
+        // data-therm="1|2"：夹套跟着该工位的温控走向染色（升温暖、降温冷，
+        // 与 HMI 釜图同一对颜色）；没在变温就用图里的原色
+        if (el.Attribute("data-therm")?.Value is { } therm)
+        {
+            var hex = paint.ThermOf(therm) switch
+            { 1 => "#EFDCCB", -1 => "#D8E7F2", _ => null };
+            if (hex is not null) return new SolidColorBrush(Color.Parse(hex));
+        }
 
         // 继承后的 fill。没写任何 fill（含祖先）的图形按 SVG 缺省黑；
         // 但只有描边的元素（写了 stroke 没写 fill）按不填充处理。

@@ -19,13 +19,17 @@ public partial class BenchView : UserControl
         // 别学从前运行页那个常驻 700ms 心跳的教训
         _tick = new DispatcherTimer(TimeSpan.FromSeconds(1), DispatcherPriority.Background, (_, _) =>
         {
-            if (IsEffectivelyVisible && Vm is { } vm && (vm.Tags.Count > 0 || vm.Panels.Count > 0))
+            // 主机上的工位状态（升温 / 降温 / 搅拌）也在这一拍刷，所以只要台面上
+            // 有绑了通道的设备就得走——不能再只看有没有读数标签和泵小窗
+            if (IsEffectivelyVisible && Vm is { } vm
+                && (vm.Tags.Count > 0 || vm.Panels.Count > 0
+                    || vm.Devices.Any(d => d.Channels.Count > 0)))
                 vm.RefreshTagValues();
         });
 
-        // 动画拍子（转子 + 管内流动）**只在有泵在跑的时候走**：
-        // 66ms 一拍推角度和流动时钟，没有泵在跑 AnimTick 返回 false，拍子自己停。
-        // 重新启动的信号是 AnyPumpRunning 变 true（见 OnVmProp）
+        // 动画拍子（转子 + 管内流动 + 工位桨叶）**只在真有东西动的时候走**：
+        // 66ms 一拍推角度和流动时钟，都停下来 AnimTick 返回 false，拍子自己停。
+        // 重新启动的信号是 AnyMotion 变 true（见 OnVmProp）
         _anim = new DispatcherTimer(TimeSpan.FromMilliseconds(66), DispatcherPriority.Background, (_, _) =>
         {
             if (!IsEffectivelyVisible || Vm is not { } vm || !vm.AnimTick(0.066)) _anim!.Stop();
@@ -40,7 +44,7 @@ public partial class BenchView : UserControl
         AttachedToVisualTree += (_, _) =>
         {
             _tick.Start();
-            if (Vm is { AnyPumpRunning: true }) _anim.Start();
+            if (Vm is { AnyMotion: true }) _anim.Start();
         };
         DetachedFromVisualTree += (_, _) => { _tick.Stop(); _anim.Stop(); };
     }
@@ -51,8 +55,9 @@ public partial class BenchView : UserControl
 
     private void OnVmProp(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(BenchViewModel.AnyPumpRunning)
-            && Vm is { AnyPumpRunning: true } && IsEffectivelyVisible)
+        if (e.PropertyName is nameof(BenchViewModel.AnyPumpRunning)
+                           or nameof(BenchViewModel.AnyMotion)
+            && Vm is { AnyMotion: true } && IsEffectivelyVisible)
             _anim.Start();
     }
 
