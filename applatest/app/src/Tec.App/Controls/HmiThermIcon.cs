@@ -28,6 +28,9 @@ public sealed class HmiThermIcon : Control
         "M9.6 5.2 L12 7.4 L14.4 5.2 M9.6 18.8 L12 16.6 L14.4 18.8");
     private static readonly Geometry Hold = Geometry.Parse("M6.5 10.4 H17.5 M6.5 13.6 H17.5");
 
+    /// <summary>釜示意图的台面带上也要画同一套图标（大号、暗底亮色）——共用几何。</summary>
+    internal static Geometry? GeomOf(int t) => t switch { 1 => Heat, -1 => Cool, 2 => Hold, _ => null };
+
     public override void Render(DrawingContext ctx)
     {
         var t = State;

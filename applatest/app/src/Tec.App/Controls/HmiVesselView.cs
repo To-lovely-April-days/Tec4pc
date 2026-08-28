@@ -210,6 +210,16 @@ public sealed class HmiVesselView : Control
         ctx.DrawLine(ln15, new Point(29, 205.5), new Point(23, 205.5));
         ctx.DrawEllipse(Brushes.White, ln15, new Point(15, 205.5), 8, 8);
         Text(ctx, "TT", 15, 205.5, 7.5, Mut);
+
+        // ── 台面带上的大号状态图标（原型 v60：translate(194,230) scale(2)，
+        //    暗底用亮一档的配色；线宽随组一起放大，跟 SVG 一个缩法）──
+        if (Therm != 0 && HmiThermIcon.GeomOf(Therm) is { } tg)
+        {
+            var tc = Therm switch { 1 => "#F07A48", -1 => "#63A8EE", _ => "#8FCB9B" };
+            using (ctx.PushTransform(Matrix.CreateScale(2, 2) * Matrix.CreateTranslation(194, 230)))
+                ctx.DrawGeometry(null, new Pen(B(tc), Therm == -1 ? 1.9 : 2.2)
+                { LineCap = PenLineCap.Round, LineJoin = PenLineJoin.Round }, tg);
+        }
     }
 
     private static string F(double v) => v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
