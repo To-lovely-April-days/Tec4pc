@@ -291,8 +291,8 @@
                             ContentTemplate="{StaticResource HmiZoneCard}" />
           </Grid>
 
-          <!-- 通道 · 控制 -->
-          <DockPanel IsVisible="{Binding ShowZCtl}">
+          <!-- 通道页：头卡各标签共用（原型 zHead 在 stage 顶上），下面按标签换体 -->
+          <DockPanel IsVisible="{Binding IsZone}">
             <!-- 头卡 -->
             <Border DockPanel.Dock="Top" Classes="hcard" Height="72" Padding="13,9,10,0">
               <Grid RowDefinitions="28,16,*">
@@ -318,6 +318,11 @@
                              VerticalAlignment="Bottom" Margin="-13,0,-10,0" />
               </Grid>
             </Border>
+
+            <Panel>
+
+            <!-- ── 控制 ── -->
+            <DockPanel IsVisible="{Binding ShowZCtl}">
 
             <!-- 底部安全条 -->
             <Border DockPanel.Dock="Bottom" Classes="hfoot" Margin="0,10,0,0">
@@ -581,7 +586,89 @@
                 </Border>
               </StackPanel>
             </Grid>
+            </DockPanel>
+
+            <!-- ── 趋势曲线（原型 zGraph）── -->
+            <DockPanel IsVisible="{Binding ShowZGra}" Margin="0,10,0,0">
+              <!-- 顶部五个趋势卡：色条 + 名 + 实测值，点一下开关这条曲线 -->
+              <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding Cur.TrendRows}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate><UniformGrid Rows="1" /></ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Button Classes="htrend" Classes.off="{Binding !On}" Tag="{Binding Key}"
+                            Click="OnTrendToggle">
+                      <StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                          <Border Width="14" Height="3" CornerRadius="2"
+                                  Background="{Binding ColorHex, Converter={x:Static v:HmiView.HexBrush}}"
+                                  VerticalAlignment="Center" />
+                          <TextBlock Text="{Binding Name}" FontSize="10.5" Foreground="#6F6F6F" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="5" Margin="0,2,0,0">
+                          <TextBlock Text="{Binding ValText}" FontSize="18" FontWeight="Medium" />
+                          <TextBlock Text="{Binding Unit}" FontSize="11" Foreground="#6F6F6F"
+                                     VerticalAlignment="Bottom" Margin="0,0,0,2" />
+                        </StackPanel>
+                      </StackPanel>
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+
+              <!-- 底部工具条（原型 cbar）-->
+              <Border DockPanel.Dock="Bottom" Classes="hcbar" Margin="0,8,0,0">
+                <DockPanel VerticalAlignment="Center" Margin="11,0">
+                  <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="{Binding Cur.WindowLabel}" FontSize="12" Foreground="#6F6F6F"
+                               VerticalAlignment="Center" Margin="0,0,4,0" />
+                    <Button Classes="hbt" Content="◀" Click="OnGraPanL" />
+                    <Button Classes="hbt" Content="▶" Click="OnGraPanR" />
+                    <Button Classes="hbt" Content="−" Click="OnGraZoomOut" />
+                    <Button Classes="hbt" Content="＋" Click="OnGraZoomIn" />
+                    <Button Classes="hbt" Content="复位" Click="OnGraReset" />
+                    <Button Classes="hbt" Content="{Binding Cur.AxisModeText}" Click="OnGraAxis"
+                            ToolTip.Tip="横轴：实验时间 / 时钟" />
+                  </StackPanel>
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Classes="hbt" Content="备注" Click="OnActNote" />
+                    <Button Classes="hbt" Content="时间标记" Click="OnActMarker" />
+                    <Button Classes="hbt" Content="取样" Click="OnActSample" />
+                    <Button Classes="hbt" Content="曲线颜色…" Click="OnTColOpen" />
+                    <Button Classes="hbt" Content="拍快照" Click="OnSnap" />
+                    <Button Classes="hbt" Content="导出快照" Click="OnExpSnap" />
+                  </StackPanel>
+                </DockPanel>
+              </Border>
+
+              <!-- 图框 -->
+              <Border Classes="hchartbox" Margin="0,8,0,0">
+                <Panel>
+                  <ctl:HmiChartView x:Name="ZChart" Model="{Binding Cur.GraModel}" />
+                  <TextBlock Text="管线里还没有可画的采样——设备连上、通道走起来就有了"
+                             FontSize="12.5" Foreground="#6F6F6F" IsVisible="{Binding Cur.GraEmpty}"
+                             HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Panel>
+              </Border>
+            </DockPanel>
+
+            <!-- 通道页还没接入的标签（头卡照常挂着）-->
+            <TextBlock Text="{Binding StubText}" FontSize="13" Foreground="#6F6F6F"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                       IsVisible="{Binding ZStub}" />
+            </Panel>
           </DockPanel>
+
+          <!-- 曲线总览（原型 ov-gra：一张图看两个通道）-->
+          <Border Classes="hchartbox" IsVisible="{Binding ShowOvGra}">
+            <Panel>
+              <ctl:HmiChartView Model="{Binding OvChart}" />
+              <TextBlock Text="管线里还没有可画的采样——设备连上、通道走起来就有了"
+                         FontSize="12.5" Foreground="#6F6F6F" IsVisible="{Binding OvChartEmpty}"
+                         HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Panel>
+          </Border>
 
           <!-- 还没接入的页 -->
           <TextBlock Text="{Binding StubText}" FontSize="13" Foreground="#6F6F6F"
@@ -670,6 +757,88 @@
           <StackPanel Orientation="Horizontal" Spacing="9" HorizontalAlignment="Right">
             <Button Classes="hbt" Content="取消" Click="OnActCancel" />
             <Button Classes="hbt pri" Content="{Binding ActOk}" Click="OnActOk" MinWidth="100" />
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </Border>
+  </Border>
+
+  <!-- ══ 点图弹窗（原型 gtap：在所选时刻添加）══ -->
+  <Border Background="#6B1A1A1A" IsVisible="{Binding GtOpen}" PointerPressed="OnMask">
+    <Border Width="400" HorizontalAlignment="Center" VerticalAlignment="Center"
+            Background="White" BorderBrush="#6F6F6F" BorderThickness="1" CornerRadius="4"
+            PointerPressed="OnDlgBody">
+      <StackPanel>
+        <Border Background="#2F8189" Padding="16,12">
+          <StackPanel>
+            <TextBlock Text="在所选时刻添加" FontSize="14.5" FontWeight="Medium" Foreground="White" />
+            <TextBlock Text="{Binding GtSub}" FontSize="11.5" Foreground="#B8DCDF" Margin="0,2,0,0" />
+          </StackPanel>
+        </Border>
+        <StackPanel Margin="18,15" Spacing="9">
+          <Button Classes="hopt" Click="OnGtapMark">
+            <StackPanel>
+              <TextBlock Text="时间标记" FontSize="13" />
+              <TextBlock Text="新标记即当前 t = 0" Classes="hsmall" HorizontalAlignment="Left" />
+            </StackPanel>
+          </Button>
+          <Button Classes="hopt" Click="OnGtapNote">
+            <StackPanel>
+              <TextBlock Text="备注" FontSize="13" />
+              <TextBlock Text="以红色三角标注在曲线上" Classes="hsmall" HorizontalAlignment="Left" />
+            </StackPanel>
+          </Button>
+        </StackPanel>
+        <Border BorderBrush="#DCDCDC" BorderThickness="0,1,0,0" Padding="18,11,18,15">
+          <StackPanel Orientation="Horizontal" Spacing="9" HorizontalAlignment="Right">
+            <Button Classes="hbt" Content="取消" Click="OnGtCancel" />
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </Border>
+  </Border>
+
+  <!-- ══ 曲线颜色弹窗（原型 tcolors）══ -->
+  <Border Background="#6B1A1A1A" IsVisible="{Binding TColOpen}" PointerPressed="OnMask">
+    <Border Width="560" HorizontalAlignment="Center" VerticalAlignment="Center"
+            Background="White" BorderBrush="#6F6F6F" BorderThickness="1" CornerRadius="4"
+            PointerPressed="OnDlgBody">
+      <StackPanel>
+        <Border Background="#2F8189" Padding="16,12">
+          <StackPanel>
+            <TextBlock Text="曲线颜色" FontSize="14.5" FontWeight="Medium" Foreground="White" />
+            <TextBlock Text="点击色块更换对应曲线的颜色" FontSize="11.5" Foreground="#B8DCDF"
+                       Margin="0,2,0,0" />
+          </StackPanel>
+        </Border>
+        <ItemsControl ItemsSource="{Binding TColRows}" Margin="6,8">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <DockPanel Margin="12,7">
+                <TextBlock Text="{Binding Name}" Width="150" FontSize="12.5" Foreground="#6F6F6F"
+                           VerticalAlignment="Center" />
+                <ItemsControl ItemsSource="{Binding Cells}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="10" /></ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Border Width="26" Height="26" CornerRadius="3" Padding="2"
+                              BorderThickness="2" PointerPressed="OnTColPick"
+                              BorderBrush="{Binding On, Converter={x:Static v:HmiView.PickOutline}}">
+                        <Border CornerRadius="2"
+                                Background="{Binding Hex, Converter={x:Static v:HmiView.HexBrush}}" />
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </DockPanel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <Border BorderBrush="#DCDCDC" BorderThickness="0,1,0,0" Padding="18,11,18,15">
+          <StackPanel Orientation="Horizontal" Spacing="9" HorizontalAlignment="Right">
+            <Button Classes="hbt" Content="关闭" Click="OnTColClose" />
           </StackPanel>
         </Border>
       </StackPanel>
@@ -988,6 +1157,42 @@
       <Setter Property="HorizontalContentAlignment" Value="Center" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
+    <!-- 趋势卡（原型 .trend）-->
+    <Style Selector="Button.htrend">
+      <Setter Property="Background" Value="#F1F1F1" />
+      <Setter Property="BorderBrush" Value="#C9C9C9" /><Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="3" /><Setter Property="Padding" Value="11,7" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Left" />
+      <Setter Property="Margin" Value="0,0,6,0" />
+    </Style>
+    <Style Selector="Button.htrend:pointerover"><Setter Property="BorderBrush" Value="#4FB1B8" /></Style>
+    <Style Selector="Button.htrend.off"><Setter Property="Opacity" Value="0.42" /></Style>
+
+    <!-- 曲线页图框与工具条（原型 .chartbox / .cbar）-->
+    <Style Selector="Border.hchartbox">
+      <Setter Property="BorderBrush" Value="#C9C9C9" /><Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="3" /><Setter Property="Background" Value="White" />
+      <Setter Property="Padding" Value="5" />
+    </Style>
+    <Style Selector="Border.hcbar">
+      <Setter Property="Height" Value="48" />
+      <Setter Property="BorderBrush" Value="#C9C9C9" /><Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="3" /><Setter Property="Background" Value="#F9F9F9" />
+    </Style>
+
+    <!-- 弹窗里的选项大按钮（原型 .opt）-->
+    <Style Selector="Button.hopt">
+      <Setter Property="Background" Value="#F9F9F9" />
+      <Setter Property="BorderBrush" Value="#C9C9C9" /><Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="3" /><Setter Property="Padding" Value="14,12" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Left" />
+    </Style>
+    <Style Selector="Button.hopt:pointerover">
+      <Setter Property="BorderBrush" Value="#4FB1B8" /><Setter Property="Background" Value="#E4F4F4" />
+    </Style>
+
     <Style Selector="Button.hkp:pointerover /template/ ContentPresenter">
       <Setter Property="Background" Value="#EAEAEA" />
     </Style>

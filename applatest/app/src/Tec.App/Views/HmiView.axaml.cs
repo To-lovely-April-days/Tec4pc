@@ -17,6 +17,11 @@ public partial class HmiView : UserControl
         new FuncValueConverter<bool, IBrush>(run => run ? Brushes.White : new SolidColorBrush(Color.Parse("#1A1A1A")));
     public static readonly IValueConverter DotFill =
         new FuncValueConverter<bool, IBrush>(run => new SolidColorBrush(Color.Parse(run ? "#2F6B38" : "#C9C9C9")));
+    public static readonly IValueConverter HexBrush =
+        new FuncValueConverter<string?, IBrush>(s => new SolidColorBrush(Color.Parse(s ?? "#000000")));
+    /// <summary>颜色弹窗里选中的色块描一圈黑（原型 outline: 2px solid var(--ink)）。</summary>
+    public static readonly IValueConverter PickOutline =
+        new FuncValueConverter<bool, IBrush>(on => new SolidColorBrush(Color.Parse(on ? "#1A1A1A" : "#DCDCDC")));
 
     private readonly DispatcherTimer _tick;
     private readonly DispatcherTimer _anim;
@@ -35,6 +40,10 @@ public partial class HmiView : UserControl
         {
             if (!IsEffectivelyVisible || Vm is not { } vm || !vm.AnimTick(0.066)) _anim!.Stop();
         });
+
+        // 点图（原型 data-gchart）：换算成「秒」交给视图模型开 gtap 弹窗
+        if (this.FindControl<Tec.App.Controls.HmiChartView>("ZChart") is { } zc)
+            zc.Tapped = sec => Vm?.ChartTapped(sec);
 
         AttachedToVisualTree += (_, _) => { _tick.Start(); _anim.Start(); };
         DetachedFromVisualTree += (_, _) => { _tick.Stop(); _anim.Stop(); };
@@ -107,6 +116,58 @@ public partial class HmiView : UserControl
 
     /// <summary>点遮罩空白处关弹窗；点弹窗本体不算（OnDlgBody 把事件吃掉）。</summary>
     private void OnMask(object? s, PointerPressedEventArgs e)
-    { Vm?.KpCancel(); Vm?.ActCancel(); }
+    { Vm?.KpCancel(); Vm?.ActCancel(); Vm?.GtCancel(); Vm?.TColClose(); }
     private void OnDlgBody(object? s, PointerPressedEventArgs e) => e.Handled = true;
+
+    // ── 趋势曲线页 ──────────────────────────────────────────────────
+
+    private void OnTrendToggle(object? s, RoutedEventArgs e)
+    { if (s is Control { Tag: string k }) Vm?.Cur?.ToggleTrend(k); }
+
+    private void OnGraPanL(object? s, RoutedEventArgs e) => Vm?.Cur?.GraPan(-1);
+    private void OnGraPanR(object? s, RoutedEventArgs e) => Vm?.Cur?.GraPan(+1);
+    private void OnGraZoomIn(object? s, RoutedEventArgs e) => Vm?.Cur?.GraZoom(0.5);
+    private void OnGraZoomOut(object? s, RoutedEventArgs e) => Vm?.Cur?.GraZoom(2);
+    private void OnGraReset(object? s, RoutedEventArgs e) => Vm?.Cur?.GraReset();
+    private void OnGraAxis(object? s, RoutedEventArgs e) => Vm?.Cur?.GraAxisToggle();
+
+    private void OnTColOpen(object? s, RoutedEventArgs e) => Vm?.OpenTCol();
+    private void OnTColClose(object? s, RoutedEventArgs e) => Vm?.TColClose();
+    private void OnTColPick(object? s, PointerPressedEventArgs e)
+    {
+        if (Vm is { } v && s is Control { DataContext: HmiViewModel.TColCell c })
+            v.TColPick(c.Key, c.Hex);
+        e.Handled = true;
+    }
+
+    private void OnGtCancel(object? s, RoutedEventArgs e) => Vm?.GtCancel();
+    private void OnGtapMark(object? s, RoutedEventArgs e) => Vm?.GtapMark();
+    private void OnGtapNote(object? s, RoutedEventArgs e) => Vm?.GtapNote();
+
+    /// <summary>拍快照 / 导出快照：把图渲染成 PNG（导出再带一份窗口内原始 CSV）。</summary>
+    private void OnSnap(object? s, RoutedEventArgs e) => Snapshot(withCsv: false);
+    private void OnExpSnap(object? s, RoutedEventArgs e) => Snapshot(withCsv: true);
+
+    private void Snapshot(bool withCsv)
+    {
+        if (Vm is not { } vm || vm.Cur is not { } z) return;
+        var chart = this.FindControl<Tec.App.Controls.HmiChartView>("ZChart");
+        if (chart is null || chart.Bounds.Width < 50 || z.GraModel is null)
+        { vm.Toast("图上还没有内容可拍"); return; }
+        try
+        {
+            var dir = System.IO.Path.Combine(Tec.App.Services.ExperimentStore.DataDir, "Snapshots");
+            System.IO.Directory.CreateDirectory(dir);
+            var baseName = $"HMI-CH{z.Number}-{DateTime.Now:yyyyMMdd-HHmmss}";
+            // 2 倍渲染：这张图是要进报告/发人的，1280 屏上的 1 倍图放大就糊
+            var px = new Avalonia.PixelSize((int)(chart.Bounds.Width * 2), (int)(chart.Bounds.Height * 2));
+            using var rtb = new Avalonia.Media.Imaging.RenderTargetBitmap(px, new Avalonia.Vector(192, 192));
+            rtb.Render(chart);
+            var png = System.IO.Path.Combine(dir, baseName + ".png");
+            rtb.Save(png);
+            var csv = withCsv ? z.ExportWindowCsv(dir, baseName) : null;
+            vm.Toast(csv is null ? $"快照已保存：{png}" : $"已导出：{png} + 同名 .csv");
+        }
+        catch (Exception ex) { vm.Toast("保存失败：" + ex.Message); }
+    }
 }

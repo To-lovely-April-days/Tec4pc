@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using Tec.App.Controls;
 using Tec.App.Services;
 using Tec.Core;
 using Tec.Driver.Abi;
@@ -60,8 +61,12 @@ public sealed class HmiViewModel : ViewModelBase
     public bool ZOther => _zTab != "ctl";
 
     public bool ShowOvApp => IsOv && OvApp;
+    public bool ShowOvGra => IsOv && OvGra;
     public bool ShowZCtl => IsZone && ZCtl;
-    public bool ShowStub => (IsOv && !OvApp) || (IsZone && !ZCtl) || IsFiles || IsSys;
+    public bool ShowZGra => IsZone && _zTab == "gra";
+    /// <summary>通道页里还没接入的标签（头卡照常挂着，身子给一句实话）。</summary>
+    public bool ZStub => IsZone && !(ZCtl || _zTab == "gra");
+    public bool ShowStub => (IsOv && !(OvApp || OvGra)) || IsFiles || IsSys;
 
     /// <summary>还没接入的页给一句实话，不摆一个点了没反应的空壳。</summary>
     public string StubText => "该页在下一补丁接入（本机数据照常记录）";
@@ -76,10 +81,16 @@ public sealed class HmiViewModel : ViewModelBase
     public string ArtChevron => _artOpen ? "❮" : "❯";
 
     private void RaisePages()
-        => RaiseAll(nameof(Page), nameof(OvTab), nameof(ZTab), nameof(IsOv), nameof(IsZone),
-                    nameof(IsFiles), nameof(IsSys), nameof(OnZ0), nameof(OnZ1), nameof(Cur),
-                    nameof(OvApp), nameof(OvSeq), nameof(OvGra), nameof(ZCtl), nameof(ZOther),
-                    nameof(ShowOvApp), nameof(ShowZCtl), nameof(ShowStub));
+    {
+        RaiseAll(nameof(Page), nameof(OvTab), nameof(ZTab), nameof(IsOv), nameof(IsZone),
+                 nameof(IsFiles), nameof(IsSys), nameof(OnZ0), nameof(OnZ1), nameof(Cur),
+                 nameof(OvApp), nameof(OvSeq), nameof(OvGra), nameof(ZCtl), nameof(ZOther),
+                 nameof(ShowOvApp), nameof(ShowOvGra), nameof(ShowZCtl), nameof(ShowZGra),
+                 nameof(ZStub), nameof(ShowStub));
+        // 切进曲线页别等下一拍——空一秒的图看着像坏了
+        if (ShowZGra && Cur is { } z) z.RefreshGra();
+        if (ShowOvGra) RefreshOvChart();
+    }
 
     // ── 侧栏状态 ────────────────────────────────────────────────────
 
@@ -97,6 +108,131 @@ public sealed class HmiViewModel : ViewModelBase
         var a = Zones[0].TrVal; var b = Zones[1].TrVal;
         return a is { } x && b is { } y ? Math.Abs(x - y).ToString("0.0") : "—";
     }
+
+    // ── 曲线总览（原型 ov-gra：通道1 的 Tr/Tj + 通道2 的 Tr，一张图）────
+
+    public HmiChartModel? OvChart { get; private set; }
+    public bool OvChartEmpty => OvChart is null;
+
+    internal void RefreshOvChart()
+    {
+        OvChart = BuildOvChart();
+        RaiseAll(nameof(OvChart), nameof(OvChartEmpty));
+    }
+
+    private HmiChartModel? BuildOvChart()
+    {
+        var want = new List<(HmiZoneViewModel Z, string Tag, string Name, string Color)>();
+        if (Zones.Count > 0)
+        {
+            want.Add((Zones[0], "Tr", "Tr 通道1", "#2F8189"));
+            want.Add((Zones[0], "Tj", "Tj 通道1", "#4A4A4A"));
+        }
+        if (Zones.Count > 1) want.Add((Zones[1], "Tr", "Tr 通道2", "#C9C9C9"));
+
+        DateTimeOffset? t0 = null, tEnd = null;
+        var raw = new List<(Sample[] Pts, string Name, string Color)>();
+        foreach (var (z, tag, name, color) in want)
+        {
+            var pts = _ws.Pipeline.Snapshot(z.Number, tag);
+            if (pts.Length < 2) continue;
+            raw.Add((pts, name, color));
+            if (t0 is null || pts[0].WallClock < t0) t0 = pts[0].WallClock;
+            if (tEnd is null || pts[^1].WallClock > tEnd) tEnd = pts[^1].WallClock;
+        }
+        if (t0 is null || tEnd is null) return null;
+        var span = Math.Max(1, (tEnd.Value - t0.Value).TotalSeconds);
+
+        double dLo = double.MaxValue, dHi = double.MinValue;
+        var traces = new List<HmiChartTrace>();
+        foreach (var (pts, name, color) in raw)
+        {
+            var pl = new List<Avalonia.Point>(pts.Length);
+            foreach (var s in pts)
+            {
+                pl.Add(new Avalonia.Point((s.WallClock - t0.Value).TotalSeconds, s.Value));
+                if (s.Value < dLo) dLo = s.Value;
+                if (s.Value > dHi) dHi = s.Value;
+            }
+            traces.Add(new HmiChartTrace
+            { Name = name, Color = Avalonia.Media.Color.Parse(color), Points = pl });
+        }
+        // 原型定死 −30…110；真数据出界时把界扩出去——图不许把点裁没了
+        var lo = Math.Min(-30.0, dLo);
+        var hi = Math.Max(110.0, dHi * 1.12 + 5);
+        var labels = new List<string>(7);
+        for (var i = 0; i <= 6; i++)
+        {
+            var sec = i * span / 6;
+            labels.Add(span / 60 < 36 ? $"{sec / 60:0.0} min" : $"{Math.Round(sec / 60)} min");
+        }
+        return new HmiChartModel
+        { Traces = traces, XStart = 0, XSpan = span, YLo = lo, YHi = hi, XLabels = labels };
+    }
+
+    // ── 点图弹窗（原型 gtap：在所选时刻加标记 / 备注）────────────────
+
+    private double _gtSec;
+    private DateTimeOffset? _pendingNoteAt;   // 备注走 Act 弹窗，记在点中的时刻上
+
+    public bool GtOpen { get; private set; }
+    public string GtSub { get; private set; } = "";
+
+    public void ChartTapped(double sec)
+    {
+        if (Cur is not { } z || z.TimeAtSec(sec) is null) return;
+        _gtSec = sec;
+        GtSub = "曲线位置 t + " + Fmt.Hms(TimeSpan.FromSeconds(Math.Max(0, sec)));
+        GtOpen = true;
+        RaiseAll(nameof(GtOpen), nameof(GtSub));
+    }
+
+    public void GtCancel() { GtOpen = false; Raise(nameof(GtOpen)); }
+
+    public void GtapMark()
+    {
+        GtOpen = false; Raise(nameof(GtOpen));
+        if (Cur is not { } z || z.TimeAtSec(_gtSec) is not { } at) return;
+        z.MarkAt(at, $"标记{z.MarkCount + 1}");
+        Toast("时间标记已添加（新标记即当前 t=0）");
+    }
+
+    public void GtapNote()
+    {
+        GtOpen = false; Raise(nameof(GtOpen));
+        if (Cur is not { } z || z.TimeAtSec(_gtSec) is not { } at) return;
+        _pendingNoteAt = at;
+        OpenAct("note");
+    }
+
+    // ── 曲线颜色弹窗（原型 tcolors）──────────────────────────────────
+
+    public sealed record TColRow(string Key, string Name, IReadOnlyList<TColCell> Cells);
+    public sealed record TColCell(string Key, string Hex, bool On);
+    private static readonly string[] Palette =
+        { "#2F8189", "#3A3A3A", "#4FB1B8", "#C97B2D", "#7B5EA7", "#2F6B38", "#C42B1C" };
+
+    public bool TColOpen { get; private set; }
+    public IReadOnlyList<TColRow> TColRows { get; private set; } = Array.Empty<TColRow>();
+
+    public void OpenTCol()
+    {
+        if (Cur is not { } z) return;
+        TColRows = z.TrendRows.Where(t => t.On).Select(t => new TColRow(t.Key, t.Name,
+            Palette.Select(c => new TColCell(t.Key, c,
+                string.Equals(z.ColorOf(t.Key), c, StringComparison.OrdinalIgnoreCase))).ToList()
+        )).ToList();
+        TColOpen = true;
+        RaiseAll(nameof(TColOpen), nameof(TColRows));
+    }
+
+    public void TColPick(string key, string hex)
+    {
+        Cur?.SetTraceColor(key, hex);
+        OpenTCol();   // 重开一遍刷新选中框
+    }
+
+    public void TColClose() { TColOpen = false; Raise(nameof(TColOpen)); }
 
     // ── 键盘弹窗（原型 kp）────────────────────────────────────────────
 
@@ -207,10 +343,22 @@ public sealed class HmiViewModel : ViewModelBase
             if (okV && okR && vol > 0 && rate > 0) z.DoseRun(text, vol, rate);
             else z.Note("加料", $"{text}（人工投料，已记录）");
         }
+        else if (_actKind == "marker")
+        {
+            // 标记落在真实时刻上，并成为当前 t=0（原型 mZero 的规矩）
+            z.MarkAt(_ws.Clock.Now, text);
+            Toast($"标记已添加：{text}（t=0）");
+        }
+        else if (_actKind == "note")
+        {
+            // 从图上点进来的备注记在点中的时刻，普通入口记在当下
+            z.NoteAt(_pendingNoteAt ?? _ws.Clock.Now, text);
+            _pendingNoteAt = null;
+            Toast($"备注已记录：{text}");
+        }
         else
         {
-            var kind = _actKind switch { "sample" => "取样", "marker" => "标记", _ => "备注" };
-            z.Note(kind, text);
+            z.Note("取样", text);
         }
         ActOpen = false;
     }
@@ -232,7 +380,13 @@ public sealed class HmiViewModel : ViewModelBase
     /// <summary>1 秒一拍：读数、状态、toast 倒计时。视图可见才被调。</summary>
     public void Refresh()
     {
-        foreach (var z in Zones) z.Refresh();
+        foreach (var z in Zones)
+        {
+            // 曲线模型只在有人看的那页重建——8k 点的切片抽稀不该在后台白跑
+            z.WantGra = ShowZGra && ReferenceEquals(z, Cur);
+            z.Refresh();
+        }
+        if (ShowOvGra) RefreshOvChart();
         if (_toastTtl > 0 && --_toastTtl == 0) Raise(nameof(ToastOpen));
         RaiseAll(nameof(AnyRun), nameof(RailState), nameof(OvRt), nameof(Cur));
     }
@@ -361,6 +515,9 @@ public sealed class HmiZoneViewModel : ViewModelBase
             ? Fmt.Hms(run.Elapsed(_ws.Clock.Now))
             : TempOn ? "控温中" : "待机";
         HeadRow2 = (EngineRunning ? "程序控制" : "手动控制") + " · " + ModeName;
+        // 有 t=0 标记时把「标记 X +时长」缀在右上（原型 zHead 的 rt 段）
+        if (MarkText.Length > 0) HeadRt = HeadRt + "　" + MarkText;
+        if (WantGra) RefreshGra();
         if (EngineRunning && run is not null)
         {
             var steps = run.Steps;
@@ -642,6 +799,284 @@ public sealed class HmiZoneViewModel : ViewModelBase
         Log("加料", $"{material} {Txt.Fx(v)} mL · {Txt.Fx(rt)} mL/min");
         _owner.Toast("加料任务已启动");
         RaiseZone();
+    }
+
+    // ── 趋势曲线页（0250）────────────────────────────────────────────
+    //
+    // 数据只有一个来源：数据管线的环形缓冲（每路 8192 点 ≈ 两个多小时，
+    // 与台面/运行页看的是同一份）。窗口、平移、缩放都是在这份真数据上
+    // 切片，不另攒任何点。
+
+    public sealed record TrendRow(string Key, string Name, string Unit, string ColorHex,
+                                  string ValText, bool On);
+
+    private static readonly (string Key, string Name, string Unit, string Color)[] TrendDefs =
+    {
+        ("tr", "Tr 釜内温度", "℃", "#2F8189"),
+        ("tj", "Tj 夹套温度", "℃", "#4A4A4A"),
+        ("dt", "Tr−Tj 内外温差", "K", "#8E8E8E"),
+        ("ph", "pH", "", "#6F6F6F"),
+        ("rpm", "R 转速", "rpm", "#C9C9C9"),
+    };
+
+    private readonly HashSet<string> _trends = new(StringComparer.Ordinal) { "tr", "tj", "dt" };
+    private readonly Dictionary<string, string> _traceColor = new(StringComparer.Ordinal);
+    private double _winSec;          // 0 = 全程
+    private double _offSec;          // 距最新点往回退的秒数
+    private double _lastWin, _lastFull;
+    private bool _clockAxis;
+    private DateTimeOffset? _axis0;  // 本轮图的时间原点（最早样点）
+
+    /// <summary>标记（红虚线）与备注（红三角）。时间戳全是真时刻。</summary>
+    public sealed record TimeMark(DateTimeOffset At, string Name);
+    private readonly List<TimeMark> _marks = new();
+    private readonly List<DateTimeOffset> _noteTimes = new();
+    private int _markZero = -1;
+
+    /// <summary>页面在看曲线时才重建模型（拥有者每拍设置）。</summary>
+    internal bool WantGra { get; set; }
+
+    public HmiChartModel? GraModel { get; private set; }
+    public bool GraEmpty => GraModel is null;
+
+    public IReadOnlyList<TrendRow> TrendRows => TrendDefs.Select(d => new TrendRow(
+        d.Key, d.Name, d.Unit, ColorOf(d.Key),
+        d.Key switch
+        {
+            "tr" => F1(TrVal),
+            "tj" => F1(TjVal),
+            "dt" => TrVal is { } a && TjVal is { } b ? Sg(a - b) : "—",
+            "ph" => PhText,
+            _ => RpmVal.ToString("0"),
+        },
+        _trends.Contains(d.Key))).ToList();
+
+    public string ColorOf(string key)
+        => _traceColor.TryGetValue(key, out var c) ? c : TrendDefs.First(d => d.Key == key).Color;
+
+    public IReadOnlyList<string> EnabledTrends => TrendDefs.Select(d => d.Key)
+        .Where(_trends.Contains).ToList();
+
+    public void ToggleTrend(string key)
+    {
+        if (!_trends.Remove(key)) _trends.Add(key);
+        if (_trends.Count == 0) _trends.Add(key);   // 全关没意义，至少留一条
+        RefreshGra();
+    }
+
+    public void SetTraceColor(string key, string hex) { _traceColor[key] = hex; RefreshGra(); }
+
+    public string WindowLabel => _lastFull <= 0 ? "窗口 —"
+        : $"窗口 {Math.Max(1, Math.Round(_lastWin / 60))} min";
+    public string AxisModeText => _clockAxis ? "时钟" : "实验时间";
+
+    public void GraZoom(double factor)
+    {
+        var full = _lastFull;
+        if (full <= 0) return;
+        var win = _winSec > 0 ? _winSec : full;
+        _winSec = Math.Clamp(win * factor, 120, full);
+        if (_winSec >= full - 1) _winSec = 0;
+        RefreshGra();
+    }
+
+    public void GraPan(int dir)
+    {
+        var full = _lastFull;
+        if (full <= 0) return;
+        var win = _winSec > 0 ? _winSec : full;
+        // ◀ = 往历史退（off 增大），▶ = 往最新走
+        _offSec = Math.Clamp(_offSec - dir * win / 4, 0, Math.Max(0, full - win));
+        RefreshGra();
+    }
+
+    public void GraReset() { _winSec = 0; _offSec = 0; RefreshGra(); }
+    public void GraAxisToggle() { _clockAxis = !_clockAxis; RefreshGra(); }
+
+    internal void RefreshGra()
+    {
+        GraModel = BuildChart();
+        RaiseAll(nameof(GraModel), nameof(GraEmpty), nameof(TrendRows),
+                 nameof(WindowLabel), nameof(AxisModeText));
+    }
+
+    /// <summary>图上点一下的位置换回真时刻（gtap 弹窗要用）。</summary>
+    internal DateTimeOffset? TimeAtSec(double sec) => _axis0?.AddSeconds(sec);
+
+    public void MarkAt(DateTimeOffset at, string name)
+    {
+        _marks.Add(new TimeMark(at, name));
+        _markZero = _marks.Count - 1;      // 最新的标记就是当前 t=0（原型 mZero）
+        Log("标记", $"{name}（t=0）");
+        RefreshGra();
+    }
+
+    public void NoteAt(DateTimeOffset at, string text)
+    {
+        _noteTimes.Add(at);
+        Log("备注", text);
+        RefreshGra();
+    }
+
+    /// <summary>头部「标记 X +时长」那截（有标记才有）。</summary>
+    public string MarkText => _markZero >= 0 && _markZero < _marks.Count
+        ? $"标记 {_marks[_markZero].Name} +{Fmt.Hms(_ws.Clock.Now - _marks[_markZero].At)}"
+        : "";
+
+    public int MarkCount => _marks.Count;
+
+    private Sample[] Snap(string tag) => _ws.Pipeline.Snapshot(Number, tag);
+
+    /// <summary>dt 序列：Tr、Tj 各自的样点按时间就近配对（容差 1.5 s），配不上的丢掉。</summary>
+    private (DateTimeOffset T, double V)[] PairedDt()
+    {
+        var tr = Snap("Tr"); var tj = Snap("Tj");
+        var outp = new List<(DateTimeOffset, double)>(Math.Min(tr.Length, tj.Length));
+        var j = 0;
+        foreach (var a in tr)
+        {
+            while (j < tj.Length - 1 &&
+                   Math.Abs((tj[j + 1].WallClock - a.WallClock).TotalSeconds)
+                   <= Math.Abs((tj[j].WallClock - a.WallClock).TotalSeconds)) j++;
+            if (j < tj.Length && Math.Abs((tj[j].WallClock - a.WallClock).TotalSeconds) <= 1.5)
+                outp.Add((a.WallClock, a.Value - tj[j].Value));
+        }
+        return outp.ToArray();
+    }
+
+    private (DateTimeOffset T, double V)[] SeriesOf(string key) => key switch
+    {
+        "tr" => Snap("Tr").Select(s => (s.WallClock, s.Value)).ToArray(),
+        "tj" => Snap("Tj").Select(s => (s.WallClock, s.Value)).ToArray(),
+        "rpm" => Snap("rpm").Select(s => (s.WallClock, s.Value)).ToArray(),
+        "ph" => Snap("pH").Select(s => (s.WallClock, s.Value)).ToArray(),
+        _ => PairedDt(),
+    };
+
+    /// <summary>窗口切片 + 分桶抽稀（每桶留最小/最大两点，尖峰不丢）。</summary>
+    private static List<Avalonia.Point> Decimate((DateTimeOffset T, double V)[] pts,
+        DateTimeOffset t0, double xStart, double xEnd)
+    {
+        var inWin = new List<(double X, double V)>(pts.Length);
+        foreach (var p in pts)
+        {
+            var x = (p.T - t0).TotalSeconds;
+            if (x >= xStart - 1 && x <= xEnd + 1) inWin.Add((x, p.V));
+        }
+        const int Buckets = 570;
+        var res = new List<Avalonia.Point>(Math.Min(inWin.Count, Buckets * 2));
+        if (inWin.Count <= Buckets * 2)
+        {
+            foreach (var (x, v) in inWin) res.Add(new Avalonia.Point(x, v));
+            return res;
+        }
+        var span = Math.Max(1e-9, xEnd - xStart);
+        var bi = 0;
+        (double, double) lo = (0, double.MaxValue), hi = (0, double.MinValue);
+        void Flush((double, double) l, (double, double) h)
+        {
+            if (l.Item2 == double.MaxValue) return;
+            if (l.Item1 <= h.Item1) { res.Add(new Avalonia.Point(l.Item1, l.Item2)); if (h.Item2 != l.Item2) res.Add(new Avalonia.Point(h.Item1, h.Item2)); }
+            else { res.Add(new Avalonia.Point(h.Item1, h.Item2)); res.Add(new Avalonia.Point(l.Item1, l.Item2)); }
+        }
+        foreach (var (x, v) in inWin)
+        {
+            var b = Math.Min(Buckets - 1, (int)((x - xStart) / span * Buckets));
+            if (b != bi) { Flush(lo, hi); bi = b; lo = (x, double.MaxValue); hi = (x, double.MinValue); }
+            if (v < lo.Item2) lo = (x, v);
+            if (v > hi.Item2) hi = (x, v);
+        }
+        Flush(lo, hi);
+        return res;
+    }
+
+    private HmiChartModel? BuildChart()
+    {
+        var raw = new List<(string Key, (DateTimeOffset T, double V)[] Pts)>();
+        DateTimeOffset? t0 = null, tEnd = null;
+        foreach (var key in EnabledTrends)
+        {
+            var pts = SeriesOf(key);
+            if (pts.Length < 2) continue;
+            raw.Add((key, pts));
+            if (t0 is null || pts[0].T < t0) t0 = pts[0].T;
+            if (tEnd is null || pts[^1].T > tEnd) tEnd = pts[^1].T;
+        }
+        if (t0 is null || tEnd is null) { _axis0 = null; _lastFull = 0; return null; }
+        _axis0 = t0;
+
+        var full = Math.Max(1, (tEnd.Value - t0.Value).TotalSeconds);
+        var win = _winSec > 0 ? Math.Min(_winSec, full) : full;
+        _offSec = Math.Clamp(_offSec, 0, Math.Max(0, full - win));
+        var xEnd = full - _offSec;
+        var xStart = xEnd - win;
+        _lastWin = win; _lastFull = full;
+
+        double lo = double.MaxValue, hi = double.MinValue;
+        var traces = new List<HmiChartTrace>();
+        foreach (var (key, pts) in raw)
+        {
+            var dec = Decimate(pts, t0.Value, xStart, xEnd);
+            if (dec.Count < 2) continue;
+            foreach (var p in dec) { if (p.Y < lo) lo = p.Y; if (p.Y > hi) hi = p.Y; }
+            var def = TrendDefs.First(d => d.Key == key);
+            traces.Add(new HmiChartTrace
+            {
+                Name = def.Name,
+                Color = Avalonia.Media.Color.Parse(ColorOf(key)),
+                Points = dec,
+            });
+        }
+        if (traces.Count == 0) return null;
+        // 纵轴界照原型：下界不高于 −30，上界给 12% 余量再加 5
+        lo = Math.Min(-30, lo);
+        hi = hi * 1.12 + 5;
+        if (hi <= lo + 1) hi = lo + 20;
+
+        var labels = new List<string>(7);
+        for (var i = 0; i <= 6; i++)
+        {
+            var sec = xStart + i * win / 6;
+            labels.Add(_clockAxis
+                ? t0.Value.AddSeconds(sec).ToString(win < 600 ? "HH:mm:ss" : "HH:mm")
+                : win / 60 < 36 ? $"{sec / 60:0.0} min" : $"{Math.Round(sec / 60)} min");
+        }
+
+        return new HmiChartModel
+        {
+            Traces = traces,
+            XStart = xStart,
+            XSpan = win,
+            YLo = lo,
+            YHi = hi,
+            XLabels = labels,
+            Marks = _marks.Select((m, i) => new HmiChartMark(
+                        (m.At - t0.Value).TotalSeconds, m.Name, i == _markZero)).ToList(),
+            Notes = _noteTimes.Select(n => (n - t0.Value).TotalSeconds).ToList(),
+        };
+    }
+
+    /// <summary>导出快照的 CSV 半边：当前窗口里的原始样点（未抽稀）。返回文件路径。</summary>
+    public string? ExportWindowCsv(string dir, string baseName)
+    {
+        if (_axis0 is not { } t0 || _lastFull <= 0) return null;
+        var xEnd = _lastFull - _offSec;
+        var xStart = xEnd - _lastWin;
+        var sb = new System.Text.StringBuilder("时间,标签,值\n");
+        var any = false;
+        foreach (var key in EnabledTrends)
+            foreach (var (t, v) in SeriesOf(key))
+            {
+                var x = (t - t0).TotalSeconds;
+                if (x < xStart || x > xEnd) continue;
+                sb.Append(t.ToString("yyyy-MM-dd HH:mm:ss")).Append(',')
+                  .Append(key).Append(',').Append(v.ToString("0.###")).Append('\n');
+                any = true;
+            }
+        if (!any) return null;
+        var path = System.IO.Path.Combine(dir, baseName + ".csv");
+        System.IO.File.WriteAllText(path, sb.ToString(), System.Text.Encoding.UTF8);
+        return path;
     }
 
     internal void OpenKeypad(string key) => _owner.OpenKeypad(this, key);
