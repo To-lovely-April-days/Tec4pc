@@ -144,6 +144,19 @@ public partial class HmiView : UserControl
     private void OnStartSeq(object? s, RoutedEventArgs e) => Vm?.Cur?.StartSeq();
     private void OnSeqEditHint(object? s, RoutedEventArgs e) => Vm?.Cur?.SeqEditHint();
 
+    // ── 反应釜与安全页 + 报警层 ─────────────────────────────────────
+    private void OnSafRow(object? s, PointerPressedEventArgs e)
+    {
+        if (s is Control { Tag: string k } && k.Length > 0) Vm?.Cur?.EditSafRow(k);
+        e.Handled = true;
+    }
+
+    private void OnAlarmDrill(object? s, RoutedEventArgs e)
+    { if (s is Control { Tag: string k }) Vm?.AlarmDrillOpen(k); }
+
+    private void OnAlarmAck(object? s, RoutedEventArgs e) => Vm?.AlarmAck();
+    private void OnAlarmAckAll(object? s, RoutedEventArgs e) => Vm?.AlarmAckAll();
+
     private void OnGtCancel(object? s, RoutedEventArgs e) => Vm?.GtCancel();
     private void OnGtapMark(object? s, RoutedEventArgs e) => Vm?.GtapMark();
     private void OnGtapNote(object? s, RoutedEventArgs e) => Vm?.GtapNote();

@@ -70,8 +70,9 @@ public sealed class HmiViewModel : ViewModelBase
     public bool ShowZCtl => IsZone && ZCtl;
     public bool ShowZGra => IsZone && _zTab == "gra";
     public bool ShowZSeq => IsZone && _zTab == "seq";
+    public bool ShowZSaf => IsZone && _zTab == "saf";
     /// <summary>通道页里还没接入的标签（头卡照常挂着，身子给一句实话）。</summary>
-    public bool ZStub => IsZone && !(ZCtl || _zTab is "gra" or "seq");
+    public bool ZStub => IsZone && !(ZCtl || _zTab is "gra" or "seq" or "saf");
     public bool ShowStub => IsFiles || IsSys;
 
     /// <summary>还没接入的页给一句实话，不摆一个点了没反应的空壳。</summary>
@@ -92,10 +93,12 @@ public sealed class HmiViewModel : ViewModelBase
                  nameof(IsFiles), nameof(IsSys), nameof(OnZ0), nameof(OnZ1), nameof(Cur),
                  nameof(OvApp), nameof(OvSeq), nameof(OvGra), nameof(ZCtl), nameof(ZOther),
                  nameof(ShowOvApp), nameof(ShowOvGra), nameof(ShowOvSeq), nameof(ShowZCtl),
-                 nameof(ShowZGra), nameof(ShowZSeq), nameof(ZStub), nameof(ShowStub));
-        // 切进曲线/序列页别等下一拍——空一秒的页面看着像坏了
+                 nameof(ShowZGra), nameof(ShowZSeq), nameof(ShowZSaf), nameof(ZStub),
+                 nameof(ShowStub));
+        // 切进曲线/序列/安全页别等下一拍——空一秒的页面看着像坏了
         if (ShowZGra && Cur is { } z) z.RefreshGra();
         if (ShowZSeq && Cur is { } z2) z2.RefreshSeq();
+        if (ShowZSaf && Cur is { } z3) z3.RefreshSaf();
         if (ShowOvGra) RefreshOvChart();
         if (ShowOvSeq) foreach (var zz in Zones) zz.RefreshTl();
     }
@@ -242,6 +245,97 @@ public sealed class HmiViewModel : ViewModelBase
 
     public void TColClose() { TColOpen = false; Raise(nameof(TColOpen)); }
 
+    // ── 紧急程序报警层（原型 alarmBox）────────────────────────────────
+    //
+    // 真报警：安全层报警本上这台设备通道里**没人确认过**的那条（最新优先）。
+    // 全屏红罩不许点空白关掉——只有「复位（确认）」能收；确认走引擎正路，
+    // GLP 记「谁在什么时候看见了它」。演练（模拟紧急程序）用同一张罩子，
+    // 明晃晃标着「演练」，不进报警本，只进系统日志。
+
+    private Tec.Core.Safety.Alarm? _alarm;
+    private bool _drill;
+
+    public bool AlarmOpen { get; private set; }
+    public bool AlarmDrill => _drill;
+    public string AlarmTitle { get; private set; } = "";
+    public string AlarmSub { get; private set; } = "";
+    public string AlarmHead2 { get; private set; } = "";
+    public string AlarmBody { get; private set; } = "";
+    public string AlarmDid { get; private set; } = "";
+    public bool AlarmMulti { get; private set; }
+
+    private void RefreshAlarm()
+    {
+        if (_drill) return;                       // 演练罩子由人关
+        var chans = Zones.Select(z => z.Number).ToHashSet();
+        var live = _ws.Engine.Alarms.Live
+            .Where(a => chans.Contains(a.Channel) && !a.Acknowledged)
+            .OrderByDescending(a => a.LastAt)
+            .ToList();
+        var top = live.FirstOrDefault();
+        if (top is null)
+        {
+            if (AlarmOpen) { AlarmOpen = false; RaiseAlarm(); }
+            _alarm = null;
+            return;
+        }
+        _alarm = top;
+        AlarmTitle = $"安全联锁 · {top.ActionText}";
+        AlarmSub = $"通道 {Zones.FirstOrDefault(z => z.Number == top.Channel)?.Index ?? top.Channel}"
+                   + $" · {top.LastAt:HH:mm:ss}"
+                   + (top.Episodes > 1 ? $" · 第 {top.Episodes} 回" : "");
+        AlarmHead2 = top.Message;
+        AlarmBody = top.Standing
+            ? "触发条件此刻仍成立。等条件恢复后按「复位（确认）」翻篇；确认记入 GLP 记录。"
+            : "条件已恢复。按「复位（确认）」把这条报警翻篇——谁看见、怎么处理都要留痕。";
+        AlarmDid = top.Did.Count > 0 ? "安全层已执行：" + string.Join("；", top.Did)
+                                     : "安全层只报警，未动设备——机器还在跑，需人工判断。";
+        AlarmMulti = live.Count > 1;
+        AlarmOpen = true;
+        RaiseAlarm();
+    }
+
+    private void RaiseAlarm() => RaiseAll(nameof(AlarmOpen), nameof(AlarmDrill),
+        nameof(AlarmTitle), nameof(AlarmSub), nameof(AlarmHead2), nameof(AlarmBody),
+        nameof(AlarmDid), nameof(AlarmMulti));
+
+    public void AlarmAck()
+    {
+        if (_drill) { _drill = false; AlarmOpen = false; RaiseAlarm(); Toast("演练结束"); return; }
+        if (_alarm is { } a)
+        {
+            _ws.Engine.AckAlarm(a.Key, _ws.Operator, "面板复位");
+            Toast(a.Standing ? "已确认（条件仍成立，继续监视）" : "已确认，报警翻篇");
+        }
+        RefreshAlarm();
+    }
+
+    public void AlarmAckAll()
+    {
+        if (_drill) { AlarmAck(); return; }
+        var n = _ws.Engine.AckAllAlarms(_ws.Operator, "面板复位（全部）");
+        Toast($"已确认 {n} 条报警");
+        RefreshAlarm();
+    }
+
+    /// <summary>模拟紧急程序（演练）：只演示罩子和处置路径，不进报警本。</summary>
+    public void AlarmDrillOpen(string kind)
+    {
+        _drill = true;
+        var a = kind == "A";
+        AlarmTitle = $"紧急程序 {kind}（演练）";
+        AlarmSub = $"通道 {Cur?.Index ?? 1} · {_ws.Clock.Now:HH:mm:ss} · 演练不进报警本";
+        AlarmHead2 = a ? "Tc 越限示例 —— 冷媒温度超过安全限值" : "Tr 越限示例 —— 釜内温度超过安全限值";
+        AlarmBody = a
+            ? "A 类多为硬件侧故障（冷却失效、传感器故障）。检查冷却介质流量与供水温度，等 Tc 回落后复位；其余 A 类原因须断电并联系服务。"
+            : "该类故障多为应用层问题，可复位：安全层会按限值声明的动作处理（切加热 / 停泵 / 中止通道），等读数回落后复位。";
+        AlarmDid = "本机的真限值与动作见「反应釜与安全」页的安全限值表。";
+        AlarmMulti = false;
+        AlarmOpen = true;
+        _ws.Log.Write("安全", $"报警演练 紧急程序 {kind}（HMI 面板）", _ws.Operator);
+        RaiseAlarm();
+    }
+
     // ── 键盘弹窗（原型 kp）────────────────────────────────────────────
 
     private static readonly Dictionary<string, (string Name, string Unit)> Keys = new(StringComparer.Ordinal)
@@ -286,11 +380,29 @@ public sealed class HmiViewModel : ViewModelBase
     }
 
     public void KpBack() { if (_kpBuf.Length > 0) _kpBuf = _kpBuf[..^1]; Raise(nameof(KpBuf)); }
-    public void KpCancel() => KpOpen = false;
+    public void KpCancel() { _kpApply = null; KpOpen = false; }
+
+    /// <summary>安全页那类「不走待下发」的输入借同一张键盘：给回调即可。</summary>
+    private Action<double>? _kpApply;
+
+    public void OpenKeypadCustom(string title, string unit, double lo, double hi,
+                                 Action<double> apply)
+    {
+        _kpZone = null;
+        _kpKey = "";
+        _kpBuf = "";
+        _kpApply = apply;
+        (_kpLo, _kpHi) = (lo, hi);
+        KpTitle = "输入" + title;
+        KpUnit = unit;
+        KpRange = $"范围 {Txt.Fx(lo).Replace('-', '−')} … {Txt.Fx(hi).Replace('-', '−')} {unit}";
+        KpOpen = true;
+        RaiseAll(nameof(KpTitle), nameof(KpUnit), nameof(KpRange), nameof(KpBuf));
+    }
 
     public void KpOk()
     {
-        if (_kpZone is not { } z) { KpOpen = false; return; }
+        if (_kpZone is null && _kpApply is null) { KpOpen = false; return; }
         if (!double.TryParse(_kpBuf.Replace('−', '-'), System.Globalization.NumberStyles.Any,
                 System.Globalization.CultureInfo.InvariantCulture, out var v)) { KpOpen = false; return; }
         if (_kpHi > _kpLo)
@@ -298,7 +410,8 @@ public sealed class HmiViewModel : ViewModelBase
             if (v < _kpLo) { v = _kpLo; Toast($"低于下限，已修正为 {Txt.Fx(v)} {KpUnit}"); }
             else if (v > _kpHi) { v = _kpHi; Toast($"超出上限，已修正为 {Txt.Fx(v)} {KpUnit}"); }
         }
-        z.SetPending(_kpKey, v);
+        if (_kpApply is { } apply) { _kpApply = null; apply(v); }
+        else _kpZone!.SetPending(_kpKey, v);
         KpOpen = false;
     }
 
@@ -393,10 +506,12 @@ public sealed class HmiViewModel : ViewModelBase
             // 曲线/序列模型只在有人看的那页重建——切片抽稀和排期估算不该在后台白跑
             z.WantGra = ShowZGra && ReferenceEquals(z, Cur);
             z.WantSeq = ShowZSeq && ReferenceEquals(z, Cur);
+            z.WantSaf = ShowZSaf && ReferenceEquals(z, Cur);
             z.WantTl = ShowOvSeq;
             z.Refresh();
         }
         if (ShowOvGra) RefreshOvChart();
+        RefreshAlarm();
         if (_toastTtl > 0 && --_toastTtl == 0) Raise(nameof(ToastOpen));
         RaiseAll(nameof(AnyRun), nameof(RailState), nameof(OvRt), nameof(Cur));
     }
@@ -529,6 +644,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
         if (MarkText.Length > 0) HeadRt = HeadRt + "　" + MarkText;
         if (WantGra) RefreshGra();
         if (WantSeq) RefreshSeq();
+        if (WantSaf) RefreshSaf();
         if (WantTl) RefreshTl();
         if (EngineRunning && run is not null)
         {
@@ -644,8 +760,10 @@ public sealed class HmiZoneViewModel : ViewModelBase
                 // Tr/Tj/Tc 的限值来自温度联锁（FromTemperature），名目就是 ℃；
                 // 负号照面板其他读数用 −（U+2212），别混 ASCII 连字符
                 var u = l.Tag is "Tr" or "Tj" or "Tc" ? " ℃" : "";
+                var layer = l.StepScope is not null ? "（本步）" : l.FromRecipe ? "（配方）"
+                          : l.FromOperator ? "（操作人）" : "";
                 static string N(string s) => s.Replace('-', '−');
-                return $"{l.Tag} {(l.Min is { } lo ? N(Txt.Fx(lo)) : "")}…{(l.Max is { } hi ? N(Txt.Fx(hi)) : "")}{u}"
+                return $"{l.Tag}{layer} {(l.Min is { } lo ? N(Txt.Fx(lo)) : "")}…{(l.Max is { } hi ? N(Txt.Fx(hi)) : "")}{u}"
                        + (l.MaxRatePerMin is { } r ? $" · ≤{N(Txt.Fx(r))}{u}/min" : "");
             }).ToList();
         }
@@ -1377,6 +1495,108 @@ public sealed class HmiZoneViewModel : ViewModelBase
     /// <summary>编排类按钮不装样子：面板不编辑配方，照实把路指给工作站。</summary>
     public void SeqEditHint()
         => _owner.Toast("步骤编排在工作站「配方」页——面板端只启动 / 继续 / 结束");
+
+    // ── 反应釜与安全页（0252）────────────────────────────────────────
+
+    internal bool WantSaf { get; set; }
+
+    public sealed record SafRow(string Name, string Val, string Desc, string EditKey)
+    {
+        public bool Editable => EditKey.Length > 0;
+    }
+
+    public IReadOnlyList<SafRow> SafRows { get; private set; } = Array.Empty<SafRow>();
+    public string ReactorDesc { get; private set; } = "—";
+    public string ReactorDetail { get; private set; } = "";
+
+    private Tec.Core.Safety.SafetyLimit? BaseTr => _ws.Engine.Safety.Limits.FirstOrDefault(l =>
+        l.FromDeviceLimits && l.Channel == Number && l.Tag == "Tr");
+    private Tec.Core.Safety.SafetyLimit? OpTr => _ws.Engine.Safety.Limits.FirstOrDefault(l =>
+        l.FromOperator && l.Channel == Number && l.Tag == "Tr");
+
+    internal void RefreshSaf()
+    {
+        var dev = Ch is { } c ? _ws.Bench.Device(c.HostInstanceId) : null;
+        ReactorDesc = dev is null ? "—"
+            : $"{dev.Config.Str("釜规格", "100 mL")} {dev.Config.Str("釜材质", "玻璃")}釜";
+        ReactorDetail = dev is null ? ""
+            : $"搅拌桨 {dev.Config.Str("搅拌桨", "锚式")} · 探头 {dev.Config.Str("温度探头", "Pt100 四线")}"
+              + " · 规格在台面属性栏更换";
+
+        static string N(double v) => Txt.Fx(v).Replace('-', '−');
+        var rows = new List<SafRow>();
+        var b = BaseTr;
+        var op = OpTr;
+        if (b is not null)
+        {
+            var act = Tec.Core.Safety.SafetyActionWords.Of(b.Action);
+            double effMin = op?.Min ?? b.Min ?? 0,
+                   effMax = op?.Max ?? b.Max ?? 0,
+                   effRate = op?.MaxRatePerMin ?? b.MaxRatePerMin ?? 0;
+            rows.Add(new SafRow("Tr min", $"{N(effMin)} ℃",
+                $"低于此值 → {act} · 底线 {N(b.Min ?? 0)} ℃"
+                + (op?.Min is { } && op.Min > b.Min ? " · 已收紧" : ""), "trmin"));
+            rows.Add(new SafRow("Tr max", $"{N(effMax)} ℃",
+                $"高于此值 → {act} · 底线 {N(b.Max ?? 0)} ℃"
+                + (op?.Max is { } && op.Max < b.Max ? " · 已收紧" : ""), "trmax"));
+            rows.Add(new SafRow("变温速率上限", $"{N(effRate)} ℃/min",
+                $"实测斜率越限 → {act} · 底线 {N(b.MaxRatePerMin ?? 0)} ℃/min"
+                + (op?.MaxRatePerMin is { } && op.MaxRatePerMin < b.MaxRatePerMin ? " · 已收紧" : ""),
+                "trrate"));
+        }
+        foreach (var l in _ws.Engine.Safety.Limits.Where(l => l.Channel == Number))
+        {
+            if (ReferenceEquals(l, b) || ReferenceEquals(l, op)) continue;
+            var layer = l.StepScope is not null ? "本步" : l.FromRecipe ? "配方"
+                      : l.FromOperator ? "操作人" : "底线";
+            var val = $"{(l.Min is { } lo ? N(lo) : "")}…{(l.Max is { } hi ? N(hi) : "")}"
+                      + (l.MaxRatePerMin is { } r ? $" · ≤{N(r)}/min" : "");
+            rows.Add(new SafRow($"{l.Tag}（{layer}）", val,
+                $"{l.Note ?? ""} · 动作 {Tec.Core.Safety.SafetyActionWords.Of(l.Action)}".TrimStart('·', ' '),
+                ""));
+        }
+        SafRows = rows;
+        RaiseAll(nameof(SafRows), nameof(ReactorDesc), nameof(ReactorDetail));
+    }
+
+    /// <summary>点安全限值行改值：只有 Tr 那三行可改（操作人层，只能收紧）。</summary>
+    public void EditSafRow(string key)
+    {
+        if (BaseTr is not { } b) return;
+        if (EngineRunning) { _owner.Toast("序列运行中不可修改限值"); return; }
+        var op = OpTr;
+        double curMin = op?.Min ?? b.Min ?? 0,
+               curMax = op?.Max ?? b.Max ?? 0,
+               curRate = op?.MaxRatePerMin ?? b.MaxRatePerMin ?? 0;
+        switch (key)
+        {
+            case "trmin":
+                _owner.OpenKeypadCustom("Tr min", "℃", b.Min ?? -99, curMax - 1,
+                    v => ApplyOpLimit(v, curMax, curRate));
+                break;
+            case "trmax":
+                _owner.OpenKeypadCustom("Tr max", "℃", curMin + 1, b.Max ?? 999,
+                    v => ApplyOpLimit(curMin, v, curRate));
+                break;
+            case "trrate":
+                _owner.OpenKeypadCustom("变温速率上限", "℃/min", 0.05, b.MaxRatePerMin ?? 99,
+                    v => ApplyOpLimit(curMin, curMax, v));
+                break;
+        }
+    }
+
+    private void ApplyOpLimit(double min, double max, double rate)
+    {
+        var res = _ws.Engine.Safety.SetOperatorLimit(Number, "Tr", min, max, rate);
+        static string N(double v) => Txt.Fx(v).Replace('-', '−');
+        var msg = res is null ? "已回到设备底线"
+            : $"Tr {N(res.Min ?? 0)}…{N(res.Max ?? 0)} ℃ · ≤{N(res.MaxRatePerMin ?? 0)} ℃/min";
+        Log("改限值", msg);
+        _ws.Log.Write("安全", $"CH{Number} 面板改限值：{msg}", _ws.Operator);
+        _owner.Toast("安全限值已更新：" + msg);
+        RefreshSaf();
+        RaiseZone();     // 控制页底部的限值条也跟着换
+    }
 
     internal void OpenKeypad(string key) => _owner.OpenKeypad(this, key);
 

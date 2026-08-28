@@ -741,6 +741,72 @@
               </Border>
             </DockPanel>
 
+            <!-- ── 反应釜与安全（原型 zSafe）── -->
+            <DockPanel IsVisible="{Binding ShowZSaf}" Margin="0,10,0,0">
+              <Border DockPanel.Dock="Bottom" Classes="hfoot" Margin="0,8,0,0">
+                <DockPanel VerticalAlignment="Center" Margin="12,0">
+                  <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
+                    <Button Classes="hbt" Content="模拟紧急程序 E" Tag="E" Click="OnAlarmDrill" />
+                    <Button Classes="hbt" Content="模拟紧急程序 A" Tag="A" Click="OnAlarmDrill" />
+                  </StackPanel>
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Border Classes="hchip"><TextBlock Text="限值只能在设备底线之内收紧（§7.5）" FontSize="10.5" Foreground="#6F6F6F" /></Border>
+                    <Border Classes="hchip"><TextBlock Text="安全层 1 Hz 独立求值 · 动作见各行" FontSize="10.5" Foreground="#6F6F6F" /></Border>
+                  </StackPanel>
+                </DockPanel>
+              </Border>
+
+              <StackPanel Spacing="10">
+                <Border Classes="hpnl">
+                  <StackPanel>
+                    <Border Classes="hpnh">
+                      <DockPanel VerticalAlignment="Center">
+                        <TextBlock Text="反应釜" FontSize="12.5" FontWeight="Medium" VerticalAlignment="Center" />
+                        <TextBlock Text="规格随台面属性栏的选型" FontSize="11" Foreground="#6F6F6F"
+                                   Margin="10,0,0,0" VerticalAlignment="Center" />
+                      </DockPanel>
+                    </Border>
+                    <DockPanel Margin="13,9,13,10">
+                      <TextBlock Text="反应釜类型" Width="150" FontSize="12.5" Foreground="#6F6F6F"
+                                 VerticalAlignment="Center" />
+                      <TextBlock DockPanel.Dock="Right" Text="{Binding Cur.ReactorDetail}" FontSize="11.5"
+                                 Foreground="#8E8E8E" VerticalAlignment="Center" />
+                      <TextBlock Text="{Binding Cur.ReactorDesc}" FontSize="12.5" FontWeight="Medium"
+                                 VerticalAlignment="Center" />
+                    </DockPanel>
+                  </StackPanel>
+                </Border>
+
+                <Border Classes="hpnl">
+                  <StackPanel>
+                    <Border Classes="hpnh">
+                      <DockPanel VerticalAlignment="Center">
+                        <TextBlock Text="安全限值" FontSize="12.5" FontWeight="Medium" VerticalAlignment="Center" />
+                        <TextBlock Text="点行修改（Tr 三行，操作人层）· 序列运行中不可修改" FontSize="11"
+                                   Foreground="#6F6F6F" Margin="10,0,0,0" VerticalAlignment="Center" />
+                      </DockPanel>
+                    </Border>
+                    <ItemsControl ItemsSource="{Binding Cur.SafRows}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                          <Border Classes="hlrow" Tag="{Binding EditKey}" PointerPressed="OnSafRow">
+                            <DockPanel VerticalAlignment="Center">
+                              <TextBlock Text="{Binding Name}" Width="150" FontSize="12.5"
+                                         Foreground="#6F6F6F" VerticalAlignment="Center" />
+                              <TextBlock DockPanel.Dock="Right" Text="{Binding Desc}" FontSize="11.5"
+                                         Foreground="#8E8E8E" VerticalAlignment="Center" />
+                              <TextBlock Text="{Binding Val}" FontSize="12.5" FontWeight="Medium"
+                                         VerticalAlignment="Center" />
+                            </DockPanel>
+                          </Border>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+            </DockPanel>
+
             <!-- 通道页还没接入的标签（头卡照常挂着）-->
             <TextBlock Text="{Binding StubText}" FontSize="13" Foreground="#6F6F6F"
                        HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -933,6 +999,41 @@
         <Border BorderBrush="#DCDCDC" BorderThickness="0,1,0,0" Padding="18,11,18,15">
           <StackPanel Orientation="Horizontal" Spacing="9" HorizontalAlignment="Right">
             <Button Classes="hbt" Content="关闭" Click="OnTColClose" />
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </Border>
+  </Border>
+
+  <!-- ══ 紧急程序报警层（原型 alarmBox：红罩 + 红头盒）══
+       真报警只有「复位（确认）」能收，点空白不放行——GLP 要谁看见谁确认 -->
+  <Border Background="#52C42B1C" IsVisible="{Binding AlarmOpen}">
+    <Border Width="620" HorizontalAlignment="Center" VerticalAlignment="Center"
+            Background="White" BorderBrush="#C42B1C" BorderThickness="2" CornerRadius="5">
+      <StackPanel>
+        <Border Background="#C42B1C" Padding="18,13">
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Right" Text="{Binding AlarmSub}" FontSize="12"
+                       Foreground="#EBFFFFFF" VerticalAlignment="Center" />
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <TextBlock Text="⚠" FontSize="18" Foreground="White" VerticalAlignment="Center" />
+              <TextBlock Text="{Binding AlarmTitle}" FontSize="18" FontWeight="Bold"
+                         Foreground="White" LetterSpacing="0.6" VerticalAlignment="Center" />
+            </StackPanel>
+          </DockPanel>
+        </Border>
+        <StackPanel Margin="18,17" Spacing="8">
+          <TextBlock Text="{Binding AlarmHead2}" FontSize="15" FontWeight="Medium" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding AlarmBody}" FontSize="12.5" Foreground="#3A3A3A"
+                     TextWrapping="Wrap" LineHeight="20" />
+          <TextBlock Text="{Binding AlarmDid}" FontSize="12.5" Foreground="#6F6F6F"
+                     TextWrapping="Wrap" />
+        </StackPanel>
+        <Border BorderBrush="#DCDCDC" BorderThickness="0,1,0,0" Padding="18,11,18,15">
+          <StackPanel Orientation="Horizontal" Spacing="9" HorizontalAlignment="Right">
+            <Button Classes="hbt" Content="全部确认" IsVisible="{Binding AlarmMulti}"
+                    Click="OnAlarmAckAll" />
+            <Button Classes="hbt pri" Content="复位（确认）Reset" MinWidth="150" Click="OnAlarmAck" />
           </StackPanel>
         </Border>
       </StackPanel>
@@ -1299,6 +1400,14 @@
     <Style Selector="TextBlock.hstepno"><Setter Property="FontSize" Value="9.5" /><Setter Property="Foreground" Value="#6F6F6F" /></Style>
     <Style Selector="TextBlock.hstepty"><Setter Property="FontSize" Value="14" /><Setter Property="FontWeight" Value="Bold" /></Style>
     <Style Selector="TextBlock.hsteppm"><Setter Property="FontSize" Value="10" /><Setter Property="Foreground" Value="#6F6F6F" /></Style>
+
+    <!-- 清单行（原型 .lrow）-->
+    <Style Selector="Border.hlrow">
+      <Setter Property="Padding" Value="13,9" />
+      <Setter Property="BorderBrush" Value="#ECECEC" /><Setter Property="BorderThickness" Value="0,0,0,1" />
+      <Setter Property="Background" Value="White" />
+    </Style>
+    <Style Selector="Border.hlrow:pointerover"><Setter Property="Background" Value="#F6F6F6" /></Style>
 
     <!-- 底部条上的说明小片 -->
     <Style Selector="Border.hchip">

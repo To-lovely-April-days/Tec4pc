@@ -35,6 +35,13 @@ public sealed record SafetyLimit(
     public bool FromRecipe { get; init; }
 
     /// <summary>
+    /// 操作人在 HMI 面板「反应釜与安全」页收的一层。与配方层同理只能在底线
+    /// 之内收紧，但生命期不同：它不跟批次走，改回底线值才撤（设备屏上拧的
+    /// 东西不该因为下一炉开跑就悄悄弹回去）。
+    /// </summary>
+    public bool FromOperator { get; init; }
+
+    /// <summary>
     /// 某一步执行期间的临时限值（iControl 每步的 Advanced 覆盖层）。
     /// 值是那一步的 StepId：步骤开始时挂上，结束（不论怎么结束）立刻撤下。
     /// 三层并存同时求值——底线 / 配方 / 本步——所以这一层**只能收紧不可能放宽**：
@@ -132,6 +139,7 @@ public sealed class SafetyMonitor
     public static string KeyOf(SafetyLimit lim)
         => $"{lim.Channel}|{lim.Tag}|{lim.Action}"
            + (lim.FromRecipe ? "|recipe" : "")
+           + (lim.FromOperator ? "|op" : "")
            + (lim.StepScope is { } s ? $"|step:{s}" : "");
 
     public IReadOnlyList<SafetyLimit> Limits
@@ -172,6 +180,45 @@ public sealed class SafetyMonitor
     public int RemoveRecipeLimits(int channel)
     {
         lock (_gate) return _limits.RemoveAll(l => l.FromRecipe && l.Channel == channel);
+    }
+
+    /// <summary>
+    /// 面板上操作人收的一层限值。同一通道同一监测量只留最新一条。
+    /// **只能在底线包络之内收紧**（§7.5）：出界的部分按到底线上；
+    /// 三个数都收到与底线持平（或更松）就等于撤掉这一层——设回原值 = 回到底线。
+    /// 动作沿用底线的动作：操作人收的是「多早动手」，不是「动什么手」。
+    /// 返回实际生效的那条；撤掉（回到底线）返回 null。
+    /// </summary>
+    public SafetyLimit? SetOperatorLimit(int channel, string tag,
+        double? min, double? max, double? maxRate)
+    {
+        lock (_gate)
+        {
+            var baseLim = _limits.FirstOrDefault(l =>
+                l.FromDeviceLimits && l.Channel == channel && l.Tag == tag);
+            var action = baseLim?.Action ?? SafetyAction.AbortChannel;
+            if (baseLim is not null)
+            {
+                if (min is { } lo && baseLim.Min is { } bl) min = Math.Max(lo, bl);
+                if (max is { } hi && baseLim.Max is { } bh) max = Math.Min(hi, bh);
+                if (maxRate is { } r && baseLim.MaxRatePerMin is { } br) maxRate = Math.Min(r, br);
+                var slackMin = min is null || (baseLim.Min is { } l2 && min <= l2);
+                var slackMax = max is null || (baseLim.Max is { } h2 && max >= h2);
+                var slackRate = maxRate is null
+                                || (baseLim.MaxRatePerMin is { } r2 && maxRate >= r2);
+                if (slackMin && slackMax && slackRate)
+                {
+                    _limits.RemoveAll(l => l.FromOperator && l.Channel == channel && l.Tag == tag);
+                    return null;
+                }
+            }
+            _limits.RemoveAll(l => l.FromOperator && l.Channel == channel && l.Tag == tag);
+            var lim = new SafetyLimit(channel, tag, min, max, maxRate,
+                                      TimeSpan.FromSeconds(3), action)
+            { FromOperator = true, Note = "操作人在面板上收紧" };
+            _limits.Add(lim);
+            return lim;
+        }
     }
 
     /// <summary>
