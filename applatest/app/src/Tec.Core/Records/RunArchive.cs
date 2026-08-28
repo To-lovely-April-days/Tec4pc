@@ -17,6 +17,29 @@ public sealed class TagDoc
     public TimeSpan? Period { get; set; }
 }
 
+/// <summary>上一次开机没善终、这次被收尾的一炉。开始页的恢复提醒念它。</summary>
+public sealed class InterruptedRun
+{
+    public required string RunId { get; init; }
+    public required string Name { get; init; }
+    public required string Dir { get; init; }
+    /// <summary>最后一次归档快照的时刻——真正断在几点没人知道，只知道不早于它。</summary>
+    public required DateTimeOffset InterruptedAt { get; init; }
+    public required IReadOnlyList<InterruptedChannel> Channels { get; init; }
+}
+
+/// <summary>中断那一炉里的一条通道：跑到哪了、冻结的配方是什么。</summary>
+public sealed class InterruptedChannel
+{
+    public required int Channel { get; init; }
+    public required int DoneSteps { get; init; }
+    public required int TotalSteps { get; init; }
+    /// <summary>已经跑完（或被跳过）的步骤——装回续跑时把这些停用。</summary>
+    public required IReadOnlyList<string> DoneStepIds { get; init; }
+    /// <summary>启动那一刻冻结的配方，读不回来是 null（老档案/坏档案）。</summary>
+    public required Tec.Core.Recipes.Recipe? Recipe { get; init; }
+}
+
 /// <summary>归档目录里的一炉：记录 + 采样 + 它躺在哪儿。</summary>
 public sealed class ArchivedRun
 {
@@ -109,6 +132,87 @@ public sealed class RunArchive
         }
         Replace(tmp, Path.Combine(dir, SampleFile));
         return dir;
+    }
+
+    /// <summary>
+    /// 开机时把上一次没走到头的炉收尾（断电 / 崩溃恢复的核心）。
+    ///
+    /// 运行中每隔一段就把活批次整份归档一遍（Save 是先写临时文件再改名，
+    /// 断电留下的是上一份完整快照）。程序正常退出会把批次终态写进去；
+    /// **归档里还躺着 Running / Paused 的通道**，只可能是上一次开机没有善终。
+    ///
+    /// 收尾照实写：通道置 Aborted、按归档时刻补 FinishedAt，追加一条
+    /// 「断电/崩溃中断」事件——快照之后发生过什么没人知道，记录里就写没有记录。
+    /// 不悄悄丢掉也不假装跑完，这炉照常出现在导出页里。
+    /// 返回修过的那几炉，开始页要拿它提醒操作人（配方还冻在基线里，可以装回续跑）。
+    /// </summary>
+    public IReadOnlyList<InterruptedRun> RepairInterrupted()
+    {
+        var list = new List<InterruptedRun>();
+        if (!Directory.Exists(Root)) return list;
+
+        foreach (var dir in Directory.EnumerateDirectories(Root))
+        {
+            var path = Path.Combine(dir, RunFile);
+            if (!File.Exists(path)) continue;
+            RunDoc doc;
+            try
+            {
+                doc = TecJson.Read<RunDoc>(File.ReadAllText(path, Encoding.UTF8));
+                if (doc.Schema > RunDoc.CurrentSchema) continue;
+            }
+            catch { continue; }        // 读不动的那份 Load() 也跳，这里同一个理
+
+            var open = doc.Channels.Where(c => c.State is ChannelRunState.Running
+                or ChannelRunState.Paused or ChannelRunState.Aborting
+                or ChannelRunState.Ready or ChannelRunState.Loading).ToList();
+            if (open.Count == 0) continue;
+
+            var chans = new List<InterruptedChannel>();
+            foreach (var ch in open)
+            {
+                foreach (var s in ch.Steps.Where(s => s.Status == StepStatus.Running))
+                {
+                    s.Status = StepStatus.Aborted;
+                    s.ActualEnd ??= doc.ArchivedAt;
+                    s.Note = string.IsNullOrEmpty(s.Note)
+                        ? "中断时正在执行" : s.Note + "；中断时正在执行";
+                }
+                ch.State = ChannelRunState.Aborted;
+                ch.FinishedAt ??= doc.ArchivedAt;
+                ch.Events.Add(new EventRecordDoc
+                {
+                    At = doc.ArchivedAt,
+                    Channel = ch.Channel,
+                    Kind = EventKind.Aborted,
+                    Text = "断电/崩溃中断：程序未正常退出——按最后一次归档快照收尾，此后的过程没有记录",
+                    User = "系统"
+                });
+
+                var done = ch.Steps.Where(s => s.Status is StepStatus.Done or StepStatus.Skipped)
+                                   .Select(s => s.StepId).Distinct().ToList();
+                Tec.Core.Recipes.Recipe? recipe = null;
+                try { recipe = ch.Baseline.Recipe.ToModel(); } catch { }
+                chans.Add(new InterruptedChannel
+                {
+                    Channel = ch.Channel,
+                    DoneSteps = done.Count,
+                    TotalSteps = ch.Baseline.Recipe.Steps.Count,
+                    DoneStepIds = done,
+                    Recipe = recipe
+                });
+            }
+            doc.ClosedAt ??= doc.ArchivedAt;
+            try { WriteAtomic(path, TecJson.Write(doc)); }
+            catch { continue; }        // 写不回去就别上报——下次开机再修
+
+            list.Add(new InterruptedRun
+            {
+                RunId = doc.RunId, Name = doc.Name, Dir = dir,
+                InterruptedAt = doc.ArchivedAt, Channels = chans
+            });
+        }
+        return list;
     }
 
     /// <summary>目录里有哪些炉（只读 run.json，不碰采样）。读不动的那一份跳过，不让它拖垮整张表。</summary>

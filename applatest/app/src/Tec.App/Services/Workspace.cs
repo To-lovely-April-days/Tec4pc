@@ -231,6 +231,27 @@ public sealed class Workspace
         Engine.ReserveRunIds(Archive.KnownIds());
         Log.Write("程序", $"启动 v{ver}", Operator);
 
+        // 断电/崩溃恢复：上一次开机没善终的炉在这儿收尾（置中止、补事件），
+        // 收尾结果留给开始页提醒操作人——配方冻在基线里，可以装回续跑
+        Interrupted = Archive.RepairInterrupted();
+        foreach (var ir in Interrupted)
+            Log.Write("恢复", $"{ir.RunId}「{ir.Name}」上次开机中断（"
+                + string.Join("、", ir.Channels.Select(c => $"CH{c.Channel} 第 {c.DoneSteps + 1}/{c.TotalSteps} 步"))
+                + "）——已按最后一次归档快照收尾", "系统", LogLevel.Warn);
+
+        // 每 30 秒把批次同步进归档（Save 先写临时文件再改名，断电留下的是
+        // 上一份完整快照）——上面那套恢复全指着这份快照活着。
+        // **不加「跑着才写」的门**：一炉在两次快照之间跑完，最后一份快照还写着
+        // Running，之后断电的话下次开机会把一炉善终的当成中断收尾。
+        // SyncArchive 自己按签名跳过没变的批次，空转一圈只花几次字符串拼接
+        _journal = new System.Threading.Timer(_ =>
+        {
+            if (System.Threading.Interlocked.Exchange(ref _journalBusy, 1) == 1) return;
+            try { SyncArchive(); }
+            catch { /* 写归档失败 SyncArchive 自己记日志 */ }
+            finally { System.Threading.Interlocked.Exchange(ref _journalBusy, 0); }
+        }, null, 30_000, 30_000);
+
         // 配方库读盘；读不到就是空的。**不预置示例配方**——
         // 界面上出现的每一条都得是操作人自己存进去的，凭空多出六条会让人
         // 以为工艺已经配好了（§不伪造数据）。
@@ -419,6 +440,48 @@ public sealed class Workspace
         if (fresh)
             Log?.Write("批次", $"{Engine.Record.RunId} 开始 · {ExperimentName} · 台面 {Bench.Name}", Operator);
         return fresh;
+    }
+
+    // ── 断电/崩溃恢复（0255）─────────────────────────────────────────
+
+    private System.Threading.Timer? _journal;
+    private int _journalBusy;
+
+    /// <summary>上一次开机中断、这次开机被收尾的那几炉。开始页的提醒念它。</summary>
+    public IReadOnlyList<InterruptedRun> Interrupted { get; private set; }
+        = Array.Empty<InterruptedRun>();
+
+    /// <summary>
+    /// 把中断批次的冻结配方装回各自的通道，**已经跑完的步骤置为停用**——
+    /// 这就是我们的「续跑」：新的一炉、新的记录，出处清清楚楚（配方来自
+    /// 中断那炉冻结的基线），而不是把上一炉的记录接着写——断档中间发生过
+    /// 什么没人知道，接着写等于替它编。装回后操作人在配方页过目、自己按启动。
+    /// 返回装回了几条通道。
+    /// </summary>
+    public int RestoreInterrupted()
+    {
+        var n = 0;
+        foreach (var ir in Interrupted)
+            foreach (var c in ir.Channels)
+            {
+                if (c.Recipe is null) continue;                    // 老档案读不回配方，装不了
+                if (ChannelOf(c.Channel) is null) continue;        // 台面上已经没有这条通道
+                if (Engine.Runner(c.Channel)?.State is Tec.Core.Records.ChannelRunState.Running
+                    or Tec.Core.Records.ChannelRunState.Paused) continue;   // 正跑着的不动
+
+                var copy = c.Recipe.CopyAs(c.Recipe.Name, c.Recipe.Author);
+                foreach (var s in copy.Steps)
+                    if (c.DoneStepIds.Contains(s.StepId)) s.Enabled = false;
+                AdoptCharge(c.Channel, copy);
+                ChannelRecipes[c.Channel] = copy;
+                LaneNames[c.Channel] = copy.Name;
+                n++;
+                Log?.Write("恢复", $"CH{c.Channel} 装回中断批次 {ir.RunId} 的配方"
+                    + $"「{copy.Name}」（前 {c.DoneSteps} 步已停用，从第 {c.DoneSteps + 1} 步起）",
+                    Operator);
+            }
+        if (n > 0) Store.MarkDirty();
+        return n;
     }
 
     /// <summary>

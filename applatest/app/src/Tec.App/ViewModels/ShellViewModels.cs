@@ -57,6 +57,19 @@ public sealed class StartViewModel : ViewModelBase
     private readonly ExperimentStore _store;
     private string _status = "";
 
+    private bool _recoveryDismissed;
+
+    /// <summary>开机发现上次中断时的提醒条。装回过或手动关掉就不再出现。</summary>
+    public bool HasRecovery => !_recoveryDismissed && Workspace.Interrupted.Count > 0;
+
+    public string RecoveryNotice => string.Join("；", Workspace.Interrupted.Select(ir =>
+        $"{ir.RunId}「{ir.Name}」" + string.Join("、", ir.Channels.Select(c =>
+            $"CH{c.Channel} 跑到第 {Math.Min(c.DoneSteps + 1, c.TotalSteps)}/{c.TotalSteps} 步"))))
+        + "——已按中断收尾归档（导出页能看到）。配方冻在基线里，可装回通道从中断那步续跑。";
+
+    public RelayCommand Recover { get; }
+    public RelayCommand DismissRecovery { get; }
+
     public StartViewModel(Workspace ws, MainViewModel shell)
     {
         _shell = shell;
@@ -66,6 +79,23 @@ public sealed class StartViewModel : ViewModelBase
         Recent.CollectionChanged += (_, _) => Raise(nameof(IsEmpty));
         ws.BenchChanged += (_, _) => Raise(nameof(Subtitle));
         _store.Changed += (_, _) => Reload();
+
+        // 断电/崩溃恢复的提醒与「装回配方」。收尾本身开机时已在 Workspace 做完，
+        // 这里只负责把事实说给人、把冻结的配方装回通道（从中断的那步起）
+        Recover = new RelayCommand(() =>
+        {
+            var n = ws.RestoreInterrupted();
+            Status = n > 0
+                ? $"已把中断批次的配方装回 {n} 条通道（跑完的步骤已停用）——到「配方」页过目后再启动"
+                : "没有装得回去的配方：通道不在台面上，或档案里读不回配方";
+            _recoveryDismissed = true;
+            RaiseAll(nameof(HasRecovery), nameof(RecoveryNotice));
+        });
+        DismissRecovery = new RelayCommand(() =>
+        {
+            _recoveryDismissed = true;
+            RaiseAll(nameof(HasRecovery), nameof(RecoveryNotice));
+        });
 
         Pick = new RelayCommand(p =>
         {
