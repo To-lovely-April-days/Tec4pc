@@ -255,7 +255,7 @@
           </StackPanel>
           </Panel>
         </Button>
-        <Button Classes="htab" Click="OnTabZStub" Tag="gra">
+        <Button Classes="htab" Classes.on="{Binding ZGraTab}" Click="OnTabZStub" Tag="gra">
           <Panel>
           <Rectangle Classes="htop" />
           <StackPanel Orientation="Horizontal" Spacing="9">
@@ -264,7 +264,7 @@
           </StackPanel>
           </Panel>
         </Button>
-        <Button Classes="htab" Click="OnTabZStub" Tag="seq">
+        <Button Classes="htab" Classes.on="{Binding ZSeqTab}" Click="OnTabZStub" Tag="seq">
           <Panel>
           <Rectangle Classes="htop" />
           <StackPanel Orientation="Horizontal" Spacing="9">
@@ -273,7 +273,7 @@
           </StackPanel>
           </Panel>
         </Button>
-        <Button Classes="htab" Click="OnTabZStub" Tag="saf">
+        <Button Classes="htab" Classes.on="{Binding ZSafTab}" Click="OnTabZStub" Tag="saf">
           <Panel>
           <Rectangle Classes="htop" />
           <StackPanel Orientation="Horizontal" Spacing="9">
@@ -282,7 +282,7 @@
           </StackPanel>
           </Panel>
         </Button>
-        <Button Classes="htab" Click="OnTabZStub" Tag="exp">
+        <Button Classes="htab" Classes.on="{Binding ZExpTab}" Click="OnTabZStub" Tag="exp">
           <Panel>
           <Rectangle Classes="htop" />
           <StackPanel Orientation="Horizontal" Spacing="9">
@@ -714,7 +714,7 @@
               <Border DockPanel.Dock="Bottom" Classes="hfoot" Margin="0,8,0,0">
                 <DockPanel VerticalAlignment="Center" Margin="12,0">
                   <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
-                    <Button Classes="hbt" Content="清除全部步骤" Click="OnSeqEditHint" />
+                    <Button Classes="hbt" Content="清除全部步骤" Click="OnClearSeq" />
                     <Button Classes="hbt pri" Content="{Binding Cur.StartSeqText}"
                             IsEnabled="{Binding Cur.CanStartSeq}" Click="OnStartSeq"
                             IsVisible="{Binding !Cur.EngineRunning}" />
@@ -722,8 +722,8 @@
                             IsVisible="{Binding Cur.EngineRunning}" />
                   </StackPanel>
                   <StackPanel Orientation="Horizontal" Spacing="6">
-                    <Border Classes="hchip"><TextBlock Text="已开始的步骤不可编辑" FontSize="10.5" Foreground="#6F6F6F" /></Border>
-                    <Border Classes="hchip"><TextBlock Text="步骤编排在工作站「配方」页" FontSize="10.5" Foreground="#6F6F6F" /></Border>
+                    <Border Classes="hchip"><TextBlock Text="已开始的序列不可增改" FontSize="10.5" Foreground="#6F6F6F" /></Border>
+                    <Border Classes="hchip"><TextBlock Text="序列存在设备本机 · 最多 6 步" FontSize="10.5" Foreground="#6F6F6F" /></Border>
                   </StackPanel>
                 </DockPanel>
               </Border>
@@ -736,7 +736,9 @@
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
                     <Border Classes="hstep" Classes.done="{Binding Done}"
-                            Classes.active="{Binding Act}" Classes.err="{Binding Err}">
+                            Classes.active="{Binding Act}" Classes.err="{Binding Err}"
+                            Classes.empty="{Binding Empty}"
+                            Tag="{Binding Index}" PointerPressed="OnSeqSlot">
                       <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="2">
                         <TextBlock Classes="hstepno" Text="{Binding No}" HorizontalAlignment="Center" />
                         <TextBlock Classes="hstepty" Text="{Binding Ty}" HorizontalAlignment="Center" />
@@ -752,8 +754,8 @@
                   <Border DockPanel.Dock="Top" Classes="hpnh">
                     <DockPanel VerticalAlignment="Center">
                       <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="7">
-                        <Button Classes="hbt" Content="新建序列…" Click="OnSeqEditHint" />
-                        <Button Classes="hbt" Content="从文件…" Click="OnSeqEditHint" />
+                        <Button Classes="hbt" Content="新建序列…" Click="OnClearSeq" />
+                        <Button Classes="hbt" Content="从文件…" Click="OnSeqFromFile" />
                       </StackPanel>
                       <TextBlock Text="任务序列预览" FontSize="12.5" FontWeight="Medium"
                                  VerticalAlignment="Center" />
@@ -762,8 +764,8 @@
                     </DockPanel>
                   </Border>
                   <Panel Margin="10,6,10,8">
-                    <ctl:HmiSeqChartView Model="{Binding Cur.SeqModel}" />
-                    <TextBlock Text="尚未编排步骤——在工作站「配方」页编排后，这里预览并启动"
+                    <ctl:HmiSeqChartView x:Name="ZSeqChart" Model="{Binding Cur.SeqModel}" />
+                    <TextBlock Text="还没编排步骤——点下方空位「＋」添加，最多 6 步"
                                FontSize="12.5" Foreground="#6F6F6F" IsVisible="{Binding Cur.SeqEmpty}"
                                HorizontalAlignment="Center" VerticalAlignment="Center" />
                   </Panel>
@@ -1206,6 +1208,42 @@
     </Border>
   </Border>
 
+  <!-- ══ 序列步骤类型弹窗（原型 tygrid）══ -->
+  <Border Background="#6B1A1A1A" IsVisible="{Binding TyOpen}" PointerPressed="OnMask">
+    <Border Width="400" HorizontalAlignment="Center" VerticalAlignment="Center"
+            Background="White" BorderBrush="#6F6F6F" BorderThickness="1" CornerRadius="4"
+            PointerPressed="OnDlgBody">
+      <StackPanel>
+        <Border Background="#2F8189" Padding="16,12">
+          <StackPanel>
+            <TextBlock Text="选择步骤类型" FontSize="14.5" FontWeight="Medium" Foreground="White" />
+            <TextBlock Text="{Binding TySub}" FontSize="11.5" Foreground="#B8DCDF" Margin="0,2,0,0" />
+          </StackPanel>
+        </Border>
+        <ItemsControl ItemsSource="{Binding TyRows}" Margin="18,15">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate><StackPanel Spacing="9" /></ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Button Classes="hopt" IsEnabled="{Binding Enabled}" Click="OnTyPick">
+                <StackPanel>
+                  <TextBlock Text="{Binding Name}" FontSize="13" />
+                  <TextBlock Text="{Binding Desc}" Classes="hsmall" HorizontalAlignment="Left" />
+                </StackPanel>
+              </Button>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <Border BorderBrush="#DCDCDC" BorderThickness="0,1,0,0" Padding="18,11,18,15">
+          <StackPanel Orientation="Horizontal" Spacing="9" HorizontalAlignment="Right">
+            <Button Classes="hbt" Content="取消" Click="OnTyClose" />
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </Border>
+  </Border>
+
   <!-- ══ 紧急程序报警层（原型 alarmBox：红罩 + 红头盒）══
        真报警只有「复位（确认）」能收，点空白不放行——GLP 要谁看见谁确认 -->
   <Border Background="#52C42B1C" IsVisible="{Binding AlarmOpen}">
@@ -1598,6 +1636,10 @@
       <Setter Property="Background" Value="#FBEAE7" />
     </Style>
     <Style Selector="Border.hstep.err TextBlock.hstepty"><Setter Property="Foreground" Value="#C42B1C" /></Style>
+    <Style Selector="Border.hstep.empty">
+      <Setter Property="Background" Value="#FBFBFB" /><Setter Property="BorderBrush" Value="#DCDCDC" />
+    </Style>
+    <Style Selector="Border.hstep.empty TextBlock"><Setter Property="Foreground" Value="#9A9A9A" /></Style>
     <Style Selector="TextBlock.hstepno"><Setter Property="FontSize" Value="9.5" /><Setter Property="Foreground" Value="#6F6F6F" /></Style>
     <Style Selector="TextBlock.hstepty"><Setter Property="FontSize" Value="14" /><Setter Property="FontWeight" Value="Bold" /></Style>
     <Style Selector="TextBlock.hsteppm"><Setter Property="FontSize" Value="10" /><Setter Property="Foreground" Value="#6F6F6F" /></Style>

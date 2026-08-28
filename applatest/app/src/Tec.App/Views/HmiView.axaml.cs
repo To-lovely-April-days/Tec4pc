@@ -44,6 +44,9 @@ public partial class HmiView : UserControl
         // 点图（原型 data-gchart）：换算成「秒」交给视图模型开 gtap 弹窗
         if (this.FindControl<Tec.App.Controls.HmiChartView>("ZChart") is { } zc)
             zc.Tapped = sec => Vm?.ChartTapped(sec);
+        // 点序列卡（表头换类型 / 值框改数）
+        if (this.FindControl<Tec.App.Controls.HmiSeqChartView>("ZSeqChart") is { } sc)
+            sc.Tapped = (card, key) => Vm?.Cur?.SeqCardTapped(card, key);
 
         AttachedToVisualTree += (_, _) => { _tick.Start(); _anim.Start(); };
         DetachedFromVisualTree += (_, _) => { _tick.Stop(); _anim.Stop(); };
@@ -116,7 +119,7 @@ public partial class HmiView : UserControl
 
     /// <summary>点遮罩空白处关弹窗；点弹窗本体不算（OnDlgBody 把事件吃掉）。</summary>
     private void OnMask(object? s, PointerPressedEventArgs e)
-    { Vm?.KpCancel(); Vm?.ActCancel(); Vm?.GtCancel(); Vm?.TColClose(); }
+    { Vm?.KpCancel(); Vm?.ActCancel(); Vm?.GtCancel(); Vm?.TColClose(); Vm?.TyClose(); }
     private void OnDlgBody(object? s, PointerPressedEventArgs e) => e.Handled = true;
 
     // ── 趋势曲线页 ──────────────────────────────────────────────────
@@ -142,7 +145,16 @@ public partial class HmiView : UserControl
 
     // ── 任务序列页 ──────────────────────────────────────────────────
     private void OnStartSeq(object? s, RoutedEventArgs e) => Vm?.Cur?.StartSeq();
-    private void OnSeqEditHint(object? s, RoutedEventArgs e) => Vm?.Cur?.SeqEditHint();
+    private void OnClearSeq(object? s, RoutedEventArgs e) => Vm?.Cur?.ClearSeq();
+    private void OnSeqFromFile(object? s, RoutedEventArgs e) => Vm?.Cur?.SeqFromFileHint();
+    private void OnSeqSlot(object? s, PointerPressedEventArgs e)
+    {
+        if (s is Control { Tag: int i }) Vm?.Cur?.SeqSlotTapped(i);
+        e.Handled = true;
+    }
+    private void OnTyPick(object? s, RoutedEventArgs e)
+    { if (Vm is { } v && s is Control { DataContext: HmiViewModel.TyRow r }) v.TyPick(r.Key); }
+    private void OnTyClose(object? s, RoutedEventArgs e) => Vm?.TyClose();
 
     // ── 反应釜与安全页 + 报警层 ─────────────────────────────────────
     private void OnSafRow(object? s, PointerPressedEventArgs e)

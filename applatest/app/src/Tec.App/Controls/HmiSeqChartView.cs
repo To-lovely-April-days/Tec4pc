@@ -4,7 +4,8 @@ using Avalonia.Media;
 
 namespace Tec.App.Controls;
 
-public sealed record HmiSeqRow(string K, string V);
+/// <summary>一行属性。EditKey 非空 = 可点（tgt / mode / val / rpm），画成值框。</summary>
+public sealed record HmiSeqRow(string K, string V, string EditKey = "");
 
 /// <summary>任务序列预览里的一列步骤卡。State: idle / pend / act / done / err。</summary>
 public sealed class HmiSeqCard
@@ -24,6 +25,8 @@ public sealed class HmiSeqCard
 public sealed class HmiSeqModel
 {
     public required IReadOnlyList<HmiSeqCard> Cards { get; init; }
+    /// <summary>false = 序列已启动，值框不画、表头不带 ▾（原型 lock 态）。</summary>
+    public bool Editable { get; init; } = true;
 }
 
 /// <summary>
@@ -43,6 +46,30 @@ public sealed class HmiSeqChartView : Control
     }
 
     static HmiSeqChartView() => AffectsRender<HmiSeqChartView>(ModelProperty);
+
+    /// <summary>点了第几张卡的哪一格："head" 或该行的 EditKey。视图代码挂。</summary>
+    public Action<int, string>? Tapped { get; set; }
+
+    public HmiSeqChartView()
+    {
+        PointerPressed += (_, e) =>
+        {
+            if (Tapped is null || Model is not { Cards.Count: > 0 } m) return;
+            var p = e.GetPosition(this);
+            var n = m.Cards.Count;
+            var cw = (Bounds.Width - 4 - G * (n - 1)) / n;
+            for (var i = 0; i < n; i++)
+            {
+                var x0 = 2 + i * (cw + G);
+                if (p.X < x0 || p.X > x0 + cw) continue;
+                if (p.Y < 40) { Tapped(i, "head"); e.Handled = true; return; }
+                var r = (int)Math.Round((p.Y - RowY0 + 12) / RowH);
+                if (r >= 0 && r < m.Cards[i].Rows.Count && m.Cards[i].Rows[r].EditKey.Length > 0)
+                { Tapped(i, m.Cards[i].Rows[r].EditKey); e.Handled = true; }
+                return;
+            }
+        };
+    }
 
     private static readonly Typeface Face = new("Segoe UI, Microsoft YaHei UI, Microsoft YaHei");
     private static readonly Typeface FaceBold =
@@ -102,7 +129,11 @@ public sealed class HmiSeqChartView : Control
 
             ctx.DrawText(T($"步骤 {c.No}", 11, mut), new Point(x + 14, 26 - 13));
             var tb = c.State switch { "act" => (IBrush)blueD, "err" => red, _ => ink };
-            ctx.DrawText(T(c.Type, 15, tb, bold: true), new Point(x + 58, 27 - 17));
+            var tyText = T(c.Type, 15, tb, bold: true);
+            ctx.DrawText(tyText, new Point(x + 58, 27 - 17));
+            // 可编辑时表头带 ▾（原型 lock 之外的卡）：点表头换类型
+            if (m.Editable)
+                ctx.DrawText(T("▾", 9.5, key), new Point(x + 62 + tyText.Width, 27 - 12));
             if (c.StateText.Length > 0)
             {
                 var stB = c.State switch
@@ -121,6 +152,28 @@ public sealed class HmiSeqChartView : Control
                 var yy = RowY0 + r * RowH;
                 if (yy > ch2 - 8) break;
                 ctx.DrawText(T(c.Rows[r].K, 10.5, key), new Point(x + 14, yy - 12));
+                // 可点的值画成值框（原型 data-fedit 的 vbox），到达方式再加一枚下拉角
+                if (m.Editable && c.Rows[r].EditKey.Length > 0)
+                {
+                    var bx = x + 62; var bwd = Math.Max(20, cw - 76);
+                    ctx.DrawRectangle(new SolidColorBrush(Color.Parse("#DCDCDC")),
+                        new Pen(new SolidColorBrush(Color.Parse("#B4B4B4")), 1),
+                        new RoundedRect(new Rect(bx, yy - 16, bwd, 22), 3));
+                    if (c.Rows[r].EditKey == "mode")
+                    {
+                        var cxp = bx + bwd - 14;
+                        var g2 = new StreamGeometry();
+                        using (var gc = g2.Open())
+                        {
+                            gc.BeginFigure(new Point(cxp - 4.5, yy - 8), false);
+                            gc.LineTo(new Point(cxp, yy - 3));
+                            gc.LineTo(new Point(cxp + 4.5, yy - 8));
+                            gc.EndFigure(false);
+                        }
+                        ctx.DrawGeometry(null, new Pen(mut, 1.6)
+                        { LineCap = PenLineCap.Round, LineJoin = PenLineJoin.Round }, g2);
+                    }
+                }
                 ctx.DrawText(T(c.Rows[r].V, 12.5, ink), new Point(x + 71, yy - 14));
             }
         }

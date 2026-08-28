@@ -64,6 +64,12 @@ public sealed class HmiViewModel : ViewModelBase
     public bool OvGra => _ovTab == "gra";
     public bool ZCtl => _zTab == "ctl";
     public bool ZOther => _zTab != "ctl";
+    // 页签的选中样式各绑各的——0249 那会儿后四页是占位钮，没绑 .on，
+    // 于是「点了页换了、页签还蔫着」（用户指出）
+    public bool ZGraTab => _zTab == "gra";
+    public bool ZSeqTab => _zTab == "seq";
+    public bool ZSafTab => _zTab == "saf";
+    public bool ZExpTab => _zTab == "exp";
 
     public bool ShowOvApp => IsOv && OvApp;
     public bool ShowOvGra => IsOv && OvGra;
@@ -96,6 +102,7 @@ public sealed class HmiViewModel : ViewModelBase
         RaiseAll(nameof(Page), nameof(OvTab), nameof(ZTab), nameof(IsOv), nameof(IsZone),
                  nameof(IsFiles), nameof(IsSys), nameof(OnZ0), nameof(OnZ1), nameof(Cur),
                  nameof(OvApp), nameof(OvSeq), nameof(OvGra), nameof(ZCtl), nameof(ZOther),
+                 nameof(ZGraTab), nameof(ZSeqTab), nameof(ZSafTab), nameof(ZExpTab),
                  nameof(ShowOvApp), nameof(ShowOvGra), nameof(ShowOvSeq), nameof(ShowZCtl),
                  nameof(ShowZGra), nameof(ShowZSeq), nameof(ShowZSaf), nameof(ShowZExp),
                  nameof(ShowFiles), nameof(ShowSys), nameof(ZStub), nameof(ShowStub));
@@ -251,6 +258,43 @@ public sealed class HmiViewModel : ViewModelBase
     }
 
     public void TColClose() { TColOpen = false; Raise(nameof(TColOpen)); }
+
+    // ── 序列步骤类型弹窗（原型 tygrid）───────────────────────────────
+
+    public sealed record TyRow(string Key, string Name, string Desc, bool Enabled);
+
+    public bool TyOpen { get; private set; }
+    public string TySub { get; private set; } = "";
+    public IReadOnlyList<TyRow> TyRows { get; private set; } = Array.Empty<TyRow>();
+    private HmiZoneViewModel? _tyZone;
+    private int _tyIndex;
+
+    internal void OpenTyPicker(HmiZoneViewModel z, int index)
+    {
+        _tyZone = z;
+        _tyIndex = index;
+        TySub = $"步骤 {index + 1} · 选一种操作";
+        var hasPump = z.HasPump;
+        TyRows = new[]
+        {
+            new TyRow("Tr", "控温 Tr", "釜内温度到目标（按速率 / 按时长）", true),
+            new TyRow("Tj", "控温 Tj", "夹套温度到目标（直接控恒温器）", true),
+            new TyRow("Wait", "保温", "保持当前温度一段时长", true),
+            new TyRow("R", "搅拌", "转速到目标（立即 / 按时长）", true),
+            new TyRow("Dose", "加料", hasPump ? "按速率或一次加入设定体积" : "这一路没接加料泵", hasPump),
+        };
+        TyOpen = true;
+        RaiseAll(nameof(TyOpen), nameof(TySub), nameof(TyRows));
+    }
+
+    public void TyPick(string key)
+    {
+        TyOpen = false;
+        Raise(nameof(TyOpen));
+        _tyZone?.SetSeqStep(_tyIndex, key);
+    }
+
+    public void TyClose() { TyOpen = false; Raise(nameof(TyOpen)); }
 
     // ── 数据导出页（原型 zExp，0253）──────────────────────────────────
     //
@@ -767,6 +811,8 @@ public sealed class HmiZoneViewModel : ViewModelBase
         Number = channelNumber;
         // pH 电极在不在由台面插拔决定，开机时照实取
         PhOn = HasPh;
+        // 面板序列存在设备本机（跨开机还在），开窗就读回来
+        LoadSeq();
     }
 
     public int Index { get; }
@@ -779,6 +825,8 @@ public sealed class HmiZoneViewModel : ViewModelBase
 
     public bool HasPh => Ch?.Capabilities.All.OfType<IScalarSensor>()
         .Any(s => s.Tags.Any(t => t.Tag == "pH")) == true;
+
+    internal bool HasPump => Dose is not null;
 
     // ── 面板状态：设定值 / 待下发 / 开关 / 模式 ───────────────────────
 
@@ -1429,39 +1477,56 @@ public sealed class HmiZoneViewModel : ViewModelBase
         return path;
     }
 
-    // ── 任务序列页 + 方案总览（0251）─────────────────────────────────
+    // ── 任务序列页（0256 重做：面板自己的简易序列，跟工作站配方两码事）──
     //
-    // 步骤与时长的唯一来源是排期（Schedule.Build）：跑着的读**启动那一刻冻结
-    // 的基线**（GLP §7.2），没跑的按当前实测播种现算。面板端只做运行台：
-    // 启动 / 继续 / 结束；编排步骤在工作站「配方」页，这里不另开一套编辑器。
+    // 工作站的配方是协调多台设备的长流程；面板序列照交互原型：**这台设备
+    // 自己的 6 步小序列**（Tr / Tj / 保温 / 搅拌 / 加料），在屏上点出来、
+    // 屏上启动，存在设备本机，不碰配方泳道。执行走同一台执行引擎——
+    // 启动时把 6 步翻译成指令步骤（含换挡的搅拌插步），校验、安全层、
+    // GLP 记录全是真的；显示的时长与温度轨迹来自翻译件的排期。
+
+    /// <summary>面板序列的一步。字段照原型 defFields：类型 + 目标 + 到达方式 + 值 + 该步搅拌。</summary>
+    public sealed class HmiSeqStep
+    {
+        public string Type { get; set; } = "Tr";   // Tr / Tj / Wait / R / Dose
+        public double Tgt { get; set; } = 40;      // ℃ / rpm / mL（Wait 不用）
+        public string Mode { get; set; } = "rate"; // 温度: rate|time；R: now|time；Dose: rate|once
+        public double Val { get; set; } = 0.5;     // 速率，或分钟（Wait 的保持时长也在这）
+        public double Rpm { get; set; } = 200;     // 该步搅拌转速
+    }
 
     internal bool WantSeq { get; set; }
     internal bool WantTl { get; set; }
 
-    public HmiSeqModel? SeqModel { get; private set; }
-    public bool SeqEmpty => SeqModel is null;
-    public string SeqSub { get; private set; } = "";
-    public string PlanName =>
-        _ws.LaneNames.TryGetValue(Number, out var n) && n.Length > 0 ? n : "新配方";
+    private const int MaxSeqSteps = 6;
+    private readonly List<HmiSeqStep> _seq = new();
+    private List<List<string>>? _startedMap;     // 启动那一刻：面板步 → 翻译出的 StepId 们
+    private string? _startedRecipeId;
 
-    public sealed record SeqStepBtn(string No, string Ty, string Pm,
-                                    bool Done, bool Act, bool Err);
+    public HmiSeqModel? SeqModel { get; private set; }
+    public bool SeqEmpty => _seq.Count == 0;
+    public string SeqSub { get; private set; } = "";
+    /// <summary>工作站正在此通道跑配方——面板序列锁定，只留「结束序列」。</summary>
+    public bool SeqForeign { get; private set; }
+    public bool SeqLocked { get; private set; }
+
+    public sealed record SeqStepBtn(int Index, string No, string Ty, string Pm,
+                                    bool Empty, bool Done, bool Act, bool Err);
     public IReadOnlyList<SeqStepBtn> SeqSteps { get; private set; } = Array.Empty<SeqStepBtn>();
 
     public bool CanStartSeq { get; private set; }
     public string StartSeqText { get; private set; } = "启动序列";
 
-    // 方案总览（ov-seq）
+    // 方案总览（ov-seq）：跑着的显示机器真在跑的时序（不论谁启动的），
+    // 没跑的显示面板自己的序列草稿
     public HmiTlModel? TlModel { get; private set; }
-    public string TlHead => $"通道 {Index} · {PlanName}";
+    public string TlHead { get; private set; } = "";
     public string TlSub { get; private set; } = "";
     public string TlTag { get; private set; } = "手动模式";
     public string TlTagKind { get; private set; } = "none";   // live / draft / none
     public bool TlLive => TlTagKind == "live";
     public bool TlDraft => TlTagKind == "draft";
     public bool TlEmpty => TlModel is null;
-
-    private Recipe? PlanRecipe => _ws.ChannelRecipes.TryGetValue(Number, out var r) ? r : null;
 
     /// <summary>估算播种与引擎 SeedFor 同一套：从这台设备此刻的实测出发。</summary>
     private EstimationContext SeedNow()
@@ -1482,98 +1547,252 @@ public sealed class HmiZoneViewModel : ViewModelBase
         return ctx;
     }
 
-    private (Schedule Sched, Recipe Rec, ChannelRun? Run)? Plan()
+    // ── 面板序列：存取（设备本机，跨开机还在）───────────────────────
+
+    private string SeqPath => System.IO.Path.Combine(
+        ExperimentStore.DataDir, "HmiPanel", $"seq-CH{Number}.json");
+
+    private void LoadSeq()
     {
-        var runner = _ws.Engine.Runner(Number);
-        if (runner?.Run is { } live &&
-            runner.State is ChannelRunState.Running or ChannelRunState.Paused or ChannelRunState.Aborting)
-            return (live.Baseline.Schedule, live.Baseline.Recipe, live);
-        var rec = PlanRecipe;
-        if (rec is null || rec.Steps.Count == 0) return null;
-        // 刚跑完/中止的那炉：配方没被改过才把状态染回卡片上（按 Id 对得上才算）
-        var last = _ws.Engine.Record.Of(Number);
-        var match = last is not null && last.Baseline.Recipe.Id == rec.Id ? last : null;
-        return (Schedule.Build(rec, _ws.Engine.Catalog, SeedNow()), rec, match);
+        try
+        {
+            if (!System.IO.File.Exists(SeqPath)) return;
+            var got = Tec.Core.Persistence.TecJson.Read<List<HmiSeqStep>>(
+                System.IO.File.ReadAllText(SeqPath));
+            _seq.Clear();
+            _seq.AddRange(got.Take(MaxSeqSteps));
+        }
+        catch { /* 读不动就从空开始，别把面板卡死在坏文件上 */ }
     }
 
-    private (string State, string Text, double Frac) StateOf(ScheduleEntry e, ChannelRun? run)
+    private void SaveSeq()
     {
-        if (run is null) return ("idle", "", 0);
-        var live = run.State is ChannelRunState.Running or ChannelRunState.Paused;
-        StepRecord? sr = null;
-        foreach (var s in run.Steps) if (s.StepId == e.StepId) sr = s;   // 循环取最后一轮
-        if (sr is null) return live ? ("pend", "待执行", 0) : ("idle", "", 0);
-        switch (sr.Status)
+        try
         {
-            case StepStatus.Done:
-            case StepStatus.Skipped:
-                return ("done", "✓ 已完成", 0);
-            case StepStatus.Running:
-                var frac = sr.PlanDuration > TimeSpan.Zero && sr.ActualStart is { } a
-                    ? Math.Clamp((_ws.Clock.Now - a) / sr.PlanDuration, 0, 1) : 0;
-                return ("act", $"进行中 {frac * 100:0}%", frac);
-            case StepStatus.Failed:
-            case StepStatus.Aborted:
-                return ("err", "⚠ 出错 · 已中止", 0);
-            default:
-                return live ? ("pend", "待执行", 0) : ("idle", "", 0);
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(SeqPath)!);
+            System.IO.File.WriteAllText(SeqPath, Tec.Core.Persistence.TecJson.Write(_seq));
         }
+        catch { /* 存不上不拦操作，下次改动再试 */ }
     }
+
+    // ── 面板序列 → 引擎指令的翻译 ───────────────────────────────────
+
+    private static readonly Dictionary<string, string> SeqTypeNames = new(StringComparer.Ordinal)
+    { ["Tr"] = "Tr", ["Tj"] = "Tj", ["Wait"] = "Wait", ["R"] = "R", ["Dose"] = "加料" };
+
+    /// <summary>
+    /// 翻译成执行引擎的步骤。每一步带着自己的搅拌转速（原型就是这么设计的）——
+    /// 转速跟上一步不同就先插一条「搅拌 · 立即」换挡；R 步本身就是搅拌，不插。
+    /// 返回配方 + 「面板步 → 翻译出的 StepId 们」的映射（状态染色靠它）。
+    /// </summary>
+    private (Recipe Rec, List<List<string>> Map) TranslateSeq()
+    {
+        var rec = new Recipe { Name = $"面板序列 CH{Number}" };
+        var map = new List<List<string>>();
+        var rpmPrev = Stir?.CurrentRpm ?? 0;
+        foreach (var s in _seq)
+        {
+            var ids = new List<string>();
+            if (s.Type != "R" && Math.Abs(s.Rpm - rpmPrev) > 0.5)
+            {
+                var stir = new Step
+                {
+                    CommandId = Tec.Driver.Abi.CommandSpecs.Stir,
+                    Parameters = ParameterSet.Of(("rpm", s.Rpm), ("task", "立即"))
+                };
+                rec.Steps.Add(stir);
+                ids.Add(stir.StepId);
+                rpmPrev = s.Rpm;
+            }
+            // 只带所选到达方式用得上的那个参数——校验器对写进去的每个数都查
+            // 范围，「按时长 30 min」若同时写 rate=30 会按 30 ℃/min 被拦下
+            var main = s.Type switch
+            {
+                "Tr" or "Tj" => new Step
+                {
+                    CommandId = Tec.Driver.Abi.CommandSpecs.Control,
+                    Parameters = s.Mode == "time"
+                        ? ParameterSet.Of(
+                            ("obj", s.Type == "Tj" ? "夹套 Tj" : "釜内 Tr"),
+                            ("target", s.Tgt), ("task", "按时长"), ("dur", s.Val))
+                        : ParameterSet.Of(
+                            ("obj", s.Type == "Tj" ? "夹套 Tj" : "釜内 Tr"),
+                            ("target", s.Tgt), ("task", "按速率"), ("rate", s.Val))
+                },
+                "Wait" => new Step
+                {
+                    CommandId = Tec.Driver.Abi.CommandSpecs.Hold,
+                    Parameters = ParameterSet.Of(("dur", s.Val))
+                },
+                "R" => new Step
+                {
+                    CommandId = Tec.Driver.Abi.CommandSpecs.Stir,
+                    Parameters = s.Mode == "time"
+                        ? ParameterSet.Of(("rpm", s.Tgt), ("task", "按时长"), ("ramp", s.Val * 60))
+                        : ParameterSet.Of(("rpm", s.Tgt), ("task", "立即"))
+                },
+                _ => new Step
+                {
+                    CommandId = Tec.Driver.Abi.CommandSpecs.Dose,
+                    Parameters = s.Mode == "once"
+                        ? ParameterSet.Of(("vol", s.Tgt), ("task", "一次加入"),
+                            ("liq", "面板加料"), ("sync", false))
+                        : ParameterSet.Of(("vol", s.Tgt), ("task", "按速率"),
+                            ("rate", s.Val), ("liq", "面板加料"), ("sync", false))
+                },
+            };
+            if (s.Type == "R") rpmPrev = s.Tgt;
+            rec.Steps.Add(main);
+            ids.Add(main.StepId);
+            map.Add(ids);
+        }
+        return (rec, map);
+    }
+
+    // ── 状态染色（一张面板卡可能对应多条引擎步骤）────────────────────
+
+    private (string State, string Text, double Frac) PanelStateOf(
+        ChannelRun? run, IReadOnlyList<string> ids)
+    {
+        if (run is null || ids.Count == 0) return ("idle", "", 0);
+        var live = run.State is ChannelRunState.Running or ChannelRunState.Paused;
+        var done = 0; StepRecord? act = null; var err = false; var seen = 0;
+        foreach (var id in ids)
+        {
+            StepRecord? sr = null;
+            foreach (var s in run.Steps) if (s.StepId == id) sr = s;   // 循环取最后一轮
+            if (sr is null) continue;
+            seen++;
+            if (sr.Status is StepStatus.Done or StepStatus.Skipped) done++;
+            else if (sr.Status == StepStatus.Running) act = sr;
+            else if (sr.Status is StepStatus.Failed or StepStatus.Aborted) err = true;
+        }
+        if (err) return ("err", "⚠ 出错 · 已中止", 0);
+        if (act is not null)
+        {
+            var inner = act.PlanDuration > TimeSpan.Zero && act.ActualStart is { } a
+                ? Math.Clamp((_ws.Clock.Now - a) / act.PlanDuration, 0, 1) : 0;
+            var frac = (done + inner) / ids.Count;
+            return ("act", $"进行中 {frac * 100:0}%", frac);
+        }
+        if (seen > 0 && done == ids.Count) return ("done", "✓ 已完成", 0);
+        return live ? ("pend", "待执行", 0) : ("idle", "", 0);
+    }
+
+    // ── 页面重建 ────────────────────────────────────────────────────
+
+    private static string F0(double v) => Txt.Fx(v).Replace('-', '−');
 
     internal void RefreshSeq()
     {
-        var plan = Plan();
         var runner = _ws.Engine.Runner(Number);
-        CanStartSeq = runner is { CanResume: true }
-                      || (plan is not null && (runner is null || runner.CanStart));
-        StartSeqText = runner is { CanResume: true } ? "继续序列" : "启动序列";
+        var live = runner?.State is ChannelRunState.Running or ChannelRunState.Paused;
+        var run = _ws.Engine.Record.Of(Number);
+        var mine = run is not null && _startedRecipeId is not null
+                   && run.Baseline.Recipe.Id == _startedRecipeId ? run : null;
+        SeqForeign = live && mine is null;
+        SeqLocked = live;
+        CanStartSeq = (runner is { CanResume: true } && mine is not null)
+                      || (!live && _seq.Count > 0 && runner is { CanStart: true });
+        StartSeqText = runner is { CanResume: true } && mine is not null ? "继续序列" : "启动序列";
 
-        if (plan is null)
+        Recipe rec; List<List<string>> map; Schedule sched;
+        if (mine is not null && live && _startedMap is not null)
         {
-            SeqModel = null;
-            SeqSub = "未编排方案 · 在工作站「配方」页编排步骤";
-            SeqSteps = Array.Empty<SeqStepBtn>();
-            RaiseSeq();
-            return;
+            // 跑着的读启动那一刻冻结的基线（GLP §7.2），不重新翻译
+            rec = mine.Baseline.Recipe;
+            sched = mine.Baseline.Schedule;
+            map = _startedMap;
         }
-        var (sched, rec, run) = plan.Value;
+        else
+        {
+            (rec, map) = TranslateSeq();
+            sched = Schedule.Build(rec, _ws.Engine.Catalog, SeedNow());
+        }
+
+        var byId = new Dictionary<string, ScheduleEntry>(StringComparer.Ordinal);
+        foreach (var e in sched.Entries) byId[e.StepId] = e;
+
         var cards = new List<HmiSeqCard>();
         var btns = new List<SeqStepBtn>();
-        foreach (var e in sched.Entries)
+        for (var i = 0; i < _seq.Count; i++)
         {
-            var step = rec.Steps.FirstOrDefault(s => s.StepId == e.StepId);
-            if (step is null || !step.Enabled) continue;
-            var known = _ws.Engine.Catalog.TryGet(e.CommandId, out var d);
-            var input = new CommandInput(step.Parameters, step.Rows);
-            var ty = known ? d.DisplayName : "缺少驱动";
-            var sum = known ? d.SummaryOf(input) : e.CommandId;
-            var (st, text, frac) = StateOf(e, run);
-            var rows = new List<HmiSeqRow>
+            var s = _seq[i];
+            var ids = i < map.Count ? map[i] : new List<string>();
+            var (st, text, frac) = PanelStateOf(mine, ids);
+
+            var dur = TimeSpan.Zero;
+            double t0 = 25, t1 = 25;
+            var first = true;
+            foreach (var id in ids)
+                if (byId.TryGetValue(id, out var e))
+                {
+                    dur += e.Extent;
+                    if (first) { t0 = e.StartTemp; first = false; }
+                    t1 = e.EndTemp;
+                }
+
+            var rows = new List<HmiSeqRow>();
+            switch (s.Type)
             {
-                new("摘要", sum),
-                new("计划开始", Fmt.Hms(e.Start)),
-                new("步时长", e.Extent > TimeSpan.Zero ? Fmt.Hms(e.Extent) : "—"),
-            };
-            if (e.Repeats > 1) rows.Add(new HmiSeqRow("循环", $"×{e.Repeats}"));
+                case "Tr":
+                case "Tj":
+                    rows.Add(new HmiSeqRow($"目标 {s.Type}", $"{F0(s.Tgt)} ℃", "tgt"));
+                    rows.Add(new HmiSeqRow("到达方式", s.Mode == "time" ? "按时长" : "按速率", "mode"));
+                    rows.Add(s.Mode == "time"
+                        ? new HmiSeqRow("用时", $"{F0(s.Val)} min", "val")
+                        : new HmiSeqRow("速率", $"{F0(s.Val)} ℃/min", "val"));
+                    rows.Add(new HmiSeqRow("步时长", Fmt.Hms(dur)));
+                    rows.Add(new HmiSeqRow("搅拌", $"{s.Rpm:0} rpm", "rpm"));
+                    break;
+                case "Wait":
+                    rows.Add(new HmiSeqRow("保持温度", $"{F0(t0)} ℃"));
+                    rows.Add(new HmiSeqRow("保持时长", $"{F0(s.Val)} min", "val"));
+                    rows.Add(new HmiSeqRow("步时长", Fmt.Hms(dur)));
+                    rows.Add(new HmiSeqRow("搅拌", $"{s.Rpm:0} rpm", "rpm"));
+                    break;
+                case "R":
+                    rows.Add(new HmiSeqRow("目标转速", $"{s.Tgt:0} rpm", "tgt"));
+                    rows.Add(new HmiSeqRow("到达方式", s.Mode == "time" ? "按时长" : "立即", "mode"));
+                    if (s.Mode == "time") rows.Add(new HmiSeqRow("用时", $"{F0(s.Val)} min", "val"));
+                    rows.Add(new HmiSeqRow("步时长", Fmt.Hms(dur)));
+                    break;
+                default:   // Dose
+                    rows.Add(new HmiSeqRow("加料总量", $"{F0(s.Tgt)} mL", "tgt"));
+                    rows.Add(new HmiSeqRow("加入方式", s.Mode == "once" ? "一次加入" : "按速率", "mode"));
+                    if (s.Mode != "once") rows.Add(new HmiSeqRow("速率", $"{F0(s.Val)} mL/min", "val"));
+                    rows.Add(new HmiSeqRow("步时长", Fmt.Hms(dur)));
+                    rows.Add(new HmiSeqRow("搅拌", $"{s.Rpm:0} rpm", "rpm"));
+                    break;
+            }
+
+            var ty = SeqTypeNames.TryGetValue(s.Type, out var tn) ? tn : s.Type;
             cards.Add(new HmiSeqCard
             {
-                No = cards.Count + 1, Type = ty, State = st, StateText = text,
-                Rows = rows, T0 = e.StartTemp, T1 = e.EndTemp, Frac = frac,
+                No = i + 1, Type = ty, State = st, StateText = text,
+                Rows = rows, T0 = t0, T1 = t1, Frac = frac,
             });
-            btns.Add(new SeqStepBtn($"步骤 {cards.Count}", ty,
-                sum.Length > 24 ? sum[..24] + "…" : sum,
+            btns.Add(new SeqStepBtn(i, $"步骤 {i + 1}", ty,
+                rows.Count > 0 ? rows[0].V : "", false,
                 st == "done", st == "act", st == "err"));
         }
-        SeqModel = cards.Count > 0 ? new HmiSeqModel { Cards = cards } : null;
+        // 空位补到 6 格（原型 ＋ 点击添加）
+        for (var i = _seq.Count; i < MaxSeqSteps; i++)
+            btns.Add(new SeqStepBtn(i, $"步骤 {i + 1}", "＋", "点击添加", true, false, false, false));
+
+        SeqModel = cards.Count > 0 ? new HmiSeqModel { Cards = cards, Editable = !SeqLocked } : null;
         SeqSteps = btns;
-        var miss = sched.MissingCommands.Count > 0
-            ? $" · 缺少驱动 {string.Join("、", sched.MissingCommands)}" : "";
-        SeqSub = $"{cards.Count} 步 · 预计总时长 {Fmt.Hms(sched.Total)}{miss}";
+        SeqSub = SeqForeign
+            ? "通道正被工作站程序控制——面板序列已锁定，结束后可编辑"
+            : _seq.Count == 0
+                ? "最多 6 步 · 可用操作 Tr / Tj / 保温 / 搅拌 / 加料 · 点下方空位添加"
+                : $"{_seq.Count}/{MaxSeqSteps} 步 · 预计总时长 {Fmt.Hms(sched.Total)}";
         RaiseSeq();
     }
 
     private void RaiseSeq() => RaiseAll(nameof(SeqModel), nameof(SeqEmpty), nameof(SeqSub),
-        nameof(SeqSteps), nameof(CanStartSeq), nameof(StartSeqText), nameof(PlanName));
+        nameof(SeqSteps), nameof(CanStartSeq), nameof(StartSeqText),
+        nameof(SeqForeign), nameof(SeqLocked));
 
     // ── 方案总览时间轴（原型 segLay / tickStep 的逐条移植）───────────
 
@@ -1614,41 +1833,64 @@ public sealed class HmiZoneViewModel : ViewModelBase
 
     internal void RefreshTl()
     {
-        var plan = Plan();
-        if (plan is null)
+        // 跑着的显示机器真在跑的时序（不论从哪儿启动的——那是设备的现实）；
+        // 没跑的显示面板序列草稿
+        var runner = _ws.Engine.Runner(Number);
+        var live = runner?.Run is { } lr &&
+                   runner.State is ChannelRunState.Running or ChannelRunState.Paused;
+        Schedule sched; Recipe rec; ChannelRun? run = null; string name;
+        if (live)
         {
-            TlModel = null;
-            TlSub = "";
+            run = runner!.Run!;
+            sched = run.Baseline.Schedule;
+            rec = run.Baseline.Recipe;
+            name = rec.Name;
+        }
+        else if (_seq.Count > 0)
+        {
+            var (trec, _) = TranslateSeq();
+            rec = trec;
+            sched = Schedule.Build(rec, _ws.Engine.Catalog, SeedNow());
+            name = "面板序列";
+        }
+        else
+        {
+            TlModel = null; TlSub = ""; TlHead = $"通道 {Index}";
             TlTag = "手动模式"; TlTagKind = "none";
-            RaiseAll(nameof(TlModel), nameof(TlEmpty), nameof(TlHead), nameof(TlSub),
-                     nameof(TlTag), nameof(TlTagKind), nameof(TlLive), nameof(TlDraft));
+            RaiseTl();
             return;
         }
-        var (sched, rec, run) = plan.Value;
+        TlHead = $"通道 {Index} · {name}";
+
         var rows = new List<(ScheduleEntry E, double Dur, string Rpm)>();
         var rpm = SeedNow().Rpm;
         foreach (var e in sched.Entries)
         {
             var step = rec.Steps.FirstOrDefault(s => s.StepId == e.StepId);
             if (step is null || !step.Enabled || e.Extent <= TimeSpan.Zero) continue;
-            // 搅拌行：有 rpm 参数的步骤换挡，其余延续（机器就是这么保持的）
             if (step.Parameters.Has("rpm")) rpm = step.Parameters.Num("rpm", rpm);
             rows.Add((e, e.Extent.TotalSeconds, $"{rpm:0} rpm"));
         }
-        if (rows.Count == 0) { TlModel = null; TlSub = ""; TlTag = "手动模式"; TlTagKind = "none";
-            RaiseAll(nameof(TlModel), nameof(TlEmpty), nameof(TlHead), nameof(TlSub),
-                     nameof(TlTag), nameof(TlTagKind), nameof(TlLive), nameof(TlDraft)); return; }
+        if (rows.Count == 0)
+        {
+            TlModel = null; TlSub = ""; TlTag = "手动模式"; TlTagKind = "none";
+            RaiseTl();
+            return;
+        }
 
         var ds = rows.Select(r => r.Dur).ToArray();
         var lay = SegLay(ds);
         var tot = ds.Sum();
-        var live = run is { State: ChannelRunState.Running or ChannelRunState.Paused };
         var doneIdx = -1;
-        if (live)
+        if (run is not null)
             for (var i = 0; i < rows.Count; i++)
-                if (StateOf(rows[i].E, run).State == "done") doneIdx = i;
+            {
+                StepRecord? sr = null;
+                foreach (var s in run.Steps) if (s.StepId == rows[i].E.StepId) sr = s;
+                if (sr?.Status is StepStatus.Done or StepStatus.Skipped) doneIdx = i;
+            }
 
-        HmiTlSeg Seg(int i, string text) => new(lay[i].W, lay[i].Zip, live && i <= doneIdx,
+        HmiTlSeg Seg(int i, string text) => new(lay[i].W, lay[i].Zip, run is not null && i <= doneIdx,
             lay[i].Zip ? "" : text);
         var tempRow = rows.Select((r, i) =>
             Seg(i, $"{(r.E.EndTemp < 0 ? "−" : "")}{Math.Abs(r.E.EndTemp):0} ℃")).ToList();
@@ -1659,25 +1901,167 @@ public sealed class HmiZoneViewModel : ViewModelBase
             ticks.Add((SegX(lay, ds, t), TickLabel(t)));
 
         double? cursor = null;
-        if (live && run?.StartedAt is { } t0)
-            cursor = SegX(lay, ds, Math.Min((_ws.Clock.Now - t0).TotalSeconds, tot));
+        if (run is not null)
+            cursor = SegX(lay, ds, Math.Min((_ws.Clock.Now - run.StartedAt).TotalSeconds, tot));
 
         var nz = lay.Count(l => l.Zip);
         TlModel = new HmiTlModel
         { TempRow = tempRow, StirRow = stirRow, Ticks = ticks, CursorX = cursor };
         TlSub = $"{rows.Count} 步 · 总时长 {Fmt.Hms(TimeSpan.FromSeconds(tot))}"
                 + (nz > 0 ? $" · {nz} 个短步骤已压缩" : "");
-        if (live)
+        if (run is not null)
         {
-            var (curIdx, n) = (Math.Min(doneIdx + 2, rows.Count), rows.Count);
-            TlTag = $"步骤 {curIdx}/{n}"; TlTagKind = "live";
+            TlTag = $"步骤 {Math.Min(doneIdx + 2, rows.Count)}/{rows.Count}"; TlTagKind = "live";
         }
         else { TlTag = "未启动"; TlTagKind = "draft"; }
-        RaiseAll(nameof(TlModel), nameof(TlEmpty), nameof(TlHead), nameof(TlSub),
-                 nameof(TlTag), nameof(TlTagKind), nameof(TlLive), nameof(TlDraft));
+        RaiseTl();
     }
 
-    // ── 序列动作（面板是运行台：启动 / 继续 / 结束；编排去工作站配方页）──
+    private void RaiseTl() => RaiseAll(nameof(TlModel), nameof(TlEmpty), nameof(TlHead),
+        nameof(TlSub), nameof(TlTag), nameof(TlTagKind), nameof(TlLive), nameof(TlDraft));
+
+    // ── 面板序列：编辑 ──────────────────────────────────────────────
+
+    private bool GuardSeqLocked()
+    {
+        if (!SeqLocked) return false;
+        _owner.Toast(SeqForeign ? "通道正被工作站程序控制——面板序列已锁定"
+                                : "已开始的序列不可编辑——结束后再改");
+        return true;
+    }
+
+    /// <summary>步骤条 / 卡片表头点进来的：空位加一步，已有的换类型。</summary>
+    public void SeqSlotTapped(int index)
+    {
+        if (GuardSeqLocked()) return;
+        if (index >= MaxSeqSteps) return;
+        _owner.OpenTyPicker(this, index);
+    }
+
+    /// <summary>类型定了（类型弹窗回调）。已有的换类型保留该步转速，其余回缺省。</summary>
+    internal void SetSeqStep(int index, string type)
+    {
+        if (GuardSeqLocked()) return;
+        var prevRpm = index > 0 && index - 1 < _seq.Count ? _seq[index - 1].Rpm
+                    : _seq.Count > 0 ? _seq[^1].Rpm : Math.Max(200, Stir?.CurrentRpm ?? 200);
+        var keep = index < _seq.Count ? _seq[index].Rpm : prevRpm;
+        var s = type switch
+        {
+            "Tr" => new HmiSeqStep { Type = "Tr", Tgt = 40, Mode = "rate", Val = 0.5, Rpm = keep },
+            "Tj" => new HmiSeqStep { Type = "Tj", Tgt = 40, Mode = "rate", Val = 0.5, Rpm = keep },
+            "Wait" => new HmiSeqStep { Type = "Wait", Val = 30, Rpm = keep },
+            "R" => new HmiSeqStep { Type = "R", Tgt = 300, Mode = "now", Val = 1, Rpm = keep },
+            _ => new HmiSeqStep { Type = "Dose", Tgt = 10, Mode = "rate", Val = 1.2, Rpm = keep },
+        };
+        if (index < _seq.Count) _seq[index] = s;
+        else _seq.Add(s);
+        Log("序列", $"第 {Math.Min(index, _seq.Count - 1) + 1} 步设为 {SeqTypeNames[s.Type]}");
+        SaveSeq();
+        RefreshSeq();
+    }
+
+    /// <summary>卡片上点了哪一格（EditKey）。数值走同一张数字键盘，到达方式点着换挡。</summary>
+    public void SeqCardTapped(int index, string key)
+    {
+        if (index < 0 || index >= _seq.Count) return;
+        if (key == "head") { SeqSlotTapped(index); return; }
+        if (GuardSeqLocked()) return;
+        var s = _seq[index];
+        switch (key)
+        {
+            case "mode":
+                s.Mode = s.Type switch
+                {
+                    "Tr" or "Tj" => s.Mode == "rate" ? "time" : "rate",
+                    "R" => s.Mode == "now" ? "time" : "now",
+                    "Dose" => s.Mode == "rate" ? "once" : "rate",
+                    _ => s.Mode
+                };
+                // 换了到达方式，值也换单位——回到该方式的缺省，别让 0.5 ℃/min 变 0.5 min
+                s.Val = s.Type switch
+                {
+                    "Tr" or "Tj" => s.Mode == "time" ? 30 : 0.5,
+                    "R" => 1,
+                    "Dose" => 1.2,
+                    _ => s.Val
+                };
+                SaveSeq(); RefreshSeq();
+                break;
+            case "tgt":
+                switch (s.Type)
+                {
+                    case "Tr" or "Tj":
+                        var (lo, hi) = RangeOf("tr");
+                        _owner.OpenKeypadCustom($"目标 {s.Type}", "℃", lo, hi,
+                            v => { s.Tgt = v; SaveSeq(); RefreshSeq(); });
+                        break;
+                    case "R":
+                        var (rl, rh) = RangeOf("rpm");
+                        _owner.OpenKeypadCustom("目标转速", "rpm", rl, rh,
+                            v => { s.Tgt = v; SaveSeq(); RefreshSeq(); });
+                        break;
+                    case "Dose":
+                        var maxV = Dose?.Limits.MaxVolume ?? 500;
+                        _owner.OpenKeypadCustom("加料总量", "mL", 0.1, maxV,
+                            v => { s.Tgt = v; SaveSeq(); RefreshSeq(); });
+                        break;
+                }
+                break;
+            case "val":
+                switch (s.Type)
+                {
+                    case "Tr" or "Tj" when s.Mode == "rate":
+                        var (_, rateHi) = RangeOf("rate");
+                        _owner.OpenKeypadCustom("变温速率", "℃/min", 0.05, rateHi,
+                            v => { s.Val = v; SaveSeq(); RefreshSeq(); });
+                        break;
+                    case "Tr" or "Tj":
+                        _owner.OpenKeypadCustom("变温用时", "min", 0.1, 999,
+                            v => { s.Val = v; SaveSeq(); RefreshSeq(); });
+                        break;
+                    case "Wait":
+                        _owner.OpenKeypadCustom("保持时长", "min", 1, 999,
+                            v => { s.Val = v; SaveSeq(); RefreshSeq(); });
+                        break;
+                    case "R":
+                        _owner.OpenKeypadCustom("到达用时", "min", 0.1, 60,
+                            v => { s.Val = v; SaveSeq(); RefreshSeq(); });
+                        break;
+                    case "Dose":
+                        var rHi = Dose?.Limits.Max ?? 50;
+                        _owner.OpenKeypadCustom("加料速率", "mL/min", 0.01, rHi,
+                            v => { s.Val = v; SaveSeq(); RefreshSeq(); });
+                        break;
+                }
+                break;
+            case "rpm":
+                var (sl, sh) = RangeOf("rpm");
+                _owner.OpenKeypadCustom("该步搅拌转速", "rpm", sl, sh,
+                    v => { s.Rpm = v; SaveSeq(); RefreshSeq(); });
+                break;
+        }
+    }
+
+    /// <summary>清除全部步骤（新建序列走同一条：从空白开始）。</summary>
+    public void ClearSeq()
+    {
+        if (GuardSeqLocked()) return;
+        if (_seq.Count == 0) { _owner.Toast("序列本来就是空的"); return; }
+        var n = _seq.Count;
+        _seq.Clear();
+        _startedRecipeId = null;
+        _startedMap = null;
+        SaveSeq();
+        Log("序列", $"清除全部步骤（原 {n} 步）");
+        _owner.Toast("已清除面板序列");
+        RefreshSeq();
+    }
+
+    /// <summary>从文件：面板序列存在设备本机，长流程配方归工作站——照实说。</summary>
+    public void SeqFromFileHint()
+        => _owner.Toast("面板序列存在设备本机（改一步存一步）；长流程配方由工作站编排执行");
+
+    // ── 面板序列：启动 / 继续 ───────────────────────────────────────
 
     public void StartSeq()
     {
@@ -1690,16 +2074,18 @@ public sealed class HmiZoneViewModel : ViewModelBase
             return;
         }
         if (EngineRunning) return;
-        var rec = PlanRecipe;
-        if (rec is null || rec.Steps.Count(s => s.Enabled) == 0)
-        { _owner.Toast("还没编排步骤——在工作站「配方」页编排"); return; }
+        if (_seq.Count == 0) { _owner.Toast("先点下方空位编几步"); return; }
         if (runner is null) { _owner.Toast($"CH{Number} 不在台面上"); return; }
+        var (rec, map) = TranslateSeq();
         _ws.BeginBatch();
         try
         {
-            _ws.Engine.StartChannel(Number, rec, _ws.Operator, charge: _ws.ChargeOf(Number));
-            Log("序列", $"启动（{rec.Steps.Count(s => s.Enabled)} 步）");
-            _owner.Toast($"序列已启动（{rec.Steps.Count(s => s.Enabled)} 步）");
+            // 只启动翻译件，不碰工作站的配方泳道——面板序列跟配方是两码事
+            _ws.Engine.StartChannel(Number, rec, _ws.Operator);
+            _startedRecipeId = rec.Id;
+            _startedMap = map;
+            Log("序列", $"面板序列启动（{_seq.Count} 步）");
+            _owner.Toast($"面板序列已启动（{_seq.Count} 步）");
         }
         catch (RecipeRejectedException ex)
         {
@@ -1707,14 +2093,10 @@ public sealed class HmiZoneViewModel : ViewModelBase
             _owner.Toast(ex.Message);
             _ws.Log.Write("运行", ex.Message, _ws.Operator);
         }
-        catch (Exception ex) { _owner.Toast($"启动失败:{ex.Message}"); }
+        catch (Exception ex) { _owner.Toast($"启动失败：{ex.Message}"); }
         RefreshSeq();
         RaiseZone();
     }
-
-    /// <summary>编排类按钮不装样子：面板不编辑配方，照实把路指给工作站。</summary>
-    public void SeqEditHint()
-        => _owner.Toast("步骤编排在工作站「配方」页——面板端只启动 / 继续 / 结束");
 
     // ── 反应釜与安全页（0252）────────────────────────────────────────
 
