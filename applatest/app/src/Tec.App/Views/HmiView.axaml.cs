@@ -140,6 +140,10 @@ public partial class HmiView : UserControl
         e.Handled = true;
     }
 
+    // ── 任务序列页 ──────────────────────────────────────────────────
+    private void OnStartSeq(object? s, RoutedEventArgs e) => Vm?.Cur?.StartSeq();
+    private void OnSeqEditHint(object? s, RoutedEventArgs e) => Vm?.Cur?.SeqEditHint();
+
     private void OnGtCancel(object? s, RoutedEventArgs e) => Vm?.GtCancel();
     private void OnGtapMark(object? s, RoutedEventArgs e) => Vm?.GtapMark();
     private void OnGtapNote(object? s, RoutedEventArgs e) => Vm?.GtapNote();

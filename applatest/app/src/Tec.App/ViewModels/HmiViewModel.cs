@@ -2,6 +2,10 @@ using System.Collections.ObjectModel;
 using Tec.App.Controls;
 using Tec.App.Services;
 using Tec.Core;
+using Tec.Core.Execution;
+using Tec.Core.Records;
+using Tec.Core.Recipes;
+using Tec.Core.Scheduling;
 using Tec.Driver.Abi;
 
 namespace Tec.App.ViewModels;
@@ -62,11 +66,13 @@ public sealed class HmiViewModel : ViewModelBase
 
     public bool ShowOvApp => IsOv && OvApp;
     public bool ShowOvGra => IsOv && OvGra;
+    public bool ShowOvSeq => IsOv && OvSeq;
     public bool ShowZCtl => IsZone && ZCtl;
     public bool ShowZGra => IsZone && _zTab == "gra";
+    public bool ShowZSeq => IsZone && _zTab == "seq";
     /// <summary>通道页里还没接入的标签（头卡照常挂着，身子给一句实话）。</summary>
-    public bool ZStub => IsZone && !(ZCtl || _zTab == "gra");
-    public bool ShowStub => (IsOv && !(OvApp || OvGra)) || IsFiles || IsSys;
+    public bool ZStub => IsZone && !(ZCtl || _zTab is "gra" or "seq");
+    public bool ShowStub => IsFiles || IsSys;
 
     /// <summary>还没接入的页给一句实话，不摆一个点了没反应的空壳。</summary>
     public string StubText => "该页在下一补丁接入（本机数据照常记录）";
@@ -85,11 +91,13 @@ public sealed class HmiViewModel : ViewModelBase
         RaiseAll(nameof(Page), nameof(OvTab), nameof(ZTab), nameof(IsOv), nameof(IsZone),
                  nameof(IsFiles), nameof(IsSys), nameof(OnZ0), nameof(OnZ1), nameof(Cur),
                  nameof(OvApp), nameof(OvSeq), nameof(OvGra), nameof(ZCtl), nameof(ZOther),
-                 nameof(ShowOvApp), nameof(ShowOvGra), nameof(ShowZCtl), nameof(ShowZGra),
-                 nameof(ZStub), nameof(ShowStub));
-        // 切进曲线页别等下一拍——空一秒的图看着像坏了
+                 nameof(ShowOvApp), nameof(ShowOvGra), nameof(ShowOvSeq), nameof(ShowZCtl),
+                 nameof(ShowZGra), nameof(ShowZSeq), nameof(ZStub), nameof(ShowStub));
+        // 切进曲线/序列页别等下一拍——空一秒的页面看着像坏了
         if (ShowZGra && Cur is { } z) z.RefreshGra();
+        if (ShowZSeq && Cur is { } z2) z2.RefreshSeq();
         if (ShowOvGra) RefreshOvChart();
+        if (ShowOvSeq) foreach (var zz in Zones) zz.RefreshTl();
     }
 
     // ── 侧栏状态 ────────────────────────────────────────────────────
@@ -382,8 +390,10 @@ public sealed class HmiViewModel : ViewModelBase
     {
         foreach (var z in Zones)
         {
-            // 曲线模型只在有人看的那页重建——8k 点的切片抽稀不该在后台白跑
+            // 曲线/序列模型只在有人看的那页重建——切片抽稀和排期估算不该在后台白跑
             z.WantGra = ShowZGra && ReferenceEquals(z, Cur);
+            z.WantSeq = ShowZSeq && ReferenceEquals(z, Cur);
+            z.WantTl = ShowOvSeq;
             z.Refresh();
         }
         if (ShowOvGra) RefreshOvChart();
@@ -518,6 +528,8 @@ public sealed class HmiZoneViewModel : ViewModelBase
         // 有 t=0 标记时把「标记 X +时长」缀在右上（原型 zHead 的 rt 段）
         if (MarkText.Length > 0) HeadRt = HeadRt + "　" + MarkText;
         if (WantGra) RefreshGra();
+        if (WantSeq) RefreshSeq();
+        if (WantTl) RefreshTl();
         if (EngineRunning && run is not null)
         {
             var steps = run.Steps;
@@ -1078,6 +1090,293 @@ public sealed class HmiZoneViewModel : ViewModelBase
         System.IO.File.WriteAllText(path, sb.ToString(), System.Text.Encoding.UTF8);
         return path;
     }
+
+    // ── 任务序列页 + 方案总览（0251）─────────────────────────────────
+    //
+    // 步骤与时长的唯一来源是排期（Schedule.Build）：跑着的读**启动那一刻冻结
+    // 的基线**（GLP §7.2），没跑的按当前实测播种现算。面板端只做运行台：
+    // 启动 / 继续 / 结束；编排步骤在工作站「配方」页，这里不另开一套编辑器。
+
+    internal bool WantSeq { get; set; }
+    internal bool WantTl { get; set; }
+
+    public HmiSeqModel? SeqModel { get; private set; }
+    public bool SeqEmpty => SeqModel is null;
+    public string SeqSub { get; private set; } = "";
+    public string PlanName =>
+        _ws.LaneNames.TryGetValue(Number, out var n) && n.Length > 0 ? n : "新配方";
+
+    public sealed record SeqStepBtn(string No, string Ty, string Pm,
+                                    bool Done, bool Act, bool Err);
+    public IReadOnlyList<SeqStepBtn> SeqSteps { get; private set; } = Array.Empty<SeqStepBtn>();
+
+    public bool CanStartSeq { get; private set; }
+    public string StartSeqText { get; private set; } = "启动序列";
+
+    // 方案总览（ov-seq）
+    public HmiTlModel? TlModel { get; private set; }
+    public string TlHead => $"通道 {Index} · {PlanName}";
+    public string TlSub { get; private set; } = "";
+    public string TlTag { get; private set; } = "手动模式";
+    public string TlTagKind { get; private set; } = "none";   // live / draft / none
+    public bool TlLive => TlTagKind == "live";
+    public bool TlDraft => TlTagKind == "draft";
+    public bool TlEmpty => TlModel is null;
+
+    private Recipe? PlanRecipe => _ws.ChannelRecipes.TryGetValue(Number, out var r) ? r : null;
+
+    /// <summary>估算播种与引擎 SeedFor 同一套：从这台设备此刻的实测出发。</summary>
+    private EstimationContext SeedNow()
+    {
+        var ctx = new EstimationContext();
+        if (Temp is { } t)
+        {
+            ctx.Temperature = t.CurrentReactor;
+            ctx.Jacket = t.CurrentJacket;
+            ctx.MaxTempRatePerMin = Math.Max(0.05, t.Limits.MaxRatePerMin);
+        }
+        if (Stir is { } s) ctx.Rpm = s.CurrentRpm;
+        if (Dose is { } d)
+        {
+            ctx.Volume = d.TotalVolume;
+            ctx.MaxDoseRatePerMin = Math.Max(0.001, d.Limits.Max);
+        }
+        return ctx;
+    }
+
+    private (Schedule Sched, Recipe Rec, ChannelRun? Run)? Plan()
+    {
+        var runner = _ws.Engine.Runner(Number);
+        if (runner?.Run is { } live &&
+            runner.State is ChannelRunState.Running or ChannelRunState.Paused or ChannelRunState.Aborting)
+            return (live.Baseline.Schedule, live.Baseline.Recipe, live);
+        var rec = PlanRecipe;
+        if (rec is null || rec.Steps.Count == 0) return null;
+        // 刚跑完/中止的那炉：配方没被改过才把状态染回卡片上（按 Id 对得上才算）
+        var last = _ws.Engine.Record.Of(Number);
+        var match = last is not null && last.Baseline.Recipe.Id == rec.Id ? last : null;
+        return (Schedule.Build(rec, _ws.Engine.Catalog, SeedNow()), rec, match);
+    }
+
+    private (string State, string Text, double Frac) StateOf(ScheduleEntry e, ChannelRun? run)
+    {
+        if (run is null) return ("idle", "", 0);
+        var live = run.State is ChannelRunState.Running or ChannelRunState.Paused;
+        StepRecord? sr = null;
+        foreach (var s in run.Steps) if (s.StepId == e.StepId) sr = s;   // 循环取最后一轮
+        if (sr is null) return live ? ("pend", "待执行", 0) : ("idle", "", 0);
+        switch (sr.Status)
+        {
+            case StepStatus.Done:
+            case StepStatus.Skipped:
+                return ("done", "✓ 已完成", 0);
+            case StepStatus.Running:
+                var frac = sr.PlanDuration > TimeSpan.Zero && sr.ActualStart is { } a
+                    ? Math.Clamp((_ws.Clock.Now - a) / sr.PlanDuration, 0, 1) : 0;
+                return ("act", $"进行中 {frac * 100:0}%", frac);
+            case StepStatus.Failed:
+            case StepStatus.Aborted:
+                return ("err", "⚠ 出错 · 已中止", 0);
+            default:
+                return live ? ("pend", "待执行", 0) : ("idle", "", 0);
+        }
+    }
+
+    internal void RefreshSeq()
+    {
+        var plan = Plan();
+        var runner = _ws.Engine.Runner(Number);
+        CanStartSeq = runner is { CanResume: true }
+                      || (plan is not null && (runner is null || runner.CanStart));
+        StartSeqText = runner is { CanResume: true } ? "继续序列" : "启动序列";
+
+        if (plan is null)
+        {
+            SeqModel = null;
+            SeqSub = "未编排方案 · 在工作站「配方」页编排步骤";
+            SeqSteps = Array.Empty<SeqStepBtn>();
+            RaiseSeq();
+            return;
+        }
+        var (sched, rec, run) = plan.Value;
+        var cards = new List<HmiSeqCard>();
+        var btns = new List<SeqStepBtn>();
+        foreach (var e in sched.Entries)
+        {
+            var step = rec.Steps.FirstOrDefault(s => s.StepId == e.StepId);
+            if (step is null || !step.Enabled) continue;
+            var known = _ws.Engine.Catalog.TryGet(e.CommandId, out var d);
+            var input = new CommandInput(step.Parameters, step.Rows);
+            var ty = known ? d.DisplayName : "缺少驱动";
+            var sum = known ? d.SummaryOf(input) : e.CommandId;
+            var (st, text, frac) = StateOf(e, run);
+            var rows = new List<HmiSeqRow>
+            {
+                new("摘要", sum),
+                new("计划开始", Fmt.Hms(e.Start)),
+                new("步时长", e.Extent > TimeSpan.Zero ? Fmt.Hms(e.Extent) : "—"),
+            };
+            if (e.Repeats > 1) rows.Add(new HmiSeqRow("循环", $"×{e.Repeats}"));
+            cards.Add(new HmiSeqCard
+            {
+                No = cards.Count + 1, Type = ty, State = st, StateText = text,
+                Rows = rows, T0 = e.StartTemp, T1 = e.EndTemp, Frac = frac,
+            });
+            btns.Add(new SeqStepBtn($"步骤 {cards.Count}", ty,
+                sum.Length > 24 ? sum[..24] + "…" : sum,
+                st == "done", st == "act", st == "err"));
+        }
+        SeqModel = cards.Count > 0 ? new HmiSeqModel { Cards = cards } : null;
+        SeqSteps = btns;
+        var miss = sched.MissingCommands.Count > 0
+            ? $" · 缺少驱动 {string.Join("、", sched.MissingCommands)}" : "";
+        SeqSub = $"{cards.Count} 步 · 预计总时长 {Fmt.Hms(sched.Total)}{miss}";
+        RaiseSeq();
+    }
+
+    private void RaiseSeq() => RaiseAll(nameof(SeqModel), nameof(SeqEmpty), nameof(SeqSub),
+        nameof(SeqSteps), nameof(CanStartSeq), nameof(StartSeqText), nameof(PlanName));
+
+    // ── 方案总览时间轴（原型 segLay / tickStep 的逐条移植）───────────
+
+    private const double TlTrack = 1084, TlSegMin = 26;
+
+    private static (double W, bool Zip)[] SegLay(double[] ds)
+    {
+        var tot = ds.Sum(); if (tot <= 0) tot = 1;
+        var nat = ds.Select(d => d / tot * TlTrack).ToArray();
+        var zip = nat.Select(v => v < TlSegMin).ToArray();
+        var fx = zip.Where(z => z).Sum(_ => TlSegMin);
+        var rw = Math.Max(0, TlTrack - fx - (ds.Length - 1));
+        var rn = nat.Where((v, i) => !zip[i]).Sum();
+        return nat.Select((v, i) => (zip[i] ? TlSegMin : rn > 0 ? v / rn * rw : 0, zip[i])).ToArray();
+    }
+
+    private static double SegX((double W, bool Zip)[] lay, double[] ds, double t)
+    {
+        double a = 0, x = 0;
+        for (var i = 0; i < ds.Length; i++)
+        {
+            if (t <= a + ds[i]) return x + lay[i].W * (ds[i] > 0 ? (t - a) / ds[i] : 0);
+            a += ds[i]; x += lay[i].W + 1;
+        }
+        return x;
+    }
+
+    private static double TickStep(double tot)
+    {
+        foreach (var v in new double[] { 300, 600, 900, 1800, 3600, 7200, 10800 })
+            if (tot / v <= 8) return v;
+        return 21600;
+    }
+
+    private static string TickLabel(double t) => t <= 0 ? "0"
+        : t < 3600 ? $"{(int)(t / 60)} min"
+        : (t / 3600).ToString(t % 3600 != 0 ? "0.0" : "0") + " h";
+
+    internal void RefreshTl()
+    {
+        var plan = Plan();
+        if (plan is null)
+        {
+            TlModel = null;
+            TlSub = "";
+            TlTag = "手动模式"; TlTagKind = "none";
+            RaiseAll(nameof(TlModel), nameof(TlEmpty), nameof(TlHead), nameof(TlSub),
+                     nameof(TlTag), nameof(TlTagKind), nameof(TlLive), nameof(TlDraft));
+            return;
+        }
+        var (sched, rec, run) = plan.Value;
+        var rows = new List<(ScheduleEntry E, double Dur, string Rpm)>();
+        var rpm = SeedNow().Rpm;
+        foreach (var e in sched.Entries)
+        {
+            var step = rec.Steps.FirstOrDefault(s => s.StepId == e.StepId);
+            if (step is null || !step.Enabled || e.Extent <= TimeSpan.Zero) continue;
+            // 搅拌行：有 rpm 参数的步骤换挡，其余延续（机器就是这么保持的）
+            if (step.Parameters.Has("rpm")) rpm = step.Parameters.Num("rpm", rpm);
+            rows.Add((e, e.Extent.TotalSeconds, $"{rpm:0} rpm"));
+        }
+        if (rows.Count == 0) { TlModel = null; TlSub = ""; TlTag = "手动模式"; TlTagKind = "none";
+            RaiseAll(nameof(TlModel), nameof(TlEmpty), nameof(TlHead), nameof(TlSub),
+                     nameof(TlTag), nameof(TlTagKind), nameof(TlLive), nameof(TlDraft)); return; }
+
+        var ds = rows.Select(r => r.Dur).ToArray();
+        var lay = SegLay(ds);
+        var tot = ds.Sum();
+        var live = run is { State: ChannelRunState.Running or ChannelRunState.Paused };
+        var doneIdx = -1;
+        if (live)
+            for (var i = 0; i < rows.Count; i++)
+                if (StateOf(rows[i].E, run).State == "done") doneIdx = i;
+
+        HmiTlSeg Seg(int i, string text) => new(lay[i].W, lay[i].Zip, live && i <= doneIdx,
+            lay[i].Zip ? "" : text);
+        var tempRow = rows.Select((r, i) =>
+            Seg(i, $"{(r.E.EndTemp < 0 ? "−" : "")}{Math.Abs(r.E.EndTemp):0} ℃")).ToList();
+        var stirRow = rows.Select((r, i) => Seg(i, r.Rpm)).ToList();
+
+        var ticks = new List<(double, string)>();
+        for (double t = 0, ss = TickStep(tot); t <= tot; t += ss)
+            ticks.Add((SegX(lay, ds, t), TickLabel(t)));
+
+        double? cursor = null;
+        if (live && run?.StartedAt is { } t0)
+            cursor = SegX(lay, ds, Math.Min((_ws.Clock.Now - t0).TotalSeconds, tot));
+
+        var nz = lay.Count(l => l.Zip);
+        TlModel = new HmiTlModel
+        { TempRow = tempRow, StirRow = stirRow, Ticks = ticks, CursorX = cursor };
+        TlSub = $"{rows.Count} 步 · 总时长 {Fmt.Hms(TimeSpan.FromSeconds(tot))}"
+                + (nz > 0 ? $" · {nz} 个短步骤已压缩" : "");
+        if (live)
+        {
+            var (curIdx, n) = (Math.Min(doneIdx + 2, rows.Count), rows.Count);
+            TlTag = $"步骤 {curIdx}/{n}"; TlTagKind = "live";
+        }
+        else { TlTag = "未启动"; TlTagKind = "draft"; }
+        RaiseAll(nameof(TlModel), nameof(TlEmpty), nameof(TlHead), nameof(TlSub),
+                 nameof(TlTag), nameof(TlTagKind), nameof(TlLive), nameof(TlDraft));
+    }
+
+    // ── 序列动作（面板是运行台：启动 / 继续 / 结束；编排去工作站配方页）──
+
+    public void StartSeq()
+    {
+        var runner = _ws.Engine.Runner(Number);
+        if (runner is { CanResume: true })
+        {
+            runner.Resume(_ws.Operator);
+            Log("序列", "已继续");
+            _owner.Toast("序列已继续");
+            return;
+        }
+        if (EngineRunning) return;
+        var rec = PlanRecipe;
+        if (rec is null || rec.Steps.Count(s => s.Enabled) == 0)
+        { _owner.Toast("还没编排步骤——在工作站「配方」页编排"); return; }
+        if (runner is null) { _owner.Toast($"CH{Number} 不在台面上"); return; }
+        _ws.BeginBatch();
+        try
+        {
+            _ws.Engine.StartChannel(Number, rec, _ws.Operator, charge: _ws.ChargeOf(Number));
+            Log("序列", $"启动（{rec.Steps.Count(s => s.Enabled)} 步）");
+            _owner.Toast($"序列已启动（{rec.Steps.Count(s => s.Enabled)} 步）");
+        }
+        catch (RecipeRejectedException ex)
+        {
+            // 校验器拦下的启动：拒绝也要留痕（谁按的、为什么没开）
+            _owner.Toast(ex.Message);
+            _ws.Log.Write("运行", ex.Message, _ws.Operator);
+        }
+        catch (Exception ex) { _owner.Toast($"启动失败:{ex.Message}"); }
+        RefreshSeq();
+        RaiseZone();
+    }
+
+    /// <summary>编排类按钮不装样子：面板不编辑配方，照实把路指给工作站。</summary>
+    public void SeqEditHint()
+        => _owner.Toast("步骤编排在工作站「配方」页——面板端只启动 / 继续 / 结束");
 
     internal void OpenKeypad(string key) => _owner.OpenKeypad(this, key);
 
