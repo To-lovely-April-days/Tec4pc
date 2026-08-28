@@ -351,14 +351,58 @@
             <ctl:SolubilityView Coefficients="{Binding Solubility}" />
           </Border>
 
-          <!-- 从前这里是一颗死按钮（没有 Command），下面还配着一句「可自动引用…」的承诺。
-               饱和温度要拿浓度才算得出来，而浓度 = 溶质质量 ÷ 溶剂体积——这两个数只有
-               配料表里才有，所以真正的换算在那一页上，这颗按钮把人带过去 -->
+          <!-- ── 提取到配方参数（FR-5.9）──
+               两条路：配料表那条按这一炉的真实浓度算（那颗钮把人带过去）；
+               这里是手填浓度的快速路——解出饱和温度，直接写进某条控温步骤
+               的目标温度。写入走配方页的快照栈，撤销得回去；改动进系统日志 -->
+          <Border Background="White" BorderBrush="#dadcd9" BorderThickness="1" CornerRadius="3"
+                  Padding="12,10" Margin="0,12,0,0"
+                  IsVisible="{Binding $parent[UserControl].DataContext.SolubilitySection.Open}">
+            <StackPanel Spacing="7" DataContext="{Binding $parent[UserControl].DataContext}">
+              <TextBlock Text="提取到配方参数" FontSize="11.5" FontWeight="SemiBold"
+                         Foreground="#3a3d41" />
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <TextBlock Text="浓度" Classes="frowk" Width="40" />
+                <TextBox Classes="finput" Width="84"
+                         Text="{Binding ConcEdit, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                         ToolTip.Tip="g 溶质 / 100 mL 水。按这一炉实际浓度算请走配料表那条路" />
+                <TextBlock Text="g/100 mL 水" Classes="unit" />
+              </StackPanel>
+              <TextBlock Text="{Binding SatText}" FontSize="11.5" TextWrapping="Wrap"
+                         IsVisible="{Binding HasSat}"
+                         Foreground="{Binding SatColorHex}" />
+              <TextBlock Text="这一通道的配方里还没有「控温」步骤，加一条才写得进去。"
+                         IsVisible="{Binding NoSatSteps}" FontSize="11.5" Foreground="#8a6100"
+                         TextWrapping="Wrap" />
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <TextBlock Text="通道" Classes="frowk" Width="40" />
+                <ComboBox Classes="sel" Width="84" ItemsSource="{Binding SatChannels}"
+                          SelectedItem="{Binding SatChannelPick, Mode=TwoWay}" />
+                <ComboBox Classes="sel" Width="196" ItemsSource="{Binding SatSteps}"
+                          SelectedItem="{Binding SatStepPick, Mode=TwoWay}"
+                          IsVisible="{Binding HasSatSteps}" />
+              </StackPanel>
+              <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding HasSatSteps}">
+                <TextBlock Text="余量" Classes="frowk" Width="40" />
+                <TextBox Classes="finput" Width="84"
+                         Text="{Binding SatMarginEdit, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                         ToolTip.Tip="写进去的是饱和温度加这个余量。溶清通常 +5 ~ +10 ℃，结晶终点是负的" />
+                <TextBlock Text="℃　→" Classes="unit" />
+                <TextBlock Text="{Binding SatTargetText}" FontSize="12" FontWeight="SemiBold"
+                           Foreground="#292b2e" VerticalAlignment="Center" />
+              </StackPanel>
+              <Button Classes="btn primary" Content="写进这条控温步骤"
+                      HorizontalAlignment="Center" Margin="0,2,0,0"
+                      IsVisible="{Binding HasSatSteps}"
+                      Command="{Binding WriteSat}" IsEnabled="{Binding CanWriteSat}" />
+            </StackPanel>
+          </Border>
+
           <Button Classes="btn primary" Content="到配料表算饱和温度 →"
                   HorizontalAlignment="Center" Margin="0,14,0,0"
                   Command="{Binding $parent[UserControl].DataContext.GoCharge}" />
           <TextBlock Classes="intro left" Margin="0,10,0,0"
-                     Text="饱和温度要按这一炉的浓度算（溶质质量 ÷ 溶剂体积），那两个数在配料表里。算出来可以直接写进控温步骤的目标温度（FR-5.9）。曲线是水中的溶解度，溶剂不是水就不换算。" />
+                     Text="按这一炉实际浓度算（溶质质量 ÷ 溶剂体积）走配料表那条路，那两个数在那一页里。曲线是水中的溶解度，溶剂不是水就不换算。" />
         </StackPanel>
         </Panel>
         </Border>

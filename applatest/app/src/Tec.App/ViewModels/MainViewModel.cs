@@ -30,7 +30,9 @@ public sealed class MainViewModel : ViewModelBase
         {
             // 化合物库那颗「到配料表算饱和温度」：浓度 = 溶质质量 ÷ 溶剂体积，
             // 那两个数只有配料表里才有，所以那颗钮把人带过去
-            GoChargePage = () => Tab = TabCharge
+            GoChargePage = () => Tab = TabCharge,
+            // 「提取到配方参数」改的是配方参数，走配方页的快照栈才撤得回去
+            EditRecipe = (ch, why, edit) => Recipe.EditExternally(ch, why, edit)
         };
         Charge = new ChargeViewModel(ws)
         {
@@ -221,6 +223,9 @@ public sealed class MainViewModel : ViewModelBase
             // 配方页那枚校验 chip 现在也看配料表。配料表在另一页上改，
             // 切回来不重算的话，条上写的还是改之前那一版
             if (value == TabRecipe) Recipe.RefreshAll();
+            // 「提取到配方参数」的通道/步骤下拉照的是配方页的现状——步骤在那页
+            // 增删改，切过来刷一遍（Store.Changed 只在由净转脏那一下响，靠不住）
+            if (value == TabCompounds) Compounds.RefreshSatChannels();
             // 运行页那趟 700ms 心跳只在「它在前台」或「炉子真在跑」时才重算。
             // 翻走之后曲线、甘特、事件行谁也不会变，重算一遍是白烧界面线程
             // ——空转时九成的 CPU 在那儿（实测见 RunViewModel.Heavy 的注释）

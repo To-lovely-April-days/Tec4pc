@@ -1128,10 +1128,16 @@ public sealed class CompoundsViewModel : ViewModelBase
         Export = new RelayCommand(() => _ = DoExportAsync());
         ClearAll = new RelayCommand(() => _ = DoClearAllAsync());
         GoCharge = new RelayCommand(() => GoChargePage?.Invoke());
+        WriteSat = new RelayCommand(DoWriteSat);
 
         // 化合物库是全局的，从 tecstudio.db 读；改一个字段写一条回去
         Reload();
         ws.Compounds.CollectionChanged += (_, _) => Reload();
+        // 「提取到配方参数」的通道下拉跟台面走；步骤下拉在**切进本页时**刷
+        // （外壳 Tab setter 调 RefreshSatChannels——步骤只会在配方页改，
+        //   Store.Changed 只在由净转脏那一下响，靠它会漏）
+        ws.BenchChanged += (_, _) => RefreshSatChannels();
+        RefreshSatChannels();
     }
 
     public RelayCommand AddNew { get; }
@@ -1145,6 +1151,179 @@ public sealed class CompoundsViewModel : ViewModelBase
 
     /// <summary>跳到配料表页。由外壳接上。</summary>
     public Action? GoChargePage { get; set; }
+
+    // ── 提取到配方参数（清单 F1 那条：把饱和温度写进控温步骤）─────────
+    //
+    // 配料表那条路照旧（按这一炉的实际浓度算）；这里是**手填浓度**的快速路：
+    // 人已经知道要配多少 g/100 mL，在库页上就能把饱和温度解出来、
+    // 直接写进某条控温步骤的目标温度——写入走配方页的撤销栈，改动进系统日志。
+
+    /// <summary>改配方要走配方页的快照栈（撤销得回去）。外壳接上。</summary>
+    public Action<int, string, Action>? EditRecipe { get; set; }
+
+    private string _concEdit = "";
+    private SaturationResult? _sat;
+    private int _satCh;
+    private double _satMargin;
+    private string? _satStepPick;
+
+    /// <summary>手填的浓度 g/100 mL。空着 = 这一块不出结果行。</summary>
+    public string ConcEdit
+    {
+        get => _concEdit;
+        set
+        {
+            if (!Set(ref _concEdit, (value ?? "").Trim())) return;
+            RecomputeSat();
+        }
+    }
+
+    public bool HasSat => _sat is not null;
+    public bool SatOk => _sat?.Ok == true;
+    public string SatColorHex => SatOk ? "#0e7a3e" : "#d93025";
+
+    /// <summary>解出来的饱和温度，或者算不出来的原因原话（Solubility 自己给的）。</summary>
+    public string SatText => _sat is null ? ""
+        : _sat.Temperature is { } t
+            ? $"饱和温度 {F1(t)} ℃（水中曲线 · 拟合区间 {Solubility.MinT:0} ~ {Solubility.MaxT:0} ℃）"
+            : _sat.Problem ?? "";
+
+    public ObservableCollection<string> SatChannels { get; } = new();
+    public ObservableCollection<string> SatSteps { get; } = new();
+
+    public string? SatChannelPick
+    {
+        get => _satCh > 0 ? "CH" + _satCh : null;
+        set
+        {
+            var n = value is { Length: > 2 } && int.TryParse(value[2..], out var x) ? x : 0;
+            if (n == _satCh) return;
+            _satCh = n;
+            RefreshSatSteps();
+        }
+    }
+
+    public string? SatStepPick
+    {
+        get => _satStepPick;
+        set { if (Set(ref _satStepPick, value)) Raise(nameof(CanWriteSat)); }
+    }
+
+    public bool HasSatSteps => SatSteps.Count > 0;
+    public bool NoSatSteps => SatSteps.Count == 0 && _satCh > 0;
+
+    /// <summary>写进去的是饱和温度加这个余量。溶清常 +5 ~ +10，结晶终点是负的。</summary>
+    public string SatMarginEdit
+    {
+        get => _satMargin.ToString("0.##", CultureInfo.InvariantCulture);
+        set
+        {
+            var v = double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var x) ? x : 0;
+            if (Math.Abs(v - _satMargin) < 1e-9) return;
+            _satMargin = v;
+            RaiseAll(nameof(SatMarginEdit), nameof(SatTargetText));
+        }
+    }
+
+    public string SatTargetText => _sat?.Temperature is { } t
+        ? F1(t + _satMargin) + " ℃" : "—";
+
+    public bool CanWriteSat => SatOk && _satStepPick is not null;
+
+    public RelayCommand WriteSat { get; }
+
+    private static string F1(double v) => v.ToString("0.#", CultureInfo.InvariantCulture);
+
+    private void RecomputeSat()
+    {
+        if (_concEdit.Length == 0) _sat = null;
+        else if (!double.TryParse(_concEdit, NumberStyles.Float, CultureInfo.InvariantCulture, out var c))
+            _sat = new SaturationResult { Problem = "浓度要是一个数（g/100 mL）。" };
+        else
+            _sat = Solubility.Saturate(_selected?.Solubility, c);
+        RaiseAll(nameof(HasSat), nameof(SatOk), nameof(SatText), nameof(SatColorHex),
+                 nameof(SatTargetText), nameof(CanWriteSat));
+    }
+
+    /// <summary>通道下拉跟台面走；步骤下拉列所选通道配方里的「控温」步骤。</summary>
+    internal void RefreshSatChannels()
+    {
+        var live = _ws.Channels.Where(c => c.Enabled).Select(c => c.Number).OrderBy(x => x).ToList();
+        var want = live.Select(n => "CH" + n).ToList();
+        if (!want.SequenceEqual(SatChannels))
+        {
+            SatChannels.Clear();
+            foreach (var s in want) SatChannels.Add(s);
+        }
+        if (live.Count > 0 && !live.Contains(_satCh)) _satCh = live[0];
+        if (live.Count == 0) _satCh = 0;
+        Raise(nameof(SatChannelPick));
+        RefreshSatSteps();
+    }
+
+    private void RefreshSatSteps()
+    {
+        var want = new List<string>();
+        if (_satCh > 0 && _ws.ChannelRecipes.TryGetValue(_satCh, out var recipe))
+            for (var i = 0; i < recipe.Steps.Count; i++)
+            {
+                var step = recipe.Steps[i];
+                if (step.CommandId != Tec.Driver.Abi.CommandSpecs.Control) continue;
+                want.Add($"第 {i + 1} 步 · 控温 至 "
+                         + F1(step.Parameters.Num("target")) + " ℃");
+            }
+        // 没变就不动集合：重建会把 ComboBox 的选中项打回去（类别下拉同款教训）
+        if (!want.SequenceEqual(SatSteps))
+        {
+            var keep = _satStepPick;
+            SatSteps.Clear();
+            foreach (var s in want) SatSteps.Add(s);
+            _satStepPick = SatSteps.Contains(keep ?? "") ? keep : SatSteps.FirstOrDefault();
+        }
+        RaiseAll(nameof(SatStepPick), nameof(CanWriteSat),
+                 nameof(HasSatSteps), nameof(NoSatSteps));
+    }
+
+    /// <summary>
+    /// 写进选中的控温步骤。跟配料表那颗同一个道理：一次明确的动作，
+    /// 改了哪一步、从多少改成多少都说出来，配方页撤销得回去。
+    /// </summary>
+    private void DoWriteSat()
+    {
+        if (_sat?.Temperature is not { } t)
+        { Say("先在上面填一个浓度，解出饱和温度", bad: true); return; }
+        if (!_ws.ChannelRecipes.TryGetValue(_satCh, out var recipe))
+        { Say($"CH{_satCh} 还没有配方", bad: true); return; }
+        var index = SatStepIndexOf(_satStepPick);
+        if (index is not { } i || i >= recipe.Steps.Count)
+        { Say("先选一条控温步骤", bad: true); return; }
+
+        var target = Math.Round(t + _satMargin, 1);
+        var before = recipe.Steps[i].Parameters.Num("target");
+        if (Math.Abs(before - target) < 0.05) { Say("这一步的目标温度已经是这个数了"); return; }
+
+        if (EditRecipe is { } edit)
+            edit(_satCh, "compound-saturation", () => recipe.Steps[i].Parameters["target"] = target);
+        else recipe.Steps[i].Parameters["target"] = target;
+
+        _ws.Store.MarkDirty();
+        var margin = _satMargin == 0 ? ""
+            : $"（饱和温度 {F1(t)} ℃ {(_satMargin > 0 ? "+" : "−")} {F1(Math.Abs(_satMargin))}）";
+        Say($"CH{_satCh} 第 {i + 1} 步的目标温度 {F1(before)} → {F1(target)} ℃{margin}");
+        _ws.Log?.Write("化合物库",
+            $"CH{_satCh} 第 {i + 1} 步目标温度按饱和温度改为 {F1(target)} ℃"
+            + $"（{_selected?.Name} {_concEdit} g/100 mL · 手填浓度）", _ws.Operator);
+        RefreshSatSteps();
+    }
+
+    private static int? SatStepIndexOf(string? label)
+    {
+        if (label is null) return null;
+        var a = label.IndexOf('第');
+        var b = label.IndexOf('步');
+        if (a < 0 || b <= a) return null;
+        return int.TryParse(label[(a + 1)..b].Trim(), out var n) ? n - 1 : null;
+    }
 
     /// <summary>工具条下面那一行话。成了失败都写在这儿，不弹框打断正在跑的实验。</summary>
     public string Status { get; private set; } = "";
@@ -1359,6 +1538,7 @@ public sealed class CompoundsViewModel : ViewModelBase
             if (old is not null) old.IsSelected = false;
             value.IsSelected = true;
             RaiseAll(nameof(HasSelection), nameof(ExtractNote), nameof(Coefficients));
+            RecomputeSat();     // 换了化合物，同一个浓度对的是另一条曲线
         }
     }
 
