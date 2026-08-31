@@ -5,25 +5,26 @@ namespace Tec.Drivers.Rd105;
 
 /// <summary>
 /// PID 整定与控制策略，直接架在 TecControl.Core 的 HostControlLoop 上——
-/// 继电器法自整定、串级（Tr 外环 / Tj 内环）、增益调度那一整套是那边现成的，
-/// 这里只做翻译，一行控制算法都不重写。
+/// 继电器法自整定、增益调度那一整套是那边现成的，这里只做翻译，
+/// 一行控制算法都不重写。每个工位一个实例，整定各自的 TC 夹套回路。
 ///
 /// 自整定**不进配方指令库**：它要激起温度振荡，是调试 / 维护动作，
 /// 必须有人在场发起，只能从手动控制面板调用。
 /// </summary>
 internal sealed class Rd105Tuning : ITemperatureTuning
 {
-    /// <summary>温控器上的物理路号。控温回路挂在 TC1（釜内）上。</summary>
-    private const int Tc = 1;
+    /// <summary>温控器上的物理路号（TC1 = 工位 A，TC2 = 工位 B），整定的就是这一路的夹套回路。</summary>
+    private readonly int _tc;
 
     private readonly HostControlLoop _loop;
     private readonly Action<string, string> _log;
     private TempChannelKind _kind = TempChannelKind.Jacket;
     private double _tuningSetpointC = double.NaN;
 
-    public Rd105Tuning(int channel, HostControlLoop loop, Action<string, string> log)
+    public Rd105Tuning(int channel, int tc, HostControlLoop loop, Action<string, string> log)
     {
         Channel = channel;
+        _tc = tc;
         _loop = loop;
         _log = log;
         _loop.AutoTuneFinished += OnFinished;
@@ -40,38 +41,35 @@ internal sealed class Rd105Tuning : ITemperatureTuning
     public event EventHandler<TuningOutcome>? TuningFinished;
 
     /// <summary>
-    /// 釜内 Tr 走串级（外环盯釜内、内环驱动 TEC），夹套 Tj 走单环。
-    /// 这也是配方里「釜内控温 Tr / 夹套控温 Tj」两条指令的落点。
+    /// 这一级只有夹套单环：两路 TC 测的都是夹套，设备自己看不见釜内 Tr。
+    /// 「釜内串级」要靠组合会话把宇电的 Tr 接进来才成立，在这里选 Reactor
+    /// 就是许一个兑现不了的回路——直接拒绝，不悄悄降级成夹套。
     /// </summary>
     public Task SetStrategyAsync(TempChannelKind kind, CancellationToken ct)
     {
+        if (kind == TempChannelKind.Reactor)
+            throw new NotSupportedException(
+                "这台 RD105 的两路 TC 测的都是夹套，设备上没有釜内 Tr——" +
+                "釜内控温由双工位组合主机（外部 Tr）实现，不在这一级");
         _kind = kind;
-        _loop.SetStrategy(Tc, kind == TempChannelKind.Reactor
-            ? ControlStrategy.Cascade
-            : ControlStrategy.Direct);
+        _loop.SetStrategy(_tc, ControlStrategy.Direct);
         return Task.CompletedTask;
     }
 
     public PidTuning GetGains(TempChannelKind kind)
     {
-        // 串级时外环盯釜内、内环盯夹套；单环时只有一套
-        var g = kind == TempChannelKind.Reactor && _loop.GetStrategy(Tc) == ControlStrategy.Cascade
-            ? _loop.GetGainSchedule(Tc).OuterAt(_loop.GetChannelStatus(Tc).SetpointC)?.Gains
-            : _loop.GetGainSchedule(Tc).GainsAt(_loop.GetChannelStatus(Tc).SetpointC);
+        var g = _loop.GetGainSchedule(_tc).GainsAt(_loop.GetChannelStatus(_tc).SetpointC);
         return g is null ? new PidTuning(0, 0, 0) : new PidTuning(g.Kp, g.Ki, g.Kd);
     }
 
     public Task SetGainsAsync(TempChannelKind kind, PidTuning gains, CancellationToken ct)
     {
         if (kind == TempChannelKind.Reactor)
-            _loop.ConfigureCascade(Tc, gains.Kp, gains.Ki, gains.Kd, OuterMaxBiasC);
-        else
-            _loop.ConfigurePid(Tc, gains.Kp, gains.Ki, gains.Kd, MaxDutyPercent, invertOutput: false);
+            throw new NotSupportedException("这一级只有夹套单环，釜内那套增益不归它管");
+        _loop.ConfigurePid(_tc, gains.Kp, gains.Ki, gains.Kd, MaxDutyPercent, invertOutput: false);
         return Task.CompletedTask;
     }
 
-    /// <summary>外环偏置上限（℃）：外环最多把内环设定值推离主设定值这么多。</summary>
-    private const double OuterMaxBiasC = 15;
     /// <summary>内环占空比上限。</summary>
     private const double MaxDutyPercent = 100;
 
@@ -92,7 +90,7 @@ internal sealed class Rd105Tuning : ITemperatureTuning
 
         try
         {
-            await _loop.StartAutoTuneAsync(Tc, setpointC, RelayAmplitudePercent, HysteresisC, ct)
+            await _loop.StartAutoTuneAsync(_tc, setpointC, RelayAmplitudePercent, HysteresisC, ct)
                        .ConfigureAwait(false);
         }
         catch
@@ -106,7 +104,7 @@ internal sealed class Rd105Tuning : ITemperatureTuning
     public async Task CancelTuningAsync(CancellationToken ct)
     {
         if (TuningState != TuningState.Running) return;
-        await _loop.StopChannelAsync(Tc, ct).ConfigureAwait(false);
+        await _loop.StopChannelAsync(_tc, ct).ConfigureAwait(false);
         TuningState = TuningState.Cancelled;
         TuningNote = "已取消";
         TuningFinished?.Invoke(this, new TuningOutcome(false, null, "操作人取消"));
@@ -114,7 +112,7 @@ internal sealed class Rd105Tuning : ITemperatureTuning
 
     private void OnFinished(AutoTuneOutcome o)
     {
-        if (o.Channel != Tc) return;
+        if (o.Channel != _tc) return;
 
         // 取保守组（Tyreus–Luyben）：算法作者自己的注释就写着温控推荐用这一组——
         // ZN 那组响应快但会超调，控温超调意味着实际把料多加热了一段

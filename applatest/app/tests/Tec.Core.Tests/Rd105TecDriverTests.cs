@@ -32,7 +32,7 @@ public sealed class Rd105TecDriverTests
         Assert.True(probe.Success);
         Assert.Contains("215L", probe.Message);
         Assert.Equal("v1.3.0", probe.Firmware);      // FPV=130 → v1.3.0
-        Assert.Equal(1, probe.DetectedChannels);   // 一台温控器 = 一个反应通道
+        Assert.Equal(2, probe.DetectedChannels);   // TC1/TC2 = 工位 A/B 两个通道
     }
 
     [Fact]
@@ -124,10 +124,10 @@ public sealed class Rd105TecDriverTests
 
     // ── 会话层 ──────────────────────────────────────────────────────
 
-    private static DriverContext Ctx(int channel = 1, ParameterSet? config = null) => new()
+    private static DriverContext Ctx(ParameterSet? config = null) => new()
     {
         InstanceId = "T1",
-        ChannelNumbers = new[] { channel },
+        ChannelNumbers = new[] { 1, 2 },      // 工位 A = 通道 1，工位 B = 通道 2
         Config = config ?? new ParameterSet(),
         Simulated = false,
         TimeScale = 1,
@@ -136,18 +136,22 @@ public sealed class Rd105TecDriverTests
     };
 
     [Fact]
-    public async Task 一台温控器只开一个反应通道()
+    public async Task 一台温控器带两个工位()
     {
         var (driver, _) = Rig();
         await using var session = await driver.OpenAsync(Conn(), Ctx(), CancellationToken.None);
 
-        // TC1 与 TC2 是同一个反应通道的两个温度（釜内与夹套），不是两个反应通道
-        Assert.Equal(1, driver.Info.ChannelsPerDevice);
-        Assert.Equal(1, session.WellCount);
-        // 这一个孔位上挂着控温与整定两项能力
-        Assert.Single(session.CapabilitiesOf(0).OfType<ITemperatureControl>());
-        Assert.Single(session.CapabilitiesOf(0).OfType<ITemperatureTuning>());
-        Assert.Empty(session.CapabilitiesOf(1));
+        // 真机拓扑：TC1 = 工位 A、TC2 = 工位 B，各是一路夹套回路（需求 §3）
+        Assert.Equal(2, driver.Info.ChannelsPerDevice);
+        Assert.Equal(2, session.WellCount);
+        // 每个工位各挂控温与整定两项能力，互不共享实例
+        foreach (var well in new[] { 0, 1 })
+        {
+            Assert.Single(session.CapabilitiesOf(well).OfType<ITemperatureControl>());
+            Assert.Single(session.CapabilitiesOf(well).OfType<ITemperatureTuning>());
+        }
+        Assert.NotSame(session.CapabilitiesOf(0)[0], session.CapabilitiesOf(1)[0]);
+        Assert.Empty(session.CapabilitiesOf(2));
     }
 
     [Fact]
@@ -161,10 +165,13 @@ public sealed class Rd105TecDriverTests
         await using var _ = await driver.OpenAsync(Conn(), Ctx(config: cfg), CancellationToken.None);
 
         // 固件没有通信看门狗：断线那一刻上位机的软限值就不存在了，
-        // 所以这两条必须落到设备自己的寄存器里
-        Assert.Equal(120_00000, device.Get(1, "OVERTEMPUP"));
-        Assert.Equal(-20_00000, device.Get(1, "OVERTEMPLOWER"));
-        Assert.True(device.Get(1, "SETCURRENT") > 0);
+        // 所以这两条必须落到设备自己的寄存器里——而且两个工位都要落
+        foreach (var tc in new[] { 1, 2 })
+        {
+            Assert.Equal(120_00000, device.Get(tc, "OVERTEMPUP"));
+            Assert.Equal(-20_00000, device.Get(tc, "OVERTEMPLOWER"));
+            Assert.True(device.Get(tc, "SETCURRENT") > 0);
+        }
     }
 
     [Fact]
@@ -174,24 +181,50 @@ public sealed class Rd105TecDriverTests
         var cfg = ParameterSet.Of((Rd105TecDriver.FieldOverUp, 120d), (Rd105TecDriver.FieldOverLow, -20d));
         await using var session = await driver.OpenAsync(Conn(), Ctx(config: cfg), CancellationToken.None);
 
-        var temp = (ITemperatureControl)session.CapabilitiesOf(0)[0];
-        Assert.Equal(-20, temp.Limits.Min);
-        Assert.Equal(120, temp.Limits.Max);
-        Assert.Equal(1, temp.Channel);
+        var a = (ITemperatureControl)session.CapabilitiesOf(0)[0];
+        var b = (ITemperatureControl)session.CapabilitiesOf(1)[0];
+        Assert.Equal(-20, a.Limits.Min);
+        Assert.Equal(120, a.Limits.Max);
+        Assert.Equal(1, a.Channel);
+        Assert.Equal(2, b.Channel);
     }
 
     [Fact]
-    public async Task 设定目标温度写到TG并开输出()
+    public async Task 设定目标温度写到TG并开输出_两工位各写各的()
     {
         var (driver, device) = Rig();
         await using var session = await driver.OpenAsync(Conn(), Ctx(), CancellationToken.None);
-        var temp = (ITemperatureControl)session.CapabilitiesOf(0)[0];
+        var a = (ITemperatureControl)session.CapabilitiesOf(0)[0];
+        var b = (ITemperatureControl)session.CapabilitiesOf(1)[0];
 
-        await temp.SetTargetAsync(new TempTarget(60), CancellationToken.None);
+        await a.SetTargetAsync(new TempTarget(60), CancellationToken.None);
+        await b.SetTargetAsync(new TempTarget(30), CancellationToken.None);
 
         Assert.Equal(60_00000, device.Get(1, "TG"));
         Assert.Equal(1, device.Get(1, "ENABLE"));
         Assert.Equal(0, device.Get(1, "SPEED"));      // 直接阶跃，不带斜坡
+        // 工位 B 落在 TC2 上，谁也不覆盖谁
+        Assert.Equal(30_00000, device.Get(2, "TG"));
+        Assert.Equal(1, device.Get(2, "ENABLE"));
+        Assert.Equal(60_00000, device.Get(1, "TG"));
+    }
+
+    [Fact]
+    public async Task SafeStop只关本工位的输出()
+    {
+        var (driver, device) = Rig();
+        await using var session = await driver.OpenAsync(Conn(), Ctx(), CancellationToken.None);
+        var a = (ITemperatureControl)session.CapabilitiesOf(0)[0];
+        var b = (ITemperatureControl)session.CapabilitiesOf(1)[0];
+        await a.SetTargetAsync(new TempTarget(60), CancellationToken.None);
+        await b.SetTargetAsync(new TempTarget(30), CancellationToken.None);
+
+        // A 出事不该把 B 的实验拖下水
+        var notes = await session.SafeStopAsync(0, CancellationToken.None);
+
+        Assert.Equal(0, device.Get(1, "ENABLE"));
+        Assert.Equal(1, device.Get(2, "ENABLE"));
+        Assert.Contains(notes!, n => n.Contains("工位 A"));
     }
 
     [Fact]
@@ -237,27 +270,30 @@ public sealed class Rd105TecDriverTests
     }
 
     [Fact]
-    public async Task 轮询把TC1TC2发成Tr与Tj并算出温差()
+    public async Task 轮询把TC1TC2发成两个工位的夹套温度()
     {
         var (driver, device) = Rig();
-        device.Set(1, "TCADJTEMP", 60_00000);      // TC1 = 釜内
-        device.Set(2, "TCADJTEMP", 65_00000);      // TC2 = 夹套
+        device.Set(1, "TCADJTEMP", 60_00000);      // TC1 = 工位 A 夹套
+        device.Set(2, "TCADJTEMP", 65_00000);      // TC2 = 工位 B 夹套
 
         var cn = ParameterSet.Of((Rd105TecDriver.FieldPort, "COM9"),
                                  (Rd105TecDriver.FieldPeriod, 200d));
         await using var session = await driver.OpenAsync(cn, Ctx(), CancellationToken.None);
 
         var got = new Dictionary<string, double>(StringComparer.Ordinal);
-        using var sub = session.Samples.Subscribe(new Collect(s => got[s.Tag] = s.Value));
+        using var sub = session.Samples.Subscribe(new Collect(s => got[$"{s.Channel}:{s.Tag}"] = s.Value));
         await session.StartAsync(CancellationToken.None);
 
         var deadline = DateTime.UtcNow.AddSeconds(5);
-        while (DateTime.UtcNow < deadline && !got.ContainsKey("dT")) await Task.Delay(50);
+        while (DateTime.UtcNow < deadline && !(got.ContainsKey("1:Tj") && got.ContainsKey("2:Tj")))
+            await Task.Delay(50);
         await session.StopAsync(CancellationToken.None);
 
-        Assert.Equal(60, got["Tr"], 2);
-        Assert.Equal(65, got["Tj"], 2);
-        Assert.Equal(-5, got["dT"], 2);            // Tr − Tj，放热时为正
+        Assert.Equal(60, got["1:Tj"], 2);
+        Assert.Equal(65, got["2:Tj"], 2);
+        // 这台设备上没有釜内温度——Tr/dT 由组合会话拼上宇电之后才有，
+        // 在这里发出来就是拿夹套冒充釜内
+        Assert.DoesNotContain(got.Keys, k => k.EndsWith(":Tr") || k.EndsWith(":dT"));
     }
 
     // ── 告警字 ──────────────────────────────────────────────────────
@@ -298,29 +334,30 @@ public sealed class Rd105TecDriverTests
     }
 
     [Fact]
-    public async Task 传感器越限时那一路温度发成Bad()
+    public async Task 传感器越限时那一个工位的夹套发成Bad()
     {
         var (driver, device) = Rig();
-        // 通道1 传感器越限：Tr 这一路的读数不能再当好数用
+        // TC1（工位 A）传感器越限：A 的夹套读数不能再当好数用
         device.Set(null, "ERRORCODE", (long)TecErrorCode.Ch1SensorOutOfRange);
 
         var cn = ParameterSet.Of((Rd105TecDriver.FieldPort, "COM9"), (Rd105TecDriver.FieldPeriod, 200d));
         await using var session = await driver.OpenAsync(cn, Ctx(), CancellationToken.None);
 
-        var got = await PollWhile(session, g => g.Count(s => s.Tag == "Tr" && s.Quality == Quality.Bad) >= 3);
-        var tr = got.Where(s => s.Tag == "Tr").ToList();
-        var tj = got.Where(s => s.Tag == "Tj").ToList();
+        var got = await PollWhile(session,
+            g => g.Count(s => s is { Tag: "Tj", Channel: 1, Quality: Quality.Bad }) >= 3);
+        var a = got.Where(s => s is { Tag: "Tj", Channel: 1 }).ToList();
+        var b = got.Where(s => s is { Tag: "Tj", Channel: 2 }).ToList();
 
-        Assert.NotEmpty(tr);
+        Assert.NotEmpty(a);
         // 从**读到告警字那一刻起**算。第一拍快照有可能比第一拍告警字先到，
         // 那时程序还没听说这一路越限了——那一条不该拿来考它。
         // 保证是「一旦设备报了越限，这一路就是 Bad」，不是「连告警字都没读到就先知先觉」
-        var first = tr.FindIndex(s => s.Quality == Quality.Bad);
+        var first = a.FindIndex(s => s.Quality == Quality.Bad);
         Assert.True(first >= 0, "越限之后一条 Bad 都没有");
         // 「读不到值当作正常」是最危险的失败模式：越限那一路必须是 Bad，
-        // 安全层见 Bad 就触发；没越限的那一路照旧 Good，不要一起拖下水
-        Assert.All(tr.Skip(first), s => Assert.Equal(Quality.Bad, s.Quality));
-        Assert.All(tj, s => Assert.Equal(Quality.Good, s.Quality));
+        // 安全层见 Bad 就触发；没越限的工位照旧 Good，不要一起拖下水
+        Assert.All(a.Skip(first), s => Assert.Equal(Quality.Bad, s.Quality));
+        Assert.All(b, s => Assert.Equal(Quality.Good, s.Quality));
     }
 
     [Fact]
@@ -403,17 +440,22 @@ public sealed class Rd105TecDriverTests
         Assert.Equal(1, tuning.Channel);
         Assert.Equal(TuningState.Idle, tuning.TuningState);
         Assert.Contains(nameof(ITemperatureTuning), driver.Info.Capabilities);
+        // 工位 B 有自己的一份，整定的是 TC2
+        var b = session.CapabilitiesOf(1).OfType<ITemperatureTuning>().Single();
+        Assert.Equal(2, b.Channel);
     }
 
     [Fact]
-    public async Task 釜内走串级夹套走单环()
+    public async Task 这一级只有夹套单环_釜内策略直接拒绝()
     {
         var (driver, _) = Rig();
         await using var session = await driver.OpenAsync(Conn(), Ctx(), CancellationToken.None);
         var tuning = Tuning(session);
 
-        await tuning.SetStrategyAsync(TempChannelKind.Reactor, CancellationToken.None);
-        Assert.Equal(TempChannelKind.Reactor, tuning.Strategy);
+        // 两路 TC 测的都是夹套，设备自己看不见釜内——选 Reactor 就是
+        // 许一个兑现不了的回路，必须明着拒绝，不能悄悄降级成夹套
+        await Assert.ThrowsAsync<NotSupportedException>(
+            () => tuning.SetStrategyAsync(TempChannelKind.Reactor, CancellationToken.None));
 
         await tuning.SetStrategyAsync(TempChannelKind.Jacket, CancellationToken.None);
         Assert.Equal(TempChannelKind.Jacket, tuning.Strategy);
@@ -464,8 +506,10 @@ public sealed class Rd105TecDriverTests
         // 整定不出来时得能手填——现场总有整定失败又必须开工的时候
         await tuning.SetGainsAsync(TempChannelKind.Jacket, new PidTuning(2.5, 0.02, 12),
                                    CancellationToken.None);
-        await tuning.SetGainsAsync(TempChannelKind.Reactor, new PidTuning(0.8, 0.001, 30),
-                                   CancellationToken.None);
+        // 釜内那套增益不归这一级管（设备上没有 Tr），写也明着拒绝
+        await Assert.ThrowsAsync<NotSupportedException>(
+            () => tuning.SetGainsAsync(TempChannelKind.Reactor, new PidTuning(0.8, 0.001, 30),
+                                       CancellationToken.None));
     }
 
     private sealed class Collect(Action<Sample> onNext) : IObserver<Sample>

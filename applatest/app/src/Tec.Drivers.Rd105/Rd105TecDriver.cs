@@ -34,10 +34,13 @@ public sealed class Rd105TecDriver : IDeviceDriver
 
     public DriverInfo Info { get; } = new(DriverId, "TEC 温控器（RD105）", "光测未来", "1.0.0")
     {
-        ChannelsPerDevice = 1,
+        // 真机拓扑（docs/双工位反应主机驱动需求.md §3）：TC1 = 工位 A、TC2 = 工位 B，
+        // 每路探头测的都是夹套 Tj。釜内 Tr / pH 由宇电模块另采，不在这台设备上
+        ChannelsPerDevice = 2,
         SimulatorIncluded = false,
         IconKey = "reactor2",
-        Description = "真机：RD105 ASCII 协议。一台温控器带一个反应通道——TC1 测釜内 Tr，TC2 测夹套 Tj。",
+        Description = "真机：RD105 ASCII 协议。一台带两路夹套回路——TC1 = 工位 A，TC2 = 工位 B；" +
+                      "釜内 Tr 由宇电采集模块另采。",
         Capabilities = new[] { nameof(ITemperatureControl), nameof(ITemperatureTuning) }
     };
 
@@ -80,7 +83,7 @@ public sealed class Rd105TecDriver : IDeviceDriver
             {
                 Firmware = firmware,
                 Serial = model,
-                DetectedChannels = 1
+                DetectedChannels = 2
             };
         }
         catch (TecProtocolException ex)
