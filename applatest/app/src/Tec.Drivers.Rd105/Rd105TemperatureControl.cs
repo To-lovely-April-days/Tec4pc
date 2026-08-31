@@ -121,6 +121,11 @@ public sealed class Rd105TemperatureControl : ITemperatureControl
         await _link.Controller.SetEnableAsync(_tc, false, ct).ConfigureAwait(false);
     }
 
+    /// <summary>只开/关本路输出，TG 与 SPEED 保持原样。
+    /// 热源切换序列用它：先关输出→切继电器→再开回来（带载切继电器 = 触点拉弧）。</summary>
+    public Task EnableAsync(bool on, CancellationToken ct)
+        => _link.Controller.SetEnableAsync(_tc, on, ct);
+
     /// <summary>
     /// 指令由通用执行器按能力调用，这里不自己认领指令 Id——
     /// 认领了就等于把工艺语义分散到每个驱动里，31 条指令会各写各的。

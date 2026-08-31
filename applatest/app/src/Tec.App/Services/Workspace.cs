@@ -200,6 +200,10 @@ public sealed class Workspace
         // 真机：RD105 协议的 TEC 温控器。和仿真反应器并列摆在设备库里，
         // 台面上想用哪个用哪个——同一套配方两边都能跑
         Drivers.RegisterBuiltin(new Tec.Drivers.Rd105.Rd105TecDriver());
+        // 真机：双工位反应主机（RD105 + 宇电J7/J4 + IO8R 四模块组合，
+        // 见 docs/双工位反应主机驱动需求.md）。先注册不进台面设备库——
+        // 库暂时只上四件是用户定的，上不上这台等用户点头
+        Drivers.RegisterBuiltin(new Tec.Drivers.DualStation.DualStationDriver());
         Drivers.Discover(Path.Combine(AppContext.BaseDirectory, "drivers"));
         Drivers.LoadAll();
 

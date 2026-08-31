@@ -14,7 +14,7 @@ namespace Tec.Drivers.Rd105;
 /// 目标、收数据、判到达。TecControl.Core 里那套主机侧串级（HostControlLoop）等
 /// 组合会话接上外部 Tr 再谈——设备自己看不见釜内，这一级谈串级就是空话。
 /// </summary>
-internal sealed class Rd105Session : IDeviceSession
+public sealed class Rd105Session : IDeviceSession
 {
     private readonly Rd105Link _link;
     private readonly DriverContext _ctx;

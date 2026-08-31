@@ -11,4 +11,9 @@
     <ProjectReference Include="..\Tec.Drivers.Rd105\Tec.Drivers.Rd105.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- 回归测试要一拍一拍地推采集循环（PollOnceAsync），不靠真时钟 -->
+    <InternalsVisibleTo Include="Tec.Core.Tests" />
+  </ItemGroup>
+
 </Project>
