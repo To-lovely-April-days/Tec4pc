@@ -19,7 +19,8 @@ public sealed class TrProbeDriver : IDeviceDriver
         ChannelsPerDevice = 0,
         SimulatorIncluded = true,
         IconKey = "trprobe",
-        Description = "Pt100 · ⌀6；插入工位后该路釜温由它测得，读数走 RD105。",
+        Description = "Pt100 · ⌀6；插入工位后该路釜温由它测得——仿真机走 RD105，" +
+                      "真机接的是宇电 AI-8848GD91J7 采集模块。",
         Capabilities = new[] { nameof(IScalarSensor) }
     };
 
@@ -27,7 +28,8 @@ public sealed class TrProbeDriver : IDeviceDriver
     {
         Field.Sel("接线", "接线方式", new[] { "四线", "三线", "两线" }, "四线")
     })
-    { Tip = "探头接在 RD105 的测温端子上，数值随主机一路上来，不单独占端口。" };
+    { Tip = "探头的数值随主机一路上来，不单独占端口——仿真机由 RD105 读，" +
+            "真机由宇电 AI-8848GD91J7（主机连接参数里的「温度模块串口」）读。" };
 
     public ParameterSchema ConfigSchema { get; } = new(new[]
     {

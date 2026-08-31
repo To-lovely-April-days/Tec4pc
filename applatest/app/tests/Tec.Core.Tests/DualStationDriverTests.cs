@@ -291,6 +291,59 @@ public sealed class DualStationDriverTests
         lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("反馈已核实"));
     }
 
+    // ── pH 能力（台面上那支「pH 玻璃电极」在真机上的后端） ──────────
+
+    [Fact]
+    public async Task pH以IScalarSensor端到通道上_读数与采样流同源()
+    {
+        var b = Rig();
+        b.J4.Regs[1536] = 700;
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+
+        // 台面读数标签走的就是这条路：通道能力里找带 pH 签的 IScalarSensor
+        var sensor = s.CapabilitiesOf(0).OfType<IScalarSensor>()
+                      .Single(x => x.Tags.Any(g => g.Tag == "pH"));
+        Assert.True(sensor.TryReadLatest("pH", out var smp));
+        Assert.Equal(7.0, smp.Value, 2);
+        Assert.Equal(Quality.Good, smp.Quality);
+        // 「pH 采集」由主机认领
+        Assert.NotNull(s.Resolve(Tec.Driver.Abi.CommandSpecs.PhSample));
+    }
+
+    [Fact]
+    public async Task 没配pH模块_能力不端出_指令不认领()
+    {
+        var b = Rig(withPh: false);
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
+
+        Assert.Empty(s.CapabilitiesOf(0).OfType<IScalarSensor>());
+        Assert.Null(s.Resolve(Tec.Driver.Abi.CommandSpecs.PhSample));
+    }
+
+    [Fact]
+    public async Task pH电极断线_最新一拍挂Bad质量位()
+    {
+        var b = Rig();
+        b.J4.Regs[1536] = 700;
+        b.J4.Regs[1664] = 0x0100;                // CH1 oral：电极断线/超量程
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+
+        var sensor = s.CapabilitiesOf(0).OfType<IScalarSensor>().Single();
+        Assert.True(sensor.TryReadLatest("pH", out var smp));
+        Assert.Equal(Quality.Bad, smp.Quality);
+    }
+
+    [Fact]
+    public async Task 还没采到一拍_TryReadLatest诚实返回false()
+    {
+        var b = Rig();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
+        var sensor = s.CapabilitiesOf(0).OfType<IScalarSensor>().Single();
+        Assert.False(sensor.TryReadLatest("pH", out _));
+    }
+
     // ── 安全停 ───────────────────────────────────────────────────────
 
     [Fact]

@@ -38,6 +38,7 @@ public sealed class DuoSession : IDeviceSession
     private readonly TimeSpan _tick;
 
     private readonly bool[] _electric = new bool[2];
+    private readonly DuoPhSensor[] _phSensors;
     private bool _phOk;
     private bool _ioOk;
     private int _j7Fails, _j4Fails, _ioFails;
@@ -80,6 +81,7 @@ public sealed class DuoSession : IDeviceSession
         _rd.StateChanged += (_, st) => { if (st != DeviceState.Disposed) State = st; };
 
         _temps = new[] { new DuoTempControl(this, 0), new DuoTempControl(this, 1) };
+        _phSensors = new[] { new DuoPhSensor(_rd.TempOf(0).Channel), new DuoPhSensor(_rd.TempOf(1).Channel) };
     }
 
     public string InstanceId => _ctx.InstanceId;
@@ -122,13 +124,25 @@ public sealed class DuoSession : IDeviceSession
             { Nominal = new ValueRange(0, 0) }
     };
 
+    /// <summary>
+    /// 台面上的「Tr 温度探头」「pH 玻璃电极」在真机上就是宇电两台的物理探头
+    /// （用户明确的对应关系）：Tr 走 ITemperatureControl.CurrentReactor，
+    /// pH 走 IScalarSensor——**pH 模块没配或自检没过就不端出这份能力**，
+    /// 配方校验、台面读数据此如实显示「没有」。
+    /// </summary>
     public IReadOnlyList<ICapability> CapabilitiesOf(int well)
-        => well is 0 or 1
-            ? new ICapability[] { _temps[well] }
-                .Concat(_rd.CapabilitiesOf(well).OfType<ITemperatureTuning>()).ToArray()
-            : Array.Empty<ICapability>();
+    {
+        if (well is not (0 or 1)) return Array.Empty<ICapability>();
+        var caps = new List<ICapability> { _temps[well] };
+        caps.AddRange(_rd.CapabilitiesOf(well).OfType<ITemperatureTuning>());
+        if (_phOk) caps.Add(_phSensors[well]);
+        return caps;
+    }
 
-    public ICommandHandler? Resolve(string commandId) => null;
+    /// <summary>「pH 采集」由主机认领（真机上电极不产数，数在主机的采集循环里）。
+    /// 「pH 反馈加料」不认领——闭环那份实现在加料泵那边，接上真泵再说。</summary>
+    public ICommandHandler? Resolve(string commandId)
+        => commandId == CommandSpecs.PhSample && _phOk ? new DuoPhSampleHandler() : null;
 
     internal Rd105TemperatureControl InnerTemp(int well) => _rd.TempOf(well);
 
@@ -276,7 +290,12 @@ public sealed class DuoSession : IDeviceSession
                 {
                     var x = r[_mapJ4[w] - 1];
                     if (x.Value is { } v)
-                        Push(_rd.TempOf(w).Channel, "pH", v, at, x.SensorFault ? Quality.Bad : Quality.Good);
+                    {
+                        var s = new Sample(_rd.TempOf(w).Channel, "pH", at.UtcTicks, at, v,
+                                           x.SensorFault ? Quality.Bad : Quality.Good);
+                        _out.Push(s);                 // 进趋势 / 判据 / 记录
+                        _phSensors[w].Update(in s);   // 台面电极读数与 pH 指令吃这一份
+                    }
                 }
             }
             catch (OperationCanceledException) { throw; }

@@ -142,7 +142,10 @@ public sealed class PhProbeDriver : ScalarProbeDriver
     {
         ChannelsPerDevice = 0,
         IconKey = "phel",
-        Description = "复合电极 · ⌀14；提供 pH 判据与反馈加料的输入。",
+        // 真机上这支电极接的是宇电 AI-8848GD91J4 的一路输入，数值由双工位主机
+        // 的组合会话端上来（那边不产仿真数）；本驱动的仿真曲线只喂仿真主机
+        Description = "复合电极 · ⌀14；提供 pH 判据与反馈加料的输入——" +
+                      "真机接宇电 AI-8848GD91J4，数值随双工位主机一路上来。",
         Capabilities = new[] { nameof(IScalarSensor) }
     };
 
