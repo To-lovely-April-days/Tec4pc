@@ -23,13 +23,13 @@ public static class Is
     /// </summary>
     /// <summary>
     /// 「当前选中的这一条」左边那道竖条（配方库两处：库列表 6px、步骤卡 3px）。
-    /// 从品牌红 #A41626 改成 #FFCF00：选中底色换成淡蓝 #ACC3DF 之后，
-    /// 一道红杠压在上头跟这一页别处的红（报错）撞意思；黄跟蓝是补色，
-    /// 一眼看得出「就是这一条」，又不会被读成「这一条出事了」。
+    /// 一路换过来的：品牌红 #A41626 → 黄 #FFCF00 → 现在的黑 #17191c（用户定的，
+    /// 与登录页那套黑同一支）。黑压在淡蓝 #ACC3DF 的选中底上对比最足，
+    /// 也不跟这一页别处的红（报错）撞意思。
     /// </summary>
     public static readonly IValueConverter SelBar =
         new FuncValueConverter<bool, IBrush>(on =>
-            on ? new SolidColorBrush(Color.Parse("#FFCF00")) : Brushes.Transparent);
+            on ? new SolidColorBrush(Color.Parse("#17191c")) : Brushes.Transparent);
 
     public static readonly IValueConverter SelWeight =
         new FuncValueConverter<bool, FontWeight>(on => on ? FontWeight.SemiBold : FontWeight.Normal);
