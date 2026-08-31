@@ -71,6 +71,9 @@ internal sealed class ScalarSession : SimSession
 
     protected override void Tick(double dt)
     {
+        // 勾了模拟才走模拟（属性栏那个开关）：不打勾时电极/探头自己一个数都不产——
+        // 真机上它们的数值由主机（宇电模块）端出来，这里再仿一路就是两个来源撞数
+        if (!Context.Simulated) return;
         _seconds += dt;
         foreach (var p in _ports)
         {

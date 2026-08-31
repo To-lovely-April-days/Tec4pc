@@ -442,16 +442,82 @@ public sealed class BenchViewModel : ViewModelBase
         set => Set(ref _renaming, value);
     }
 
-    /// <summary>仿真开关是设备的真实状态，不是摆设。</summary>
+    /// <summary>
+    /// 仿真开关是设备的真实状态，不是摆设：**勾了模拟才走模拟**。
+    /// 主机去了勾会换成真机驱动身份（tec.reactor.duo），连接表单、测试连接、
+    /// 会话全部跟着走；探头类去了勾后自己不再产数（真机上数值由主机端出来）；
+    /// 没有真机形态的设备（如加料泵）去勾被如实拒绝，勾选框弹回去。
+    /// </summary>
+    /// <summary>拒绝回弹的过渡值：拒绝那一拍先让界面停在用户点出的样子，
+    /// 下一拍清掉、按真值重抬——直接抬同一个值会被绑定当「没变化」吞掉（实测踩到）。</summary>
+    private bool? _simFlash;
+
     public bool DeviceSimulated
     {
-        get => _selected?.Device.Simulated ?? true;
+        get => _simFlash ?? _selected?.Device.Simulated ?? true;
         set
         {
             if (_selected is null || _selected.Device.Simulated == value) return;
-            _selected.Device.Simulated = value;
+            var dev = _selected.Device;
+
+            if (!value)
+            {
+                var real = SimRealTwins.RealOf(dev.DriverId);
+                // 没有真机孪生时，只有纯传感类（探头/电极：去勾后自己闭嘴，数值由主机端出来）
+                // 才允许去勾。带执行器能力的（泵的 IDosing）不行——去勾后照旧虚拟加料，
+                // 就是拿仿真冒充真机
+                var sensorOnly = _selected.Driver is { } drv && drv.Info.Capabilities.Count > 0
+                    && drv.Info.Capabilities.All(c =>
+                        c is nameof(IScalarSensor) or nameof(ISpectrumSource));
+                if (real is null && !sensorOnly)
+                {
+                    ProbeResult = "这台还没有真机驱动，暂时只能模拟";
+                    RevertSimulatedCheckbox(value);
+                    return;
+                }
+                if (real is not null) dev.DriverId = real;
+            }
+            else
+            {
+                var sim = SimRealTwins.SimOf(dev.DriverId);
+                if (sim is null && _selected.Driver?.Info.SimulatorIncluded == false)
+                {
+                    ProbeResult = "这台没有仿真形态，只能走真机";
+                    RevertSimulatedCheckbox(value);
+                    return;
+                }
+                if (sim is not null) dev.DriverId = sim;
+            }
+
+            dev.Simulated = value;
             Raise();
+            _ = SwapAndReselectAsync(dev.InstanceId);     // 会话按新身份重开
         }
+    }
+
+    /// <summary>
+    /// 拒绝切换时把勾选框弹回去：这一拍先记下用户点出的值（getter 暂时随它），
+    /// 下一拍清掉过渡值再抬——此时 getter 回到真值、与控件当前显示不同，
+    /// 绑定才肯把控件改回去。
+    /// </summary>
+    private void RevertSimulatedCheckbox(bool clicked)
+    {
+        _simFlash = clicked;
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            _simFlash = null;
+            Raise(nameof(DeviceSimulated));
+        }, Avalonia.Threading.DispatcherPriority.Background);
+    }
+
+    /// <summary>
+    /// 重建完再把同一台选回来：换了驱动身份的节点在 SyncDevices 里是整个换掉的，
+    /// 旧节点会被摘出列表、右栏跟着清空，不重选的话开关一按面板就白了。
+    /// </summary>
+    private async Task SwapAndReselectAsync(string id)
+    {
+        await _ws.RebuildChannelsAsync();
+        Selected = Devices.FirstOrDefault(d => d.Id == id) ?? Selected;
     }
 
     /// <summary>探头绑到哪个通道（原型的「绑定通道」下拉，含「未绑定」）。</summary>
@@ -1231,11 +1297,15 @@ public sealed class BenchViewModel : ViewModelBase
     /// </summary>
     private void SyncDevices()
     {
-        // 台面上已经没有的（或者整份台面被换掉、模型对象都不是原来那个了）先摘掉
+        // 台面上已经没有的（或者整份台面被换掉、模型对象都不是原来那个了）先摘掉；
+        // 「模拟」开关换过驱动身份的也摘——节点上缓存的 Driver、表单、通道数
+        // 全是按旧身份建的，就地改不如整个换
         for (var i = Devices.Count - 1; i >= 0; i--)
         {
             var live = _ws.Bench.Device(Devices[i].Id);
-            if (live is null || !ReferenceEquals(live, Devices[i].Device)) Devices.RemoveAt(i);
+            if (live is null || !ReferenceEquals(live, Devices[i].Device)
+                || (Devices[i].Driver?.Info.Id ?? live.DriverId) != live.DriverId)
+                Devices.RemoveAt(i);
         }
 
         for (var i = 0; i < _ws.Bench.Devices.Count; i++)

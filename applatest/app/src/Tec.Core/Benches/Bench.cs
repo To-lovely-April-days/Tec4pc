@@ -38,7 +38,9 @@ public sealed class DeviceInstance
     /// <summary>侧接时停在左还是右（L / R），决定走线用哪个插头。</summary>
     public string? DockSideTag { get; set; }
 
-    public required string DriverId { get; init; }
+    /// <summary>可写不是疏忽：属性栏的「模拟」开关会在仿真 ⇄ 真机孪生驱动之间
+    /// 换身份（tec.reactor.rd105 ⇄ tec.reactor.duo），换的就是这个字段。</summary>
+    public required string DriverId { get; set; }
     public required string InstanceId { get; init; }
     public string? Label { get; set; }
     public ParameterSet Connection { get; init; } = new();
