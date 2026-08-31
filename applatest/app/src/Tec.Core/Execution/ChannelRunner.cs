@@ -37,6 +37,8 @@ public sealed class ChannelRunner
     private CancellationTokenSource? _cts;
     private volatile TaskCompletionSource<bool>? _pauseGate;   // 非空 = 暂停中
     private volatile bool _skipRequested;
+    /// <summary>这一趟是被安全层中止的（E 级），收尾时要走紧急程序。</summary>
+    private volatile bool _emergency;
     private Task? _loop;
     private StepRecord? _pending;                // Start() 里同步建好的第一步，循环接手它而不是另建一条
 
@@ -225,9 +227,14 @@ public sealed class ChannelRunner
         return true;
     }
 
-    public void Abort(string? user = null, string reason = "操作人中止")
+    /// <param name="emergency">
+    /// 这一次中止是安全层触发的（E 级）。收完安全态之后还要按紧急程序参数
+    /// 把机器摆到 Tsafe / Rsafe 上——操作人自己按的中止不走这一段。
+    /// </param>
+    public void Abort(string? user = null, string reason = "操作人中止", bool emergency = false)
     {
         if (State is ChannelRunState.Idle or ChannelRunState.Completed) return;
+        if (emergency) _emergency = true;
         State = ChannelRunState.Aborting;
         if (Run is not null) Run.State = ChannelRunState.Aborting;
         Log(EventKind.Aborted, $"中止：{reason}", user);
@@ -455,6 +462,12 @@ public sealed class ChannelRunner
             // 正常跑完不动它：收尾状态是配方作者定的（降温结晶跑完就该保持在 5 ℃）
             if (run.State != ChannelRunState.Completed) await SafeStopAsync(run).ConfigureAwait(false);
 
+            // E 级紧急程序（手册 §6 的 Tsafe / Rsafe）：**必须排在收安全态之后**。
+            // 收安全态是「切输出」，紧急程序是「摆到这个温度/转速守着」，
+            // 顺序反了就被切输出抹掉了。没设过参数就什么都不做（老行为）
+            if (_emergency) await EmergencyAsync().ConfigureAwait(false);
+            _emergency = false;
+
             // 中止过的通道回到 Idle，好让操作人再起一趟（记录里是新的一条，不覆盖旧的）
             State = run.State == ChannelRunState.Aborted ? ChannelRunState.Idle : run.State;
             Log(EventKind.ChannelFinished,
@@ -499,6 +512,43 @@ public sealed class ChannelRunner
             }
             foreach (var line in did)
                 Log(EventKind.SafeStop, $"{a.Session.InstanceId} {line}", null);
+        }
+    }
+
+    /// <summary>
+    /// E 级紧急程序（手册 §6 的 Tsafe / Rsafe）：安全层中止之后，把这一路
+    /// 摆到安全温度上守着、搅拌按 Rsafe 走。
+    ///
+    /// **它排在收安全态之后**：收安全态是切输出，这一段是重新给一个安全设定值，
+    /// 反过来就被切掉了。参数没设（多数配方）这一段一步都不做。
+    /// 做了什么逐条进记录，做不成也记——机器现在是什么状态，事后要答得出。
+    /// </summary>
+    private async Task EmergencyAsync()
+    {
+        if (Safety?.EmergencyPlanOf(Number) is not { } plan) return;
+        using var cts = new CancellationTokenSource(SafeStopBudget);
+        var caps = _channel.Capabilities;
+
+        if (plan.SafeTemp is { } t)
+        {
+            if (caps.Get<ITemperatureControl>() is { } tc)
+                await Try($"紧急程序：控温到安全温度 {Fmt.Num(t)} ℃（Tsafe）",
+                          ct => tc.SetTargetAsync(new TempTarget(t), ct)).ConfigureAwait(false);
+            else Log(EventKind.SafeStop, "紧急程序：这一路没有控温设备，安全温度没处下发", null);
+        }
+        if (plan.SafeRpm is { } r)
+        {
+            if (caps.Get<IStirrer>() is { } st)
+                await Try($"紧急程序：搅拌转到紧急转速 {Fmt.Num(r)} rpm（Rsafe）",
+                          ct => st.SetSpeedAsync(r, ct)).ConfigureAwait(false);
+            else Log(EventKind.SafeStop, "紧急程序：这一路没有搅拌设备，紧急转速没处下发", null);
+        }
+        else Log(EventKind.SafeStop, "紧急程序：搅拌保持当前转速（Rsafe = 保持）", null);
+
+        async Task Try(string what, Func<CancellationToken, Task> go)
+        {
+            try { await go(cts.Token).ConfigureAwait(false); Log(EventKind.SafeStop, what, null); }
+            catch (Exception ex) { Log(EventKind.SafeStop, $"{what} 失败：{ex.Message}", null); }
         }
     }
 

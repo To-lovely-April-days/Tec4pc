@@ -121,7 +121,7 @@ public static class DemoBench
         Parameters = ParameterSet.Of(("fill", true), ("stir", 0d), ("tempOn", false)),
         Rows = new List<ParameterSet>
         {
-            ParameterSet.Of(("src", "釜内 Tr"), ("op", ">"), ("val", 100d), ("act", "中止本通道"))
+            ParameterSet.Of(("par", "Tr max"), ("val", 100d), ("act", "中止本通道"))
         }
     };
 

@@ -112,24 +112,80 @@ public static class RecipeMigration
             // 「安全联锁」改成「改限值」时，触发动作换成了引擎真做得出的五档。
             // Id 和其余参数键都没动，只有旧动作值要翻：「停止实验」本来就是
             // 中止这一路的意思；「暂停」引擎没有这一档，最接近本意的是报警等人。
+            // 「改限值」从「监测量 + 条件 + 阈值」四个字段改成手册 §6 的参数表
+            // （Tr max / Tj min / T diff max …）。老配方那一行搬进表里：
+            // 监测量 + 条件 → 参数名。认不出的（浊度那类已经没有信号的）不硬翻，
+            // 那一条照实丢掉——留一条盯不到信号的限值比没有更糟（按传感器失效触发）。
+            // 旧动作值（安全联锁那一版的「停止实验 / 暂停实验」）同一趟翻掉
+            case Catalog.BuiltinCommands.Interlock when p.Has("src"):
+                var par = ParamOf(p.Str("src"), p.Str("op", ">"));
+                var rows = step.Rows?.Select(r => r.Clone()).ToList() ?? new List<ParameterSet>();
+                var act = ActOf(p.Str("act", "中止本通道"));
+                if (par is not null)
+                    rows.Insert(0, ParameterSet.Of(("par", par), ("val", p.Num("val")), ("act", act)));
+                how = par is null
+                    ? $"「改限值」的监测量「{p.Str("src")}」已无对应信号，那一条限值未保留"
+                    : $"「改限值」{p.Str("src")} {p.Str("op")} {Fmt.Num(p.Num("val"))} → 限值表「{par}」";
+                foreach (var k in new[] { "src", "op", "val", "act" }) p.Remove(k);
+                return With(step, Catalog.BuiltinCommands.Interlock, p, rows);
+
+            // 没有 src 却带着旧动作值的（极少见：改过一半的文件）也翻一下
             case Catalog.BuiltinCommands.Interlock when p.Str("act") is "停止实验" or "暂停实验":
                 var oldAct = p.Str("act");
-                var newAct = oldAct == "停止实验" ? "中止本通道" : "仅报警";
-                p["act"] = newAct;
-                how = $"「安全联锁」的触发动作「{oldAct}」→「改限值」的「{newAct}」";
+                p["act"] = ActOf(oldAct);
+                how = $"「安全联锁」的触发动作「{oldAct}」→「改限值」的「{p.Str("act")}」";
                 return With(step, Catalog.BuiltinCommands.Interlock, p);
+
+            // 起始步骤的限值表同样换了列名（src/op → par），指令 Id 没变，
+            // 所以单独认一次：表里有 src 这一列的就是老文件
+            case Catalog.BuiltinCommands.FirstFill when step.Rows is { Count: > 0 } old
+                                                        && old.Any(r => r.Has("src")):
+                var kept = new List<ParameterSet>();
+                var dropped = 0;
+                foreach (var r in old)
+                {
+                    if (!r.Has("src")) { kept.Add(r.Clone()); continue; }
+                    var pp = ParamOf(r.Str("src"), r.Str("op", ">"));
+                    if (pp is null) { dropped++; continue; }
+                    kept.Add(ParameterSet.Of(("par", pp), ("val", r.Num("val")),
+                                             ("act", r.Str("act", "中止本通道"))));
+                }
+                how = $"起始限值表换成手册 §6 的参数名（{kept.Count} 条）"
+                      + (dropped > 0 ? $"；其中 {dropped} 条盯的信号已不存在，未保留" : "");
+                return With(step, Catalog.BuiltinCommands.FirstFill, p, kept);
 
             default:
                 return null;
         }
     }
 
-    private static Step With(Step step, string commandId, ParameterSet parameters) => new()
+    /// <summary>「安全联锁」那一版的触发动作 → 引擎真做得出的五档。</summary>
+    private static string ActOf(string act) => act switch
+    {
+        "停止实验" => "中止本通道",
+        "暂停实验" => "仅报警",     // 引擎没有「暂停」这一档，最接近本意的是报警等人
+        _ => act
+    };
+
+    /// <summary>老的监测量 + 条件 → 手册 §6 的参数名。认不出返回 null。</summary>
+    private static string? ParamOf(string src, string op) => (src, op) switch
+    {
+        ("釜内 Tr", "<") => "Tr min",
+        ("釜内 Tr", _) => "Tr max",
+        ("夹套 Tj", "<") => "Tj min",
+        ("夹套 Tj", _) => "Tj max",
+        ("pH", "<") => "pH min",
+        ("pH", _) => "pH max",
+        _ => null                       // 浊度这类已经没有的信号，不硬翻
+    };
+
+    private static Step With(Step step, string commandId, ParameterSet parameters,
+                             List<ParameterSet>? rows = null) => new()
     {
         StepId = step.StepId,           // 保住 StepId：老记录要对得上
         CommandId = commandId,
         Parameters = parameters,
-        Rows = step.Rows?.Select(r => r.Clone()).ToList(),
+        Rows = rows ?? step.Rows?.Select(r => r.Clone()).ToList(),
         Enabled = step.Enabled,
         Comment = step.Comment,
         // 这两项从前抄漏了：翻译一步，操作人关掉的「失败时暂停」自己又开回默认、

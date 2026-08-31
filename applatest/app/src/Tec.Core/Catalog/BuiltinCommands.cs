@@ -50,6 +50,108 @@ public static class BuiltinCommands
     private static readonly string[] InterlockSources = { "釜内 Tr", "夹套 Tj", "pH" };
     private static readonly string[] InterlockOps = { ">", "<" };
 
+    /// <summary>
+    /// 安全限值参数表（EasyMax 102 / 402 手册 §6 那张完整表）。
+    /// 前六条逐条照抄手册；pH 两条是本机的扩展——这台机器能插 pH 电极，
+    /// 手册那张表里没有它，但一路真信号该能设限值。
+    ///
+    /// 表里另外两个（Tsafe / Rsafe）不在这儿：它们不是「越了就报」的限值，
+    /// 是 E 级紧急程序**触发之后**把机器摆成什么样，所以做成步骤上的字段
+    /// （见 Interlock / FirstFill 的 eOn / tsafe / rsafeMode / rsafe）。
+    /// </summary>
+    public static readonly string[] SafetyParams =
+    { "Tr max", "Tr min", "Tj max", "Tj min", "T diff max", "Rmax", "pH max", "pH min" };
+
+    /// <summary>Rsafe 的两种写法（手册：Hold 或 0~1000 rpm）。</summary>
+    public static readonly string[] RsafeModes = { "保持当前", "指定转速" };
+
+    /// <summary>
+    /// 参数名 → 盯哪一路信号、是上限还是下限、单位。
+    /// 「T diff max」比较特殊：手册说的是允许的 Tj 与 Tr 温差，
+    /// 一条限值管住 dT 的上下两侧（±v），由 LimitsFromRows 展开。
+    /// </summary>
+    public static (string Tag, bool IsMax, string Unit)? SafetyParamOf(string par) => par switch
+    {
+        "Tr max" => ("Tr", true, "℃"),
+        "Tr min" => ("Tr", false, "℃"),
+        "Tj max" => ("Tj", true, "℃"),
+        "Tj min" => ("Tj", false, "℃"),
+        "T diff max" => ("dT", true, "K"),
+        "Rmax" => ("rpm", true, "rpm"),
+        "pH max" => ("pH", true, ""),
+        "pH min" => ("pH", false, ""),
+        _ => null
+    };
+
+    /// <summary>动作的严厉程度。同一路信号上下限并在一条记录里，动作取最严的那一档。</summary>
+    private static int Severity(SafetyAction a) => a switch
+    {
+        SafetyAction.Alarm => 0,
+        SafetyAction.StopDosing => 1,
+        SafetyAction.StopHeating => 2,
+        SafetyAction.AbortChannel => 3,
+        _ => 4
+    };
+
+    /// <summary>
+    /// 一张限值表（「改限值」与起始步骤共用）→ 交给安全层的限值记录。
+    ///
+    /// **同一路信号的上下限必须并成一条**：安全层按「通道 + 信号」认一条配方
+    /// 限值，各发各的会互相顶掉——从前 Tr max 和 Tr min 就只能留住后设的那个。
+    /// 认不出的参数名照实回报，不当作没写过。
+    /// </summary>
+    public static IReadOnlyList<SafetyLimit> LimitsFromRows(
+        int channel, IEnumerable<ParameterSet> rows, string note, Action<string>? onSkip = null)
+    {
+        var acc = new Dictionary<string, (double? Min, double? Max, SafetyAction Act)>(StringComparer.Ordinal);
+        foreach (var row in rows)
+        {
+            var par = row.Str("par");
+            if (SafetyParamOf(par) is not { } spec)
+            {
+                onSkip?.Invoke(par.Length == 0 ? "限值表里有一行没选参数，这一条没有生效"
+                                               : $"限值表没认出参数「{par}」，这一条没有生效");
+                continue;
+            }
+            var val = row.Num("val");
+            var act = SafetyActionWords.Parse(row.Str("act"));
+            acc.TryGetValue(spec.Tag, out var cur);
+            // 温差是对称的一条：|Tj − Tr| ≤ v，展开成 dT ∈ [−v, +v]
+            if (par == "T diff max") cur = (-Math.Abs(val), Math.Abs(val), cur.Act);
+            else if (spec.IsMax) cur = (cur.Min, val, cur.Act);
+            else cur = (val, cur.Max, cur.Act);
+            acc[spec.Tag] = (cur.Min, cur.Max,
+                Severity(act) >= Severity(cur.Act) ? act : cur.Act);
+        }
+        return acc.Select(kv => new SafetyLimit(channel, kv.Key, kv.Value.Min, kv.Value.Max,
+                MaxRatePerMin: null, Debounce: TimeSpan.FromSeconds(3), Action: kv.Value.Act)
+            { FromRecipe = true, Note = note }).ToList();
+    }
+
+    /// <summary>步骤字段里的 E 级紧急程序参数（没开就返回 null）。</summary>
+    public static EmergencyPlan? EmergencyFrom(CommandInput p)
+        => !p.Flag("eOn") ? null
+           : new EmergencyPlan(p.Num("tsafe", 25),
+                               p.Str("rsafeMode", "保持当前") == "指定转速" ? p.Num("rsafe", 0) : null);
+
+    /// <summary>限值表的三列，两处步骤共用一份（列名一变两边一起变）。</summary>
+    private static FieldSpec[] LimitColumns() => new[]
+    {
+        Field.Sel("par", "参数", SafetyParams, "Tr max"),
+        Field.Num("val", "值", 100, "", null, null, 0.1),
+        Field.Sel("act", "触发动作", InterlockActions, "中止本通道")
+    };
+
+    /// <summary>E 级紧急程序的四个字段，两处步骤共用（手册 §6 的 Tsafe / Rsafe）。</summary>
+    private static FieldSpec[] EmergencyFields() => new[]
+    {
+        // 标签留短：属性面板左栏窄，长标题会折成三行把整块撑开
+        Field.Bool("eOn", "设 E 级紧急程序", false),
+        Field.Num("tsafe", "Tsafe 安全温度", 25, "℃", -40, 180, 0.1) with { VisibleWhen = "eOn=true" },
+        Field.Sel("rsafeMode", "Rsafe 紧急转速", RsafeModes, "保持当前") with { VisibleWhen = "eOn=true" },
+        Field.Num("rsafe", "Rsafe 转速", 200, "rpm", 0, 1000, 10) with { VisibleWhen = "rsafeMode=指定转速" }
+    };
+
     /// <summary>监测量选项 → 数据管线里那一路信号的名字。「改限值」和起始限值
     /// 共用这一份；「浊度」已从下拉里撤了，但存过盘的老配方还带着，得认。</summary>
     public static string? InterlockTag(string src) => src switch
@@ -93,15 +195,10 @@ public static class BuiltinCommands
                 Field.Num("stir", "初始搅拌转速", 0, "rpm", 0, 1000, 10),
                 Field.Bool("tempOn", "设定初始温度", false),
                 Field.Num("temp", "初始温度", 25, "℃", -40, 180, 0.1) with { VisibleWhen = "tempOn=true" }
-            })
+            }.Concat(EmergencyFields()).ToArray())
             {
-                Table = new TableSpec("起始限值", new[]
-                {
-                    Field.Sel("src", "监测量", InterlockSources, "釜内 Tr"),
-                    Field.Sel("op", "条件", InterlockOps, ">"),
-                    Field.Num("val", "阈值", 100, "", null, null, 0.1),
-                    Field.Sel("act", "触发动作", InterlockActions, "中止本通道")
-                }),
+                // 起始限值与「改限值」共用手册 §6 那张参数表：同一件事只有一套说法
+                Table = new TableSpec("起始限值", LimitColumns()),
                 Tip = "整趟实验的起点：起始限值先交给安全层（活到下一次启动前），"
                     + "再按配料表完成初始投料并确认，然后开搅拌、到初温。"
                     + "转速填 0 就不开搅拌。这一步必须是第一步，删不掉——空釜跑配方没有意义。"
@@ -230,20 +327,29 @@ public static class BuiltinCommands
         // 原名「安全联锁」，只写一行日志、什么都不联锁。现在它真的把这条限值
         // 交给安全层（SafetyMonitor）随时求值——Id 不动，存过盘的配方原样能开
         new CommandDescriptor(Interlock, "改限值", CommandSpecs.ModSafety, null,
-            new ParameterSchema(new[]
+            new ParameterSchema(EmergencyFields())
             {
-                Field.Sel("src", "监测量", InterlockSources, "釜内 Tr"),
-                Field.Sel("op", "条件", InterlockOps, ">"),
-                Field.Num("val", "阈值", 100, "", null, null, 0.1),
-                Field.Sel("act", "触发动作", InterlockActions, "中止本通道")
-            }),
+                Table = new TableSpec("安全限值", LimitColumns())
+            },
             TerminationKind.Immediate,
             (_, _) => TimeSpan.Zero,
-            p => $"当 {p.Str("src")} {p.Str("op")} {Txt.Fx(p.Num("val"))} 时{p.Str("act")}")
+            p =>
+            {
+                var bits = p.RowsOrEmpty
+                    .Select(r => $"{r.Str("par")} = {Txt.Fx(r.Num("val"))}"
+                                 + $"{SafetyParamOf(r.Str("par"))?.Unit ?? ""}")
+                    .ToList();
+                if (EmergencyFrom(p) is { } e) bits.Add("E 级：" + e.Describe());
+                return bits.Count == 0 ? "改限值（未设内容）" : "改限值：" + string.Join("，", bits);
+            })
         { IconKey = "interlock",
-          Tip = "执行到这一步，把这条限值加进本通道的安全层，由它独立于配方持续盯着；"
-              + "同一监测量再改一次就是换成新值。底线限值由设备范围推导、只能在其内收紧，"
-              + "配方加的限值到下一次启动运行前自动清掉（§7.5）。" },
+          Tip = "按 EasyMax 手册 §6 的安全限值参数表设值：Tr / Tj 的上下限、"
+              + "允许的 Tj−Tr 温差（T diff max）、转速上限 Rmax（另加本机的 pH 上下限）。"
+              + "执行到这一步就把它们交给安全层，由它独立于配方持续盯着；"
+              + "同一路信号再改一次是换值不是叠加。底线限值由设备范围推导、"
+              + "只能在其内收紧，配方设的限值到下一次启动运行前自动清掉（§7.5）。"
+              + "Tsafe / Rsafe 是越限中止之后把机器摆成什么样（E 级紧急程序），"
+              + "不勾就是原来的收安全态：切输出、搅拌保持。" },
 
         new CommandDescriptor(Finish, "结束实验", Module, null,
             new ParameterSchema(new[]
@@ -425,47 +531,47 @@ public sealed class BuiltinCommandProvider : ICommandProvider
         private readonly SafetyMonitor? _safety;
         public LimitHandler(SafetyMonitor? safety) => _safety = safety;
 
-        private static string? TagOf(string src) => BuiltinCommands.InterlockTag(src);
-
-        /// <summary>触发动作 → 安全层的档位。对照表在 SafetyActionWords 一处，
-        /// 老配方的「停止实验 / 暂停实验」也由它兜底翻译（RecipeMigration
-        /// 只在打开文件时改一次，跳过迁移直接跑的老测试数据也不能跑偏）。</summary>
-        private static SafetyAction ActOf(string act) => SafetyActionWords.Parse(act);
-
         public Task<CommandOutcome> ExecuteAsync(CommandContext ctx, CommandInput p, CancellationToken ct)
         {
-            var summary = BuiltinCommands.Summary(BuiltinCommands.Interlock, p);
-            if (TagOf(p.Str("src")) is not { } tag)
-            {
-                ctx.Note?.Invoke($"改限值没认出监测量「{p.Str("src")}」，这一条没有生效");
-                return Task.FromResult(CommandOutcome.Instant());
-            }
-
-            var op = p.Str("op", ">");
-            var val = p.Num("val");
-            var lim = new SafetyLimit(ctx.Channel, tag,
-                Min: op == "<" ? val : null,
-                Max: op == "<" ? null : val,
-                MaxRatePerMin: null,
-                Debounce: TimeSpan.FromSeconds(3),
-                Action: ActOf(p.Str("act")))
-            {
-                FromRecipe = true,
-                Note = "配方「改限值」步骤设定"
-            };
-
-            if (_safety is null)
-            {
-                // 没挂安全层的场合（裸执行器、部分单测）不能装作生效了
-                ctx.Note?.Invoke($"改限值：{summary}（本会话没有安全层，仅记录）");
-            }
-            else
-            {
-                _safety.SetRecipeLimit(lim);
-                ctx.Note?.Invoke($"改限值已交给安全层：{summary}");
-            }
+            ArmLimits(ctx, p, _safety, "配方「改限值」步骤设定", "改限值");
             return Task.FromResult(CommandOutcome.Instant());
         }
+    }
+
+    /// <summary>
+    /// 把一张安全限值表（手册 §6 那八个参数）+ E 级紧急程序参数交给安全层。
+    /// 「改限值」与起始步骤共用这一段——两处设的是同一套东西，
+    /// 各写一份迟早出现「起始限值认得 T diff max、改限值不认」。
+    /// 没挂安全层的场合（裸执行器、部分单测）照实说「仅记录」，不装作生效了。
+    /// </summary>
+    private static void ArmLimits(CommandContext ctx, CommandInput p,
+                                  SafetyMonitor? safety, string note, string what)
+    {
+        var limits = BuiltinCommands.LimitsFromRows(ctx.Channel, p.RowsOrEmpty, note,
+                                                    msg => ctx.Note?.Invoke($"{what}：{msg}"));
+        var plan = BuiltinCommands.EmergencyFrom(p);
+
+        if (safety is null)
+        {
+            if (limits.Count > 0 || plan is not null)
+                ctx.Note?.Invoke($"{what}：{BuiltinCommands.Summary(BuiltinCommands.Interlock, p)}"
+                                 + "（本会话没有安全层，仅记录）");
+            return;
+        }
+
+        foreach (var lim in limits) safety.SetRecipeLimit(lim);
+        if (limits.Count > 0)
+            ctx.Note?.Invoke($"{what}已交给安全层：" + string.Join("；", limits.Select(Describe)));
+        if (plan is not null)
+        {
+            safety.SetEmergencyPlan(ctx.Channel, plan);
+            ctx.Note?.Invoke($"E 级紧急程序：{plan.Describe()}");
+        }
+
+        static string Describe(SafetyLimit l) =>
+            l.Tag + (l.Min is { } lo ? $" ≥ {Txt.Fx(lo)}" : "")
+                  + (l.Max is { } hi ? $" ≤ {Txt.Fx(hi)}" : "")
+                  + $" → {SafetyActionWords.Of(l.Action)}";
     }
 
     /// <summary>
@@ -493,32 +599,8 @@ public sealed class BuiltinCommandProvider : ICommandProvider
         {
             var began = ctx.Now();
 
-            // 1) 起始限值
-            var armed = 0;
-            foreach (var row in p.RowsOrEmpty)
-            {
-                if (BuiltinCommands.InterlockTag(row.Str("src")) is not { } tag)
-                {
-                    ctx.Note?.Invoke($"起始限值没认出监测量「{row.Str("src")}」，这一条没有生效");
-                    continue;
-                }
-                var op = row.Str("op", ">");
-                var val = row.Num("val");
-                var lim = new SafetyLimit(ctx.Channel, tag,
-                    Min: op == "<" ? val : null, Max: op == "<" ? null : val,
-                    MaxRatePerMin: null, Debounce: TimeSpan.FromSeconds(3),
-                    Action: SafetyActionWords.Parse(row.Str("act")))
-                { FromRecipe = true, Note = "起始步骤设定" };
-
-                if (_safety is null)
-                    ctx.Note?.Invoke($"起始限值：{tag} {op} {Txt.Fx(val)}（本会话没有安全层，仅记录）");
-                else
-                {
-                    _safety.SetRecipeLimit(lim);
-                    armed++;
-                }
-            }
-            if (armed > 0) ctx.Note?.Invoke($"起始限值已交给安全层，共 {armed} 条");
+            // 1) 起始限值 + E 级紧急程序（与「改限值」同一套参数表、同一段代码）
+            ArmLimits(ctx, p, _safety, "起始步骤设定", "起始限值");
 
             // 2) 按配料表投料并确认
             if (p.Flag("fill", true))

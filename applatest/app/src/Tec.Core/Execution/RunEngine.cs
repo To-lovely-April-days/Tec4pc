@@ -243,9 +243,10 @@ public sealed class RunEngine
         foreach (var r in _runners.Values) r.Pause(user);
     }
 
-    public void AbortAll(string? user = null, string reason = "全机中止")
+    /// <param name="emergency">安全层触发的全机中止：每条通道收完安全态还要走各自的 E 级紧急程序。</param>
+    public void AbortAll(string? user = null, string reason = "全机中止", bool emergency = false)
     {
-        foreach (var r in _runners.Values) r.Abort(user, reason);
+        foreach (var r in _runners.Values) r.Abort(user, reason, emergency);
     }
 
     /// <summary>把设备会话的采样接进管线。断线时驱动必须自己发 Bad/Stale（§9.4）。</summary>
@@ -343,14 +344,17 @@ public sealed class RunEngine
                 if (Runner(e.Channel) is not { } r ||
                     r.State is not (ChannelRunState.Running or ChannelRunState.Paused))
                     return new[] { "该通道未在运行，无需中止" };
-                r.Abort(null, e.Message);
-                // 收安全态由 ChannelRunner 做，逐条另记（EventKind.SafeStop）
-                return new[] { "已中止本通道，设备转入安全态" };
+                r.Abort(null, e.Message, emergency: true);
+                // 收安全态与 E 级紧急程序（Tsafe / Rsafe）都由 ChannelRunner 做，
+                // 逐条另记（EventKind.SafeStop）
+                return new[] { Safety.EmergencyPlanOf(e.Channel) is { } plan
+                    ? $"已中止本通道，转入安全态并执行 E 级紧急程序（{plan.Describe()}）"
+                    : "已中止本通道，设备转入安全态" };
 
             case SafetyAction.StopAll:
                 var live = Runners.Count(x => x.State is ChannelRunState.Running or ChannelRunState.Paused);
                 if (live == 0) return new[] { "没有正在运行的通道，无需中止" };
-                AbortAll(null, e.Message);
+                AbortAll(null, e.Message, emergency: true);
                 return new[] { $"已中止全部 {live} 条运行中的通道" };
 
             default:

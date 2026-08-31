@@ -103,7 +103,7 @@ public class FirstFillTests
                                              ("tempOn", true), ("temp", 50d)),
                 Rows = new List<ParameterSet>
                 {
-                    ParameterSet.Of(("src", "釜内 Tr"), ("op", ">"), ("val", 100d), ("act", "中止本通道"))
+                    ParameterSet.Of(("par", "Tr max"), ("val", 100d), ("act", "中止本通道"))
                 }
             };
             engine.StartChannel(1, Harness.RecipeOf("起始", step), "张三");

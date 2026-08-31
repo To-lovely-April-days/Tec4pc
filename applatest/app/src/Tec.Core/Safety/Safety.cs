@@ -84,6 +84,23 @@ public static class SafetyActionWords
 public sealed record SafetyEvent(DateTimeOffset At, int Channel, SafetyLimit Limit, string Message, double? Value);
 
 /// <summary>
+/// E 级紧急程序的两个参数（EasyMax 手册 §6 安全限值表里的 Tsafe / Rsafe）。
+/// 限值越限触发中止之后，机器不是简单断电了事：降到 Tsafe 这个温度守着，
+/// 搅拌按 Rsafe 走。两个都可以不设——不设就是原来的收安全态（切输出、
+/// 搅拌保持），这两条也照实说明。
+/// </summary>
+/// <param name="SafeTemp">降至的安全温度（℃）。null = 不设，切断输出后自然冷却。</param>
+/// <param name="SafeRpm">紧急转速（rpm）。null = 保持当前转速（手册的 Hold）。</param>
+public sealed record EmergencyPlan(double? SafeTemp, double? SafeRpm)
+{
+    public bool IsEmpty => SafeTemp is null && SafeRpm is null;
+
+    public string Describe() =>
+        (SafeTemp is { } t ? $"降至 {Fmt.Num(t)} ℃" : "不设安全温度")
+        + " · " + (SafeRpm is { } r ? $"搅拌 {Fmt.Num(r)} rpm" : "搅拌保持当前");
+}
+
+/// <summary>
 /// 一条限值此刻的处境。**同一次越限只报一次**——温度贴着上限抖，
 /// 一秒一条能在十分钟里刷出六百行，真正要人管的那条反而被埋掉了。
 /// 报了之后一直算「在报」，直到条件不再成立才恢复，恢复也是一条事实。
@@ -176,10 +193,36 @@ public sealed class SafetyMonitor
     /// <summary>
     /// 撤掉某通道全部配方限值（下一炉启动前清场，上一炉收紧的不带进来）。
     /// 撤掉之后正在报的那条由 EvaluateCore 里「限值不在册」那段收尾。
+    /// **E 级紧急程序的参数跟着一起撤**：它跟配方限值同源同寿（都是配方
+    /// 步骤设的），留下来会让下一炉按上一炉的 Tsafe 收尾。
     /// </summary>
     public int RemoveRecipeLimits(int channel)
     {
-        lock (_gate) return _limits.RemoveAll(l => l.FromRecipe && l.Channel == channel);
+        lock (_gate)
+        {
+            _plans.Remove(channel);
+            return _limits.RemoveAll(l => l.FromRecipe && l.Channel == channel);
+        }
+    }
+
+    // ── E 级紧急程序（手册 §6 的 Tsafe / Rsafe）──────────────────────
+
+    private readonly Dictionary<int, EmergencyPlan> _plans = new();
+
+    /// <summary>配方步骤设定本通道的紧急程序参数。同一通道后设的换掉先设的。</summary>
+    public void SetEmergencyPlan(int channel, EmergencyPlan plan)
+    {
+        lock (_gate)
+        {
+            if (plan.IsEmpty) _plans.Remove(channel);
+            else _plans[channel] = plan;
+        }
+    }
+
+    /// <summary>本通道的紧急程序参数；没设过返回 null（= 老的收安全态行为）。</summary>
+    public EmergencyPlan? EmergencyPlanOf(int channel)
+    {
+        lock (_gate) return _plans.TryGetValue(channel, out var p) ? p : null;
     }
 
     /// <summary>

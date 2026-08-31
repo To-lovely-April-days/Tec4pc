@@ -527,20 +527,60 @@ public static class RecipeValidator
                 issues.Add(new ValidationIssue(IssueLevel.Error, "capability",
                     $"第 {i + 1} 步要设初始温度，但 CH{channel.Number} 没有温度控制能力")
                 { StepId = s.StepId, Channel = channel.Number });
-            if (s.Rows is { } startRows)
-                foreach (var row in startRows)
+        }
+
+        // 安全限值表（起始步骤与「改限值」共用手册 §6 那张表）：盯的信号得真有
+        if (s.CommandId is BuiltinCommands.FirstFill or BuiltinCommands.Interlock
+            && s.Rows is { } limRows)
+            foreach (var row in limRows)
+            {
+                if (BuiltinCommands.SafetyParamOf(row.Str("par")) is not { } spec) continue;
+                var ok = spec.Tag switch
                 {
-                    if (BuiltinCommands.InterlockTag(row.Str("src")) is not { } tag) continue;
-                    var ok = tag is "Tr" or "Tj"
-                        ? channel.Capabilities.Has<ITemperatureControl>()
-                        : HasScalarTag(channel, tag);
-                    if (!ok)
-                        issues.Add(new ValidationIssue(IssueLevel.Warning, "guard-no-signal",
-                            $"第 {i + 1} 步的起始限值盯着 {row.Str("src")}，但 CH{channel.Number} 没有这一路信号——"
-                            + "读不到值会按传感器失效触发")
+                    "Tr" or "Tj" or "dT" => channel.Capabilities.Has<ITemperatureControl>(),
+                    "rpm" => channel.Capabilities.Has<IStirrer>(),
+                    _ => HasScalarTag(channel, spec.Tag)
+                };
+                if (!ok)
+                    issues.Add(new ValidationIssue(IssueLevel.Warning, "guard-no-signal",
+                        $"第 {i + 1} 步的安全限值「{row.Str("par")}」盯着 CH{channel.Number} 没有的信号——"
+                        + "读不到值会按传感器失效触发")
+                    { StepId = s.StepId, Channel = channel.Number });
+
+                // 手册 §6 的 ±3 K 规则：温度上下限要给 Tsafe 留出 3 K，
+                // 否则一降到安全温度立刻又越限，紧急程序自己把自己咬住
+                if (s.Parameters.Flag("eOn"))
+                {
+                    var tsafe = s.Parameters.Num("tsafe", 25);
+                    var v = row.Num("val");
+                    var par = row.Str("par");
+                    if (par is "Tr max" or "Tj max" && v < tsafe + 3)
+                        issues.Add(new ValidationIssue(IssueLevel.Error, "safety-range",
+                            $"第 {i + 1} 步的 {par} = {Fmt.Num(v)} ℃ 太贴近安全温度"
+                            + $"（Tsafe {Fmt.Num(tsafe)} ℃）——手册要求至少留 3 K")
+                        { StepId = s.StepId, Channel = channel.Number });
+                    if (par is "Tr min" or "Tj min" && v > tsafe - 3)
+                        issues.Add(new ValidationIssue(IssueLevel.Error, "safety-range",
+                            $"第 {i + 1} 步的 {par} = {Fmt.Num(v)} ℃ 太贴近安全温度"
+                            + $"（Tsafe {Fmt.Num(tsafe)} ℃）——手册要求至少留 3 K")
                         { StepId = s.StepId, Channel = channel.Number });
                 }
-        }
+
+                // 比设备底线还宽的限值不会先于底线触发，写了也白写——照实提醒
+                var loose = spec.Tag switch
+                {
+                    "Tr" or "Tj" when channel.Capabilities.Get<ITemperatureControl>() is { } tc =>
+                        spec.IsMax ? row.Num("val") > tc.Limits.Max : row.Num("val") < tc.Limits.Min,
+                    "rpm" when channel.Capabilities.Get<IStirrer>() is { } st =>
+                        row.Num("val") > st.Limits.Max,
+                    _ => false
+                };
+                if (loose)
+                    issues.Add(new ValidationIssue(IssueLevel.Warning, "safety-loose",
+                        $"第 {i + 1} 步的「{row.Str("par")}」比 CH{channel.Number} 的设备底线还宽，"
+                        + "底线会先一步触发，这一条等于没设")
+                    { StepId = s.StepId, Channel = channel.Number });
+            }
 
         // 标定：未标定或过期的设备，编排到配方里要拦下来（§10.3）
         if (d.RequiredCapability == typeof(IDosing) && channel.Capabilities.Get<IDosing>() is { } dosing)
