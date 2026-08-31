@@ -1355,6 +1355,25 @@ public sealed class BenchViewModel : ViewModelBase
     private async Task ProbeAsync()
     {
         if (_selected?.Driver is not { } d) return;
+
+        // 没勾「模拟」就不许拿仿真驱动假装连接成功（仿真的 Probe 永远答「已响应」）。
+        // 探头/电极的真机后端在主机的宇电模块上，自己不占端口——这里没有可测的口子，
+        // 诚实的答案是告诉用户去哪儿测
+        if (!_selected.Device.Simulated && d.Info.SimulatorIncluded)
+        {
+            ProbeResult = _selected.Device.DriverId switch
+            {
+                Tec.Drivers.Simulator.TrProbeDriver.DriverId =>
+                    "未勾选模拟：这支探头不占端口，真机数值由主机的宇电 AI-8848GD91J7" +
+                    "（主机连接参数里的「温度模块串口」）端上来——测试连接请在主机上做",
+                Tec.Drivers.Simulator.PhProbeDriver.DriverId =>
+                    "未勾选模拟：这支电极不占端口，真机数值由主机的宇电 AI-8848GD91J4" +
+                    "（主机连接参数里的「pH 串口」）端上来——测试连接请在主机上做",
+                _ => "未勾选模拟：这台的真机接入还没实现，没有可测的连接"
+            };
+            return;
+        }
+
         ProbeResult = "正在测试…";
         try
         {
