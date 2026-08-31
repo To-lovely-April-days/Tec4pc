@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Tec.Drivers.DualStation</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 双工位反应主机是四个模块拼的一台机器（需求见 docs/双工位反应主机驱动需求.md）。
+         引 Rd105 有两个用途：串口抽象 ISerialTransport / SerialPortTransport 直接复用，
+         组合会话（§8 第 4 步）还要拿它的 TC 回路。 -->
+    <ProjectReference Include="..\Tec.Drivers.Rd105\Tec.Drivers.Rd105.csproj" />
+  </ItemGroup>
+
+</Project>
