@@ -69,7 +69,8 @@ public sealed class DualStationDriver : IDeviceDriver
         Field.Num(Fields.AddrTemp, "温度模块地址", 1, "", 1, 80, 1),
         Field.Sel(Fields.BaudTemp, "温度模块波特率", new[] { "4800", "9600", "19200", "38400", "57600", "115200" }, "19200"),
         Field.Sel(Fields.HasPh, "pH 模块", new[] { "有", "无" }, "有"),
-        Field.Text(Fields.PortPh, "pH 串口", "COM5", "宇电 AI-8848GD91J4"),
+        Field.Text(Fields.PortPh, "pH 串口", "COM5",
+                   "宇电 AI-8848GD91J4；两台宇电拼在同一段导轨上时 485 已并联，填成与温度模块相同的口即共线（两台地址须不同）"),
         Field.Num(Fields.AddrPh, "pH 地址", 1, "", 1, 80, 1),
         Field.Sel(Fields.BaudPh, "pH 波特率", new[] { "4800", "9600", "19200", "38400", "57600", "115200" }, "19200"),
         Field.Sel(Fields.HasIo, "电加热切换（IO8R）", new[] { "有", "无" }, "有"),
@@ -80,7 +81,9 @@ public sealed class DualStationDriver : IDeviceDriver
         Field.Num(Fields.Tick, "模块轮询周期", 1000, "ms", 100, 5000, 100)
     })
     {
-        Tip = "四个模块各占一条串口，互不共线。宇电两台出厂地址都是 1、波特率 19.2K；" +
+        Tip = "RD105 与 IO8R 各占一条串口。宇电两台可分可合：分开装各占一条；" +
+              "拼在同一段导轨上时 485 自动并联（手册 §3.3），把「pH 串口」填成与温度模块" +
+              "相同即共线——此时两台地址必须不同（出厂都是 1，先改一台）、波特率一致。" +
               "IO8R 的站号/波特率看模块上的拨码（出厂 9600 / 1 号）。" +
               "部署前必须用厂家工具把 IO8R 的总线错误模式从「保持」改成「复位」（需求 §7）。"
     };

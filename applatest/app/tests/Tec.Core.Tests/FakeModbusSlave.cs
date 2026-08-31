@@ -180,3 +180,54 @@ public sealed class FakeModbusSlave : ISerialTransport
         foreach (var b in frame) _tx.Enqueue(b);
     }
 }
+
+/// <summary>
+/// 一条挂着多台从站的 485 总线（宇电导轨拼接共口那种接法）。
+/// 每帧广播给所有从站，只有站号对上的那台会应答——
+/// 跟真总线一个行为，FakeModbusSlave 一行不用改。
+/// </summary>
+public sealed class FakeModbusBus : ISerialTransport
+{
+    private readonly FakeModbusSlave[] _slaves;
+
+    public FakeModbusBus(params FakeModbusSlave[] slaves) => _slaves = slaves;
+
+    public bool IsOpen { get; private set; }
+
+    public void Open()
+    {
+        IsOpen = true;
+        foreach (var s in _slaves) s.Open();
+    }
+
+    public void Close()
+    {
+        IsOpen = false;
+        foreach (var s in _slaves) s.Close();
+    }
+
+    public void DiscardInput()
+    {
+        foreach (var s in _slaves) s.DiscardInput();
+    }
+
+    public void Write(byte[] buffer, int offset, int count)
+    {
+        foreach (var s in _slaves) s.Write(buffer, offset, count);
+    }
+
+    public int Read(byte[] buffer, int offset, int count, int timeoutMs)
+    {
+        foreach (var s in _slaves)
+        {
+            var n = s.Read(buffer, offset, count, timeoutMs);
+            if (n > 0) return n;
+        }
+        return 0;
+    }
+
+    public void Dispose()
+    {
+        foreach (var s in _slaves) s.Dispose();
+    }
+}

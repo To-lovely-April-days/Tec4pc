@@ -344,6 +344,78 @@ public sealed class DualStationDriverTests
         Assert.False(sensor.TryReadLatest("pH", out _));
     }
 
+    // ── 宇电共口（两台拼在同一段导轨上，485 自动并联，手册 §3.3） ──
+
+    [Fact]
+    public async Task 宇电两台共一条串口_按地址各答各的()
+    {
+        var b = new Bench();
+        // 温度表站号 1，pH 表站号 2，挂在同一条总线上
+        b.J7.Station = 1;
+        b.J7.Regs[384] = 1; b.J7.Regs[385] = 2;
+        b.J7.Regs[2048] = 21; b.J7.Regs[2049] = 21;
+        b.J7.Regs[2128] = 1;
+        b.J7.Regs[1536] = 250;                       // 25.0 ℃
+        b.J4.Station = 2;
+        b.J4.Regs[384] = 1; b.J4.Regs[385] = 2;
+        b.J4.Regs[2048] = 51; b.J4.Regs[2049] = 51;
+        b.J4.Regs[2052] = 0; b.J4.Regs[2056] = 1400;
+        b.J4.Regs[2053] = 0; b.J4.Regs[2057] = 1400;
+        b.J4.Regs[2128] = 2;
+        b.J4.Regs[1536] = 700;                       // pH 7.00
+
+        var bus = new FakeModbusBus(b.J7, b.J4);
+        var busLock = new SemaphoreSlim(1, 1);
+        b.Drv = new DualStationDriver
+        {
+            LinksFactory = _ => new DuoLinks
+            {
+                Rd105 = new Rd105Link(b.Rd),
+                TempPort = bus,
+                TempMod = new YudianClient(new ModbusRtuClient(bus, 1, 200, busLock)),
+                PhPort = null,                        // 共口：口子归温度那条链路管
+                PhMod = new YudianClient(new ModbusRtuClient(bus, 2, 200, busLock))
+            }
+        };
+
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
+        var got = new List<Sample>();
+        using var sub = s.Samples.Subscribe(new Collect(x => { lock (got) got.Add(x); }));
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+
+        lock (got)
+        {
+            Assert.Equal(25.0, got.Single(x => x is { Tag: "Tr", Channel: 1 }).Value, 2);
+            Assert.Equal(7.0, got.Single(x => x is { Tag: "pH", Channel: 1 }).Value, 2);
+        }
+    }
+
+    [Fact]
+    public void 共口时两台同地址_开链路就拒绝()
+    {
+        // 共口 + 都是出厂地址 1 = 两台同时应答撞总线，必须在开机前拦下
+        var cn = ParameterSet.Of(
+            (DualStationDriver.Fields.PortTemp, "COMX"),
+            (DualStationDriver.Fields.PortPh, "COMX"),
+            (DualStationDriver.Fields.AddrTemp, 1d),
+            (DualStationDriver.Fields.AddrPh, 1d));
+        var ex = Assert.Throws<InvalidOperationException>(() => DuoLinks.Serial(cn));
+        Assert.Contains("地址不能都是", ex.Message);
+    }
+
+    [Fact]
+    public void 共口时波特率不一致_开链路就拒绝()
+    {
+        var cn = ParameterSet.Of(
+            (DualStationDriver.Fields.PortTemp, "COMX"),
+            (DualStationDriver.Fields.PortPh, "COMX"),
+            (DualStationDriver.Fields.AddrPh, 2d),
+            (DualStationDriver.Fields.BaudTemp, "19200"),
+            (DualStationDriver.Fields.BaudPh, "9600"));
+        var ex = Assert.Throws<InvalidOperationException>(() => DuoLinks.Serial(cn));
+        Assert.Contains("波特率", ex.Message);
+    }
+
     // ── 安全停 ───────────────────────────────────────────────────────
 
     [Fact]

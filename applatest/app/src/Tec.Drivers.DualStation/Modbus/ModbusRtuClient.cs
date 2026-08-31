@@ -14,10 +14,14 @@ namespace Tec.Drivers.DualStation.Modbus;
 public sealed class ModbusRtuClient
 {
     private readonly ISerialTransport _transport;
-    private readonly SemaphoreSlim _lock = new(1, 1);   // 半双工总线，一次只许一问
+    private readonly SemaphoreSlim _lock;               // 半双工总线，一次只许一问
     private readonly int _timeoutMs;
 
-    public ModbusRtuClient(ISerialTransport transport, byte station, int timeoutMs = 500)
+    /// <param name="busLock">共口时传进来的总线锁：宇电两台导轨拼接后 485 自动并联
+    /// （手册 §3.3），一条串口上挂两个从站，两个客户端必须共用一把锁，
+    /// 否则一问未答又来一问，应答就串台了。不共口就不传，各用各的。</param>
+    public ModbusRtuClient(ISerialTransport transport, byte station, int timeoutMs = 500,
+                           SemaphoreSlim? busLock = null)
     {
         if (station is 0 or > 247)
             throw new ArgumentOutOfRangeException(nameof(station),
@@ -25,6 +29,7 @@ public sealed class ModbusRtuClient
         _transport = transport;
         Station = station;
         _timeoutMs = Math.Max(50, timeoutMs);
+        _lock = busLock ?? new SemaphoreSlim(1, 1);
     }
 
     public byte Station { get; }
