@@ -9,7 +9,8 @@
         FontFamily="{StaticResource UiFont}" FontSize="12" Foreground="#303337">
 
   <!--
-    开机只开这一扇窗（照设计稿：840 宽、1px #3a0a0f 描边的登录窗）。
+    开机只开这一扇窗（照设计稿：840 宽、1px 描边的登录窗；描边原是
+    品牌红的深色 #3a0a0f，登录页改黑之后跟着换成同一支黑 #17191c）。
     登录成功点「进入工作站」才开主窗口、关掉它。
     无系统边框，顶上那条深紫条就是标题栏：可拖动，右侧最小化 / 关闭。
   -->
@@ -34,7 +35,7 @@
     </Style>
   </Window.Styles>
 
-  <Border BorderBrush="#3a0a0f" BorderThickness="1">
+  <Border BorderBrush="#17191c" BorderThickness="1">
     <Panel>
       <v:LoginView />
 

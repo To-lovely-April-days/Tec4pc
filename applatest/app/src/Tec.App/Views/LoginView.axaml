@@ -42,18 +42,19 @@
       <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
     <Style Selector="Button.lgbtn:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#f4e4e6" />
-      <Setter Property="BorderBrush" Value="#a41626" />
+      <Setter Property="Background" Value="#eef0f1" />
+      <Setter Property="BorderBrush" Value="#17191c" />
     </Style>
-    <!-- 主操作 = 品牌红。绿只留给「在线 / 运行」这一个意思，
-         登录按钮是动作不是状态，不该占绿 -->
+    <!-- 主操作 = 黑（用户定的：登录页不再用品牌红，全部改黑）。
+         黑取字标那一支 #17191c，一页里只有一个黑。
+         悬停**提亮**不是压深：黑再压深眼睛看不出按下去没有 -->
     <Style Selector="Button.lgbtn.primary">
-      <Setter Property="Background" Value="#a41626" />
-      <Setter Property="BorderBrush" Value="#7e0f1c" />
+      <Setter Property="Background" Value="#17191c" />
+      <Setter Property="BorderBrush" Value="#000000" />
       <Setter Property="Foreground" Value="White" />
     </Style>
     <Style Selector="Button.lgbtn.primary:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#7e0f1c" />
+      <Setter Property="Background" Value="#2f3237" />
       <Setter Property="Foreground" Value="White" />
     </Style>
 
@@ -112,7 +113,7 @@
                  圆和三角在同一个坐标系里，三角的位置由图自己定，不靠对齐去凑 -->
             <Viewbox Width="16" Height="16" VerticalAlignment="Center">
               <Canvas Width="16" Height="16">
-                <Ellipse Canvas.Left="1" Canvas.Top="1" Width="14" Height="14" Fill="#a41626" />
+                <Ellipse Canvas.Left="1" Canvas.Top="1" Width="14" Height="14" Fill="#17191c" />
                 <Path Data="M 6,4.5 L 11,8 L 6,11.5 Z" Fill="#ffffff" />
               </Canvas>
             </Viewbox>
@@ -150,7 +151,7 @@
                         <Grid ColumnDefinitions="14,*,Auto">
                           <!-- 当前那一项打勾 -->
                           <Path Grid.Column="0" Data="M 0,3.4 L 2.6,6 L 7.4,0.6"
-                                Stroke="#a41626" StrokeThickness="1.8" Fill="Transparent"
+                                Stroke="#17191c" StrokeThickness="1.8" Fill="Transparent"
                                 VerticalAlignment="Center" IsVisible="{Binding IsCurrent}" />
                           <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="12"
                                      Foreground="#292b2e" VerticalAlignment="Center" />
@@ -188,13 +189,13 @@
                 Padding="20,18,20,18">
           <DockPanel>
             <StackPanel DockPanel.Dock="Top">
-              <!-- 品牌标：品牌红圆角方块 + 白三角。三角画在原型那个 26×26 的画布里
+              <!-- 品牌标：黑色圆角方块 + 白三角。三角画在原型那个 26×26 的画布里
                    （Viewbox 缩到 24 居中）——直接把 Path 丢进圆里对齐是不行的：
                    Path 量到的是「原点到几何右下角」那个盒子，把这个盒子居中，
                    等于把三角连同它左上那片空白一起居中，看着就偏右下了 -->
-              <!-- 红牌白三角。白栏上这是整页唯一的一块品牌红 -->
+              <!-- 黑牌白三角。与下面的字标同一支黑（#17191c） -->
               <!-- 46 而不是 52：竖着的空当全让给图位了，上半截每一项都收一点 -->
-              <Border Width="46" Height="46" CornerRadius="5" Background="#a41626"
+              <Border Width="46" Height="46" CornerRadius="5" Background="#17191c"
                       HorizontalAlignment="Left" Margin="0,0,0,12">
                 <Viewbox Width="22" Height="22"
                          HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -301,7 +302,7 @@
             <Button Background="Transparent" BorderThickness="0" Padding="0"
                     VerticalAlignment="Center" Cursor="Hand"
                     Command="{Binding ToggleReset}">
-              <TextBlock Text="{Binding T.Forgot}" FontSize="11" Foreground="#a41626" />
+              <TextBlock Text="{Binding T.Forgot}" FontSize="11" Foreground="#17191c" />
             </Button>
           </StackPanel>
 
@@ -333,7 +334,7 @@
                     HorizontalAlignment="Left" MaxWidth="420" MinWidth="360" Margin="30,24">
           <StackPanel Orientation="Horizontal" Spacing="14">
             <!-- 对勾同理：画在原型那个 24×24 的画布里，Viewbox 缩到 22 居中 -->
-            <Border Width="46" Height="46" CornerRadius="23" Background="#a41626">
+            <Border Width="46" Height="46" CornerRadius="23" Background="#17191c">
               <Viewbox Width="22" Height="22"
                        HorizontalAlignment="Center" VerticalAlignment="Center">
                 <Canvas Width="24" Height="24">
