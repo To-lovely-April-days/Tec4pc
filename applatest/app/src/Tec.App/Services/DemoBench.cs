@@ -63,8 +63,7 @@ public static class DemoBench
             InstanceId = "PH1",
             Label = "pH 探头",
             Position = new Point(560, 90),
-            Connection = ParameterSet.Of(("接入方式", "Modbus TCP"), ("地址", "192.168.1.50:502"), ("点位", "40001"),
-                                         ("采样周期", 2d), ("时间戳来源", "本机接收时刻")),
+            // 电极不占端口（连接表单只有一句说明），不再摆一套假的 TCP 端点参数
             Config = ParameterSet.Of(("量程下限", 0d), ("量程上限", 14d), ("失效判定", 30d))
         });
         bench.Devices.Add(new DeviceInstance

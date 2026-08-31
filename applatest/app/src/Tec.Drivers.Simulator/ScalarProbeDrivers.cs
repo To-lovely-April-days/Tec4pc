@@ -39,7 +39,9 @@ public abstract class ScalarProbeDriver : IDeviceDriver
     public async Task<ProbeResult> ProbeAsync(ParameterSet connection, CancellationToken ct)
     {
         await Task.Delay(60, ct).ConfigureAwait(false);
-        return new ProbeResult(true, $"{connection.Str("地址")} 已响应")
+        // pH 电极的连接表单没有地址（不占端口），别打一句开头空着的「 已响应」
+        var addr = connection.Str("地址");
+        return new ProbeResult(true, string.IsNullOrWhiteSpace(addr) ? "仿真探头在位" : $"{addr} 已响应")
         {
             Firmware = "SIM 1.0", Serial = Info.Id + "-SIM", DetectedChannels = 1
         };
@@ -150,6 +152,19 @@ public sealed class PhProbeDriver : ScalarProbeDriver
         Description = "复合电极 · ⌀14；提供 pH 判据与反馈加料的输入——" +
                       "真机接宇电 AI-8848GD91J4，数值随双工位主机一路上来。",
         Capabilities = new[] { nameof(IScalarSensor) }
+    };
+
+    /// <summary>
+    /// 电极不占端口，没有自己的接入方式——基类那套 L1 第三方接入表单
+    /// （Modbus TCP / OPC UA / 端点 / 寄存器）是给浊度、拉曼、红外这类真第三方
+    /// 仪器的，摆在电极上会让人以为真机 pH 走网口（用户实测问出：其实真机走的
+    /// 是宇电 J4 的 RS-485 串口，口子在主机连接参数里）。
+    /// </summary>
+    public override ParameterSchema ConnectionSchema { get; } = new(Array.Empty<FieldSpec>())
+    {
+        Tip = "电极不占端口：仿真时数据由本驱动产生；真机上这支电极接在宇电 " +
+              "AI-8848GD91J4 的一路输入上（Modbus RTU 串口），串口与地址都在主机" +
+              "连接参数（「pH 串口」）里，测试连接也在主机上做。"
     };
 
     public override TagDescriptor Tag { get; } = new("pH", "pH", "", DataShape.Scalar)
