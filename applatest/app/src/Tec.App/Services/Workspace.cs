@@ -24,6 +24,22 @@ namespace Tec.App.Services;
 public sealed class Workspace
 {
     private readonly Dictionary<string, IDeviceSession> _sessions = new(StringComparer.Ordinal);
+
+    /// <summary>跨会话喂釜温的订阅（见 RebuildChannelsAsync 2.5 节），重建时换新。</summary>
+    private readonly List<IDisposable> _trFeedSubs = new();
+
+    /// <summary>把别的会话发的 Tr 采样按通道转给吃外部釜温的宿主。</summary>
+    private sealed class TrFeed(IReadOnlyList<IExternalReactorTemp> eaters) : IObserver<Sample>
+    {
+        public void OnNext(Sample s)
+        {
+            if (s.Tag != "Tr") return;
+            foreach (var e in eaters) e.FeedReactor(s.Channel, s.Value, s.Quality);
+        }
+
+        public void OnError(Exception error) { }
+        public void OnCompleted() { }
+    }
     private readonly List<Channel> _channels = new();
     private Timer? _safetyTimer;
 
@@ -200,10 +216,13 @@ public sealed class Workspace
         // 真机：RD105 协议的 TEC 温控器。和仿真反应器并列摆在设备库里，
         // 台面上想用哪个用哪个——同一套配方两边都能跑
         Drivers.RegisterBuiltin(new Tec.Drivers.Rd105.Rd105TecDriver());
-        // 真机：双工位反应主机（RD105 + 宇电J7/J4 + IO8R 四模块组合，
-        // 见 docs/双工位反应主机驱动需求.md）。先注册不进台面设备库——
-        // 库暂时只上四件是用户定的，上不上这台等用户点头
+        // 真机：双工位反应主机（RD105 + IO8R，见 docs/双工位反应主机驱动需求.md）
+        // 与两支宇电探头（Tr = J7、pH = J4，串口各在探头自己的属性里）。
+        // 先注册不进台面设备库——库暂时只上四件是用户定的；「模拟」勾选框
+        // 会在仿真 ⇄ 真机孪生之间换身份（SimRealTwins）
         Drivers.RegisterBuiltin(new Tec.Drivers.DualStation.DualStationDriver());
+        Drivers.RegisterBuiltin(new Tec.Drivers.DualStation.YudianTrProbeDriver());
+        Drivers.RegisterBuiltin(new Tec.Drivers.DualStation.YudianPhProbeDriver());
         Drivers.Discover(Path.Combine(AppContext.BaseDirectory, "drivers"));
         Drivers.LoadAll();
 
@@ -370,6 +389,19 @@ public sealed class Workspace
                 ch?.Attach(session, w, hostWells.ContainsKey(dev.InstanceId));
             }
         }
+
+        // 2.5 跨会话喂釜温：真机拆件后 Tr 由宇电探头会话发，而主机的控温
+        //     （判到达、E 级程序、dT）要按釜内温度走——凡带 Tr 签的采样，
+        //     按通道号喂给实现了 IExternalReactorTemp 的宿主会话
+        foreach (var d in _trFeedSubs) d.Dispose();
+        _trFeedSubs.Clear();
+        var trEaters = _sessions.Values.OfType<IExternalReactorTemp>().ToList();
+        if (trEaters.Count > 0)
+            foreach (var s in _sessions.Values)
+            {
+                if (s is IExternalReactorTemp) continue;    // 宿主自己不发 Tr，不用听自己
+                _trFeedSubs.Add(s.Samples.Subscribe(new TrFeed(trEaters)));
+            }
 
         // 3. 每个通道配一条空配方与一条泳道名。拖一台反应器进来就多两条泳道，
         //    内容由用户自己往里加——不预置步骤。

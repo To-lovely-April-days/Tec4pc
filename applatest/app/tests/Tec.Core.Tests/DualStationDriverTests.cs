@@ -1,25 +1,23 @@
 using Tec.Driver.Abi;
 using Tec.Drivers.DualStation;
 using Tec.Drivers.DualStation.Modbus;
-using Tec.Drivers.DualStation.Yudian;
 using Tec.Drivers.Rd105;
 using Xunit;
 
 namespace Tec.Core.Tests;
 
 /// <summary>
-/// 双工位反应主机组合会话（实施第 4 步，需求 §1/§2）。四条链路全是假设备，
-/// 盯的都是规约里的硬条款：开机继电器复位 TEC 侧、Tr/pH 按映射发到两个通道、
-/// 切换序列先关输出、高目标没 IO8R 诚实拒绝、回切要等夹套凉到阈值−滞回、
-/// 反馈没跟上输出保持关闭、SafeStop 断继电器。
+/// 双工位反应主机组合会话（需求 §1/§2）。主机只带自己的两条链路（RD105 + IO8R），
+/// 全是假设备；盯规约里的硬条款：开机继电器复位 TEC 侧、切换序列先关输出、
+/// 高目标没 IO8R 诚实拒绝、回切要等夹套凉到阈值−滞回、反馈没跟上输出保持
+/// 关闭、SafeStop 断继电器；外部釜温（宇电探头会话发的）经 IExternalReactorTemp
+/// 喂进来，进判到达与 dT。
 /// </summary>
 public sealed class DualStationDriverTests
 {
     private sealed class Bench
     {
         public FakeRd105Device Rd = new();
-        public FakeModbusSlave J7 = new();
-        public FakeModbusSlave J4 = new();
         public FakeModbusSlave Io = new();
         public DualStationDriver Drv = null!;
         public List<(string Level, string Text)> Logs = new();
@@ -36,30 +34,14 @@ public sealed class DualStationDriverTests
         };
     }
 
-    /// <summary>接线齐全的一台：J7 两路 Pt100，J4 两路 4~20mA 定标 0.00~14.00，IO8R 在。</summary>
-    private static Bench Rig(bool withIo = true, bool withPh = true)
+    private static Bench Rig(bool withIo = true)
     {
         var b = new Bench();
-
-        b.J7.Regs[384] = 1; b.J7.Regs[385] = 2;              // CH1/CH2 开，其余关
-        b.J7.Regs[2048] = 21; b.J7.Regs[2049] = 21;          // Pt100，一位小数
-        b.J7.Regs[2128] = 1;
-
-        b.J4.Regs[384] = 1; b.J4.Regs[385] = 2;
-        b.J4.Regs[2048] = 51; b.J4.Regs[2049] = 51;          // 4~20mA
-        b.J4.Regs[2052] = 0; b.J4.Regs[2056] = 1400;         // 0.00~14.00
-        b.J4.Regs[2053] = 0; b.J4.Regs[2057] = 1400;
-        b.J4.Regs[2128] = 2;
-
         b.Drv = new DualStationDriver
         {
             LinksFactory = _ => new DuoLinks
             {
                 Rd105 = new Rd105Link(b.Rd),
-                TempPort = b.J7,
-                TempMod = new YudianClient(new ModbusRtuClient(b.J7, 1, 200)),
-                PhPort = withPh ? b.J4 : null,
-                PhMod = withPh ? new YudianClient(new ModbusRtuClient(b.J4, 1, 200)) : null,
                 IoPort = withIo ? b.Io : null,
                 Io = withIo ? new Io8rClient(new ModbusRtuClient(b.Io, 1, 200)) : null
             }
@@ -106,80 +88,36 @@ public sealed class DualStationDriverTests
         }
     }
 
-    [Fact]
-    public async Task 温度口插了pH表_开机直接拒绝()
-    {
-        var b = Rig();
-        b.J7.Regs[2048] = 51;                    // 组1 竟是 4~20mA——接反了
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None));
-        Assert.Contains("J4", ex.Message);
-    }
+    // ── 外部釜温（宇电探头会话发的，工作台牵线喂进来） ──────────────
 
     [Fact]
-    public async Task pH模块坏了_照常开机_pH不发数()
+    public async Task 外部Tr喂进来_进判据也进dT()
     {
         var b = Rig();
-        b.J4.Mute = true;                        // pH 表不应答
-        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
-
-        var got = new List<Sample>();
-        using var sub = s.Samples.Subscribe(new Collect(x => { lock (got) got.Add(x); }));
-        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
-
-        lock (got) Assert.DoesNotContain(got, x => x.Tag == "pH");
-        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("pH 模块打不开"));
-    }
-
-    // ── 采集与映射 ───────────────────────────────────────────────────
-
-    [Fact]
-    public async Task 一拍采集_Tr与pH按映射发到两个通道_dT用宇电的Tr()
-    {
-        var b = Rig();
-        b.J7.Regs[1536] = 250;                   // CH1 → 工位 A：25.0 ℃
-        b.J7.Regs[1537] = 300;                   // CH2 → 工位 B：30.0 ℃
-        b.J4.Regs[1536] = 700;                   // pH 7.00
-        b.J4.Regs[1537] = 900;                   // pH 9.00
         b.Rd.Set(1, "TCADJTEMP", 24_00000);      // A 夹套 24.0
-        b.Rd.Set(2, "TCADJTEMP", 33_00000);      // B 夹套 33.0
-
         await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
         await s.StartAsync(CancellationToken.None);
         await WaitJacket(Temp(s, 0), 24.0);
-        await WaitJacket(Temp(s, 1), 33.0);
+
+        ((IExternalReactorTemp)s).FeedReactor(1, 25.0, Quality.Good);
 
         var got = new List<Sample>();
         using var sub = s.Samples.Subscribe(new Collect(x => { lock (got) got.Add(x); }));
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         await s.StopAsync(CancellationToken.None);
 
-        lock (got)
-        {
-            Assert.Equal(25.0, got.Single(x => x is { Tag: "Tr", Channel: 1 }).Value, 2);
-            Assert.Equal(30.0, got.Single(x => x is { Tag: "Tr", Channel: 2 }).Value, 2);
-            Assert.Equal(7.0, got.Single(x => x is { Tag: "pH", Channel: 1 }).Value, 2);
-            Assert.Equal(9.0, got.Single(x => x is { Tag: "pH", Channel: 2 }).Value, 2);
-            Assert.Equal(1.0, got.Single(x => x is { Tag: "dT", Channel: 1 }).Value, 1);   // 25.0 − 24.0
-            Assert.Equal(0, got.Single(x => x is { Tag: "heat", Channel: 1 }).Value);      // TEC 侧
-        }
-        // 判到达吃的是宇电喂进来的釜内温度
-        Assert.Equal(25.0, Temp(s, 0).CurrentReactor, 1);
+        Assert.Equal(25.0, Temp(s, 0).CurrentReactor, 1);          // 判到达吃它
+        lock (got) Assert.Equal(1.0, got.Single(x => x is { Tag: "dT", Channel: 1 }).Value, 1);
     }
 
     [Fact]
-    public async Task Tr断线_发Bad并且不进控制判据()
+    public async Task 外部Tr质量坏_按NaN处置_不进判据()
     {
         var b = Rig();
-        b.J7.Regs[1536] = 8100;                  // 断线残值
-        b.J7.Regs[1664] = 0x0100;                // CH1 oral
         await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
 
-        var got = new List<Sample>();
-        using var sub = s.Samples.Subscribe(new Collect(x => { lock (got) got.Add(x); }));
-        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+        ((IExternalReactorTemp)s).FeedReactor(1, 810.0, Quality.Bad);   // 断线残值
 
-        lock (got) Assert.Equal(Quality.Bad, got.Single(x => x is { Tag: "Tr", Channel: 1 }).Quality);
         Assert.True(double.IsNaN(Temp(s, 0).CurrentReactor));
     }
 
@@ -291,131 +229,6 @@ public sealed class DualStationDriverTests
         lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("反馈已核实"));
     }
 
-    // ── pH 能力（台面上那支「pH 玻璃电极」在真机上的后端） ──────────
-
-    [Fact]
-    public async Task pH以IScalarSensor端到通道上_读数与采样流同源()
-    {
-        var b = Rig();
-        b.J4.Regs[1536] = 700;
-        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
-        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
-
-        // 台面读数标签走的就是这条路：通道能力里找带 pH 签的 IScalarSensor
-        var sensor = s.CapabilitiesOf(0).OfType<IScalarSensor>()
-                      .Single(x => x.Tags.Any(g => g.Tag == "pH"));
-        Assert.True(sensor.TryReadLatest("pH", out var smp));
-        Assert.Equal(7.0, smp.Value, 2);
-        Assert.Equal(Quality.Good, smp.Quality);
-        // 「pH 采集」由主机认领
-        Assert.NotNull(s.Resolve(Tec.Driver.Abi.CommandSpecs.PhSample));
-    }
-
-    [Fact]
-    public async Task 没配pH模块_能力不端出_指令不认领()
-    {
-        var b = Rig(withPh: false);
-        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
-
-        Assert.Empty(s.CapabilitiesOf(0).OfType<IScalarSensor>());
-        Assert.Null(s.Resolve(Tec.Driver.Abi.CommandSpecs.PhSample));
-    }
-
-    [Fact]
-    public async Task pH电极断线_最新一拍挂Bad质量位()
-    {
-        var b = Rig();
-        b.J4.Regs[1536] = 700;
-        b.J4.Regs[1664] = 0x0100;                // CH1 oral：电极断线/超量程
-        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
-        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
-
-        var sensor = s.CapabilitiesOf(0).OfType<IScalarSensor>().Single();
-        Assert.True(sensor.TryReadLatest("pH", out var smp));
-        Assert.Equal(Quality.Bad, smp.Quality);
-    }
-
-    [Fact]
-    public async Task 还没采到一拍_TryReadLatest诚实返回false()
-    {
-        var b = Rig();
-        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
-        var sensor = s.CapabilitiesOf(0).OfType<IScalarSensor>().Single();
-        Assert.False(sensor.TryReadLatest("pH", out _));
-    }
-
-    // ── 宇电共口（两台拼在同一段导轨上，485 自动并联，手册 §3.3） ──
-
-    [Fact]
-    public async Task 宇电两台共一条串口_按地址各答各的()
-    {
-        var b = new Bench();
-        // 温度表站号 1，pH 表站号 2，挂在同一条总线上
-        b.J7.Station = 1;
-        b.J7.Regs[384] = 1; b.J7.Regs[385] = 2;
-        b.J7.Regs[2048] = 21; b.J7.Regs[2049] = 21;
-        b.J7.Regs[2128] = 1;
-        b.J7.Regs[1536] = 250;                       // 25.0 ℃
-        b.J4.Station = 2;
-        b.J4.Regs[384] = 1; b.J4.Regs[385] = 2;
-        b.J4.Regs[2048] = 51; b.J4.Regs[2049] = 51;
-        b.J4.Regs[2052] = 0; b.J4.Regs[2056] = 1400;
-        b.J4.Regs[2053] = 0; b.J4.Regs[2057] = 1400;
-        b.J4.Regs[2128] = 2;
-        b.J4.Regs[1536] = 700;                       // pH 7.00
-
-        var bus = new FakeModbusBus(b.J7, b.J4);
-        var busLock = new SemaphoreSlim(1, 1);
-        b.Drv = new DualStationDriver
-        {
-            LinksFactory = _ => new DuoLinks
-            {
-                Rd105 = new Rd105Link(b.Rd),
-                TempPort = bus,
-                TempMod = new YudianClient(new ModbusRtuClient(bus, 1, 200, busLock)),
-                PhPort = null,                        // 共口：口子归温度那条链路管
-                PhMod = new YudianClient(new ModbusRtuClient(bus, 2, 200, busLock))
-            }
-        };
-
-        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
-        var got = new List<Sample>();
-        using var sub = s.Samples.Subscribe(new Collect(x => { lock (got) got.Add(x); }));
-        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
-
-        lock (got)
-        {
-            Assert.Equal(25.0, got.Single(x => x is { Tag: "Tr", Channel: 1 }).Value, 2);
-            Assert.Equal(7.0, got.Single(x => x is { Tag: "pH", Channel: 1 }).Value, 2);
-        }
-    }
-
-    [Fact]
-    public void 共口时两台同地址_开链路就拒绝()
-    {
-        // 共口 + 都是出厂地址 1 = 两台同时应答撞总线，必须在开机前拦下
-        var cn = ParameterSet.Of(
-            (DualStationDriver.Fields.PortTemp, "COMX"),
-            (DualStationDriver.Fields.PortPh, "COMX"),
-            (DualStationDriver.Fields.AddrTemp, 1d),
-            (DualStationDriver.Fields.AddrPh, 1d));
-        var ex = Assert.Throws<InvalidOperationException>(() => DuoLinks.Serial(cn));
-        Assert.Contains("地址不能都是", ex.Message);
-    }
-
-    [Fact]
-    public void 共口时波特率不一致_开链路就拒绝()
-    {
-        var cn = ParameterSet.Of(
-            (DualStationDriver.Fields.PortTemp, "COMX"),
-            (DualStationDriver.Fields.PortPh, "COMX"),
-            (DualStationDriver.Fields.AddrPh, 2d),
-            (DualStationDriver.Fields.BaudTemp, "19200"),
-            (DualStationDriver.Fields.BaudPh, "9600"));
-        var ex = Assert.Throws<InvalidOperationException>(() => DuoLinks.Serial(cn));
-        Assert.Contains("波特率", ex.Message);
-    }
-
     // ── 安全停 ───────────────────────────────────────────────────────
 
     [Fact]
@@ -438,26 +251,15 @@ public sealed class DualStationDriverTests
     // ── 探测 ─────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task 探测把四个模块的状态汇总成一句话()
+    public async Task 探测汇总主机两条链路_并指路探头()
     {
         var b = Rig();
         var probe = await b.Drv.ProbeAsync(Conn(), CancellationToken.None);
         Assert.True(probe.Success);
         Assert.Contains("RD105", probe.Message);
-        Assert.Contains("温度模块", probe.Message);
-        Assert.Contains("pH 模块", probe.Message);
         Assert.Contains("IO8R", probe.Message);
+        Assert.Contains("探头", probe.Message);          // Tr/pH 的口子在探头设备上，指个路
         Assert.Equal(2, probe.DetectedChannels);
-    }
-
-    [Fact]
-    public async Task 温度模块不应答_探测失败但把话说全()
-    {
-        var b = Rig();
-        b.J7.Mute = true;
-        var probe = await b.Drv.ProbeAsync(Conn(), CancellationToken.None);
-        Assert.False(probe.Success);                     // Tr 是根，没有它整机不算通
-        Assert.Contains("RD105", probe.Message);         // 但别的模块的情况也要说
     }
 
     private sealed class Collect(Action<Sample> onNext) : IObserver<Sample>

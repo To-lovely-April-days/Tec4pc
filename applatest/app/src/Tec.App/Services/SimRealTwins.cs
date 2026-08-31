@@ -14,12 +14,16 @@ public static class SimRealTwins
     public static string? RealOf(string driverId) => driverId switch
     {
         Tec.Drivers.Simulator.Rd105ReactorDriver.DriverId => Tec.Drivers.DualStation.DualStationDriver.DriverId,
+        Tec.Drivers.Simulator.TrProbeDriver.DriverId => Tec.Drivers.DualStation.YudianTrProbeDriver.DriverId,
+        Tec.Drivers.Simulator.PhProbeDriver.DriverId => Tec.Drivers.DualStation.YudianPhProbeDriver.DriverId,
         _ => null
     };
 
     public static string? SimOf(string driverId) => driverId switch
     {
         Tec.Drivers.DualStation.DualStationDriver.DriverId => Tec.Drivers.Simulator.Rd105ReactorDriver.DriverId,
+        Tec.Drivers.DualStation.YudianTrProbeDriver.DriverId => Tec.Drivers.Simulator.TrProbeDriver.DriverId,
+        Tec.Drivers.DualStation.YudianPhProbeDriver.DriverId => Tec.Drivers.Simulator.PhProbeDriver.DriverId,
         _ => null
     };
 }

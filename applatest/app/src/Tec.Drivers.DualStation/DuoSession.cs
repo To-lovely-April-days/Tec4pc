@@ -1,16 +1,16 @@
 using Tec.Driver.Abi;
-using Tec.Drivers.DualStation.Yudian;
 using Tec.Drivers.Rd105;
 using F = Tec.Drivers.DualStation.DualStationDriver.Fields;
 
 namespace Tec.Drivers.DualStation;
 
 /// <summary>
-/// 双工位反应主机的组合会话：四个模块拼成**一台设备、两个通道**（需求 §1）。
+/// 双工位反应主机的组合会话：一台设备、两个通道（需求 §1）。
 ///
 /// 里面套着一个 Rd105Session 干夹套控温和 Tj/Tset/duty/fault 的采集（原样转发），
-/// 自己再开一个采集循环轮宇电（Tr / pH）和 IO8R（热源切换状态与回切），
-/// 并把 Tr 喂给每个工位的控温能力——WaitReached 按釜内判就是靠这口饭。
+/// 自己再开一个采集循环轮 IO8R（热源切换状态与回切）。**釜内 Tr 不归它采**——
+/// Tr 是独立的宇电探头设备发的，工作台在会话都开起来之后把带 Tr 签的采样按
+/// 通道喂进来（IExternalReactorTemp），主机拿它做判到达、E 级程序和 dT。
 ///
 /// 热源切换（需求 §2）：
 ///  · 切入电加热按目标判（目标 &gt; 阈值就切，不等夹套爬到阈值再换挡）；
@@ -18,7 +18,7 @@ namespace Tec.Drivers.DualStation;
 ///    TEC 接回去，等于让它贴着超出耐温的热源；
 ///  · 每次切换都走全套序列：关输出 → 切继电器 → （核反馈）→ 重开输出。
 /// </summary>
-public sealed class DuoSession : IDeviceSession
+public sealed class DuoSession : IDeviceSession, IExternalReactorTemp
 {
     private readonly DuoLinks _links;
     private readonly DriverContext _ctx;
@@ -31,17 +31,13 @@ public sealed class DuoSession : IDeviceSession
     private readonly double _threshold;     // 电加热切换阈值（≤ 90，用户定的死上限）
     private readonly double _hyst;          // 回切滞回
     private readonly bool _feedback;        // 有没有接切换反馈 DI
-    private readonly int[] _mapJ7 = new int[2];
-    private readonly int[] _mapJ4 = new int[2];
     private readonly int[] _doIdx = new int[2];
     private readonly int[] _diIdx = new int[2];
     private readonly TimeSpan _tick;
 
     private readonly bool[] _electric = new bool[2];
-    private readonly DuoPhSensor[] _phSensors;
-    private bool _phOk;
     private bool _ioOk;
-    private int _j7Fails, _j4Fails, _ioFails;
+    private int _ioFails;
 
     private DeviceState _state = DeviceState.Connected;
     private CancellationTokenSource? _pollCts;
@@ -59,8 +55,6 @@ public sealed class DuoSession : IDeviceSession
         _feedback = cfg.Str(F.Feedback, "无") == "有";
         for (var w = 0; w < 2; w++)
         {
-            _mapJ7[w] = Math.Clamp((int)cfg.Num(w == 0 ? F.J7ChA : F.J7ChB, w + 1), 1, 4);
-            _mapJ4[w] = Math.Clamp((int)cfg.Num(w == 0 ? F.J4ChA : F.J4ChB, w + 1), 1, 4);
             _doIdx[w] = Math.Clamp((int)cfg.Num(w == 0 ? F.DoA : F.DoB, w), 0, 7);
             _diIdx[w] = Math.Clamp((int)cfg.Num(w == 0 ? F.DiA : F.DiB, w), 0, 7);
         }
@@ -81,7 +75,6 @@ public sealed class DuoSession : IDeviceSession
         _rd.StateChanged += (_, st) => { if (st != DeviceState.Disposed) State = st; };
 
         _temps = new[] { new DuoTempControl(this, 0), new DuoTempControl(this, 1) };
-        _phSensors = new[] { new DuoPhSensor(_rd.TempOf(0).Channel), new DuoPhSensor(_rd.TempOf(1).Channel) };
     }
 
     public string InstanceId => _ctx.InstanceId;
@@ -105,8 +98,8 @@ public sealed class DuoSession : IDeviceSession
 
     public IReadOnlyList<TagDescriptor> Tags { get; } = new[]
     {
-        new TagDescriptor("Tr", "釜内温度", "℃", DataShape.Scalar)
-            { Nominal = new ValueRange(-40, 180) },
+        // Tr 与 pH 不在这里声明——它们是宇电探头设备的签，各归各的会话，
+        // 主机再发一份就是同一个量两个来源
         new TagDescriptor("Tj", "夹套温度", "℃", DataShape.Scalar)
             { Nominal = new ValueRange(-40, 180) },
         new TagDescriptor("dT", "Tr−Tj 温差", "℃", DataShape.Scalar)
@@ -115,8 +108,6 @@ public sealed class DuoSession : IDeviceSession
             { Nominal = new ValueRange(-40, 180) },
         new TagDescriptor("duty", "控温输出", "%", DataShape.Scalar)
             { Nominal = new ValueRange(-100, 100) },
-        new TagDescriptor("pH", "pH", "", DataShape.Scalar)
-            { Nominal = new ValueRange(0, 14) },
         // 热源：0 = TEC，1 = 电加热。发成一路状态量，记录里看得出什么时候换的挡
         new TagDescriptor("heat", "热源", "", DataShape.State)
             { Nominal = new ValueRange(0, 1) },
@@ -124,82 +115,45 @@ public sealed class DuoSession : IDeviceSession
             { Nominal = new ValueRange(0, 0) }
     };
 
-    /// <summary>
-    /// 台面上的「Tr 温度探头」「pH 玻璃电极」在真机上就是宇电两台的物理探头
-    /// （用户明确的对应关系）：Tr 走 ITemperatureControl.CurrentReactor，
-    /// pH 走 IScalarSensor——**pH 模块没配或自检没过就不端出这份能力**，
-    /// 配方校验、台面读数据此如实显示「没有」。
-    /// </summary>
     public IReadOnlyList<ICapability> CapabilitiesOf(int well)
-    {
-        if (well is not (0 or 1)) return Array.Empty<ICapability>();
-        var caps = new List<ICapability> { _temps[well] };
-        caps.AddRange(_rd.CapabilitiesOf(well).OfType<ITemperatureTuning>());
-        if (_phOk) caps.Add(_phSensors[well]);
-        return caps;
-    }
+        => well is 0 or 1
+            ? new ICapability[] { _temps[well] }
+                .Concat(_rd.CapabilitiesOf(well).OfType<ITemperatureTuning>()).ToArray()
+            : Array.Empty<ICapability>();
 
-    /// <summary>「pH 采集」由主机认领（真机上电极不产数，数在主机的采集循环里）。
-    /// 「pH 反馈加料」不认领——闭环那份实现在加料泵那边，接上真泵再说。</summary>
-    public ICommandHandler? Resolve(string commandId)
-        => commandId == CommandSpecs.PhSample && _phOk ? new DuoPhSampleHandler() : null;
+    public ICommandHandler? Resolve(string commandId) => null;
 
     internal Rd105TemperatureControl InnerTemp(int well) => _rd.TempOf(well);
+
+    /// <summary>
+    /// 工作台喂进来的外部釜温（宇电 Tr 探头会话发的）。质量不好就按 NaN 处置——
+    /// 断线残值不能进控制判据；判到达与 E 级程序吃的就是这口饭。
+    /// </summary>
+    public void FeedReactor(int channel, double value, Quality quality)
+    {
+        for (var w = 0; w < 2; w++)
+        {
+            var t = _rd.TempOf(w);
+            if (t.Channel == channel)
+                t.FeedReactor(quality == Quality.Good ? value : double.NaN);
+        }
+    }
 
     // ── 开机 ─────────────────────────────────────────────────────────
 
     /// <summary>
-    /// 开机自检（需求 §2.6 的降级表就落在这里）：
-    /// RD105 写保护寄存器；宇电 J7 过自检——它是 Tr 的根，接反/规格不认识直接开不了机；
-    /// J4 和 IO8R 坏了照常开，但各自如实降级（pH 不发数 / 电加热不可用）。
+    /// 开机自检：RD105 写两路保护寄存器；IO8R 把切换继电器复位到 TEC 侧
+    /// （继电器落回的必须是安全侧），坏了照常开但电加热不可用（需求 §2.6）。
     /// </summary>
     public async Task InitAsync(CancellationToken ct)
     {
         await _rd.ApplyProtectionAsync(ct).ConfigureAwait(false);
-
-        var id = await _links.TempMod.InitAsync(YudianKind.Thermal, ct).ConfigureAwait(false);
-        for (var w = 0; w < 2; w++)
-        {
-            var chSetup = id.Channels[_mapJ7[w] - 1];
-            if (!chSetup.Enabled)
-                throw new InvalidOperationException(
-                    $"宇电温度模块 CH{_mapJ7[w]} 是关闭的（In=0），工位 {AB(w)} 的釜内 Tr 没有来源——" +
-                    "查通道映射配置或模块参数");
-            if (chSetup.Problem is { } p)
-                throw new InvalidOperationException($"宇电温度模块 CH{_mapJ7[w]}（工位 {AB(w)} 的 Tr）：{p}");
-        }
-        if (id.WriteLocked)
-            _ctx.Log?.Invoke("warn", $"{InstanceId} 宇电温度模块 Loc 锁着写入（我们只读不受影响，" +
-                                     "但部署改参数时会「写了不报错却不生效」）");
-
-        _phOk = false;
-        if (_links.PhMod is { } ph)
-        {
-            try
-            {
-                var pid = await ph.InitAsync(YudianKind.Linear, ct).ConfigureAwait(false);
-                var bad = new List<string>();
-                for (var w = 0; w < 2; w++)
-                {
-                    var s = pid.Channels[_mapJ4[w] - 1];
-                    if (!s.Enabled) bad.Add($"CH{_mapJ4[w]} 关闭");
-                    else if (s.Problem is { } p) bad.Add($"CH{_mapJ4[w]}：{p}");
-                }
-                if (bad.Count == 0) _phOk = true;
-                else _ctx.Log?.Invoke("warn", $"{InstanceId} pH 模块自检不过（{string.Join("；", bad)}）——pH 这一路不发数");
-            }
-            catch (Exception ex)
-            {
-                _ctx.Log?.Invoke("warn", $"{InstanceId} pH 模块打不开：{ex.Message}——照常开机，pH 这一路不发数");
-            }
-        }
 
         _ioOk = false;
         if (_links.Io is { } io)
         {
             try
             {
-                // 开机先把两路切换继电器复位到断开位（TEC 侧）——继电器落回的必须是安全侧
                 await io.AllOffAsync(ct).ConfigureAwait(false);
                 _electric[0] = _electric[1] = false;
                 _ioOk = true;
@@ -228,7 +182,7 @@ public sealed class DuoSession : IDeviceSession
         await _rd.StopAsync(ct).ConfigureAwait(false);
     }
 
-    // ── 采集循环（宇电 + IO8R；RD105 的轮询在内层会话里自己转） ─────
+    // ── 采集循环（dT + IO8R；RD105 的轮询在内层会话里自己转） ───────
 
     private async Task PollLoopAsync(CancellationToken ct)
     {
@@ -242,68 +196,17 @@ public sealed class DuoSession : IDeviceSession
         }
     }
 
-    /// <summary>跑一拍采集。单拎出来是为了回归测试能一拍一拍地推，不靠真时钟。</summary>
+    /// <summary>跑一拍。单拎出来是为了回归测试能一拍一拍地推，不靠真时钟。</summary>
     internal async Task PollOnceAsync(CancellationToken ct)
     {
         var at = _ctx.Clock();
 
-        // 釜内 Tr：读回来喂给控温能力（到达判据吃它），再发到采样流
-        try
+        // dT：外部喂进来的 Tr − 本机的 Tj。两头都有才发，缺哪头都不编
+        for (var w = 0; w < 2; w++)
         {
-            var r = await _links.TempMod.ReadAsync(ct).ConfigureAwait(false);
-            if (_j7Fails > 0) { _ctx.Log?.Invoke("info", $"{InstanceId} 宇电温度模块恢复"); _j7Fails = 0; }
-            for (var w = 0; w < 2; w++)
-            {
-                var x = r[_mapJ7[w] - 1];
-                var innerT = _rd.TempOf(w);
-                if (x.Value is { } v)
-                {
-                    var q = x.SensorFault ? Quality.Bad : Quality.Good;
-                    Push(innerT.Channel, "Tr", v, at, q);
-                    // 断线的残值不能进控制判据——喂 NaN，让 WaitReached 退回夹套
-                    innerT.FeedReactor(x.SensorFault ? double.NaN : v);
-                    var tj = innerT.CurrentJacket;
-                    if (!double.IsNaN(tj)) Push(innerT.Channel, "dT", v - tj, at, q);
-                }
-                else
-                {
-                    innerT.FeedReactor(double.NaN);
-                }
-            }
-        }
-        catch (OperationCanceledException) { throw; }
-        catch (Exception ex)
-        {
-            if (_j7Fails++ == 0)
-                _ctx.Log?.Invoke("warn", $"{InstanceId} 宇电温度模块读失败：{ex.Message}（连续失败只报第一次）");
-            for (var w = 0; w < 2; w++) _rd.TempOf(w).FeedReactor(double.NaN);
-        }
-
-        // pH
-        if (_links.PhMod is { } ph && _phOk)
-        {
-            try
-            {
-                var r = await ph.ReadAsync(ct).ConfigureAwait(false);
-                if (_j4Fails > 0) { _ctx.Log?.Invoke("info", $"{InstanceId} pH 模块恢复"); _j4Fails = 0; }
-                for (var w = 0; w < 2; w++)
-                {
-                    var x = r[_mapJ4[w] - 1];
-                    if (x.Value is { } v)
-                    {
-                        var s = new Sample(_rd.TempOf(w).Channel, "pH", at.UtcTicks, at, v,
-                                           x.SensorFault ? Quality.Bad : Quality.Good);
-                        _out.Push(s);                 // 进趋势 / 判据 / 记录
-                        _phSensors[w].Update(in s);   // 台面电极读数与 pH 指令吃这一份
-                    }
-                }
-            }
-            catch (OperationCanceledException) { throw; }
-            catch (Exception ex)
-            {
-                if (_j4Fails++ == 0)
-                    _ctx.Log?.Invoke("warn", $"{InstanceId} pH 模块读失败：{ex.Message}（连续失败只报第一次）");
-            }
+            var t = _rd.TempOf(w);
+            if (!double.IsNaN(t.CurrentReactor) && !double.IsNaN(t.CurrentJacket))
+                Push(t.Channel, "dT", t.CurrentReactor - t.CurrentJacket, at, Quality.Good);
         }
 
         // IO8R：读回继电器实际位置跟命令核对，发热源状态，条件满足时回切 TEC
@@ -466,8 +369,6 @@ public sealed class DuoSession : IDeviceSession
 
         _fwd.Dispose();
         await _rd.DisposeAsync().ConfigureAwait(false);     // 里面会关掉 RD105 的链路
-        _links.TempPort.Dispose();
-        _links.PhPort?.Dispose();
         _links.IoPort?.Dispose();
         _out.Complete();
         State = DeviceState.Disposed;

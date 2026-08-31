@@ -107,3 +107,16 @@ public interface IDeviceSession : IAsyncDisposable
     ValueTask<IReadOnlyList<string>?> SafeStopAsync(int well, CancellationToken ct)
         => ValueTask.FromResult<IReadOnlyList<string>?>(null);
 }
+
+/// <summary>
+/// 会吃「外部釜温」的宿主会话实现它。真机拆件后釜内 Tr 由独立的探头设备
+/// （宇电采集模块）测得、发在自己的会话里，而主机的控温（判到达、E 级
+/// 紧急程序、安全估算）仍然要按釜内温度走——宿主靠这个口子接住别的会话
+/// 发出的 Tr。由上层（工作台）在会话都开起来之后牵线：凡带 Tr 签的采样，
+/// 按通道号喂给实现了本接口的会话。
+/// </summary>
+public interface IExternalReactorTemp
+{
+    /// <summary>喂一拍釜温。quality 不是 Good 的（断线残值）由实现方按 NaN 处置。</summary>
+    void FeedReactor(int channel, double value, Quality quality);
+}
