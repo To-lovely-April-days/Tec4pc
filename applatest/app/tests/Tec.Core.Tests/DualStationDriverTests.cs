@@ -124,14 +124,14 @@ public sealed class DualStationDriverTests
     // ── 温度指令：真机认领 ABI 的能力通用执行器 ─────────────────────
 
     [Fact]
-    public async Task 真机认领四条温度指令_并能真执行一步控温()
+    public async Task 真机认领五条温度指令_并能真执行一步控温()
     {
         var b = Rig();
         await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
 
         // 与仿真同一份执行器——纯真机台面跑含温度步的配方不再报「没有设备认领」
         foreach (var id in new[] { CommandSpecs.Control, CommandSpecs.Gradient,
-                                   CommandSpecs.Hold, CommandSpecs.PassiveCool })
+                                   CommandSpecs.Hold, CommandSpecs.PassiveCool, CommandSpecs.Reflux })
             Assert.NotNull(s.Resolve(id));
         Assert.Null(s.Resolve(CommandSpecs.Stir));   // 没有搅拌，认不了不硬认
 
@@ -284,6 +284,187 @@ public sealed class DualStationDriverTests
         Assert.Equal(1, b.Rd.Get(2, "ENABLE"));          // B 照跑
         Assert.True(b.Io.Coils[1]);
         Assert.Contains(notes!, n => n.Contains("TEC 侧"));
+    }
+
+    // ── 蒸回流（夹套跟随环，长在采集循环里） ─────────────────────────
+
+    private static IRefluxControl Reflux(IDeviceSession s, int well)
+        => s.CapabilitiesOf(well).OfType<IRefluxControl>().Single();
+
+    private static void Feed(IDeviceSession s, int channel, double tr)
+        => ((IExternalReactorTemp)s).FeedReactor(channel, tr, Quality.Good);
+
+    [Fact]
+    public async Task 跟随每拍把夹套目标写成Tr加ΔT_限速走SPEED_目标没动不磨总线()
+    {
+        var b = Rig();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
+        var r = Reflux(s, 0);
+
+        Feed(s, 1, 30.0);
+        await r.StartAsync(5, 120, CancellationToken.None);
+
+        Assert.True(r.Active);
+        Assert.Equal(35_00000, b.Rd.Get(1, "TG"));           // 第一拍不等采集循环
+        Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
+        Assert.True(b.Rd.Get(1, "SPEED") > 0, "跟随写 TG 必须带 SPEED 限速，不是阶跃");
+
+        // Tr 升到 40 → 下一拍目标追到 45
+        Feed(s, 1, 40.0);
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+        Assert.Equal(45_00000, b.Rd.Get(1, "TG"));
+
+        // Tr 只动 0.05 ℃ → 目标变化 < 0.1，不写寄存器
+        var writes = b.Rd.Commands.Count(c => c.Contains("TC1:TG="));
+        Feed(s, 1, 40.05);
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+        Assert.Equal(writes, b.Rd.Commands.Count(c => c.Contains("TC1:TG=")));
+    }
+
+    [Fact]
+    public async Task 跟随目标钳在夹套上限之下()
+    {
+        var b = Rig();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
+
+        Feed(s, 1, 45.0);
+        await Reflux(s, 0).StartAsync(10, 50, CancellationToken.None);   // Tr+ΔT = 55 > maxTj 50
+
+        Assert.Equal(50_00000, b.Rd.Get(1, "TG"));
+    }
+
+    [Fact]
+    public async Task 跟随越过阈值_走全套热源切换序列()
+    {
+        var b = Rig();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
+
+        Feed(s, 1, 87.0);                                     // 87 + 5 = 92 > 90
+        await Reflux(s, 0).StartAsync(5, 120, CancellationToken.None);
+
+        Assert.True(b.Io.Coils[0]);                           // 已切电加热
+        Assert.Equal(92_00000, b.Rd.Get(1, "TG"));
+        // 带载切继电器 = 触点拉弧：ENABLE=0 必须出现在高温目标之前
+        var cmds = b.Rd.Commands;
+        var off = cmds.FindIndex(c => c.Contains("TC1:ENABLE=0"));
+        var tg = cmds.FindLastIndex(c => c.Contains("TC1:TG=9200000"));
+        Assert.True(off >= 0 && off < tg, $"先关输出再下高温目标（off={off}, tg={tg}）");
+    }
+
+    [Fact]
+    public async Task 没配IO8R_跟随撞上阈值就停_并说清原因()
+    {
+        var b = Rig(withIo: false);
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
+        var r = Reflux(s, 0);
+
+        Feed(s, 1, 60.0);
+        await r.StartAsync(5, 120, CancellationToken.None);   // 65 ≤ 90，先能跟
+        Assert.True(r.Active);
+
+        Feed(s, 1, 88.0);                                     // 93 > 90 且没有电加热
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+
+        Assert.False(r.Active);
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Level == "error" && l.Text.Contains("蒸回流已停"));
+        Assert.Equal(65_00000, b.Rd.Get(1, "TG"));            // 目标驻留，没把 93 硬写上去
+    }
+
+    [Fact]
+    public async Task Tr无效跟随停_目标驻留不追残值()
+    {
+        var b = Rig();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
+        var r = Reflux(s, 0);
+
+        Feed(s, 1, 30.0);
+        await r.StartAsync(5, 120, CancellationToken.None);
+        Assert.Equal(35_00000, b.Rd.Get(1, "TG"));
+
+        ((IExternalReactorTemp)s).FeedReactor(1, 810.0, Quality.Bad);    // 探头断线残值
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+
+        Assert.False(r.Active);
+        Assert.Equal(35_00000, b.Rd.Get(1, "TG"));            // 停在最后一次下发的值上
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Level == "error" && l.Text.Contains("Tr 无效"));
+
+        // 探头又活了也不自动续跟——安全恢复要人（或配方）明确再开
+        Feed(s, 1, 60.0);
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+        Assert.Equal(35_00000, b.Rd.Get(1, "TG"));
+    }
+
+    [Fact]
+    public async Task 没有Tr读数_跟随根本开不了()
+    {
+        var b = Rig();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => Reflux(s, 0).StartAsync(5, 120, CancellationToken.None));
+
+        Assert.Contains("Tr", ex.Message);
+        Assert.Equal(0, b.Rd.Get(1, "ENABLE"));               // 拒绝了就不留下发痕迹
+    }
+
+    [Fact]
+    public async Task SafeStop清跟随_之后没有谁再把目标写回去()
+    {
+        var b = Rig();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
+        var r = Reflux(s, 0);
+
+        Feed(s, 1, 30.0);
+        await r.StartAsync(5, 120, CancellationToken.None);
+
+        var notes = await s.SafeStopAsync(0, CancellationToken.None);
+
+        Assert.False(r.Active);
+        Assert.Contains(notes!, n => n.Contains("蒸回流"));
+        Assert.Equal(0, b.Rd.Get(1, "ENABLE"));
+
+        // 之后哪怕 Tr 还在动，采集循环也不许把目标写回去、把输出重新打开
+        Feed(s, 1, 60.0);
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+        Assert.Equal(35_00000, b.Rd.Get(1, "TG"));
+        Assert.Equal(0, b.Rd.Get(1, "ENABLE"));
+    }
+
+    [Fact]
+    public async Task 明确下发新目标_跟随退位不再追()
+    {
+        var b = Rig();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
+        var r = Reflux(s, 0);
+
+        Feed(s, 1, 30.0);
+        await r.StartAsync(5, 120, CancellationToken.None);
+        Assert.True(r.Active);
+
+        await Temp(s, 0).SetTargetAsync(new TempTarget(40), CancellationToken.None);
+
+        Assert.False(r.Active);
+        Feed(s, 1, 50.0);
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+        Assert.Equal(40_00000, b.Rd.Get(1, "TG"));            // 守着新目标，不追 Tr+ΔT
+    }
+
+    [Fact]
+    public async Task 停跟随目标驻留_输出不动()
+    {
+        var b = Rig();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
+        var r = Reflux(s, 0);
+
+        Feed(s, 1, 30.0);
+        await r.StartAsync(5, 120, CancellationToken.None);
+
+        await r.StopAsync(CancellationToken.None);            // 步收尾：停跟随 ≠ 停控温
+
+        Assert.False(r.Active);
+        Assert.Equal(35_00000, b.Rd.Get(1, "TG"));
+        Assert.Equal(1, b.Rd.Get(1, "ENABLE"));               // 输出还开着，收尾由下一步决定
     }
 
     // ── 探测 ─────────────────────────────────────────────────────────

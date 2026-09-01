@@ -39,6 +39,23 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp
     private bool _ioOk;
     private int _ioFails;
 
+    // ── 蒸回流（夹套跟随）状态。__refluxGate 拴三样：跟随参数、安全压制旗、
+    //    喂 Tr 的时间戳——采集循环与安全停/新目标可能在不同线程上碰它们
+    private sealed class Follow
+    {
+        public double DeltaT;
+        public double MaxTj;
+    }
+
+    private readonly object _refluxGate = new();
+    private readonly Follow?[] _reflux = new Follow?[2];
+    /// <summary>安全压制：SafeStop/停控清跟随时立起，跟随环写到一半撞见它要把输出关回去。</summary>
+    private readonly bool[] _refluxKill = new bool[2];
+    private readonly DateTimeOffset[] _trFedAt = { DateTimeOffset.MinValue, DateTimeOffset.MinValue };
+
+    /// <summary>Tr 新鲜度窗：跟随环只吃这窗内喂过的釜温——探头会话死了残值还在，不能追着残值走。</summary>
+    private static readonly TimeSpan TrFreshWindow = TimeSpan.FromSeconds(10);
+
     private DeviceState _state = DeviceState.Connected;
     private CancellationTokenSource? _pollCts;
     private Task? _pollTask;
@@ -137,7 +154,10 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp
         {
             var t = _rd.TempOf(w);
             if (t.Channel == channel)
+            {
                 t.FeedReactor(quality == Quality.Good ? value : double.NaN);
+                lock (_refluxGate) _trFedAt[w] = _ctx.Clock();
+            }
         }
     }
 
@@ -211,6 +231,10 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp
                 Push(t.Channel, "dT", t.CurrentReactor - t.CurrentJacket, at, Quality.Good);
         }
 
+        // 蒸回流跟随环：每拍把夹套目标追到 Tr+ΔT（钳上限、限速写、必要时切热源）
+        for (var w = 0; w < 2; w++)
+            await FollowOnceAsync(w, ct).ConfigureAwait(false);
+
         // IO8R：读回继电器实际位置跟命令核对，发热源状态，条件满足时回切 TEC
         if (_links.Io is { } io && _ioOk)
         {
@@ -254,6 +278,127 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp
                 if (_ioFails++ == 0)
                     _ctx.Log?.Invoke("warn", $"{InstanceId} IO8R 读失败：{ex.Message}（连续失败只报第一次）");
             }
+        }
+    }
+
+    // ── 蒸回流（夹套跟随，需求 §2 + 0277 §B.5）────────────────────────
+    //
+    // 跟随环长在采集循环里：每拍读一次喂进来的 Tr，把夹套目标写成
+    // min(Tr + ΔT, maxTj)，限速走 RampAsync（SPEED 限速写 TG，不是阶跃）。
+    // 四道联锁：① Tr 无效/超时 → 停跟随（目标驻留，不追残值）；
+    // ② 目标越过电加热阈值 → EnsureSourceAsync 全套切换序列；
+    // ③ 安全动作（SafeStop / 停控温）→ 清跟随 + 压制旗，写到一半撞见就把
+    //    输出关回去——下一拍绝不再把目标写回去；
+    // ④ maxTj 之外还有设备自己的超温保护寄存器兜底（开机 ApplyProtection 写进去的）。
+
+    /// <summary>开始跟随。第一拍不等采集循环，当下就把目标立起来。</summary>
+    internal async Task StartRefluxAsync(int well, double deltaT, double maxTj, CancellationToken ct)
+    {
+        var t = _rd.TempOf(well);
+        var dt = Math.Clamp(deltaT, 0.5, 30);
+        var cap = Math.Min(maxTj, t.Limits.Max);    // 设备超温保护是死上限，指令说了不算
+
+        // 起步就要有 Tr：跟随的目标就是 Tr+ΔT，没有 Tr 就没有目标——
+        // 开一个空转的跟随比拒绝更糟
+        if (!TrValid(well))
+            throw new InvalidOperationException(
+                $"工位 {AB(well)} 蒸回流开不了：釜内 Tr 没有有效读数" +
+                "（宇电 Tr 探头没接、没连或断线）——夹套跟随的目标是 Tr+ΔT，没有 Tr 就没有目标");
+
+        if (cap > _threshold && (_links.Io is null || !_ioOk))
+            _ctx.Log?.Invoke("warn", $"{InstanceId} 工位 {AB(well)} 蒸回流：夹套上限 {cap:F0} ℃ " +
+                $"高于电加热切换阈值 {_threshold:F0} ℃，但电加热不可用——跟到阈值那一刻会停跟随");
+
+        lock (_refluxGate)
+        {
+            _refluxKill[well] = false;
+            _reflux[well] = new Follow { DeltaT = dt, MaxTj = cap };
+        }
+        _ctx.Log?.Invoke("info", $"{InstanceId} 工位 {AB(well)} 蒸回流开始：Tj 跟随 Tr+{dt:F1} K，上限 {cap:F0} ℃");
+        await FollowOnceAsync(well, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>停止跟随（步收尾/下一步接管）：目标停在最后一次下发的值上，输出不动。</summary>
+    internal void StopReflux(int well)
+    {
+        bool was;
+        lock (_refluxGate)
+        {
+            was = _reflux[well] is not null;
+            _reflux[well] = null;
+        }
+        if (was) _ctx.Log?.Invoke("info", $"{InstanceId} 工位 {AB(well)} 蒸回流结束：目标停在最后一次下发的值上");
+    }
+
+    /// <summary>安全路径清跟随（SafeStop / 停控温）：连压制旗一起立——
+    /// 跟随环这拍要是已经越过检查点，写完会自己把输出关回去。</summary>
+    internal bool SuppressReflux(int well)
+    {
+        lock (_refluxGate)
+        {
+            var was = _reflux[well] is not null;
+            _reflux[well] = null;
+            _refluxKill[well] = true;
+            return was;
+        }
+    }
+
+    internal bool RefluxActive(int well)
+    {
+        lock (_refluxGate) return _reflux[well] is not null;
+    }
+
+    private bool TrValid(int well)
+    {
+        if (double.IsNaN(_rd.TempOf(well).CurrentReactor)) return false;
+        lock (_refluxGate) return _ctx.Clock() - _trFedAt[well] <= TrFreshWindow;
+    }
+
+    /// <summary>跟随环跑一拍。目标没动（&lt; 0.1 ℃）就不写寄存器——不白磨总线。</summary>
+    private async Task FollowOnceAsync(int well, CancellationToken ct)
+    {
+        Follow? r;
+        lock (_refluxGate) r = _reflux[well];
+        if (r is null) return;
+
+        var t = _rd.TempOf(well);
+        if (!TrValid(well))
+        {
+            // 联锁①：探头断线/超时。目标驻留在最后一次下发的值上——
+            // 追着残值走比停跟随危险得多
+            lock (_refluxGate) _reflux[well] = null;
+            _ctx.Log?.Invoke("error", $"{InstanceId} 工位 {AB(well)} 蒸回流已停：" +
+                "釜内 Tr 无效或超过新鲜度窗（探头断线？）——夹套目标停在最后一次下发的值上");
+            return;
+        }
+
+        var tg = Math.Clamp(t.CurrentReactor + r.DeltaT, t.Limits.Min, r.MaxTj);
+        if (t.Setpoint is { } sp && Math.Abs(tg - sp) < 0.1) return;
+
+        try
+        {
+            // 联锁②：越过阈值先走全套热源切换序列（关输出→切继电器→核反馈→重开）
+            await EnsureSourceAsync(well, tg, ct).ConfigureAwait(false);
+            // 限速写：SPEED 按设备最大变温能力限，TG 让温控器自己斜坡过去——
+            // 不是每拍阶跃，Tj 的变化率有帽子
+            await t.RampAsync(tg, t.Limits.MaxRatePerMin, TempChannelKind.Jacket, ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            lock (_refluxGate) _reflux[well] = null;
+            _ctx.Log?.Invoke("error", $"{InstanceId} 工位 {AB(well)} 蒸回流已停：{ex.Message}");
+            return;
+        }
+
+        // 联锁③的竞态补偿：写的当口有人安全停机（旗已清 + 压制立着），
+        // 刚才那笔 RampAsync 把输出重新打开了——关回去
+        bool kill;
+        lock (_refluxGate) kill = _reflux[well] is null && _refluxKill[well];
+        if (kill)
+        {
+            try { await t.StopAsync(ct).ConfigureAwait(false); } catch { }
+            _ctx.Log?.Invoke("warn", $"{InstanceId} 工位 {AB(well)} 蒸回流写目标与安全停机撞车——输出已重新关闭");
         }
     }
 
@@ -329,6 +474,11 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp
     {
         if (well is not (0 or 1)) return Array.Empty<string>();
         var notes = new List<string>();
+
+        // 先清跟随（联锁③）：不清的话下一拍跟随环又把目标写回去、把输出重新打开
+        if (SuppressReflux(well))
+            notes.Add($"工位 {AB(well)} 蒸回流跟随已停——安全停机后不会再有目标写回去");
+
         var inner = await _rd.SafeStopAsync(well, ct).ConfigureAwait(false);
         if (inner is not null) notes.AddRange(inner);
 

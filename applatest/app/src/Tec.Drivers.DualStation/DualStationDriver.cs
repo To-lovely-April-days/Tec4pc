@@ -46,7 +46,7 @@ public sealed class DualStationDriver : IDeviceDriver
         IconKey = "rd105",
         Description = "真机：RD105 双路夹套控温 + IO8R 热源切换（TEC ⇄ 电加热）。" +
                       "釜内 Tr 与 pH 由宇电探头设备各自采集，插到工位上即归该路。",
-        Capabilities = new[] { nameof(ITemperatureControl), nameof(ITemperatureTuning) }
+        Capabilities = new[] { nameof(ITemperatureControl), nameof(IRefluxControl), nameof(ITemperatureTuning) }
     };
 
     public ParameterSchema ConnectionSchema { get; } = new(new[]

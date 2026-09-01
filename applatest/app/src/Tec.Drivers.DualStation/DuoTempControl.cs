@@ -7,8 +7,10 @@ namespace Tec.Drivers.DualStation;
 /// 一个工位的控温能力：套在 RD105 的 TC 回路外面，唯一多干的一件事是
 /// **下发目标前把热源切到对的一侧**（需求 §2）。控温、限值、判到达全部
 /// 委托给里面那路——不复制逻辑，只加切换这一层。
+/// 蒸回流（IRefluxControl）转发给组合会话的跟随环：跟随长在采集循环里，
+/// 这里只是开关和状态。
 /// </summary>
-public sealed class DuoTempControl : ITemperatureControl
+public sealed class DuoTempControl : ITemperatureControl, IRefluxControl
 {
     private readonly DuoSession _s;
     private readonly int _well;
@@ -29,12 +31,14 @@ public sealed class DuoTempControl : ITemperatureControl
 
     public async Task SetTargetAsync(TempTarget target, CancellationToken ct)
     {
+        _s.StopReflux(_well);   // 明确下发新目标 = 下一步接管，跟随环退位
         await _s.EnsureSourceAsync(_well, target.Value, ct).ConfigureAwait(false);
         await Inner.SetTargetAsync(target, ct).ConfigureAwait(false);
     }
 
     public async Task RampAsync(double target, double ratePerMin, TempChannelKind kind, CancellationToken ct)
     {
+        _s.StopReflux(_well);
         await _s.EnsureSourceAsync(_well, target, ct).ConfigureAwait(false);
         await Inner.RampAsync(target, ratePerMin, kind, ct).ConfigureAwait(false);
     }
@@ -42,5 +46,24 @@ public sealed class DuoTempControl : ITemperatureControl
     public Task<bool> WaitReachedAsync(double target, double tolerance, TimeSpan timeout, CancellationToken ct)
         => Inner.WaitReachedAsync(target, tolerance, timeout, ct);
 
-    public Task StopAsync(CancellationToken ct) => Inner.StopAsync(ct);
+    public Task StopAsync(CancellationToken ct)
+    {
+        // 停控温是安全路径（自然冷却/E 级程序/中止都走它）：跟随连压制旗一起清，
+        // 保证下一拍没有谁再把目标写回去
+        _s.SuppressReflux(_well);
+        return Inner.StopAsync(ct);
+    }
+
+    // ── 蒸回流（夹套跟随）。StopAsync 与 ITemperatureControl 同签名，
+    //    显式实现分开：停跟随 ≠ 停控温——目标停在最后一次下发的值上
+    Task IRefluxControl.StartAsync(double deltaT, double maxTj, CancellationToken ct)
+        => _s.StartRefluxAsync(_well, deltaT, maxTj, ct);
+
+    Task IRefluxControl.StopAsync(CancellationToken ct)
+    {
+        _s.StopReflux(_well);
+        return Task.CompletedTask;
+    }
+
+    public bool Active => _s.RefluxActive(_well);
 }
