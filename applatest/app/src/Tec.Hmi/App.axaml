@@ -1,0 +1,20 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Tec.Hmi.App"
+             RequestedThemeVariant="Light">
+
+  <!-- 极薄的设备端 App：Fluent 底座 + 与工作站共用的外壳件（Theme.axaml）。
+       界面本体（HmiView）与地基（HmiRuntime）都在类库里，这里只是把
+       两者接上、摆进一扇全屏窗。 -->
+
+  <Application.Styles>
+    <FluentTheme>
+      <FluentTheme.Palettes>
+        <ColorPaletteResources x:Key="Light" Accent="#a41626" />
+        <ColorPaletteResources x:Key="Dark" Accent="#a41626" />
+      </FluentTheme.Palettes>
+    </FluentTheme>
+    <StyleInclude Source="avares://Tec.Hmi.Ui/Theme.axaml" />
+  </Application.Styles>
+
+</Application>

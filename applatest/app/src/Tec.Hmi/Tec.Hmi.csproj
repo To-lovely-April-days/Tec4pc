@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 设备端可执行：全屏承载 HmiView 当触屏 HMI 用（0277 §C.9）。
+       发布见 scripts/publish-hmi.sh 与本目录 README-部署.md：
+       self-contained 单文件、按 RID 出包、**绝不 PublishTrimmed**
+       （反射绑定 + drivers/ 运行时加载都不兼容裁剪）。 -->
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>Tec.Hmi</RootNamespace>
+    <AssemblyName>Tec.Hmi</AssemblyName>
+    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.2.3" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.2.3" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tec.Hmi.Ui\Tec.Hmi.Ui.csproj" />
+    <ProjectReference Include="..\Tec.Hmi.Runtime\Tec.Hmi.Runtime.csproj" />
+  </ItemGroup>
+
+</Project>

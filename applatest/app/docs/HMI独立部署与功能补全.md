@@ -56,14 +56,14 @@
    执行引擎/安全监控/归档）+ 真机三驱动注册 + 固定台面（一台双工位主机 +
    两支宇电探头，连接参数从设备上的一份 JSON 配置文件读）+ 跨会话 Tr 喂数 +
    1s 安全定时器 + 30s 归档快照。不带登录/台面页/配方库/化合物库/SQLite。
-9. 设备端可执行 **Tec.Hmi**：极薄 App（FluentTheme + Theme.axaml + 内嵌中文
+9. ✅（0286）设备端可执行 **Tec.Hmi**：极薄 App（FluentTheme + Theme.axaml + 内嵌中文
    字体——设备可能不是 Windows，雅黑不存在，必须内嵌并配字体回退）+ 全屏
    无边框窗直接承载 HmiView（不用 1282×752 的桌面弹窗壳，1280×720 物理屏
    放不下它）。发布：`dotnet publish -r <rid> --self-contained
    /p:PublishSingleFile=true`，**绝不 PublishTrimmed**（反射绑定 + 运行时驱动
    加载都不兼容）；System.IO.Ports 按 RID 发布，Linux 上运行账号要进 dialout
    组；drivers/ 与 Resources/ 随包散装。附部署 README。
-10. 联调：Xvfb 全流程截图 + 全量回归。
+10. ✅（0284/0286）联调：Xvfb 全流程截图 + 全量回归。
 
 ## 如实保留的禁用（协议/硬件到位前不假装）
 
