@@ -121,6 +121,44 @@ public sealed class DualStationDriverTests
         Assert.True(double.IsNaN(Temp(s, 0).CurrentReactor));
     }
 
+    // ── 温度指令：真机认领 ABI 的能力通用执行器 ─────────────────────
+
+    [Fact]
+    public async Task 真机认领四条温度指令_并能真执行一步控温()
+    {
+        var b = Rig();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
+
+        // 与仿真同一份执行器——纯真机台面跑含温度步的配方不再报「没有设备认领」
+        foreach (var id in new[] { CommandSpecs.Control, CommandSpecs.Gradient,
+                                   CommandSpecs.Hold, CommandSpecs.PassiveCool })
+            Assert.NotNull(s.Resolve(id));
+        Assert.Null(s.Resolve(CommandSpecs.Stir));   // 没有搅拌，认不了不硬认
+
+        // 冒烟：控温一步真跑通。外部 Tr 已在允差内 → 立即判到达
+        ((IExternalReactorTemp)s).FeedReactor(1, 24.9, Quality.Good);
+        var ctx = new CommandContext
+        {
+            Channel = 1,
+            Capabilities = new OneCap(Temp(s, 0)),
+            Now = () => DateTimeOffset.Now,
+            TimeScale = 10000                        // 「到达后等稳定」那 1 分钟缩成几毫秒
+        };
+        var outcome = await s.Resolve(CommandSpecs.Control)!.ExecuteAsync(
+            ctx, ParameterSet.Of(("target", 25d), ("tol", 0.5d)), CancellationToken.None);
+
+        Assert.Equal(EndReason.Reached, outcome.Reason);
+        Assert.Equal(25_00000, b.Rd.Get(1, "TG"));   // 目标真写到了设备上
+        Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
+    }
+
+    private sealed class OneCap(ICapability cap) : ICapabilityLookup
+    {
+        public T? Get<T>() where T : class, ICapability => cap as T;
+        public bool Has<T>() where T : class, ICapability => cap is T;
+        public IReadOnlyList<ICapability> All => new[] { cap };
+    }
+
     // ── 热源切换 ─────────────────────────────────────────────────────
 
     [Fact]

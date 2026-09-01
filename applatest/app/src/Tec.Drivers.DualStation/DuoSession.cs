@@ -121,7 +121,9 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp
                 .Concat(_rd.CapabilitiesOf(well).OfType<ITemperatureTuning>()).ToArray()
             : Array.Empty<ICapability>();
 
-    public ICommandHandler? Resolve(string commandId) => null;
+    /// <summary>温度指令认领 ABI 的能力通用执行器——与仿真同一份语义，
+    /// 仿真调好的配方插上真机能跑。搅拌/加料这台没有，认不了不硬认。</summary>
+    public ICommandHandler? Resolve(string commandId) => CapabilityCommands.Resolve(commandId);
 
     internal Rd105TemperatureControl InnerTemp(int well) => _rd.TempOf(well);
 

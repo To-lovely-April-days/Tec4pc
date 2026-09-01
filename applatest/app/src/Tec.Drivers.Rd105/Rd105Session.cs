@@ -96,7 +96,8 @@ public sealed class Rd105Session : IDeviceSession
     public IReadOnlyList<ICapability> CapabilitiesOf(int well)
         => well is 0 or 1 ? new ICapability[] { _temps[well], _tunings[well] } : Array.Empty<ICapability>();
 
-    public ICommandHandler? Resolve(string commandId) => null;
+    /// <summary>温度指令认领 ABI 的能力通用执行器（与仿真同一份语义）。</summary>
+    public ICommandHandler? Resolve(string commandId) => CapabilityCommands.Resolve(commandId);
 
     /// <summary>把两路保护值都写进设备。OpenAsync 里调，早于任何控温动作。</summary>
     public async Task ApplyProtectionAsync(CancellationToken ct)

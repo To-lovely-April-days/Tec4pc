@@ -143,27 +143,15 @@ public sealed class HandlerTable
 }
 
 /// <summary>公共小工具。仿真的等待一律走它，保证加速倍数只在一个地方生效。</summary>
+/// <summary>实现挪到了 ABI 的 DriverTime（温度执行器搬家时一起走的），这里只做转发——
+/// 仿真侧一堆调用点不必跟着改名。</summary>
 public static class SimTime
 {
     public static Task DelayAsync(TimeSpan simulated, double scale, CancellationToken ct)
-    {
-        if (scale <= 0) scale = 1;
-        var real = TimeSpan.FromTicks((long)(simulated.Ticks / scale));
-        return real <= TimeSpan.Zero ? Task.CompletedTask : Task.Delay(real, ct);
-    }
+        => DriverTime.DelayAsync(simulated, scale, ct);
 
     /// <summary>轮询到条件成立或超时。返回是否成立。</summary>
-    public static async Task<bool> PollAsync(Func<bool> predicate, TimeSpan timeout, double scale,
-                                             Func<DateTimeOffset> now, CancellationToken ct)
-    {
-        var deadline = timeout > TimeSpan.Zero ? now() + timeout : DateTimeOffset.MaxValue;
-        while (!ct.IsCancellationRequested)
-        {
-            if (predicate()) return true;
-            if (now() >= deadline) return false;
-            await DelayAsync(TimeSpan.FromSeconds(1), scale, ct).ConfigureAwait(false);
-        }
-        ct.ThrowIfCancellationRequested();
-        return false;
-    }
+    public static Task<bool> PollAsync(Func<bool> predicate, TimeSpan timeout, double scale,
+                                       Func<DateTimeOffset> now, CancellationToken ct)
+        => DriverTime.PollAsync(predicate, timeout, scale, now, ct);
 }
