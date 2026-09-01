@@ -1,3 +1,4 @@
+using Tec.Hmi.Ui.ViewModels;
 using System.Collections.ObjectModel;
 using Tec.App.Services;
 using Tec.Core.Catalog;

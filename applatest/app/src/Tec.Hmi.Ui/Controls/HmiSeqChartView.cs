@@ -2,7 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 
-namespace Tec.App.Controls;
+namespace Tec.Hmi.Ui.Controls;
 
 /// <summary>一行属性。EditKey 非空 = 可点（tgt / mode / val / rpm），画成值框。</summary>
 public sealed record HmiSeqRow(string K, string V, string EditKey = "");

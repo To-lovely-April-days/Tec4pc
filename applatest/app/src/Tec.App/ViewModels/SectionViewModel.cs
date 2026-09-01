@@ -1,3 +1,5 @@
+using Tec.Hmi.Ui.ViewModels;
+
 namespace Tec.App.ViewModels;
 
 /// <summary>

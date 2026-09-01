@@ -2,7 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 
-namespace Tec.App.Controls;
+namespace Tec.Hmi.Ui.Controls;
 
 /// <summary>
 /// 升温/降温/恒温小图标（原型 v60 的 TH_G，逐条照抄）：升温橙热浪、

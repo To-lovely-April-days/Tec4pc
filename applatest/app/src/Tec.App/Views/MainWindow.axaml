@@ -1,7 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:v="clr-namespace:Tec.App.Views"
-        xmlns:ctl="clr-namespace:Tec.App.Controls"
+        xmlns:ctl="urn:tec:ctl"
         x:Class="Tec.App.Views.MainWindow"
         Title="TecStudio 平行合成工作站 - PSW-4"
         Width="1500" Height="940" MinWidth="1280" MinHeight="720"

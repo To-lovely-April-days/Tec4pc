@@ -1,3 +1,4 @@
+using Tec.Hmi.Ui.ViewModels;
 using System.Collections.ObjectModel;
 using Avalonia;
 using Tec.App.Services;

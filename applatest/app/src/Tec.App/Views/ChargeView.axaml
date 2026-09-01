@@ -1,6 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:ctl="clr-namespace:Tec.App.Controls"
+             xmlns:ctl="urn:tec:ctl"
              x:Class="Tec.App.Views.ChargeView">
   <UserControl.Styles>
     <!-- 表格行：与化合物库、数据导出那两张表同一套。

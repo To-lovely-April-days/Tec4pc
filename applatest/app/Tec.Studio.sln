@@ -22,6 +22,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Tec.Drivers.Rd105", "src\Te
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tec.Drivers.DualStation", "src\Tec.Drivers.DualStation\Tec.Drivers.DualStation.csproj", "{82022274-1D2F-4865-B9C0-58D6028A9A89}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tec.Hmi.Ui", "src\Tec.Hmi.Ui\Tec.Hmi.Ui.csproj", "{26BAA346-98E9-4FEA-BBDC-8D37904A10AC}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -60,6 +62,10 @@ Global
 		{82022274-1D2F-4865-B9C0-58D6028A9A89}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{82022274-1D2F-4865-B9C0-58D6028A9A89}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{82022274-1D2F-4865-B9C0-58D6028A9A89}.Release|Any CPU.Build.0 = Release|Any CPU
+		{26BAA346-98E9-4FEA-BBDC-8D37904A10AC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{26BAA346-98E9-4FEA-BBDC-8D37904A10AC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{26BAA346-98E9-4FEA-BBDC-8D37904A10AC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{26BAA346-98E9-4FEA-BBDC-8D37904A10AC}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -73,6 +79,7 @@ Global
 		{39452DD5-6153-59D2-ADD5-3379541E1F2A} = {F84AFA64-C9C9-5E0C-84D8-6886397D6C2F}
 		{78195535-FFBD-45BE-A7E4-03C14F4A24A5} = {3C251A66-0C84-527C-B12F-21F6518914DC}
 		{82022274-1D2F-4865-B9C0-58D6028A9A89} = {3C251A66-0C84-527C-B12F-21F6518914DC}
+		{26BAA346-98E9-4FEA-BBDC-8D37904A10AC} = {3C251A66-0C84-527C-B12F-21F6518914DC}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {FC2D90A0-0FEF-5234-A176-B4B89E7DF3C9}

@@ -1,3 +1,4 @@
+using Tec.Hmi.Ui.Controls;
 using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;

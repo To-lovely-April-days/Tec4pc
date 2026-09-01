@@ -131,6 +131,17 @@ public interface IStirrer : ICapability
     IObservable<Sample> Speed { get; }
 }
 
+/// <summary>
+/// 可选：加减速斜坡时间可设的搅拌器（IStirrer 的实现顺带实现它）。
+/// 真机各有各的加减速寄存器，不是每台都给设——所以不进 IStirrer 本体，
+/// 面板与执行器按「是不是它」问，不认识任何具体设备类。
+/// </summary>
+public interface IStirrerRamp
+{
+    /// <summary>满量程加减速用时（秒）。SetSpeedAsync 之前设好。</summary>
+    void SetRampSeconds(double seconds);
+}
+
 public sealed record DoseRequest(double Volume, double RatePerMin)
 {
     /// <summary>加料的物料名，只用于记录与报告。</summary>

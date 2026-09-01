@@ -2,7 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 
-namespace Tec.App.Controls;
+namespace Tec.Hmi.Ui.Controls;
 
 /// <summary>
 /// HMI 手动控制面板上的反应釜示意图，1:1 复刻原型 HTLAB_HMI v54 的 vessel()：

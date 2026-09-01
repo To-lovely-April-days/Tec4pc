@@ -1,6 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:ctl="clr-namespace:Tec.App.Controls"
+             xmlns:ctl="urn:tec:ctl"
              xmlns:v="clr-namespace:Tec.App.Views"
              x:Class="Tec.App.Views.StartView">
 

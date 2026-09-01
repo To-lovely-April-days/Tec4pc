@@ -2,7 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 
-namespace Tec.App.Controls;
+namespace Tec.Hmi.Ui.Controls;
 
 /// <summary>方案总览时间轴的一段。W = 像素宽（视图模型按原型 segLay 算好）。</summary>
 public sealed record HmiTlSeg(double W, bool Zip, bool Past, string Text);

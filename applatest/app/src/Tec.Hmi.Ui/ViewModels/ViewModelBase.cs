@@ -2,7 +2,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
 
-namespace Tec.App.ViewModels;
+namespace Tec.Hmi.Ui.ViewModels;
 
 /// <summary>
 /// 手写的 MVVM 基类。刻意不引 MVVM 框架：这一层没有复杂到需要源生成器，

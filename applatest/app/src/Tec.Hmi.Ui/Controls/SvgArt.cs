@@ -3,7 +3,7 @@ using System.Xml.Linq;
 using Avalonia;
 using Avalonia.Media;
 
-namespace Tec.App.Controls;
+namespace Tec.Hmi.Ui.Controls;
 
 /// <summary>
 /// 只认我们自己那两套图用到的 SVG 子集：

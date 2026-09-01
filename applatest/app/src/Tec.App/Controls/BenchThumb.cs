@@ -1,3 +1,4 @@
+using Tec.Hmi.Ui.Controls;
 using System.Collections;
 using Avalonia;
 using Avalonia.Controls;

@@ -3,7 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Platform;
 
-namespace Tec.App.Controls;
+namespace Tec.Hmi.Ui.Controls;
 
 /// <summary>
 /// 原型提取的界面图标。Key 对应 Assets/icons/{Key}.svg：
@@ -73,18 +73,38 @@ public sealed class TecIcon : Control
         set => SetValue(WhiteProperty, value);
     }
 
+    /// <summary>
+    /// 图标可能住在两个程序集里：hmi-* 随本类库走（设备端只有它），
+    /// 其余工作站图标留在宿主可执行程序里。按「宿主 → 本类库」的顺序找，
+    /// 谁有算谁的；设备端宿主（Tec.Hmi）没有图标目录，探不到就落到本类库。
+    /// </summary>
+    private static readonly string[] Roots = BuildRoots();
+
+    private static string[] BuildRoots()
+    {
+        var entry = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name;
+        return entry is null or "Tec.Hmi.Ui"
+            ? new[] { "avares://Tec.Hmi.Ui/Assets/icons/" }
+            : new[] { $"avares://{entry}/Assets/icons/", "avares://Tec.Hmi.Ui/Assets/icons/" };
+    }
+
     private static SvgArt? Load(string key)
     {
         if (Cache.TryGetValue(key, out var art)) return art;
-        try
+        art = null;
+        foreach (var root in Roots)
         {
-            using var stream = AssetLoader.Open(new Uri($"avares://Tec.App/Assets/icons/{key}.svg"));
-            using var reader = new StreamReader(stream);
-            art = SvgArt.Parse(reader.ReadToEnd());
-        }
-        catch
-        {
-            art = null;    // 缺图不崩，量测归零即可
+            try
+            {
+                using var stream = AssetLoader.Open(new Uri($"{root}{key}.svg"));
+                using var reader = new StreamReader(stream);
+                art = SvgArt.Parse(reader.ReadToEnd());
+                break;
+            }
+            catch
+            {
+                // 这个程序集里没有，换下一个；都没有就保持 null——缺图不崩，量测归零即可
+            }
         }
         Cache[key] = art;
         return art;

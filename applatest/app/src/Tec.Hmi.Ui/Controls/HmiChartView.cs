@@ -3,7 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
 
-namespace Tec.App.Controls;
+namespace Tec.Hmi.Ui.Controls;
 
 /// <summary>一条曲线：横轴是「秒」（相对图的时间原点），纵轴原值。</summary>
 public sealed class HmiChartTrace

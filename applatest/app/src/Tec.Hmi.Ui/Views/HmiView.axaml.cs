@@ -4,9 +4,9 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
-using Tec.App.ViewModels;
+using Tec.Hmi.Ui.ViewModels;
 
-namespace Tec.App.Views;
+namespace Tec.Hmi.Ui.Views;
 
 public partial class HmiView : UserControl
 {
@@ -47,10 +47,10 @@ public partial class HmiView : UserControl
         });
 
         // 点图（原型 data-gchart）：换算成「秒」交给视图模型开 gtap 弹窗
-        if (this.FindControl<Tec.App.Controls.HmiChartView>("ZChart") is { } zc)
+        if (this.FindControl<Controls.HmiChartView>("ZChart") is { } zc)
             zc.Tapped = sec => Vm?.ChartTapped(sec);
         // 点序列卡（表头换类型 / 值框改数）
-        if (this.FindControl<Tec.App.Controls.HmiSeqChartView>("ZSeqChart") is { } sc)
+        if (this.FindControl<Controls.HmiSeqChartView>("ZSeqChart") is { } sc)
             sc.Tapped = (card, key) => Vm?.Cur?.SeqCardTapped(card, key);
 
         AttachedToVisualTree += (_, _) => { _tick.Start(); _anim.Start(); };
@@ -199,12 +199,12 @@ public partial class HmiView : UserControl
     private void Snapshot(bool withCsv)
     {
         if (Vm is not { } vm || vm.Cur is not { } z) return;
-        var chart = this.FindControl<Tec.App.Controls.HmiChartView>("ZChart");
+        var chart = this.FindControl<Controls.HmiChartView>("ZChart");
         if (chart is null || chart.Bounds.Width < 50 || z.GraModel is null)
         { vm.Toast("图上还没有内容可拍"); return; }
         try
         {
-            var dir = System.IO.Path.Combine(Tec.App.Services.ExperimentStore.DataDir, "Snapshots");
+            var dir = System.IO.Path.Combine(vm.Ws.DataDir, "Snapshots");
             System.IO.Directory.CreateDirectory(dir);
             var baseName = $"HMI-CH{z.Number}-{DateTime.Now:yyyyMMdd-HHmmss}";
             // 2 倍渲染：这张图是要进报告/发人的，1280 屏上的 1 倍图放大就糊

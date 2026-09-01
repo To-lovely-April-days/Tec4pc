@@ -1,3 +1,4 @@
+using Tec.Hmi.Ui.ViewModels;
 using System.Collections.ObjectModel;
 using Avalonia.Media;
 using Avalonia.Threading;

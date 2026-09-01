@@ -47,7 +47,7 @@
    控制页第三模式下发。
 
 **C. HMI 独立项目（设备端部署）**
-7. 抽共享：App.axaml 里 HMI 用到的资源/样式（UiFont/Shell/滚动条/输入框）抽成
+7. ✅（0284）抽共享：App.axaml 里 HMI 用到的资源/样式（UiFont/Shell/滚动条/输入框）抽成
    Theme.axaml；HmiView/HmiViewModel/六个自绘控件/15 个 hmi-*.svg/ViewModelBase
    搬进新类库 **Tec.Hmi.Ui**；avares 程序集名跟着改；ExperimentStore.DataDir
    改注入路径；对仿真 StirrerImpl 的具体类型特判上提成 ABI 可选能力。

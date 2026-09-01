@@ -1,3 +1,5 @@
+using Tec.Hmi.Ui.Controls;
+using Tec.Hmi.Ui.ViewModels;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using Avalonia;

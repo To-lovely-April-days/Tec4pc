@@ -1,6 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:v="clr-namespace:Tec.App.Views"
+        xmlns:hv="clr-namespace:Tec.Hmi.Ui.Views;assembly=Tec.Hmi.Ui"
         x:Class="Tec.App.Views.HmiWindow"
         Width="1282" Height="752" CanResize="False"
         WindowStartupLocation="CenterScreen"
@@ -57,7 +57,7 @@
         </StackPanel>
       </Panel>
 
-      <v:HmiView />
+      <hv:HmiView />
     </DockPanel>
   </Border>
 </Window>

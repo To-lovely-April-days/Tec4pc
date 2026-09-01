@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- HMI（设备触摸屏界面）的共享类库：工作站（Tec.App）把它弹成一扇窗，
+       设备端可执行（Tec.Hmi）把它全屏承载——同一份界面两处用，不是两份代码。
+       这里只放界面与视图模型；宿主（引擎、管道、归档…）通过 IHmiHost 注入。 -->
+
+  <PropertyGroup>
+    <RootNamespace>Tec.Hmi.Ui</RootNamespace>
+    <AssemblyName>Tec.Hmi.Ui</AssemblyName>
+    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="Assets/**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.2.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tec.Core\Tec.Core.csproj" />
+    <ProjectReference Include="..\Tec.DriverHost\Tec.DriverHost.csproj" />
+  </ItemGroup>
+
+</Project>

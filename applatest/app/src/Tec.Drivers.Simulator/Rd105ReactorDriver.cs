@@ -336,9 +336,9 @@ internal sealed class ReactorWell : ITemperatureControl, IRefluxControl
     }
 }
 
-/// <summary>公开的原因只有一个：手动控制面板要调 SetRampSeconds 做转速斜坡——
-/// 那不是 IStirrer 的一部分（真机各有各的加减速寄存器），面板按具体类型问。</summary>
-public sealed class StirrerImpl : IStirrer
+/// <summary>转速斜坡通过 ABI 的可选口 IStirrerRamp 提供——面板与执行器
+/// 按接口问，不认识这个具体类（HMI 拆独立项目后它们也见不到这个程序集）。</summary>
+public sealed class StirrerImpl : IStirrer, IStirrerRamp
 {
     private readonly Action<int, string, double> _emit;
     private readonly Broadcast<Sample> _speed = new();
@@ -426,7 +426,7 @@ internal sealed class StirHandler : ICommandHandler
         // 「立即」走驱动的最短加减速（0.5 s 下限）；电机没有真正的零时间起停
         var ramp = CommandSpecs.StirImmediate(p) ? 0.5 : p.Num("ramp", 5);
 
-        if (stir is StirrerImpl impl) impl.SetRampSeconds(ramp);
+        if (stir is IStirrerRamp impl) impl.SetRampSeconds(ramp);
         if (rpm <= 0) await stir.StopAsync(ct).ConfigureAwait(false);
         else await stir.SetSpeedAsync(rpm, ct).ConfigureAwait(false);
 

@@ -14,15 +14,20 @@ using Tec.Core.Users;
 using Tec.Driver.Abi;
 using Tec.DriverHost;
 using Tec.Drivers.Simulator;
+using Tec.Hmi.Ui;
 
 namespace Tec.App.Services;
 
 /// <summary>
 /// 组合根。把驱动目录、台面、通道、执行引擎、数据管线接起来。
 /// ViewModel 只认识它，不认识任何驱动（§11）。
+/// 也是 HMI 面板的宿主（IHmiHost）——面板弹成一扇窗时喂的就是它。
 /// </summary>
-public sealed class Workspace
+public sealed class Workspace : IHmiHost
 {
+    /// <summary>IHmiHost：数据目录。面板序列、快照、导出都写在它下面。</summary>
+    public string DataDir => ExperimentStore.DataDir;
+
     private readonly Dictionary<string, IDeviceSession> _sessions = new(StringComparer.Ordinal);
 
     /// <summary>跨会话喂釜温的订阅（见 RebuildChannelsAsync 2.5 节），重建时换新。</summary>

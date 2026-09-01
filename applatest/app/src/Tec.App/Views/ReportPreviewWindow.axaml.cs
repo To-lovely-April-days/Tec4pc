@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Tec.App.ViewModels;
+using Tec.Hmi.Ui.ViewModels;
 using Tec.Core.Export;
 
 namespace Tec.App.Views;

@@ -1,6 +1,6 @@
 using System.Collections.ObjectModel;
-using Tec.App.Controls;
-using Tec.App.Services;
+using Tec.Hmi.Ui.Controls;
+
 using Tec.Core;
 using Tec.Core.Data;
 using Tec.Core.Execution;
@@ -9,7 +9,7 @@ using Tec.Core.Recipes;
 using Tec.Core.Scheduling;
 using Tec.Driver.Abi;
 
-namespace Tec.App.ViewModels;
+namespace Tec.Hmi.Ui.ViewModels;
 
 /// <summary>
 /// HMI 手动控制面板（HTLAB_HMI v54 原型的 1:1 还原）。这是「设备自带的
@@ -19,14 +19,14 @@ namespace Tec.App.ViewModels;
 /// </summary>
 public sealed class HmiViewModel : ViewModelBase
 {
-    private readonly Workspace _ws;
+    private readonly IHmiHost _ws;
     private string _page = "ov";
     private string _ovTab = "app";
     private string _zTab = "ctl";
     private int _toastTtl;
     private string _toastText = "";
 
-    public HmiViewModel(Workspace ws, string deviceLabel, IReadOnlyList<int> channels)
+    public HmiViewModel(IHmiHost ws, string deviceLabel, IReadOnlyList<int> channels)
     {
         _ws = ws;
         DeviceLabel = deviceLabel;
@@ -37,7 +37,7 @@ public sealed class HmiViewModel : ViewModelBase
 
     public string DeviceLabel { get; }
     public ObservableCollection<HmiZoneViewModel> Zones { get; } = new();
-    internal Workspace Ws => _ws;
+    internal IHmiHost Ws => _ws;
 
     // ── 页面 / 标签 ─────────────────────────────────────────────────
 
@@ -388,7 +388,7 @@ public sealed class HmiViewModel : ViewModelBase
         var (rec, src) = pick.Value;
         try
         {
-            var dir = System.IO.Path.Combine(ExperimentStore.DataDir, "Exports",
+            var dir = System.IO.Path.Combine(_ws.DataDir, "Exports",
                 $"{San(rec.Name)}-{_ws.Clock.Now:yyyyMMdd-HHmmss}");
             System.IO.Directory.CreateDirectory(dir);
             var opt = new Tec.Core.Export.ExportOptions
@@ -438,8 +438,8 @@ public sealed class HmiViewModel : ViewModelBase
     private string? _filePick;
     private List<HmiSeqLibEntry>? _lib;
 
-    private static string LibPath => System.IO.Path.Combine(
-        ExperimentStore.DataDir, "HmiPanel", "library.json");
+    private string LibPath => System.IO.Path.Combine(
+        _ws.DataDir, "HmiPanel", "library.json");
 
     private List<HmiSeqLibEntry> Lib
     {
@@ -574,12 +574,12 @@ public sealed class HmiViewModel : ViewModelBase
         rows.Add(new SysRow("语言与键盘", "简体中文 · QWERTY", "当前版本仅中文界面"));
         try
         {
-            var di = new System.IO.DriveInfo(System.IO.Path.GetPathRoot(ExperimentStore.DataDir)!);
+            var di = new System.IO.DriveInfo(System.IO.Path.GetPathRoot(_ws.DataDir)!);
             rows.Add(new SysRow("本机存储",
                 $"剩余 {di.AvailableFreeSpace / 1024.0 / 1024 / 1024:0.0} GB",
-                $"数据目录 {ExperimentStore.DataDir}"));
+                $"数据目录 {_ws.DataDir}"));
         }
-        catch { rows.Add(new SysRow("本机存储", "—", ExperimentStore.DataDir)); }
+        catch { rows.Add(new SysRow("本机存储", "—", _ws.DataDir)); }
         var tc = Zones.FirstOrDefault()?.TcVal;
         rows.Add(new SysRow("冷却",
             tc is { } t ? $"Tc {(t < 0 ? "−" : "")}{Math.Abs(t):0.0} ℃ · 冷媒正常" : "Tc 无信号",
@@ -901,9 +901,9 @@ public sealed class HmiViewModel : ViewModelBase
 public sealed class HmiZoneViewModel : ViewModelBase
 {
     private readonly HmiViewModel _owner;
-    private readonly Workspace _ws;
+    private readonly IHmiHost _ws;
 
-    public HmiZoneViewModel(HmiViewModel owner, Workspace ws, int index, int channelNumber)
+    public HmiZoneViewModel(HmiViewModel owner, IHmiHost ws, int index, int channelNumber)
     {
         _owner = owner;
         _ws = ws;
@@ -1316,7 +1316,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
         if (Stir is not { } s) return;
         var rEnd = Pv("rEnd");
         var rDur = Pv("rDur");
-        if (rEnd > 0 && rDur > 0 && s is Tec.Drivers.Simulator.StirrerImpl impl)
+        if (rEnd > 0 && rDur > 0 && s is IStirrerRamp impl)
         {
             // 斜坡：终值 + 时长换算成驱动的加减速斜率（rampSeconds 按满量程标）
             var delta = Math.Abs(rEnd - s.CurrentRpm);
@@ -1325,7 +1325,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
         }
         else
         {
-            if (s is Tec.Drivers.Simulator.StirrerImpl i2) i2.SetRampSeconds(5);
+            if (s is IStirrerRamp i2) i2.SetRampSeconds(5);
             _ = s.SetSpeedAsync(Pv("rpm"), CancellationToken.None);
         }
     }
@@ -1762,7 +1762,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
     // ── 面板序列：存取（设备本机，跨开机还在）───────────────────────
 
     private string SeqPath => System.IO.Path.Combine(
-        ExperimentStore.DataDir, "HmiPanel", $"seq-CH{Number}.json");
+        _ws.DataDir, "HmiPanel", $"seq-CH{Number}.json");
 
     private void LoadSeq()
     {

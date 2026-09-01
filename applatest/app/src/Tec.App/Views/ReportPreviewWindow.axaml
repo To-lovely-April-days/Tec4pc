@@ -1,6 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:ctl="clr-namespace:Tec.App.Controls"
+        xmlns:ctl="urn:tec:ctl"
         x:Class="Tec.App.Views.ReportPreviewWindow"
         Width="1000" Height="800" MinWidth="560" MinHeight="420"
         WindowStartupLocation="CenterOwner"
