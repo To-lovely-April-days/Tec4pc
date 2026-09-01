@@ -95,14 +95,44 @@ public sealed class MigrationTests
     }
 
     [Fact]
-    public void 翻译不出来的指令原样留着让校验器去报()
+    public void 老的结晶模式翻成蒸回流_回流温度换算成夹套上限()
     {
-        // 结晶模式（蒸回流）没有对应硬件，不给它编一条
+        // 老参数只有回流温度 + 时长；新语义是夹套跟随。
+        // ΔT 给缺省 5 K，夹套上限 = 老回流温度 + 15 ℃ 的余量，时长原样保留
         var r = Old("tec.temp.reflux", ("temp", 78d), ("dur", 45d));
         var notes = RecipeMigration.Apply(r);
 
+        Assert.Single(notes);
+        Assert.Contains("蒸回流", notes[0]);
+        Assert.Equal(CommandSpecs.Reflux, r.Steps[0].CommandId);
+        Assert.Equal(5, r.Steps[0].Parameters.Num("dt"));
+        Assert.Equal(93, r.Steps[0].Parameters.Num("tjmax"));    // 78 + 15
+        Assert.Equal(45, r.Steps[0].Parameters.Num("dur"));
+        // 老键要删干净——留着会被当成有效参数
+        Assert.False(r.Steps[0].Parameters.Has("temp"));
+    }
+
+    [Fact]
+    public void 已经是新格式的蒸回流不再动它()
+    {
+        // 只认带老键 temp 的：新存的蒸回流步骤（dt/tjmax/dur）再打开不能被改一遍
+        var r = Old(CommandSpecs.Reflux, ("dt", 8d), ("tjmax", 110d), ("dur", 30d));
+        var notes = RecipeMigration.Apply(r);
+
         Assert.Empty(notes);
-        Assert.Equal("tec.temp.reflux", r.Steps[0].CommandId);
+        Assert.Equal(8, r.Steps[0].Parameters.Num("dt"));
+        Assert.Equal(110, r.Steps[0].Parameters.Num("tjmax"));
+    }
+
+    [Fact]
+    public void 翻译不出来的指令原样留着让校验器去报()
+    {
+        // pH 上下限报警在新库里没有对应指令，不给它编一条
+        var r = Old("tec.ph.alarm", ("hi", 9d), ("lo", 5d));
+        var notes = RecipeMigration.Apply(r);
+
+        Assert.Empty(notes);
+        Assert.Equal("tec.ph.alarm", r.Steps[0].CommandId);
 
         var issues = RecipeValidator.Validate(r, Catalog());
         Assert.Contains(issues, i => i.Code == "missing-driver");

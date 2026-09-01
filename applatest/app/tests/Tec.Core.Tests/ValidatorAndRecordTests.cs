@@ -49,7 +49,48 @@ public class ValidatorTests
     }
 
     [Fact]
-    public void 二十二条指令一条不多一条不少()
+    public void 蒸回流的ΔT比在册温差限大要提醒必然触发()
+    {
+        // 回流稳态下 Tj−Tr 恒等于 ΔT：起始限值表里 T diff max = 5 而 ΔT = 8，
+        // 这条限值不是「可能」触发，是回流一建立就必然触发——启动前就要说破
+        var start = new Step
+        {
+            CommandId = BuiltinCommands.FirstFill,
+            Parameters = ParameterSet.Of(("fill", true)),
+            Rows = new List<ParameterSet>
+            {
+                ParameterSet.Of(("par", "T diff max"), ("val", 5d), ("act", "中止本通道"))
+            }
+        };
+        var recipe = Harness.RecipeOf("回流撞温差限", start,
+            Harness.Mk(CommandSpecs.Reflux, ("dt", 8d), ("tjmax", 120d), ("dur", 30d)));
+
+        var issues = RecipeValidator.Validate(recipe, Catalog());
+        Assert.Contains(issues, i => i.Code == "reflux-tdiff" && i.Level == IssueLevel.Warning);
+
+        // 温差限放宽到 ΔT 之上就不该再报
+        start.Rows[0] = ParameterSet.Of(("par", "T diff max"), ("val", 12d), ("act", "中止本通道"));
+        issues = RecipeValidator.Validate(recipe, Catalog());
+        Assert.DoesNotContain(issues, i => i.Code == "reflux-tdiff");
+    }
+
+    [Fact]
+    public void 蒸回流的摘要与整句描述分两句写()
+    {
+        var c = Catalog();
+        Assert.True(c.TryGet(CommandSpecs.Reflux, out var d));
+        var p = new ParameterSet().FillDefaults(d.Parameters);
+
+        // PSPEC.sum：卡片上那一行
+        Assert.Equal("Tj = Tr+5 K · 60 min", d.SummaryOf(p));
+        // DESC：整句工艺语句，跟随差、时长、上限都要说全
+        Assert.Equal("蒸回流：Tj 跟随 Tr+5 K · 60 min · Tj ≤ 120 ℃", d.DescribeOf(p));
+        // 回流建立后 Tr 停在沸点平台，「到达判据」无意义——必须按时长结束
+        Assert.Equal(TerminationKind.Timer, d.TerminationOf(new CommandInput(p, null)));
+    }
+
+    [Fact]
+    public void 二十三条指令一条不多一条不少()
     {
         var c = Catalog();
         c.Register(new TurbidityProbeDriver().Commands);
@@ -58,13 +99,13 @@ public class ValidatorTests
 
         // 分组照 iControl Recipe Library：流程控制 8（起始装料与限值 / 等待 /
         // 循环 ×2 / 变量 / 提示 / 标记 / 结束）· 采样 2（采样提醒 + pH 采集）
-        // · 安全 1（改限值）· 温控 4 · 搅拌 1 · 加料 2（加料 + pH 反馈加料）
-        // · 在线分析 4
-        Assert.Equal(22, c.All.Count);
+        // · 安全 1（改限值）· 温控 5（控温 / 恒温保持 / 梯度 / 自然冷却 / 蒸回流）
+        // · 搅拌 1 · 加料 2（加料 + pH 反馈加料）· 在线分析 4
+        Assert.Equal(23, c.All.Count);
         Assert.Equal(8, c.InModule("流程控制").Count);
         Assert.Equal(2, c.InModule("采样").Count);
         Assert.Single(c.InModule("安全"));
-        Assert.Equal(4, c.InModule("温控").Count);
+        Assert.Equal(5, c.InModule("温控").Count);
         Assert.Single(c.InModule("搅拌"));
         Assert.Equal(2, c.InModule("加料").Count);
         Assert.Equal(4, c.InModule("在线分析").Count);
@@ -82,7 +123,7 @@ public class ValidatorTests
         foreach (var n in new[]
         {
             "起始装料与限值", "等待", "循环开始", "循环结束", "消息提示", "标记事件", "采样提醒", "改限值", "结束实验",
-            "控温", "恒温保持", "梯度控温", "自然冷却",
+            "控温", "恒温保持", "梯度控温", "自然冷却", "蒸回流",
             "搅拌",
             "加料",
             "pH 采集", "pH 反馈加料",

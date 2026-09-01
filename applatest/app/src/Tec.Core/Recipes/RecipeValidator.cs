@@ -99,6 +99,7 @@ public static class RecipeValidator
 
         ValidateFirstFill(issues, recipe);
         ValidateParallel(issues, recipe);
+        ValidateReflux(issues, recipe);
 
         var schedule = Schedule.Build(recipe, catalog, seed);
         issues.Add(new ValidationIssue(IssueLevel.Info, "duration",
@@ -160,6 +161,39 @@ public static class RecipeValidator
         if (!seen && anyEnabled)
             issues.Add(new ValidationIssue(IssueLevel.Warning, "firstfill-missing",
                 "配方没有以「起始装料与限值」开头——初始投料、初始状态与起始限值建议从它立起（老配方可照跑）"));
+    }
+
+    /// <summary>
+    /// 蒸回流与「T diff max」的交叉检查：回流稳态下 Tj−Tr 恒等于 ΔT，
+    /// 在册温差限比 ΔT 还小的话，这一步开始几秒后**必然**触发限值动作——
+    /// 不是可能，是必然，所以要在启动前说破。
+    /// </summary>
+    private static void ValidateReflux(List<ValidationIssue> issues, Recipe recipe)
+    {
+        var diffLimits = new List<(int Index, double Val)>();
+        for (var i = 0; i < recipe.Steps.Count; i++)
+        {
+            var s = recipe.Steps[i];
+            if (!s.Enabled) continue;
+            if (s.CommandId is BuiltinCommands.FirstFill or BuiltinCommands.Interlock
+                && s.Rows is { } rows)
+                foreach (var row in rows)
+                    if (row.Str("par") == "T diff max")
+                        diffLimits.Add((i, Math.Abs(row.Num("val"))));
+        }
+        if (diffLimits.Count == 0) return;
+
+        for (var i = 0; i < recipe.Steps.Count; i++)
+        {
+            var s = recipe.Steps[i];
+            if (!s.Enabled || s.CommandId != CommandSpecs.Reflux) continue;
+            var dt = s.Parameters.Num("dt", 5);
+            foreach (var (k, v) in diffLimits.Where(x => x.Index <= i && x.Val < dt))
+                issues.Add(new ValidationIssue(IssueLevel.Warning, "reflux-tdiff",
+                    $"第 {i + 1} 步蒸回流 ΔT = {Fmt.Num(dt)} K，而第 {k + 1} 步的 T diff max = {Fmt.Num(v)} K——"
+                    + "回流稳态下 Tj−Tr 恒等于 ΔT，这条限值必然触发")
+                { StepId = s.StepId });
+        }
     }
 
     /// <summary>
@@ -693,6 +727,7 @@ public static class RecipeValidator
     private static string Friendly(Type t) => t.Name switch
     {
         nameof(ITemperatureControl) => "温度控制",
+        nameof(IRefluxControl) => "蒸回流（夹套跟随）",
         nameof(IStirrer) => "搅拌",
         nameof(IDosing) => "加料",
         nameof(IScalarSensor) => "标量检测（pH / 浊度 等）",

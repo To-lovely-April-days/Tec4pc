@@ -1,8 +1,8 @@
 namespace Tec.Driver.Abi;
 
 /// <summary>
-/// 设备指令表：温控 4 · 搅拌 1 · 加料 2（加料 + pH 反馈加料）· 采样 1（pH 采集）
-/// · 在线分析 4，共 12 条（流程控制与安全的 9 条在 Tec.Core 的 BuiltinCommands 里）。
+/// 设备指令表：温控 5 · 搅拌 1 · 加料 2（加料 + pH 反馈加料）· 采样 1（pH 采集）
+/// · 在线分析 4，共 13 条（流程控制与安全的 9 条在 Tec.Core 的 BuiltinCommands 里）。
 ///
 /// **一条指令 = 设备真正会做的一个动作。** 同一个动作的不同用法是参数，不是新指令——
 /// 原型按「工艺说法」列了 23 条，其中一大半落到硬件上是同一个动作：
@@ -10,7 +10,7 @@ namespace Tec.Driver.Abi;
 /// 拆成多条的代价是操作人得先选对那一条：选了「升温至」却填了更低的目标，
 /// 设备照样降温，界面却在说升温——这种对不上是配方出错的常见来源。
 ///
-/// 放在 ABI 里而不是仿真项目里：这 12 条是配方与**任何**驱动之间的共同语言，
+/// 放在 ABI 里而不是仿真项目里：这 13 条是配方与**任何**驱动之间的共同语言，
 /// 仿真机和真机必须认同一套。真机驱动要是自己另写一份「控温」，
 /// 拿仿真调好的配方插上真机就跑不了了。
 ///
@@ -37,6 +37,9 @@ public static class CommandSpecs
     public const string Gradient = "tec.temp.gradient";    // 梯度控温
     public const string Hold = "tec.temp.hold";            // 恒温保持
     public const string PassiveCool = "tec.temp.passive";  // 自然冷却
+    // 蒸回流：沿用原型的老 Id——老配方里这条从前「有意不翻译」（没有对应硬件），
+    // 现在夹套跟随能力有了，老步骤经迁移直接活过来
+    public const string Reflux = "tec.temp.reflux";        // 蒸回流（夹套跟随 Tj = Tr + ΔT）
 
     public const string Stir = "tec.stir.set";             // 搅拌（转速 0 即停机）
 
@@ -65,7 +68,7 @@ public static class CommandSpecs
     /// <summary>自然冷却按 0.5 ℃/min 估算。</summary>
     private const double PassiveRate = 0.5;
 
-    // ── 温度模块（4 条）─────────────────────────────────────────────
+    // ── 温度模块（5 条）─────────────────────────────────────────────
 
     public static IReadOnlyList<CommandDescriptor> Temperature { get; } = Attach(new[]
     {
@@ -149,7 +152,30 @@ public static class CommandSpecs
                 return TimeSpan.FromSeconds(s);
             },
             p => $"自然冷却至 {F(p.Num("target"))} ℃")
-        { IconKey = "cool" }
+        { IconKey = "cool" },
+
+        // 蒸回流：夹套跟着釜内走（Tj 目标 = Tr + ΔT）。回流建立后 Tr 停在沸点，
+        // 「到达判据」无意义——按时长结束。要求设备有夹套跟随能力（IRefluxControl）：
+        // 真机是主机采集循环里的跟随环，仿真是热模型的跟随 Tick——没有就是灰的，
+        // 不摆一个执行不出来的步骤
+        new CommandDescriptor(Reflux, "蒸回流", ModTemp, typeof(IRefluxControl),
+            new ParameterSchema(new[]
+            {
+                Field.Num("dt", "ΔT（Tj−Tr）", 5, "K", 1, 30, 0.5),
+                Field.Num("tjmax", "夹套上限", 120, "℃", 0, 300, 1),
+                Field.Num("dur", "回流时长", 60, "min", 1, null, 1)
+            })
+            { Tip = "夹套目标 = 釜内实测 + ΔT，持续跟随；釜内到沸点后停在平台上（回流建立），夹套恒高 ΔT。沸点未知时用它，不用「控温」猜目标。夹套上限之外还有设备自己的超温保护寄存器兜底。注意 ΔT 别与安全限值里的 T diff max 冲突——回流稳态下 Tj−Tr 恒等于 ΔT。" },
+            TerminationKind.Timer,
+            (p, ctx) =>
+            {
+                // 回流时长即步时长。釜内温度不动（沸点未知，不编一个）；
+                // 夹套推进到 Tr + ΔT——后续步骤的起点温度按它算
+                ctx.Jacket = ctx.Temperature + p.Num("dt", 5);
+                return TimeSpan.FromSeconds(p.Num("dur", 60) * 60);
+            },
+            p => $"蒸回流：Tj 跟随 Tr+{F(p.Num("dt", 5))} K · {F(p.Num("dur", 60))} min · Tj ≤ {F(p.Num("tjmax", 120))} ℃")
+        { IconKey = "temp-up" }
     });
 
     // ── 搅拌（1 条）────────────────────────────────────────────────
@@ -384,6 +410,7 @@ public static class CommandSpecs
             : $"{p.RowsOrEmpty.Count} 段曲线 · {F(p.RowsOrEmpty[0].Num("t"))}→{F(p.RowsOrEmpty[^1].Num("t"))} ℃",
         Hold => $"{F(p.Num("dur"))} min · ±{F(p.Num("tol"))} ℃",
         PassiveCool => $"自然冷却至 {F(p.Num("target"))} ℃",
+        Reflux => $"Tj = Tr+{F(p.Num("dt", 5))} K · {F(p.Num("dur", 60))} min",
 
         Stir => p.Num("rpm") <= 0
             ? StirImmediate(p) ? "停机" : $"停机 · 减速 {F(p.Num("ramp"))} s"

@@ -9,7 +9,7 @@ namespace Tec.Core.Recipes;
 /// 不翻译的话，打开旧配方满屏「引用了未安装的指令」——文件没坏，是程序换了说法。
 ///
 /// **只做无损翻译。** 换算得出来的（转速梯度的目标转速、定量加料的流量）照算，
-/// 换算不出来的（结晶模式、pH 上下限报警）一律不动，留给校验器报「未安装的指令」——
+/// 换算不出来的（pH 上下限报警）一律不动，留给校验器报「未安装的指令」——
 /// 猜一个默认值填进去，等于替操作人改了工艺参数，那比打不开严重得多。
 /// </summary>
 public static class RecipeMigration
@@ -81,6 +81,20 @@ public static class RecipeMigration
                 if (!p.Has("ramp")) p["ramp"] = 5d;
                 how = "「停止搅拌」→「搅拌」（转速 0）";
                 return With(step, CommandSpecs.Stir, p);
+
+            // 结晶模式（蒸回流）→ 蒸回流。从前这条**有意不翻译**（没有对应硬件，
+            // 让校验器按 missing-driver 拦）；夹套跟随能力有了之后老步骤活过来。
+            // 老参数只有回流温度 + 时长，新语义是夹套跟随：ΔT 取缺省 5 K，
+            // 夹套上限按老的回流温度 +15 ℃ 给余量——老参数里没有的数不编，
+            // 上限合不合适让用户在校验提示里核一遍
+            case CommandSpecs.Reflux when p.Has("temp"):
+                var refluxT = p.Num("temp");
+                p.Remove("temp");
+                p["dt"] = 5d;
+                p["tjmax"] = refluxT + 15;
+                if (!p.Has("dur")) p["dur"] = 45d;
+                how = $"「结晶模式（蒸回流）」→「蒸回流」（ΔT 5 K，夹套上限按原回流温度 {Fmt.Num(refluxT)}+15 ℃）";
+                return With(step, CommandSpecs.Reflux, p);
 
             // 恒速加料 → 加料，参数键一致
             case "tec.dose.rate":

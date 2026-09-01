@@ -102,6 +102,26 @@ public interface ITemperatureTuning : ICapability
     Task CancelTuningAsync(CancellationToken ct);
 }
 
+/// <summary>
+/// 蒸回流（夹套跟随）：夹套目标 = 釜内实测 + ΔT，持续跟着走。
+/// 回流的物理形态是 Tr 停在沸点平台、Tj 恒高 ΔT——固定目标的
+/// ITemperatureControl 表达不了这种随动，所以单立一个可选能力：
+/// 设备支持才提供（§3.2），HMI 的 TrTj 格子与配方校验都按 Has&lt;T&gt;() 判。
+/// 实现方自己负责限速与钳制：Tj 目标不得越过 maxTj，Tr 无效（探头断线）
+/// 必须停跟随，安全动作（SafeStop / E 级程序）之后不得把目标写回去。
+/// </summary>
+public interface IRefluxControl : ICapability
+{
+    /// <summary>开始跟随。deltaT = Tj 高出 Tr 的常差（K），maxTj = 夹套目标上限（℃）。</summary>
+    Task StartAsync(double deltaT, double maxTj, CancellationToken ct);
+
+    /// <summary>停止跟随。控温目标停在最后一次下发的值上——跟「控温」步结束后的
+    /// 语义一致，收尾往哪走由下一步（或安全停机）决定，不在这里替工艺做主。</summary>
+    Task StopAsync(CancellationToken ct);
+
+    bool Active { get; }
+}
+
 public interface IStirrer : ICapability
 {
     SpeedLimits Limits { get; }

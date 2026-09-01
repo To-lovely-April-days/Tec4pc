@@ -47,6 +47,7 @@ public static class CapabilityCommands
         CommandSpecs.Gradient => new TempGradientHandler(),
         CommandSpecs.Hold => new TempHoldHandler(),
         CommandSpecs.PassiveCool => new TempPassiveCoolHandler(),
+        CommandSpecs.Reflux => new TempRefluxHandler(),
         _ => null
     };
 
@@ -132,6 +133,32 @@ public sealed class TempHoldHandler : ICommandHandler
         var began = ctx.Now();
         await temp.SetTargetAsync(new TempTarget(temp.CurrentReactor), ct).ConfigureAwait(false);
         await DriverTime.DelayAsync(TimeSpan.FromMinutes(p.Num("dur")), ctx.TimeScale, ct).ConfigureAwait(false);
+        return new CommandOutcome(EndReason.TimerElapsed, ctx.Now() - began);
+    }
+}
+
+/// <summary>
+/// 蒸回流：把夹套跟随交给设备的 IRefluxControl（限速、钳制、断线停跟随都在
+/// 实现方），这里只管开、计时、收——取消/中止也要把跟随停掉，不停的话
+/// 步都没了夹套还在追。
+/// </summary>
+public sealed class TempRefluxHandler : ICommandHandler
+{
+    public async Task<CommandOutcome> ExecuteAsync(CommandContext ctx, CommandInput p, CancellationToken ct)
+    {
+        var reflux = ctx.Capabilities.Get<IRefluxControl>()
+            ?? throw new InvalidOperationException("该通道没有蒸回流（夹套跟随）能力");
+        var began = ctx.Now();
+        await reflux.StartAsync(p.Num("dt", 5), p.Num("tjmax", 120), ct).ConfigureAwait(false);
+        try
+        {
+            await DriverTime.DelayAsync(TimeSpan.FromMinutes(p.Num("dur", 60)), ctx.TimeScale, ct)
+                            .ConfigureAwait(false);
+        }
+        finally
+        {
+            try { await reflux.StopAsync(CancellationToken.None).ConfigureAwait(false); } catch { }
+        }
         return new CommandOutcome(EndReason.TimerElapsed, ctx.Now() - began);
     }
 }
