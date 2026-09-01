@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 设备端 HMI 的精简工作台：八件套（时钟/驱动目录/指令目录/管道/仲裁/
+       执行引擎/安全监控/归档）+ 固定台面（从 bench.json 读，格式就是工作站的
+       台面文件 BenchDoc——在工作站上摆好台面另存，拷过来就能用）。
+       不带登录/台面页/配方库/化合物库/SQLite。 -->
+
+  <PropertyGroup>
+    <RootNamespace>Tec.Hmi.Runtime</RootNamespace>
+    <AssemblyName>Tec.Hmi.Runtime</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tec.Core\Tec.Core.csproj" />
+    <ProjectReference Include="..\Tec.DriverHost\Tec.DriverHost.csproj" />
+    <ProjectReference Include="..\Tec.Hmi.Ui\Tec.Hmi.Ui.csproj" />
+    <ProjectReference Include="..\Tec.Drivers.Rd105\Tec.Drivers.Rd105.csproj" />
+    <ProjectReference Include="..\Tec.Drivers.DualStation\Tec.Drivers.DualStation.csproj" />
+    <ProjectReference Include="..\Tec.Drivers.Simulator\Tec.Drivers.Simulator.csproj" />
+  </ItemGroup>
+
+</Project>
