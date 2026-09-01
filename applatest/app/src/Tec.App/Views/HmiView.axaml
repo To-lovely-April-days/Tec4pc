@@ -597,7 +597,7 @@
                       </Border>
                       <StackPanel Orientation="Horizontal" Spacing="9">
                         <TextBlock Text="搅拌" FontSize="13" FontWeight="Bold" VerticalAlignment="Center" />
-                        <TextBlock Text="磁耦合顶置 · 桨式 · 50–1000 rpm · 扭矩上限 59 mN·m"
+                        <TextBlock Text="{Binding Cur.StirSpec}"
                                    FontSize="10.5" Foreground="#6F6F6F" VerticalAlignment="Center" />
                       </StackPanel>
                     </DockPanel>
