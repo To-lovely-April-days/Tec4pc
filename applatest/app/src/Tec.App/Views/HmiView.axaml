@@ -489,7 +489,8 @@
                         <TextBlock Text="直接控恒温器" Classes="hsmall" />
                       </StackPanel>
                     </Button>
-                    <Button Grid.Column="2" Classes="hmode" Opacity="0.38" Click="OnModeTrTj"
+                    <Button Grid.Column="2" Classes="hmode" Classes.on="{Binding Cur.ModeFollow}"
+                            Classes.dim="{Binding !Cur.CanReflux}" Click="OnModeTrTj"
                             BorderThickness="0">
                       <StackPanel>
                         <TextBlock Text="蒸回流 Tj−Tr" HorizontalAlignment="Center" />
@@ -541,12 +542,13 @@
                                   PointerPressed="OnVbTarget">
                             <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
                               <TextBlock Classes="hvbv" Text="{Binding Cur.VbTr}" />
-                              <TextBlock Classes="hvbu" Text="℃" />
+                              <TextBlock Classes="hvbu" Text="{Binding Cur.TargetUnit}" />
                             </StackPanel>
                           </Border>
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Spacing="11" Height="44"
-                                    VerticalAlignment="Bottom">
+                                    VerticalAlignment="Bottom"
+                                    IsVisible="{Binding !Cur.ModeFollow}">
                           <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center"
                                       PointerPressed="OnRadRate">
                             <Ellipse Classes="hrad" Classes.on="{Binding Cur.ByRate}" />
@@ -560,6 +562,12 @@
                                        VerticalAlignment="Center" />
                           </StackPanel>
                         </StackPanel>
+                        <!-- 蒸回流：没有速率/时长两档——夹套按 Tr+ΔT 持续跟随，
+                             变化率由 Tr 的爬升决定，写目标限速按设备最大能力 -->
+                        <TextBlock Text="夹套持续跟随 Tr+ΔT&#x0A;至沸点平台 · 上限按设备保护值"
+                                   FontSize="10.5" Foreground="#6F6F6F" VerticalAlignment="Center"
+                                   Height="44" IsVisible="{Binding Cur.ModeFollow}" />
+
                         <StackPanel IsVisible="{Binding Cur.ByRate}">
                           <TextBlock Classes="hlbl" Text="速率" />
                           <Border Classes="hvb sm" Classes.edit="{Binding Cur.RatePend}"
@@ -1495,6 +1503,10 @@
     </Style>
     <Style Selector="Button.hmode.on:pointerover /template/ ContentPresenter">
       <Setter Property="Background" Value="#4FB1B8" />
+    </Style>
+    <!-- 设备没有对应能力的模式钮：压暗但可点，点了弹「为什么不行」 -->
+    <Style Selector="Button.hmode.dim">
+      <Setter Property="Opacity" Value="0.38" />
     </Style>
     <Style Selector="TextBlock.hsmall">
       <Setter Property="FontSize" Value="9.5" /><Setter Property="Opacity" Value="0.7" />

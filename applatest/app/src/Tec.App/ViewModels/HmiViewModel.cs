@@ -262,7 +262,7 @@ public sealed class HmiViewModel : ViewModelBase
     // ── 序列步骤类型弹窗（原型 tygrid：2×3 六格）─────────────────────
     //
     // 原型的步骤库就这六个：Tr / Tj / TrTj / R / Wait / Dose。格子照摆全，
-    // 干不了的照实说：TrTj 蒸回流本驱动暂不支持（控制页同一句），
+    // 干不了的照实说：TrTj 只在设备真有夹套跟随能力（IRefluxControl）时可用，
     // Dose 只在这一路真接了泵时可用——点灰格子弹提示，不装死。
 
     public sealed record TyRow(string Key, string Name, string Desc,
@@ -284,12 +284,13 @@ public sealed class HmiViewModel : ViewModelBase
         var cur = z.SeqTypeAt(index);   // 已有的步骤把当前类型描出来（原型 cur 态）
         var hasPump = z.HasPump;
         var hasStir = z.HasStir;
+        var hasReflux = z.CanReflux;
         TyRows = new[]
         {
             new TyRow("Tr", "Tr", "釜内温度", true, cur == "Tr"),
             new TyRow("Tj", "Tj", "夹套温度", true, cur == "Tj"),
-            new TyRow("TrTj", "TrTj", "蒸回流", false, cur == "TrTj",
-                      "蒸回流 Tj−Tr：本驱动暂不支持"),
+            new TyRow("TrTj", "TrTj", "蒸回流", hasReflux, cur == "TrTj",
+                      "该设备没有夹套跟随能力（蒸回流）"),
             new TyRow("R", "R", "搅拌转速", hasStir, cur == "R",
                       "这台主机没有搅拌接口——搅拌协议未知"),
             new TyRow("Wait", "Wait", "等待", true, cur == "Wait"),
@@ -693,6 +694,7 @@ public sealed class HmiViewModel : ViewModelBase
         ["tr"] = ("目标 Tr", "℃"), ["tj"] = ("目标 Tj", "℃"), ["rate"] = ("变温速率", "℃/min"),
         ["dur"] = ("变温时长", "min"), ["rpm"] = ("搅拌转速", "rpm"),
         ["rEnd"] = ("斜坡终值", "rpm"), ["rDur"] = ("斜坡时长", "min"),
+        ["dt"] = ("蒸回流 ΔT（Tj−Tr）", "K"),
     };
 
     private HmiZoneViewModel? _kpZone;
@@ -920,6 +922,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
     private ITemperatureControl? Temp => Ch?.Capabilities.Get<ITemperatureControl>();
     private IStirrer? Stir => Ch?.Capabilities.Get<IStirrer>();
     private IDosing? Dose => Ch?.Capabilities.Get<IDosing>();
+    private IRefluxControl? Reflux => Ch?.Capabilities.Get<IRefluxControl>();
 
     public bool HasPh => Ch?.Capabilities.All.OfType<IScalarSensor>()
         .Any(s => s.Tags.Any(t => t.Tag == "pH")) == true;
@@ -930,12 +933,15 @@ public sealed class HmiZoneViewModel : ViewModelBase
     /// 面板凡涉及搅拌的显示与操作都按它收口，照加料徽章那套「—/未接」的规矩。</summary>
     internal bool HasStir => Stir is not null;
 
+    /// <summary>这一路有没有蒸回流（夹套跟随）能力。TrTj 模式钮与序列格按它亮灯（§3.2）。</summary>
+    public bool CanReflux => Reflux is not null;
+
     // ── 面板状态：设定值 / 待下发 / 开关 / 模式 ───────────────────────
 
     public Dictionary<string, double> Sets { get; } = new(StringComparer.Ordinal)
     {
         ["tr"] = 20, ["tj"] = 20, ["rate"] = 0.5, ["dur"] = 10, ["rpm"] = 200,
-        ["rEnd"] = 0, ["rDur"] = 0,
+        ["rEnd"] = 0, ["rDur"] = 0, ["dt"] = 5,
     };
     public Dictionary<string, double> Pending { get; } = new(StringComparer.Ordinal);
 
@@ -956,6 +962,8 @@ public sealed class HmiZoneViewModel : ViewModelBase
         "tr" or "tj" => Temp is { } t ? (t.Limits.Min, t.Limits.Max) : (-40, 180),
         "rate" => Temp is { } t2 ? (0.05, t2.Limits.MaxRatePerMin) : (0.05, 16),
         "dur" => (0.1, 999),
+        "dt" => (1, 30),          // 与指令声明的 ΔT 范围一致
+
         "rpm" or "rEnd" => Stir is { } s ? (s.Limits.Min, s.Limits.Max) : (0, 1000),
         "rDur" => (0, 999),
         _ => (0, 0)
@@ -1108,19 +1116,25 @@ public sealed class HmiZoneViewModel : ViewModelBase
     { "Tj" => "夹套控温 Tj", "TrTj" => "蒸回流 Tj−Tr", _ => "釜内控温 Tr" };
     public bool ModeTr => Mode == "Tr";
     public bool ModeTj => Mode == "Tj";
-    public bool ByDur => RampBy == "dur";
+    /// <summary>蒸回流（夹套跟随）模式。速率/时长两档在这个模式下没有意义——
+    /// 跟随的变化率由 Tr 的爬升决定，写 TG 的限速是设备最大能力。</summary>
+    public bool ModeFollow => Mode == "TrTj";
+    public bool ByDur => RampBy == "dur" && !ModeFollow;
 
     public string TrText => F1(TrVal) + (TrVal is null ? "" : " ℃");
     // 釜上的「设定」牌念**已下发**的值：待下发的改动只亮在输入格的琥珀色里，
-    // 别让图上的数抢在「下发设定值」之前变
-    public string? TrSetText => Mode != "Tj" ? $"设定 {F1(Sets["tr"])} ℃" : null;
+    // 别让图上的数抢在「下发设定值」之前变。蒸回流没有 Tr 目标（Tr 由沸点决定），
+    // 牌子念的是跟随差
+    public string? TrSetText => Mode == "Tj" ? null
+        : ModeFollow ? $"ΔT {F1(Sets["dt"])} K" : $"设定 {F1(Sets["tr"])} ℃";
     public string PhText => PhVal is { } p ? p.ToString("0.00") : "—";
     public bool VesselRunning => TempOn || EngineRunning;
 
     public string TjBox => F1(TjVal);
     public string TjNote => Mode == "Tj" ? $"设定 {F1(Pv("tj"))}"
+        : ModeFollow ? $"跟随 Tr+{F1(Sets["dt"])}"
         : Temp is { } t ? $"上限 {Txt.Fx(t.Limits.Max)}" : "—";
-    public bool TjHi => Mode == "Tj";
+    public bool TjHi => Mode is "Tj" or "TrTj";
     public string DtBox => TrVal is { } a && TjVal is { } b ? Sg(a - b) : "—";
     // 热流方向照实说：Tj 比 Tr 热是夹套在**给**热（加热补偿），
     // Tr 比 Tj 热才是釜里在放热（夹套在收）。原型演示稿把 −6.2 K 标成
@@ -1155,14 +1169,15 @@ public sealed class HmiZoneViewModel : ViewModelBase
         ? $"转速 {s.Limits.Min:0}–{s.Limits.Max:0} rpm"
         : "本机无搅拌接口 · 搅拌协议未知";
 
-    public string VbTr => F1(Pv(Mode == "Tj" ? "tj" : "tr"));
+    public string VbTr => F1(Pv(TargetKey));
     public string VbRate => (Pv("rate") < 0 ? "−" : "") + Math.Abs(Pv("rate")).ToString("0.0");
     public string VbDur => Fmt.Hms(TimeSpan.FromMinutes(Math.Max(0, Pv("dur"))));
     public string VbRpm => Pv("rpm").ToString("0");
     public string VbREnd => Pv("rEnd") > 0 ? Pv("rEnd").ToString("0") : "—";
     public string VbRDur => Pv("rDur") > 0 ? Txt.Fx(Pv("rDur")) : "—";
-    public bool ByRate => RampBy == "rate";
-    public string TargetLabel => $"目标 {(Mode == "Tj" ? "Tj" : "Tr")}";
+    public bool ByRate => RampBy == "rate" && !ModeFollow;
+    public string TargetLabel => ModeFollow ? "ΔT（Tj−Tr）" : $"目标 {(Mode == "Tj" ? "Tj" : "Tr")}";
+    public string TargetUnit => ModeFollow ? "K" : "℃";
     public string RampValLabel => ByRate ? "速率" : "时长";
 
     /// <summary>底部安全条：直接念安全层此刻的册子，不抄原型里的展示数。</summary>
@@ -1189,8 +1204,9 @@ public sealed class HmiZoneViewModel : ViewModelBase
     /// <summary>侧栏那颗通道钮的状态：绿点（在动）与图标（液体亮青）。</summary>
     public bool RailRun => EngineRunning || TempOn;
     public string RailIcon => RailRun ? "hmi-reactor-run" : "hmi-reactor";
-    /// <summary>把目标值那格映射到当前控温对象的键（键盘按它记待下发）。</summary>
-    public string TargetKey => Mode == "Tj" ? "tj" : "tr";
+    /// <summary>把目标值那格映射到当前控温对象的键（键盘按它记待下发）。
+    /// 蒸回流模式那一格是跟随差 ΔT——回流没有温度目标，Tr 停在哪由沸点决定。</summary>
+    public string TargetKey => Mode switch { "Tj" => "tj", "TrTj" => "dt", _ => "tr" };
 
     // ── 日志（面板本地，最近三条上屏）────────────────────────────────
 
@@ -1218,7 +1234,11 @@ public sealed class HmiZoneViewModel : ViewModelBase
     public void SwitchMode(string m)
     {
         if (GuardEngine()) return;
-        if (m == "TrTj") { _owner.Toast("蒸回流 Tj−Tr：本驱动暂不支持"); return; }
+        if (m == "TrTj" && !CanReflux)
+        {
+            _owner.Toast("蒸回流 Tj−Tr：该设备没有夹套跟随能力");
+            return;
+        }
         if (Mode == m) return;
         Mode = m;
         Log("模式", "切换到 " + ModeName);
@@ -1242,6 +1262,11 @@ public sealed class HmiZoneViewModel : ViewModelBase
     private void IssueTemp()
     {
         if (Temp is not { } t) return;
+        if (Mode == "TrTj")
+        {
+            IssueReflux(t);
+            return;
+        }
         var kind = Mode == "Tj" ? TempChannelKind.Jacket : TempChannelKind.Reactor;
         var target = Pv(Mode == "Tj" ? "tj" : "tr");
         var cur = Mode == "Tj" ? t.CurrentJacket : t.CurrentReactor;
@@ -1250,6 +1275,29 @@ public sealed class HmiZoneViewModel : ViewModelBase
             : Math.Abs(target - cur) / Math.Max(0.1, Pv("dur"));
         rate = Math.Clamp(rate, 0.05, Math.Max(0.05, t.Limits.MaxRatePerMin));
         _ = t.RampAsync(target, rate, kind, CancellationToken.None);
+    }
+
+    /// <summary>
+    /// 手动开蒸回流：ΔT 取面板设定，夹套上限取设备自己的保护上限（不另编一个数）。
+    /// 开不了（真机上 Tr 探头没接/断线会拒绝）就把温控开关弹回去并说清原因——
+    /// 不留一个看着开了实际没跟的开关。
+    /// </summary>
+    private void IssueReflux(ITemperatureControl t)
+    {
+        if (Reflux is not { } r) return;
+        var dt = Math.Clamp(Pv("dt"), 0.5, 30);
+        var cap = t.Limits.Max;
+        r.StartAsync(dt, cap, CancellationToken.None).ContinueWith(task =>
+        {
+            if (task.Exception?.GetBaseException() is not { } ex) return;
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                TempOn = false;
+                Log("拒绝", ex.Message);
+                _owner.Toast(ex.Message);
+                RaiseZone();
+            });
+        }, TaskScheduler.Default);
     }
 
     public void ToggleStir()
@@ -1652,10 +1700,10 @@ public sealed class HmiZoneViewModel : ViewModelBase
     /// <summary>面板序列的一步。字段照原型 defFields：类型 + 目标 + 到达方式 + 值 + 该步搅拌。</summary>
     public sealed class HmiSeqStep
     {
-        public string Type { get; set; } = "Tr";   // Tr / Tj / Wait / R / Dose
-        public double Tgt { get; set; } = 40;      // ℃ / rpm / mL（Wait 不用）
+        public string Type { get; set; } = "Tr";   // Tr / Tj / TrTj / Wait / R / Dose
+        public double Tgt { get; set; } = 40;      // ℃ / rpm / mL（TrTj 存 ΔT，Wait 不用）
         public string Mode { get; set; } = "rate"; // 温度: rate|time；R: now|time；Dose: rate|once
-        public double Val { get; set; } = 0.5;     // 速率，或分钟（Wait 的保持时长也在这）
+        public double Val { get; set; } = 0.5;     // 速率，或分钟（Wait 的保持、TrTj 的回流时长也在这）
         public double Rpm { get; set; } = 200;     // 该步搅拌转速
     }
 
@@ -1742,7 +1790,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
     // ── 面板序列 → 引擎指令的翻译 ───────────────────────────────────
 
     private static readonly Dictionary<string, string> SeqTypeNames = new(StringComparer.Ordinal)
-    { ["Tr"] = "Tr", ["Tj"] = "Tj", ["Wait"] = "Wait", ["R"] = "R", ["Dose"] = "加料" };
+    { ["Tr"] = "Tr", ["Tj"] = "Tj", ["TrTj"] = "Tr−Tj", ["Wait"] = "Wait", ["R"] = "R", ["Dose"] = "加料" };
 
     /// <summary>
     /// 翻译成执行引擎的步骤。每一步带着自己的搅拌转速（原型就是这么设计的）——
@@ -1784,6 +1832,14 @@ public sealed class HmiZoneViewModel : ViewModelBase
                         : ParameterSet.Of(
                             ("obj", s.Type == "Tj" ? "夹套 Tj" : "釜内 Tr"),
                             ("target", s.Tgt), ("task", "按速率"), ("rate", s.Val))
+                },
+                // 蒸回流：ΔT 是卡上的 Tgt，夹套上限取设备自己的保护上限——
+                // 不在面板另编一个数，设备超温寄存器反正也在兜底
+                "TrTj" => new Step
+                {
+                    CommandId = Tec.Driver.Abi.CommandSpecs.Reflux,
+                    Parameters = ParameterSet.Of(("dt", s.Tgt),
+                        ("tjmax", Temp?.Limits.Max ?? 180), ("dur", s.Val))
                 },
                 "Wait" => new Step
                 {
@@ -1908,6 +1964,13 @@ public sealed class HmiZoneViewModel : ViewModelBase
                     rows.Add(s.Mode == "time"
                         ? new HmiSeqRow("用时", $"{F0(s.Val)} min", "val")
                         : new HmiSeqRow("速率", $"{F0(s.Val)} ℃/min", "val"));
+                    rows.Add(new HmiSeqRow("步时长", Fmt.Hms(dur)));
+                    rows.Add(HasStir ? new HmiSeqRow("搅拌", $"{s.Rpm:0} rpm", "rpm")
+                                     : new HmiSeqRow("搅拌", "—（无搅拌）"));
+                    break;
+                case "TrTj":
+                    rows.Add(new HmiSeqRow("ΔT（Tj−Tr）", $"{F0(s.Tgt)} K", "tgt"));
+                    rows.Add(new HmiSeqRow("回流时长", $"{F0(s.Val)} min", "val"));
                     rows.Add(new HmiSeqRow("步时长", Fmt.Hms(dur)));
                     rows.Add(HasStir ? new HmiSeqRow("搅拌", $"{s.Rpm:0} rpm", "rpm")
                                      : new HmiSeqRow("搅拌", "—（无搅拌）"));
@@ -2125,6 +2188,8 @@ public sealed class HmiZoneViewModel : ViewModelBase
         {
             "Tr" => new HmiSeqStep { Type = "Tr", Tgt = 40, Mode = "rate", Val = 0.5, Rpm = keep },
             "Tj" => new HmiSeqStep { Type = "Tj", Tgt = 40, Mode = "rate", Val = 0.5, Rpm = keep },
+            // TrTj：Tgt 存 ΔT（缺省与指令声明一致 5 K），Val 存回流时长
+            "TrTj" => new HmiSeqStep { Type = "TrTj", Tgt = 5, Mode = "rate", Val = 30, Rpm = keep },
             "Wait" => new HmiSeqStep { Type = "Wait", Val = 30, Rpm = keep },
             "R" => new HmiSeqStep { Type = "R", Tgt = 300, Mode = "now", Val = 1, Rpm = keep },
             _ => new HmiSeqStep { Type = "Dose", Tgt = 10, Mode = "rate", Val = 1.2, Rpm = keep },
@@ -2171,6 +2236,10 @@ public sealed class HmiZoneViewModel : ViewModelBase
                         _owner.OpenKeypadCustom($"目标 {s.Type}", "℃", lo, hi,
                             v => { s.Tgt = v; SaveSeq(); RefreshSeq(); });
                         break;
+                    case "TrTj":
+                        _owner.OpenKeypadCustom("蒸回流 ΔT（Tj−Tr）", "K", 1, 30,
+                            v => { s.Tgt = v; SaveSeq(); RefreshSeq(); });
+                        break;
                     case "R":
                         var (rl, rh) = RangeOf("rpm");
                         _owner.OpenKeypadCustom("目标转速", "rpm", rl, rh,
@@ -2193,6 +2262,10 @@ public sealed class HmiZoneViewModel : ViewModelBase
                         break;
                     case "Tr" or "Tj":
                         _owner.OpenKeypadCustom("变温用时", "min", 0.1, 999,
+                            v => { s.Val = v; SaveSeq(); RefreshSeq(); });
+                        break;
+                    case "TrTj":
+                        _owner.OpenKeypadCustom("回流时长", "min", 1, 999,
                             v => { s.Val = v; SaveSeq(); RefreshSeq(); });
                         break;
                     case "Wait":
@@ -2273,6 +2346,12 @@ public sealed class HmiZoneViewModel : ViewModelBase
         {
             // 在面板层用**卡片序号**说人话——校验器报的是翻译件步号，对不上这 6 张卡
             _owner.Toast($"序列第 {k + 1} 步是搅拌——这台主机没有搅拌接口，删掉它再启动");
+            return;
+        }
+        if (!CanReflux && _seq.FindIndex(s => s.Type == "TrTj") is var k2 and >= 0)
+        {
+            // 老序列文件里可能存着别的设备编的 TrTj 步（选格子时已按能力拦，这里兜底）
+            _owner.Toast($"序列第 {k2 + 1} 步是蒸回流——该设备没有夹套跟随能力，删掉它再启动");
             return;
         }
         var (rec, map) = TranslateSeq();
@@ -2409,9 +2488,10 @@ public sealed class HmiZoneViewModel : ViewModelBase
         nameof(RateBox), nameof(RateOff), nameof(RateNote), nameof(HeadName), nameof(HeadRt),
         nameof(HeadCtl), nameof(HeadNote), nameof(HeadPct), nameof(EngineRunning),
         nameof(Therm), nameof(ThermOn), nameof(ThermText),
-        nameof(Mode), nameof(ModeName), nameof(ModeTr), nameof(ModeTj), nameof(ByDur),
+        nameof(Mode), nameof(ModeName), nameof(ModeTr), nameof(ModeTj), nameof(ModeFollow),
+        nameof(CanReflux), nameof(ByDur),
         nameof(TempOn), nameof(StirOn), nameof(TrOn), nameof(PhOn),
-        nameof(RampBy), nameof(ByRate), nameof(TargetLabel), nameof(RampValLabel),
+        nameof(RampBy), nameof(ByRate), nameof(TargetLabel), nameof(TargetUnit), nameof(RampValLabel),
         nameof(VbTr), nameof(VbRate), nameof(VbDur), nameof(VbRpm), nameof(VbREnd), nameof(VbRDur),
         nameof(NowLine1), nameof(NowLine2), nameof(StirNow), nameof(PendCount), nameof(LimChipList),
         nameof(LastLog), nameof(HasCommit), nameof(CommitText), nameof(TrPend), nameof(RatePend),
@@ -2420,7 +2500,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
 
     public bool HasCommit => Pending.Count > 0;
     public string CommitText => $"下发设定值（{Pending.Count} 项）";
-    public bool TrPend => IsPending(Mode == "Tj" ? "tj" : "tr");
+    public bool TrPend => IsPending(TargetKey);
     public bool RatePend => IsPending("rate");
     public bool DurPend => IsPending("dur");
     public bool RpmPend => IsPending("rpm");
