@@ -5,7 +5,7 @@ namespace Tec.Drivers.Simulator;
 /// <summary>
 /// 双通道反应器 RD-105。一台设备开出 2 个通道，每个孔位自带温度控制 + 搅拌 + 背景灯。
 /// 指令是静态声明的——没连硬件也要能编辑配方（§3.3）。
-/// 它认领温度模块 4 条与搅拌 1 条。
+/// 它认领温度模块 5 条与搅拌 1 条。
 /// </summary>
 public sealed class Rd105ReactorDriver : IDeviceDriver
 {
@@ -20,7 +20,7 @@ public sealed class Rd105ReactorDriver : IDeviceDriver
         SimulatorIncluded = true,
         IconKey = "rd105",
         Description = "100 mL 玻璃夹套釜 ×2 · 自带顶置搅拌 · −40…180 ℃；控温走 RD105 控制器。",
-        Capabilities = new[] { nameof(ITemperatureControl), nameof(IStirrer), nameof(IIllumination) }
+        Capabilities = new[] { nameof(ITemperatureControl), nameof(IRefluxControl), nameof(IStirrer), nameof(IIllumination) }
     };
 
     public ParameterSchema ConnectionSchema { get; } = new(new[]
@@ -37,9 +37,12 @@ public sealed class Rd105ReactorDriver : IDeviceDriver
         Field.Sel("釜规格", "反应釜规格", new[] { "25 mL", "50 mL", "100 mL", "250 mL" }, "100 mL"),
         Field.Sel("釜材质", "材质", new[] { "玻璃", "哈氏合金", "316L" }, "玻璃"),
         Field.Sel("搅拌桨", "搅拌桨", new[] { "锚式", "桨式", "磁子" }, "锚式"),
-        Field.Sel("温度探头", "温度探头", new[] { "Pt100 四线", "Pt1000", "热电偶 K" }, "Pt100 四线")
+        Field.Sel("温度探头", "温度探头", new[] { "Pt100 四线", "Pt1000", "热电偶 K" }, "Pt100 四线"),
+        // 仿真热模型的料液沸点：Tr 到这里停在平台上（潜热吃掉多余的热）。
+        // 只影响仿真——真机的沸点由釜里的料决定，程序不知道也不该编
+        Field.Num("沸点", "料液沸点（仿真）", 100, "℃", 30, 300, 1)
     })
-    { Tip = "整机固定的三个配件在这里选型；它们没有独立驱动，不上台面。" };
+    { Tip = "整机固定的三个配件在这里选型；它们没有独立驱动，不上台面。「料液沸点」只喂给仿真热模型：釜温到沸点就停在平台上，蒸回流的曲线靠它才像真的。" };
 
     public IReadOnlyList<CommandDescriptor> Commands { get; } =
         CommandSpecs.Temperature.Concat(CommandSpecs.Stirring).ToList();
@@ -66,9 +69,13 @@ internal sealed class Rd105Session : SimSession
     public Rd105Session(DriverContext ctx) : base(ctx)
     {
         var chs = ctx.ChannelNumbers;
+        var boiling = ctx.Config.Num("沸点", 100);
         _wells = new ReactorWell[2];
         for (var i = 0; i < 2; i++)
-            _wells[i] = new ReactorWell(i < chs.Count ? chs[i] : 0, Emit, () => Scale, () => Now);
+            _wells[i] = new ReactorWell(i < chs.Count ? chs[i] : 0, Emit, () => Scale, () => Now)
+            {
+                BoilingPoint = boiling is > 0 and < 1000 ? boiling : 100
+            };
     }
 
     public override int WellCount => 2;
@@ -108,13 +115,14 @@ internal sealed class Rd105Session : SimSession
         foreach (var w in _wells) w.Tick(dt, Noise(0.05));
     }
 
-    // 温度四条用 ABI 的能力通用执行器（真机会话认领的是同一份——
+    // 温度五条用 ABI 的能力通用执行器（真机会话认领的是同一份——
     // 仿真调好的配方插上真机能跑）；搅拌那条带斜坡仿真的特判，留在本地
     private static readonly HandlerTable Table = new HandlerTable()
         .Add(CommandSpecs.Control, () => new TempControlHandler())
         .Add(CommandSpecs.Gradient, () => new TempGradientHandler())
         .Add(CommandSpecs.Hold, () => new TempHoldHandler())
         .Add(CommandSpecs.PassiveCool, () => new TempPassiveCoolHandler())
+        .Add(CommandSpecs.Reflux, () => new TempRefluxHandler())
         .Add(CommandSpecs.Stir, () => new StirHandler());
 
     public override ICommandHandler? Resolve(string commandId) => Table.Resolve(commandId);
@@ -145,8 +153,8 @@ internal sealed class Rd105Session : SimSession
     }
 }
 
-/// <summary>一个孔位。温度、搅拌、背景灯三项能力都由它提供。</summary>
-internal sealed class ReactorWell : ITemperatureControl
+/// <summary>一个孔位。温度、蒸回流、搅拌、背景灯四项能力都由它提供。</summary>
+internal sealed class ReactorWell : ITemperatureControl, IRefluxControl
 {
     private readonly Action<int, string, double> _emit;
     private readonly Func<double> _scale;
@@ -156,6 +164,17 @@ internal sealed class ReactorWell : ITemperatureControl
     private double _target = 25;
     private double _rate = 2;
     private bool _controlling;
+    /// <summary>最后一次下发的控温对象。夹套控温 / 蒸回流时 WaitReached 也要看对地方。</summary>
+    private TempChannelKind _kind = TempChannelKind.Reactor;
+
+    // 蒸回流（夹套跟随）状态。跟随环每拍把 _target 重写成 Tr+ΔT（钳在上限），
+    // 所以停跟随之后目标自然「停在最后一次下发的值上」——不用另存一份
+    private bool _refluxing;
+    private double _refluxDt = 5;
+    private double _refluxMax = 120;
+
+    /// <summary>夹套物理上限：Tj 无论怎么钳目标，模型都不越过它（对应量程 −40…200）。</summary>
+    private const double JacketMax = 200;
 
     public ReactorWell(int channel, Action<int, string, double> emit, Func<double> scale, Func<DateTimeOffset> now)
     {
@@ -178,12 +197,16 @@ internal sealed class ReactorWell : ITemperatureControl
     public double Duty { get; private set; }
     /// <summary>冷媒温度：自来水回路，随出力略微抬升（换热带走的热进了冷媒）。</summary>
     public double Coolant { get; private set; } = 18.6;
+    /// <summary>仿真料液的沸点：Tr 到这里停在平台上（潜热吃掉多余的热）。设备配置「沸点」喂进来。</summary>
+    public double BoilingPoint { get; set; } = 100;
     public IObservable<Sample> Temperature => _temp;
 
     public Task SetTargetAsync(TempTarget target, CancellationToken ct)
     {
         _target = Math.Clamp(target.Value, Limits.Min, Limits.Max);
+        _kind = target.Kind;
         _controlling = true;
+        _refluxing = false;     // 明确下发新目标 = 操作人/下一步接管，跟随环退位
         return Task.CompletedTask;
     }
 
@@ -191,33 +214,90 @@ internal sealed class ReactorWell : ITemperatureControl
     {
         _target = Math.Clamp(target, Limits.Min, Limits.Max);
         _rate = Math.Clamp(ratePerMin <= 0 ? 2 : ratePerMin, 0.05, Limits.MaxRatePerMin);
+        _kind = kind;
         _controlling = true;
+        _refluxing = false;
         return Task.CompletedTask;
     }
 
     public Task StopAsync(CancellationToken ct)
     {
+        // 安全动作走这里：跟随环必须一起清，不清的话下一拍又把目标写回去
         _controlling = false;
+        _refluxing = false;
         return Task.CompletedTask;
     }
 
     public Task<bool> WaitReachedAsync(double target, double tolerance, TimeSpan timeout, CancellationToken ct)
-        => SimTime.PollAsync(() => Math.Abs(CurrentReactor - target) <= tolerance, timeout, _scale(), _now, ct);
+        => SimTime.PollAsync(
+            () => Math.Abs((_kind == TempChannelKind.Jacket ? CurrentJacket : CurrentReactor) - target) <= tolerance,
+            timeout, _scale(), _now, ct);
+
+    // ── 蒸回流（IRefluxControl）───────────────────────────────────────
+    // StopAsync 与 ITemperatureControl 同签名，必须显式实现分开：
+    // 停跟随 ≠ 停控温——跟随收掉后夹套目标停在最后一次下发的值上，
+    // 收尾往哪走由下一步（或安全停机）决定
+
+    Task IRefluxControl.StartAsync(double deltaT, double maxTj, CancellationToken ct)
+    {
+        _refluxDt = Math.Clamp(deltaT, 0.5, 30);
+        _refluxMax = Math.Clamp(maxTj, Limits.Min, JacketMax);
+        _refluxing = true;
+        _controlling = true;
+        _kind = TempChannelKind.Jacket;
+        return Task.CompletedTask;
+    }
+
+    Task IRefluxControl.StopAsync(CancellationToken ct)
+    {
+        _refluxing = false;
+        return Task.CompletedTask;
+    }
+
+    public bool Active => _refluxing;
 
     /// <summary>
-    /// 一阶惯性 + 换热能力有限：越靠近目标越慢。
-    /// 这样 Setpoint 类步骤天然"只会偏慢"，与偏差模型一致（§4.3）。
+    /// 双态热模型：夹套是被控对象，釜内只通过夹套换热升降——
+    /// 蒸回流的「Tj 恒高 ΔT、Tr 爬向沸点停在平台」只有这样才画得出来。
+    /// 一阶惯性 + 换热能力有限：越靠近目标越慢，
+    /// Setpoint 类步骤天然"只会偏慢"，与偏差模型一致（§4.3）。
     /// </summary>
     public void Tick(double dt, double noise)
     {
-        if (_controlling)
+        if (_refluxing)
         {
+            // 跟随环：夹套目标 = 釜内实测 + ΔT，钳在上限。写进 _target，
+            // 所以 Tset 曲线、停跟随后的驻留值都是真值，不是另一套账
+            _target = Math.Min(CurrentReactor + _refluxDt, _refluxMax);
+            _kind = TempChannelKind.Jacket;
+        }
+
+        if (_controlling && _kind == TempChannelKind.Jacket)
+        {
+            // 夹套环：直接驱动 Tj。跟随时限速用设备最大能力（真机的跟随环
+            // 也是按 SPEED 限速写 TG），普通夹套控温按指令给的速率
+            var rate = _refluxing ? Limits.MaxRatePerMin : _rate;
+            var err = _target - CurrentJacket;
+            var maxStep = rate * dt / 60.0;
+            var move = Math.Clamp(err, -maxStep, maxStep);
+            move *= 1 - Math.Exp(-Math.Abs(err) / 3.0) * 0.35;
+            CurrentJacket = Math.Min(CurrentJacket + move, JacketMax);
+            Duty = maxStep > 0 ? Math.Clamp(move / maxStep, -1, 1) * 100 : 0;
+
+            // 釜内跟着夹套换热走：每分钟收掉温差的 30 %。
+            // ΔT 越小升得越慢——蒸回流的升温速率天然由 ΔT 决定，这是物理，不是编的
+            CurrentReactor += (CurrentJacket - CurrentReactor) * Math.Min(1, dt / 60.0 * 0.30);
+        }
+        else if (_controlling)
+        {
+            // 釜内环（串级等效）：Tr 沿限速轨迹走，夹套画在前面牵引
             var err = _target - CurrentReactor;
             var maxStep = _rate * dt / 60.0;
             var move = Math.Clamp(err, -maxStep, maxStep);
             move *= 1 - Math.Exp(-Math.Abs(err) / 3.0) * 0.35;
             CurrentReactor += move;
-            CurrentJacket = CurrentReactor + (_target - CurrentReactor) * 1.8;
+            var lead = CurrentReactor + (_target - CurrentReactor) * 1.8;
+            CurrentJacket += (Math.Min(lead, JacketMax) - CurrentJacket) * Math.Min(1, dt / 20.0);
             // 出力 = 这一拍用掉了多少「最大可用变温能力」，正加热负制冷。
             // **它是模型自己算出来的那个量**，不是为了让曲线好看另编的一路：
             // 上面那个 move 就是执行器这一拍干的活，除以 maxStep 正是占比
@@ -232,6 +312,10 @@ internal sealed class ReactorWell : ITemperatureControl
             CurrentJacket += (CurrentReactor - CurrentJacket) * 0.2;
             Duty = 0;                       // 停控 = 输出真的切断了，不是「输出为零的控温」
         }
+
+        // 沸点平台：到了就停住，多余的热变成蒸汽（回流），不再抬温。
+        // 控温目标高过沸点是到不了的——WaitReached 超时报「没到」，跟真釜一样
+        if (CurrentReactor > BoilingPoint) CurrentReactor = BoilingPoint;
 
         CurrentReactor += noise;
         CurrentJacket += noise * 1.4;

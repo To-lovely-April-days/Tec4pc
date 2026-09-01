@@ -39,11 +39,12 @@ public sealed class Harness : IAsyncDisposable
     public RunEngine Engine { get; }
     public double TimeScale { get; }
 
-    public async Task<Channel> ReactorChannelAsync(int number, bool withPump = false, bool withPh = false)
+    public async Task<Channel> ReactorChannelAsync(int number, bool withPump = false, bool withPh = false,
+                                                   ParameterSet? reactorConfig = null)
     {
         var channel = new Channel(number, "R1", 0);
 
-        var rs = await Open(new Rd105ReactorDriver(), "R1", number);
+        var rs = await Open(new Rd105ReactorDriver(), "R1", number, reactorConfig);
         channel.Attach(rs, 0, true);
 
         if (withPump)
