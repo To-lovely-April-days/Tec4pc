@@ -210,16 +210,16 @@
               <Border Height="1" Background="#e6e8e5" Margin="0,14,0,12" />
 
               <!-- 图位（原型 .lg-art）：一张位图。没提供就按原型给虚线占位。
-                   底是中灰卡：照片是透明底的银灰仪器，压在白上前后分不开，
-                   得有个比它暗的底托着；纯黑又太硬、像贴了块补丁。
-                   #6f7479 是这两头之间那一档——仪器还站得住，而全页的黑
-                   就只剩顶上那条标题栏 -->
+                   底跟左栏同白：图是透明底的仪器线稿，本来就画在白上——
+                   从前垫一块中灰（#6f7479）是怕银灰仪器压在白上分不开，
+                   实机看下来那块灰反倒像贴了张补丁，左栏平白多出一个方块。
+                   用户定：去掉底色，跟着左栏走白 -->
               <!-- 340×238：跟 252×176 同一个长宽比（1.432），换算下来正好占满
                    380 减两边 20 内边距那 340。竖着算：18 + 46 + 12 + 字标 34 + 6 +
                    副标 17 + 14 + 线 1 + 12 + 238 = 398，加版本行 17 和下内边距 18
                    共 433，机身高 440 —— 留 7px，再大就顶出去了 -->
               <Border Width="340" Height="238" HorizontalAlignment="Left"
-                      Background="#6f7479" CornerRadius="3" ClipToBounds="True">
+                      Background="White" CornerRadius="3" ClipToBounds="True">
                 <Panel>
                   <Image Source="{Binding ArtImage}" IsVisible="{Binding HasArt}"
                          Stretch="Uniform" />
@@ -228,7 +228,10 @@
                                RadiusX="2" RadiusY="2" Margin="6" />
                     <!-- 路径可能很长，得能折行：不折的话尾巴会被占位框裁掉，
                          而被裁掉的恰好是「放在哪」那一段 -->
-                    <TextBlock Text="{Binding ArtHint}" FontSize="10" Foreground="#eef0f2"
+                    <!-- 底改白之后这行字得跟着换深灰：原来的近白（#eef0f2）
+                         是配中灰底的，白底上等于没有——「图该放哪」正是
+                         没图时唯一要说清的那句话 -->
+                    <TextBlock Text="{Binding ArtHint}" FontSize="10" Foreground="#6b6f74"
                                TextAlignment="Center" LineHeight="16" TextWrapping="Wrap"
                                Margin="14,0" HorizontalAlignment="Center" VerticalAlignment="Center" />
                   </Panel>
