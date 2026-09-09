@@ -259,17 +259,18 @@
                                    Foreground="#565a5f" Margin="8" />
                         <TextBlock Grid.Column="5" Classes="cell" Text="{Binding ExpiryText}"
                                    Foreground="{Binding ExpiryBrush}" Margin="8" />
-                        <!-- 图标钮没有字，动作由提示说：钥匙 = 重置密码；
+                        <!-- 图标钮没有字，动作由提示说：环形箭头套挂锁 = 重置密码；
+                             这两枚都是圆环形，画 16px 才看得清锁梁，环径也与同行的禁用圈一致；
                              禁用圈 / 对勾 / 开锁随账号状态换（停用 / 启用 / 解锁） -->
                         <StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="7"
                                     HorizontalAlignment="Right" VerticalAlignment="Center"
                                     Margin="8,4,10,4">
                           <Button Classes="tbtn sm" Click="OnReset" ToolTip.Tip="重置密码">
-                            <ctl:TecIcon Key="ui-key" />
+                            <ctl:TecIcon Key="ui-pwd-reset" Size="16" />
                           </Button>
                           <Button Classes="tbtn sm" Click="OnToggle"
                                   IsEnabled="{Binding CanToggle}" ToolTip.Tip="{Binding ToggleTip}">
-                            <ctl:TecIcon Key="{Binding ToggleIcon}" />
+                            <ctl:TecIcon Key="{Binding ToggleIcon}" Size="16" />
                           </Button>
                         </StackPanel>
                       </Grid>
