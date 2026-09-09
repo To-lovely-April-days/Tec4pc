@@ -18,3 +18,12 @@ TecStudio 现场资源目录
 调试运行时是：
 
   app\src\Tec.App\bin\Debug\net8.0\Resources\login-visual.png
+
+  Videos\videos.json      「视频演示」页的目录（分类与课程）。程序自带一份模板：
+                        课名排好了、视频还没录，页面上照实标「待录制」。
+                        视频录好后把文件放进 Videos\，把文件名填进对应课的
+                        file 字段（相对 Videos\ 的路径），页面左下角点刷新。
+                        目录里写了文件、文件夹里却没有的课标「未放入」；
+                        封面图（poster）、时长（durationSec）、章节时间码（at）
+                        不知道就别填，界面照实显示「待定」「—」。
+  Videos\*.mp4 …         视频文件本身。交给系统默认播放器放，格式以它认的为准。

@@ -1,0 +1,348 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctl="urn:tec:ctl"
+             x:Class="Tec.App.Views.VideoView">
+
+  <!--
+    视频演示页。三栏照配方库那套：240 分类栏 ｜ 课程卡片 ｜ 342 详情栏，
+    栏与栏之间是 6px 白缝（全程序统一的「这里断开」写法，不画 1px 线）。
+    两个分类（搅拌混合放大 / 软件教程）都来自 Resources\Videos\videos.json，
+    页面上没有一个写死的课名——目录改了、视频放进来，刷新就变。
+  -->
+
+  <Grid ColumnDefinitions="240,*,342" Background="White">
+
+    <!-- ═ 左：分类 ═ -->
+    <Border Grid.Column="0" Background="White" ClipToBounds="True">
+      <DockPanel>
+        <Border DockPanel.Dock="Top" Height="24" Background="{StaticResource Shell}">
+          <DockPanel Margin="10,0">
+            <TextBlock DockPanel.Dock="Right" Text="{Binding CatCount}" FontSize="10.5"
+                       Foreground="#9aa0a6" VerticalAlignment="Center" />
+            <TextBlock Text="视频演示" FontSize="12.5" FontWeight="SemiBold" Foreground="White"
+                       VerticalAlignment="Center" />
+          </DockPanel>
+        </Border>
+
+        <!-- 底：视频目录在哪 + 刷新 / 打开文件夹。现场换视频的入口就是这两个钮 -->
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource ThemeFill}" Padding="12,10,12,12"
+                Margin="0,6,0,0">
+          <StackPanel Spacing="6">
+            <TextBlock Text="视频目录" FontSize="11.5" Foreground="#55595e" />
+            <TextBlock Text="{Binding DirText}" FontSize="10" Foreground="#8a8f94"
+                       TextWrapping="Wrap" LineHeight="14" />
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+              <Button Classes="tbtn sm" Command="{Binding Refresh}" ToolTip.Tip="重新读取目录（改了 videos.json 或放进新视频之后）">
+                <ctl:TecIcon Key="ui-ex-refresh" />
+              </Button>
+              <Button Classes="tbtn sm" Command="{Binding OpenFolder}" ToolTip.Tip="打开视频文件夹">
+                <ctl:TecIcon Key="ui-dest-local" Size="15" />
+              </Button>
+            </StackPanel>
+          </StackPanel>
+        </Border>
+
+        <!-- 分类没有时这一栏也说清楚，不留一块白 -->
+        <StackPanel Margin="12,12,12,8" Spacing="7" IsVisible="{Binding !HasCatalog}">
+          <TextBlock Text="没有分类" FontSize="13" Foreground="#6b6f74" />
+          <TextBlock Text="目录文件读进来之后，分类会列在这里。" FontSize="11.5"
+                     Foreground="#959a9f" LineHeight="19" TextWrapping="Wrap" />
+        </StackPanel>
+
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <ItemsControl ItemsSource="{Binding Categories}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Border Classes="rxitem" Classes.sel="{Binding IsSelected}" PointerPressed="OnCategoryPressed">
+                  <Grid ColumnDefinitions="6,*">
+                    <Border Grid.Column="0" Background="{Binding IsSelected, Converter={x:Static ctl:Is.SelBar}}" />
+                    <StackPanel Grid.Column="1" Margin="8,8,10,9">
+                      <TextBlock Text="{Binding Name}" Classes="rn" />
+                      <TextBlock Text="{Binding Sub}" FontSize="10.5" Foreground="#959a9f" Margin="0,3,0,0"
+                                 TextWrapping="Wrap" LineHeight="15" />
+                      <TextBlock Text="{Binding CountText}" FontSize="10.5" Foreground="#757a7f" Margin="0,4,0,0" />
+                    </StackPanel>
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </DockPanel>
+    </Border>
+
+    <!-- ═ 中：课程卡片 ═ -->
+    <Border Grid.Column="1" Background="White" Padding="6,0,6,0">
+      <DockPanel>
+        <!-- 分类页头：26 细体名 + 引言 + 计数（配方库主区同款） -->
+        <StackPanel DockPanel.Dock="Top" Margin="20,12,20,0" IsVisible="{Binding HasCategory}">
+          <TextBlock Text="{Binding CatName}" FontSize="26" FontWeight="Light" Foreground="#383b3f" />
+          <TextBlock Text="{Binding CatIntro}" FontSize="11" Foreground="#9ea2a6" Margin="0,5,0,0"
+                     TextWrapping="Wrap" LineHeight="17" IsVisible="{Binding HasCatIntro}" />
+          <TextBlock Text="{Binding CatMeta}" FontSize="11" Foreground="#757a7f" Margin="0,6,0,0" />
+        </StackPanel>
+
+        <!-- 空态：没有目录文件 / 文件读坏了。把路径写全，说清该放哪 -->
+        <Border DockPanel.Dock="Top" IsVisible="{Binding !HasCatalog}"
+                Background="{StaticResource ThemeFill}" CornerRadius="3" Padding="22,26" Margin="20,16,20,0">
+          <StackPanel Spacing="7">
+            <TextBlock Text="{Binding EmptyTitle}" FontSize="15" Foreground="#6b6f74" />
+            <TextBlock Text="{Binding EmptyBody}" FontSize="12" Foreground="#959a9f" LineHeight="19"
+                       TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+
+        <!-- 底：状态一句话（放了什么 / 为什么没放出来） -->
+        <Border DockPanel.Dock="Bottom" Height="30" Margin="20,0,20,8" IsVisible="{Binding HasStatus}">
+          <TextBlock Text="{Binding StatusLine}" FontSize="11" Foreground="#55595e"
+                     VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+        </Border>
+
+        <ScrollViewer Margin="20,14,14,0" VerticalScrollBarVisibility="Auto">
+          <ItemsControl ItemsSource="{Binding Lessons}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <!-- 卡片照开始页的实验磁贴：外圈 2px 选中蓝、内边距走里面的 StackPanel -->
+                <Border Classes="vcard" Classes.on="{Binding IsSelected}" PointerPressed="OnCardPressed"
+                        ToolTip.Tip="{Binding Summary}">
+                  <StackPanel Margin="8,8,8,10">
+                    <!-- 封面位。有封面放封面；没有就是一块面色 + 一枚播放三角，
+                         不摆一张假的视频截图 -->
+                    <Border Classes="vposter">
+                      <Panel>
+                        <Image Source="{Binding Poster}" IsVisible="{Binding HasPoster}" Stretch="UniformToFill" />
+                        <ctl:TecIcon Key="ui-sim-play" Size="26" Tint="#9aa0a6" IsVisible="{Binding !HasPoster}"
+                                     HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <Border Classes="st" Classes.ready="{Binding IsReady}" Classes.missing="{Binding IsMissing}"
+                                Classes.todo="{Binding IsTodo}" HorizontalAlignment="Right" VerticalAlignment="Top"
+                                Margin="0,6,6,0">
+                          <TextBlock Text="{Binding StatusText}" />
+                        </Border>
+                      </Panel>
+                    </Border>
+                    <TextBlock Text="{Binding Title}" Classes="vtitle" />
+                    <TextBlock Text="{Binding MetaLine}" Classes="vmeta" />
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </DockPanel>
+    </Border>
+
+    <!-- ═ 右：这一课的详情 ═ -->
+    <Border Grid.Column="2" Background="{StaticResource ThemeGap}">
+      <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel>
+          <Border Classes="vblk" IsVisible="{Binding !HasLesson}">
+            <StackPanel Spacing="7">
+              <TextBlock Text="没有选中的课" FontSize="13.5" Foreground="#757a7f" />
+              <TextBlock Text="点中间的一张卡片，这里显示它的要点、讲义和播放按钮。"
+                         FontSize="11.5" Foreground="#9ea2a6" LineHeight="18" TextWrapping="Wrap" />
+            </StackPanel>
+          </Border>
+
+          <StackPanel IsVisible="{Binding HasLesson}">
+            <!-- 标题块 + 播放 -->
+            <Border Classes="vblk">
+              <StackPanel>
+                <TextBlock Text="{Binding Sel.Title}" FontSize="21" FontWeight="Light" Foreground="#303337"
+                           TextWrapping="Wrap" LineHeight="28" />
+                <TextBlock Text="{Binding Sel.Summary}" Classes="intro left" Margin="0,8,0,0"
+                           IsVisible="{Binding Sel.HasSummary}" />
+
+                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                  <Border Classes="st" Classes.ready="{Binding Sel.IsReady}" Classes.missing="{Binding Sel.IsMissing}"
+                          Classes.todo="{Binding Sel.IsTodo}">
+                    <TextBlock Text="{Binding Sel.StatusText}" />
+                  </Border>
+                  <TextBlock Text="{Binding Sel.DurationText}" FontSize="11" Foreground="#757a7f"
+                             VerticalAlignment="Center" />
+                </StackPanel>
+
+                <ItemsControl ItemsSource="{Binding Sel.Tags}" Margin="0,10,0,0" IsVisible="{Binding Sel.HasTags}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Border Classes="chip" Margin="0,0,6,6">
+                        <TextBlock Text="{Binding}" FontSize="10.5" Foreground="#4b4f54" />
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,12,0,0">
+                  <Button Classes="btn primary" Content="播放" Height="30" MinWidth="96"
+                          Command="{Binding Play}" IsEnabled="{Binding Sel.CanPlay}" />
+                  <Button Classes="btn" Content="去对应页面" Height="30" Command="{Binding GoPage}"
+                          IsVisible="{Binding Sel.HasGo}" />
+                </StackPanel>
+                <TextBlock Text="{Binding Sel.PlayHint}" FontSize="10.5" Foreground="#a1a5a9"
+                           TextWrapping="Wrap" LineHeight="15" Margin="0,8,0,0" />
+              </StackPanel>
+            </Border>
+
+            <!-- 课程要点：章节大纲。时间码不知道就是「—」，不编 -->
+            <Border Classes="vblk" IsVisible="{Binding Sel.HasChapters}">
+              <StackPanel>
+                <TextBlock Text="课程要点" Classes="vsect" />
+                <ItemsControl ItemsSource="{Binding Sel.Chapters}" Margin="0,8,0,0">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Grid ColumnDefinitions="44,*" Margin="0,0,0,8">
+                        <TextBlock Grid.Column="0" Text="{Binding AtText}" Classes="mono"
+                                   Foreground="#8a8f94" VerticalAlignment="Top" Margin="0,1,0,0" />
+                        <StackPanel Grid.Column="1">
+                          <TextBlock Text="{Binding Title}" FontSize="12" Foreground="#292b2e" TextWrapping="Wrap" />
+                          <TextBlock Text="{Binding Note}" FontSize="10.5" Foreground="#8a8f94"
+                                     TextWrapping="Wrap" LineHeight="15" Margin="0,2,0,0"
+                                     IsVisible="{Binding HasNote}" />
+                        </StackPanel>
+                      </Grid>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </Border>
+
+            <!-- 课程讲义 -->
+            <Border Classes="vblk">
+              <StackPanel>
+                <TextBlock Text="课程讲义" Classes="vsect" />
+                <TextBlock Text="{Binding Sel.Course}" FontSize="11.5" Foreground="#3b3f44" LineHeight="19"
+                           TextWrapping="Wrap" Margin="0,8,0,0" IsVisible="{Binding Sel.HasCourse}" />
+                <TextBlock Text="讲义还没有写。视频录好后把讲义填进 videos.json 的 course 字段，这里就会显示。"
+                           FontSize="11" Foreground="#a1a5a9" LineHeight="17" TextWrapping="Wrap"
+                           Margin="0,8,0,0" IsVisible="{Binding !Sel.HasCourse}" />
+              </StackPanel>
+            </Border>
+
+            <!-- 文件 -->
+            <Border Classes="vblk">
+              <StackPanel>
+                <TextBlock Text="文件" Classes="vsect" />
+                <TextBlock Text="{Binding Sel.FileText}" Classes="mono" Foreground="#6b6f74"
+                           TextWrapping="Wrap" Margin="0,8,0,0" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </StackPanel>
+      </ScrollViewer>
+    </Border>
+  </Grid>
+
+  <UserControl.Styles>
+    <!-- 分类行：与配方库列表同一套（平铺细行 + 1px 分隔 + 6px 选中条） -->
+    <Style Selector="Border.rxitem">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="#ececec" />
+      <Setter Property="BorderThickness" Value="0,0,0,1" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Border.rxitem:pointerover">
+      <Setter Property="Background" Value="{StaticResource HovBg}" />
+    </Style>
+    <Style Selector="Border.rxitem.sel">
+      <Setter Property="Background" Value="{StaticResource SelBg}" />
+    </Style>
+    <Style Selector="Border.rxitem TextBlock.rn">
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="Foreground" Value="#1b1b1b" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+    <Style Selector="Border.rxitem.sel TextBlock.rn">
+      <Setter Property="Foreground" Value="{StaticResource SelTx}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <!-- 课程卡片：照开始页磁贴的尺寸感（宽一档，封面 16:9） -->
+    <Style Selector="Border.vcard">
+      <Setter Property="Width" Value="236" />
+      <Setter Property="Background" Value="{StaticResource ThemeFill}" />
+      <Setter Property="CornerRadius" Value="2" />
+      <Setter Property="Margin" Value="0,0,10,10" />
+      <Setter Property="BorderThickness" Value="2" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Border.vcard:pointerover">
+      <Setter Property="Background" Value="#dee3e8" />
+    </Style>
+    <Style Selector="Border.vcard.on">
+      <Setter Property="BorderBrush" Value="{StaticResource MenuBlue}" />
+    </Style>
+    <Style Selector="Border.vposter">
+      <Setter Property="Height" Value="122" />
+      <Setter Property="Background" Value="White" />
+      <Setter Property="ClipToBounds" Value="True" />
+      <Setter Property="CornerRadius" Value="2" />
+    </Style>
+    <Style Selector="TextBlock.vtitle">
+      <Setter Property="FontSize" Value="12.5" />
+      <Setter Property="Foreground" Value="#22262b" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+      <Setter Property="Margin" Value="2,8,2,0" />
+    </Style>
+    <Style Selector="TextBlock.vmeta">
+      <Setter Property="FontSize" Value="10.5" />
+      <Setter Property="Foreground" Value="#959a9f" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+      <Setter Property="Margin" Value="2,3,2,0" />
+    </Style>
+
+    <!-- 状态小签：三态三色，绿=能放、琥珀=文件没放进来、灰=还没录 -->
+    <Style Selector="Border.st">
+      <Setter Property="CornerRadius" Value="2" />
+      <Setter Property="Padding" Value="6,1" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Background" Value="#f4f4f3" />
+      <Setter Property="BorderBrush" Value="#e4e6e3" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="Border.st TextBlock">
+      <Setter Property="FontSize" Value="10" />
+      <Setter Property="Foreground" Value="#8a8f94" />
+    </Style>
+    <Style Selector="Border.st.ready">
+      <Setter Property="Background" Value="#e3f3e8" />
+      <Setter Property="BorderBrush" Value="#bfe0cb" />
+    </Style>
+    <Style Selector="Border.st.ready TextBlock">
+      <Setter Property="Foreground" Value="#0e7a3e" />
+    </Style>
+    <Style Selector="Border.st.missing">
+      <Setter Property="Background" Value="#fdf8ec" />
+      <Setter Property="BorderBrush" Value="#e8d6a8" />
+    </Style>
+    <Style Selector="Border.st.missing TextBlock">
+      <Setter Property="Foreground" Value="#8a6100" />
+    </Style>
+
+    <!-- 参数小标签（配方库 .chip 同款） -->
+    <Style Selector="Border.chip">
+      <Setter Property="Background" Value="#f4f4f3" />
+      <Setter Property="BorderBrush" Value="#e4e6e3" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="2" />
+      <Setter Property="Padding" Value="6,2" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <!-- 右栏的块：面色块 + 6px 白缝分隔（属性栏那套） -->
+    <Style Selector="Border.vblk">
+      <Setter Property="Background" Value="{StaticResource ThemeFill}" />
+      <Setter Property="Padding" Value="18,14,18,16" />
+      <Setter Property="Margin" Value="0,0,0,6" />
+    </Style>
+    <Style Selector="TextBlock.vsect">
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="Foreground" Value="#292b2e" />
+    </Style>
+  </UserControl.Styles>
+</UserControl>

@@ -137,6 +137,7 @@
         <Button Classes="menu" Content="配料表"      Command="{Binding Go}" CommandParameter="5" Classes.on="{Binding IsCharge}" />
         <Button Classes="menu" Content="运行"        Command="{Binding Go}" CommandParameter="6" Classes.on="{Binding IsRun}" />
         <Button Classes="menu" Content="数据导出"    Command="{Binding Go}" CommandParameter="7" Classes.on="{Binding IsExport}" />
+        <Button Classes="menu" Content="视频演示"    Command="{Binding Go}" CommandParameter="8" Classes.on="{Binding IsVideo}" />
       </StackPanel>
 
       <!-- 运行控制：黑药丸 + 三颗圆钮（运行 / 停止 / 暂停）。
@@ -308,6 +309,9 @@
       </ContentControl>
       <ContentControl IsVisible="{Binding IsExport}" Content="{Binding Export}">
         <ContentControl.ContentTemplate><DataTemplate><v:ExportView /></DataTemplate></ContentControl.ContentTemplate>
+      </ContentControl>
+      <ContentControl IsVisible="{Binding IsVideo}" Content="{Binding Video}">
+        <ContentControl.ContentTemplate><DataTemplate><v:VideoView /></DataTemplate></ContentControl.ContentTemplate>
       </ContentControl>
     </Panel>
     </DockPanel>

@@ -14,7 +14,7 @@ namespace Tec.App.ViewModels;
 public sealed class MainViewModel : ViewModelBase
 {
     public const int TabStart = 0, TabBench = 1, TabRecipe = 2, TabLib = 3,
-                     TabCompounds = 4, TabCharge = 5, TabRun = 6, TabExport = 7;
+                     TabCompounds = 4, TabCharge = 5, TabRun = 6, TabExport = 7, TabVideo = 8;
 
     private int _tab = TabStart;
 
@@ -42,6 +42,7 @@ public sealed class MainViewModel : ViewModelBase
         };
         Run = new RunViewModel(ws);
         Export = new ExportViewModel(ws);
+        Video = new VideoViewModel(ws, this);
 
         // 登录页。进入工作站后回开始页——每个班次从同一个地方开始
         Login = new LoginViewModel(ws, onEntered: () => Tab = TabStart);
@@ -188,6 +189,7 @@ public sealed class MainViewModel : ViewModelBase
     public ChargeViewModel Charge { get; }
     public RunViewModel Run { get; }
     public ExportViewModel Export { get; }
+    public VideoViewModel Video { get; }
     public LoginViewModel Login { get; }
     public RelayCommand Logout { get; }
 
@@ -218,6 +220,7 @@ public sealed class MainViewModel : ViewModelBase
         {
             if (!Set(ref _tab, value)) return;
             if (value == TabExport) Export.Reload();
+            if (value == TabVideo) Video.Reload();   // 现场改了 videos.json 或放进新视频，切过来就看见
             // 配料表算的是「库里的物性 × 配方里的加料」，两边都可能在别的页上改过，
             // 切过来的时候重算一遍，别让人看着一张过时的表
             if (value == TabCharge) Charge.Reload();
@@ -232,7 +235,8 @@ public sealed class MainViewModel : ViewModelBase
             // ——空转时九成的 CPU 在那儿（实测见 RunViewModel.Heavy 的注释）
             Run.SetOnPage(value == TabRun);
             RaiseAll(nameof(IsStart), nameof(IsBench), nameof(IsRecipe), nameof(IsLib),
-                     nameof(IsCompounds), nameof(IsCharge), nameof(IsRun), nameof(IsExport));
+                     nameof(IsCompounds), nameof(IsCharge), nameof(IsRun), nameof(IsExport),
+                     nameof(IsVideo));
         }
     }
 
@@ -244,6 +248,7 @@ public sealed class MainViewModel : ViewModelBase
     public bool IsCharge => _tab == TabCharge;
     public bool IsRun => _tab == TabRun;
     public bool IsExport => _tab == TabExport;
+    public bool IsVideo => _tab == TabVideo;
 
     /// <summary>标题栏上的实验名。改过还没存的带一个星号。</summary>
     public string DocTitle => Workspace.Store.Title;
