@@ -251,15 +251,9 @@
           <TextBlock Text="{Binding T.Lead}" FontSize="11.5"
                      Foreground="#757a7f" Margin="0,6,0,0" />
 
-          <!-- 首次启动的提示（黄条）：初始密码是公开值，明说 -->
-          <Border Margin="0,16,0,0" Background="#fdf8ec" BorderBrush="#e8d6a8"
-                  BorderThickness="1" CornerRadius="2" IsVisible="{Binding ShowSeedNote}">
-            <Grid ColumnDefinitions="3,*">
-              <Border Grid.Column="0" Background="#dba32c" />
-              <TextBlock Grid.Column="1" Text="{Binding SeedNote}" FontSize="11.5"
-                         Foreground="#8a6100" LineHeight="17" TextWrapping="Wrap"
-                         Margin="9,8" />
-            </Grid>
+          <!-- 首次启动的提示：初始密码是公开值，明说。说明段（Border.note），不是黄条 -->
+          <Border Classes="note" Margin="0,16,0,0" IsVisible="{Binding ShowSeedNote}">
+            <TextBlock Text="{Binding SeedNote}" />
           </Border>
 
           <!-- 错误条（红条） -->
@@ -309,15 +303,9 @@
             </Button>
           </StackPanel>
 
-          <!-- 忘记密码的说明（黄条，点上面那个链接开关） -->
-          <Border Margin="0,12,0,0" Background="#fdf8ec" BorderBrush="#e8d6a8"
-                  BorderThickness="1" CornerRadius="2" IsVisible="{Binding ShowReset}">
-            <Grid ColumnDefinitions="3,*">
-              <Border Grid.Column="0" Background="#dba32c" />
-              <TextBlock Grid.Column="1" Text="{Binding T.ResetNote}" FontSize="11.5"
-                         Foreground="#8a6100" LineHeight="17" TextWrapping="Wrap"
-                         Margin="9,8" />
-            </Grid>
+          <!-- 忘记密码的说明（点上面那个链接开关）。说明段（Border.note），不是黄条 -->
+          <Border Classes="note" Margin="0,12,0,0" IsVisible="{Binding ShowReset}">
+            <TextBlock Text="{Binding T.ResetNote}" />
           </Border>
 
           <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Right"

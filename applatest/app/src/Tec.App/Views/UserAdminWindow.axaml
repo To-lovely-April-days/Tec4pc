@@ -108,9 +108,8 @@
 
         <StackPanel DockPanel.Dock="Top">
           <TextBlock Text="用户管理" FontSize="26" FontWeight="Light" Foreground="#383b3f" />
-          <Border BorderBrush="#dadcd9" BorderThickness="3,0,0,0" Padding="10,0,0,0" Margin="0,7,0,0">
-            <TextBlock FontSize="11" Foreground="#757a7f" LineHeight="18" TextWrapping="Wrap"
-                       Text="账号只停用不删除：名字已写进历史记录，删了记录就指向不存在的人。&#10;所有账号操作（新增、停用、改角色、重置密码）连同操作人与时间写入审计追踪。" />
+          <Border Classes="note" Margin="0,7,0,0">
+            <TextBlock Text="账号只停用不删除：名字已写进历史记录，删了记录就指向不存在的人。&#10;所有账号操作（新增、停用、改角色、重置密码）连同操作人与时间写入审计追踪。" />
           </Border>
 
           <!-- 工具条 -->

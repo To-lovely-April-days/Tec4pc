@@ -895,6 +895,22 @@
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
 
+    <!-- 说明段：左侧一道浅灰细杠 + 一段小字灰文（用户管理页头那种，原型 .rnote 的调子）。
+         提醒、说明、后果告知在这套界面里都是安静的一段字——不铺黄底、不描边、
+         不放三角叹号。以前几处「黄条」（重置密码 / 首次登录必改 / 登录页初始密码
+         与忘记密码）跟整体不是一路，统一到这一款 -->
+    <Style Selector="Border.note">
+      <Setter Property="BorderBrush" Value="#dadcd9" />
+      <Setter Property="BorderThickness" Value="3,0,0,0" />
+      <Setter Property="Padding" Value="10,0,0,0" />
+    </Style>
+    <Style Selector="Border.note TextBlock">
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="Foreground" Value="#757a7f" />
+      <Setter Property="LineHeight" Value="18" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
     <Style Selector="ComboBox.sel">
       <Setter Property="Height" Value="26" />
       <Setter Property="MinHeight" Value="26" />
