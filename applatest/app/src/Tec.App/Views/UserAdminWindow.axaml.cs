@@ -45,9 +45,11 @@ public sealed class UserRow
         ExpiryBrush = Brush(expColor);
 
         ToggleLabel = u.Disabled ? "启用" : u.Locked ? "解锁" : "停用";
+        // 钮上没有字了（改成圆圈图标钮），图标随状态换，提示把动作说全
+        ToggleIcon = u.Disabled ? "ui-ok" : u.Locked ? "ui-unlock" : "ui-user-off";
         // 停用自己 = 把自己关在门外，而且没有第二个人能把你放回来
         CanToggle = !(isSelf && !u.Disabled && !u.Locked);
-        ToggleTip = CanToggle ? null : "不能停用自己";
+        ToggleTip = CanToggle ? ToggleLabel + "这个账号" : "不能停用自己";
         RoleTip = isSelf ? "不能改自己的角色" : "改角色即时生效，并写入审计追踪";
     }
 
@@ -61,6 +63,7 @@ public sealed class UserRow
     public IBrush ExpiryBrush { get; }
     public bool IsSelf { get; }
     public string ToggleLabel { get; }
+    public string ToggleIcon { get; }
     public bool CanToggle { get; }
     public string? ToggleTip { get; }
     public string RoleTip { get; }

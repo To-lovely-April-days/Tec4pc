@@ -1,5 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ctl="urn:tec:ctl"
         x:Class="Tec.App.Views.UserAdminWindow"
         Title="用户管理" Width="900" Height="620" CanResize="False"
         WindowStartupLocation="CenterOwner"
@@ -114,8 +115,11 @@
 
           <!-- 工具条 -->
           <Grid ColumnDefinitions="Auto,10,190,10,Auto,*,Auto" Margin="0,15,0,0">
-            <Button Name="AddToggle" Classes="dlgbtn primary" Height="26" MinWidth="96"
-                    FontSize="12" Content="＋ 新增用户" Click="OnToggleAdd" />
+            <!-- 按钮一律走全程序那套圆圈图标钮（tbtn）：与化合物库 / 配方库的
+                 工具条长一个样，只留页脚「关闭」是文字钮 -->
+            <Button Name="AddToggle" Classes="tbtn sm" Click="OnToggleAdd" ToolTip.Tip="新增用户">
+              <ctl:TecIcon Key="ui-cmp-cmpnew" />
+            </Button>
             <Grid Grid.Column="2">
               <TextBox Name="SearchBox" Classes="fadd" Height="26" MinHeight="26" FontSize="11.5"
                        Padding="25,0,6,0" Watermark="搜索登录名或署名" />
@@ -168,11 +172,13 @@
                 </StackPanel>
                 <StackPanel Spacing="5">
                   <TextBlock Classes="fldlbl" Text=" " />
-                  <StackPanel Orientation="Horizontal" Spacing="8">
-                    <Button Classes="dlgbtn primary" Height="28" MinWidth="58" Padding="12,0" FontSize="12"
-                            Content="添加" Click="OnAdd" />
-                    <Button Classes="dlgbtn" Height="28" MinWidth="58" Padding="12,0" FontSize="12"
-                            Content="取消" Click="OnToggleAdd" />
+                  <StackPanel Orientation="Horizontal" Spacing="8" Height="28">
+                    <Button Classes="tbtn sm" Click="OnAdd" ToolTip.Tip="添加这个账号" VerticalAlignment="Center">
+                      <ctl:TecIcon Key="ui-ok" />
+                    </Button>
+                    <Button Classes="tbtn sm" Click="OnToggleAdd" ToolTip.Tip="取消，收起" VerticalAlignment="Center">
+                      <ctl:TecIcon Key="ui-x" />
+                    </Button>
                   </StackPanel>
                 </StackPanel>
               </StackPanel>
@@ -253,12 +259,18 @@
                                    Foreground="#565a5f" Margin="8" />
                         <TextBlock Grid.Column="5" Classes="cell" Text="{Binding ExpiryText}"
                                    Foreground="{Binding ExpiryBrush}" Margin="8" />
+                        <!-- 图标钮没有字，动作由提示说：钥匙 = 重置密码；
+                             禁用圈 / 对勾 / 开锁随账号状态换（停用 / 启用 / 解锁） -->
                         <StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="7"
                                     HorizontalAlignment="Right" VerticalAlignment="Center"
-                                    Margin="8,8,10,8">
-                          <Button Classes="umsm" Content="重置密码" Click="OnReset" />
-                          <Button Classes="umsm" Content="{Binding ToggleLabel}" Click="OnToggle"
-                                  IsEnabled="{Binding CanToggle}" ToolTip.Tip="{Binding ToggleTip}" />
+                                    Margin="8,4,10,4">
+                          <Button Classes="tbtn sm" Click="OnReset" ToolTip.Tip="重置密码">
+                            <ctl:TecIcon Key="ui-key" />
+                          </Button>
+                          <Button Classes="tbtn sm" Click="OnToggle"
+                                  IsEnabled="{Binding CanToggle}" ToolTip.Tip="{Binding ToggleTip}">
+                            <ctl:TecIcon Key="{Binding ToggleIcon}" />
+                          </Button>
                         </StackPanel>
                       </Grid>
                     </Border>
