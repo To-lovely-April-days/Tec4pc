@@ -111,6 +111,19 @@ public sealed class StatTileViewModel : ViewModelBase
         && Math.Abs(d.Value) >= 99 ? "#d93025" : "#292b2e";
 
     public bool HasDuty => _ws.Pipeline.Series(Channel, "duty") is { Count: > 0 };
+
+    /// <summary>
+    /// 热源（标签 heat，需求 §2.5）：0 = TEC，1 = 电加热（未核实），2 = 电加热（已核实）。
+    /// 这一路没采到就整行不显示，与「出力」同规矩。
+    /// </summary>
+    public bool HasHeat => _ws.Pipeline.Series(Channel, "heat") is { Count: > 0 };
+    private int HeatState => Started && _ws.Pipeline.TryLatest(Channel, "heat", _ws.Clock.Now, out var h)
+        ? (int)Math.Round(h.Value) : -1;
+    public string HeatText => HeatState switch
+    { 0 => "TEC", 1 => "电加热（未核实）", 2 => "电加热（已核实）", _ => "—" };
+    /// <summary>电加热侧粗一点的深色；「未核实」用琥珀——没接反馈回路，切没切过去只能信命令。</summary>
+    public string HeatColorHex => HeatState switch { 1 => "#8a6100", 2 => "#292b2e", _ => "#292b2e" };
+    public bool HeatHot => HeatState > 0;
     public bool HasPh => _ws.ChannelOf(Channel)?.Capabilities.Get<IScalarSensor>()
                               ?.Tags.Any(t => t.Tag == "pH") ?? false;
 
@@ -286,6 +299,7 @@ public sealed class StatTileViewModel : ViewModelBase
 
     public void Tick() => RaiseAll(nameof(TrText), nameof(TjText), nameof(PhText), nameof(RpmText),
                                    nameof(DutyText), nameof(DutyColorHex), nameof(HasDuty),
+                                   nameof(HasHeat), nameof(HeatText), nameof(HeatColorHex), nameof(HeatHot),
                                    nameof(StartLine), nameof(StepNow), nameof(NotStartedDot),
                                    nameof(Started), nameof(HasPh),
                                    nameof(Off), nameof(On), nameof(HostLabel), nameof(ColorHex),

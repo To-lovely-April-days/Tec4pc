@@ -349,6 +349,14 @@
                                             <TextBlock Text="{Binding DutyText}" Classes="statv"
                                                        Foreground="{Binding DutyColorHex}" />
                                           </StackPanel>
+                                          <!-- 热源（TEC ⇄ 电加热，需求 §2.5）：同「出力」的规矩，
+                                               这一路没采到就整行不显示；「未核实」照实写，琥珀色 -->
+                                          <StackPanel Orientation="Horizontal" Spacing="5"
+                                                      IsVisible="{Binding HasHeat}">
+                                            <TextBlock Text="热源" Classes="statk" />
+                                            <TextBlock Text="{Binding HeatText}" Classes="statv"
+                                                       Foreground="{Binding HeatColorHex}" />
+                                          </StackPanel>
                                           <!-- 起跑时刻与当前步只有跑起来才有内容；没跑的时候
                                                上面那颗药丸已经说了「待机 / 未编排」，这两行留空 -->
                                           <TextBlock Text="{Binding StartLine}" FontSize="10.5" Foreground="#888d92"

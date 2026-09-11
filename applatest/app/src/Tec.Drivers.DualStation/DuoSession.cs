@@ -36,6 +36,8 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp
     private readonly TimeSpan _tick;
 
     private readonly bool[] _electric = new bool[2];
+    /// <summary>反馈 DI 与继电器对不上的那一段只报一次，对上了再报一次「已对上」。</summary>
+    private readonly bool[] _fbMismatch = new bool[2];
     private bool _ioOk;
     private int _ioFails;
 
@@ -125,9 +127,10 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp
             { Nominal = new ValueRange(-40, 180) },
         new TagDescriptor("duty", "控温输出", "%", DataShape.Scalar)
             { Nominal = new ValueRange(-100, 100) },
-        // 热源：0 = TEC，1 = 电加热。发成一路状态量，记录里看得出什么时候换的挡
+        // 热源：0 = TEC，1 = 电加热（无反馈回路，未核实），2 = 电加热（反馈已核实）。
+        // 发成一路状态量，记录里看得出什么时候换的挡、换过去有没有核实（需求 §2.5）
         new TagDescriptor("heat", "热源", "", DataShape.State)
-            { Nominal = new ValueRange(0, 1) },
+            { Nominal = new ValueRange(0, 2) },
         new TagDescriptor("fault", "设备告警字", "", DataShape.State)
             { Nominal = new ValueRange(0, 0) }
     };
@@ -241,6 +244,9 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp
             try
             {
                 var dos = await io.ReadRelaysAsync(ct).ConfigureAwait(false);
+                // 接了反馈就每拍连 DI 一起读：切换那一刻核实过不算完——接触器中途释放
+                // （电加热其实断了）或粘连（继电器已断它还吸着）只有持续盯着才看得见
+                var dis = _feedback ? await io.ReadInputsAsync(ct).ConfigureAwait(false) : null;
                 if (_ioFails > 0) { _ctx.Log?.Invoke("info", $"{InstanceId} IO8R 恢复"); _ioFails = 0; }
                 for (var w = 0; w < 2; w++)
                 {
@@ -252,7 +258,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp
                             $"{(actual ? "电加热" : "TEC")}侧，与上位机命令不符——已按实际状态记录");
                         _electric[w] = actual;
                     }
-                    Push(_rd.TempOf(w).Channel, "heat", actual ? 1 : 0, at, Quality.Good);
+                    Push(_rd.TempOf(w).Channel, "heat", HeatStateOf(w, actual, dis), at, Quality.Good);
                 }
 
                 for (var w = 0; w < 2; w++)
@@ -497,6 +503,41 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp
             }
         }
         return notes;
+    }
+
+    /// <summary>
+    /// 热源状态量（需求 §2.5）：0 = TEC，1 = 电加热（未核实），2 = 电加热（反馈已核实）。
+    /// 没接反馈回路的只能报「已发命令，未核实」，不假装核实过；接了反馈的，
+    /// 继电器与接触器辅助触点对不上就照实降级并报出来——两种不一致各有各的后果：
+    /// 继电器吸着、触点没跟上 = 电加热其实没在加热；继电器断了、触点还吸着 = 接触器粘连，
+    /// 电加热棒可能还带电。切换序列进行中（锁被占着）那 2 秒不算不一致，那正是在等它跟上。
+    /// </summary>
+    private double HeatStateOf(int w, bool relayClosed, bool[]? dis)
+    {
+        if (dis is null) return relayClosed ? 1 : 0;
+        var contactor = dis[_diIdx[w]];
+        if (contactor == relayClosed)
+        {
+            if (_fbMismatch[w])
+            {
+                _fbMismatch[w] = false;
+                _ctx.Log?.Invoke("info", $"{InstanceId} 工位 {AB(w)} 反馈 DI{_diIdx[w]} 已与继电器对上");
+            }
+            return relayClosed ? 2 : 0;
+        }
+        if (_switchLock.CurrentCount == 0) return relayClosed ? 1 : 0;   // 正在切换，等它跟上
+        if (!_fbMismatch[w])
+        {
+            _fbMismatch[w] = true;
+            if (relayClosed)
+                _ctx.Log?.Invoke("warn", $"{InstanceId} 工位 {AB(w)} 切换继电器在电加热侧，" +
+                    $"但反馈 DI{_diIdx[w]} 已掉——接触器可能已释放，电加热实际没在加热");
+            else
+                _ctx.Log?.Invoke("error", $"{InstanceId} 工位 {AB(w)} 切换继电器已断开，" +
+                    $"但反馈 DI{_diIdx[w]} 仍闭合——接触器可能粘连，电加热棒可能还带电，请到现场检查");
+        }
+        // 两种不一致都按「电加热·未核实」记：前者是命令说在电加热，后者是接触器说在电加热
+        return 1;
     }
 
     private void Push(int channel, string tag, double value, DateTimeOffset at, Quality quality)

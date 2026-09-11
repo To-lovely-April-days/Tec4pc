@@ -267,6 +267,61 @@ public sealed class DualStationDriverTests
         lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("反馈已核实"));
     }
 
+    /// <summary>跑一拍并取这一拍发出的热源状态量（通道 1 = 工位 A）。</summary>
+    private static async Task<double> HeatOnce(IDeviceSession s)
+    {
+        var got = new List<Sample>();
+        using var sub = s.Samples.Subscribe(new Collect(x => { lock (got) got.Add(x); }));
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+        lock (got) return got.Single(x => x is { Tag: "heat", Channel: 1 }).Value;
+    }
+
+    [Fact]
+    public async Task 热源状态量_无反馈回路只报未核实()
+    {
+        var b = Rig();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
+
+        Assert.Equal(0, await HeatOnce(s));                                   // TEC
+        await Temp(s, 0).SetTargetAsync(new TempTarget(120), CancellationToken.None);
+        Assert.Equal(1, await HeatOnce(s));                                   // 电加热·未核实——没接反馈就不假装核实过
+    }
+
+    [Fact]
+    public async Task 热源状态量_有反馈_对上报已核实_中途掉了降级并报出来()
+    {
+        var b = Rig();
+        b.Io.Inputs[0] = true;
+        var cfg = ParameterSet.Of((DualStationDriver.Fields.Feedback, "有"));
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(cfg), CancellationToken.None);
+
+        await Temp(s, 0).SetTargetAsync(new TempTarget(120), CancellationToken.None);
+        Assert.Equal(2, await HeatOnce(s));                                   // 电加热·已核实
+
+        // 接触器中途释放：继电器还吸着，DI 掉了——电加热其实没在加热，照实降级、报一次
+        b.Io.Inputs[0] = false;
+        Assert.Equal(1, await HeatOnce(s));
+        Assert.Equal(1, await HeatOnce(s));
+        lock (b.Logs) Assert.Single(b.Logs, l => l.Text.Contains("接触器可能已释放"));
+
+        // 又对上了：回到已核实，报一次「已对上」
+        b.Io.Inputs[0] = true;
+        Assert.Equal(2, await HeatOnce(s));
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("已与继电器对上"));
+    }
+
+    [Fact]
+    public async Task 热源状态量_继电器已断触点仍吸着_按粘连报错()
+    {
+        var b = Rig();
+        var cfg = ParameterSet.Of((DualStationDriver.Fields.Feedback, "有"));
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(cfg), CancellationToken.None);
+
+        b.Io.Inputs[0] = true;                                                 // 继电器在 TEC 侧，触点却吸着
+        Assert.Equal(1, await HeatOnce(s));                                   // 电加热棒可能还带电——不能报 TEC
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Level == "error" && l.Text.Contains("粘连"));
+    }
+
     // ── 安全停 ───────────────────────────────────────────────────────
 
     [Fact]

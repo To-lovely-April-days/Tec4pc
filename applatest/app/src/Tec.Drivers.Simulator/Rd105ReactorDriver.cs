@@ -40,9 +40,16 @@ public sealed class Rd105ReactorDriver : IDeviceDriver
         Field.Sel("温度探头", "温度探头", new[] { "Pt100 四线", "Pt1000", "热电偶 K" }, "Pt100 四线"),
         // 仿真热模型的料液沸点：Tr 到这里停在平台上（潜热吃掉多余的热）。
         // 只影响仿真——真机的沸点由釜里的料决定，程序不知道也不该编
-        Field.Num("沸点", "料液沸点（仿真）", 100, "℃", 30, 300, 1)
+        Field.Num("沸点", "料液沸点（仿真）", 100, "℃", 30, 300, 1),
+        // 热源切换（需求 §2）：字段名与真机 DualStationDriver.Fields 一字不差——
+        // 属性栏勾 / 去勾「模拟」换的是驱动身份，配置值按名字跟着设备走，
+        // 仿真里调好的阈值插上真机就是那个阈值。阈值上限 90 是死的（TEC 通路的工程上限）
+        Field.Sel("电加热切换", "电加热切换（IO8R）", new[] { "有", "无" }, "有"),
+        Field.Num("电加热切换阈值", "电加热切换阈值", 90, "℃", 40, 90, 1),
+        Field.Num("回切滞回", "回切滞回", 5, "K", 2, 20, 1),
+        Field.Sel("切换反馈", "切换反馈", new[] { "无", "有" }, "无")
     })
-    { Tip = "整机固定的三个配件在这里选型；它们没有独立驱动，不上台面。「料液沸点」只喂给仿真热模型：釜温到沸点就停在平台上，蒸回流的曲线靠它才像真的。" };
+    { Tip = "整机固定的三个配件在这里选型；它们没有独立驱动，不上台面。「料液沸点」只喂给仿真热模型：釜温到沸点就停在平台上，蒸回流的曲线靠它才像真的。热源切换四项与真机同名同义：目标高于阈值切电加热（没配就拒绝），夹套凉到阈值减滞回才回切 TEC；「切换反馈」决定状态量报「已核实」还是「未核实」。" };
 
     public IReadOnlyList<CommandDescriptor> Commands { get; } =
         CommandSpecs.Temperature.Concat(CommandSpecs.Stirring).ToList();
@@ -69,12 +76,18 @@ internal sealed class Rd105Session : SimSession
     public Rd105Session(DriverContext ctx) : base(ctx)
     {
         var chs = ctx.ChannelNumbers;
-        var boiling = ctx.Config.Num("沸点", 100);
+        var cfg = ctx.Config;
+        var boiling = cfg.Num("沸点", 100);
         _wells = new ReactorWell[2];
         for (var i = 0; i < 2; i++)
             _wells[i] = new ReactorWell(i < chs.Count ? chs[i] : 0, Emit, () => Scale, () => Now)
             {
-                BoilingPoint = boiling is > 0 and < 1000 ? boiling : 100
+                BoilingPoint = boiling is > 0 and < 1000 ? boiling : 100,
+                // 热源切换四项：与真机 DuoSession 读同名字段、同样的钳位（阈值 ≤ 90 死上限）
+                HasElectric = cfg.Str("电加热切换", "有") == "有",
+                Threshold = Math.Min(90, cfg.Num("电加热切换阈值", 90)),
+                Hysteresis = Math.Clamp(cfg.Num("回切滞回", 5), 2, 20),
+                Feedback = cfg.Str("切换反馈", "无") == "有"
             };
     }
 
@@ -102,7 +115,11 @@ internal sealed class Rd105Session : SimSession
         new TagDescriptor("Tc", "冷媒温度", "℃", DataShape.Scalar)
             { Nominal = new ValueRange(0, 40), Period = TimeSpan.FromSeconds(1) },
         new TagDescriptor("torque", "搅拌扭矩", "mN·m", DataShape.Scalar)
-            { Nominal = new ValueRange(0, 59), Period = TimeSpan.FromSeconds(1) }
+            { Nominal = new ValueRange(0, 59), Period = TimeSpan.FromSeconds(1) },
+        // 热源状态量，与真机同一路同一套编码：0 = TEC，1 = 电加热（无反馈回路，未核实），
+        // 2 = 电加热（反馈已核实）。记录里看得出什么时候换的挡、换过去有没有核实
+        new TagDescriptor("heat", "热源", "", DataShape.State)
+            { Nominal = new ValueRange(0, 2), Period = TimeSpan.FromSeconds(1) }
     };
 
     public override IReadOnlyList<ICapability> CapabilitiesOf(int well)
@@ -145,6 +162,12 @@ internal sealed class Rd105Session : SimSession
 
         await w.StopAsync(ct).ConfigureAwait(false);
         did.Add($"已切断加热输出（停在 {w.CurrentReactor:F1} ℃，此后自然冷却）");
+        // 与真机同一条：安全停把切换继电器断开、落回 TEC 侧（输出已关，接回 TEC 不带载）
+        if (w.Electric)
+        {
+            w.ForceTec();
+            did.Add("热源切换继电器已断开（落回 TEC 侧）");
+        }
 
         did.Add(w.Stirrer.CurrentRpm > 0
             ? $"搅拌保持 {w.Stirrer.CurrentRpm:F0} rpm —— 热液不搅有局部过热风险，停搅拌要在配方里写"
@@ -176,6 +199,49 @@ internal sealed class ReactorWell : ITemperatureControl, IRefluxControl
     /// <summary>夹套物理上限：Tj 无论怎么钳目标，模型都不越过它（对应量程 −40…200）。</summary>
     private const double JacketMax = 200;
 
+    // ── 热源切换（需求 §2），判据与真机 DuoSession 一字不差 ──────────
+    //  · 切入电加热按目标判：目标 > 阈值就切，不等夹套爬到阈值再换挡；
+    //  · 回切要目标 ≤ 阈值 **且** 实测夹套 ≤ 阈值 − 滞回——夹套还烫着把 TEC 接回去会烧它；
+    //  · 没配 IO8R 的，高于阈值的目标直接拒绝，理由写明；
+    //  · 每次切换都走全套序列「关输出 → 切继电器 → 核反馈 → 重开输出」，
+    //    仿真里就是 2 s 不出力（真机是 ENABLE=0 → DO → DI 2 s → ENABLE=1）。
+    public bool HasElectric { get; set; } = true;
+    public double Threshold { get; set; } = 90;
+    public double Hysteresis { get; set; } = 5;
+    /// <summary>「切换反馈」有 → 状态量报 2（已核实）；无 → 报 1（无反馈回路，未核实）。
+    /// 仿真里没有接触器可核，这一位只决定界面上那几个字——跟真机的配置语义对齐。</summary>
+    public bool Feedback { get; set; }
+    /// <summary>当前热源：false = TEC，true = 电加热。</summary>
+    public bool Electric { get; private set; }
+    private double _switchHold;             // 切换序列剩余秒数，这期间输出关着
+    private const double SwitchSeconds = 2;
+
+    /// <summary>热源状态量：0 = TEC，1 = 电加热（未核实），2 = 电加热（已核实）。</summary>
+    public int HeatState => !Electric ? 0 : Feedback ? 2 : 1;
+
+    /// <summary>安全停用：断继电器落回 TEC 侧（输出已关，不带载）。</summary>
+    public void ForceTec()
+    {
+        Electric = false;
+        _switchHold = 0;
+    }
+
+    private void EnsureSource(double target)
+    {
+        if (target <= Threshold) return;
+        if (!HasElectric)
+            throw new InvalidOperationException(
+                $"目标 {target:F1} ℃ 高于电加热切换阈值 {Threshold:F0} ℃，但这台没配 IO8R 切换模块" +
+                "——电加热用不了，这个目标上不去");
+        if (!Electric) Switch(toElectric: true);
+    }
+
+    private void Switch(bool toElectric)
+    {
+        Electric = toElectric;
+        _switchHold = SwitchSeconds;
+    }
+
     public ReactorWell(int channel, Action<int, string, double> emit, Func<double> scale, Func<DateTimeOffset> now)
     {
         Channel = channel;
@@ -203,7 +269,11 @@ internal sealed class ReactorWell : ITemperatureControl, IRefluxControl
 
     public Task SetTargetAsync(TempTarget target, CancellationToken ct)
     {
-        _target = Math.Clamp(target.Value, Limits.Min, Limits.Max);
+        var v = Math.Clamp(target.Value, Limits.Min, Limits.Max);
+        // 下发目标前先把热源切到对的一侧；切不了就拒绝，不留下发痕迹（与真机同序）
+        try { EnsureSource(v); }
+        catch (InvalidOperationException ex) { return Task.FromException(ex); }
+        _target = v;
         _kind = target.Kind;
         _controlling = true;
         _refluxing = false;     // 明确下发新目标 = 操作人/下一步接管，跟随环退位
@@ -212,7 +282,10 @@ internal sealed class ReactorWell : ITemperatureControl, IRefluxControl
 
     public Task RampAsync(double target, double ratePerMin, TempChannelKind kind, CancellationToken ct)
     {
-        _target = Math.Clamp(target, Limits.Min, Limits.Max);
+        var v = Math.Clamp(target, Limits.Min, Limits.Max);
+        try { EnsureSource(v); }
+        catch (InvalidOperationException ex) { return Task.FromException(ex); }
+        _target = v;
         _rate = Math.Clamp(ratePerMin <= 0 ? 2 : ratePerMin, 0.05, Limits.MaxRatePerMin);
         _kind = kind;
         _controlling = true;
@@ -256,6 +329,17 @@ internal sealed class ReactorWell : ITemperatureControl, IRefluxControl
 
     public bool Active => _refluxing;
 
+    /// <summary>停控 / 输出关着 / 电加热侧要降温：按自然冷却走，0.5 ℃/min，
+    /// 与排期估算里的 PASSIVE 一致；出力为 0——输出真的切断了，不是「输出为零的控温」。</summary>
+    private void NaturalCool(double dt)
+    {
+        var toward = 25 - CurrentReactor;
+        var step = 0.5 * dt / 60.0;
+        CurrentReactor += Math.Clamp(toward, -step, step);
+        CurrentJacket += (CurrentReactor - CurrentJacket) * 0.2;
+        Duty = 0;
+    }
+
     /// <summary>
     /// 双态热模型：夹套是被控对象，釜内只通过夹套换热升降——
     /// 蒸回流的「Tj 恒高 ΔT、Tr 爬向沸点停在平台」只有这样才画得出来。
@@ -268,11 +352,40 @@ internal sealed class ReactorWell : ITemperatureControl, IRefluxControl
         {
             // 跟随环：夹套目标 = 釜内实测 + ΔT，钳在上限。写进 _target，
             // 所以 Tset 曲线、停跟随后的驻留值都是真值，不是另一套账
-            _target = Math.Min(CurrentReactor + _refluxDt, _refluxMax);
+            var tg = Math.Min(CurrentReactor + _refluxDt, _refluxMax);
+            // 联锁②（与真机同）：跟随目标越过电加热阈值就走热源切换；
+            // 电加热用不了的，跟到阈值那一刻停跟随，目标驻留在阈值上
+            if (tg > Threshold && !Electric)
+            {
+                if (HasElectric) Switch(toElectric: true);
+                else { _refluxing = false; tg = Threshold; }
+            }
+            _target = tg;
             _kind = TempChannelKind.Jacket;
         }
 
-        if (_controlling && _kind == TempChannelKind.Jacket)
+        // 回切 TEC：目标已不超阈值（停控的没有目标，也算）且夹套凉到阈值 − 滞回。
+        // 切换序列进行中不叠加判断
+        if (Electric && _switchHold <= 0
+            && (!_controlling || _target <= Threshold)
+            && CurrentJacket <= Threshold - Hysteresis)
+            Switch(toElectric: false);
+
+        // 切换序列期间输出关着（真机是 ENABLE=0 → 切继电器 → 核反馈 → ENABLE=1），
+        // 这几拍按停控走：夹套不被驱动、出力为 0，_controlling 本身不动
+        var switching = _switchHold > 0;
+        if (switching) _switchHold -= dt;
+        var driving = _controlling && !switching;
+        // 电加热侧没有制冷执行器：目标在实测下面时负出力落不到任何地方，
+        // 只能自然凉——凉到阈值 − 滞回回切 TEC 之后才有主动降温
+        var electricCantCool = Electric && driving
+            && _target < (_kind == TempChannelKind.Jacket ? CurrentJacket : CurrentReactor) - 0.05;
+
+        if (electricCantCool)
+        {
+            NaturalCool(dt);
+        }
+        else if (driving && _kind == TempChannelKind.Jacket)
         {
             // 夹套环：直接驱动 Tj。跟随时限速用设备最大能力（真机的跟随环
             // 也是按 SPEED 限速写 TG），普通夹套控温按指令给的速率
@@ -288,7 +401,7 @@ internal sealed class ReactorWell : ITemperatureControl, IRefluxControl
             // ΔT 越小升得越慢——蒸回流的升温速率天然由 ΔT 决定，这是物理，不是编的
             CurrentReactor += (CurrentJacket - CurrentReactor) * Math.Min(1, dt / 60.0 * 0.30);
         }
-        else if (_controlling)
+        else if (driving)
         {
             // 釜内环（串级等效）：Tr 沿限速轨迹走，夹套画在前面牵引
             var err = _target - CurrentReactor;
@@ -305,12 +418,7 @@ internal sealed class ReactorWell : ITemperatureControl, IRefluxControl
         }
         else
         {
-            // 停控之后按自然冷却走：0.5 ℃/min，与排期估算里的 PASSIVE 一致
-            var toward = 25 - CurrentReactor;
-            var step = 0.5 * dt / 60.0;
-            CurrentReactor += Math.Clamp(toward, -step, step);
-            CurrentJacket += (CurrentReactor - CurrentJacket) * 0.2;
-            Duty = 0;                       // 停控 = 输出真的切断了，不是「输出为零的控温」
+            NaturalCool(dt);
         }
 
         // 沸点平台：到了就停住，多余的热变成蒸汽（回流），不再抬温。
@@ -329,6 +437,7 @@ internal sealed class ReactorWell : ITemperatureControl, IRefluxControl
         _emit(Channel, "dT", Math.Round(CurrentReactor - CurrentJacket, 2));
         _emit(Channel, "duty", Math.Round(Duty, 1));
         _emit(Channel, "Tc", Math.Round(Coolant, 2));
+        _emit(Channel, "heat", HeatState);
         // 设定温度只在控温时才存在：停控（自然冷却）没有设定值，
         // 这一路断掉比拿釜温顶替诚实——导出的是要签进记录的数据。
         if (_controlling) _emit(Channel, "Tset", Math.Round(_target, 2));

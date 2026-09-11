@@ -45,6 +45,15 @@
                 </StackPanel>
                 <TextBlock Text="{Binding ModeName, StringFormat='{} · {0}'}" FontSize="11"
                            Foreground="#6F6F6F" />
+                <!-- 热源（需求 §2.5）：TEC 侧灰字；电加热侧加热色粗字，
+                     「已核实 / 未核实」照实写。没有这一路的设备整段不显示 -->
+                <StackPanel Orientation="Horizontal" IsVisible="{Binding HasHeat}">
+                  <TextBlock Text=" · 热源 " FontSize="11" Foreground="#6F6F6F" />
+                  <TextBlock Text="{Binding HeatText}" FontSize="11" Foreground="#6F6F6F"
+                             IsVisible="{Binding !HeatHot}" />
+                  <TextBlock Text="{Binding HeatText}" FontSize="11" FontWeight="SemiBold"
+                             Foreground="#D9552B" IsVisible="{Binding HeatHot}" />
+                </StackPanel>
               </StackPanel>
             </DockPanel>
             <ProgressBar Grid.Row="2" Classes="hpg" Value="{Binding HeadPct}"
@@ -406,6 +415,14 @@
                     </StackPanel>
                     <TextBlock Text="{Binding Cur.ModeName, StringFormat='{} · {0}'}" FontSize="11"
                                Foreground="#6F6F6F" />
+                    <!-- 热源（需求 §2.5），与总览卡片同一段：TEC 灰字，电加热加热色粗字 -->
+                    <StackPanel Orientation="Horizontal" IsVisible="{Binding Cur.HasHeat}">
+                      <TextBlock Text=" · 热源 " FontSize="11" Foreground="#6F6F6F" />
+                      <TextBlock Text="{Binding Cur.HeatText}" FontSize="11" Foreground="#6F6F6F"
+                                 IsVisible="{Binding !Cur.HeatHot}" />
+                      <TextBlock Text="{Binding Cur.HeatText}" FontSize="11" FontWeight="SemiBold"
+                                 Foreground="#D9552B" IsVisible="{Binding Cur.HeatHot}" />
+                    </StackPanel>
                   </StackPanel>
                 </DockPanel>
                 <ProgressBar Grid.Row="2" Classes="hpg" Value="{Binding Cur.HeadPct}"

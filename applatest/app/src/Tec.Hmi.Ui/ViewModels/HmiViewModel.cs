@@ -987,6 +987,9 @@ public sealed class HmiZoneViewModel : ViewModelBase
     public double? FlowVal { get; private set; }
     public double? TotalVal { get; private set; }
     public double? TrRate { get; private set; }
+    /// <summary>热源状态量（标签 heat）：0 = TEC，1 = 电加热（未核实），2 = 电加热（已核实）；
+    /// −1 = 这台设备没有这一路（老驱动 / 没配 IO8R 的主机也照发 0，所以 −1 只在没数据时出现）。</summary>
+    public int HeatState { get; private set; } = -1;
 
     public double PaddlePhase { get; set; }
 
@@ -1024,6 +1027,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
         TotalVal = Dose?.TotalVolume;
         TcVal = Tag("Tc");
         TorqueVal = Tag("torque");
+        HeatState = Tag("heat") is { } hs ? (int)Math.Round(hs) : -1;
         FlowVal = Dose is null ? null : Tag("flow") ?? 0;
         PhVal = ReadPh();
         TrRate = MeasuredTrRate();
@@ -1114,6 +1118,15 @@ public sealed class HmiZoneViewModel : ViewModelBase
 
     public string ModeName => Mode switch
     { "Tj" => "夹套控温 Tj", "TrTj" => "蒸回流 Tj−Tr", _ => "釜内控温 Tr" };
+
+    // 热源（需求 §2.5 要求界面上说清「切到电加热了没、核实了没」）。
+    // 有这一路就一直显示：TEC 侧是灰字，电加热侧是加热色粗字——
+    // 操作人得知道现在这一路能不能制冷（电加热侧只能升不能降）。
+    // 「未核实」照原话写出来，没接反馈回路就不假装核实过
+    public bool HasHeat => HeatState >= 0;
+    public bool HeatHot => HeatState > 0;
+    public string HeatText => HeatState switch
+    { 1 => "电加热（未核实）", 2 => "电加热（已核实）", 0 => "TEC", _ => "" };
     public bool ModeTr => Mode == "Tr";
     public bool ModeTj => Mode == "Tj";
     /// <summary>蒸回流（夹套跟随）模式。速率/时长两档在这个模式下没有意义——
@@ -2488,6 +2501,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
         nameof(RateBox), nameof(RateOff), nameof(RateNote), nameof(HeadName), nameof(HeadRt),
         nameof(HeadCtl), nameof(HeadNote), nameof(HeadPct), nameof(EngineRunning),
         nameof(Therm), nameof(ThermOn), nameof(ThermText),
+        nameof(HeatState), nameof(HasHeat), nameof(HeatHot), nameof(HeatText),
         nameof(Mode), nameof(ModeName), nameof(ModeTr), nameof(ModeTj), nameof(ModeFollow),
         nameof(CanReflux), nameof(ByDur),
         nameof(TempOn), nameof(StirOn), nameof(TrOn), nameof(PhOn),
