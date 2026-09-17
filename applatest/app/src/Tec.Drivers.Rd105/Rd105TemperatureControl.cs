@@ -55,6 +55,12 @@ public sealed class Rd105TemperatureControl : ITemperatureControl
     /// <summary>当前设定值。还没下发过就是 null——不假装有一个。</summary>
     public double? Setpoint { get; private set; }
 
+    /// <summary>
+    /// 本路输出开着没有（ENABLE 的影子）。热源切换要看它：**停着的通道不该被自动切换动**——
+    /// 输出都关了，扳继电器没有意义，还会把安全停机落回 TEC 侧的继电器又扳回电加热。
+    /// </summary>
+    public bool Enabled { get; private set; }
+
     /// <summary>设备当前的告警条目（已翻成人话）。没有告警就是空的。</summary>
     public IReadOnlyList<string> Faults { get; internal set; } = Array.Empty<string>();
 
@@ -83,6 +89,7 @@ public sealed class Rd105TemperatureControl : ITemperatureControl
         await _link.Controller.SetTargetAsync(_tc, target.Value, ct).ConfigureAwait(false);
         await _link.Controller.SetEnableAsync(_tc, true, ct).ConfigureAwait(false);
         Setpoint = target.Value;
+        Enabled = true;
     }
 
     public async Task RampAsync(double target, double ratePerMin, TempChannelKind kind, CancellationToken ct)
@@ -94,6 +101,7 @@ public sealed class Rd105TemperatureControl : ITemperatureControl
         await _link.Controller.SetTargetAsync(_tc, target, ct).ConfigureAwait(false);
         await _link.Controller.SetEnableAsync(_tc, true, ct).ConfigureAwait(false);
         Setpoint = target;
+        Enabled = true;
     }
 
     /// <summary>
@@ -119,12 +127,16 @@ public sealed class Rd105TemperatureControl : ITemperatureControl
     public async Task StopAsync(CancellationToken ct)
     {
         await _link.Controller.SetEnableAsync(_tc, false, ct).ConfigureAwait(false);
+        Enabled = false;
     }
 
     /// <summary>只开/关本路输出，TG 与 SPEED 保持原样。
     /// 热源切换序列用它：先关输出→切继电器→再开回来（带载切继电器 = 触点拉弧）。</summary>
-    public Task EnableAsync(bool on, CancellationToken ct)
-        => _link.Controller.SetEnableAsync(_tc, on, ct);
+    public async Task EnableAsync(bool on, CancellationToken ct)
+    {
+        await _link.Controller.SetEnableAsync(_tc, on, ct).ConfigureAwait(false);
+        Enabled = on;
+    }
 
     /// <summary>
     /// 指令由通用执行器按能力调用，这里不自己认领指令 Id——

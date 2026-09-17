@@ -122,6 +122,24 @@ public interface IRefluxControl : ICapability
     bool Active { get; }
 }
 
+/// <summary>
+/// 热源通路（双工位主机的 TEC ⇄ 电加热切换）。界面靠它说清楚这一路**现在能往哪个方向出力**：
+/// 「TEC 加热」没启用时 TEC 侧只能制冷、电加热侧只能升温，光看一个「热源 TEC」不够——
+/// 操作人得知道这一刻要降温还是升温办不办得到。
+/// 设备支持才提供（§3.2），界面按 Has&lt;T&gt;() 判，没有就什么都不显示。
+/// </summary>
+public interface IHeatSource : ICapability
+{
+    /// <summary>TEC 反向输出加热启用了没有。false = 所有加热都走电加热棒，TEC 只用来制冷。</summary>
+    bool TecHeating { get; }
+
+    /// <summary>电加热通路可不可用（配了切换模块而且开着）。</summary>
+    bool ElectricAvailable { get; }
+
+    /// <summary>当前在哪一侧：false = TEC，true = 电加热。</summary>
+    bool OnElectric { get; }
+}
+
 public interface IStirrer : ICapability
 {
     SpeedLimits Limits { get; }

@@ -923,6 +923,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
     private IStirrer? Stir => Ch?.Capabilities.Get<IStirrer>();
     private IDosing? Dose => Ch?.Capabilities.Get<IDosing>();
     private IRefluxControl? Reflux => Ch?.Capabilities.Get<IRefluxControl>();
+    private IHeatSource? Heat => Ch?.Capabilities.Get<IHeatSource>();
 
     public bool HasPh => Ch?.Capabilities.All.OfType<IScalarSensor>()
         .Any(s => s.Tags.Any(t => t.Tag == "pH")) == true;
@@ -1125,8 +1126,15 @@ public sealed class HmiZoneViewModel : ViewModelBase
     // 「未核实」照原话写出来，没接反馈回路就不假装核实过
     public bool HasHeat => HeatState >= 0;
     public bool HeatHot => HeatState > 0;
+    /// <summary>「TEC 加热」没启用时 TEC 侧只有冷源——这一刻升不上去，牌子上就得写出来。</summary>
+    private bool CoolOnly => Heat is { TecHeating: false };
     public string HeatText => HeatState switch
-    { 1 => "电加热（未核实）", 2 => "电加热（已核实）", 0 => "TEC", _ => "" };
+    {
+        1 => "电加热（未核实）",
+        2 => "电加热（已核实）",
+        0 => CoolOnly ? "TEC（只制冷）" : "TEC",
+        _ => ""
+    };
     public bool ModeTr => Mode == "Tr";
     public bool ModeTj => Mode == "Tj";
     /// <summary>蒸回流（夹套跟随）模式。速率/时长两档在这个模式下没有意义——
@@ -1287,7 +1295,20 @@ public sealed class HmiZoneViewModel : ViewModelBase
             ? Math.Abs(Pv("rate"))
             : Math.Abs(target - cur) / Math.Max(0.1, Pv("dur"));
         rate = Math.Clamp(rate, 0.05, Math.Max(0.05, t.Limits.MaxRatePerMin));
-        _ = t.RampAsync(target, rate, kind, CancellationToken.None);
+        // 下发可能被设备拒绝（「TEC 加热」没启用又没有电加热通路时的升温目标、
+        // 超出保护范围的目标……）。**任务不能丢**：丢了的话开关看着是开的、
+        // 实际一个字都没写进控制器，跟蒸回流那条路一样把它接住
+        t.RampAsync(target, rate, kind, CancellationToken.None).ContinueWith(task =>
+        {
+            if (task.Exception?.GetBaseException() is not { } ex) return;
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                TempOn = false;
+                Log("拒绝", ex.Message);
+                _owner.Toast(ex.Message);
+                RaiseZone();
+            });
+        }, TaskScheduler.Default);
     }
 
     /// <summary>

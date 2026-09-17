@@ -5,8 +5,10 @@ namespace Tec.Core.Tests;
 
 /// <summary>
 /// 仿真反应器的热源切换（TEC ⇄ 电加热）：判据与真机 DuoSession 一字不差（需求 §2），
-/// 不插硬件也要看得到整套行为——切入按目标判、没配就拒绝、回切要等夹套凉到
-/// 阈值 − 滞回、电加热侧只能升不能降、蒸回流撞阈值的两种走法、状态量 heat 的三个值。
+/// 不插硬件也要看得到整套行为。
+///
+/// 上半段是「TEC 加热」**启用**那套（按阈值判），配置里都带 TecOn；
+/// 下半段是**出厂默认**（不启用）：TEC 只当冷源，升温一律走电加热棒，按冷热判。
 /// </summary>
 public class SimHeatSourceTests
 {
@@ -24,6 +26,10 @@ public class SimHeatSourceTests
     private static double? Heat(Harness h)
         => h.Pipeline.TryLatest(1, "heat", h.Clock.Now, out var s) ? s.Value : null;
 
+    /// <summary>「TEC 加热」启用 + 可选的其他配置——按阈值判那套测试都用它。</summary>
+    private static ParameterSet TecOn(params (string Key, object? Value)[] more)
+        => ParameterSet.Of(new (string, object?)[] { ("TEC加热", "启用") }.Concat(more).ToArray());
+
     private static double? Tset(Harness h)
         => h.Pipeline.TryLatest(1, "Tset", h.Clock.Now, out var s) ? s.Value : null;
 
@@ -32,7 +38,7 @@ public class SimHeatSourceTests
     {
         await using var h = new Harness(600);
         var ch = await h.ReactorChannelAsync(1,
-            reactorConfig: ParameterSet.Of(("切换反馈", "有"), ("沸点", 150d)));
+            reactorConfig: TecOn(("切换反馈", "有"), ("沸点", 150d)));
         var temp = ch.Capabilities.Get<ITemperatureControl>()!;
 
         await Until(() => Heat(h) == 0, 5000, "开机该在 TEC 侧");
@@ -47,7 +53,7 @@ public class SimHeatSourceTests
     public async Task 目标不过阈值_留在TEC侧()
     {
         await using var h = new Harness(600);
-        var ch = await h.ReactorChannelAsync(1);
+        var ch = await h.ReactorChannelAsync(1, reactorConfig: TecOn());
         var temp = ch.Capabilities.Get<ITemperatureControl>()!;
 
         await temp.SetTargetAsync(new TempTarget(80), default);
@@ -61,7 +67,7 @@ public class SimHeatSourceTests
     {
         await using var h = new Harness(600);
         var ch = await h.ReactorChannelAsync(1,
-            reactorConfig: ParameterSet.Of(("电加热切换", "无")));
+            reactorConfig: TecOn(("电加热切换", "无")));
         var temp = ch.Capabilities.Get<ITemperatureControl>()!;
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(
@@ -82,7 +88,7 @@ public class SimHeatSourceTests
     {
         await using var h = new Harness(600);
         var ch = await h.ReactorChannelAsync(1,
-            reactorConfig: ParameterSet.Of(("电加热切换阈值", 120d)));
+            reactorConfig: TecOn(("电加热切换阈值", 120d)));
         var temp = ch.Capabilities.Get<ITemperatureControl>()!;
 
         await temp.SetTargetAsync(new TempTarget(100), default);   // 100 > 90（不是 > 120）→ 切电加热
@@ -93,7 +99,7 @@ public class SimHeatSourceTests
     public async Task 回切要等夹套凉到阈值减滞回_电加热侧只能自然凉()
     {
         await using var h = new Harness(600);
-        var ch = await h.ReactorChannelAsync(1, reactorConfig: ParameterSet.Of(("沸点", 150d)));
+        var ch = await h.ReactorChannelAsync(1, reactorConfig: TecOn(("沸点", 150d)));
         var temp = ch.Capabilities.Get<ITemperatureControl>()!;
 
         await temp.SetTargetAsync(new TempTarget(120), default);
@@ -123,7 +129,7 @@ public class SimHeatSourceTests
     {
         await using var h = new Harness(600);
         var ch = await h.ReactorChannelAsync(1,
-            reactorConfig: ParameterSet.Of(("电加热切换", "无"), ("沸点", 150d)));
+            reactorConfig: TecOn(("电加热切换", "无"), ("沸点", 150d)));
         var temp = ch.Capabilities.Get<ITemperatureControl>()!;
         var reflux = ch.Capabilities.Get<IRefluxControl>()!;
 
@@ -141,7 +147,7 @@ public class SimHeatSourceTests
     public async Task 蒸回流撞阈值_配了电加热就切过去继续跟()
     {
         await using var h = new Harness(600);
-        var ch = await h.ReactorChannelAsync(1, reactorConfig: ParameterSet.Of(("沸点", 150d)));
+        var ch = await h.ReactorChannelAsync(1, reactorConfig: TecOn(("沸点", 150d)));
         var temp = ch.Capabilities.Get<ITemperatureControl>()!;
         var reflux = ch.Capabilities.Get<IRefluxControl>()!;
 
@@ -150,5 +156,148 @@ public class SimHeatSourceTests
         await Until(() => Heat(h) >= 1, 60000, "跟随目标越过 90 该走热源切换");
         Assert.True(reflux.Active, "切过去之后跟随不该停");
         await Until(() => temp.CurrentJacket > 100, 60000, "电加热侧跟随该继续往上走");
+    }
+
+    // ── 出厂默认：「TEC 加热」不启用——所有加热都走电加热棒 ─────────────
+
+    [Fact]
+    public async Task 默认不启用TEC加热_远低于阈值的升温也切电加热()
+    {
+        await using var h = new Harness(600);
+        var ch = await h.ReactorChannelAsync(1);
+        var temp = ch.Capabilities.Get<ITemperatureControl>()!;
+
+        await Until(() => Heat(h) == 0, 5000, "开机该在 TEC 侧");
+        await temp.SetTargetAsync(new TempTarget(60), default);
+
+        // 60 ℃ 离 90 的阈值还远，但 TEC 加热没启用——升温只有电加热棒这一条路
+        await Until(() => Heat(h) == 1, 5000, "不启用 TEC 加热时，升温一律切电加热");
+        await Until(() => temp.CurrentReactor > 50, 30000, "切过去之后该照常升温");
+    }
+
+    [Fact]
+    public async Task 默认不启用TEC加热_降温回TEC_升降一趟继电器各切一次()
+    {
+        await using var h = new Harness(600);
+        var ch = await h.ReactorChannelAsync(1);
+        var temp = ch.Capabilities.Get<ITemperatureControl>()!;
+
+        await temp.SetTargetAsync(new TempTarget(60), default);
+        await Until(() => Heat(h) == 1, 5000, "升温 → 电加热");
+        await Until(() => temp.CurrentJacket > 55, 30000, "先到温");
+
+        // 掉头降温：夹套早就在 85 ℃ 以下了，这一刻就能接回 TEC
+        await temp.SetTargetAsync(new TempTarget(20), default);
+        await Until(() => Heat(h) == 0, 10000, "降温 → 回 TEC");
+        await Until(() => temp.CurrentJacket < 40, 30000, "回到 TEC 侧才有主动制冷");
+    }
+
+    [Fact]
+    public async Task 默认不启用TEC加热_TEC侧升不上去_换挡之前只会自然凉()
+    {
+        await using var h = new Harness(600);
+        var ch = await h.ReactorChannelAsync(1,
+            reactorConfig: ParameterSet.Of(("电加热切换", "无")));   // 没有电加热通路
+        var temp = ch.Capabilities.Get<ITemperatureControl>()!;
+
+        // 先降到 10 ℃（TEC 干得了），再要求升回 40 ℃——升温没有执行器
+        await temp.SetTargetAsync(new TempTarget(10), default);
+        await Until(() => temp.CurrentReactor < 12, 30000, "TEC 制冷照常");
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => temp.SetTargetAsync(new TempTarget(40), default));
+        Assert.Contains("TEC 加热", ex.Message);
+        Assert.Contains("没配 IO8R", ex.Message);
+
+        // 拒绝了就没改目标：还守着 10 ℃，不会闷头往上爬
+        await Task.Delay(400);
+        Assert.InRange(Tset(h) ?? double.NaN, 9.5, 10.5);
+        Assert.True(temp.CurrentReactor < 15, $"Tr = {temp.CurrentReactor:F1}，不该升上去");
+    }
+
+    [Fact]
+    public async Task 默认不启用TEC加热_死区之内不换挡()
+    {
+        await using var h = new Harness(600);
+        var ch = await h.ReactorChannelAsync(1, reactorConfig: ParameterSet.Of(("热源死区", 5d)));
+        var temp = ch.Capabilities.Get<ITemperatureControl>()!;
+
+        await Until(() => Heat(h) == 0, 5000, "开机在 TEC 侧");
+        await temp.SetTargetAsync(new TempTarget(28), default);   // 差 3 K < 死区 5 K
+
+        await Task.Delay(500);
+        Assert.Equal(0, Heat(h));                                  // 没去扳继电器
+        Assert.InRange(Tset(h) ?? double.NaN, 27.5, 28.5);         // 目标照常下发
+    }
+
+    [Fact]
+    public async Task 默认不启用TEC加热_蒸回流全程走电加热()
+    {
+        await using var h = new Harness(600);
+        var ch = await h.ReactorChannelAsync(1, reactorConfig: ParameterSet.Of(("沸点", 60d)));
+        var temp = ch.Capabilities.Get<ITemperatureControl>()!;
+        var reflux = ch.Capabilities.Get<IRefluxControl>()!;
+
+        await reflux.StartAsync(8, 120, default);
+
+        // 目标 Tr+8 从一开始就在夹套之上——不启用 TEC 加热时，第一拍就得切电加热
+        await Until(() => Heat(h) >= 1, 10000, "跟随升温该切电加热");
+        Assert.True(reflux.Active);
+        await Until(() => temp.CurrentReactor > 58, 60000, "照常爬到沸点平台");
+    }
+
+    [Fact]
+    public async Task 默认不启用TEC加热_没有电加热_蒸回流当场拒绝()
+    {
+        await using var h = new Harness(600);
+        var ch = await h.ReactorChannelAsync(1,
+            reactorConfig: ParameterSet.Of(("电加热切换", "无"), ("沸点", 150d)));
+        var reflux = ch.Capabilities.Get<IRefluxControl>()!;
+        var temp = ch.Capabilities.Get<ITemperatureControl>()!;
+
+        // 跟随目标永远是 Tr+ΔT，整段都在升温——开不了就当场说，
+        // 不要先答应下来、跑起来再静默停掉（与真机 StartRefluxAsync 同一句话）
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => reflux.StartAsync(8, 120, default));
+        Assert.Contains("TEC 加热", ex.Message);
+        Assert.False(reflux.Active);
+
+        await Task.Delay(400);
+        Assert.Equal(0, Heat(h));
+        Assert.True(temp.CurrentReactor < 30, $"Tr = {temp.CurrentReactor:F1}，没答应就不该升温");
+    }
+
+    [Fact]
+    public async Task 仿真里把TEC加热打开也是当场生效()
+    {
+        await using var h = new Harness(600);
+        var cfg = new ParameterSet();                       // 出厂默认：不启用
+        var ch = await h.ReactorChannelAsync(1, reactorConfig: cfg);
+        var temp = ch.Capabilities.Get<ITemperatureControl>()!;
+
+        await temp.SetTargetAsync(new TempTarget(60), default);
+        await Until(() => Heat(h) == 1, 5000, "不启用 → 升温走电加热");
+
+        cfg["TEC加热"] = "启用";                             // 属性栏上扳开关
+        await Until(() => Heat(h) == 0, 10000, "60 ℃ 没过阈值、夹套也不烫，该当场把 TEC 接回来");
+        Assert.True(ch.Capabilities.Get<IHeatSource>()!.TecHeating);
+    }
+
+    [Fact]
+    public async Task 热源能力上报_界面据此说清这一路能往哪个方向出力()
+    {
+        await using var h = new Harness(600);
+        var off = await h.ReactorChannelAsync(1);
+        var on = await h.ReactorChannelAsync(2, reactorConfig: TecOn());
+
+        var a = off.Capabilities.Get<IHeatSource>();
+        var b = on.Capabilities.Get<IHeatSource>();
+
+        Assert.NotNull(a);
+        Assert.False(a!.TecHeating);       // 默认不启用 → 界面写「TEC（只制冷）」
+        Assert.True(a.ElectricAvailable);
+        Assert.False(a.OnElectric);
+        Assert.NotNull(b);
+        Assert.True(b!.TecHeating);        // 启用 → 界面写「TEC」
     }
 }

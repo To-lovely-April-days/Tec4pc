@@ -27,6 +27,8 @@ public sealed class DualStationDriver : IDeviceDriver
         public const string BaudIo = "IO8R波特率";
         public const string Tick = "模块轮询周期";
 
+        /// <summary>TEC 反向输出加热启不启用。「不启用」（默认）= 所有加热都走电加热棒。</summary>
+        public const string TecHeat = "TEC加热";
         public const string Threshold = "电加热切换阈值";
         public const string Hysteresis = "回切滞回";
         public const string Feedback = "切换反馈";
@@ -34,6 +36,8 @@ public sealed class DualStationDriver : IDeviceDriver
         public const string DoB = "切换DO·工位B";
         public const string DiA = "反馈DI·工位A";
         public const string DiB = "反馈DI·工位B";
+        /// <summary>冷热判定死区（K）。只在「TEC 加热」不启用时用到。</summary>
+        public const string Band = "热源死区";
     }
 
     /// <summary>测试用的链路工厂：两条串口全换成假设备，整机逻辑不插硬件就能回归。</summary>
@@ -72,9 +76,15 @@ public sealed class DualStationDriver : IDeviceDriver
         Field.Num(Rd105TecDriver.FieldOverUp, "超温上限", 180, "℃", -50, 300, 1),
         Field.Num(Rd105TecDriver.FieldOverLow, "超温下限", -40, "℃", -80, 100, 1),
         Field.Num(Rd105TecDriver.FieldMaxCurrent, "最大电流", 5, "A", 0.5, 20, 0.1),
+        // TEC 的反向输出加热启不启用。默认「不启用」：TEC 只当冷源，所有加热都走电加热棒，
+        // 继电器按「这一刻该升温还是该降温」切。启用后才回到「只有超过阈值才切电加热」那套
+        Field.Sel(Fields.TecHeat, "TEC 加热", new[] { "不启用", "启用" }, "不启用"),
         // 上限 90 是死的（用户定的：只能比 90 小）——TEC 通路的工程上限
         Field.Num(Fields.Threshold, "电加热切换阈值", 90, "℃", 40, 90, 1),
         Field.Num(Fields.Hysteresis, "回切滞回", 5, "K", 2, 20, 1),
+        // 冷热判定的死区：|目标 − 夹套| 在这个带子里就当作「到了」，保持当前热源不动。
+        // 没有它，恒温时目标在实测上下擦来擦去，继电器会跟着抖
+        Field.Num(Fields.Band, "热源切换死区", 2, "K", 0.5, 10, 0.5),
         Field.Sel(Fields.Feedback, "切换反馈", new[] { "无", "有" }, "无"),
         Field.Num(Fields.DoA, "切换 DO·工位 A", 0, "", 0, 7, 1),
         Field.Num(Fields.DoB, "切换 DO·工位 B", 1, "", 0, 7, 1),
@@ -83,7 +93,9 @@ public sealed class DualStationDriver : IDeviceDriver
     })
     {
         Tip = "超温上限就是电加热模式的最高温度——写进 RD105 自己的保护寄存器，断了通信照样生效，" +
-              "任何目标温度都不得超过它。切换阈值只能往下调（≤ 90 ℃）。「切换反馈」接了电加热" +
+              "任何目标温度都不得超过它。「TEC 加热」默认不启用：TEC 只当冷源，升温一律切电加热棒，" +
+              "「切换阈值」这时不参与判断（只剩「夹套凉到阈值−滞回 才准接回 TEC」这条保护）；" +
+              "启用后才是「目标超过阈值才切电加热」。切换阈值只能往下调（≤ 90 ℃）。「切换反馈」接了电加热" +
               "接触器辅助触点才选「有」——没接选「有」会让每次切换都等 2 秒然后报失败。"
     };
 

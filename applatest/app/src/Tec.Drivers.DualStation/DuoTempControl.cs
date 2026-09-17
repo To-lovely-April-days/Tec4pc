@@ -10,7 +10,7 @@ namespace Tec.Drivers.DualStation;
 /// 蒸回流（IRefluxControl）转发给组合会话的跟随环：跟随长在采集循环里，
 /// 这里只是开关和状态。
 /// </summary>
-public sealed class DuoTempControl : ITemperatureControl, IRefluxControl
+public sealed class DuoTempControl : ITemperatureControl, IRefluxControl, IHeatSource
 {
     private readonly DuoSession _s;
     private readonly int _well;
@@ -25,12 +25,19 @@ public sealed class DuoTempControl : ITemperatureControl, IRefluxControl
 
     public int Channel => Inner.Channel;
     public TempLimits Limits => Inner.Limits;
+
+    // ── IHeatSource：界面问「这一路现在能往哪个方向出力」──────────────
+    public bool TecHeating => _s.TecHeating;
+    public bool ElectricAvailable => _s.ElectricReady;
+    public bool OnElectric => _s.OnElectric(_well);
+
     public double CurrentReactor => Inner.CurrentReactor;
     public double CurrentJacket => Inner.CurrentJacket;
     public IObservable<Sample> Temperature => _s.Samples;
 
     public async Task SetTargetAsync(TempTarget target, CancellationToken ct)
     {
+        _s.NoteStart(_well);    // 这一路要控温了（热源切换按意图判，不按设备上的 ENABLE）
         _s.StopReflux(_well);   // 明确下发新目标 = 下一步接管，跟随环退位
         await _s.EnsureSourceAsync(_well, target.Value, ct).ConfigureAwait(false);
         await Inner.SetTargetAsync(target, ct).ConfigureAwait(false);
@@ -38,6 +45,7 @@ public sealed class DuoTempControl : ITemperatureControl, IRefluxControl
 
     public async Task RampAsync(double target, double ratePerMin, TempChannelKind kind, CancellationToken ct)
     {
+        _s.NoteStart(_well);
         _s.StopReflux(_well);
         await _s.EnsureSourceAsync(_well, target, ct).ConfigureAwait(false);
         await Inner.RampAsync(target, ratePerMin, kind, ct).ConfigureAwait(false);
@@ -49,7 +57,9 @@ public sealed class DuoTempControl : ITemperatureControl, IRefluxControl
     public Task StopAsync(CancellationToken ct)
     {
         // 停控温是安全路径（自然冷却/E 级程序/中止都走它）：跟随连压制旗一起清，
-        // 保证下一拍没有谁再把目标写回去
+        // 保证下一拍没有谁再把目标写回去。NoteStop 是给热源切换看的——
+        // 切换序列有两秒窗口，正在里头的话不许它切完再把输出打开
+        _s.NoteStop(_well);
         _s.SuppressReflux(_well);
         return Inner.StopAsync(ct);
     }

@@ -120,7 +120,14 @@ public sealed class StatTileViewModel : ViewModelBase
     private int HeatState => Started && _ws.Pipeline.TryLatest(Channel, "heat", _ws.Clock.Now, out var h)
         ? (int)Math.Round(h.Value) : -1;
     public string HeatText => HeatState switch
-    { 0 => "TEC", 1 => "电加热（未核实）", 2 => "电加热（已核实）", _ => "—" };
+    {
+        // 「TEC 加热」没启用时 TEC 侧只有冷源：这一路现在升不上去，牌子上照实写
+        0 => _ws.ChannelOf(Channel)?.Capabilities.Get<IHeatSource>() is { TecHeating: false }
+             ? "TEC（只制冷）" : "TEC",
+        1 => "电加热（未核实）",
+        2 => "电加热（已核实）",
+        _ => "—"
+    };
     /// <summary>电加热侧粗一点的深色；「未核实」用琥珀——没接反馈回路，切没切过去只能信命令。</summary>
     public string HeatColorHex => HeatState switch { 1 => "#8a6100", 2 => "#292b2e", _ => "#292b2e" };
     public bool HeatHot => HeatState > 0;

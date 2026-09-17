@@ -45,11 +45,13 @@ public sealed class Rd105ReactorDriver : IDeviceDriver
         // 属性栏勾 / 去勾「模拟」换的是驱动身份，配置值按名字跟着设备走，
         // 仿真里调好的阈值插上真机就是那个阈值。阈值上限 90 是死的（TEC 通路的工程上限）
         Field.Sel("电加热切换", "电加热切换（IO8R）", new[] { "有", "无" }, "有"),
+        Field.Sel("TEC加热", "TEC 加热", new[] { "不启用", "启用" }, "不启用"),
         Field.Num("电加热切换阈值", "电加热切换阈值", 90, "℃", 40, 90, 1),
         Field.Num("回切滞回", "回切滞回", 5, "K", 2, 20, 1),
+        Field.Num("热源死区", "热源切换死区", 2, "K", 0.5, 10, 0.5),
         Field.Sel("切换反馈", "切换反馈", new[] { "无", "有" }, "无")
     })
-    { Tip = "整机固定的三个配件在这里选型；它们没有独立驱动，不上台面。「料液沸点」只喂给仿真热模型：釜温到沸点就停在平台上，蒸回流的曲线靠它才像真的。热源切换四项与真机同名同义：目标高于阈值切电加热（没配就拒绝），夹套凉到阈值减滞回才回切 TEC；「切换反馈」决定状态量报「已核实」还是「未核实」。" };
+    { Tip = "整机固定的三个配件在这里选型；它们没有独立驱动，不上台面。「料液沸点」只喂给仿真热模型：釜温到沸点就停在平台上，蒸回流的曲线靠它才像真的。热源切换几项与真机同名同义。「TEC 加热」默认不启用：TEC 只当冷源，升温一律切电加热棒，继电器按「该升温还是该降温」切（死区之内保持不动）；启用后才是「目标高于阈值才切电加热」。夹套凉到阈值减滞回才准回切 TEC；「切换反馈」决定状态量报「已核实」还是「未核实」。" };
 
     public IReadOnlyList<CommandDescriptor> Commands { get; } =
         CommandSpecs.Temperature.Concat(CommandSpecs.Stirring).ToList();
@@ -85,8 +87,10 @@ internal sealed class Rd105Session : SimSession
                 BoilingPoint = boiling is > 0 and < 1000 ? boiling : 100,
                 // 热源切换四项：与真机 DuoSession 读同名字段、同样的钳位（阈值 ≤ 90 死上限）
                 HasElectric = cfg.Str("电加热切换", "有") == "有",
+                TecHeat = cfg.Str("TEC加热", "不启用") == "启用",
                 Threshold = Math.Min(90, cfg.Num("电加热切换阈值", 90)),
                 Hysteresis = Math.Clamp(cfg.Num("回切滞回", 5), 2, 20),
+                Band = Math.Clamp(cfg.Num("热源死区", 2), 0.5, 10),
                 Feedback = cfg.Str("切换反馈", "无") == "有"
             };
     }
@@ -129,7 +133,28 @@ internal sealed class Rd105Session : SimSession
 
     protected override void Tick(double dt)
     {
+        RefreshSwitches();
         foreach (var w in _wells) w.Tick(dt, Noise(0.05));
+    }
+
+    /// <summary>
+    /// 每拍重读属性栏上那两项「随手改、立刻生效」的配置（与真机 DuoSession 同一条规矩）：
+    /// 「TEC 加热」是个开关，人按下去就该生效，不该还要先把设备断开重连。
+    /// Context.Config 就是台面设备身上那份 ParameterSet 本体，属性栏改的也是它；
+    /// 那是个普通字典，界面线程正在写时读可能出事，撞上了就当这一拍没改到。
+    /// </summary>
+    private void RefreshSwitches()
+    {
+        try
+        {
+            var tec = Context.Config.Str("TEC加热", "不启用") == "启用";
+            var band = Math.Clamp(Context.Config.Num("热源死区", 2), 0.5, 10);
+            foreach (var w in _wells) { w.TecHeat = tec; w.Band = band; }
+        }
+        catch
+        {
+            // 下一拍再读
+        }
     }
 
     // 温度五条用 ABI 的能力通用执行器（真机会话认领的是同一份——
@@ -177,7 +202,7 @@ internal sealed class Rd105Session : SimSession
 }
 
 /// <summary>一个孔位。温度、蒸回流、搅拌、背景灯四项能力都由它提供。</summary>
-internal sealed class ReactorWell : ITemperatureControl, IRefluxControl
+internal sealed class ReactorWell : ITemperatureControl, IRefluxControl, IHeatSource
 {
     private readonly Action<int, string, double> _emit;
     private readonly Func<double> _scale;
@@ -200,39 +225,80 @@ internal sealed class ReactorWell : ITemperatureControl, IRefluxControl
     private const double JacketMax = 200;
 
     // ── 热源切换（需求 §2），判据与真机 DuoSession 一字不差 ──────────
-    //  · 切入电加热按目标判：目标 > 阈值就切，不等夹套爬到阈值再换挡；
-    //  · 回切要目标 ≤ 阈值 **且** 实测夹套 ≤ 阈值 − 滞回——夹套还烫着把 TEC 接回去会烧它；
-    //  · 没配 IO8R 的，高于阈值的目标直接拒绝，理由写明；
+    //  · 「TEC 加热」不启用（默认）：TEC 只当冷源，升温一律走电加热棒——
+    //    按「目标比被控量高还是低一个死区」切，死区之内保持现状；
+    //  · 「TEC 加热」启用：回到按阈值判，目标 > 阈值才切电加热；
+    //  · 两种模式共同：回 TEC 要实测夹套 ≤ 阈值 − 滞回——夹套还烫着把 TEC 接回去会烧它；
+    //  · 电加热用不了（没配 IO8R）时，需要加热的目标直接拒绝，理由写明；
     //  · 每次切换都走全套序列「关输出 → 切继电器 → 核反馈 → 重开输出」，
     //    仿真里就是 2 s 不出力（真机是 ENABLE=0 → DO → DI 2 s → ENABLE=1）。
     public bool HasElectric { get; set; } = true;
+    /// <summary>TEC 反向输出加热启不启用。默认 false = 所有加热都走电加热棒。</summary>
+    public bool TecHeat { get; set; }
     public double Threshold { get; set; } = 90;
     public double Hysteresis { get; set; } = 5;
+    /// <summary>冷热判定死区（K），只在 TEC 加热不启用时用到。</summary>
+    public double Band { get; set; } = 2;
     /// <summary>「切换反馈」有 → 状态量报 2（已核实）；无 → 报 1（无反馈回路，未核实）。
     /// 仿真里没有接触器可核，这一位只决定界面上那几个字——跟真机的配置语义对齐。</summary>
     public bool Feedback { get; set; }
     /// <summary>当前热源：false = TEC，true = 电加热。</summary>
     public bool Electric { get; private set; }
     private double _switchHold;             // 切换序列剩余秒数，这期间输出关着
+    private double _sinceSwitch = MinDwellSeconds;   // 距上次切换多久了（开机就允许切）
     private const double SwitchSeconds = 2;
+    /// <summary>自动切到电加热的最短间隔（仿真秒）。只拦升温方向，抢冷不等。</summary>
+    private const double MinDwellSeconds = 30;
 
     /// <summary>热源状态量：0 = TEC，1 = 电加热（未核实），2 = 电加热（已核实）。</summary>
     public int HeatState => !Electric ? 0 : Feedback ? 2 : 1;
+
+    // ── IHeatSource：界面问「这一路现在能往哪个方向出力」──────────────
+    bool IHeatSource.TecHeating => TecHeat;
+    bool IHeatSource.ElectricAvailable => HasElectric;
+    bool IHeatSource.OnElectric => Electric;
+
+    /// <summary>电加热侧只能升温；TEC 侧要升温得看「TEC 加热」启没启用。</summary>
+    private bool CanHeat => Electric || TecHeat;
+
+    /// <summary>冷源只有 TEC——电加热棒制不了冷。</summary>
+    private bool CanCool => !Electric;
 
     /// <summary>安全停用：断继电器落回 TEC 侧（输出已关，不带载）。</summary>
     public void ForceTec()
     {
         Electric = false;
         _switchHold = 0;
+        _sinceSwitch = 0;
+    }
+
+    /// <summary>
+    /// 这个目标该落在哪一侧：true = 电加热，false = TEC，null = 保持现状。
+    ///
+    /// **按夹套判，不按控温对象判**——真机的 PID 就闭在夹套上（TG 与 TC 探头都在夹套），
+    /// 换挡问的是「这一刻 PID 会往哪个方向出力」。孪生要跟真机 DuoSession.SideFor 一致，
+    /// 所以这里也恒用 Tj；「这一侧出不出得了这个方向的力」才按模型自己的被控量算。
+    /// </summary>
+    private bool? SideFor(double target)
+    {
+        if (TecHeat) return target > Threshold;
+        // 安全否决，与真机同：釜里已经不比目标凉了就别再往上加热
+        // （「恒温保持」下发的就是当刻的釜温，严格相等——这一档也得挡住）
+        if (CurrentReactor >= target) return CurrentReactor > target + Band ? false : null;
+        if (target > CurrentJacket + Band) return true;
+        if (target < CurrentJacket - Band) return false;
+        return null;
     }
 
     private void EnsureSource(double target)
     {
-        if (target <= Threshold) return;
+        if (SideFor(target) is not true) return;
         if (!HasElectric)
             throw new InvalidOperationException(
-                $"目标 {target:F1} ℃ 高于电加热切换阈值 {Threshold:F0} ℃，但这台没配 IO8R 切换模块" +
-                "——电加热用不了，这个目标上不去");
+                (TecHeat
+                    ? $"目标 {target:F1} ℃ 高于电加热切换阈值 {Threshold:F0} ℃，"
+                    : $"「TEC 加热」没启用，升温只能走电加热棒（目标 {target:F1} ℃ 高过实测），") +
+                "但这台没配 IO8R 切换模块——电加热用不了，这个目标上不去");
         if (!Electric) Switch(toElectric: true);
     }
 
@@ -240,6 +306,7 @@ internal sealed class ReactorWell : ITemperatureControl, IRefluxControl
     {
         Electric = toElectric;
         _switchHold = SwitchSeconds;
+        _sinceSwitch = 0;
     }
 
     public ReactorWell(int channel, Action<int, string, double> emit, Func<double> scale, Func<DateTimeOffset> now)
@@ -313,6 +380,14 @@ internal sealed class ReactorWell : ITemperatureControl, IRefluxControl
 
     Task IRefluxControl.StartAsync(double deltaT, double maxTj, CancellationToken ct)
     {
+        // 跟随目标永远是 Tr+ΔT，整段都在升温：TEC 加热没启用又没有电加热通路，
+        // 那就是一开始就跟不动。与真机 StartRefluxAsync 一样当场拒绝，
+        // 不要先答应下来再在 Tick 里静默停掉
+        if (!TecHeat && !HasElectric)
+            return Task.FromException(new InvalidOperationException(
+                "蒸回流开不了：「TEC 加热」没启用，夹套升温只能走电加热棒，" +
+                "但这台没配 IO8R 切换模块——要么接上切换模块，要么在设备属性里打开「TEC 加热」"));
+
         _refluxDt = Math.Clamp(deltaT, 0.5, 30);
         _refluxMax = Math.Clamp(maxTj, Limits.Min, JacketMax);
         _refluxing = true;
@@ -353,35 +428,50 @@ internal sealed class ReactorWell : ITemperatureControl, IRefluxControl
             // 跟随环：夹套目标 = 釜内实测 + ΔT，钳在上限。写进 _target，
             // 所以 Tset 曲线、停跟随后的驻留值都是真值，不是另一套账
             var tg = Math.Min(CurrentReactor + _refluxDt, _refluxMax);
-            // 联锁②（与真机同）：跟随目标越过电加热阈值就走热源切换；
-            // 电加热用不了的，跟到阈值那一刻停跟随，目标驻留在阈值上
-            if (tg > Threshold && !Electric)
+            // 联锁②（与真机同）：跟随目标要电加热就走热源切换；电加热用不了的，
+            // 跟到那一刻停跟随——TEC 加热启用时是撞上阈值，不启用时是一开始就升不动
+            if (SideFor(tg) is true && !Electric)
             {
                 if (HasElectric) Switch(toElectric: true);
-                else { _refluxing = false; tg = Threshold; }
+                else { _refluxing = false; tg = Math.Min(tg, TecHeat ? Threshold : CurrentJacket); }
             }
             _target = tg;
             _kind = TempChannelKind.Jacket;
         }
 
-        // 回切 TEC：目标已不超阈值（停控的没有目标，也算）且夹套凉到阈值 − 滞回。
+        // 自动换挡（与真机采集循环 AutoSourceAsync 同一套判据）：
+        // 回 TEC 要夹套凉到阈值 − 滞回；切电加热留一道最短间隔，只拦升温方向。
+        // 停控的通道只准落回 TEC 侧（安全侧），绝不自动切到电加热。
         // 切换序列进行中不叠加判断
-        if (Electric && _switchHold <= 0
-            && (!_controlling || _target <= Threshold)
-            && CurrentJacket <= Threshold - Hysteresis)
-            Switch(toElectric: false);
+        _sinceSwitch += dt;
+        if (_switchHold <= 0)
+        {
+            var want = _controlling ? SideFor(_target) : (Electric ? false : null);
+            if (want is { } side && side != Electric)
+            {
+                if (side)
+                {
+                    if (HasElectric && _sinceSwitch >= MinDwellSeconds) Switch(true);
+                }
+                // 「夹套凉到阈值 − 滞回 才准接回 TEC」只管**输出开着**的情形：
+                // 那条防的是让 TEC 带着载贴上超出耐温的热源。停控的通道不带载，
+                // 落回 TEC 才是继电器该待的位置（与真机 AutoSourceAsync、SafeStop 一致）
+                else if (!_controlling || CurrentJacket <= Threshold - Hysteresis) Switch(false);
+            }
+        }
 
         // 切换序列期间输出关着（真机是 ENABLE=0 → 切继电器 → 核反馈 → ENABLE=1），
         // 这几拍按停控走：夹套不被驱动、出力为 0，_controlling 本身不动
         var switching = _switchHold > 0;
         if (switching) _switchHold -= dt;
         var driving = _controlling && !switching;
-        // 电加热侧没有制冷执行器：目标在实测下面时负出力落不到任何地方，
-        // 只能自然凉——凉到阈值 − 滞回回切 TEC 之后才有主动降温
-        var electricCantCool = Electric && driving
-            && _target < (_kind == TempChannelKind.Jacket ? CurrentJacket : CurrentReactor) - 0.05;
+        // 这一侧出得了这个方向的力吗：电加热棒制不了冷；TEC 侧要升温得「TEC 加热」启用。
+        // 出不了力就只能自然凉——等自动换挡把继电器切过去才有主动出力
+        var pv = _kind == TempChannelKind.Jacket ? CurrentJacket : CurrentReactor;
+        var blocked = driving
+            && ((_target > pv + 0.05 && !CanHeat) || (_target < pv - 0.05 && !CanCool));
 
-        if (electricCantCool)
+        if (blocked)
         {
             NaturalCool(dt);
         }
@@ -409,7 +499,11 @@ internal sealed class ReactorWell : ITemperatureControl, IRefluxControl
             var move = Math.Clamp(err, -maxStep, maxStep);
             move *= 1 - Math.Exp(-Math.Abs(err) / 3.0) * 0.35;
             CurrentReactor += move;
-            var lead = CurrentReactor + (_target - CurrentReactor) * 1.8;
+            // 夹套画在前面牵引，但**不越过目标**：真机上 TG 就是夹套的设定值，
+            // PID 不会把夹套顶到设定值之外。从前这里让它冲出 0.8 倍偏差，看着像回事，
+            // 可热源换挡就是拿「目标 − 夹套」判方向的，冲过头会被判成「该降温」，
+            // 一路把继电器扳回 TEC。Tr 是被限速直接驱动的，钳住夹套不影响升温快慢
+            var lead = _target;
             CurrentJacket += (Math.Min(lead, JacketMax) - CurrentJacket) * Math.Min(1, dt / 20.0);
             // 出力 = 这一拍用掉了多少「最大可用变温能力」，正加热负制冷。
             // **它是模型自己算出来的那个量**，不是为了让曲线好看另编的一路：
