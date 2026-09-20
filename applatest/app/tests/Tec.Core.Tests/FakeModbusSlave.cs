@@ -39,6 +39,9 @@ public sealed class FakeModbusSlave : ISerialTransport
     /// <summary>一律回这个异常码。</summary>
     public byte? RejectWith { get; set; }
 
+    /// <summary>每次应答前先吐这几个脏字节——模拟 485 收发切换的毛刺（现场读到的是 F8 打头）。</summary>
+    public byte[] LeadingNoise { get; set; } = Array.Empty<byte>();
+
     // ── ISerialTransport ─────────────────────────────────────────────
 
     public bool IsOpen { get; private set; }
@@ -177,6 +180,7 @@ public sealed class FakeModbusSlave : ISerialTransport
         Array.Copy(data, 0, frame, 2, data.Length);
         ModbusCrc.Append(frame);
         if (CorruptCrc) frame[^1] ^= 0xFF;
+        foreach (var b in LeadingNoise) _tx.Enqueue(b);
         foreach (var b in frame) _tx.Enqueue(b);
     }
 }

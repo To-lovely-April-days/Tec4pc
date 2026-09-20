@@ -34,6 +34,9 @@ public sealed class ModbusRtuClient
 
     public byte Station { get; }
 
+    /// <summary>应答前面最多容忍几个脏字节（485 收发切换的毛刺）。见 ReadResponse。</summary>
+    public int MaxLeadingNoise { get; set; } = 4;
+
     // ── 读 ─────────────────────────────────────────────────────────────
 
     /// <summary>FC 01 读线圈（IO8R 的继电器 DO）。位序低位在前：第 0 点在首字节 bit0。</summary>
@@ -161,9 +164,27 @@ public sealed class ModbusRtuClient
         var head = new byte[2];
         ReadExact(head, deadline, "应答", ct);
 
+        // 485 收发切换的毛刺：应答前面常带一两个脏字节（0xF8 / 0xFF 这类高位全 1 的——
+        // 驱动器使能 / 释放总线那一下在接收端看起来像半个起始位）。现场第一次接 RD105
+        // 就撞上了：读到的开头是 F8 01 03 …，真应答就跟在后面。站号对不上先往后滑，
+        // 滑过 MaxLeadingNoise 个字节还对不上才算真的站号不对
+        // 只滑过「不可能是站号」的字节（0 是广播、248~255 协议保留）——别的站号答话
+        // 是另一回事（配错了站号），那得原样报出来，不能滑进人家的帧里去把 CRC 错当成结论
+        var noise = new List<byte>();
+        while (head[0] != Station && IsNoise(head[0]) && noise.Count < MaxLeadingNoise)
+        {
+            noise.Add(head[0]);
+            head[0] = head[1];
+            var next = new byte[1];
+            ReadExact(next, deadline, "应答", ct);
+            head[1] = next[0];
+        }
+
         if (head[0] != Station)
-            throw new ModbusException(
-                $"应答站号不对：问的是 {Station} 号，答话的是 {head[0]} 号——查一下总线上是不是接错/配错了站号");
+            throw new ModbusException(noise.Count == 0
+                ? $"应答站号不对：问的是 {Station} 号，答话的是 {head[0]} 号——查一下总线上是不是接错/配错了站号"
+                : $"应答站号不对：问的是 {Station} 号，收到的开头是 {Hex(noise)} {head[0]:X2} …——" +
+                  "查一下总线上是不是接错/配错了站号；波特率不对时收到的也是这种乱字节");
 
         if (head[1] == (fc | 0x80))
         {
@@ -239,4 +260,7 @@ public sealed class ModbusRtuClient
 
     private static byte Hi(int v) => (byte)(v >> 8);
     private static byte Lo(int v) => (byte)v;
+    private static string Hex(IEnumerable<byte> bytes) => string.Join(" ", bytes.Select(b => b.ToString("X2")));
+    /// <summary>不可能是从站站号的字节：0 是广播地址，248~255 协议保留——只有毛刺才长这样。</summary>
+    private static bool IsNoise(byte b) => b == 0 || b >= 248;
 }

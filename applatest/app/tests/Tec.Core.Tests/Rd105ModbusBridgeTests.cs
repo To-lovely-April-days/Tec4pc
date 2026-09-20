@@ -235,4 +235,29 @@ public sealed class Rd105ModbusBridgeTests
         Assert.Equal(new[] { (Rd105Protocol.Modbus, 115200), (Rd105Protocol.Ascii, 38400), (Rd105Protocol.Modbus, 38400) },
                      Rd105Protocol.Alternatives(Rd105Protocol.Ascii, 115200).ToArray());
     }
+
+    [Fact]
+    public async Task 应答前带485切换的脏字节_F8打头_往后滑一个就对上_照样读得对()
+    {
+        // 现场第一次接 485 口读到的就是这样：F8 01 03 04 …——真应答跟在一个脏字节后面
+        var s = Device();
+        s.LeadingNoise = new byte[] { 0xF8 };
+        using var link = Link(s);
+
+        Assert.Equal(2500000, await link.Client.QueryAsync(1, TecCmd.Target));
+        var (model, _, _) = await link.Controller.ReadDeviceInfoAsync();
+        Assert.Equal("215L", model);
+    }
+
+    [Fact]
+    public async Task 脏字节太多滑不到站号_报站号不对_把收到的开头列出来()
+    {
+        var s = Device();
+        s.LeadingNoise = new byte[] { 0xF8, 0xFF, 0xFE, 0xF8, 0xFF, 0xFE };
+        using var link = Link(s);
+
+        var ex = await Assert.ThrowsAsync<TecProtocolException>(() => link.Client.QueryAsync(1, TecCmd.Target));
+        Assert.Contains("站号不对", ex.Message);
+        Assert.Contains("F8 FF FE F8", ex.Message);      // 收到的开头原样列出来，现场对得上示波器
+    }
 }
