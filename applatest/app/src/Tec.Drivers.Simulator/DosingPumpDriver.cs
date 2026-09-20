@@ -21,7 +21,7 @@ public sealed class DosingPumpDriver : IDeviceDriver
 
     public ParameterSchema ConnectionSchema { get; } = new(new[]
     {
-        Field.Sel("端口", "串口", new[] { "COM1", "COM2", "COM3", "COM4", "COM5", "COM6" }, "COM4"),
+        Field.Port("端口", "串口", "COM4", "下拉里是这台机器当前检测到的串口"),
         Field.Sel("波特率", "波特率", new[] { "9600", "19200", "38400" }, "9600"),
         Field.Num("站号", "站号", 2, "", 1, 247, 1)
     });

@@ -46,7 +46,8 @@ public sealed class Rd105TecDriver : IDeviceDriver
 
     public ParameterSchema ConnectionSchema { get; } = new(new[]
     {
-        Field.Text(FieldPort, "串口", "COM3", "Windows 上形如 COM3；Linux 上形如 /dev/ttyUSB0"),
+        Field.Port(FieldPort, "串口", "COM3",
+                   "下拉里是这台机器当前检测到的串口（Windows 形如 COM3，Linux 形如 /dev/ttyUSB0）"),
         Field.Sel(FieldBaud, "波特率", new[] { "9600", "19200", "38400", "57600", "115200" }, "38400"),
         Field.Num(FieldPeriod, "控制周期", 500, "ms", 200, 5000, 100)
     })

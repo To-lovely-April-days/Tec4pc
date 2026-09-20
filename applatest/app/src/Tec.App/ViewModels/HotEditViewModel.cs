@@ -343,8 +343,9 @@ public sealed class HotEditViewModel : ViewModelBase
         Form = new SchemaFormViewModel(d.Parameters, _draft, null, _ws.ChannelOf(_channel),
                                        () => RaiseAll(nameof(NextText), nameof(CanApply)),
                                        // 运行中「设定变量」的变量下拉：选项 = 执行器手里那份变量表
-                                       choicesOf: key => key == BuiltinCommands.ChoicesFromRecipeVars
-                                           ? Runner?.LiveVariables.Keys.OrderBy(k => k, StringComparer.Ordinal).ToList()
+                                       choicesOf: (key, _) => key == BuiltinCommands.ChoicesFromRecipeVars
+                                           ? Runner?.LiveVariables.Keys.OrderBy(k => k, StringComparer.Ordinal)
+                                                   .Select(n => new ChoiceOption(n)).ToList()
                                            : null);
     }
 

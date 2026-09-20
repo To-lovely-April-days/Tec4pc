@@ -21,6 +21,9 @@
 
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.2.3" />
+    <!-- 串口枚举（设备属性里的「串口」下拉去问系统要真实的口）。
+         驱动那边本来就用它收发，这里只用 GetPortNames -->
+    <PackageReference Include="System.IO.Ports" Version="8.0.0" />
     <PackageReference Include="Avalonia.Desktop" Version="11.2.3" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.3" />
     <PackageReference Include="Avalonia.Diagnostics" Version="11.2.3" Condition="'$(Configuration)' == 'Debug'" />

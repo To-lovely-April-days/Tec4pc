@@ -55,10 +55,10 @@ public sealed class DualStationDriver : IDeviceDriver
 
     public ParameterSchema ConnectionSchema { get; } = new(new[]
     {
-        Field.Text(Fields.PortRd105, "RD105 串口", "COM3", "TEC 温控器，8N1"),
+        Field.Port(Fields.PortRd105, "RD105 串口", "COM3", "TEC 温控器，8N1。下拉里是当前检测到的串口"),
         Field.Sel(Fields.BaudRd105, "RD105 波特率", new[] { "9600", "19200", "38400", "57600", "115200" }, "38400"),
         Field.Sel(Fields.HasIo, "电加热切换（IO8R）", new[] { "有", "无" }, "有"),
-        Field.Text(Fields.PortIo, "IO8R 串口", "COM6", "艾莫迅 JY-MODBUS-IO8R"),
+        Field.Port(Fields.PortIo, "IO8R 串口", "COM6", "艾莫迅 JY-MODBUS-IO8R。下拉里是当前检测到的串口"),
         Field.Num(Fields.AddrIo, "IO8R 站号", 1, "", 1, 247, 1),
         Field.Sel(Fields.BaudIo, "IO8R 波特率", new[] { "4800", "9600", "19200", "38400", "57600", "115200" }, "9600"),
         Field.Num(Rd105TecDriver.FieldPeriod, "控制周期", 500, "ms", 200, 5000, 100),

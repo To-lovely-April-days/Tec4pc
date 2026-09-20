@@ -17,13 +17,28 @@ public sealed class FieldViewModel : ViewModelBase
     private readonly Action? _changed;
 
     public FieldViewModel(FieldSpec spec, ParameterSet target, Channel? channel = null, Action? changed = null,
-                          IReadOnlyList<string>? dynamicChoices = null)
+                          IReadOnlyList<ChoiceOption>? dynamicChoices = null)
     {
         Spec = spec;
         _target = target;
         _changed = changed;
-        // 动态下拉（ChoicesFrom）：选项由编辑现场给，声明里那份只是兜底
-        Choices = new ObservableCollection<string>(dynamicChoices ?? spec.Choices ?? Array.Empty<string>());
+
+        // 动态下拉（ChoicesFrom）：选项由编辑现场给，声明里那份只是兜底。
+        // 现场给的项**存的值与显示的字可以不一样**——串口就是：存「COM16」，
+        // 显示「COM16 · USB-Enhanced-SERIAL-A CH344」。这里两边各存一份对照表，
+        // 下拉绑的是显示串，读写参数时换回值
+        var opts = dynamicChoices
+                   ?? (spec.Choices ?? Array.Empty<string>()).Select(c => new ChoiceOption(c)).ToList();
+        foreach (var o in opts)
+        {
+            _valueOf[o.Text] = o.Value;
+            _textOf[o.Value] = o.Text;
+        }
+        Choices = new ObservableCollection<string>(opts.Select(o => o.Text));
+
+        // 显示串比值长（串口带设备名那种）时，属性栏那一百多宽的输入列装不下，
+        // 收起来的框里只看得见前半截——挂个悬停提示把整串摆出来
+        _labelled = opts.Any(o => !string.Equals(o.Text, o.Value, StringComparison.Ordinal));
 
         // 动态范围：LimitFrom 让参数上限跟着设备走（§4.2）
         var bound = channel is null ? null : ResolveLimit(channel, spec.LimitFrom);
@@ -100,10 +115,35 @@ public sealed class FieldViewModel : ViewModelBase
         }
     }
 
+    /// <summary>下拉项的「显示串 → 存进参数的值」对照，以及反过来那一份。</summary>
+    private readonly Dictionary<string, string> _valueOf = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _textOf = new(StringComparer.Ordinal);
+    private readonly bool _labelled;
+
+    /// <summary>
+    /// 悬停提示。只有显示串带了额外信息（串口的设备名）才给——
+    /// 「串级」「按夹套」这种本来就看得全的，再挂一个原样重复的气泡是噪音。
+    /// </summary>
+    public string? ChoiceTip => _labelled ? ChoiceValue : null;
+
+    /// <summary>
+    /// 下拉绑的是**显示串**。存进参数的仍是值本身——
+    /// .tecbench 里写的必须是「COM16」，不能是「COM16 · USB-Enhanced-SERIAL-A CH344」。
+    /// </summary>
     public string ChoiceValue
     {
-        get => _target.Str(Key, Spec.Default as string ?? "");
-        set { _target[Key] = value; Raise(); _changed?.Invoke(); }
+        get
+        {
+            var v = _target.Str(Key, Spec.Default as string ?? "");
+            return _textOf.TryGetValue(v, out var t) ? t : v;
+        }
+        set
+        {
+            _target[Key] = _valueOf.TryGetValue(value ?? "", out var v) ? v : value;
+            Raise();
+            Raise(nameof(ChoiceTip));
+            _changed?.Invoke();
+        }
     }
 
     public bool ToggleValue
@@ -171,7 +211,7 @@ public sealed class SchemaFormViewModel : ViewModelBase
                                List<ParameterSet>? rows = null, Channel? channel = null,
                                Action? changed = null, double startTemp = 25,
                                Action<string>? fieldEdited = null,
-                               Func<string, IReadOnlyList<string>?>? choicesOf = null)
+                               Func<string, string?, IReadOnlyList<ChoiceOption>?>? choicesOf = null)
     {
         Schema = schema;
         Target = target;
@@ -188,7 +228,9 @@ public sealed class SchemaFormViewModel : ViewModelBase
             Fields.Add(new FieldViewModel(f, target, channel,
                 fieldEdited is null ? OnFieldChanged
                                     : () => { fieldEdited(key); OnFieldChanged(); },
-                f.ChoicesFrom is { } src ? choicesOf?.Invoke(src) : null));
+                // 现场取选项时**把这个字段当前存的值一起带过去**：串口那种「存好的口
+                // 现在不在线」的情形，现场要靠它把这一项留在下拉里，不能让空下拉把它吞了
+                f.ChoicesFrom is { } src ? choicesOf?.Invoke(src, target.Str(f.Key, f.Default as string ?? "")) : null));
         }
 
         if (schema.Table is not null && rows is not null)

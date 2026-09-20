@@ -1779,9 +1779,10 @@ public sealed class RecipeViewModel : ViewModelBase
                                                RaiseAll(nameof(ChargeLinkNote), nameof(ChargeLinkColorHex));
                                        },
                                        // 「设定变量」的变量下拉：选项 = 这条配方的变量表
-                                       choicesOf: key => key == BuiltinCommands.ChoicesFromRecipeVars
+                                       choicesOf: (key, _) => key == BuiltinCommands.ChoicesFromRecipeVars
                                            ? Current.Variables.Select(v => v.Name)
-                                                 .Where(n => n.Trim().Length > 0).ToList()
+                                                 .Where(n => n.Trim().Length > 0)
+                                                 .Select(n => new ChoiceOption(n)).ToList()
                                            : null);
         RaiseAll(nameof(IsDoseStep), nameof(ChargeRowNames), nameof(ChargeRowPick),
                  nameof(ChargeLinkNote), nameof(ChargeLinkColorHex));

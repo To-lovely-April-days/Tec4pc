@@ -21,15 +21,21 @@
           <!-- 单位列固定 40px（原型 .pf-u）：写 Auto 的话没有单位的行输入框会多伸出去，
                一列输入框长短不一 -->
           <Grid ColumnDefinitions="76,*,40" Margin="0,0,0,8" IsVisible="{Binding IsVisible}">
+            <!-- 字段自带的说明（FieldSpec.Tip）挂在标签上。这些话驱动里一直写着，
+                 从前哪儿都不显示——「串口下拉里是当前检测到的口」正是要答的那一句 -->
             <TextBlock Grid.Column="0" Text="{Binding Label}" VerticalAlignment="Center"
-                       FontSize="12" Foreground="#3a3d41" TextWrapping="Wrap" Margin="0,0,10,0" />
+                       FontSize="12" Foreground="#3a3d41" TextWrapping="Wrap" Margin="0,0,10,0"
+                       ToolTip.Tip="{Binding Tip}" />
 
             <TextBox Grid.Column="1" Classes="fin" Text="{Binding NumberText, Mode=TwoWay}"
                      IsVisible="{Binding IsNumber}" />
             <TextBox Grid.Column="1" Classes="fin" Text="{Binding DurationText, Mode=TwoWay}"
                      IsVisible="{Binding IsDuration}" Watermark="时:分:秒" />
+            <!-- ToolTip：串口那种「COM16 · USB-Enhanced-SERIAL-A CH344」在这一百多宽的
+                 输入列里收起来只看得见前半截。ChoiceTip 只在显示串带了额外信息时才有值 -->
             <ComboBox Grid.Column="1" Classes="fsel" ItemsSource="{Binding Choices}"
                       SelectedItem="{Binding ChoiceValue, Mode=TwoWay}"
+                      ToolTip.Tip="{Binding ChoiceTip}"
                       IsVisible="{Binding IsChoice}" HorizontalAlignment="Stretch" />
             <CheckBox Grid.Column="1" IsChecked="{Binding ToggleValue, Mode=TwoWay}"
                       IsVisible="{Binding IsToggle}" MinHeight="23" Padding="4,0,0,0" />

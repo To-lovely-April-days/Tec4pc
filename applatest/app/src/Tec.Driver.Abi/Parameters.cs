@@ -47,6 +47,28 @@ public sealed record FieldSpec(string Key, string Label, FieldKind Kind)
     public string? Tip { get; init; }
 }
 
+/// <summary>
+/// FieldSpec.ChoicesFrom 里那些「全程序通用」的约定名。
+/// 配方变量那种只跟某个指令集有关的，写在它自己那边（BuiltinCommands）。
+/// </summary>
+public static class WellKnownChoices
+{
+    /// <summary>选项 = 这台机器当前检测到的串口。由宿主（工作站界面）在建表单时装进来。</summary>
+    public const string SerialPorts = "system.serialports";
+}
+
+/// <summary>
+/// 一个下拉项：**存进参数里的值**与**显示给人看的字**分开。
+///
+/// 串口就是要分开的那种：存的必须是「COM16」，可光一个 COM16 在八口 USB 转串上
+/// 分不出是哪一路，人看的得是「COM16 · USB-Enhanced-SERIAL-A CH344」。
+/// Label 为空就按 Value 显示。
+/// </summary>
+public sealed record ChoiceOption(string Value, string? Label = null)
+{
+    public string Text => string.IsNullOrWhiteSpace(Label) ? Value : Label!;
+}
+
 /// <summary>多分段表：梯度控温、分段加料、曲线升温。</summary>
 public sealed record TableSpec(string Label, IReadOnlyList<FieldSpec> Columns)
 {
@@ -84,6 +106,20 @@ public static class Field
     /// <summary>S(k,l,o,d) —— 下拉。</summary>
     public static FieldSpec Sel(string key, string label, IReadOnlyList<string> options, string def)
         => new(key, label, FieldKind.Choice) { Default = def, Choices = options };
+
+    /// <summary>
+    /// 串口下拉。选项不写在声明里——**机器上有哪些口只有运行现场知道**，
+    /// 写死一份 COM1~COM6 的话，插着八口 USB 转串的机器（COM3/7/8/10/15~18）
+    /// 一个都选不着。界面按 ChoicesFrom 去现场取，取回来的每一项还带设备名。
+    /// </summary>
+    public static FieldSpec Port(string key, string label, string def, string? tip = null)
+        => new(key, label, FieldKind.Choice)
+        {
+            Default = def,
+            Choices = Array.Empty<string>(),
+            ChoicesFrom = WellKnownChoices.SerialPorts,
+            Tip = tip
+        };
 
     /// <summary>B(k,l,d) —— 勾选。</summary>
     public static FieldSpec Bool(string key, string label, bool def)

@@ -1348,10 +1348,18 @@ public sealed class BenchViewModel : ViewModelBase
     private void BuildForms()
     {
         if (_selected?.Driver is not { } d) { ConnectionForm = null; ConfigForm = null; return; }
-        ConnectionForm = new SchemaFormViewModel(d.ConnectionSchema, _selected.Device.Connection);
-        ConfigForm = new SchemaFormViewModel(d.ConfigSchema, _selected.Device.Config);
+        // 串口下拉去问系统这台机器上现在有哪些口（见 SerialPortScan）——
+        // 写死一份 COM1~COM6 的话，插着八口 USB 转串的机器一个都选不着。
+        // 每次建表单都重扫一遍：插拔之后点一下别的设备再点回来就是最新的
+        ConnectionForm = new SchemaFormViewModel(d.ConnectionSchema, _selected.Device.Connection,
+                                                 choicesOf: PortChoices);
+        ConfigForm = new SchemaFormViewModel(d.ConfigSchema, _selected.Device.Config,
+                                             choicesOf: PortChoices);
         ProbeResult = "";
     }
+
+    private static IReadOnlyList<ChoiceOption>? PortChoices(string key, string? current)
+        => key == WellKnownChoices.SerialPorts ? SerialPortScan.Options(current) : null;
 
     private async Task ProbeAsync()
     {

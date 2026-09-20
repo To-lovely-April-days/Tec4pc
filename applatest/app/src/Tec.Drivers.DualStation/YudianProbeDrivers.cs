@@ -77,8 +77,9 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
         };
         ConnectionSchema = new ParameterSchema(new[]
         {
-            Field.Text(FieldPort, "串口", defaultPort,
-                       "两台宇电拼在同一段导轨上时 485 已并联——填同一个口名即共线（两台模块地址须不同）"),
+            Field.Port(FieldPort, "串口", defaultPort,
+                       "下拉里是这台机器当前检测到的串口。两台宇电拼在同一段导轨上时 485 已并联——" +
+                       "选同一个口即共线（两台模块地址须不同）"),
             Field.Num(FieldAddr, "模块地址", 1, "", 1, 80, 1),
             Field.Sel(FieldBaud, "波特率", new[] { "4800", "9600", "19200", "38400", "57600", "115200" }, "19200"),
             Field.Num(FieldPeriod, "采样周期", 1000, "ms", 200, 5000, 100)
