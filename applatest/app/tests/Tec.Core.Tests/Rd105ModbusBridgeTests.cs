@@ -260,4 +260,36 @@ public sealed class Rd105ModbusBridgeTests
         Assert.Contains("站号不对", ex.Message);
         Assert.Contains("F8 FF FE F8", ex.Message);      // 收到的开头原样列出来，现场对得上示波器
     }
+
+    [Fact]
+    public async Task 相邻两帧之间留静默_桥上一条指令连发的几帧不粘在一起()
+    {
+        // RTU 靠 3.5 字符静默分帧。设置一条 TG = 写一帧 + 回读一帧，中间至少要隔 InterFrameGapMs
+        var s = Device();
+        using var link = Link(s);
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
+        await link.Client.SetAsync(1, TecCmd.Target, 2600000);
+
+        Assert.Equal(new[] { "写多寄存器 4096+2", "读寄存器 4096+2" }, s.Requests);
+        Assert.True(sw.ElapsedMilliseconds >= 10, $"两帧之间没留够静默：只用了 {sw.ElapsedMilliseconds} ms");
+    }
+
+    [Fact]
+    public async Task 报错带上这一问一答的原始字节_对得上协议示例帧()
+    {
+        // 协议 §2.2 示例：读 TC1:TG 发 01 03 10 00 00 02 C0 CB。从站不答 → 报错里得有这一帧原样
+        var s = Device();
+        s.Mute = true;
+        using var link = Link(s);
+        var ex = await Assert.ThrowsAsync<TimeoutException>(() => link.Client.QueryAsync(1, TecCmd.Target));
+        Assert.Contains("发 01 03 10 00 00 02 C0 CB｜收 无", ex.Message);
+
+        // 答话前带脏字节且滑不到站号：收到的字节也原样列出
+        var s2 = Device();
+        s2.LeadingNoise = new byte[] { 0xF8, 0xFF, 0xFE, 0xF8, 0xFF, 0xFE };
+        using var link2 = Link(s2);
+        var ex2 = await Assert.ThrowsAsync<TecProtocolException>(() => link2.Client.QueryAsync(1, TecCmd.Target));
+        Assert.Contains("｜收 F8 FF FE F8 FF FE", ex2.Message);
+    }
 }

@@ -147,15 +147,34 @@ public sealed class ModbusRtuClient
             Array.Copy(payload, 0, frame, 2, payload.Length);
             ModbusCrc.Append(frame);
 
+            // RTU 靠 3.5 个字符的静默分帧：上一答刚收完就发下一问，从站可能还没把上一帧
+            // 收尾，这一问就丢了。RD105 桥上一条 ASCII 指令会连发两三帧（写完回读、
+            // DATADEMAND 三段读），这里按帧统一留空当；协议附录的示例每帧前也 Sleep(5)
+            var since = Environment.TickCount64 - _lastFrameEnd;
+            if (since < InterFrameGapMs) Thread.Sleep((int)(InterFrameGapMs - since));
+
             _transport.DiscardInput();          // 上一问超时后迟到的字节别混进这一答
             _transport.Write(frame, 0, frame.Length);
-            return ReadResponse(fc, ct);
+            _rxTrace.Clear();
+            try { return ReadResponse(fc, ct); }
+            // 报错把这一问一答的原始字节带上：现场对着串口助手 / 示波器一眼能看出
+            // 是没发对、没收到，还是收到的不是想要的
+            catch (ModbusException ex) { throw new ModbusException($"{ex.Message}｜发 {Hex(frame)}｜收 {(_rxTrace.Count == 0 ? "无" : Hex(_rxTrace))}", ex.Code); }
+            catch (TimeoutException ex) { throw new TimeoutException($"{ex.Message}｜发 {Hex(frame)}｜收 {(_rxTrace.Count == 0 ? "无" : Hex(_rxTrace))}", ex); }
+            finally { _lastFrameEnd = Environment.TickCount64; }
         }
         finally
         {
             _lock.Release();
         }
     }
+
+    private long _lastFrameEnd = long.MinValue / 2;
+    /// <summary>这一问收到的全部原始字节（含滑过的脏字节），报错时原样带出去。</summary>
+    private readonly List<byte> _rxTrace = new();
+
+    /// <summary>相邻两帧之间至少留这么久（ms）。3.5 字符在 9600 是 4 ms、4800 是 8 ms，取 10 留余量。</summary>
+    public int InterFrameGapMs { get; set; } = 10;
 
     private byte[] ReadResponse(byte fc, CancellationToken ct)
     {
@@ -239,7 +258,11 @@ public sealed class ModbusRtuClient
                     "从站没上电、站号/波特率不对，或者线断了");
             var n = _transport.Read(buf, got, buf.Length - got, Math.Min(remain, 50));
             if (n == 0) Thread.Sleep(1);        // 假串口的 Read 立即返回 0；真串口自己会等
-            else got += n;
+            else
+            {
+                _rxTrace.AddRange(buf.AsSpan(got, n).ToArray());
+                got += n;
+            }
         }
     }
 

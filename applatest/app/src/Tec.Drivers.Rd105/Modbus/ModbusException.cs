@@ -12,6 +12,9 @@ public sealed class ModbusException : Exception
 
     public ModbusException(string message) : base(message) { }
 
+    /// <summary>换一句话、保留原来的异常码（报错里补上收发字节时用）。</summary>
+    public ModbusException(string message, byte? code) : base(message) => Code = code;
+
     public ModbusException(byte code) : base($"从站回了异常码 {code:X2}：{Describe(code)}")
         => Code = code;
 
