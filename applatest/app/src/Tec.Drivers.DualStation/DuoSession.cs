@@ -257,6 +257,8 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp
         {
             try
             {
+                // 串口都没开成就别去发 Modbus 了——原因是开口时记下的那句，照它说
+                if (_links.IoOpenError is { } why) throw new InvalidOperationException(why);
                 await io.AllOffAsync(ct).ConfigureAwait(false);
                 _electric[0] = _electric[1] = false;
                 _ioOk = true;

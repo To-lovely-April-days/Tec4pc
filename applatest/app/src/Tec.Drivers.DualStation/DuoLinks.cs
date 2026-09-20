@@ -19,10 +19,36 @@ public sealed class DuoLinks : IDisposable
     public ISerialTransport? IoPort { get; init; }
     public Io8rClient? Io { get; init; }
 
+    /// <summary>只为报错时说得清是哪个口——假链路（测试）不填，报错就不带口名。</summary>
+    public string? RdPortName { get; init; }
+    public int RdBaud { get; init; }
+    public string? IoPortName { get; init; }
+
+    /// <summary>IO8R 那条串口没打开的原因；打开了 / 没配 IO8R 就是 null。</summary>
+    public string? IoOpenError { get; private set; }
+
+    /// <summary>RD105 那条串口在报错里的叫法：「RD105 串口 COM7 @ 38400」。</summary>
+    public string RdName => RdPortName is null ? "RD105 串口" : $"RD105 串口 {RdPortName} @ {RdBaud}";
+
+    /// <summary>
+    /// 开口子。RD105 打不开就是开不了机（它是主机的命）；IO8R 打不开**不拦**——
+    /// 记下原因，会话照常开、电加热不可用（需求 §2.6 本来就允许 IO8R 坏着开机）。
+    /// 从前 IO8R 口名填错会把 RD105 一起拖死，属性栏只说「打不开链路」，看不出是哪条口。
+    /// </summary>
     public void OpenAll()
     {
-        Rd105.Open();
-        if (IoPort is { IsOpen: false }) IoPort.Open();
+        try { Rd105.Open(); }
+        catch (Exception ex) { throw new InvalidOperationException($"{RdName} 打不开：{ex.Message}", ex); }
+
+        IoOpenError = null;
+        if (IoPort is { IsOpen: false })
+        {
+            try { IoPort.Open(); }
+            catch (Exception ex)
+            {
+                IoOpenError = $"IO8R 串口{(IoPortName is null ? "" : " " + IoPortName)} 打不开：{ex.Message}";
+            }
+        }
     }
 
     public void Dispose()
@@ -31,21 +57,33 @@ public sealed class DuoLinks : IDisposable
         IoPort?.Dispose();
     }
 
+    /// <summary>
+    /// RD105 发了指令没回音时该怎么说。原始异常只有一句「指令无应答：TEC=?@」，
+    /// 站在机器前的人不知道该查什么——把口、波特率和三个最常见的原因一起摆出来。
+    /// 协议 §1：TTL 口出厂 38400，RS485 口出厂 9600。
+    /// </summary>
+    public string NoReply(Exception ex)
+        => $"{RdName} 无应答（{ex.Message.TrimEnd('\n', '\r')}）——查：①是不是接 RD105 的那一路串口；" +
+           "②波特率：TTL 口出厂 38400、RS485 口出厂 9600；③接线（TTL 的 TX/RX 要交叉、485 的 A/B、共地）";
+
     /// <summary>按连接参数开真串口。字段名与 DualStationDriver.ConnectionSchema 一一对应。</summary>
     public static DuoLinks Serial(ParameterSet cn)
     {
         ISerialTransport? ioPort = null; Io8rClient? io = null;
+        var ioPortName = cn.Str(F.PortIo, "COM6");
         if (cn.Str(F.HasIo, "有") == "有")
         {
-            ioPort = new SerialPortTransport(cn.Str(F.PortIo, "COM6"), (int)cn.Num(F.BaudIo, 9600));
+            ioPort = new SerialPortTransport(ioPortName, (int)cn.Num(F.BaudIo, 9600));
             io = new Io8rClient(new ModbusRtuClient(ioPort, (byte)cn.Num(F.AddrIo, 1)));
         }
 
+        var rdPort = cn.Str(F.PortRd105, "COM3");
+        var rdBaud = (int)cn.Num(F.BaudRd105, 38400);
         return new DuoLinks
         {
-            Rd105 = new Rd105Link(new SerialPortTransport(
-                cn.Str(F.PortRd105, "COM3"), (int)cn.Num(F.BaudRd105, 38400))),
-            IoPort = ioPort, Io = io
+            Rd105 = new Rd105Link(new SerialPortTransport(rdPort, rdBaud)),
+            RdPortName = rdPort, RdBaud = rdBaud,
+            IoPort = ioPort, Io = io, IoPortName = io is null ? null : ioPortName
         };
     }
 }

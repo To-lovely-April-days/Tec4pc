@@ -48,7 +48,8 @@ public sealed class Rd105TecDriver : IDeviceDriver
     {
         Field.Port(FieldPort, "串口", "COM3",
                    "下拉里是这台机器当前检测到的串口（Windows 形如 COM3，Linux 形如 /dev/ttyUSB0）"),
-        Field.Sel(FieldBaud, "波特率", new[] { "9600", "19200", "38400", "57600", "115200" }, "38400"),
+        Field.Sel(FieldBaud, "波特率", new[] { "9600", "19200", "38400", "57600", "115200" }, "38400")
+            with { Tip = "出厂值看接的是哪个口：TTL 口 38400，RS485 口 9600（协议 §1）" },
         Field.Num(FieldPeriod, "控制周期", 500, "ms", 200, 5000, 100)
     })
     {
@@ -90,7 +91,11 @@ public sealed class Rd105TecDriver : IDeviceDriver
         catch (TecProtocolException ex)
         {
             // 口子开了但对面不按协议说话——多半是波特率不对或者接到了别的设备上
-            return new ProbeResult(false, $"通了但应答看不懂：{ex.Message}");
+            return new ProbeResult(false, $"通了但应答看不懂（多半是波特率不对或接到了别的设备）：{ex.Message}");
+        }
+        catch (TimeoutException ex)
+        {
+            return new ProbeResult(false, NoReply(connection, ex));
         }
         catch (Exception ex)
         {
@@ -102,6 +107,15 @@ public sealed class Rd105TecDriver : IDeviceDriver
         }
     }
 
+    /// <summary>
+    /// 发了指令没回音时该怎么说：口、波特率和三个最常见的原因一起摆出来。
+    /// 协议 §1：TTL 口出厂 38400，RS485 口出厂 9600。
+    /// </summary>
+    internal static string NoReply(ParameterSet cn, Exception ex)
+        => $"RD105 串口 {cn.Str(FieldPort, "COM3")} @ {(int)cn.Num(FieldBaud, 38400)} 无应答" +
+           $"（{ex.Message.TrimEnd('\n', '\r')}）——查：①是不是接 RD105 的那一路串口；" +
+           "②波特率：TTL 口出厂 38400、RS485 口出厂 9600；③接线（TTL 的 TX/RX 要交叉、485 的 A/B、共地）";
+
     public async Task<IDeviceSession> OpenAsync(ParameterSet connection, DriverContext ctx, CancellationToken ct)
     {
         var link = LinkFactory(connection);
@@ -112,6 +126,11 @@ public sealed class Rd105TecDriver : IDeviceDriver
             // 开机第一件事是把超温与限流写进设备的保护寄存器，再谈控温
             await session.ApplyProtectionAsync(ct).ConfigureAwait(false);
             return session;
+        }
+        catch (TimeoutException ex)
+        {
+            link.Dispose();
+            throw new InvalidOperationException(NoReply(connection, ex), ex);
         }
         catch
         {

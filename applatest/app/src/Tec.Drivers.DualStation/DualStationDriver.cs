@@ -56,7 +56,8 @@ public sealed class DualStationDriver : IDeviceDriver
     public ParameterSchema ConnectionSchema { get; } = new(new[]
     {
         Field.Port(Fields.PortRd105, "RD105 串口", "COM3", "TEC 温控器，8N1。下拉里是当前检测到的串口"),
-        Field.Sel(Fields.BaudRd105, "RD105 波特率", new[] { "9600", "19200", "38400", "57600", "115200" }, "38400"),
+        Field.Sel(Fields.BaudRd105, "RD105 波特率", new[] { "9600", "19200", "38400", "57600", "115200" }, "38400")
+            with { Tip = "出厂值看接的是哪个口：TTL 口 38400，RS485 口 9600（协议 §1）" },
         Field.Sel(Fields.HasIo, "电加热切换（IO8R）", new[] { "有", "无" }, "有"),
         Field.Port(Fields.PortIo, "IO8R 串口", "COM6", "艾莫迅 JY-MODBUS-IO8R。下拉里是当前检测到的串口"),
         Field.Num(Fields.AddrIo, "IO8R 站号", 1, "", 1, 247, 1),
@@ -120,10 +121,13 @@ public sealed class DualStationDriver : IDeviceDriver
                 fw = firmware;
                 okRd = true;
             }
-            catch (TecProtocolException ex) { lines.Add($"RD105：通了但应答看不懂——{ex.Message}"); }
+            catch (TecProtocolException ex) { lines.Add($"RD105：通了但应答看不懂（多半是波特率不对或接到了别的设备）——{ex.Message}"); }
+            catch (TimeoutException ex) { lines.Add(links.NoReply(ex)); }
             catch (Exception ex) { lines.Add($"RD105：{ex.Message}"); }
 
-            if (links.Io is { } io)
+            if (links.IoOpenError is { } ioWhy)
+                lines.Add($"{ioWhy}（开机会照常，但电加热不可用）");
+            else if (links.Io is { } io)
             {
                 try { await io.ReadRelaysAsync(ct).ConfigureAwait(false); lines.Add("IO8R：已响应"); }
                 catch (Exception ex) { lines.Add($"IO8R：{ex.Message}（开机会照常，但电加热不可用）"); }
@@ -166,6 +170,13 @@ public sealed class DualStationDriver : IDeviceDriver
             // 开机顺序：保护寄存器 → 继电器复位 TEC 侧
             await session.InitAsync(ct).ConfigureAwait(false);
             return session;
+        }
+        catch (TimeoutException ex)
+        {
+            // 口子开了但 RD105 一声不吭：把口、波特率、该查什么一起说出来，
+            // 别只留一句「指令无应答：TC1:OVERTEMPUP=…」让人对着猜
+            await session.DisposeAsync().ConfigureAwait(false);
+            throw new InvalidOperationException(links.NoReply(ex), ex);
         }
         catch
         {
