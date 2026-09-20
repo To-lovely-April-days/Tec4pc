@@ -141,7 +141,7 @@ internal sealed class ScalarImpl : IScalarSensor
 
 public sealed class PhProbeDriver : ScalarProbeDriver
 {
-    public const string DriverId = "tec.probe.ph";
+    public const string DriverId = "sim.probe.ph";
 
     public override DriverInfo Info { get; } = new(DriverId, "pH 玻璃电极", "Tec", "1.0.0")
     {
@@ -178,7 +178,7 @@ public sealed class PhProbeDriver : ScalarProbeDriver
 
 public sealed class TurbidityProbeDriver : ScalarProbeDriver
 {
-    public const string DriverId = "tec.probe.turbidity";
+    public const string DriverId = "sim.probe.turbidity";
 
     public override DriverInfo Info { get; } = new(DriverId, "浊度探头", "第三方", "1.0.0")
     {
@@ -266,7 +266,7 @@ internal sealed class SolubilityHandler : ICommandHandler
 
 public sealed class RamanProbeDriver : ScalarProbeDriver
 {
-    public const string DriverId = "tec.probe.raman";
+    public const string DriverId = "sim.probe.raman";
 
     public override DriverInfo Info { get; } = new(DriverId, "在线拉曼", "第三方", "1.0.0")
     {
@@ -288,7 +288,7 @@ public sealed class RamanProbeDriver : ScalarProbeDriver
 
 public sealed class InfraredProbeDriver : ScalarProbeDriver
 {
-    public const string DriverId = "tec.probe.ir";
+    public const string DriverId = "sim.probe.ir";
 
     public override DriverInfo Info { get; } = new(DriverId, "在线红外", "第三方", "1.0.0")
     {

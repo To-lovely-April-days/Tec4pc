@@ -12,7 +12,7 @@ namespace Tec.Drivers.Simulator;
 /// </summary>
 public sealed class TrProbeDriver : IDeviceDriver
 {
-    public const string DriverId = "tec.probe.tr";
+    public const string DriverId = "sim.probe.tr";
 
     public DriverInfo Info { get; } = new(DriverId, "Tr 温度探头", "Tec", "1.0.0")
     {

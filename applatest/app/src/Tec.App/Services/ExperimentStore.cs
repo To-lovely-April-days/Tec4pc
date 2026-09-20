@@ -3,6 +3,7 @@ using Tec.Core.Chemistry;
 using Tec.Core.Compounds;
 using Tec.Core.Persistence;
 using Tec.Core.Recipes;
+using Tec.Core.Records;
 
 namespace Tec.App.Services;
 
@@ -128,7 +129,8 @@ public sealed class ExperimentStore
     {
         var doc = TecFiles.LoadExperiment(path);
 
-        doc.Bench.ApplyTo(_ws.Bench);
+        // 台面里早期版本的仿真设备会被换成真机孪生 / 摘掉——动了什么一起说出来
+        var benchNotes = doc.Bench.ApplyTo(_ws.Bench);
 
         var migrated = new List<string>();
         var anyStamped = false;
@@ -163,8 +165,9 @@ public sealed class ExperimentStore
         // 配方库不再跟着实验文件走（它是全局的，见「全局库」那一节）。
         // 老文件里带的那一份**不能直接扔**——那可能是操作人在别的机器上编的工艺。
         // 库里没有的并进来，并了几条说一声；库里已经有的（按配方号认）不动
-        var loadNotes = new List<string>();
+        var loadNotes = new List<string>(benchNotes);
         MergeLegacyLibrary(doc, migrated, loadNotes);
+        foreach (var n in benchNotes) _ws.Log.Write("台面", n, _ws.Operator, LogLevel.Warn);
 
         LastMigration = migrated;
         LastNotes = loadNotes;
@@ -275,7 +278,9 @@ public sealed class ExperimentStore
     /// </summary>
     public async Task ImportBenchAsync(string path)
     {
-        TecFiles.LoadBench(path).ApplyTo(_ws.Bench);
+        var notes = TecFiles.LoadBench(path).ApplyTo(_ws.Bench);
+        foreach (var n in notes) _ws.Log.Write("台面", n, _ws.Operator, LogLevel.Warn);
+        LastNotes = notes;
         await _ws.RebuildChannelsAsync();
         MarkDirty();
         Changed?.Invoke(this, EventArgs.Empty);

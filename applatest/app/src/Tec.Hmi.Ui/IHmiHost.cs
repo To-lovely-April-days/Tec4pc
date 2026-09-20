@@ -3,6 +3,7 @@ using Tec.Core.Benches;
 using Tec.Core.Data;
 using Tec.Core.Execution;
 using Tec.Core.Records;
+using Tec.Driver.Abi;
 using Tec.DriverHost;
 
 namespace Tec.Hmi.Ui;
@@ -43,6 +44,12 @@ public interface IHmiHost
     string DataDir { get; }
 
     Channel? ChannelOf(int number);
+
+    /// <summary>这台设备开着的会话；没开（打不开 / 台面上没有）就是 null。头卡上的「已连接」按它说。</summary>
+    IDeviceSession? Session(string instanceId);
+
+    /// <summary>这台设备上一次没打开的原因（驱动报的原话）；开着的 / 没试过的是 null。</summary>
+    string? OpenFailure(string instanceId);
 
     /// <summary>该开新批次就开（幂等）。面板启动序列前调。</summary>
     bool BeginBatch();

@@ -13,7 +13,6 @@ using Tec.Core.Safety;
 using Tec.Core.Users;
 using Tec.Driver.Abi;
 using Tec.DriverHost;
-using Tec.Drivers.Simulator;
 using Tec.Hmi.Ui;
 
 namespace Tec.App.Services;
@@ -47,6 +46,10 @@ public sealed class Workspace : IHmiHost
     }
     private readonly List<Channel> _channels = new();
     private Timer? _safetyTimer;
+
+    /// <summary>上一次重建时没打开的设备：实例号 → 驱动报的原因。台面属性栏和
+    /// HMI 头卡念的「未连接：……」就是它——打不开要说为什么，不能只写个「未连接」。</summary>
+    private readonly Dictionary<string, string> _openFailures = new(StringComparer.Ordinal);
 
     public Workspace()
     {
@@ -197,51 +200,40 @@ public sealed class Workspace : IHmiHost
     public event Action<int, string>? MarkRequested;
     public event EventHandler? BenchChanged;
 
-    /// <summary>仿真加速倍数。真实硬件上恒为 1。</summary>
-    public double TimeScale
-    {
-        get => Clock.Rate;
-        set
-        {
-            Clock.Rate = value;
-            Engine.TimeScale = value;
-        }
-    }
-
     public void Boot()
     {
-        // 内置仿真驱动 + drivers/ 目录里的第三方包
-        Drivers.RegisterBuiltin(new Rd105ReactorDriver());
-        Drivers.RegisterBuiltin(new DosingPumpDriver());
-        Drivers.RegisterBuiltin(new TrProbeDriver());
-        Drivers.RegisterBuiltin(new PhProbeDriver());
-        Drivers.RegisterBuiltin(new TurbidityProbeDriver());
-        Drivers.RegisterBuiltin(new RamanProbeDriver());
-        Drivers.RegisterBuiltin(new InfraredProbeDriver());
-        // 真机：RD105 协议的 TEC 温控器。和仿真反应器并列摆在设备库里，
-        // 台面上想用哪个用哪个——同一套配方两边都能跑
-        Drivers.RegisterBuiltin(new Tec.Drivers.Rd105.Rd105TecDriver());
-        // 真机：双工位反应主机（RD105 + IO8R，见 docs/双工位反应主机驱动需求.md）
-        // 与两支宇电探头（Tr = J7、pH = J4，串口各在探头自己的属性里）。
-        // 先注册不进台面设备库——库暂时只上四件是用户定的；「模拟」勾选框
-        // 会在仿真 ⇄ 真机孪生之间换身份（SimRealTwins）
+        // 程序里只有真机驱动，没有仿真：双工位反应主机（RD105 + IO8R，见
+        // docs/双工位反应主机驱动需求.md）、两支宇电探头（Tr = J7、pH = J4，
+        // 串口各在探头自己的属性里），以及单独的 RD105 温控器（老台面上摆过的
+        // 还能开；设备库里不再单列——主机把「电加热切换」选「无」就是它）。
+        // 早期那套仿真驱动已从程序里拿掉，只留在回归测试里当替身。
         Drivers.RegisterBuiltin(new Tec.Drivers.DualStation.DualStationDriver());
         Drivers.RegisterBuiltin(new Tec.Drivers.DualStation.YudianTrProbeDriver());
         Drivers.RegisterBuiltin(new Tec.Drivers.DualStation.YudianPhProbeDriver());
+        Drivers.RegisterBuiltin(new Tec.Drivers.Rd105.Rd105TecDriver());
+        // 第三方驱动包从 drivers/ 目录进
         Drivers.Discover(Path.Combine(AppContext.BaseDirectory, "drivers"));
         Drivers.LoadAll();
 
+        // 指令集是静态声明——没连硬件也要能编辑配方（§3）。从前搅拌 / 加料 /
+        // pH 这几组指令是仿真驱动带进来的，仿真拿掉之后它们得自己站住：
+        // 配方里照常能编，台面上没有那台设备时由校验器如实拒绝，不是编辑器里凭空少一组
+        Catalog.Register(CommandSpecs.Temperature);
+        Catalog.Register(CommandSpecs.Stirring);
+        Catalog.Register(CommandSpecs.Dosing);
+        Catalog.Register(CommandSpecs.Ph);
         foreach (var pkg in Drivers.Packages)
             if (pkg.Driver is { } d) Catalog.Register(d.Commands);
 
         // 加料泵是共享资源：同一时刻只让一个通道用（§5.1 / §7.4）
         Arbiter.Declare("P1", 1);
         Arbiter.Declare("P2", 1);
-        Engine.ResourceOf = DemoBench.ResourceOf;
+        Engine.ResourceOf = ResourceOf;
 
-        TimeScale = 60;                       // 演示用；接真机时改回 1
+        // 时钟 1:1。从前这里写着「TimeScale = 60，演示用」——那是仿真时代的
+        // 加速；接真机之后 60× 的钟会把 10 分钟的保持记成 10 秒，绝不能留
 
-        // 台面从空开始：设备由用户从设备库拖进来。要示例台面调 LoadSample()。
+        // 台面从空开始：设备由用户从设备库拖进来。
         // 配方也从空开始——预置几条「降温结晶」看着像已经配好了，其实一步没有。
         Store = new ExperimentStore(this);
 
@@ -311,23 +303,7 @@ public sealed class Workspace : IHmiHost
     /// </summary>
     public async Task RebuildChannelsAsync()
     {
-        // 台面一动，全部设备会话都要重开。**先把正在跑的通道停下来并记一笔**——
-        // 它的会话马上就要被 Dispose，让它「接着跑」只是对着空气下指令：
-        // 界面上通道明明「运行中」，釜温却一动不动，而且一声不吭。
-        // 停下来至少在记录里写清了为什么停
-        foreach (var r in Engine.Runners.ToList())
-            if (r.State is ChannelRunState.Running or ChannelRunState.Paused)
-                r.Abort(Operator, "台面改动，设备会话重开");
-        foreach (var r in Engine.Runners.ToList())
-        {
-            try { await r.Completion.ConfigureAwait(false); } catch { }
-        }
-
-        foreach (var s in _sessions.Values)
-        {
-            try { await s.DisposeAsync().ConfigureAwait(false); } catch { }
-        }
-        _sessions.Clear();
+        await CloseSessionsAsync("台面改动，设备会话重开").ConfigureAwait(false);
         _channels.Clear();
         Engine.ResetSafety("台面重建，限值已重设");
 
@@ -366,10 +342,11 @@ public sealed class Workspace : IHmiHost
                 InstanceId = dev.InstanceId,
                 ChannelNumbers = chs,
                 Config = dev.Config,
-                Simulated = dev.Simulated,
-                TimeScale = TimeScale,
+                Simulated = false,
+                TimeScale = 1,
                 Clock = Clock.Func,
-                Log = (level, text) => Console.WriteLine($"[{level}] {text}")
+                Log = (level, text) => Log?.Write("设备", text, Operator,
+                    level is "error" ? LogLevel.Error : level is "warn" ? LogLevel.Warn : LogLevel.Info)
             };
 
             IDeviceSession session;
@@ -381,10 +358,14 @@ public sealed class Workspace : IHmiHost
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[error] {dev.InstanceId} 打开失败：{ex.Message}");
+                // 打不开照实记着继续：这一台在台面上显示「未连接：原因」，
+                // 别的设备照常开——一台串口没插不该把整个台面拖死
+                _openFailures[dev.InstanceId] = ex.Message;
+                Log?.Write("设备", $"{dev.Display}（{dev.InstanceId}）打开失败：{ex.Message}", Operator, LogLevel.Error);
                 continue;
             }
 
+            Log?.Write("设备", $"{dev.Display}（{dev.InstanceId}）已连接", Operator);
             _sessions[dev.InstanceId] = session;
             Engine.Ingest(session);
 
@@ -457,17 +438,84 @@ public sealed class Workspace : IHmiHost
         return Dispatcher.UIThread.InvokeAsync(() => BenchChanged?.Invoke(this, EventArgs.Empty)).GetTask();
     }
 
-    /// <summary>载入示例台面（2 台反应器 + 2 套加料 + 探头），演示与自测用。</summary>
-    public Task LoadSampleAsync()
+    /// <summary>
+    /// 把台面上所有设备会话收掉：先停正在跑的通道并记一笔——它的会话马上就要被
+    /// Dispose，让它「接着跑」只是对着空气下指令：界面上通道明明「运行中」，
+    /// 釜温却一动不动，而且一声不吭。停下来至少在记录里写清了为什么停。
+    /// </summary>
+    private async Task CloseSessionsAsync(string why)
     {
-        Bench.Devices.Clear();
-        Bench.Bindings.Clear();
-        DemoBench.Fill(Bench);
-        return RebuildChannelsAsync();
+        foreach (var r in Engine.Runners.ToList())
+            if (r.State is ChannelRunState.Running or ChannelRunState.Paused)
+                r.Abort(Operator, why);
+        foreach (var r in Engine.Runners.ToList())
+        {
+            try { await r.Completion.ConfigureAwait(false); } catch { }
+        }
+
+        foreach (var s in _sessions.Values)
+        {
+            try { await s.DisposeAsync().ConfigureAwait(false); } catch { }
+        }
+        _sessions.Clear();
+        _openFailures.Clear();
+    }
+
+    /// <summary>有没有通道正在跑（运行中 / 暂停）。重连要先问它——不能为了点一下「连接」把别人的实验掐了。</summary>
+    public bool AnyChannelRunning
+        => Engine.Runners.Any(r => r.State is ChannelRunState.Running or ChannelRunState.Paused);
+
+    /// <summary>
+    /// 「连接」：先测后开。测试要占串口，而这台设备的会话可能正拿着同一个口
+    /// （Windows 上一个串口只许开一次）——所以先把会话收掉、让驱动按**当前**
+    /// 连接参数探一遍（回显固件 / 序列号 / 路数），再把台面上的会话全部按当前
+    /// 参数重开。改了串口之后点它，改动才真正生效；之前会话一直拿着旧口子，
+    /// 属性栏上明明填了 COM7、面板里却什么都读不到。
+    ///
+    /// 有通道在跑就拒绝：重开会话必然要停它。
+    /// </summary>
+    public async Task<ProbeResult> ReconnectAsync(string instanceId)
+    {
+        var dev = Bench.Devices.FirstOrDefault(d => d.InstanceId == instanceId);
+        if (dev is null) return new ProbeResult(false, "这台设备已不在台面上");
+        if (Drivers.Driver(dev.DriverId) is not { } driver)
+            return new ProbeResult(false, $"没有驱动 {dev.DriverId}");
+        if (AnyChannelRunning)
+            return new ProbeResult(false, "有通道正在运行——重连要先停设备会话，先把通道停下来再连");
+
+        await CloseSessionsAsync("重新连接设备，会话重开").ConfigureAwait(false);
+        ProbeResult r;
+        try { r = await driver.ProbeAsync(dev.Connection, CancellationToken.None).ConfigureAwait(false); }
+        catch (Exception ex) { r = new ProbeResult(false, ex.Message); }
+        Log?.Write("设备", $"{dev.Display}（{dev.InstanceId}）连接测试：{(r.Success ? "成功" : "失败")}——{r.Message}",
+                   Operator, r.Success ? LogLevel.Info : LogLevel.Warn);
+
+        await RebuildChannelsAsync().ConfigureAwait(false);
+        return r;
     }
 
     public IDeviceSession? Session(string instanceId)
         => _sessions.TryGetValue(instanceId, out var s) ? s : null;
+
+    /// <summary>IHmiHost：这台设备上一次没打开的原因；开着的 / 没试过的都是 null。</summary>
+    public string? OpenFailure(string instanceId)
+        => _openFailures.TryGetValue(instanceId, out var why) ? why : null;
+
+    /// <summary>这台设备是不是宿主（自带通道的反应主机）。按驱动报的孔位数判，不认驱动号。</summary>
+    public bool IsHost(DeviceInstance dev)
+        => Drivers.Driver(dev.DriverId) is { Info.ChannelsPerDevice: > 0 };
+
+    /// <summary>台面上的宿主设备，按台面顺序（机 A、机 B……就是这个顺序）。</summary>
+    public List<DeviceInstance> HostDevices() => Bench.Devices.Where(IsHost).ToList();
+
+    /// <summary>
+    /// 哪条指令要占哪台泵。台面知道，Core 不猜（§7.4）。
+    /// CH1/CH2 共用 P1，CH3/CH4 共用 P2——这就是 2 泵 4 通道的真问题。
+    /// </summary>
+    private static ResourceNeed? ResourceOf(int channel, string commandId)
+        => commandId.StartsWith("tec.dose.", StringComparison.Ordinal)
+            ? new ResourceNeed(channel <= 2 ? "P1" : "P2", ResourcePolicy.Queue)
+            : null;
 
     public Channel? ChannelOf(int number) => _channels.FirstOrDefault(c => c.Number == number);
 

@@ -29,7 +29,6 @@ public static class TecFiles
                 Label = d.Label,
                 X = d.Position.X,
                 Y = d.Position.Y,
-                Simulated = d.Simulated,
                 Connection = d.Connection.Clone(),
                 Config = d.Config.Clone(),
                 DockHostId = d.DockHostId,
@@ -127,8 +126,12 @@ public static class TecFiles
 
     // ── 文档 → 模型 ──────────────────────────────────────────────────
 
-    /// <summary>把台面文档灌回一个 Bench。原有内容先清空——是「打开」不是「合并」。</summary>
-    public static void ApplyTo(this BenchDoc doc, Bench bench)
+    /// <summary>
+    /// 把台面文档灌回一个 Bench。原有内容先清空——是「打开」不是「合并」。
+    /// 返回装载时另外做了什么：早期版本台面上的仿真设备会被换成真机孪生、
+    /// 换不了的被摘掉（LegacyDevices）——动了操作人存下来的东西就得说出来。
+    /// </summary>
+    public static IReadOnlyList<string> ApplyTo(this BenchDoc doc, Bench bench)
     {
         Guard(doc.Schema, Bench.CurrentSchemaVersion, "台面");
 
@@ -147,7 +150,6 @@ public static class TecFiles
                 InstanceId = d.InstanceId,
                 Label = d.Label,
                 Position = new Point(d.X, d.Y),
-                Simulated = d.Simulated,
                 Connection = d.Connection.Clone(),
                 Config = d.Config.Clone(),
                 DockHostId = d.DockHostId,
@@ -174,6 +176,9 @@ public static class TecFiles
             station.Channels.AddRange(s.Channels);
             bench.Stations.Add(station);
         }
+
+        // 早期版本的仿真设备换成真机孪生 / 摘掉，动了什么带出去说
+        return LegacyDevices.Migrate(bench);
     }
 
     public static Recipe ToModel(this RecipeDoc doc) => doc.ToModel(out _);

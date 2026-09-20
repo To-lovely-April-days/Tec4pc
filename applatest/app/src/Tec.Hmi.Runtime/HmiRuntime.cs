@@ -27,6 +27,8 @@ namespace Tec.Hmi.Runtime;
 public sealed class HmiRuntime : IHmiHost, IAsyncDisposable
 {
     private readonly Dictionary<string, IDeviceSession> _sessions = new(StringComparer.Ordinal);
+    /// <summary>开机没打开的设备：实例号 → 驱动报的原因（头卡上「未连接：……」念它）。</summary>
+    private readonly Dictionary<string, string> _openFailures = new(StringComparer.Ordinal);
     private readonly List<IDisposable> _trFeedSubs = new();
     private readonly List<Channel> _channels = new();
     private readonly Dictionary<string, string> _archived = new(StringComparer.Ordinal);
@@ -71,6 +73,12 @@ public sealed class HmiRuntime : IHmiHost, IAsyncDisposable
 
     public Channel? ChannelOf(int number) => _channels.FirstOrDefault(c => c.Number == number);
 
+    public IDeviceSession? Session(string instanceId)
+        => _sessions.TryGetValue(instanceId, out var s) ? s : null;
+
+    public string? OpenFailure(string instanceId)
+        => _openFailures.TryGetValue(instanceId, out var why) ? why : null;
+
     public bool BeginBatch()
     {
         var fresh = Engine.EnsureBatch(ExperimentName, Operator, Bench.Name);
@@ -103,15 +111,12 @@ public sealed class HmiRuntime : IHmiHost, IAsyncDisposable
     /// </summary>
     public void Boot(double timeScale = 1)
     {
-        // 真机三驱动：双工位主机 + 两支宇电探头（需求 docs/双工位反应主机驱动需求.md）
+        // 真机三驱动：双工位主机 + 两支宇电探头（需求 docs/双工位反应主机驱动需求.md）。
+        // 程序里没有仿真——早期那套仿真孪生已从程序里拿掉，只留在回归测试里当替身
+        // （测试要用就在 Boot 之前往 Drivers 里注册）
         Drivers.RegisterBuiltin(new Tec.Drivers.DualStation.DualStationDriver());
         Drivers.RegisterBuiltin(new Tec.Drivers.DualStation.YudianTrProbeDriver());
         Drivers.RegisterBuiltin(new Tec.Drivers.DualStation.YudianPhProbeDriver());
-        // 仿真孪生也注册：没接硬件的机器（演示、验收、开发）用同一份 bench.json
-        // 换个 DriverId 就能跑全套界面——界面上的数据照实带 Simulated 标
-        Drivers.RegisterBuiltin(new Tec.Drivers.Simulator.Rd105ReactorDriver());
-        Drivers.RegisterBuiltin(new Tec.Drivers.Simulator.TrProbeDriver());
-        Drivers.RegisterBuiltin(new Tec.Drivers.Simulator.PhProbeDriver());
         // 第三方驱动包照工作站的规矩从 drivers/ 目录进
         Drivers.Discover(Path.Combine(AppContext.BaseDirectory, "drivers"));
         Drivers.LoadAll();
@@ -149,8 +154,10 @@ public sealed class HmiRuntime : IHmiHost, IAsyncDisposable
         }
         try
         {
-            TecFiles.LoadBench(BenchPath).ApplyTo(Bench);
+            var notes = TecFiles.LoadBench(BenchPath).ApplyTo(Bench);
             Log.Write("台面", $"台面「{Bench.Name}」已载入：{Bench.Devices.Count} 台设备、{Bench.Bindings.Count} 条绑定", Operator);
+            // 早期版本的仿真设备被换成真机 / 摘掉了——动了台面文件里的东西就得记下来
+            foreach (var n in notes) Log.Write("台面", n, Operator, LogLevel.Warn);
         }
         catch (Exception ex)
         {
@@ -170,18 +177,18 @@ public sealed class HmiRuntime : IHmiHost, IAsyncDisposable
                 new DeviceDoc
                 {
                     DriverId = Tec.Drivers.DualStation.DualStationDriver.DriverId,
-                    InstanceId = "R1", Label = "双工位反应主机", Simulated = false,
+                    InstanceId = "R1", Label = "双工位反应主机"
                     // 连接参数留驱动缺省（COM 口现场改）；配置同理
                 },
                 new DeviceDoc
                 {
                     DriverId = Tec.Drivers.DualStation.YudianTrProbeDriver.DriverId,
-                    InstanceId = "TR1", Label = "宇电 Tr 探头（J7）", Simulated = false
+                    InstanceId = "TR1", Label = "宇电 Tr 探头（J7）"
                 },
                 new DeviceDoc
                 {
                     DriverId = Tec.Drivers.DualStation.YudianPhProbeDriver.DriverId,
-                    InstanceId = "PH1", Label = "宇电 pH 电极（J4）", Simulated = false
+                    InstanceId = "PH1", Label = "宇电 pH 电极（J4）"
                 },
             },
             Bindings =
@@ -240,7 +247,7 @@ public sealed class HmiRuntime : IHmiHost, IAsyncDisposable
                 InstanceId = dev.InstanceId,
                 ChannelNumbers = chs,
                 Config = dev.Config,
-                Simulated = dev.Simulated,
+                Simulated = false,
                 TimeScale = Clock.Rate,
                 Clock = Clock.Func,
                 Log = (level, text) => Log.Write("设备", $"{text}", Operator,
@@ -255,10 +262,12 @@ public sealed class HmiRuntime : IHmiHost, IAsyncDisposable
             }
             catch (Exception ex)
             {
-                // 打不开照实记着继续：面板上这一路显示未接，比整机起不来诚实
+                // 打不开照实记着继续：面板上这一路显示「未连接：原因」，比整机起不来诚实
+                _openFailures[dev.InstanceId] = ex.Message;
                 Log.Write("设备", $"{dev.InstanceId} 打开失败：{ex.Message}", Operator, LogLevel.Error);
                 continue;
             }
+            Log.Write("设备", $"{dev.Display}（{dev.InstanceId}）已连接", Operator);
 
             _sessions[dev.InstanceId] = session;
             Engine.Ingest(session);

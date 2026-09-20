@@ -389,9 +389,10 @@ public sealed class BenchViewModel : ViewModelBase
             BuildForms();
             BuildBindTargets();
             BuildWells();
+            _connDirty = false;
             RaiseAll(nameof(HasSelection), nameof(SelectedTitle), nameof(SelectedDriver), nameof(SelectedSub),
-                     nameof(IsReactor), nameof(IsProbe), nameof(DeviceName), nameof(DeviceSimulated),
-                     nameof(BindTarget));
+                     nameof(IsReactor), nameof(IsProbe), nameof(DeviceName), nameof(BindTarget),
+                     nameof(LinkText), nameof(LinkOk));
         }
     }
 
@@ -443,83 +444,29 @@ public sealed class BenchViewModel : ViewModelBase
         set => Set(ref _renaming, value);
     }
 
-    /// <summary>
-    /// 仿真开关是设备的真实状态，不是摆设：**勾了模拟才走模拟**。
-    /// 主机去了勾会换成真机驱动身份（tec.reactor.duo），连接表单、测试连接、
-    /// 会话全部跟着走；探头类去了勾后自己不再产数（真机上数值由主机端出来）；
-    /// 没有真机形态的设备（如加料泵）去勾被如实拒绝，勾选框弹回去。
-    /// </summary>
-    /// <summary>拒绝回弹的过渡值：拒绝那一拍先让界面停在用户点出的样子，
-    /// 下一拍清掉、按真值重抬——直接抬同一个值会被绑定当「没变化」吞掉（实测踩到）。</summary>
-    private bool? _simFlash;
+    // ── 链路状态（属性栏名字底下那一行）────────────────────────────
+    //
+    // 「已连接」只在会话真开着时才说；打不开把驱动报的原因原话带出来。
+    // 连接参数改了但还没重连的那段时间，如实标「未生效」——会话还拿着旧口子，
+    // 填了 COM7 面板里却读不到数，就是没这一句闹的。
 
-    public bool DeviceSimulated
+    /// <summary>连接表单改过、还没点「连接」让它生效。</summary>
+    private bool _connDirty;
+
+    public string LinkText
     {
-        get => _simFlash ?? _selected?.Device.Simulated ?? true;
-        set
+        get
         {
-            if (_selected is null || _selected.Device.Simulated == value) return;
-            var dev = _selected.Device;
-
-            if (!value)
-            {
-                var real = SimRealTwins.RealOf(dev.DriverId);
-                // 没有真机孪生时，只有纯传感类（探头/电极：去勾后自己闭嘴，数值由主机端出来）
-                // 才允许去勾。带执行器能力的（泵的 IDosing）不行——去勾后照旧虚拟加料，
-                // 就是拿仿真冒充真机
-                var sensorOnly = _selected.Driver is { } drv && drv.Info.Capabilities.Count > 0
-                    && drv.Info.Capabilities.All(c =>
-                        c is nameof(IScalarSensor) or nameof(ISpectrumSource));
-                if (real is null && !sensorOnly)
-                {
-                    ProbeResult = "这台还没有真机驱动，暂时只能模拟";
-                    RevertSimulatedCheckbox(value);
-                    return;
-                }
-                if (real is not null) dev.DriverId = real;
-            }
-            else
-            {
-                var sim = SimRealTwins.SimOf(dev.DriverId);
-                if (sim is null && _selected.Driver?.Info.SimulatorIncluded == false)
-                {
-                    ProbeResult = "这台没有仿真形态，只能走真机";
-                    RevertSimulatedCheckbox(value);
-                    return;
-                }
-                if (sim is not null) dev.DriverId = sim;
-            }
-
-            dev.Simulated = value;
-            Raise();
-            _ = SwapAndReselectAsync(dev.InstanceId);     // 会话按新身份重开
+            if (_selected is null) return "";
+            var (text, _) = DeviceLink.Describe(_ws.Session(_selected.Id), _ws.OpenFailure(_selected.Id));
+            return _connDirty ? $"{text} · 连接参数已改，点「连接」生效" : text;
         }
     }
 
-    /// <summary>
-    /// 拒绝切换时把勾选框弹回去：这一拍先记下用户点出的值（getter 暂时随它），
-    /// 下一拍清掉过渡值再抬——此时 getter 回到真值、与控件当前显示不同，
-    /// 绑定才肯把控件改回去。
-    /// </summary>
-    private void RevertSimulatedCheckbox(bool clicked)
-    {
-        _simFlash = clicked;
-        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-        {
-            _simFlash = null;
-            Raise(nameof(DeviceSimulated));
-        }, Avalonia.Threading.DispatcherPriority.Background);
-    }
+    public bool LinkOk => _selected is not null && !_connDirty
+        && DeviceLink.Describe(_ws.Session(_selected.Id), _ws.OpenFailure(_selected.Id)).Ok;
 
-    /// <summary>
-    /// 重建完再把同一台选回来：换了驱动身份的节点在 SyncDevices 里是整个换掉的，
-    /// 旧节点会被摘出列表、右栏跟着清空，不重选的话开关一按面板就白了。
-    /// </summary>
-    private async Task SwapAndReselectAsync(string id)
-    {
-        await _ws.RebuildChannelsAsync();
-        Selected = Devices.FirstOrDefault(d => d.Id == id) ?? Selected;
-    }
+    private void RaiseLink() => RaiseAll(nameof(LinkText), nameof(LinkOk));
 
     /// <summary>探头绑到哪个通道（原型的「绑定通道」下拉，含「未绑定」）。</summary>
     public ObservableCollection<string> BindTargets { get; } = new();
@@ -1098,7 +1045,8 @@ public sealed class BenchViewModel : ViewModelBase
             {
                 if (t.Kind == "tr")
                 {
-                    if (ch.Capabilities.Get<ITemperatureControl>() is { } tc)
+                    // 釜内探头没绑 / 没读到就是 NaN——印「—」，不印「NaN ℃」
+                    if (ch.Capabilities.Get<ITemperatureControl>() is { } tc && !double.IsNaN(tc.CurrentReactor))
                         txt = $"{tc.CurrentReactor:F1} ℃";
                 }
                 else
@@ -1122,6 +1070,7 @@ public sealed class BenchViewModel : ViewModelBase
         }
 
         RefreshStationState();
+        RaiseLink();      // 会话是后台开的：属性栏那行「已连接 / 未连接」跟着每秒刷
     }
 
     /// <summary>
@@ -1235,20 +1184,25 @@ public sealed class BenchViewModel : ViewModelBase
     private static readonly string[] CategoryOrder = { "反应与控温", "加料", "在线检测", "其他" };
 
     /// <summary>
-    /// 设备库暂时只上这四件（用户定的：先有这四个，其余后期再添加）。
-    /// 驱动照旧全部注册——老台面里摆过的浊度 / 拉曼 / 红外还能开会话、
-    /// 配方里的对应步骤还在，只是库里暂时不再往台面上发新的。
+    /// 设备库只上真机三件：双工位反应主机 + 两支宇电探头。程序里没有仿真，
+    /// 库里也就没有仿真设备；加料泵还没有真机驱动，跟着仿真一起下架——
+    /// 库里摆一台拖上去只能虚拟加料的泵，就是拿仿真冒充真机。
+    /// 单独的 RD105 温控器驱动照旧注册（老台面上摆过的还能开），库里不单列：
+    /// 主机把「电加热切换」选「无」就是它。
     /// </summary>
     private static readonly string[] LibraryIds =
     {
-        Tec.Drivers.Simulator.Rd105ReactorDriver.DriverId,
-        Tec.Drivers.Simulator.TrProbeDriver.DriverId,
-        Tec.Drivers.Simulator.PhProbeDriver.DriverId,
-        Tec.Drivers.Simulator.DosingPumpDriver.DriverId
+        Tec.Drivers.DualStation.DualStationDriver.DriverId,
+        Tec.Drivers.DualStation.YudianTrProbeDriver.DriverId,
+        Tec.Drivers.DualStation.YudianPhProbeDriver.DriverId
     };
 
     public void Reload()
     {
+        // 台面一动会话全部按当前参数重开——刚改的连接参数这时已经生效，「未生效」的标记撤掉
+        _connDirty = false;
+        RaiseLink();
+
         Library.Clear();
         foreach (var p in _ws.Drivers.ForLibrary())
             if (LibraryIds.Contains(p.Id)) Library.Add(new LibraryItemViewModel(p));
@@ -1351,7 +1305,9 @@ public sealed class BenchViewModel : ViewModelBase
         // 串口下拉去问系统这台机器上现在有哪些口（见 SerialPortScan）——
         // 写死一份 COM1~COM6 的话，插着八口 USB 转串的机器一个都选不着。
         // 每次建表单都重扫一遍：插拔之后点一下别的设备再点回来就是最新的
+        // 连接参数一改就标「未生效」：会话还拿着旧口子，直到点「连接」重开
         ConnectionForm = new SchemaFormViewModel(d.ConnectionSchema, _selected.Device.Connection,
+                                                 changed: () => { _connDirty = true; RaiseLink(); },
                                                  choicesOf: PortChoices);
         ConfigForm = new SchemaFormViewModel(d.ConfigSchema, _selected.Device.Config,
                                              choicesOf: PortChoices);
@@ -1361,40 +1317,28 @@ public sealed class BenchViewModel : ViewModelBase
     private static IReadOnlyList<ChoiceOption>? PortChoices(string key, string? current)
         => key == WellKnownChoices.SerialPorts ? SerialPortScan.Options(current) : null;
 
+    /// <summary>
+    /// 「连接」：按当前连接参数先探一遍（固件 / 序列号 / 路数回显在按钮上方），
+    /// 再把会话重开——探完之后设备就是连着的，不是「测完了还得再连一次」。
+    /// 探不通照实说驱动报的原因；名字底下那行链路状态跟着会话重开一起刷新。
+    /// </summary>
     private async Task ProbeAsync()
     {
-        if (_selected?.Driver is not { } d) return;
+        if (_selected is not { } sel || sel.Driver is null) return;
 
-        // 没勾「模拟」就不许拿仿真驱动假装连接成功（仿真的 Probe 永远答「已响应」）。
-        // 探头/电极的真机后端在主机的宇电模块上，自己不占端口——这里没有可测的口子，
-        // 诚实的答案是告诉用户去哪儿测
-        if (!_selected.Device.Simulated && d.Info.SimulatorIncluded)
-        {
-            ProbeResult = _selected.Device.DriverId switch
-            {
-                Tec.Drivers.Simulator.TrProbeDriver.DriverId =>
-                    "未勾选模拟：这支探头不占端口，真机数值由主机的宇电 AI-8848GD91J7" +
-                    "（主机连接参数里的「温度模块串口」）端上来——测试连接请在主机上做",
-                Tec.Drivers.Simulator.PhProbeDriver.DriverId =>
-                    "未勾选模拟：这支电极不占端口，真机数值由主机的宇电 AI-8848GD91J4" +
-                    "（主机连接参数里的「pH 串口」）端上来——测试连接请在主机上做",
-                _ => "未勾选模拟：这台的真机接入还没实现，没有可测的连接"
-            };
-            return;
-        }
-
-        ProbeResult = "正在测试…";
-        try
-        {
-            var r = await d.ProbeAsync(_selected.Device.Connection, CancellationToken.None);
-            ProbeResult = r.Success
-                ? $"连接成功：{r.Message}；固件 {r.Firmware}；序列号 {r.Serial}；探测到 {r.DetectedChannels} 路"
-                : $"连接失败：{r.Message}";
-        }
-        catch (Exception ex)
-        {
-            ProbeResult = "连接失败：" + ex.Message;
-        }
+        ProbeResult = "正在连接…";
+        var id = sel.Id;
+        var r = await _ws.ReconnectAsync(id);
+        ProbeResult = r.Success
+            ? $"连接成功：{r.Message}"
+              + (string.IsNullOrEmpty(r.Firmware) ? "" : $"；固件 {r.Firmware}")
+              + (string.IsNullOrEmpty(r.Serial) ? "" : $"；序列号 {r.Serial}")
+              + (r.DetectedChannels is { } n ? $"；探测到 {n} 路" : "")
+            : $"连接失败：{r.Message}";
+        // 重建把节点整个换过一遍，选回同一台，链路那一行才念得到新会话
+        Selected = Devices.FirstOrDefault(d => d.Id == id) ?? Selected;
+        _connDirty = false;
+        RaiseLink();
     }
 }
 

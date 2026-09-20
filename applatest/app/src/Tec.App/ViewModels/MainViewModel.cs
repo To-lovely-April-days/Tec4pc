@@ -252,8 +252,4 @@ public sealed class MainViewModel : ViewModelBase
 
     /// <summary>标题栏上的实验名。改过还没存的带一个星号。</summary>
     public string DocTitle => Workspace.Store.Title;
-
-    public string SimNote => Workspace.TimeScale > 1
-        ? $"仿真 {Workspace.TimeScale:F0}×"
-        : "实测";
 }

@@ -9,7 +9,7 @@ namespace Tec.Drivers.Simulator;
 /// </summary>
 public sealed class DosingPumpDriver : IDeviceDriver
 {
-    public const string DriverId = "tec.dosing.pump";
+    public const string DriverId = "sim.dosing.pump";
 
     public DriverInfo Info { get; } = new(DriverId, "进料泵", "Tec", "1.0.0")
     {

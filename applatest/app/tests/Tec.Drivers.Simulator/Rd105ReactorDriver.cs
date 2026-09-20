@@ -9,7 +9,7 @@ namespace Tec.Drivers.Simulator;
 /// </summary>
 public sealed class Rd105ReactorDriver : IDeviceDriver
 {
-    public const string DriverId = "tec.reactor.rd105";
+    public const string DriverId = "sim.reactor.rd105";
 
     // 名字与副标照 parts_current 那张配件总图：双工位、RD105 控制器控温。
     // 设备图换成 HT-RS2 主机的裸机线稿（rd105.svg），Tr / pH 是独立设备，

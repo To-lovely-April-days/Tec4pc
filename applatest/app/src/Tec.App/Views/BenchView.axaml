@@ -388,7 +388,10 @@
                         Margin="0,0,0,10" IsVisible="{Binding HasSelection}">
               <Button Classes="pill" Content="手动控制面板" IsVisible="{Binding IsReactor}"
                       Click="OnOpenHmi" />
-              <Button Classes="pill" Content="测试连接" Command="{Binding Probe}" />
+              <!-- 「连接」= 先测后开：按当前连接参数探一遍（固件 / 序列号 / 路数回显在上方），
+                   再把会话重开。改了串口之后点它改动才生效 -->
+              <Button Classes="pill" Content="连接" Command="{Binding Probe}"
+                      ToolTip.Tip="按当前连接参数重新打开这台设备：先探一遍，再重开会话" />
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center">
               <Button Classes="tbtn foot" ToolTip.Tip="保存实验" Command="{Binding SaveExperiment}">
@@ -528,6 +531,12 @@
                 </Button>
               </StackPanel>
 
+              <!-- 链路状态：名字底下一行小字。「已连接」只在会话真开着时才说（绿）；
+                   打不开把驱动报的原因原话带出来（红）；连接参数改了还没点「连接」
+                   也如实标出来——会话还拿着旧口子，填了 COM7 面板里却读不到数，就是这一段 -->
+              <TextBlock Classes="link" Classes.ok="{Binding LinkOk}" Text="{Binding LinkText}"
+                         IsVisible="{Binding !Renaming}" />
+
               <!-- 改的时候：输入框落进下面表单的同一列（76,*,40），
                    左右两边都跟串口 / 波特率那排对齐。**输入框就该跟输入框一列**——
                    从前它是居中浮着的固定 180px，跟下面哪一条边都对不上 -->
@@ -589,8 +598,6 @@
               <CheckBox Content="自动反馈控制允许" IsChecked="True" Classes="chk2"
                         IsVisible="{Binding IsProbe}" />
 
-              <CheckBox Content="模拟" Classes="chk2" IsChecked="{Binding DeviceSimulated, Mode=TwoWay}" />
-
               <TextBlock Classes="intro left" IsVisible="{Binding IsProbe}" Margin="0,10,0,0"
                          Text="绑定后，该设备的数据与命令归属所选通道；配方中的加料 / pH / 分析步骤将作用于此设备。" />
             </StackPanel>
@@ -618,6 +625,19 @@
   </Grid>
 
   <UserControl.Styles>
+    <!-- 属性栏名字底下那行链路状态：没连上红字（带驱动报的原因，可折行），连上绿字 -->
+    <Style Selector="TextBlock.link">
+      <Setter Property="FontSize" Value="10.5" />
+      <Setter Property="LineHeight" Value="15" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="TextAlignment" Value="Center" />
+      <Setter Property="Margin" Value="0,-6,0,12" />
+      <Setter Property="Foreground" Value="#b3261e" />
+    </Style>
+    <Style Selector="TextBlock.link.ok">
+      <Setter Property="Foreground" Value="#2f6b38" />
+    </Style>
+
     <!-- 一类 = 左边一条 6px 分类色条 + 组头 + 设备格，**块本身不铺底色**。
          铺了的话一格一格的设备底就连成一整片，看不出是一台一台的东西了
          （这一栏要说的正是「这里有几台机器」）。分类靠色条和组头站住，

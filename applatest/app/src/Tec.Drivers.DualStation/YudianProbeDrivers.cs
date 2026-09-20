@@ -15,7 +15,7 @@ public sealed class YudianTrProbeDriver : YudianProbeDriverBase
 
     public YudianTrProbeDriver() : base(
         id: DriverId,
-        name: "Tr 温度探头（真机）",
+        name: "Tr 温度探头",
         icon: "trprobe",
         kind: YudianKind.Thermal,
         tag: new TagDescriptor("Tr", "釜内温度", "℃", DataShape.Scalar)
@@ -36,7 +36,7 @@ public sealed class YudianPhProbeDriver : YudianProbeDriverBase
 
     public YudianPhProbeDriver() : base(
         id: DriverId,
-        name: "pH 玻璃电极（真机）",
+        name: "pH 玻璃电极",
         icon: "phel",
         kind: YudianKind.Linear,
         tag: new TagDescriptor("pH", "pH", "", DataShape.Scalar)

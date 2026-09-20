@@ -25,7 +25,7 @@ public sealed class PersistenceTests : IDisposable
         var b = new Bench { Name = "四通道台面" };
         b.Devices.Add(new DeviceInstance
         {
-            DriverId = "tec.reactor.rd105",
+            DriverId = "tec.reactor.duo",
             InstanceId = "R1",
             Label = "反应器 A",
             Position = new Point(120.5, 88.25),
@@ -33,7 +33,7 @@ public sealed class PersistenceTests : IDisposable
         });
         b.Devices.Add(new DeviceInstance
         {
-            DriverId = "tec.probe.ph",
+            DriverId = "tec.probe.ph.yudian",
             InstanceId = "PH1",
             Position = new Point(60, 12),
             DockHostId = "R1",
@@ -88,7 +88,7 @@ public sealed class PersistenceTests : IDisposable
         Assert.Equal(2, back.Devices.Count);
 
         var r1 = back.Device("R1")!;
-        Assert.Equal("tec.reactor.rd105", r1.DriverId);
+        Assert.Equal("tec.reactor.duo", r1.DriverId);
         Assert.Equal("反应器 A", r1.Label);
         Assert.Equal(120.5, r1.Position.X);
         Assert.Equal(88.25, r1.Position.Y);

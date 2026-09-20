@@ -33,7 +33,6 @@
     <ProjectReference Include="..\Tec.Core\Tec.Core.csproj" />
     <ProjectReference Include="..\Tec.DriverHost\Tec.DriverHost.csproj" />
     <ProjectReference Include="..\Tec.Hmi.Ui\Tec.Hmi.Ui.csproj" />
-    <ProjectReference Include="..\Tec.Drivers.Simulator\Tec.Drivers.Simulator.csproj" />
     <ProjectReference Include="..\Tec.Drivers.Rd105\Tec.Drivers.Rd105.csproj" />
     <ProjectReference Include="..\Tec.Drivers.DualStation\Tec.Drivers.DualStation.csproj" />
   </ItemGroup>

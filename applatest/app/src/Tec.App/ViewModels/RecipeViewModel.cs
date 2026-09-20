@@ -14,7 +14,6 @@ using Tec.Core.Recipes;
 using Tec.Core.Safety;
 using Tec.Core.Scheduling;
 using Tec.Driver.Abi;
-using Tec.Drivers.Simulator;
 
 namespace Tec.App.ViewModels;
 
@@ -391,8 +390,7 @@ public sealed class LaneViewModel : ViewModelBase
         {
             var ch = _owner.Workspace.ChannelOf(Channel);
             if (ch is null) return $"CH{Channel}";
-            var hosts = _owner.Workspace.Bench.Devices
-                .Where(d => d.DriverId == Rd105ReactorDriver.DriverId).ToList();
+            var hosts = _owner.Workspace.HostDevices();
             var idx = hosts.FindIndex(d => d.InstanceId == ch.HostInstanceId);
             var machine = idx >= 0 && idx < 8 ? "机" + "ABCDEFGH"[idx] : ch.HostInstanceId;
             return $"{machine} · CH{Channel}";
@@ -621,8 +619,7 @@ public sealed class RecipeViewModel : ViewModelBase
     {
         var ch = Workspace.ChannelOf(channel);
         if (ch is null) return $"CH{channel}";
-        var hosts = Workspace.Bench.Devices
-            .Where(d => d.DriverId == Rd105ReactorDriver.DriverId).ToList();
+        var hosts = Workspace.HostDevices();
         var idx = hosts.FindIndex(d => d.InstanceId == ch.HostInstanceId);
         var machine = idx >= 0 && idx < 8 ? "机" + "ABCDEFGH"[idx] : ch.HostInstanceId;
         return $"{machine} · CH{channel}";

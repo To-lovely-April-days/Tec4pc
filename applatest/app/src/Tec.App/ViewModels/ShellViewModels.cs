@@ -12,7 +12,6 @@ using Tec.Core.Compounds;
 using Tec.Core.Recipes;
 using Tec.Core.Persistence;
 using Tec.Core.Scheduling;
-using Tec.Drivers.Simulator;
 
 namespace Tec.App.ViewModels;
 
@@ -440,7 +439,7 @@ public sealed class StartViewModel : ViewModelBase
     {
         get
         {
-            var hosts = Workspace.Bench.Devices.Count(d => d.DriverId == Rd105ReactorDriver.DriverId);
+            var hosts = Workspace.HostDevices().Count;
             var chs = Workspace.Channels.Count;
             return hosts == 0
                 ? "平行合成工作站 1.0 · 台面还是空的，去「台面」把设备拖进来"

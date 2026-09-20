@@ -43,12 +43,12 @@ public sealed class DualStationDriver : IDeviceDriver
     /// <summary>测试用的链路工厂：两条串口全换成假设备，整机逻辑不插硬件就能回归。</summary>
     public Func<ParameterSet, DuoLinks> LinksFactory { get; set; } = DuoLinks.Serial;
 
-    public DriverInfo Info { get; } = new(DriverId, "双工位反应主机（真机）", "光测未来 + 艾莫迅", "1.0.0")
+    public DriverInfo Info { get; } = new(DriverId, "双工位反应主机", "光测未来 + 艾莫迅", "1.0.0")
     {
         ChannelsPerDevice = 2,
         SimulatorIncluded = false,
         IconKey = "rd105",
-        Description = "真机：RD105 双路夹套控温 + IO8R 热源切换（TEC ⇄ 电加热）。" +
+        Description = "RD105 双路夹套控温 + IO8R 热源切换（TEC ⇄ 电加热）。" +
                       "釜内 Tr 与 pH 由宇电探头设备各自采集，插到工位上即归该路。",
         Capabilities = new[] { nameof(ITemperatureControl), nameof(IRefluxControl), nameof(ITemperatureTuning) }
     };
@@ -66,7 +66,7 @@ public sealed class DualStationDriver : IDeviceDriver
     })
     {
         Tip = "主机只管自己的两条串口（RD105 与 IO8R）。釜内 Tr 与 pH 的串口在" +
-              "各自探头设备的属性里——把「Tr 温度探头（真机）」「pH 玻璃电极（真机）」" +
+              "各自探头设备的属性里——把「Tr 温度探头」「pH 玻璃电极」" +
               "插到工位上即可。IO8R 的站号/波特率看模块上的拨码（出厂 9600 / 1 号）；" +
               "部署前必须用厂家工具把 IO8R 的总线错误模式从「保持」改成「复位」（需求 §7）。"
     };

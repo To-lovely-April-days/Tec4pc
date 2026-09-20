@@ -39,10 +39,10 @@ scripts/publish-hmi.sh linux-x64     # 工控机；ARM 面板机用 linux-arm64�
 ```
 
 - 屏幕正好 1280×720 时逐像素 1:1；别的分辨率等比缩放，不裁不变形。
-- 没接硬件的机器（演示/验收）：把 bench.json 里的 DriverId 换成仿真孪生
-  （`tec.reactor.rd105` / `tec.probe.tr` / `tec.probe.ph`，Simulated 设 true），
-  同一套界面全功能可跑，数据照实带「模拟」标；演示加速用
-  `TEC_HMI_TIMESCALE=60`（真机**恒为 1**，别在接硬件的机器上设它）。
+- 程序里没有仿真：bench.json 里摆的每一台都按真机打开，串口打不开的那台在面板
+  头卡上显示「未连接：原因」（系统页每台一行），其余照常。早期版本写着仿真驱动号
+  （`tec.reactor.rd105` 等）的 bench.json 读进来会自动换成真机驱动，换了什么记进日志。
+  时钟恒为 1:1（从前那个 `TEC_HMI_TIMESCALE` 已经没有了）。
 
 ## 开机自启（systemd 示例）
 

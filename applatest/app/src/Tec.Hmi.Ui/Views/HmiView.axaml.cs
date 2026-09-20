@@ -168,9 +168,6 @@ public partial class HmiView : UserControl
         e.Handled = true;
     }
 
-    private void OnAlarmDrill(object? s, RoutedEventArgs e)
-    { if (s is Control { Tag: string k }) Vm?.AlarmDrillOpen(k); }
-
     private void OnAlarmAck(object? s, RoutedEventArgs e) => Vm?.AlarmAck();
     private void OnAlarmAckAll(object? s, RoutedEventArgs e) => Vm?.AlarmAckAll();
 

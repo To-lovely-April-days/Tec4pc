@@ -19,14 +19,12 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            // 数据目录 / 时标可用环境变量改：TEC_HMI_DATA 指到别的盘，
-            // TEC_HMI_TIMESCALE 只给仿真台面演示加速用（真机恒 1，README 有说明）
+            // 数据目录可用环境变量改：TEC_HMI_DATA 指到别的盘。
+            // 时标恒为 1——从前的 TEC_HMI_TIMESCALE 是给仿真台面演示加速的，程序里没有仿真了
             var dataDir = Environment.GetEnvironmentVariable("TEC_HMI_DATA");
-            var scale = double.TryParse(Environment.GetEnvironmentVariable("TEC_HMI_TIMESCALE"),
-                out var s) && s > 0 ? s : 1;
 
             _runtime = new HmiRuntime(string.IsNullOrWhiteSpace(dataDir) ? null : dataDir);
-            _runtime.Boot(scale);
+            _runtime.Boot();
             // 开机建通道。HmiRuntime 全程 ConfigureAwait(false)、不碰界面线程，
             // 在这儿等它跑完是安全的；串口打不开会照实记日志继续，不会挂在这里
             _runtime.StartAsync().GetAwaiter().GetResult();

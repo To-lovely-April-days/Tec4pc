@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using Tec.Hmi.Ui.Controls;
 
 using Tec.Core;
+using Tec.Core.Benches;
 using Tec.Core.Data;
 using Tec.Core.Execution;
 using Tec.Core.Records;
@@ -124,7 +125,8 @@ public sealed class HmiViewModel : ViewModelBase
 
     // ── 顶栏右侧 ────────────────────────────────────────────────────
 
-    public string OvRt => $"主机 A · {Zones.Count} 通道 · 两釜温差 {DeltaBetween()} ℃";
+    public string OvRt => $"主机 A · {Zones.Count} 通道 · {Zones.FirstOrDefault()?.LinkShort ?? "未连接"}"
+                          + $" · 两釜温差 {DeltaBetween()} ℃";
     public string ZRt => "采样周期 1 s · 全程记录";
 
     private string DeltaBetween()
@@ -565,12 +567,18 @@ public sealed class HmiViewModel : ViewModelBase
     internal void SysRefresh()
     {
         var rows = new List<SysRow>();
-        var scale = _ws.Engine.TimeScale;
-        rows.Add(new SysRow("网络", "本机模拟运行 · 未联网",
-            "接真机走 RS-485 Modbus RTU（串口在台面属性栏配置）"));
-        rows.Add(new SysRow("时间",
-            $"{_ws.Clock.Now:yyyy-MM-dd HH:mm}" + (scale > 1 ? $" · 仿真时钟 ×{scale:0}" : ""),
-            scale > 1 ? "演示模式下时钟加速；接真机为 1:1" : "本机时钟"));
+        // 链路：台面上每台设备一行，念的是会话的真实状态（打不开带原因）。
+        // 从前这里写死一句「本机模拟运行 · 未联网」——程序里已经没有仿真
+        foreach (var d in _ws.Bench.Devices)
+        {
+            var (text, _) = DeviceLink.Describe(_ws.Session(d.InstanceId), _ws.OpenFailure(d.InstanceId));
+            var info = _ws.Drivers.Driver(d.DriverId)?.Info;
+            rows.Add(new SysRow($"链路 · {d.Display}", text,
+                info is null ? $"驱动 {d.DriverId} 未加载" : $"{info.Name} · 串口在台面属性栏配置"));
+        }
+        if (_ws.Bench.Devices.Count == 0)
+            rows.Add(new SysRow("链路", "台面上没有设备", "在工作站的「台面」页把设备拖进来"));
+        rows.Add(new SysRow("时间", $"{_ws.Clock.Now:yyyy-MM-dd HH:mm}", "本机时钟"));
         rows.Add(new SysRow("语言与键盘", "简体中文 · QWERTY", "当前版本仅中文界面"));
         try
         {
@@ -600,14 +608,12 @@ public sealed class HmiViewModel : ViewModelBase
     //
     // 真报警：安全层报警本上这台设备通道里**没人确认过**的那条（最新优先）。
     // 全屏红罩不许点空白关掉——只有「复位（确认）」能收；确认走引擎正路，
-    // GLP 记「谁在什么时候看见了它」。演练（模拟紧急程序）用同一张罩子，
-    // 明晃晃标着「演练」，不进报警本，只进系统日志。
+    // GLP 记「谁在什么时候看见了它」。这张罩子只给真报警：从前那两个
+    // 「模拟紧急程序」演练钮拿掉了——程序里不再有任何模拟。
 
     private Tec.Core.Safety.Alarm? _alarm;
-    private bool _drill;
 
     public bool AlarmOpen { get; private set; }
-    public bool AlarmDrill => _drill;
     public string AlarmTitle { get; private set; } = "";
     public string AlarmSub { get; private set; } = "";
     public string AlarmHead2 { get; private set; } = "";
@@ -617,7 +623,6 @@ public sealed class HmiViewModel : ViewModelBase
 
     private void RefreshAlarm()
     {
-        if (_drill) return;                       // 演练罩子由人关
         var chans = Zones.Select(z => z.Number).ToHashSet();
         var live = _ws.Engine.Alarms.Live
             .Where(a => chans.Contains(a.Channel) && !a.Acknowledged)
@@ -646,13 +651,12 @@ public sealed class HmiViewModel : ViewModelBase
         RaiseAlarm();
     }
 
-    private void RaiseAlarm() => RaiseAll(nameof(AlarmOpen), nameof(AlarmDrill),
+    private void RaiseAlarm() => RaiseAll(nameof(AlarmOpen),
         nameof(AlarmTitle), nameof(AlarmSub), nameof(AlarmHead2), nameof(AlarmBody),
         nameof(AlarmDid), nameof(AlarmMulti));
 
     public void AlarmAck()
     {
-        if (_drill) { _drill = false; AlarmOpen = false; RaiseAlarm(); Toast("演练结束"); return; }
         if (_alarm is { } a)
         {
             _ws.Engine.AckAlarm(a.Key, _ws.Operator, "面板复位");
@@ -663,28 +667,9 @@ public sealed class HmiViewModel : ViewModelBase
 
     public void AlarmAckAll()
     {
-        if (_drill) { AlarmAck(); return; }
         var n = _ws.Engine.AckAllAlarms(_ws.Operator, "面板复位（全部）");
         Toast($"已确认 {n} 条报警");
         RefreshAlarm();
-    }
-
-    /// <summary>模拟紧急程序（演练）：只演示罩子和处置路径，不进报警本。</summary>
-    public void AlarmDrillOpen(string kind)
-    {
-        _drill = true;
-        var a = kind == "A";
-        AlarmTitle = $"紧急程序 {kind}（演练）";
-        AlarmSub = $"通道 {Cur?.Index ?? 1} · {_ws.Clock.Now:HH:mm:ss} · 演练不进报警本";
-        AlarmHead2 = a ? "Tc 越限示例 —— 冷媒温度超过安全限值" : "Tr 越限示例 —— 釜内温度超过安全限值";
-        AlarmBody = a
-            ? "A 类多为硬件侧故障（冷却失效、传感器故障）。检查冷却介质流量与供水温度，等 Tc 回落后复位；其余 A 类原因须断电并联系服务。"
-            : "该类故障多为应用层问题，可复位：安全层会按限值声明的动作处理（切加热 / 停泵 / 中止通道），等读数回落后复位。";
-        AlarmDid = "本机的真限值与动作见「反应釜与安全」页的安全限值表。";
-        AlarmMulti = false;
-        AlarmOpen = true;
-        _ws.Log.Write("安全", $"报警演练 紧急程序 {kind}（HMI 面板）", _ws.Operator);
-        RaiseAlarm();
     }
 
     // ── 键盘弹窗（原型 kp）────────────────────────────────────────────
@@ -1020,8 +1005,35 @@ public sealed class HmiZoneViewModel : ViewModelBase
     public string ThermText => Therm switch
     { 1 => "升温中", -1 => "降温中", 2 => "恒温", _ => "" };
 
+    // ── 链路（头卡左上那颗小签）──────────────────────────────────────
+    //
+    // 「已连接」只在主机会话真开着时才说；打不开把驱动报的原因原话带出来。
+    // 面板上每个数都从会话现读，会话没开就全是「—」——那一排「—」得有一句
+    // 解释，不然像是机器坏了。
+
+    public string LinkText { get; private set; } = "未连接";
+    /// <summary>签上那两三个字；整句（含原因）在 LinkText，悬停和系统页念它。</summary>
+    public string LinkShort { get; private set; } = "未连接";
+    public bool LinkOk { get; private set; }
+
+    private void RefreshLink()
+    {
+        var host = Ch?.HostInstanceId;
+        var (text, ok) = host is null
+            ? ("未连接", false)
+            : DeviceLink.Describe(_ws.Session(host), _ws.OpenFailure(host));
+        LinkText = text;
+        LinkOk = ok;
+        LinkShort = ok ? "已连接"
+            : text.StartsWith("未连接", StringComparison.Ordinal) ? "未连接"
+            : text.StartsWith("已断开", StringComparison.Ordinal) ? "已断开"
+            : text.StartsWith("连接中", StringComparison.Ordinal) ? "连接中"
+            : "故障";
+    }
+
     public void Refresh()
     {
+        RefreshLink();
         TrVal = Temp?.CurrentReactor;
         TjVal = Temp?.CurrentJacket;
         RpmVal = Stir?.CurrentRpm ?? 0;
@@ -1054,9 +1066,10 @@ public sealed class HmiZoneViewModel : ViewModelBase
         HeadName = EngineRunning && run is not null ? run.Baseline.Recipe.Name : $"通道 {Index}";
         // 右上：跑着显示运行时钟；有徽章时「待机/控温中」让位给徽章（原型
         // zhead 的 rt 段 thBadge||'待机'）；温控开着却读不到 Tj 才落回文字
+        // 没连上就不写「待机」——待机是连着的机器闲着，跟没连上不是一回事
         HeadRt = EngineRunning && run is not null
             ? Fmt.Hms(run.Elapsed(_ws.Clock.Now))
-            : ThermOn ? "" : TempOn ? "控温中" : "待机";
+            : ThermOn ? "" : !LinkOk ? LinkShort : TempOn ? "控温中" : "待机";
         HeadCtl = EngineRunning ? "程序控制" : "手动控制";
         // 有 t=0 标记时把「标记 X +时长」缀在右上（原型 zHead 的 rt 段）
         if (MarkText.Length > 0)
@@ -1077,7 +1090,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
         else
         {
             HeadPct = 0;
-            HeadNote = TempOn ? "手动控制 · 温控中" : "手动待机";
+            HeadNote = !LinkOk ? LinkText : TempOn ? "手动控制 · 温控中" : "手动待机";
         }
         RaiseZone();
     }
@@ -1114,7 +1127,9 @@ public sealed class HmiZoneViewModel : ViewModelBase
 
     // ── 显示文本 ────────────────────────────────────────────────────
 
-    private static string F1(double? v) => v is { } x ? (x < 0 ? "−" : "") + Math.Abs(x).ToString("0.0") : "—";
+    // NaN 也是「没读到」：釜内探头没绑 / 没数时 CurrentReactor 就是 NaN，印「—」不印「NaN」
+    private static string F1(double? v) => v is { } x && !double.IsNaN(x)
+        ? (x < 0 ? "−" : "") + Math.Abs(x).ToString("0.0") : "—";
     private static string Sg(double v) => (v >= 0 ? "+" : "−") + Math.Abs(v).ToString("0.0");
 
     public string ModeName => Mode switch
@@ -2521,6 +2536,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
         nameof(DoseBox), nameof(DoseOff), nameof(DoseNote), nameof(TcBox), nameof(TcNote),
         nameof(RateBox), nameof(RateOff), nameof(RateNote), nameof(HeadName), nameof(HeadRt),
         nameof(HeadCtl), nameof(HeadNote), nameof(HeadPct), nameof(EngineRunning),
+        nameof(LinkText), nameof(LinkShort), nameof(LinkOk),
         nameof(Therm), nameof(ThermOn), nameof(ThermText),
         nameof(HeatState), nameof(HasHeat), nameof(HeatHot), nameof(HeatText),
         nameof(Mode), nameof(ModeName), nameof(ModeTr), nameof(ModeTj), nameof(ModeFollow),

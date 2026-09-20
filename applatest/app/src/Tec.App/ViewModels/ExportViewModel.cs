@@ -235,6 +235,8 @@ public sealed class ExportViewModel : ViewModelBase
     /// <summary>探头驱动 → 数据项依赖的探头名。数据项能不能勾，看那一炉的台面上装了什么。</summary>
     private static readonly Dictionary<string, string> ProbeNames = new(StringComparer.Ordinal)
     {
+        ["tec.probe.ph.yudian"] = "pH",
+        // 下面几个是早期仿真设备的驱动号：归档里老批次的台面还写着它们，照旧认
         ["tec.probe.ph"] = "pH",
         ["tec.probe.turbidity"] = "浊度",
         ["tec.probe.raman"] = "拉曼",

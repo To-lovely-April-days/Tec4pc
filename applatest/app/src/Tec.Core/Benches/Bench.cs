@@ -38,16 +38,15 @@ public sealed class DeviceInstance
     /// <summary>侧接时停在左还是右（L / R），决定走线用哪个插头。</summary>
     public string? DockSideTag { get; set; }
 
-    /// <summary>可写不是疏忽：属性栏的「模拟」开关会在仿真 ⇄ 真机孪生驱动之间
-    /// 换身份（tec.reactor.rd105 ⇄ tec.reactor.duo），换的就是这个字段。</summary>
+    /// <summary>可写不是疏忽：老台面里的仿真设备号读进来时要换成真机孪生
+    /// （LegacyDevices），换的就是这个字段。程序里已经没有仿真，
+    /// 台面上摆的每一台都按真机打开——没有「模拟」这一说。</summary>
     public required string DriverId { get; set; }
     public required string InstanceId { get; init; }
     public string? Label { get; set; }
     public ParameterSet Connection { get; init; } = new();
     public ParameterSet Config { get; init; } = new();
     public Point Position { get; set; }
-    /// <summary>用仿真会话而不是真硬件。仿真数据全部带 Quality.Simulated。</summary>
-    public bool Simulated { get; set; } = true;
 
     /// <summary>
     /// 泵控制小窗被用户挪到的位置（画布世界坐标）。空 = 没挪过，按默认摆。

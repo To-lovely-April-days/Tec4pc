@@ -16,7 +16,10 @@ public sealed class DeviceDoc
     public string? Label { get; set; }
     public double X { get; set; }
     public double Y { get; set; }
-    public bool Simulated { get; set; } = true;
+    /// <summary>旧字段。早期版本台面上有「模拟」开关，存的是这一位；程序里已经
+    /// 没有仿真，读进来不看它、写出去也不再带——留着只为旧文件能照常打开。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Simulated { get; set; }
     public ParameterSet Connection { get; set; } = new();
     public ParameterSet Config { get; set; } = new();
 

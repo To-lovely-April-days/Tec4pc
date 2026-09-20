@@ -721,7 +721,7 @@ public sealed class RunViewModel : ViewModelBase
             Points = $"{pts} 点",
             ExportedAt = _ws.Clock.Now.ToString("yyyy-MM-dd HH:mm:ss"),
             Operator = _ws.Operator,
-            Simulated = run?.Simulated ?? true,
+            Simulated = run?.Simulated ?? false,
             HasPh = model.HasPh
         };
 

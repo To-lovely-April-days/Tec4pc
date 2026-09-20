@@ -29,9 +29,8 @@ public sealed class HmiRuntimeTests
 
         Assert.True(rt.SeededDefaultBench);
         Assert.True(File.Exists(rt.BenchPath));
-        // 缺省是真机三件：双工位主机 + 两支宇电探头，都不是模拟
+        // 缺省是真机三件：双工位主机 + 两支宇电探头
         Assert.Equal(3, rt.Bench.Devices.Count);
-        Assert.All(rt.Bench.Devices, d => Assert.False(d.Simulated));
         Assert.Contains(rt.Bench.Devices, d => d.DriverId == Tec.Drivers.DualStation.DualStationDriver.DriverId);
         // 探头各绑两条通道（A/B 工位）
         Assert.Equal(4, rt.Bench.Bindings.Count);
@@ -51,10 +50,29 @@ public sealed class HmiRuntimeTests
     }
 
     [Fact]
-    public async Task 仿真台面_通道就绪能力齐全_一步真跑完_归档真落盘()
+    public async Task 真机台面没插串口_设备打开失败要留下原因_不是悄悄少一路()
     {
         var dir = TempDir();
-        // 台面文件就是工作站的 BenchDoc：仿真双工位反应器一台
+        await using var rt = new HmiRuntime(dir);
+        rt.Boot();                      // 缺省真机台面：这台机器上没有 COM 口，三台都开不了
+        await rt.StartAsync();
+
+        // 通道照建（主机报 2 路），但会话没开：头卡上要能念出「未连接：原因」
+        Assert.Equal(2, rt.Channels.Count);
+        Assert.Null(rt.Session("R1"));
+        Assert.False(string.IsNullOrWhiteSpace(rt.OpenFailure("R1")));
+        var (text, ok) = Tec.Core.Benches.DeviceLink.Describe(rt.Session("R1"), rt.OpenFailure("R1"));
+        Assert.False(ok);
+        Assert.StartsWith("未连接：", text);
+    }
+
+    [Fact]
+    public async Task 替身台面_通道就绪能力齐全_一步真跑完_归档真落盘()
+    {
+        var dir = TempDir();
+        // 台面文件就是工作站的 BenchDoc。程序里没有仿真驱动了，这里把测试替身
+        // （tests/Tec.Drivers.Simulator）在 Boot 之前注册进运行时——没有硬件也能
+        // 把「开会话 → 立限值 → 跑一步 → 落盘」整条路走通
         TecFiles.SaveBench(Path.Combine(dir, "bench.json"), new BenchDoc
         {
             Name = "验收台面",
@@ -63,12 +81,13 @@ public sealed class HmiRuntimeTests
                 new DeviceDoc
                 {
                     DriverId = Tec.Drivers.Simulator.Rd105ReactorDriver.DriverId,
-                    InstanceId = "R1", Simulated = true
+                    InstanceId = "R1"
                 }
             }
         });
 
         await using var rt = new HmiRuntime(dir);
+        rt.Drivers.RegisterBuiltin(new Tec.Drivers.Simulator.Rd105ReactorDriver());
         rt.Boot(timeScale: 600);
         await rt.StartAsync();
 

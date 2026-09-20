@@ -39,7 +39,7 @@ public sealed class Rd105TecDriver : IDeviceDriver
         ChannelsPerDevice = 2,
         SimulatorIncluded = false,
         IconKey = "reactor2",
-        Description = "真机：RD105 ASCII 协议。一台带两路夹套回路——TC1 = 工位 A，TC2 = 工位 B；" +
+        Description = "RD105 ASCII 协议。一台带两路夹套回路——TC1 = 工位 A，TC2 = 工位 B；" +
                       "釜内 Tr 由宇电采集模块另采。",
         Capabilities = new[] { nameof(ITemperatureControl), nameof(ITemperatureTuning) }
     };
