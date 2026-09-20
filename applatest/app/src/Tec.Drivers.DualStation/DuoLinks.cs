@@ -75,17 +75,19 @@ public sealed class DuoLinks : IDisposable
     public static DuoLinks Serial(ParameterSet cn)
     {
         ISerialTransport? ioPort = null; Io8rClient? io = null;
-        var ioPortName = cn.Str(F.PortIo, "COM6");
+        // 兜底值 = 连接表单的缺省（DualStationDriver.Defaults）：表单没建过的台面
+        // （设备端 bench.json 留空连接参数那种）也按现场那台机器的口开
+        var ioPortName = cn.Str(F.PortIo, DualStationDriver.Defaults.PortIo);
         if (cn.Str(F.HasIo, "有") == "有")
         {
-            ioPort = new SerialPortTransport(ioPortName, (int)cn.Num(F.BaudIo, 9600));
-            io = new Io8rClient(new ModbusRtuClient(ioPort, (byte)cn.Num(F.AddrIo, 1)));
+            ioPort = new SerialPortTransport(ioPortName, (int)cn.Num(F.BaudIo, DualStationDriver.Defaults.BaudIo));
+            io = new Io8rClient(new ModbusRtuClient(ioPort, (byte)cn.Num(F.AddrIo, DualStationDriver.Defaults.AddrIo)));
         }
 
-        var rdPort = cn.Str(F.PortRd105, "COM3");
-        var rdBaud = (int)cn.Num(F.BaudRd105, 38400);
-        var rdProto = cn.Str(F.ProtoRd105, Rd105Protocol.Ascii);
-        var rdStation = cn.Int(F.AddrRd105, 1);
+        var rdPort = cn.Str(F.PortRd105, DualStationDriver.Defaults.PortRd105);
+        var rdBaud = (int)cn.Num(F.BaudRd105, DualStationDriver.Defaults.BaudRd105);
+        var rdProto = cn.Str(F.ProtoRd105, DualStationDriver.Defaults.ProtoRd105);
+        var rdStation = cn.Int(F.AddrRd105, DualStationDriver.Defaults.AddrRd105);
         return new DuoLinks
         {
             // 「RD105 协议」选 Modbus-RTU 时串口上套一层桥（Rd105ModbusBridge），链路其余部分不变

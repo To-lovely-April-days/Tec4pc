@@ -234,15 +234,18 @@ public sealed class Rd105ModbusBridgeTests
             {
                 var link = new Rd105Link(new SilentPort());
                 link.Client.ReplyTimeoutMs = 60;
-                return new DuoLinks { Rd105 = link, RdPortName = "COM7", RdBaud = (int)cn.Num(DualStationDriver.Fields.BaudRd105, 38400),
-                                      RdProtocol = cn.Str(DualStationDriver.Fields.ProtoRd105, Rd105Protocol.Ascii) };
+                return new DuoLinks { Rd105 = link, RdPortName = "COM7",
+                                      RdBaud = (int)cn.Num(DualStationDriver.Fields.BaudRd105, DualStationDriver.Defaults.BaudRd105),
+                                      RdProtocol = cn.Str(DualStationDriver.Fields.ProtoRd105, DualStationDriver.Defaults.ProtoRd105) };
             }
         };
 
+        // 协议 / 波特率一项没填：按缺省（Modbus-RTU、9600）试，再换着试另外三档
         var r = await drv.ProbeAsync(ParameterSet.Of((DualStationDriver.Fields.HasIo, "无")), CancellationToken.None);
 
         Assert.False(r.Success);
-        Assert.Contains("换着试了 Modbus-RTU 站号 1 @ 38400、ASCII @ 9600、Modbus-RTU 站号 1 @ 9600 也都没应答", r.Message);
+        Assert.Contains("COM7 @ 9600（Modbus-RTU 站号 1） 无应答", r.Message);
+        Assert.Contains("换着试了 ASCII @ 9600、Modbus-RTU 站号 1 @ 38400、ASCII @ 38400 也都没应答", r.Message);
     }
 
     [Fact]

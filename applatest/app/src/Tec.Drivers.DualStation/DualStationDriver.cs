@@ -44,6 +44,22 @@ public sealed class DualStationDriver : IDeviceDriver
         public const string Band = "热源死区";
     }
 
+    /// <summary>
+    /// 连接参数的缺省值——按现场那台机器填的（用户定的）：RD105 在 CH344 的 C 口（COM7）、
+    /// IO8R 在 B 口（COM10），两条都走 RS485 = Modbus-RTU、9600、站号 1。
+    /// COM 号是这台 PC 上的枚举结果，换台电脑可能变，属性栏里改就是了；这里只是少填几步。
+    /// </summary>
+    public static class Defaults
+    {
+        public const string PortRd105 = "COM7";
+        public const int BaudRd105 = 9600;
+        public const string ProtoRd105 = Rd105Protocol.Modbus;
+        public const int AddrRd105 = 1;
+        public const string PortIo = "COM10";
+        public const int BaudIo = 9600;
+        public const int AddrIo = 1;
+    }
+
     /// <summary>测试用的链路工厂：两条串口全换成假设备，整机逻辑不插硬件就能回归。</summary>
     public Func<ParameterSet, DuoLinks> LinksFactory { get; set; } = DuoLinks.Serial;
 
@@ -59,17 +75,17 @@ public sealed class DualStationDriver : IDeviceDriver
 
     public ParameterSchema ConnectionSchema { get; } = new(new[]
     {
-        Field.Port(Fields.PortRd105, "RD105 串口", "COM3", "TEC 温控器，8N1。下拉里是当前检测到的串口"),
-        Field.Sel(Fields.BaudRd105, "RD105 波特率", new[] { "9600", "19200", "38400", "57600", "115200" }, "38400")
+        Field.Port(Fields.PortRd105, "RD105 串口", Defaults.PortRd105, "TEC 温控器，8N1。下拉里是当前检测到的串口（现场那台在 CH344 的 C 口）"),
+        Field.Sel(Fields.BaudRd105, "RD105 波特率", new[] { "9600", "19200", "38400", "57600", "115200" }, Defaults.BaudRd105.ToString())
             with { Tip = "出厂值看接的是哪个口：TTL 口 38400，RS485 口 9600（协议 §1）" },
-        Field.Sel(Fields.ProtoRd105, "RD105 协议", Rd105Protocol.Options, Rd105Protocol.Ascii)
+        Field.Sel(Fields.ProtoRd105, "RD105 协议", Rd105Protocol.Options, Defaults.ProtoRd105)
             with { Tip = "接 TTL 口选 ASCII，接 RS485 口选 Modbus-RTU（协议 §2）。选错了点「连接」会换着试一遍并告诉你该改成什么" },
-        Field.Num(Fields.AddrRd105, "RD105 站号", 1, "", 1, 247, 1)
+        Field.Num(Fields.AddrRd105, "RD105 站号", Defaults.AddrRd105, "", 1, 247, 1)
             with { Tip = "只在 Modbus-RTU 下用，出厂 1（协议 §3.5.3）" },
         Field.Sel(Fields.HasIo, "电加热切换（IO8R）", new[] { "有", "无" }, "有"),
-        Field.Port(Fields.PortIo, "IO8R 串口", "COM6", "艾莫迅 JY-MODBUS-IO8R。下拉里是当前检测到的串口"),
-        Field.Num(Fields.AddrIo, "IO8R 站号", 1, "", 1, 247, 1),
-        Field.Sel(Fields.BaudIo, "IO8R 波特率", new[] { "4800", "9600", "19200", "38400", "57600", "115200" }, "9600"),
+        Field.Port(Fields.PortIo, "IO8R 串口", Defaults.PortIo, "艾莫迅 JY-MODBUS-IO8R。下拉里是当前检测到的串口（现场那台在 CH344 的 B 口）"),
+        Field.Num(Fields.AddrIo, "IO8R 站号", Defaults.AddrIo, "", 1, 247, 1),
+        Field.Sel(Fields.BaudIo, "IO8R 波特率", new[] { "4800", "9600", "19200", "38400", "57600", "115200" }, Defaults.BaudIo.ToString()),
         Field.Num(Rd105TecDriver.FieldPeriod, "控制周期", 500, "ms", 200, 5000, 100),
         Field.Num(Fields.Tick, "模块轮询周期", 1000, "ms", 100, 5000, 100)
     })
@@ -157,9 +173,9 @@ public sealed class DualStationDriver : IDeviceDriver
         if (noReply is not null)
         {
             // 配置的协议 / 波特率没应答：换着试一遍，告诉人「改成什么就通了」
-            var proto = connection.Str(Fields.ProtoRd105, Rd105Protocol.Ascii);
-            var baud = (int)connection.Num(Fields.BaudRd105, 38400);
-            var station = connection.Int(Fields.AddrRd105, 1);
+            var proto = connection.Str(Fields.ProtoRd105, Defaults.ProtoRd105);
+            var baud = (int)connection.Num(Fields.BaudRd105, Defaults.BaudRd105);
+            var station = connection.Int(Fields.AddrRd105, Defaults.AddrRd105);
             var scan = await Rd105ProbeScan.RunAsync((p, b) =>
             {
                 var alt = connection.Clone();

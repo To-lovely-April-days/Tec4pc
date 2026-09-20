@@ -33,6 +33,12 @@ public sealed class Rd105TecDriver : IDeviceDriver
     public const string FieldOverLow = "超温下限";
     public const string FieldMaxCurrent = "最大电流";
 
+    /// <summary>连接参数缺省——按现场那台机器：RD105 在 CH344 的 C 口（COM7），RS485 = Modbus-RTU、9600、站号 1。</summary>
+    public const string DefaultPort = "COM7";
+    public const int DefaultBaud = 9600;
+    public const string DefaultProtocol = Rd105Protocol.Modbus;
+    public const int DefaultAddress = 1;
+
     /// <summary>测试连接用的链路工厂。回归测试换成假串口，不必插硬件。</summary>
     public Func<ParameterSet, Rd105Link> LinkFactory { get; set; } = Rd105Link.Serial;
 
@@ -50,13 +56,13 @@ public sealed class Rd105TecDriver : IDeviceDriver
 
     public ParameterSchema ConnectionSchema { get; } = new(new[]
     {
-        Field.Port(FieldPort, "串口", "COM3",
-                   "下拉里是这台机器当前检测到的串口（Windows 形如 COM3，Linux 形如 /dev/ttyUSB0）"),
-        Field.Sel(FieldBaud, "波特率", new[] { "9600", "19200", "38400", "57600", "115200" }, "38400")
+        Field.Port(FieldPort, "串口", DefaultPort,
+                   "下拉里是这台机器当前检测到的串口（Windows 形如 COM7，Linux 形如 /dev/ttyUSB0）"),
+        Field.Sel(FieldBaud, "波特率", new[] { "9600", "19200", "38400", "57600", "115200" }, DefaultBaud.ToString())
             with { Tip = "出厂值看接的是哪个口：TTL 口 38400，RS485 口 9600（协议 §1）" },
-        Field.Sel(FieldProtocol, "协议", Rd105Protocol.Options, Rd105Protocol.Ascii)
+        Field.Sel(FieldProtocol, "协议", Rd105Protocol.Options, DefaultProtocol)
             with { Tip = "接 TTL 口选 ASCII，接 RS485 口选 Modbus-RTU（协议 §2）。选错了点「连接」会换着试一遍并告诉你该改成什么" },
-        Field.Num(FieldAddress, "站号", 1, "", 1, 247, 1)
+        Field.Num(FieldAddress, "站号", DefaultAddress, "", 1, 247, 1)
             with { Tip = "只在 Modbus-RTU 下用，出厂 1（协议 §3.5.3）" },
         Field.Num(FieldPeriod, "控制周期", 500, "ms", 200, 5000, 100)
     })
@@ -108,7 +114,7 @@ public sealed class Rd105TecDriver : IDeviceDriver
         }
         catch (Exception ex)
         {
-            return new ProbeResult(false, $"打不开 {connection.Str(FieldPort, "COM3")}：{ex.Message}");
+            return new ProbeResult(false, $"打不开 {connection.Str(FieldPort, DefaultPort)}：{ex.Message}");
         }
         finally
         {
@@ -123,15 +129,15 @@ public sealed class Rd105TecDriver : IDeviceDriver
             alt[FieldBaud] = b.ToString();
             var l = LinkFactory(alt);
             return (l, l);
-        }, connection.Str(FieldProtocol, Rd105Protocol.Ascii), (int)connection.Num(FieldBaud, 38400),
-           connection.Int(FieldAddress, 1), "协议", ct).ConfigureAwait(false);
+        }, connection.Str(FieldProtocol, DefaultProtocol), (int)connection.Num(FieldBaud, DefaultBaud),
+           connection.Int(FieldAddress, DefaultAddress), "协议", ct).ConfigureAwait(false);
         return new ProbeResult(false, $"{noReply}；{scan}");
     }
 
     /// <summary>「RD105 串口 COM7 @ 38400（ASCII）」——报错和回显里指着说的那条链路。</summary>
     internal static string LinkName(ParameterSet cn)
-        => $"RD105 串口 {cn.Str(FieldPort, "COM3")} @ {(int)cn.Num(FieldBaud, 38400)}" +
-           $"（{Rd105Protocol.Short(cn.Str(FieldProtocol, Rd105Protocol.Ascii), cn.Int(FieldAddress, 1))}）";
+        => $"RD105 串口 {cn.Str(FieldPort, DefaultPort)} @ {(int)cn.Num(FieldBaud, DefaultBaud)}" +
+           $"（{Rd105Protocol.Short(cn.Str(FieldProtocol, DefaultProtocol), cn.Int(FieldAddress, DefaultAddress))}）";
 
     /// <summary>
     /// 发了指令没回音时该怎么说：口、波特率和三个最常见的原因一起摆出来。

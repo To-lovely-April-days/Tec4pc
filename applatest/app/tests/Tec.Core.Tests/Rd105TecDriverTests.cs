@@ -90,8 +90,13 @@ public sealed class Rd105TecDriverTests
     {
         var (driver, _) = Rig();
 
+        // 缺省照现场那台机器填：RD105 挂在 CH344 的 C 口（COM7），走 RS485 = Modbus-RTU、9600、站号 1。
+        // 装好程序不改任何东西点「连接」就该通——不是 COM1 / 38400 / ASCII 那种「反正总得填个什么」
         var cn = new ParameterSet().FillDefaults(driver.ConnectionSchema);
-        Assert.Equal("COM3", cn.Str(Rd105TecDriver.FieldPort));
+        Assert.Equal("COM7", cn.Str(Rd105TecDriver.FieldPort));
+        Assert.Equal(9600, cn.Num(Rd105TecDriver.FieldBaud));
+        Assert.Equal(Rd105Protocol.Modbus, cn.Str(Rd105TecDriver.FieldProtocol));
+        Assert.Equal(1, cn.Int(Rd105TecDriver.FieldAddress));
         Assert.Equal(500, cn.Num(Rd105TecDriver.FieldPeriod));
 
         // 超温与限流是设备侧的硬保护，缺省值必须填齐，不能让操作人从空白开始猜

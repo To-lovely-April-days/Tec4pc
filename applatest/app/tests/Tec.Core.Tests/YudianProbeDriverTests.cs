@@ -32,11 +32,17 @@ public sealed class YudianProbeDriverTests
         return dev;
     }
 
-    private static DriverContext Ctx(int channel, double moduleCh = 1) => new()
+    private static DriverContext Ctx(int channel, double moduleCh = 1)
+        => Ctx(new[] { channel }, ParameterSet.Of((YudianProbeDriverBase.FieldModuleCh, moduleCh)));
+
+    /// <summary>配置一项不填——「宇电通道」走缺省（跟工位走）。</summary>
+    private static DriverContext CtxFollow(params int[] channels) => Ctx(channels, new ParameterSet());
+
+    private static DriverContext Ctx(int[] channels, ParameterSet config) => new()
     {
-        InstanceId = $"PRB{channel}",
-        ChannelNumbers = new[] { channel },
-        Config = ParameterSet.Of((YudianProbeDriverBase.FieldModuleCh, moduleCh)),
+        InstanceId = $"PRB{channels[0]}",
+        ChannelNumbers = channels,
+        Config = config,
         Simulated = false,
         TimeScale = 1,
         Clock = () => DateTimeOffset.Now,
@@ -83,6 +89,94 @@ public sealed class YudianProbeDriverTests
         await ((YudianProbeSession)s).PollOnceAsync(CancellationToken.None);
 
         lock (got) Assert.Equal(30.0, got.Single(x => x.Tag == "Tr").Value, 2);
+    }
+
+    // ── 「宇电通道」缺省跟工位走（用户定的缺省要照现场那台机器：A→CH1、B→CH2） ──
+
+    [Fact]
+    public void 宇电通道下拉_缺省是跟工位走_老台面存的数字照样认()
+    {
+        var f = new YudianTrProbeDriver().ConfigSchema.Find(YudianProbeDriverBase.FieldModuleCh)!;
+        Assert.Equal(YudianProbeDriverBase.ChFollowWell, f.Default);
+        Assert.Equal(new[] { "跟工位走", "1", "2", "3", "4" }, f.Choices);
+
+        var wellB = new[] { 2 };
+        Assert.Equal(2, YudianProbeDriverBase.ResolveModuleChannel(new ParameterSet(), wellB));          // 没填 = 跟工位走
+        Assert.Equal(2, YudianProbeDriverBase.ResolveModuleChannel(
+            ParameterSet.Of((YudianProbeDriverBase.FieldModuleCh, "跟工位走")), wellB));
+        Assert.Equal(4, YudianProbeDriverBase.ResolveModuleChannel(
+            ParameterSet.Of((YudianProbeDriverBase.FieldModuleCh, "4")), wellB));                        // 手选压过工位
+        Assert.Equal(3, YudianProbeDriverBase.ResolveModuleChannel(
+            ParameterSet.Of((YudianProbeDriverBase.FieldModuleCh, 3d)), wellB));                         // 老台面里存的是数值
+        Assert.Equal(1, YudianProbeDriverBase.ResolveModuleChannel(
+            ParameterSet.Of((YudianProbeDriverBase.FieldModuleCh, "CH1")), wellB));
+    }
+
+    [Fact]
+    public async Task 宇电通道没填_插在工位B就读CH2()
+    {
+        var j7 = MakeJ7();
+        j7.Regs[1536] = 250;                             // CH1 = 25.0（工位 A 那支）
+        j7.Regs[1537] = 300;                             // CH2 = 30.0（工位 B 那支）
+        var drv = Wire(new YudianTrProbeDriver(), j7);
+
+        await using var s = await drv.OpenAsync(new ParameterSet(), CtxFollow(2), CancellationToken.None);
+        var got = new List<Sample>();
+        using var sub = s.Samples.Subscribe(new Collect(x => { lock (got) got.Add(x); }));
+        await ((YudianProbeSession)s).PollOnceAsync(CancellationToken.None);
+
+        lock (got) Assert.Equal(30.0, got.Single(x => x is { Tag: "Tr", Channel: 2 }).Value, 2);
+    }
+
+    [Fact]
+    public async Task 跟工位走_绑在第5路或绑了两路_如实拒绝不猜()
+    {
+        var drv = Wire(new YudianTrProbeDriver(), MakeJ7());
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => drv.OpenAsync(new ParameterSet(), CtxFollow(5), CancellationToken.None));
+        Assert.Contains("通道 5", ex.Message);
+        Assert.Contains("手选 1~4", ex.Message);
+
+        var ex2 = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => drv.OpenAsync(new ParameterSet(), CtxFollow(1, 2), CancellationToken.None));
+        Assert.Contains("绑了 2 个通道", ex2.Message);
+
+        var ex3 = Assert.Throws<InvalidOperationException>(() => YudianProbeDriverBase.ResolveModuleChannel(
+            ParameterSet.Of((YudianProbeDriverBase.FieldModuleCh, "7")), new[] { 1 }));
+        Assert.Contains("只认 1~4", ex3.Message);
+    }
+
+    [Fact]
+    public async Task 选的那一路在模块上关着_报错点名开着的是哪几路()
+    {
+        var drv = Wire(new YudianTrProbeDriver(), MakeJ7());       // CH1/CH2 开，CH3/CH4 关
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => drv.OpenAsync(new ParameterSet(), Ctx(channel: 1, moduleCh: 3), CancellationToken.None));
+        Assert.Contains("CH3 是关闭的", ex.Message);
+        Assert.Contains("开着的是 CH1、CH2", ex.Message);
+    }
+
+    [Fact]
+    public async Task 测试连接_把四路的读数都摆出来()
+    {
+        var j7 = MakeJ7();
+        j7.Regs[1536] = 253;                             // CH1 = 25.3
+        j7.Regs[1537] = 8100;                            // CH2 断线残值
+        j7.Regs[1664] = 0x0001;                          // CH2 oral（偶数通道在低字节）
+        var drv = Wire(new YudianTrProbeDriver(), j7);
+
+        var r = await drv.ProbeAsync(new ParameterSet(), CancellationToken.None);
+
+        Assert.True(r.Success);
+        Assert.Contains("CH1 25.3 ℃、CH2 断线/超量程、CH3 关、CH4 关", r.Message);
+
+        // pH 表按 dPt 的小数位显示，没有单位
+        var j4 = MakeJ4();
+        j4.Regs[1536] = 700; j4.Regs[1537] = 412;
+        var ph = await Wire(new YudianPhProbeDriver(), j4).ProbeAsync(new ParameterSet(), CancellationToken.None);
+        Assert.Contains("CH1 7.00、CH2 4.12、CH3 关、CH4 关", ph.Message);
     }
 
     [Fact]

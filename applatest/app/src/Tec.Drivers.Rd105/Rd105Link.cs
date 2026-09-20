@@ -45,8 +45,8 @@ public sealed class Rd105Link : IDisposable
     /// </summary>
     public static Rd105Link Serial(ParameterSet cn)
         => new(Rd105Protocol.Transport(
-            cn.Str(Rd105TecDriver.FieldPort, "COM3"),
-            (int)cn.Num(Rd105TecDriver.FieldBaud, 38400),
-            cn.Str(Rd105TecDriver.FieldProtocol, Rd105Protocol.Ascii),
-            cn.Int(Rd105TecDriver.FieldAddress, 1)));
+            cn.Str(Rd105TecDriver.FieldPort, Rd105TecDriver.DefaultPort),
+            (int)cn.Num(Rd105TecDriver.FieldBaud, Rd105TecDriver.DefaultBaud),
+            cn.Str(Rd105TecDriver.FieldProtocol, Rd105TecDriver.DefaultProtocol),
+            cn.Int(Rd105TecDriver.FieldAddress, Rd105TecDriver.DefaultAddress)));
 }
