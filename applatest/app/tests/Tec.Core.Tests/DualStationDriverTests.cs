@@ -1,6 +1,6 @@
 using Tec.Driver.Abi;
 using Tec.Drivers.DualStation;
-using Tec.Drivers.DualStation.Modbus;
+using Tec.Drivers.Rd105.Modbus;
 using Tec.Drivers.Rd105;
 using Xunit;
 

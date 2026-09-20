@@ -1,4 +1,4 @@
-namespace Tec.Drivers.DualStation.Modbus;
+namespace Tec.Drivers.Rd105.Modbus;
 
 /// <summary>
 /// 从站答了、但答得不对：回了异常码，或者站号/功能码/长度/CRC 对不上。

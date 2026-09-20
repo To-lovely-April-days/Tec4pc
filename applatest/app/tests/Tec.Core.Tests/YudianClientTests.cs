@@ -1,4 +1,4 @@
-using Tec.Drivers.DualStation.Modbus;
+using Tec.Drivers.Rd105.Modbus;
 using Tec.Drivers.DualStation.Yudian;
 using Xunit;
 

@@ -1,4 +1,4 @@
-using Tec.Drivers.DualStation.Modbus;
+using Tec.Drivers.Rd105.Modbus;
 
 namespace Tec.Drivers.DualStation.Yudian;
 

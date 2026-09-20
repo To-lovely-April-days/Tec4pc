@@ -41,9 +41,12 @@ public sealed class Rd105Link : IDisposable
     /// 按连接参数开一条真串口链路。参数名与 ConnectionSchema 一一对应。
     /// 帧格式固定 8N1——SerialPortTransport 就是这么写死的，
     /// 所以连接表单里不给校验位这一项，免得摆一个改了也不生效的下拉。
+    /// 「协议」选 Modbus-RTU 时串口上套一层 Rd105ModbusBridge，链路其余部分不变。
     /// </summary>
     public static Rd105Link Serial(ParameterSet cn)
-        => new(new SerialPortTransport(
+        => new(Rd105Protocol.Transport(
             cn.Str(Rd105TecDriver.FieldPort, "COM3"),
-            (int)cn.Num(Rd105TecDriver.FieldBaud, 38400)));
+            (int)cn.Num(Rd105TecDriver.FieldBaud, 38400),
+            cn.Str(Rd105TecDriver.FieldProtocol, Rd105Protocol.Ascii),
+            cn.Int(Rd105TecDriver.FieldAddress, 1)));
 }

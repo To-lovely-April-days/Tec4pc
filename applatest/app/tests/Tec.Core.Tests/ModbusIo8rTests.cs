@@ -1,5 +1,5 @@
 using Tec.Drivers.DualStation;
-using Tec.Drivers.DualStation.Modbus;
+using Tec.Drivers.Rd105.Modbus;
 using Xunit;
 
 namespace Tec.Core.Tests;

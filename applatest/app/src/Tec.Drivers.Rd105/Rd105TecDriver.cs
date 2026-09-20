@@ -23,6 +23,10 @@ public sealed class Rd105TecDriver : IDeviceDriver
 
     public const string FieldPort = "端口";
     public const string FieldBaud = "波特率";
+    /// <summary>ASCII（TTL 口）还是 Modbus-RTU（RS485 口），见 Rd105Protocol。</summary>
+    public const string FieldProtocol = "协议";
+    /// <summary>Modbus-RTU 的站号（协议 §3.5.3 ADDRESS，出厂 1）；ASCII 不用。</summary>
+    public const string FieldAddress = "站号";
     public const string FieldParity = "校验";
     public const string FieldPeriod = "控制周期";
     public const string FieldOverUp = "超温上限";
@@ -50,6 +54,10 @@ public sealed class Rd105TecDriver : IDeviceDriver
                    "下拉里是这台机器当前检测到的串口（Windows 形如 COM3，Linux 形如 /dev/ttyUSB0）"),
         Field.Sel(FieldBaud, "波特率", new[] { "9600", "19200", "38400", "57600", "115200" }, "38400")
             with { Tip = "出厂值看接的是哪个口：TTL 口 38400，RS485 口 9600（协议 §1）" },
+        Field.Sel(FieldProtocol, "协议", Rd105Protocol.Options, Rd105Protocol.Ascii)
+            with { Tip = "接 TTL 口选 ASCII，接 RS485 口选 Modbus-RTU（协议 §2）。选错了点「连接」会换着试一遍并告诉你该改成什么" },
+        Field.Num(FieldAddress, "站号", 1, "", 1, 247, 1)
+            with { Tip = "只在 Modbus-RTU 下用，出厂 1（协议 §3.5.3）" },
         Field.Num(FieldPeriod, "控制周期", 500, "ms", 200, 5000, 100)
     })
     {
@@ -73,6 +81,7 @@ public sealed class Rd105TecDriver : IDeviceDriver
 
     public async Task<ProbeResult> ProbeAsync(ParameterSet connection, CancellationToken ct)
     {
+        string? noReply = null;
         Rd105Link? link = null;
         try
         {
@@ -81,7 +90,7 @@ public sealed class Rd105TecDriver : IDeviceDriver
             var (model, firmware, contMode) = await link.Controller.ReadDeviceInfoAsync(ct)
                                                         .ConfigureAwait(false);
             var mode = contMode is { } m ? $"，CONTMODE={m}" : "";
-            return new ProbeResult(true, $"{connection.Str(FieldPort, "COM3")} 已响应：{model}{mode}")
+            return new ProbeResult(true, $"{LinkName(connection)} 已响应：{model}{mode}")
             {
                 Firmware = firmware,
                 Serial = model,
@@ -95,7 +104,7 @@ public sealed class Rd105TecDriver : IDeviceDriver
         }
         catch (TimeoutException ex)
         {
-            return new ProbeResult(false, NoReply(connection, ex));
+            noReply = NoReply(connection, ex);
         }
         catch (Exception ex)
         {
@@ -103,16 +112,33 @@ public sealed class Rd105TecDriver : IDeviceDriver
         }
         finally
         {
-            link?.Dispose();
+            link?.Dispose();      // 串口让出来——下面换着试要重开同一个口
         }
+
+        // 配置的协议 / 波特率没应答：换着试一遍，告诉人「改成什么就通了」
+        var scan = await Rd105ProbeScan.RunAsync((p, b) =>
+        {
+            var alt = connection.Clone();
+            alt[FieldProtocol] = p;
+            alt[FieldBaud] = b.ToString();
+            var l = LinkFactory(alt);
+            return (l, l);
+        }, connection.Str(FieldProtocol, Rd105Protocol.Ascii), (int)connection.Num(FieldBaud, 38400),
+           connection.Int(FieldAddress, 1), "协议", ct).ConfigureAwait(false);
+        return new ProbeResult(false, $"{noReply}；{scan}");
     }
+
+    /// <summary>「RD105 串口 COM7 @ 38400（ASCII）」——报错和回显里指着说的那条链路。</summary>
+    internal static string LinkName(ParameterSet cn)
+        => $"RD105 串口 {cn.Str(FieldPort, "COM3")} @ {(int)cn.Num(FieldBaud, 38400)}" +
+           $"（{Rd105Protocol.Short(cn.Str(FieldProtocol, Rd105Protocol.Ascii), cn.Int(FieldAddress, 1))}）";
 
     /// <summary>
     /// 发了指令没回音时该怎么说：口、波特率和三个最常见的原因一起摆出来。
     /// 协议 §1：TTL 口出厂 38400，RS485 口出厂 9600。
     /// </summary>
     internal static string NoReply(ParameterSet cn, Exception ex)
-        => $"RD105 串口 {cn.Str(FieldPort, "COM3")} @ {(int)cn.Num(FieldBaud, 38400)} 无应答" +
+        => $"{LinkName(cn)} 无应答" +
            $"（{ex.Message.TrimEnd('\n', '\r')}）——查：①是不是接 RD105 的那一路串口；" +
            "②波特率：TTL 口出厂 38400、RS485 口出厂 9600；③接线（TTL 的 TX/RX 要交叉、485 的 A/B、共地）";
 

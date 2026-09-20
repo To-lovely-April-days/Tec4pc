@@ -1,6 +1,6 @@
 using TecControl.Core.Comm;
 
-namespace Tec.Drivers.DualStation.Modbus;
+namespace Tec.Drivers.Rd105.Modbus;
 
 /// <summary>
 /// Modbus RTU 主站，问答式。IO8R（线圈/离散输入）和宇电两台（保持寄存器）共用这一层，

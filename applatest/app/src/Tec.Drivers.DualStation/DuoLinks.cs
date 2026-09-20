@@ -1,6 +1,6 @@
 using TecControl.Core.Comm;
 using Tec.Driver.Abi;
-using Tec.Drivers.DualStation.Modbus;
+using Tec.Drivers.Rd105.Modbus;
 using Tec.Drivers.Rd105;
 using F = Tec.Drivers.DualStation.DualStationDriver.Fields;
 
@@ -22,13 +22,18 @@ public sealed class DuoLinks : IDisposable
     /// <summary>只为报错时说得清是哪个口——假链路（测试）不填，报错就不带口名。</summary>
     public string? RdPortName { get; init; }
     public int RdBaud { get; init; }
+    /// <summary>ASCII（TTL 口）还是 Modbus-RTU（RS485 口）；null 按 ASCII 说。</summary>
+    public string? RdProtocol { get; init; }
+    public int RdStation { get; init; } = 1;
     public string? IoPortName { get; init; }
 
     /// <summary>IO8R 那条串口没打开的原因；打开了 / 没配 IO8R 就是 null。</summary>
     public string? IoOpenError { get; private set; }
 
-    /// <summary>RD105 那条串口在报错里的叫法：「RD105 串口 COM7 @ 38400」。</summary>
-    public string RdName => RdPortName is null ? "RD105 串口" : $"RD105 串口 {RdPortName} @ {RdBaud}";
+    /// <summary>RD105 那条串口在报错里的叫法：「RD105 串口 COM7 @ 38400（ASCII）」。</summary>
+    public string RdName => RdPortName is null
+        ? $"RD105 串口（{Rd105Protocol.Short(RdProtocol, RdStation)}）"
+        : $"RD105 串口 {RdPortName} @ {RdBaud}（{Rd105Protocol.Short(RdProtocol, RdStation)}）";
 
     /// <summary>
     /// 开口子。RD105 打不开就是开不了机（它是主机的命）；IO8R 打不开**不拦**——
@@ -79,10 +84,13 @@ public sealed class DuoLinks : IDisposable
 
         var rdPort = cn.Str(F.PortRd105, "COM3");
         var rdBaud = (int)cn.Num(F.BaudRd105, 38400);
+        var rdProto = cn.Str(F.ProtoRd105, Rd105Protocol.Ascii);
+        var rdStation = cn.Int(F.AddrRd105, 1);
         return new DuoLinks
         {
-            Rd105 = new Rd105Link(new SerialPortTransport(rdPort, rdBaud)),
-            RdPortName = rdPort, RdBaud = rdBaud,
+            // 「RD105 协议」选 Modbus-RTU 时串口上套一层桥（Rd105ModbusBridge），链路其余部分不变
+            Rd105 = new Rd105Link(Rd105Protocol.Transport(rdPort, rdBaud, rdProto, rdStation)),
+            RdPortName = rdPort, RdBaud = rdBaud, RdProtocol = rdProto, RdStation = rdStation,
             IoPort = ioPort, Io = io, IoPortName = io is null ? null : ioPortName
         };
     }

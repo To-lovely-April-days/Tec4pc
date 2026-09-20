@@ -1,4 +1,4 @@
-namespace Tec.Drivers.DualStation.Modbus;
+namespace Tec.Drivers.Rd105.Modbus;
 
 /// <summary>
 /// CRC-16/MODBUS：多项式 0xA001（0x8005 反射），初值 0xFFFF，帧尾低字节在前。

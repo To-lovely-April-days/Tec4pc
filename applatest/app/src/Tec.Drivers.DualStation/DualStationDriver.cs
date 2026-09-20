@@ -21,6 +21,10 @@ public sealed class DualStationDriver : IDeviceDriver
     {
         public const string PortRd105 = "RD105串口";
         public const string BaudRd105 = "RD105波特率";
+        /// <summary>ASCII（TTL 口）还是 Modbus-RTU（RS485 口），见 Rd105Protocol。</summary>
+        public const string ProtoRd105 = "RD105协议";
+        /// <summary>Modbus-RTU 的站号（协议 §3.5.3 ADDRESS，出厂 1）；ASCII 不用。</summary>
+        public const string AddrRd105 = "RD105站号";
         public const string HasIo = "电加热切换";
         public const string PortIo = "IO8R串口";
         public const string AddrIo = "IO8R站号";
@@ -58,6 +62,10 @@ public sealed class DualStationDriver : IDeviceDriver
         Field.Port(Fields.PortRd105, "RD105 串口", "COM3", "TEC 温控器，8N1。下拉里是当前检测到的串口"),
         Field.Sel(Fields.BaudRd105, "RD105 波特率", new[] { "9600", "19200", "38400", "57600", "115200" }, "38400")
             with { Tip = "出厂值看接的是哪个口：TTL 口 38400，RS485 口 9600（协议 §1）" },
+        Field.Sel(Fields.ProtoRd105, "RD105 协议", Rd105Protocol.Options, Rd105Protocol.Ascii)
+            with { Tip = "接 TTL 口选 ASCII，接 RS485 口选 Modbus-RTU（协议 §2）。选错了点「连接」会换着试一遍并告诉你该改成什么" },
+        Field.Num(Fields.AddrRd105, "RD105 站号", 1, "", 1, 247, 1)
+            with { Tip = "只在 Modbus-RTU 下用，出厂 1（协议 §3.5.3）" },
         Field.Sel(Fields.HasIo, "电加热切换（IO8R）", new[] { "有", "无" }, "有"),
         Field.Port(Fields.PortIo, "IO8R 串口", "COM6", "艾莫迅 JY-MODBUS-IO8R。下拉里是当前检测到的串口"),
         Field.Num(Fields.AddrIo, "IO8R 站号", 1, "", 1, 247, 1),
@@ -105,24 +113,26 @@ public sealed class DualStationDriver : IDeviceDriver
 
     public async Task<ProbeResult> ProbeAsync(ParameterSet connection, CancellationToken ct)
     {
+        var lines = new List<string>();
+        var okRd = false;
+        var fw = "";
+        string? noReply = null;
+
         DuoLinks? links = null;
         try
         {
             links = LinksFactory(connection);
             links.OpenAll();
-            var lines = new List<string>();
-            var okRd = false;
-            var fw = "";
 
             try
             {
                 var (model, firmware, _) = await links.Rd105.Controller.ReadDeviceInfoAsync(ct).ConfigureAwait(false);
-                lines.Add($"RD105：{model} 已响应");
+                lines.Add($"RD105：{model} 已响应（{links.RdName}）");
                 fw = firmware;
                 okRd = true;
             }
             catch (TecProtocolException ex) { lines.Add($"RD105：通了但应答看不懂（多半是波特率不对或接到了别的设备）——{ex.Message}"); }
-            catch (TimeoutException ex) { lines.Add(links.NoReply(ex)); }
+            catch (TimeoutException ex) { noReply = links.NoReply(ex); }
             catch (Exception ex) { lines.Add($"RD105：{ex.Message}"); }
 
             if (links.IoOpenError is { } ioWhy)
@@ -134,12 +144,6 @@ public sealed class DualStationDriver : IDeviceDriver
             }
 
             lines.Add("Tr / pH 探头各有自己的串口，在探头设备上分别测试");
-
-            return new ProbeResult(okRd, string.Join("；", lines))
-            {
-                Firmware = fw,
-                DetectedChannels = 2
-            };
         }
         catch (Exception ex)
         {
@@ -147,8 +151,31 @@ public sealed class DualStationDriver : IDeviceDriver
         }
         finally
         {
-            links?.Dispose();
+            links?.Dispose();      // 串口让出来——下面换着试要重开同一个口
         }
+
+        if (noReply is not null)
+        {
+            // 配置的协议 / 波特率没应答：换着试一遍，告诉人「改成什么就通了」
+            var proto = connection.Str(Fields.ProtoRd105, Rd105Protocol.Ascii);
+            var baud = (int)connection.Num(Fields.BaudRd105, 38400);
+            var station = connection.Int(Fields.AddrRd105, 1);
+            var scan = await Rd105ProbeScan.RunAsync((p, b) =>
+            {
+                var alt = connection.Clone();
+                alt[Fields.ProtoRd105] = p;
+                alt[Fields.BaudRd105] = b.ToString();
+                var l = LinksFactory(alt);
+                return (l.Rd105, l);
+            }, proto, baud, station, "RD105 协议", ct).ConfigureAwait(false);
+            lines.Insert(0, $"{noReply}；{scan}");
+        }
+
+        return new ProbeResult(okRd, string.Join("；", lines))
+        {
+            Firmware = fw,
+            DetectedChannels = 2
+        };
     }
 
     public async Task<IDeviceSession> OpenAsync(ParameterSet connection, DriverContext ctx, CancellationToken ct)

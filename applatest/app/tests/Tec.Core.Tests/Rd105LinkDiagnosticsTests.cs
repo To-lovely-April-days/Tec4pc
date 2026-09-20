@@ -1,6 +1,6 @@
 using Tec.Driver.Abi;
 using Tec.Drivers.DualStation;
-using Tec.Drivers.DualStation.Modbus;
+using Tec.Drivers.Rd105.Modbus;
 using Tec.Drivers.Rd105;
 using TecControl.Core.Comm;
 using Xunit;
@@ -54,10 +54,11 @@ public sealed class Rd105LinkDiagnosticsTests
     {
         var drv = new DualStationDriver
         {
-            LinksFactory = _ => new DuoLinks
+            LinksFactory = _ =>
             {
-                Rd105 = new Rd105Link(new SilentPort()),
-                RdPortName = "COM7", RdBaud = 38400
+                var link = new Rd105Link(new SilentPort());
+                link.Client.ReplyTimeoutMs = 60;          // 换着试要再开三次口，别让测试干等
+                return new DuoLinks { Rd105 = link, RdPortName = "COM7", RdBaud = 38400 };
             }
         };
         var cn = ParameterSet.Of((DualStationDriver.Fields.HasIo, "无"));
