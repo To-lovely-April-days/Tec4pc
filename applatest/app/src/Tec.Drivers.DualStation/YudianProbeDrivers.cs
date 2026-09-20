@@ -21,7 +21,7 @@ public sealed class YudianTrProbeDriver : YudianProbeDriverBase
         kind: YudianKind.Thermal,
         tag: new TagDescriptor("Tr", "釜内温度", "℃", DataShape.Scalar)
             { Nominal = new ValueRange(-40, 180) },
-        defaultPort: "COM4",
+        defaultPort: "COM8",         // 现场那台：宇电模块在 CH344 的 A 口
         description: "Pt100 探头，接在宇电 AI-8848GD91J7 采集模块的一路输入上；" +
                      "插到哪个工位，那一路的釜内温度就由它测得。")
     { }
@@ -42,8 +42,8 @@ public sealed class YudianPhProbeDriver : YudianProbeDriverBase
         kind: YudianKind.Linear,
         tag: new TagDescriptor("pH", "pH", "", DataShape.Scalar)
             { Nominal = new ValueRange(0, 14) },
-        defaultPort: "COM5",
-        description: "复合电极经 pH 变送器（4~20mA）接宇电 AI-8848GD91J4；" +
+        defaultPort: "COM8",         // 现场那台模块 CH1/CH3 就是线性电流口——跟 Tr 探头共一台、共一个口
+        description: "复合电极经 pH 变送器（4~20mA）接宇电模块的线性电流输入；" +
                      "量程定标（ScL/ScH）从模块上读出来，不在配置里另抄一份。")
     { }
 }
@@ -61,8 +61,10 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
     public const string FieldPeriod = "采样周期";
 
     /// <summary>
-    /// 「宇电通道」的缺省项：探头绑在系统通道几就读模块的第几路——通道 1（工位 A）→ CH1、
-    /// 通道 2（工位 B）→ CH2。现场拟定的接法正是这样（需求 §4），两支探头拖上台面不用各改一遍。
+    /// 「宇电通道」的缺省项：探头绑在系统通道几，就读模块上**第几路同类输入**——
+    /// 工位 A（通道 1）读第 1 路测温口、工位 B（通道 2）读第 2 路。哪几路是测温口从模块自己的
+    /// InP 读出来：现场那台 CH1/CH3 配成线性电流（给 pH 变送器）、CH2/CH4 是 Pt100，
+    /// 于是 Tr 探头 A → CH2、B → CH4，pH 电极 A → CH1、B → CH3，两支探头拖上台面不用各改一遍。
     /// </summary>
     public const string ChFollowWell = "跟工位走";
 
@@ -104,21 +106,23 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
             Field.Sel(FieldModuleCh, "宇电通道", ChOptions, ChFollowWell) with
             {
                 Tip = "这支探头接在模块的第几路输入上（RT/IN/COM 1~4）。缺省「跟工位走」：插在工位 A" +
-                      "（通道 1）读 CH1、工位 B（通道 2）读 CH2。接得不一样就手选实际接的那一路。" +
-                      "选的那一路在模块上关着（In=0）开机会被指出来，并说明开着的是哪几路"
+                      "（通道 1）读模块上第 1 路同类输入、工位 B（通道 2）读第 2 路——哪几路同类从模块自己的" +
+                      " InP 读出来（现场那台 CH2/CH4 是 Pt100，Tr 探头就是 A→CH2、B→CH4）。" +
+                      "接得不一样就手选实际接的那一路；选错了开机会被指出来，并说明能读的是哪几路"
             }
         })
         {
             Tip = "标度按模块自己的 InP / 定标寄存器换算，接错种类（温度口插 pH 表）开机就会被指出来。" +
-                  "「测试连接」会把模块四路的读数都摆出来，对接线就看它。"
+                  "「测试连接」会把模块四路各是什么口、读数多少都摆出来，对接线就看它。"
         };
     }
 
     /// <summary>
-    /// 定这支探头读模块的第几路。缺省「跟工位走」：绑在系统通道 n 就读 CHn。手选 1~4 就按手选的。
+    /// 定这支探头读模块的第几路：手选 1~4 就是那一路；「跟工位走」返回 null，等开口子读到模块的
+    /// InP 之后按「第几路同类输入」定（见 YudianProbeSession.InitAsync）。
     /// 模块只有 4 路——绑在第 5 路以后又没手选、或者绑了不止一个通道，如实拒绝，不绕回去猜一路。
     /// </summary>
-    internal static int ResolveModuleChannel(ParameterSet config, IReadOnlyList<int> wells)
+    internal static int? ResolveModuleChannel(ParameterSet config, IReadOnlyList<int> wells)
     {
         var raw = config.Str(FieldModuleCh, ChFollowWell).Trim();
         if (raw.Length == 0 || raw == ChFollowWell)
@@ -127,7 +131,7 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
                 throw new InvalidOperationException(
                     $"「{FieldModuleCh}」是「{ChFollowWell}」，可这支探头绑了 {wells.Count} 个通道，定不出该读哪一路——请手选 1~4");
             var well = wells[0];
-            if (well is >= 1 and <= 4) return well;
+            if (well is >= 1 and <= 4) return null;
             throw new InvalidOperationException(
                 $"「{FieldModuleCh}」是「{ChFollowWell}」，可这支探头绑在通道 {well} 上——模块只有 4 路，第 5 路以后请手选 1~4");
         }
@@ -159,16 +163,15 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
             var client = new YudianClient(new ModbusRtuClient(
                 link.Transport, (byte)connection.Num(FieldAddr, 1), busLock: link.BusLock));
             var id = await client.InitAsync(_kind, ct).ConfigureAwait(false);
-            var bad = id.Channels.Where(c => c.Enabled && c.Problem is not null).ToList();
-            if (bad.Count > 0) return new ProbeResult(false, bad[0].Problem!);
 
-            // 四路的读数都摆出来：哪一路开着、读到多少——现场对「探头接在第几路」就靠这一眼，
-            // 手摸一下探头看哪路的数在动，比翻接线照片靠谱
+            // 四路各是什么口、读数多少都摆出来：现场对「探头接在第几路」就靠这一眼，
+            // 手摸一下探头看哪路的数在动，比翻接线照片靠谱。别的种类的口（pH 那两路）
+            // 不算错——同一台模块两种口混着用是正常接法；一路能读的都没有才算不通
             var now = await client.ReadAsync(ct).ConfigureAwait(false);
-            return new ProbeResult(true, $"宇电模块已响应（特征字 {id.FeatureWord:X4}）：{Readout(id, now)}")
-            {
-                DetectedChannels = 1
-            };
+            var readout = $"宇电模块已响应（特征字 {id.FeatureWord:X4}）：{Readout(id, now)}";
+            return id.UsableChannels.Count > 0
+                ? new ProbeResult(true, $"{readout}——{YudianClient.KindName(_kind)}口是 {id.UsableList}") { DetectedChannels = 1 }
+                : new ProbeResult(false, $"{readout}——四路里没有一路是{YudianClient.KindName(_kind)}口，这支探头读不了它");
         }
         catch (Exception ex)
         {
@@ -180,7 +183,10 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
         }
     }
 
-    /// <summary>「CH1 25.3 ℃、CH2 24.9 ℃、CH3 关、CH4 断线」——探测应答里那一串。小数位跟模块的标度走。</summary>
+    /// <summary>
+    /// 「CH1 线性电流（InP=51）、CH2 Pt100（InP=21）24.6 ℃、CH3 线性电流（InP=51）、CH4 Pt100（InP=21）断线/超量程」——
+    /// 探测应答里那一串：每一路是什么口照模块的 InP 印，能读的带读数（小数位跟模块的标度走）。
+    /// </summary>
     internal string Readout(YudianIdentity id, YudianReading[] now)
     {
         var parts = new string[4];
@@ -189,18 +195,18 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
             var c = id.Channels[i];
             var x = now[i];
             var decimals = c.Divisor is { } d && d >= 1 ? (int)Math.Round(Math.Log10(d)) : 1;
-            parts[i] = $"CH{i + 1} " + (
-                !c.Enabled ? "关"
-                : x.SensorFault ? "断线/超量程"
-                : x.Value is { } v ? v.ToString($"F{decimals}", CultureInfo.InvariantCulture) + (_tag.Unit.Length > 0 ? $" {_tag.Unit}" : "")
-                : "无读数");
+            var value = !c.Usable ? ""
+                : x.SensorFault ? " 断线/超量程"
+                : x.Value is { } v ? " " + v.ToString($"F{decimals}", CultureInfo.InvariantCulture) + (_tag.Unit.Length > 0 ? $" {_tag.Unit}" : "")
+                : " 无读数";
+            parts[i] = $"CH{i + 1} {c.TypeName}{value}";
         }
         return string.Join("、", parts);
     }
 
     public async Task<IDeviceSession> OpenAsync(ParameterSet connection, DriverContext ctx, CancellationToken ct)
     {
-        // 先把「读第几路」定下来——配置说不通就别去占串口
+        // 先把「读第几路」定下来——配置说不通就别去占串口。跟工位走的这里是 null，开口子读到 InP 再定
         var moduleCh = ResolveModuleChannel(ctx.Config, ctx.ChannelNumbers);
         var link = SerialFactory(connection);
         try
@@ -234,7 +240,8 @@ public sealed class YudianProbeSession : IDeviceSession
     private readonly YudianKind _kind;
     private readonly TagDescriptor _tag;
     private readonly DriverContext _ctx;
-    private readonly int _moduleCh;
+    private readonly int? _explicitCh;      // 手选的那一路；null = 跟工位走，InitAsync 里按模块的 InP 定
+    private int _moduleCh;                  // 最终读的那一路（1~4），InitAsync 之后才有
     private readonly TimeSpan _period;
     private readonly Broadcast<Sample> _out = new();
     private readonly ProbeSensor[] _sensors;
@@ -244,14 +251,14 @@ public sealed class YudianProbeSession : IDeviceSession
     private int _fails;
 
     internal YudianProbeSession(SharedSerial link, YudianClient client, YudianKind kind,
-                                TagDescriptor tag, DriverContext ctx, int moduleChannel, TimeSpan period)
+                                TagDescriptor tag, DriverContext ctx, int? moduleChannel, TimeSpan period)
     {
         _link = link;
         _client = client;
         _kind = kind;
         _tag = tag;
         _ctx = ctx;
-        _moduleCh = moduleChannel;
+        _explicitCh = moduleChannel;
         _period = period;
         var chs = ctx.ChannelNumbers.Count > 0 ? ctx.ChannelNumbers : new[] { 0 };
         _sensors = chs.Select(c => new ProbeSensor(c, tag)).ToArray();
@@ -286,22 +293,44 @@ public sealed class YudianProbeSession : IDeviceSession
             ? new YudianPhSampleHandler()
             : null;
 
-    /// <summary>开机自检：读模块身份、核对自己那一路的种类与标度，接反了直接开不了。</summary>
+    /// <summary>这支探头最终读的那一路（1~4）。InitAsync 之前是 0。</summary>
+    public int ModuleChannel => _moduleCh;
+
+    /// <summary>
+    /// 开机自检：读模块身份，定下自己读哪一路并核对种类与标度——接反了直接开不了，
+    /// 报错里点名模块上能读的是哪几路，改成哪一路一眼就知道。
+    /// </summary>
     public async Task InitAsync(CancellationToken ct)
     {
         var id = await _client.InitAsync(_kind, ct).ConfigureAwait(false);
-        var setup = id.Channels[_moduleCh - 1];
-        if (!setup.Enabled)
+        var kindName = YudianClient.KindName(_kind);
+        var field = YudianProbeDriverBase.FieldModuleCh;
+
+        if (_explicitCh is { } n)
         {
-            // 点名模块上开着的是哪几路——「宇电通道」选错了的话，改成哪一路一眼就知道
-            var on = id.Channels.Select((c, i) => (c.Enabled, Name: $"CH{i + 1}"))
-                                .Where(x => x.Enabled).Select(x => x.Name).ToList();
-            throw new InvalidOperationException(
-                $"宇电模块的 CH{_moduleCh} 是关闭的（In=0）——模块上开着的是 " +
-                $"{(on.Count > 0 ? string.Join("、", on) : "没有一路")}；查「{YudianProbeDriverBase.FieldModuleCh}」配置或模块参数");
+            var setup = id.Channels[n - 1];
+            if (!setup.Enabled)
+                throw new InvalidOperationException(
+                    $"宇电模块的 CH{n} 是关闭的（In=0）——模块上{kindName}口是 {id.UsableList}；查「{field}」配置或模块参数");
+            if (setup.Problem is { } p)
+                throw new InvalidOperationException(
+                    $"宇电模块 CH{n}：{p}——模块上{kindName}口是 {id.UsableList}，把「{field}」改成那一路（或选「{YudianProbeDriverBase.ChFollowWell}」）");
+            _moduleCh = n;
         }
-        if (setup.Problem is { } p)
-            throw new InvalidOperationException($"宇电模块 CH{_moduleCh}：{p}");
+        else
+        {
+            // 跟工位走：绑在系统通道 k 就读模块上第 k 路同类输入。哪几路同类从模块的 InP 读出来——
+            // CH1/CH3 线性、CH2/CH4 Pt100 的那台，Tr 探头 A → CH2、B → CH4
+            var k = _ctx.ChannelNumbers[0];
+            var usable = id.UsableChannels;
+            if (usable.Count < k)
+                throw new InvalidOperationException(
+                    $"「{field}」是「{YudianProbeDriverBase.ChFollowWell}」：通道 {k} 要读模块上第 {k} 路{kindName}口，" +
+                    $"可模块上{kindName}口只有 {usable.Count} 路（{id.UsableList}）——查模块的 InP，或手选一路");
+            _moduleCh = usable[k - 1];
+            _ctx.Log?.Invoke("info", $"{InstanceId} 「{field}」跟工位走：通道 {k} → CH{_moduleCh}（模块上第 {k} 路{kindName}口，全部{kindName}口 {id.UsableList}）");
+        }
+
         if (id.WriteLocked)
             _ctx.Log?.Invoke("warn", $"{InstanceId} 宇电模块 Loc 锁着写入（只读不受影响，部署改参数时注意）");
     }

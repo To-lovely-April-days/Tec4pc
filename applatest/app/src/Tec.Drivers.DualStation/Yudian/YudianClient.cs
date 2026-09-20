@@ -19,7 +19,14 @@ public sealed record YudianChannelSetup(
     double? Divisor,       // 寄存器值 ÷ 它 = 工程值；null = 定不出标度
     double? RangeLo,       // 线性输入的定标下限（已换算）；测温型是 null
     double? RangeHi,
-    string? Problem);      // 接反了 / 规格不认识……人话原因
+    string? Problem)       // 接反了 / 规格不认识……人话原因
+{
+    /// <summary>这一路开着、规格跟探头对得上、标度定得出——探头能读它。</summary>
+    public bool Usable => Enabled && Problem is null && Divisor is not null;
+
+    /// <summary>「Pt100（InP=21）」「线性电流（InP=51）」——报错和探测应答里指着说的那一路是什么口。</summary>
+    public string TypeName => Enabled ? YudianClient.InpName(Inp) : "关";
+}
 
 /// <summary>初始化自检读回来的全套身份。开每条串口都要过这一关（需求 §4）。</summary>
 public sealed record YudianIdentity(
@@ -31,6 +38,14 @@ public sealed record YudianIdentity(
     /// <summary>Loc.5/6/7 任一位挂着，写入就会「应答正常但不生效」——手册点名的最难查的坑。
     /// 我们虽然只读，但部署时该把它查出来说清楚。</summary>
     public bool WriteLocked => (Loc & 0b1110_0000) != 0;
+
+    /// <summary>探头能读的那几路（1 起的 CH 号，按序）。现场那台 CH1/CH3 是线性电流、CH2/CH4 是 Pt100，
+    /// 对 Tr 探头就是 [2, 4]——「跟工位走」按这个序取第几路，不是按 CH 号硬对。</summary>
+    public IReadOnlyList<int> UsableChannels
+        => Channels.Select((c, i) => (c, i)).Where(x => x.c.Usable).Select(x => x.i + 1).ToList();
+
+    /// <summary>「CH2、CH4」——报错里点名用。</summary>
+    public string UsableList => UsableChannels.Count == 0 ? "没有一路" : string.Join("、", UsableChannels.Select(n => $"CH{n}"));
 }
 
 /// <summary>一路的一次读数。SensorFault = 报警状态里的 oral 位（断线/超量程），值不可信。</summary>
@@ -97,6 +112,30 @@ public sealed class YudianClient
         return _id;
     }
 
+    /// <summary>
+    /// InP 代码 → 人话。只写核对过的：热偶 0~7、Cu50 20、Pt100 21/22、线性电流 50/51；
+    /// 别的照代码原样印出来（「InP=13」），不猜它是什么口。
+    /// </summary>
+    public static string InpName(int inp) => inp switch
+    {
+        0 => "K 偶（InP=0）",
+        1 => "S 偶（InP=1）",
+        2 => "R 偶（InP=2）",
+        3 => "T 偶（InP=3）",
+        4 => "E 偶（InP=4）",
+        5 => "J 偶（InP=5）",
+        6 => "B 偶（InP=6）",
+        7 => "N 偶（InP=7）",
+        20 => "Cu50（InP=20）",
+        21 => "Pt100（InP=21）",
+        22 => "Pt100 两位小数（InP=22）",
+        50 or 51 => $"线性电流（InP={inp}）",
+        _ => $"InP={inp}"
+    };
+
+    /// <summary>该种探头叫什么口：报错里「模块上测温的是 CH2、CH4」那半句。</summary>
+    public static string KindName(YudianKind kind) => kind == YudianKind.Thermal ? "测温" : "线性电流";
+
     private static YudianChannelSetup Setup(YudianKind kind, int group, int inp, short scl, short sch, int dpt)
     {
         var thermalDecimals = ThermalDecimalsOf(inp);
@@ -106,7 +145,7 @@ public sealed class YudianClient
         {
             case YudianKind.Thermal when isLinear:
                 return new(true, group, inp, null, null, null,
-                    $"输入规格 InP={inp} 是线性电流——这条口子接的怕不是 J4（pH 表）？测温该是 J7");
+                    $"这一路是线性电流（InP={inp}）——温度探头读不了它；接 4~20mA 变送器（pH）的才用这种口");
             case YudianKind.Thermal when thermalDecimals is null:
                 return new(true, group, inp, null, null, null,
                     $"输入规格 InP={inp} 不在已核对的标度表里，换算系数定不出来，不猜");
@@ -115,7 +154,7 @@ public sealed class YudianClient
 
             case YudianKind.Linear when !isLinear:
                 return new(true, group, inp, null, null, null,
-                    $"输入规格 InP={inp} 是测温型——这条口子接的怕不是 J7（温度表）？pH 该是 J4");
+                    $"这一路是{InpName(inp)}——是测温口，pH 变送器（4~20mA）读不了它");
             default:
                 // 线性：寄存器值就是「面板显示值去掉小数点」，隐含小数位 = dPt。
                 // ScL/ScH 同一套隐含小数位，换算完就是量程（pH 通常 0.00~14.00）

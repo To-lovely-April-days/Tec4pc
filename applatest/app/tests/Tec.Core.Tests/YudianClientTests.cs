@@ -104,7 +104,9 @@ public class YudianClientTests
         MakeJ7(dev);
         dev.Regs[2048] = 51;       // 组1 竟是 4~20mA
         var id = await yd.InitAsync(YudianKind.Thermal);
-        Assert.Contains("J4", id.Channels[0].Problem);
+        Assert.Contains("线性电流（InP=51）", id.Channels[0].Problem);
+        Assert.False(id.Channels[0].Usable);
+        Assert.Equal("线性电流（InP=51）", id.Channels[0].TypeName);
         var r = await yd.ReadAsync();
         Assert.Null(r[0].Value);   // 报了问题就不给数
     }
@@ -145,7 +147,8 @@ public class YudianClientTests
         dev.Regs[384] = 1;
         dev.Regs[2048] = 21;       // 竟是 Pt100
         var id = await yd.InitAsync(YudianKind.Linear);
-        Assert.Contains("J7", id.Channels[0].Problem);
+        Assert.Contains("Pt100（InP=21）", id.Channels[0].Problem);
+        Assert.Contains("测温口", id.Channels[0].Problem);
     }
 
     [Fact]
