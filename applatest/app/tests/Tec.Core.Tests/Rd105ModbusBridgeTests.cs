@@ -96,7 +96,7 @@ public sealed class Rd105ModbusBridgeTests
     }
 
     [Fact]
-    public async Task 快照走DATADEMAND_两路各一帧读6个寄存器_OUTV没有寄存器就如实缺_读成NaN()
+    public async Task 快照走DATADEMAND_一个参数一帧_OUTV没有寄存器就如实缺_读成NaN()
     {
         var s = Device();
         using var link = Link(s);
@@ -108,9 +108,30 @@ public sealed class Rd105ModbusBridgeTests
         Assert.True(double.IsNaN(snap.Temp2C));            // 999999999 = 未接
         Assert.True(double.IsNaN(snap.OutVolts1));         // Modbus 没有 OUTV，不编
         Assert.Equal(23, snap.InternalTempC);
-        Assert.Contains("读寄存器 4098+6", s.Requests);     // 0x1002 起 TCADJTEMP(2)+RESISTOR(4) 一帧
-        Assert.Contains("读寄存器 8194+6", s.Requests);
+        // 一个参数一帧，不跨参数连读（现场固件按参数长度答）
+        Assert.Contains("读寄存器 4098+2", s.Requests);     // 0x1002 TCADJTEMP
+        Assert.Contains("读寄存器 4100+4", s.Requests);     // 0x1004 RESISTOR
+        Assert.Contains("读寄存器 8194+2", s.Requests);
+        Assert.Contains("读寄存器 8196+4", s.Requests);
         Assert.Contains("读寄存器 3+1", s.Requests);
+        Assert.DoesNotContain(s.Requests, r => r.EndsWith("+6"));
+    }
+
+    [Fact]
+    public async Task 固件按参数长度答不按请求个数答_电阻答不出来就不带_温度照常()
+    {
+        // 现场：读 RESISTOR（uint64，4 个寄存器）固件只给 2 个——「应答长度不对」。
+        // 电阻驱动没用，不带就是了；温度那一路必须照常出来，轮询不能因此断
+        var s = Device();
+        s.RegsPerReadCap = 2;
+        using var link = Link(s);
+
+        var snap = await link.Controller.ReadSnapshotAsync();
+
+        Assert.Equal(22.59187, snap.Temp1C, 5);
+        Assert.True(double.IsNaN(snap.Resistor1Ohms));
+        Assert.Equal(23, snap.InternalTempC);
+        Assert.Contains("读寄存器 4100+4", s.Requests);     // 试过了，是固件答不出来，不是没问
     }
 
     [Fact]

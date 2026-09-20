@@ -35,17 +35,19 @@ public sealed class TecController(TecClient client) : IDisposable
                     ? v
                     : throw new TecProtocolException($"DATADEMAND 应答缺少字段 {key}：{TecAscii.Printable(reply)}");
 
-            // 【本地改动，见 来源说明.md】OUTV（实际输出电压）可缺：走 Modbus-RTU 桥时
-            // 寄存器表里没有这一项，桥上不编——缺了读成 NaN。驱动没有消费 OutVolts。
+            // 【本地改动，见 来源说明.md】OUTV（实际输出电压）与 RESISTOR 可缺：走 Modbus-RTU 桥时
+            // OUTV 在寄存器表里没有、RESISTOR 有的固件答不出来，桥上都不编——缺了读成 NaN。
+            // 驱动没有消费 OutVolts / Resistor；温度（TCADJTEMP）照旧必须有
             double Volts(string key) => f.TryGetValue(key, out var v) ? TecScale.VoltsFromRaw(v) : double.NaN;
+            double Ohms(string key) => f.TryGetValue(key, out var v) ? TecScale.OhmsFromRaw(v) : double.NaN;
 
             return new TecSnapshot(
                 DateTime.Now,
                 TecScale.TempFromRaw(Get("TC1:TCADJTEMP")),
-                TecScale.OhmsFromRaw(Get("TC1:RESISTOR")),
+                Ohms("TC1:RESISTOR"),
                 Volts("TC1:OUTV"),
                 TecScale.TempFromRaw(Get("TC2:TCADJTEMP")),
-                TecScale.OhmsFromRaw(Get("TC2:RESISTOR")),
+                Ohms("TC2:RESISTOR"),
                 Volts("TC2:OUTV"),
                 Get(TecCmd.InternalTemp));
         }, ct);

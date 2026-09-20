@@ -138,10 +138,12 @@ public sealed class Rd105ModbusBridge : ISerialTransport
     }
 
     /// <summary>
-    /// DATADEMAND=1/2（一次性查询关键数据，协议 §3.6.2）：Modbus 没有这条聚合指令，
-    /// 桥上按两路各读一段连续寄存器（TCADJTEMP 0x1002 与 RESISTOR 0x1004 紧挨着，一帧读 6 个），
-    /// 再读温控器自身温度。=1 那份带 PWM（就是 PWMDUTY）；=2 那份 ASCII 口给的是 OUTV
-    /// （实际输出电压），寄存器表里没有——不带，上层读成 NaN，不编。
+    /// DATADEMAND=1/2（一次性查询关键数据，协议 §3.6.2）：Modbus 没有这条聚合指令，桥上
+    /// 按参数一个一个读再拼。**一个参数一帧，不跨参数连读**——现场那台固件对「从 0x1002
+    /// 读 6 个」只答了 TCADJTEMP 自己的 4 个字节（按参数长度答，不按请求个数答）。
+    /// TCADJTEMP 是必须的（控温靠它）；RESISTOR / PWM 驱动没有消费，固件答不出来
+    /// （长度不对 / 地址不认）就不带这一项，上层读成 NaN，不编。=2 那份 ASCII 口给的是
+    /// OUTV（实际输出电压），寄存器表里没有——同样不带。
     /// </summary>
     private string DataDemand(string which)
     {
@@ -152,15 +154,22 @@ public sealed class Rd105ModbusBridge : ISerialTransport
         for (var ch = 1; ch <= 2; ch++)
         {
             var off = (ushort)(ch == 2 ? Rd105Registers.ChannelStride : 0);
-            var block = Read((ushort)(temp.Address + off), temp.Count + res.Count);
-            sb.Append($"TC{ch}:TCADJTEMP={Rd105Registers.Decode(temp.Type, block.AsSpan(0, temp.Count))}@");
-            sb.Append($"TC{ch}:RESISTOR={Rd105Registers.Decode(res.Type, block.AsSpan(temp.Count, res.Count))}@");
-            if (which == "1")
-                sb.Append($"TC{ch}:PWM={Rd105Registers.Decode(duty.Type, Read((ushort)(duty.Address + off), duty.Count))}@");
+            sb.Append($"TC{ch}:TCADJTEMP={Rd105Registers.Decode(temp.Type, Read((ushort)(temp.Address + off), temp.Count))}@");
+            if (TryRead((ushort)(res.Address + off), res.Count) is { } r)
+                sb.Append($"TC{ch}:RESISTOR={Rd105Registers.Decode(res.Type, r)}@");
+            if (which == "1" && TryRead((ushort)(duty.Address + off), duty.Count) is { } d)
+                sb.Append($"TC{ch}:PWM={Rd105Registers.Decode(duty.Type, d)}@");
         }
         var it = Rd105Registers.Map["SINTERIORTEMP"];
         sb.Append($"SINTERIORTEMP={Rd105Registers.Decode(it.Type, Read(it.Address, it.Count))}@\r\n");
         return sb.ToString();
+    }
+
+    /// <summary>可缺的量：从站答了但答得不对（长度 / 地址 / 异常码）就当没有；**不答**（超时）照旧抛——那是链路的事。</summary>
+    private ushort[]? TryRead(ushort addr, int count)
+    {
+        try { return Read(addr, count); }
+        catch (TecProtocolException) { return null; }
     }
 
     private ushort[] Read(ushort addr, int count)

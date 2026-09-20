@@ -42,6 +42,10 @@ public sealed class FakeModbusSlave : ISerialTransport
     /// <summary>每次应答前先吐这几个脏字节——模拟 485 收发切换的毛刺（现场读到的是 F8 打头）。</summary>
     public byte[] LeadingNoise { get; set; } = Array.Empty<byte>();
 
+    /// <summary>一次读最多答几个寄存器（0 = 不限）。现场那台 RD105 固件按参数长度答、不按请求个数答：
+    /// 从 0x1002 要 6 个只给 TCADJTEMP 自己的 2 个——用它把这个脾气搬进测试。</summary>
+    public int RegsPerReadCap { get; set; }
+
     // ── ISerialTransport ─────────────────────────────────────────────
 
     public bool IsOpen { get; private set; }
@@ -118,6 +122,7 @@ public sealed class FakeModbusSlave : ISerialTransport
                 var start = At(2);
                 var count = At(4);
                 Requests.Add($"读寄存器 {start}+{count}");
+                if (RegsPerReadCap > 0) count = Math.Min(count, RegsPerReadCap);
                 var data = new byte[1 + count * 2];
                 data[0] = (byte)(count * 2);
                 for (var i = 0; i < count; i++)
