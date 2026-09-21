@@ -42,8 +42,9 @@ public sealed class DuoLinks : IDisposable
     /// </summary>
     public void OpenAll()
     {
+        // 串口层的异常（拔插过 USB 转串的「函数不正确」、被占着、口没了）翻成人话；别的原样带出
         try { Rd105.Open(); }
-        catch (Exception ex) { throw new InvalidOperationException($"{RdName} 打不开：{ex.Message}", ex); }
+        catch (Exception ex) { throw new InvalidOperationException($"{RdName} 打不开：{Reason(ex, RdPortName)}", ex); }
 
         IoOpenError = null;
         if (IoPort is { IsOpen: false })
@@ -51,10 +52,14 @@ public sealed class DuoLinks : IDisposable
             try { IoPort.Open(); }
             catch (Exception ex)
             {
-                IoOpenError = $"IO8R 串口{(IoPortName is null ? "" : " " + IoPortName)} 打不开：{ex.Message}";
+                IoOpenError = $"IO8R 串口{(IoPortName is null ? "" : " " + IoPortName)} 打不开：{Reason(ex, IoPortName)}";
             }
         }
     }
+
+    /// <summary>串口层的错翻成该怎么办（SerialFault），其余照原话。</summary>
+    private static string Reason(Exception ex, string? port)
+        => ex is IOException or UnauthorizedAccessException ? SerialFault.Explain(ex, port) : ex.Message;
 
     public void Dispose()
     {

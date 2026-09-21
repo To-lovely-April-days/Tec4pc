@@ -1,5 +1,6 @@
 using System.Globalization;
 using Tec.Driver.Abi;
+using Tec.Drivers.Rd105;
 using Tec.Drivers.Rd105.Modbus;
 using Tec.Drivers.DualStation.Yudian;
 
@@ -228,7 +229,10 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
         }
         catch (Exception ex)
         {
-            return new ProbeResult(false, ex.Message);
+            // 串口层的错（拔插过 USB 转串的「函数不正确」、被占着、口没了）翻成该怎么办；协议层的照原话
+            return new ProbeResult(false, ex is IOException or UnauthorizedAccessException
+                ? SerialFault.Explain(ex, link?.PortName ?? connection.Str(FieldPort, ""))
+                : ex.Message);
         }
         finally
         {
@@ -282,6 +286,11 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
             };
             await session.InitAsync(ct).ConfigureAwait(false);
             return session;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            link.Dispose();
+            throw new InvalidOperationException(SerialFault.Explain(ex, link.PortName ?? connection.Str(FieldPort, "")), ex);
         }
         catch
         {
@@ -505,7 +514,10 @@ public sealed class YudianProbeSession : IDeviceSession
         catch (Exception ex)
         {
             if (_fails++ == 0)
-                _ctx.Log?.Invoke("warn", $"{InstanceId} 宇电模块读失败：{ex.Message}（连续失败只报第一次）");
+            {
+                var why = ex is IOException or UnauthorizedAccessException ? SerialFault.Explain(ex, _link.PortName) : ex.Message;
+                _ctx.Log?.Invoke("warn", $"{InstanceId} 宇电模块读失败：{why}（连续失败只报第一次）");
+            }
         }
     }
 

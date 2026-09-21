@@ -12,14 +12,18 @@ public sealed class SharedSerial : IDisposable
 {
     private readonly Action? _release;
 
-    public SharedSerial(ISerialTransport transport, SemaphoreSlim busLock, Action? release = null)
+    public SharedSerial(ISerialTransport transport, SemaphoreSlim busLock, Action? release = null, string? portName = null)
     {
         Transport = transport;
         BusLock = busLock;
         _release = release;
+        PortName = portName;
     }
 
     public ISerialTransport Transport { get; }
+
+    /// <summary>口名，只为报错时说得清是哪个口；假链路（测试）可以不填。</summary>
+    public string? PortName { get; }
 
     /// <summary>半双工总线锁：共口的所有客户端一次只许一问。</summary>
     public SemaphoreSlim BusLock { get; }
@@ -75,7 +79,7 @@ public static class SerialPortPool
             }
 
             e.Refs++;
-            return new SharedSerial(e.Transport, e.BusLock, () => Release(key));
+            return new SharedSerial(e.Transport, e.BusLock, () => Release(key), key);
         }
     }
 

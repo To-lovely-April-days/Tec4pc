@@ -115,7 +115,9 @@ public sealed class Rd105TecDriver : IDeviceDriver
         }
         catch (Exception ex)
         {
-            return new ProbeResult(false, $"打不开 {connection.Str(FieldPort, DefaultPort)}：{ex.Message}");
+            return new ProbeResult(false, ex is IOException or UnauthorizedAccessException
+                ? SerialFault.Explain(ex, connection.Str(FieldPort, DefaultPort))
+                : $"打不开 {connection.Str(FieldPort, DefaultPort)}：{ex.Message}");
         }
         finally
         {
@@ -165,6 +167,11 @@ public sealed class Rd105TecDriver : IDeviceDriver
         {
             link.Dispose();
             throw new InvalidOperationException(NoReply(connection, ex), ex);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            link.Dispose();
+            throw new InvalidOperationException(SerialFault.Explain(ex, connection.Str(FieldPort, DefaultPort)), ex);
         }
         catch
         {
