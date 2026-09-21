@@ -55,7 +55,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     private readonly int[] _diIdx = new int[2];
     /// <summary>
     /// TEC 功率线经不经 IO8R 的继电器（配置「TEC 功率继电器」= 有，且配了 IO8R）。
-    /// 现场电气定的：DO7 = 工位 A、DO6 = 工位 B，闭合 TEC 才有电——从前没人合它，
+    /// 现场电气定的：DO6 = 工位 A、DO7 = 工位 B，闭合 TEC 才有电——从前没人合它，
     /// 现场「降温没反应」就是这个。用户定的：**不常合**——不控温就断着，打开温控后
     /// 按「这一刻要升温还是要降温」只合该合的那一只（降温 / TEC 加热合它，升温合加热棒）。
     /// </summary>
@@ -94,6 +94,10 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     {
         if (well is 0 or 1) _wantEnabled[well] = true;
     }
+
+    /// <summary>这一路此刻是不是在控温（意图）。面板重开时按它对账，不按设备上会被切换序列
+    /// 临时关掉的 ENABLE。</summary>
+    internal bool WantEnabled(int well) => well is 0 or 1 && _wantEnabled[well];
 
     /// <summary>停控（含安全停机）走过这里：让正在进行的切换知道「别再把输出打开」。</summary>
     internal void NoteStop(int well)
@@ -151,9 +155,9 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         {
             _doIdx[w] = Math.Clamp((int)cfg.Num(w == 0 ? F.DoA : F.DoB, w), 0, 7);
             _diIdx[w] = Math.Clamp((int)cfg.Num(w == 0 ? F.DiA : F.DiB, w), 0, 7);
-            _tecDoIdx[w] = Math.Clamp((int)cfg.Num(w == 0 ? F.TecDoA : F.TecDoB, w == 0 ? 7 : 6), 0, 7);
+            _tecDoIdx[w] = Math.Clamp((int)cfg.Num(w == 0 ? F.TecDoA : F.TecDoB, 6 + w), 0, 7);
         }
-        // TEC 功率线经 IO8R 继电器（现场电气定的：DO7 = A、DO6 = B）。没配 IO8R 的机器
+        // TEC 功率线经 IO8R 继电器（现场电气定的：DO6 = A、DO7 = B）。没配 IO8R 的机器
         // 无所谓「经不经」——那台没有继电器可扳，只能当它是硬线接的
         _tecRelay = links.Io is not null && cfg.Str(F.TecRelay, "有") == "有";
         if (_tecRelay)

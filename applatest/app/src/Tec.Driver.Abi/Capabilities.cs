@@ -53,6 +53,18 @@ public interface ITemperatureControl : ICapability
     IObservable<Sample> Temperature { get; }
 }
 
+/// <summary>
+/// 控温回路此刻的状态（可选能力，设备会话知道就实现）：设定值是多少、回路开着没有。
+/// 手动面板重开 / 程序重启之后拿它对账——面板上那颗「温控」开关和目标框跟着回路的真实状态走，
+/// 不跟着面板自己上一次的记忆走。Setpoint 没下发过就是 null，不假装有一个。
+/// </summary>
+public interface ITemperatureStatus : ICapability
+{
+    double? Setpoint { get; }
+    /// <summary>回路是不是在控温（意图）：下发过目标且没停。热源切换序列中途临时关掉输出的那两秒不算停。</summary>
+    bool Active { get; }
+}
+
 /// <summary>自整定当前的状态。</summary>
 public enum TuningState { Idle, Running, Succeeded, Failed, Cancelled }
 

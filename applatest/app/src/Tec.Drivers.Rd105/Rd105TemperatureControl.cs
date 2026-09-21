@@ -13,7 +13,7 @@ namespace Tec.Drivers.Rd105;
 /// 控温本身交给温控器自己的 PID：写 TG（目标）与 SPEED（变温速率），
 /// 它自己带斜坡。上位机只负责下发、收数、判到达。
 /// </summary>
-public sealed class Rd105TemperatureControl : ITemperatureControl
+public sealed class Rd105TemperatureControl : ITemperatureControl, ITemperatureStatus
 {
     private readonly int _tc;
     private readonly Rd105Link _link;
@@ -54,6 +54,9 @@ public sealed class Rd105TemperatureControl : ITemperatureControl
 
     /// <summary>当前设定值。还没下发过就是 null——不假装有一个。</summary>
     public double? Setpoint { get; private set; }
+
+    /// <summary>ITemperatureStatus：单机用时回路开着 = ENABLE 的影子。</summary>
+    public bool Active => Enabled;
 
     /// <summary>
     /// 本路输出开着没有（ENABLE 的影子）。热源切换要看它：**停着的通道不该被自动切换动**——

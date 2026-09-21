@@ -15,6 +15,14 @@ public partial class HmiWindow : Window
     /// </summary>
     private static readonly Dictionary<string, HmiWindow> ByDevice = new();
 
+    /// <summary>
+    /// 面板的视图模型每台设备只建一份，**窗关了也留着**：设定值、待下发、开关、模式、日志都在，
+    /// 再开还是那一份（用户踩到：控温中关掉面板再打开，面板全是缺省，像是控温没了）。
+    /// 回路的真实状态另有对账（HmiZoneViewModel.SyncWithLoop）——程序重启那种连视图模型
+    /// 都没了的情形靠它把开关和目标按回路恢复。通道号变了（设备重配）才重建。
+    /// </summary>
+    private static readonly Dictionary<string, HmiViewModel> VmByDevice = new();
+
     public HmiWindow()
     {
         InitializeComponent();
@@ -48,10 +56,16 @@ public partial class HmiWindow : Window
             had.Activate();
             return;
         }
+        if (!VmByDevice.TryGetValue(deviceId, out var vm)
+            || !vm.Zones.Select(z => z.Number).SequenceEqual(channels))
+        {
+            vm = new HmiViewModel(ws, label, channels);
+            VmByDevice[deviceId] = vm;
+        }
         var win = new HmiWindow
         {
             Title = $"{label} · 手动控制面板",
-            DataContext = new HmiViewModel(ws, label, channels),
+            DataContext = vm,
         };
         ByDevice[deviceId] = win;
         win.Closed += (_, _) => ByDevice.Remove(deviceId);

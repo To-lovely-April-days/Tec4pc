@@ -1055,6 +1055,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
         var r = _ws.Engine.Runner(Number);
         EngineRunning = r?.State is Tec.Core.Records.ChannelRunState.Running
                                   or Tec.Core.Records.ChannelRunState.Paused;
+        SyncWithLoop();
         // 程序在跑 = 温控当然是开的，不用等面板那个开关也被按下
         Therm = !(TempOn || EngineRunning) ? 0
             : Tag("Tset") is { } sp && TrVal is { } tr
@@ -1099,6 +1100,42 @@ public sealed class HmiZoneViewModel : ViewModelBase
     private double? Tag(string tag)
         => _ws.Pipeline.TryLatest(Number, tag, _ws.Clock.Now, out var s)
            && s.Quality is Quality.Good or Quality.Simulated ? s.Value : null;
+
+    // ── 面板开关 ⇄ 回路真实状态对账 ─────────────────────────────────
+    //
+    // 面板关了再开、程序重启、配方 / 安全停机停了控温……面板自己记的那颗「温控」开关
+    // 和目标框都可能跟回路对不上（用户踩到：控温中关掉面板再打开，面板全是缺省）。
+    // 回路的真实状态从 ITemperatureStatus 读：下发过目标且没停 = 开着。
+    // 面板自己的下发 / 停控是异步的，写到设备要几十毫秒到两秒（热源切换那段），
+    // 这期间开关和回路短暂对不上是正常的——连着 3 拍对不上才算真的对不上；
+    // 刚建好的面板第一拍就对（那时没有在途的操作）。程序控制期间开关归程序管，不对。
+
+    private int _loopMismatch;
+    private bool _loopSynced;
+
+    private void SyncWithLoop()
+    {
+        if (Temp is not ITemperatureStatus st) { _loopMismatch = 0; return; }
+        if (EngineRunning) { _loopMismatch = 0; _loopSynced = true; return; }
+        var running = st.Active && st.Setpoint is { } sp;
+        if (running == TempOn) { _loopMismatch = 0; _loopSynced = true; return; }
+        if (++_loopMismatch < (_loopSynced ? 3 : 1)) return;
+        _loopMismatch = 0;
+        _loopSynced = true;
+        if (running)
+        {
+            TempOn = true;
+            var key = Mode == "Tj" ? "tj" : "tr";
+            Sets[key] = st.Setpoint!.Value;
+            Pending.Remove(key);
+            Log("对账", $"回路在控温（目标 {Txt.Fx(st.Setpoint.Value)} ℃）——面板开关与目标按回路恢复");
+        }
+        else
+        {
+            TempOn = false;
+            Log("对账", "回路已停（安全停机 / 程序 / 别处停的）——面板「温控」开关跟着关");
+        }
+    }
 
     private double? ReadPh()
     {

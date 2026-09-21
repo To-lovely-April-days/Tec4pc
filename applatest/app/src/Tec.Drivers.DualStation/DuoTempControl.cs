@@ -10,8 +10,14 @@ namespace Tec.Drivers.DualStation;
 /// 蒸回流（IRefluxControl）转发给组合会话的跟随环：跟随长在采集循环里，
 /// 这里只是开关和状态。
 /// </summary>
-public sealed class DuoTempControl : ITemperatureControl, IRefluxControl, IHeatSource
+public sealed class DuoTempControl : ITemperatureControl, IRefluxControl, IHeatSource, ITemperatureStatus
 {
+    // ── ITemperatureStatus：面板重开时对账用。Active 看的是意图（下发过目标且没停），
+    //    不看设备上的 ENABLE——热源切换序列会把它临时关两秒。
+    //    显式实现：类上那个 Active 是 IRefluxControl 的（跟随开没开），两回事
+    public double? Setpoint => Inner.Setpoint;
+    bool ITemperatureStatus.Active => _s.WantEnabled(_well);
+
     private readonly DuoSession _s;
     private readonly int _well;
 
