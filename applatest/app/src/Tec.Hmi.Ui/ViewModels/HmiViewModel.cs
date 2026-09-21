@@ -1090,7 +1090,8 @@ public sealed class HmiZoneViewModel : ViewModelBase
         else
         {
             HeadPct = 0;
-            HeadNote = !LinkOk ? LinkText : TempOn ? "手动控制 · 温控中" : "手动待机";
+            // 待机时把「温控开关关着」说在头上：设定值填了、下发了、机器没动，八成是这个开关
+            HeadNote = !LinkOk ? LinkText : TempOn ? "手动控制 · 温控中" : "手动待机 · 温控开关关着（打开才下发目标）";
         }
         RaiseZone();
     }
@@ -1410,12 +1411,29 @@ public sealed class HmiZoneViewModel : ViewModelBase
             }
         }
         var n = Pending.Count;
+        // 「下发」只把设定值交给开着的那个回路：温控开关关着，温度目标就只是记在面板上，
+        // 一个字都没写进温控器——从前这时候也报「已写入控制器」，现场对着 70 ℃ 等了半天没动静（用户踩到）
+        var tempPending = Pending.Keys.Any(k => k is "tr" or "tj" or "rate" or "dur" or "dt");
+        var stirPending = Pending.Keys.Any(k => k is "rpm" or "rEnd" or "rDur");
         foreach (var kv in Pending) Sets[kv.Key] = kv.Value;
         Pending.Clear();
         if (TempOn) IssueTemp();
         if (StirOn) IssueStir();
-        Log("下发", $"{n} 项设定值已写入控制器");
-        _owner.Toast($"已下发 {n} 项设定值");
+
+        var held = new List<string>();
+        if (tempPending && !TempOn) held.Add("「温控」开关是关的，温度目标没有下发到温控器——把右上角「温控」打开才会写进去");
+        if (stirPending && !StirOn && HasStir) held.Add("「搅拌」开关是关的，转速没有下发");
+        if (held.Count == 0)
+        {
+            Log("下发", $"{n} 项设定值已写入控制器");
+            _owner.Toast($"已下发 {n} 项设定值");
+        }
+        else
+        {
+            var msg = $"已记下 {n} 项设定值；{string.Join("；", held)}";
+            Log("下发", msg);
+            _owner.Toast(msg);
+        }
         RaiseZone();
     }
 
