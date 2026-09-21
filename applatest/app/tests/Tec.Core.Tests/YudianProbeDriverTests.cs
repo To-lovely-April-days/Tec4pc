@@ -170,7 +170,8 @@ public sealed class YudianProbeDriverTests
         var r = await drv.ProbeAsync(new ParameterSet(), CancellationToken.None);
 
         Assert.True(r.Success);
-        Assert.Contains("CH1 Pt100（InP=21） 25.3 ℃、CH2 Pt100（InP=21） 断线/超量程、CH3 关、CH4 关——测温口是 CH1、CH2", r.Message);
+        Assert.Contains("CH1 Pt100（InP=21） 25.3 ℃、CH2 Pt100（InP=21） 断线/超量程（原始值 8100）、CH3 关、CH4 关——测温口是 CH1、CH2", r.Message);
+        Assert.DoesNotContain("全报断线", r.Message);                    // 还有一路好的，不上那段排查话
 
         // pH 表按 dPt 的小数位显示，没有单位
         var j4 = MakeJ4();
@@ -256,7 +257,46 @@ public sealed class YudianProbeDriverTests
         Assert.True(r.Success);
         // 读不了的那两路把 PV 寄存器原样印出来，让人自己看它像不像温度
         Assert.Contains("CH1 4~20mA（InP=51，J4） 原始值 700、CH2 Pt100（InP=21） 24.6 ℃、CH3 4~20mA（InP=51，J4） 原始值 412、CH4 Pt100（InP=21） 25.1 ℃——测温口是 CH2、CH4", r.Message);
-        Assert.Contains("模块参数：In=1/2/3/4，InP=51/21/51/21，ScL=0/0/0/0，ScH=1400/0/1400/0，dPt=2，Loc=0，型号字 0", r.Message);
+        Assert.Contains("模块参数：In=1/2/3/4，InP=51/21/51/21，ScL=0/0/0/0，ScH=1400/0/1400/0，AAF=0/0/0/0，dPt=2，Loc=0，型号字 0", r.Message);
+    }
+
+    [Fact]
+    public async Task 现场第三眼_写完InP四路全报断线_测试连接说清重新上电和接法_轮询只警告一次()
+    {
+        // 截图里那台：In 四路都用组 1，InP1 已写成 21，四路都挂着 oral
+        var dev = new FakeModbusSlave();
+        for (var i = 0; i < 4; i++) { dev.Regs[384 + i] = 1; dev.Regs[1536 + i] = (ushort)(240 + i); }
+        dev.Regs[2048] = 21; dev.Regs[2128] = 1; dev.Regs[2131] = 8848;
+        dev.Regs[1664] = 0x0101; dev.Regs[1665] = 0x0101;
+        var drv = Wire(new YudianTrProbeDriver(), dev);
+
+        var r = await drv.ProbeAsync(new ParameterSet(), CancellationToken.None);
+        Assert.True(r.Success);                                            // 链路是通的
+        Assert.Contains("CH3 Pt100（InP=21） 断线/超量程（原始值 242）", r.Message);
+        Assert.Contains("能读的几路全报断线/超量程——查接线：颜色相同（阻值小）的两根接 IN 和 COM、剩下一根接 RT", r.Message);
+        Assert.Contains("PT100 输入需要先接好线再重新上电", r.Message);
+        Assert.DoesNotContain("AAF 里", r.Message);                        // AAF 全 0：不提锁定
+
+        // AAF.0 开着：加一句「标志锁住要手动清」
+        dev.Regs[2072] = 1;
+        var r2 = await drv.ProbeAsync(new ParameterSet(), CancellationToken.None);
+        Assert.Contains("AAF=1/0/0/0", r2.Message);
+        Assert.Contains("断线标志锁住要手动清", r2.Message);
+
+        // 轮询：断线只警告一次，恢复了记一笔，再断再警告
+        var logs = new List<string>();
+        await using var s = await drv.OpenAsync(new ParameterSet(),
+            Ctx(new[] { 1 }, ParameterSet.Of((YudianProbeDriverBase.FieldModuleCh, "3")), (_, t) => { lock (logs) logs.Add(t); }), CancellationToken.None);
+        var ps = (YudianProbeSession)s;
+        await ps.PollOnceAsync(CancellationToken.None);
+        await ps.PollOnceAsync(CancellationToken.None);
+        lock (logs) Assert.Single(logs, l => l.Contains("CH3 断线/超量程（原始值 242）") && l.Contains("断电重上电"));
+        dev.Regs[1665] = 0;
+        await ps.PollOnceAsync(CancellationToken.None);
+        lock (logs) Assert.Contains(logs, l => l.Contains("CH3 传感器恢复"));
+        dev.Regs[1665] = 0x0101;
+        await ps.PollOnceAsync(CancellationToken.None);
+        lock (logs) Assert.Equal(2, logs.Count(l => l.Contains("CH3 断线/超量程")));
     }
 
     // ── 现场第二眼：四路 InP 全是 51——Pt100 接上去读不了，模块没面板，改 InP 只能走总线 ──

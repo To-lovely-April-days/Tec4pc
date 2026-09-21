@@ -83,6 +83,14 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
     public const string InpWritePt100x100 = "写成 Pt100 两位小数（InP=22）";
     public static readonly IReadOnlyList<string> InpOptionsThermal = new[] { InpKeep, InpWritePt100, InpWritePt100x100 };
 
+    /// <summary>
+    /// 一路报「断线/超量程」时该查什么——说明书 §2.4.5 J7 热电阻接法和那句「PT100 输入需要先接好线再重新上电」。
+    /// 现场第三眼：InP 写成 21 之后四路全报断线，多半就是没重新上电。
+    /// </summary>
+    public const string FaultHint =
+        "查接线：颜色相同（阻值小）的两根接 IN 和 COM、剩下一根接 RT（说明书 §2.4.5）；" +
+        "刚写过 InP 或刚接好线的，先把模块断电重上电——说明书原话「PT100 输入需要先接好线再重新上电」";
+
     private readonly YudianKind _kind;
     private readonly TagDescriptor _tag;
 
@@ -206,10 +214,17 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
             var hint = _kind == YudianKind.Thermal
                 ? $"。要把某一路改成 Pt100：「{FieldModuleCh}」手选那一路、「{FieldInp}」选「{InpWritePt100}」再点「连接」"
                 : "";
-            // 模块参数原样带上——没有说明书核对时，原始寄存器比任何解读都可靠，拿它去对手册
-            return id.UsableChannels.Count > 0
-                ? new ProbeResult(true, $"{readout}——{kindName}口是 {id.UsableList}｜模块参数：{id.Dump}") { DetectedChannels = 1 }
-                : new ProbeResult(false, $"{readout}——四路里没有一路是{kindName}口，这支探头读不了它{hint}｜模块参数：{id.Dump}");
+            // 模块参数原样带上——原始寄存器比任何解读都可靠，拿它去对手册
+            if (id.UsableChannels.Count == 0)
+                return new ProbeResult(false, $"{readout}——四路里没有一路是{kindName}口，这支探头读不了它{hint}｜模块参数：{id.Dump}");
+
+            // 能读的几路全报断线/超量程：链路是通的，但一个数都拿不到——把该查的说在这里，别让人对着「已连接」发呆
+            var allFault = id.UsableChannels.All(n => now[n - 1].SensorFault);
+            var fault = allFault
+                ? $"；能读的几路全报断线/超量程——{FaultHint}" +
+                  (id.AnyFaultLatched ? "；AAF 里「输入故障报警不自动复位」开着（bit0=1），断线标志锁住要手动清（说明书 §5.3）" : "")
+                : "";
+            return new ProbeResult(true, $"{readout}——{kindName}口是 {id.UsableList}{fault}｜模块参数：{id.Dump}") { DetectedChannels = 1 };
         }
         catch (Exception ex)
         {
@@ -237,7 +252,7 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
             var fault = x.SensorFault ? "，断线/超量程" : "";
             var value = !c.Enabled ? ""
                 : !c.Usable ? $" 原始值 {x.Raw}{fault}"
-                : x.SensorFault ? " 断线/超量程"
+                : x.SensorFault ? $" 断线/超量程（原始值 {x.Raw}）"      // 原始值一起给：像温度的就是标志锁着没清，不像的才是真断线
                 : x.Value is { } v ? " " + v.ToString($"F{decimals}", CultureInfo.InvariantCulture) + (_tag.Unit.Length > 0 ? $" {_tag.Unit}" : "")
                 : " 无读数";
             parts[i] = $"CH{i + 1} {c.TypeName}{value}";
@@ -297,6 +312,7 @@ public sealed class YudianProbeSession : IDeviceSession
     private CancellationTokenSource? _pollCts;
     private Task? _pollTask;
     private int _fails;
+    private bool _faultHinted;
 
     internal YudianProbeSession(SharedSerial link, YudianClient client, YudianKind kind,
                                 TagDescriptor tag, DriverContext ctx, int? moduleChannel, TimeSpan period)
@@ -422,7 +438,8 @@ public sealed class YudianProbeSession : IDeviceSession
         if (got != want)
             throw new InvalidOperationException(
                 $"「{fieldInp}」把 CH{n}（组 {setup.Group}）的 InP 写成 {want} 了，读回来却是 {got}——写没生效，查模块的 Loc / 手册里 InP 的地址");
-        _ctx.Log?.Invoke("warn", $"{InstanceId} 「{fieldInp}」：CH{n}（组 {setup.Group}）的 InP 由 {setup.Inp} 写成 {want}（{YudianClient.InpName(want)}），读回核对一致");
+        _ctx.Log?.Invoke("warn", $"{InstanceId} 「{fieldInp}」：CH{n}（组 {setup.Group}）的 InP 由 {setup.Inp} 写成 {want}（{YudianClient.InpName(want)}），读回核对一致。" +
+                                 "说明书 §2.4.5：「PT100 输入需要先接好线再重新上电」——请把模块断电重上电一次，再看读数");
         return after;
     }
 
@@ -466,6 +483,17 @@ public sealed class YudianProbeSession : IDeviceSession
             if (x.Value is not { } v) return;      // 配置问题在 Init 就报了；这里没值就不发
             var at = _ctx.Clock();
             var q = x.SensorFault ? Quality.Bad : Quality.Good;
+            if (x.SensorFault && !_faultHinted)
+            {
+                // 每次进入断线只说一遍：说清原始值和该查什么；恢复了再断再说
+                _faultHinted = true;
+                _ctx.Log?.Invoke("warn", $"{InstanceId} 宇电模块 CH{_moduleCh} 断线/超量程（原始值 {x.Raw}），读数按 Bad 发——{YudianProbeDriverBase.FaultHint}");
+            }
+            else if (!x.SensorFault && _faultHinted)
+            {
+                _faultHinted = false;
+                _ctx.Log?.Invoke("info", $"{InstanceId} 宇电模块 CH{_moduleCh} 传感器恢复");
+            }
             foreach (var s in _sensors)
             {
                 var sample = new Sample(s.Channel, _tag.Tag, at.UtcTicks, at, v, q);

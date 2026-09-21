@@ -52,16 +52,21 @@ public sealed record YudianIdentity(
     public IReadOnlyList<ushort> RawInp { get; init; } = Array.Empty<ushort>();
     public IReadOnlyList<ushort> RawScl { get; init; } = Array.Empty<ushort>();
     public IReadOnlyList<ushort> RawSch { get; init; } = Array.Empty<ushort>();
+    /// <summary>AAF1~4（0818H）：报警自动复位选择。bit0=1 表示输入故障报警不自动复位——断线标志会锁着不清（说明书 §5.3）。</summary>
+    public IReadOnlyList<ushort> RawAaf { get; init; } = Array.Empty<ushort>();
 
-    /// <summary>「In=1/2/3/4，InP=51/51/51/51，ScL=0/0/0/0，ScH=1400/…，dPt=2，Loc=0，型号字 8848」——模块参数一览，探测应答和开机日志里带着。</summary>
+    /// <summary>「In=1/2/3/4，InP=51/51/51/51，ScL=0/0/0/0，ScH=1400/…，AAF=0/0/0/0，dPt=2，Loc=0，型号字 8848」——模块参数一览，探测应答和开机日志里带着。</summary>
     public string Dump
     {
         get
         {
             static string J(IReadOnlyList<ushort> xs) => xs.Count == 0 ? "?" : string.Join("/", xs.Select(x => ((short)x).ToString()));
-            return $"In={J(RawIn)}，InP={J(RawInp)}，ScL={J(RawScl)}，ScH={J(RawSch)}，dPt={Dpt}，Loc={Loc}，型号字 {FeatureWord}";
+            return $"In={J(RawIn)}，InP={J(RawInp)}，ScL={J(RawScl)}，ScH={J(RawSch)}，AAF={J(RawAaf)}，dPt={Dpt}，Loc={Loc}，型号字 {FeatureWord}";
         }
     }
+
+    /// <summary>有哪一组 AAF 把「输入故障不自动复位」打开了（bit0）——那样断线标志要手动清，读数会一直 Bad。</summary>
+    public bool AnyFaultLatched => RawAaf.Any(a => (a & 0x01) != 0);
 }
 
 /// <summary>
@@ -89,6 +94,7 @@ public sealed class YudianClient
     private const ushort RegAlarm = 1664;   // 报警状态，一寄存器两通道
     private const ushort RegInp = 2048;     // InP1~4 输入规格
     private const ushort RegScl = 2052;     // ScL1~4 线性定标下限
+    private const ushort RegAaf = 2072;     // AAF1~4 报警自动复位选择（0818H）
     private const ushort RegDpt = 2128;     // dPt 小数点位置（2128..2131 一把读上来）
 
     private readonly ModbusRtuClient _bus;
@@ -109,6 +115,7 @@ public sealed class YudianClient
         var inRegs = await _bus.ReadHoldingRegistersAsync(RegIn, 4, ct).ConfigureAwait(false);
         var groups = await _bus.ReadHoldingRegistersAsync(RegInp, 12, ct).ConfigureAwait(false); // InP×4 + ScL×4 + ScH×4
         var glob = await _bus.ReadHoldingRegistersAsync(RegDpt, 4, ct).ConfigureAwait(false);    // dPt、2129、Loc、特征字
+        var aaf = await _bus.ReadHoldingRegistersAsync(RegAaf, 4, ct).ConfigureAwait(false);     // AAF1~4：断线标志锁不锁
 
         var dpt = glob[0];
         var chans = new YudianChannelSetup[4];
@@ -139,7 +146,8 @@ public sealed class YudianClient
             RawIn = inRegs,
             RawInp = groups[..4],
             RawScl = groups[4..8],
-            RawSch = groups[8..12]
+            RawSch = groups[8..12],
+            RawAaf = aaf
         };
         return _id;
     }
