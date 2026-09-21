@@ -74,7 +74,10 @@ public sealed class Rd105Settings : IDeviceSettings
             new SettingsGroup(GroupStatus, "实时状态", StatusSchema())
             {
                 Live = true,
-                Tip = "每两秒从温控器读一遍。输出是 PWMDUTY（±100 %，正加热负制冷），电流是 CURRENT 实测值；" +
+                Tip = "每两秒从温控器读一遍。输出是 PWMDUTY（±100 %）：正的走加热 PWM 引脚、负的走制冷 PWM 引脚——" +
+                      "切到电加热那一侧时负输出那条路上没有负载，电流会接近 0。电流是 CURRENT 实测值。" +
+                      "带斜率的升温，温控器内部的目标是从原来的目标慢慢爬上去的：头一两分钟夹套若略高于爬坡起点，" +
+                      "会先出一小段负输出，属正常；两分钟后还是负的、夹套不往上走，查输出极性 / 输出模式 / 接线。" +
                       "自整定状态是 AUTOPID：1 = 温控器正在整定，整定完它自己回 0 并改写 KP/KI/KD"
             },
             new SettingsGroup(GroupTc1, "工位 A · TC1", ChannelSchema()) { Tip = ChannelTip },
@@ -120,6 +123,10 @@ public sealed class Rd105Settings : IDeviceSettings
             f.Add(Ro(Field.Num($"tc{tc}.{KDuty}", $"工位 {w} 输出", 0, "%", step: 0.1)));
             f.Add(Ro(Field.Num($"tc{tc}.{KCurrent}", $"工位 {w} 电流", 0, "A", step: 0.001)));
             f.Add(Ro(Field.Text($"tc{tc}.{KEnable}", $"工位 {w} 输出使能", "")));
+            // 输出为负、温度却该往上走的时候，先看这三样：模式、极性、斜率——现场问「输出是负的正常吗」就是这一眼
+            f.Add(Ro(Field.Text($"tc{tc}.{KMode}", $"工位 {w} 输出模式", "")));
+            f.Add(Ro(Field.Text($"tc{tc}.{KPol}", $"工位 {w} 输出极性", "")));
+            f.Add(Ro(Field.Num($"tc{tc}.{KSpeed}", $"工位 {w} 变温斜率", 0, "℃/min", step: 0.01)));
             f.Add(Ro(Field.Text($"tc{tc}.{KAutoPid}", $"工位 {w} 自整定", "")));
         }
         f.Add(Ro(Field.Num(KSysTemp, "温控器自身温度", 0, "℃", step: 1)));
@@ -178,6 +185,10 @@ public sealed class Rd105Settings : IDeviceSettings
                     p[$"tc{tc}.{KDuty}"] = TecScale.DutyPercentFromRaw(await Q(tc, TecCmd.PwmDuty, ct).ConfigureAwait(false));
                     p[$"tc{tc}.{KCurrent}"] = TecScale.CurrentFromRaw(await Q(tc, TecCmd.Current, ct).ConfigureAwait(false));
                     p[$"tc{tc}.{KEnable}"] = await Q(tc, TecCmd.Enable, ct).ConfigureAwait(false) != 0 ? "开" : "关";
+                    p[$"tc{tc}.{KMode}"] = Opt(ModeOptions, await Q(tc, TecCmd.Mode, ct).ConfigureAwait(false));
+                    p[$"tc{tc}.{KPol}"] = Opt(PolOptions, await Q(tc, TecCmd.OutputPolarity, ct).ConfigureAwait(false));
+                    // SPEED 是 ℃/s，面板上按 ℃/min 说——配方和 HMI 都是 ℃/min
+                    p[$"tc{tc}.{KSpeed}"] = TecScale.SpeedFromRaw(await Q(tc, TecCmd.Speed, ct).ConfigureAwait(false)) * 60;
                     var ap = await Q(tc, TecCmd.AutoPid, ct).ConfigureAwait(false);
                     p[$"tc{tc}.{KAutoPid}"] = ap switch { 1 => "进行中（AUTOPID=1）", 2 => "实时自动优化（AUTOPID=2）", _ => "未整定 / 已完成（AUTOPID=0）" };
                 }

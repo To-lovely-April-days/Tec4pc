@@ -80,6 +80,13 @@ public sealed class Rd105SettingsTests
         Assert.Equal(3.256, p.Num("tc2.current"), 3);                         // CURRENT 3256 = 3.256 A
         Assert.Equal("开", p.Str("tc1.enable"));
         Assert.Equal("关", p.Str("tc2.enable"));
+        Assert.Equal("双向（制冷 + 加热）", p.Str("tc1.mode"));                  // 输出为负时先看这三样
+        Assert.Equal("只加热", p.Str("tc2.mode"));
+        Assert.Equal("正向", p.Str("tc1.pidpol"));
+        Assert.Equal(0.0, p.Num("tc1.speed"), 3);                             // SPEED 0 = 不限
+        dev.Set(1, "SPEED", 8);                                               // 0.008 ℃/s ≈ 0.5 ℃/min
+        var p2 = await s.ReadAsync(Rd105Settings.GroupStatus, CancellationToken.None);
+        Assert.Equal(0.48, p2.Num("tc1.speed"), 3);
         Assert.StartsWith("进行中", p.Str("tc2.autopid"));
         Assert.Equal(24.0, p.Num(Rd105Settings.KSysTemp), 3);
         Assert.Contains("通道1 输出限流中", p.Str(Rd105Settings.KFault));
