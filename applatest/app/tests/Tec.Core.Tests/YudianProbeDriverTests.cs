@@ -35,19 +35,28 @@ public sealed class YudianProbeDriverTests
     private static DriverContext Ctx(int channel, double moduleCh = 1)
         => Ctx(new[] { channel }, ParameterSet.Of((YudianProbeDriverBase.FieldModuleCh, moduleCh)));
 
-    /// <summary>配置一项不填——「宇电通道」走缺省（跟工位走）。</summary>
+    /// <summary>「宇电通道」不填——走缺省（跟工位走）。</summary>
     private static DriverContext CtxFollow(params int[] channels) => Ctx(channels, new ParameterSet());
 
-    private static DriverContext Ctx(int[] channels, ParameterSet config, Action<string, string>? log = null) => new()
+    /// <summary>
+    /// 「输入规格」的缺省是「写成 Pt100 两位小数」（用户定的）——这里的假模块多数配的是 InP=21，
+    /// 不想测写的那些用例把它按成「照模块的 InP」，免得每条都先把假模块写成 22。
+    /// 要测缺省行为的传 keepInp: false。
+    /// </summary>
+    private static DriverContext Ctx(int[] channels, ParameterSet config, Action<string, string>? log = null, bool keepInp = true)
     {
-        InstanceId = $"PRB{channels[0]}",
-        ChannelNumbers = channels,
-        Config = config,
-        Simulated = false,
-        TimeScale = 1,
-        Clock = () => DateTimeOffset.Now,
-        Log = log ?? ((_, _) => { })
-    };
+        if (keepInp && !config.Has(YudianProbeDriverBase.FieldInp)) config[YudianProbeDriverBase.FieldInp] = YudianProbeDriverBase.InpKeep;
+        return new DriverContext
+        {
+            InstanceId = $"PRB{channels[0]}",
+            ChannelNumbers = channels,
+            Config = config,
+            Simulated = false,
+            TimeScale = 1,
+            Clock = () => DateTimeOffset.Now,
+            Log = log ?? ((_, _) => { })
+        };
+    }
 
     /// <summary>把驱动的串口池换成一台假从站（或假总线）。</summary>
     private static T Wire<T>(T drv, TecControl.Core.Comm.ISerialTransport transport,
@@ -201,38 +210,41 @@ public sealed class YudianProbeDriverTests
     }
 
     [Fact]
-    public async Task 现场那台_Tr跟工位走_A读CH2_B读CH4_pH跟工位走_A读CH1_B读CH3()
+    public async Task 跟工位走就是CH几_通道1读CH1_通道2读CH2_那一路不合就点名能读的()
     {
+        // 混用的那台：CH1/CH3 线性、CH2/CH4 Pt100。跟工位走不再去找「第几路同类口」，
+        // 通道 1 → CH1（用户定的），CH1 不是测温口就如实说，并点名测温口是哪几路
         var dev = MakeFieldModule();
         var shared = new SemaphoreSlim(1, 1);
         var logs = new List<string>();
         var trA = Wire(new YudianTrProbeDriver(), dev, shared);
         var trB = Wire(new YudianTrProbeDriver(), dev, shared);
         var phA = Wire(new YudianPhProbeDriver(), dev, shared);
-        var phB = Wire(new YudianPhProbeDriver(), dev, shared);
-        var ctxA = Ctx(new[] { 1 }, new ParameterSet(), (_, t) => { lock (logs) logs.Add(t); });
 
-        await using var sTrA = await trA.OpenAsync(new ParameterSet(), ctxA, CancellationToken.None);
-        await using var sTrB = await trB.OpenAsync(new ParameterSet(), CtxFollow(2), CancellationToken.None);
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => trA.OpenAsync(new ParameterSet(), CtxFollow(1), CancellationToken.None));
+        Assert.Contains("CH1：这一路的输入规格是 4~20mA（InP=51，J4）", ex.Message);
+        Assert.Contains("测温口是 CH2、CH4", ex.Message);
+
+        await using var sTrB = await trB.OpenAsync(new ParameterSet(), Ctx(new[] { 2 }, new ParameterSet(), (_, t) => { lock (logs) logs.Add(t); }), CancellationToken.None);
         await using var sPhA = await phA.OpenAsync(new ParameterSet(), CtxFollow(1), CancellationToken.None);
-        await using var sPhB = await phB.OpenAsync(new ParameterSet(), CtxFollow(2), CancellationToken.None);
-
-        Assert.Equal(2, ((YudianProbeSession)sTrA).ModuleChannel);
-        Assert.Equal(4, ((YudianProbeSession)sTrB).ModuleChannel);
+        Assert.Equal(2, ((YudianProbeSession)sTrB).ModuleChannel);
         Assert.Equal(1, ((YudianProbeSession)sPhA).ModuleChannel);
-        Assert.Equal(3, ((YudianProbeSession)sPhB).ModuleChannel);
-        lock (logs) Assert.Contains(logs, l => l.Contains("通道 1 → CH2") && l.Contains("测温口 CH2、CH4"));
+        lock (logs) Assert.Contains(logs, l => l.Contains("跟工位走：通道 2 → CH2") && l.Contains("测温口 CH2、CH4"));
 
+        // 手选 4：工位 B 那支接在 CH4 上
+        await using var sTr4 = await Wire(new YudianTrProbeDriver(), dev, shared)
+            .OpenAsync(new ParameterSet(), Ctx(channel: 2, moduleCh: 4), CancellationToken.None);
         var got = new List<Sample>();
-        using var s1 = sTrA.Samples.Subscribe(new Collect(x => { lock (got) got.Add(x); }));
         using var s2 = sTrB.Samples.Subscribe(new Collect(x => { lock (got) got.Add(x); }));
         using var s3 = sPhA.Samples.Subscribe(new Collect(x => { lock (got) got.Add(x); }));
-        foreach (var s in new[] { sTrA, sTrB, sPhA })
+        using var s4 = sTr4.Samples.Subscribe(new Collect(x => { lock (got) got.Add(x); }));
+        foreach (var s in new[] { sTrB, sPhA, sTr4 })
             await ((YudianProbeSession)s).PollOnceAsync(CancellationToken.None);
         lock (got)
         {
-            Assert.Equal(24.6, got.Single(x => x is { Tag: "Tr", Channel: 1 }).Value, 2);
-            Assert.Equal(25.1, got.Single(x => x is { Tag: "Tr", Channel: 2 }).Value, 2);
+            Assert.Equal(24.6, got.Single(x => x is { Tag: "Tr", Channel: 2 } && x.Value < 25).Value, 2);
+            Assert.Equal(25.1, got.Single(x => x is { Tag: "Tr", Channel: 2 } && x.Value > 25).Value, 2);
             Assert.Equal(7.0, got.Single(x => x is { Tag: "pH", Channel: 1 }).Value, 2);
         }
     }
@@ -330,7 +342,7 @@ public sealed class YudianProbeDriverTests
         Assert.False(r.Success);
         Assert.Contains("CH1 4~20mA（InP=51，J4） 原始值 0、CH2 4~20mA（InP=51，J4） 原始值 246、", r.Message);
         Assert.Contains("四路里没有一路是测温口", r.Message);
-        Assert.Contains("「宇电通道」手选那一路、「输入规格」选「写成 Pt100（InP=21）」再点「连接」", r.Message);
+        Assert.Contains("「输入规格」缺省会把它那一路写成 Pt100（写完模块要断电重上电）", r.Message);
         Assert.Contains("InP=51/51/51/51", r.Message);
         Assert.Contains("型号字 8848", r.Message);
     }
@@ -340,9 +352,11 @@ public sealed class YudianProbeDriverTests
     {
         var f = new YudianTrProbeDriver().ConfigSchema.Find(YudianProbeDriverBase.FieldInp)!;
         Assert.Equal(new[] { "照模块的 InP（不写）", "写成 Pt100（InP=21）", "写成 Pt100 两位小数（InP=22）", "写成 K 型热电偶（InP=0）" }, f.Choices);
+        Assert.Equal("写成 Pt100 两位小数（InP=22）", f.Default);                                        // 用户定的缺省
         Assert.Equal((ushort)0, YudianProbeDriverBase.ResolveInpWrite(ParameterSet.Of((YudianProbeDriverBase.FieldInp, YudianProbeDriverBase.InpWriteK))));
         Assert.Equal((ushort)22, YudianProbeDriverBase.ResolveInpWrite(ParameterSet.Of((YudianProbeDriverBase.FieldInp, YudianProbeDriverBase.InpWritePt100x100))));
-        Assert.Null(YudianProbeDriverBase.ResolveInpWrite(new ParameterSet()));
+        Assert.Equal((ushort)22, YudianProbeDriverBase.ResolveInpWrite(new ParameterSet()));             // 没填 = 缺省
+        Assert.Null(YudianProbeDriverBase.ResolveInpWrite(ParameterSet.Of((YudianProbeDriverBase.FieldInp, YudianProbeDriverBase.InpKeep))));
         Assert.Null(new YudianPhProbeDriver().ConfigSchema.Find(YudianProbeDriverBase.FieldInp));   // pH 电极没有这一项
     }
 
@@ -378,11 +392,14 @@ public sealed class YudianProbeDriverTests
     {
         var drv = Wire(new YudianTrProbeDriver(), MakeAll51());
 
-        // 跟工位走 + 要写：不知道该写哪一路，占串口之前就拒绝
+        // 跟工位走 + 要写：写通道对应的那一路（通道 2 → CH2，In=2 → 组 2）
+        var followDev = MakeAll51();
         var follow = ParameterSet.Of((YudianProbeDriverBase.FieldInp, YudianProbeDriverBase.InpWritePt100));
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => drv.OpenAsync(new ParameterSet(), Ctx(new[] { 1 }, follow), CancellationToken.None));
-        Assert.Contains("不知道该写哪一路", ex.Message);
+        await using (await Wire(new YudianTrProbeDriver(), followDev).OpenAsync(new ParameterSet(), Ctx(new[] { 2 }, follow), CancellationToken.None))
+        {
+            Assert.Equal(21, followDev.Regs[2049]);
+            Assert.Equal(51, followDev.Regs[2048]);
+        }
 
         // Loc 锁着：不写，说清
         var locked = MakeAll51(); locked.Regs[2130] = 0b0010_0000;
@@ -402,7 +419,7 @@ public sealed class YudianProbeDriverTests
         var ex4 = await Assert.ThrowsAsync<InvalidOperationException>(
             () => drv.OpenAsync(new ParameterSet(), Ctx(channel: 1, moduleCh: 2), CancellationToken.None));
         Assert.Contains("CH2：这一路的输入规格是 4~20mA（InP=51，J4）", ex4.Message);
-        Assert.Contains("「输入规格」选「写成 Pt100（InP=21）」再连", ex4.Message);
+        Assert.Contains("「输入规格」选「写成 Pt100 两位小数（InP=22）」再连", ex4.Message);
     }
 
     /// <summary>应答 06 正常、寄存器却不变的从站——模拟「Loc 没报锁但写就是不生效」那种情况。</summary>
@@ -423,23 +440,45 @@ public sealed class YudianProbeDriverTests
     }
 
     [Fact]
-    public async Task 跟工位走_模块上同类口不够_如实拒绝()
+    public async Task 跟工位走_那一路关着_如实拒绝_四路都不是测温口_测试连接说不通()
     {
-        // 模块只有 CH2 一路 Pt100，工位 B 要第 2 路——没有
         var dev = MakeFieldModule();
-        dev.Regs[387] = 0;                               // CH4 关
+        dev.Regs[385] = 0;                               // CH2 关
         var drv = Wire(new YudianTrProbeDriver(), dev);
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(
             () => drv.OpenAsync(new ParameterSet(), CtxFollow(2), CancellationToken.None));
-        Assert.Contains("第 2 路测温口", ex.Message);
-        Assert.Contains("只有 1 路（CH2）", ex.Message);
+        Assert.Contains("CH2 是关闭的", ex.Message);
+        Assert.Contains("测温口是 CH4", ex.Message);
 
         // 四路里一路测温口都没有：测试连接如实说不通
-        dev.Regs[2049] = 51;
+        dev.Regs[2051] = 51;
         var r = await drv.ProbeAsync(new ParameterSet(), CancellationToken.None);
         Assert.False(r.Success);
         Assert.Contains("没有一路是测温口", r.Message);
+    }
+
+    [Fact]
+    public async Task 输入规格缺省_写成Pt100两位小数_新探头空配置第一次连就把那一路写成22()
+    {
+        // 刚拖上台面、属性栏没打开过：配置是空的。缺省也得是用户定的那套——跟工位走 + 写成 22
+        var j7 = MakeJ7();                               // InP 组 1 = 21
+        j7.Regs[1536] = 2500;                            // 写成 22 之后两位小数：25.00
+        var drv = Wire(new YudianTrProbeDriver(), j7);
+
+        await using var s = await drv.OpenAsync(new ParameterSet(), Ctx(new[] { 1 }, new ParameterSet(), keepInp: false), CancellationToken.None);
+
+        Assert.Equal(22, j7.Regs[2048]);
+        Assert.Contains(j7.Requests, q => q == "写寄存器 2048=22");
+        Assert.Equal(1, ((YudianProbeSession)s).ModuleChannel);
+        var got = new List<Sample>();
+        using var sub = s.Samples.Subscribe(new Collect(x => { lock (got) got.Add(x); }));
+        await ((YudianProbeSession)s).PollOnceAsync(CancellationToken.None);
+        lock (got) Assert.Equal(25.0, got.Single(x => x.Tag == "Tr").Value, 2);
+
+        // 缺省串口：现场那台宇电在 CH344 的 D 口 COM3（用户定的）
+        Assert.Equal("COM3", new YudianTrProbeDriver().ConnectionSchema.Find(YudianProbeDriverBase.FieldPort)!.Default);
+        Assert.Equal("COM3", new YudianPhProbeDriver().ConnectionSchema.Find(YudianProbeDriverBase.FieldPort)!.Default);
     }
 
     [Fact]

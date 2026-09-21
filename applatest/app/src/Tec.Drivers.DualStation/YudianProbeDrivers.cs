@@ -22,7 +22,7 @@ public sealed class YudianTrProbeDriver : YudianProbeDriverBase
         kind: YudianKind.Thermal,
         tag: new TagDescriptor("Tr", "釜内温度", "℃", DataShape.Scalar)
             { Nominal = new ValueRange(-40, 180) },
-        defaultPort: "COM8",         // 现场那台：宇电模块在 CH344 的 A 口
+        defaultPort: "COM3",         // 现场那台（用户定的）：宇电模块在 CH344 的 D 口
         description: "Pt100 探头，接在宇电 AI-8848GD91J7 采集模块的一路输入上；" +
                      "插到哪个工位，那一路的釜内温度就由它测得。")
     { }
@@ -43,7 +43,7 @@ public sealed class YudianPhProbeDriver : YudianProbeDriverBase
         kind: YudianKind.Linear,
         tag: new TagDescriptor("pH", "pH", "", DataShape.Scalar)
             { Nominal = new ValueRange(0, 14) },
-        defaultPort: "COM8",         // 现场那台模块 CH1/CH3 就是线性电流口——跟 Tr 探头共一台、共一个口
+        defaultPort: "COM3",         // 跟 Tr 探头同一条 485（宇电导轨拼接共口）；pH 模块现场还没装
         description: "复合电极经 pH 变送器（4~20mA）接宇电模块的线性电流输入；" +
                      "量程定标（ScL/ScH）从模块上读出来，不在配置里另抄一份。")
     { }
@@ -62,10 +62,10 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
     public const string FieldPeriod = "采样周期";
 
     /// <summary>
-    /// 「宇电通道」的缺省项：探头绑在系统通道几，就读模块上**第几路同类输入**——
-    /// 工位 A（通道 1）读第 1 路测温口、工位 B（通道 2）读第 2 路。哪几路是测温口从模块自己的
-    /// InP 读出来：现场那台 CH1/CH3 配成线性电流（给 pH 变送器）、CH2/CH4 是 Pt100，
-    /// 于是 Tr 探头 A → CH2、B → CH4，pH 电极 A → CH1、B → CH3，两支探头拖上台面不用各改一遍。
+    /// 「宇电通道」的缺省项：探头绑在系统通道几，就读模块的第几路——通道 1（工位 A）→ CH1、
+    /// 通道 2（工位 B）→ CH2（用户定的）。两支探头拖上台面不用各改一遍；接得不一样就手选。
+    /// 曾经按「第几路同类口」找过一阵，现场那台四路都用同一组输入参数（In=1/1/1/1），
+    /// 写一次 InP 四路就都是 Pt100，「第几路同类口」和「CH 几」是一回事，留简单的那种。
     /// </summary>
     public const string ChFollowWell = "跟工位走";
 
@@ -85,6 +85,8 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
     /// <summary>探头要是热电偶不是热阻（两根线，IN 正 COM 负），规格该是 K——J7 是热偶/热阻通用口，两种都能接。</summary>
     public const string InpWriteK = "写成 K 型热电偶（InP=0）";
     public static readonly IReadOnlyList<string> InpOptionsThermal = new[] { InpKeep, InpWritePt100, InpWritePt100x100, InpWriteK };
+    /// <summary>Tr 探头「输入规格」的缺省（用户定的）：写成 Pt100 两位小数。已经是了就不写，所以每次连都过一遍不碍事。</summary>
+    public const string InpDefaultThermal = InpWritePt100x100;
 
     /// <summary>
     /// 一路报「断线/超量程」时该查什么——说明书 §2.4.5 J7 接法、那句「PT100 输入需要先接好线再重新上电」、
@@ -134,16 +136,16 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
             Field.Sel(FieldModuleCh, "宇电通道", ChOptions, ChFollowWell) with
             {
                 Tip = "这支探头接在模块的第几路输入上（RT/IN/COM 1~4）。缺省「跟工位走」：插在工位 A" +
-                      "（通道 1）读模块上第 1 路同类输入、工位 B（通道 2）读第 2 路——哪几路同类从模块自己的" +
-                      " InP 读出来。接得不一样就手选实际接的那一路；选错了开机会被指出来，并说明能读的是哪几路"
+                      "（通道 1）读 CH1、工位 B（通道 2）读 CH2。接得不一样就手选实际接的那一路；" +
+                      "选错了开机会被指出来，并说明能读的是哪几路"
             }
         };
         if (kind == YudianKind.Thermal)
-            cfg.Add(Field.Sel(FieldInp, "输入规格", InpOptionsThermal, InpKeep) with
+            cfg.Add(Field.Sel(FieldInp, "输入规格", InpOptionsThermal, InpDefaultThermal) with
             {
-                Tip = "模块上那一路的输入规格（InP）不是 Pt100 时，选「写成 Pt100」再点「连接」：程序把手选的" +
-                      "那一路写成 Pt100（功能码 06），读回核对后才用。要先在「宇电通道」里手选那一路——" +
-                      "「跟工位走」不知道该写哪一路。缺省照模块现状，什么都不写。Loc 锁着写入会如实拒绝"
+                Tip = "每次「连接」都先看模块上那一路的输入规格（InP）：已经是选的这种就什么都不写；不是就用功能码 06 " +
+                      "写过去，读回核对一致才用（模块没有面板，改参数只能走总线）。缺省「写成 Pt100 两位小数」——" +
+                      "现场那台出厂配成了 4~20mA，Pt100 读不了。Loc 锁着写入会如实拒绝；改完 InP 模块要断电重上电"
             });
         ConfigSchema = new ParameterSchema(cfg)
         {
@@ -152,11 +154,12 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
         };
     }
 
-    /// <summary>「输入规格」选了写：返回要写的 InP 代码；照模块现状（缺省）返回 null。</summary>
+    /// <summary>「输入规格」选了写：返回要写的 InP 代码；「照模块的 InP」返回 null。没填按缺省（写成 Pt100 两位小数）。</summary>
     internal static ushort? ResolveInpWrite(ParameterSet config)
     {
-        var raw = config.Str(FieldInp, InpKeep).Trim();
-        if (raw.Length == 0 || raw == InpKeep) return null;
+        var raw = config.Str(FieldInp, InpDefaultThermal).Trim();
+        if (raw.Length == 0) raw = InpDefaultThermal;
+        if (raw == InpKeep) return null;
         var i = raw.IndexOf("InP=", StringComparison.OrdinalIgnoreCase);
         if (i >= 0)
         {
@@ -223,7 +226,7 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
             var readout = $"宇电模块已响应：{Readout(id, now)}";
             var kindName = YudianClient.KindName(_kind);
             var hint = _kind == YudianKind.Thermal
-                ? $"。要把某一路改成 Pt100：「{FieldModuleCh}」手选那一路、「{FieldInp}」选「{InpWritePt100}」再点「连接」"
+                ? $"。把探头绑到工位上点「连接」，「{FieldInp}」缺省会把它那一路写成 Pt100（写完模块要断电重上电）"
                 : "";
             // 模块参数原样带上——原始寄存器比任何解读都可靠，拿它去对手册
             if (id.UsableChannels.Count == 0)
@@ -294,12 +297,9 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
 
     public async Task<IDeviceSession> OpenAsync(ParameterSet connection, DriverContext ctx, CancellationToken ct)
     {
-        // 先把「读第几路」「要不要写 InP」定下来——配置说不通就别去占串口。跟工位走的这里是 null，开口子读到 InP 再定
+        // 先把「读第几路」「要不要写 InP」定下来——配置说不通就别去占串口。跟工位走的这里是 null，会话里按通道号定
         var moduleCh = ResolveModuleChannel(ctx.Config, ctx.ChannelNumbers);
         var inpWrite = _kind == YudianKind.Thermal ? ResolveInpWrite(ctx.Config) : null;
-        if (inpWrite is not null && moduleCh is null)
-            throw new InvalidOperationException(
-                $"「{FieldInp}」选了写，可「{FieldModuleCh}」是「{ChFollowWell}」——不知道该写哪一路。先手选 1~4 那一路再连");
         var link = SerialFactory(connection);
         try
         {
@@ -412,37 +412,25 @@ public sealed class YudianProbeSession : IDeviceSession
         var field = YudianProbeDriverBase.FieldModuleCh;
         _ctx.Log?.Invoke("info", $"{InstanceId} 宇电模块参数：{id.Dump}");
 
-        if (_explicitCh is { } n)
-        {
-            if (InpWrite is { } want) id = await WriteInpAsync(id, n, want, ct).ConfigureAwait(false);
+        // 手选的就是那一路；跟工位走 = 绑在系统通道 k 就读 CHk（通道 1 → CH1、通道 2 → CH2，用户定的）
+        var n = _explicitCh ?? _ctx.ChannelNumbers[0];
+        var how = _explicitCh is null ? $"「{field}」跟工位走：通道 {n} → CH{n}" : $"「{field}」手选 CH{n}";
+        if (InpWrite is { } want) id = await WriteInpAsync(id, n, want, ct).ConfigureAwait(false);
 
-            var setup = id.Channels[n - 1];
-            if (!setup.Enabled)
-                throw new InvalidOperationException(
-                    $"宇电模块的 CH{n} 是关闭的（In=0）——模块上{kindName}口是 {id.UsableList}；查「{field}」配置或模块参数");
-            if (setup.Problem is { } p)
-            {
-                var fix = _kind == YudianKind.Thermal && InpWrite is null
-                    ? $"；要把 CH{n} 改成 Pt100，「{YudianProbeDriverBase.FieldInp}」选「{YudianProbeDriverBase.InpWritePt100}」再连"
-                    : "";
-                throw new InvalidOperationException(
-                    $"宇电模块 CH{n}：{p}——模块上{kindName}口是 {id.UsableList}，把「{field}」改成那一路（或选「{YudianProbeDriverBase.ChFollowWell}」）{fix}");
-            }
-            _moduleCh = n;
-        }
-        else
+        var setup = id.Channels[n - 1];
+        if (!setup.Enabled)
+            throw new InvalidOperationException(
+                $"宇电模块的 CH{n} 是关闭的（In=0）——模块上{kindName}口是 {id.UsableList}；查「{field}」配置或模块参数");
+        if (setup.Problem is { } p)
         {
-            // 跟工位走：绑在系统通道 k 就读模块上第 k 路同类输入。哪几路同类从模块的 InP 读出来——
-            // CH1/CH3 线性、CH2/CH4 Pt100 的那台，Tr 探头 A → CH2、B → CH4
-            var k = _ctx.ChannelNumbers[0];
-            var usable = id.UsableChannels;
-            if (usable.Count < k)
-                throw new InvalidOperationException(
-                    $"「{field}」是「{YudianProbeDriverBase.ChFollowWell}」：通道 {k} 要读模块上第 {k} 路{kindName}口，" +
-                    $"可模块上{kindName}口只有 {usable.Count} 路（{id.UsableList}）——查模块的 InP，或手选一路");
-            _moduleCh = usable[k - 1];
-            _ctx.Log?.Invoke("info", $"{InstanceId} 「{field}」跟工位走：通道 {k} → CH{_moduleCh}（模块上第 {k} 路{kindName}口，全部{kindName}口 {id.UsableList}）");
+            var fix = _kind == YudianKind.Thermal && InpWrite is null
+                ? $"；要把 CH{n} 改成 Pt100，「{YudianProbeDriverBase.FieldInp}」选「{YudianProbeDriverBase.InpWritePt100x100}」再连"
+                : "";
+            throw new InvalidOperationException(
+                $"宇电模块 CH{n}：{p}——模块上{kindName}口是 {id.UsableList}，把「{field}」改成那一路{fix}");
         }
+        _moduleCh = n;
+        _ctx.Log?.Invoke("info", $"{InstanceId} {how}（{setup.TypeName}；模块上{kindName}口 {id.UsableList}）");
 
         if (id.WriteLocked)
             _ctx.Log?.Invoke("warn", $"{InstanceId} 宇电模块 Loc 锁着写入（只读不受影响，部署改参数时注意）");
