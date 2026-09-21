@@ -82,15 +82,20 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
     public const string InpKeep = "照模块的 InP（不写）";
     public const string InpWritePt100 = "写成 Pt100（InP=21）";
     public const string InpWritePt100x100 = "写成 Pt100 两位小数（InP=22）";
-    public static readonly IReadOnlyList<string> InpOptionsThermal = new[] { InpKeep, InpWritePt100, InpWritePt100x100 };
+    /// <summary>探头要是热电偶不是热阻（两根线，IN 正 COM 负），规格该是 K——J7 是热偶/热阻通用口，两种都能接。</summary>
+    public const string InpWriteK = "写成 K 型热电偶（InP=0）";
+    public static readonly IReadOnlyList<string> InpOptionsThermal = new[] { InpKeep, InpWritePt100, InpWritePt100x100, InpWriteK };
 
     /// <summary>
-    /// 一路报「断线/超量程」时该查什么——说明书 §2.4.5 J7 热电阻接法和那句「PT100 输入需要先接好线再重新上电」。
-    /// 现场第三眼：InP 写成 21 之后四路全报断线，多半就是没重新上电。
+    /// 一路报「断线/超量程」时该查什么——说明书 §2.4.5 J7 接法、那句「PT100 输入需要先接好线再重新上电」、
+    /// §8「PV 窗口闪烁 = 输入有问题」。现场第三眼：InP 写成 21 之后四路全报断线，多半就是没重新上电；
+    /// 第四眼：四路一个样（连没接探头的都一样）、原始值压在量程下限之下。
     /// </summary>
     public const string FaultHint =
-        "查接线：颜色相同（阻值小）的两根接 IN 和 COM、剩下一根接 RT（说明书 §2.4.5）；" +
-        "刚写过 InP 或刚接好线的，先把模块断电重上电——说明书原话「PT100 输入需要先接好线再重新上电」";
+        "①每改一次 InP 都要把模块断电重上电（说明书原话「PT100 输入需要先接好线再重新上电」）；" +
+        "②看模块自己的面板：那一路 PV 闪就是输入有问题（§8），面板正常而这里不正常才是程序的事；" +
+        "③接线（§2.4.5）：Pt100 三线制颜色相同（阻值小）的两根接 IN 和 COM、剩下一根接 RT；两线制在 IN–COM 之间跨短接片；" +
+        "④探头要是热电偶不是热阻，「输入规格」要写成 K 型（IN 正、COM 负）";
 
     private readonly YudianKind _kind;
     private readonly TagDescriptor _tag;
@@ -256,12 +261,28 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
             var fault = x.SensorFault ? "，断线/超量程" : "";
             var value = !c.Enabled ? ""
                 : !c.Usable ? $" 原始值 {x.Raw}{fault}"
-                : x.SensorFault ? $" 断线/超量程（原始值 {x.Raw}）"      // 原始值一起给：像温度的就是标志锁着没清，不像的才是真断线
+                : x.SensorFault ? $" 断线/超量程（{FaultDetail(c, x, decimals)}）"
                 : x.Value is { } v ? " " + v.ToString($"F{decimals}", CultureInfo.InvariantCulture) + (_tag.Unit.Length > 0 ? $" {_tag.Unit}" : "")
                 : " 无读数";
             parts[i] = $"CH{i + 1} {c.TypeName}{value}";
         }
         return string.Join("、", parts);
+    }
+
+    /// <summary>
+    /// 「原始值 -20215 = -202.15 ℃，低于量程下限 -200.00」——断线/超量程那一路的原始值拿说明书 §1.3 的量程对一下：
+    /// 压在下限之下 / 顶在上限之上是模块量到了不像样的东西；落在量程内的多半是标志锁着没清。
+    /// </summary>
+    internal string FaultDetail(YudianChannelSetup c, YudianReading x, int decimals)
+    {
+        if (x.Value is not { } v) return $"原始值 {x.Raw}";
+        var unit = _tag.Unit.Length > 0 ? $" {_tag.Unit}" : "";
+        var shown = $"原始值 {x.Raw} = {v.ToString($"F{decimals}", CultureInfo.InvariantCulture)}{unit}";
+        if (YudianClient.RangeOf(c.Inp) is not var (lo, hi)) return shown;
+        string F(double d) => d.ToString($"F{decimals}", CultureInfo.InvariantCulture);
+        return v < lo ? $"{shown}，低于量程下限 {F(lo)}"
+             : v > hi ? $"{shown}，高于量程上限 {F(hi)}"
+             : $"{shown}，在量程内——标志可能锁着没清";
     }
 
     public async Task<IDeviceSession> OpenAsync(ParameterSet connection, DriverContext ctx, CancellationToken ct)

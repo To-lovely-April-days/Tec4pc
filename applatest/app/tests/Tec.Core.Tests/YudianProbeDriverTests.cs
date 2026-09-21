@@ -170,7 +170,7 @@ public sealed class YudianProbeDriverTests
         var r = await drv.ProbeAsync(new ParameterSet(), CancellationToken.None);
 
         Assert.True(r.Success);
-        Assert.Contains("CH1 Pt100（InP=21） 25.3 ℃、CH2 Pt100（InP=21） 断线/超量程（原始值 8100）、CH3 关、CH4 关——测温口是 CH1、CH2", r.Message);
+        Assert.Contains("CH1 Pt100（InP=21） 25.3 ℃、CH2 Pt100（InP=21） 断线/超量程（原始值 8100 = 810.0 ℃，高于量程上限 800.0）、CH3 关、CH4 关——测温口是 CH1、CH2", r.Message);
         Assert.DoesNotContain("全报断线", r.Message);                    // 还有一路好的，不上那段排查话
 
         // pH 表按 dPt 的小数位显示，没有单位
@@ -272,10 +272,19 @@ public sealed class YudianProbeDriverTests
 
         var r = await drv.ProbeAsync(new ParameterSet(), CancellationToken.None);
         Assert.True(r.Success);                                            // 链路是通的
-        Assert.Contains("CH3 Pt100（InP=21） 断线/超量程（原始值 242）", r.Message);
-        Assert.Contains("能读的几路全报断线/超量程——查接线：颜色相同（阻值小）的两根接 IN 和 COM、剩下一根接 RT", r.Message);
+        Assert.Contains("CH3 Pt100（InP=21） 断线/超量程（原始值 242 = 24.2 ℃，在量程内——标志可能锁着没清）", r.Message);
+        Assert.Contains("能读的几路全报断线/超量程——①每改一次 InP 都要把模块断电重上电", r.Message);
         Assert.Contains("PT100 输入需要先接好线再重新上电", r.Message);
+        Assert.Contains("②看模块自己的面板", r.Message);
+        Assert.Contains("颜色相同（阻值小）的两根接 IN 和 COM、剩下一根接 RT", r.Message);
         Assert.DoesNotContain("AAF 里", r.Message);                        // AAF 全 0：不提锁定
+
+        // 现场第四眼：InP=22，四路原始值都是 -20215 = -202.15 ℃——压在 -200.00 的下限之下，不是「没数」
+        var low = new FakeModbusSlave();
+        for (var i = 0; i < 4; i++) { low.Regs[384 + i] = 1; low.Regs[1536 + i] = unchecked((ushort)-20215); }
+        low.Regs[2048] = 22; low.Regs[1664] = 0x0101; low.Regs[1665] = 0x0101;
+        var r4 = await Wire(new YudianTrProbeDriver(), low).ProbeAsync(new ParameterSet(), CancellationToken.None);
+        Assert.Contains("CH2 Pt100 两位小数（InP=22） 断线/超量程（原始值 -20215 = -202.15 ℃，低于量程下限 -200.00）", r4.Message);
 
         // AAF.0 开着：加一句「标志锁住要手动清」
         dev.Regs[2072] = 1;
@@ -323,6 +332,17 @@ public sealed class YudianProbeDriverTests
         Assert.Contains("「宇电通道」手选那一路、「输入规格」选「写成 Pt100（InP=21）」再点「连接」", r.Message);
         Assert.Contains("InP=51/51/51/51", r.Message);
         Assert.Contains("型号字 8848", r.Message);
+    }
+
+    [Fact]
+    public void 输入规格下拉_有K型热电偶那一项_解析成InP0()
+    {
+        var f = new YudianTrProbeDriver().ConfigSchema.Find(YudianProbeDriverBase.FieldInp)!;
+        Assert.Equal(new[] { "照模块的 InP（不写）", "写成 Pt100（InP=21）", "写成 Pt100 两位小数（InP=22）", "写成 K 型热电偶（InP=0）" }, f.Choices);
+        Assert.Equal((ushort)0, YudianProbeDriverBase.ResolveInpWrite(ParameterSet.Of((YudianProbeDriverBase.FieldInp, YudianProbeDriverBase.InpWriteK))));
+        Assert.Equal((ushort)22, YudianProbeDriverBase.ResolveInpWrite(ParameterSet.Of((YudianProbeDriverBase.FieldInp, YudianProbeDriverBase.InpWritePt100x100))));
+        Assert.Null(YudianProbeDriverBase.ResolveInpWrite(new ParameterSet()));
+        Assert.Null(new YudianPhProbeDriver().ConfigSchema.Find(YudianProbeDriverBase.FieldInp));   // pH 电极没有这一项
     }
 
     [Fact]
