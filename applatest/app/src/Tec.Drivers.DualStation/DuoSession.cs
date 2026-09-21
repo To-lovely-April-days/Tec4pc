@@ -55,8 +55,9 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     private readonly int[] _diIdx = new int[2];
     /// <summary>
     /// TEC 功率线经不经 IO8R 的继电器（配置「TEC 功率继电器」= 有，且配了 IO8R）。
-    /// 现场电气定的：DO6 = 工位 A、DO7 = 工位 B，闭合 TEC 才有电——从前没人合它，
-    /// 现场「降温没反应」就是这个。
+    /// 现场电气定的：DO7 = 工位 A、DO6 = 工位 B，闭合 TEC 才有电——从前没人合它，
+    /// 现场「降温没反应」就是这个。用户定的：**不常合**——不控温就断着，打开温控后
+    /// 按「这一刻要升温还是要降温」只合该合的那一只（降温 / TEC 加热合它，升温合加热棒）。
     /// </summary>
     private readonly bool _tecRelay;
     private readonly int[] _tecDoIdx = new int[2];
@@ -150,9 +151,9 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         {
             _doIdx[w] = Math.Clamp((int)cfg.Num(w == 0 ? F.DoA : F.DoB, w), 0, 7);
             _diIdx[w] = Math.Clamp((int)cfg.Num(w == 0 ? F.DiA : F.DiB, w), 0, 7);
-            _tecDoIdx[w] = Math.Clamp((int)cfg.Num(w == 0 ? F.TecDoA : F.TecDoB, 6 + w), 0, 7);
+            _tecDoIdx[w] = Math.Clamp((int)cfg.Num(w == 0 ? F.TecDoA : F.TecDoB, w == 0 ? 7 : 6), 0, 7);
         }
-        // TEC 功率线经 IO8R 继电器（现场电气定的：DO6 = A、DO7 = B）。没配 IO8R 的机器
+        // TEC 功率线经 IO8R 继电器（现场电气定的：DO7 = A、DO6 = B）。没配 IO8R 的机器
         // 无所谓「经不经」——那台没有继电器可扳，只能当它是硬线接的
         _tecRelay = links.Io is not null && cfg.Str(F.TecRelay, "有") == "有";
         if (_tecRelay)
@@ -289,17 +290,17 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
             {
                 // 串口都没开成就别去发 Modbus 了——原因是开口时记下的那句，照它说
                 if (_links.IoOpenError is { } why) throw new InvalidOperationException(why);
-                // 一帧落定：加热棒继电器全断，TEC 功率线（经继电器的话）接通——两路都在 TEC 侧。
-                // 从前这里是「八路全断」，TEC 功率线跟着断着，现场「降温没反应」就是它
-                var pattern = new bool[Io8rClient.Points];
-                if (_tecRelay) { pattern[_tecDoIdx[0]] = true; pattern[_tecDoIdx[1]] = true; }
-                await io.SetAllAsync(pattern, ct).ConfigureAwait(false);
+                // 一帧全断：加热棒继电器与 TEC 功率线都断着（用户定的：不控温就不合）。
+                // 打开温控后按升温 / 降温只合该合的那一只（EnsureSourceAsync / 采集循环）
+                await io.AllOffAsync(ct).ConfigureAwait(false);
                 _electric[0] = _electric[1] = false;
-                _tecOn[0] = _tecOn[1] = _tecRelay;
+                _tecOn[0] = _tecOn[1] = false;
                 _ioOk = true;
-                _ctx.Log?.Invoke("info", $"{InstanceId} IO8R 已复位：加热棒继电器全部断开" +
-                    (_tecRelay ? $"，TEC 功率线 DO{_tecDoIdx[0]}（A）/ DO{_tecDoIdx[1]}（B）已接通" : "") +
-                    "——两路都在 TEC 侧");
+                _ctx.Log?.Invoke("info", $"{InstanceId} IO8R 已复位：八路全断" +
+                    (_tecRelay
+                        ? $"——加热棒继电器与 TEC 功率线（DO{_tecDoIdx[0]} = A、DO{_tecDoIdx[1]} = B）都断着，" +
+                          "打开温控后要降温合 TEC 功率线、要升温合加热棒"
+                        : "——热源切换继电器在 TEC 侧"));
             }
             catch (Exception ex)
             {
@@ -400,14 +401,15 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
                     Push(_rd.TempOf(w).Channel, "heat", HeatStateOf(w, actual, dis), at, Quality.Good);
 
                     if (!_tecRelay) continue;
-                    // TEC 功率继电器同样读回核对：被人按断了 TEC 就没电，这一路制冷不动——
-                    // 报出来、按实际记录；这一拍下面的自动换挡看到「要降温而功率线断着」会把它接回
+                    // TEC 功率继电器同样读回核对：正降温时被人按断了 TEC 就没电，这一路制冷不动；
+                    // 没控温时被人按合了，就违背了「不控温不合」——都报出来、按实际记录；
+                    // 这一拍下面的自动换挡会把它扳回该在的位置（要降温的接回、停控的断开）
                     var tec = dos[_tecDoIdx[w]];
                     if (settled && tec != _tecOn[w])
                     {
                         _ctx.Log?.Invoke("warn", $"{InstanceId} 工位 {AB(w)} TEC 功率继电器 DO{_tecDoIdx[w]} 实际" +
                             $"{(tec ? "闭合" : "断开")}，与上位机命令不符——已按实际状态记录" +
-                            (tec ? "" : "（TEC 没电，这一路现在制冷不动）"));
+                            (tec ? (_wantEnabled[w] ? "" : "（这一路没在控温，会断开它）") : "（TEC 没电，这一路现在制冷不动）"));
                         _tecOn[w] = tec;
                     }
                     else if (!settled)
@@ -455,29 +457,30 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
                     && (double.IsNaN(innerT.CurrentJacket) || innerT.CurrentJacket > _threshold - _hyst);
         if (!stuck) _noCoolSaid[well] = false;
 
-        bool side;
+        Side side;
         // 抢到切换锁之后再问一遍「这一刻还该这么切吗」——这一路的判断是拿上一拍的
         // 状态做的，抢锁期间目标或开关状态都可能已经变了
         Func<bool> stillWanted;
         if (!_wantEnabled[well])
         {
-            // 停控 / 安全停机之后：只允许落回 TEC 侧——那是继电器该待的安全位置，
-            // 而且输出关着，回 TEC 不带载。绝不自动切到电加热：没人要它加热
-            if (!_electric[well]) return;
-            side = false;
+            // 停控 / 安全停机之后：全断——用户定的，不控温就一只都不合（加热棒、TEC 功率线都断）。
+            // 输出关着不带载，不必等夹套凉。绝不自动切到电加热：没人要它加热
+            if (OnSide(well, Side.Off)) return;
+            side = Side.Off;
             stillWanted = () => !_wantEnabled[well];
         }
         else
         {
             // 「已经在那一侧」要两只继电器一起看：加热棒那只对了、TEC 功率线却断着
-            // （被人手扳过 / 安全停机之后）也算没到位——要降温的那一路得把线接回来
-            if (want is not { } w || OnSide(well, w)) return;
-            side = w;
+            // （被人手扳过 / 刚打开温控）也算没到位——要降温的那一路得把线接上
+            if (want is not { } w) return;
+            side = w ? Side.Electric : Side.Tec;
+            if (OnSide(well, side)) return;
             stillWanted = () => _wantEnabled[well] && _rd.TempOf(well).Setpoint is { } now
-                                && SideFor(well, now) == side;
+                                && SideFor(well, now) == w;
         }
 
-        if (side)
+        if (side == Side.Electric)
         {
             if (!ElectricReady)
             {
@@ -498,6 +501,8 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         {
             return;     // 没有继电器可扳；没有 IO8R 的机器本来就一直在 TEC 侧
         }
+        // 「夹套凉到阈值 − 滞回 才准接回 TEC」只管**有人要控温**的情形（下一段）：那条约束防的是
+        // 让 TEC 带着载贴上超出耐温的热源。全断（停控）不带载，不受它管
         // 「夹套凉到阈值 − 滞回 才准接回 TEC」只管**有人要控温**的情形：那条约束防的是
         // 让 TEC 带着载贴上超出耐温的热源。没人要控温的通道（停控 / 安全停机）输出是关的、
         // 不带载，落回 TEC 侧才是继电器该待的位置——SafeStopAsync 在同样的状态下就是
@@ -526,7 +531,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
             // 别写「下拍再试」：反馈没核实上时 SwitchAsync 是把输出留在关闭状态退出的，
             // 下一拍这一路已经算「停控」，不会再自己切回来——这是要人去现场看的事
             _ctx.Log?.Invoke("error", $"{InstanceId} 工位 {AB(well)} " +
-                $"自动切到{(side ? "电加热" : "TEC")}失败：{ex.Message}" +
+                $"自动切到{SideName(side)}失败：{ex.Message}" +
                 "——控温输出已关闭且不会自行恢复，请到现场检查");
         }
     }
@@ -706,11 +711,30 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     internal bool OnElectric(int well) => _electric[well];
 
     /// <summary>
-    /// 这一路的继电器是不是已经完全在某一侧：电加热侧 = 加热棒继电器合、TEC 功率线断；
-    /// TEC 侧反过来。功率线不经继电器的机器只看加热棒那一只。
+    /// 这一路继电器的三个位置：全断（不控温：加热棒、TEC 功率线都断着）、TEC（功率线合、
+    /// 加热棒断：降温或 TEC 加热）、电加热（加热棒合、功率线断：升温）。
+    /// 功率线不经继电器的机器只有加热棒那一只，全断与 TEC 是同一个位置。
     /// </summary>
-    private bool OnSide(int well, bool electric)
-        => _electric[well] == electric && (!_tecRelay || _tecOn[well] == !electric);
+    private enum Side { Off, Tec, Electric }
+
+    /// <summary>这一路的继电器是不是已经完全在某个位置（两只一起看）。</summary>
+    private bool OnSide(int well, Side s) => s switch
+    {
+        Side.Electric => _electric[well] && !(_tecRelay && _tecOn[well]),
+        Side.Tec => !_electric[well] && (!_tecRelay || _tecOn[well]),
+        _ => !_electric[well] && !(_tecRelay && _tecOn[well])
+    };
+
+    private string SideName(Side s) => s switch
+    {
+        Side.Electric => "电加热",
+        Side.Tec => "TEC",
+        _ => _tecRelay ? "全断" : "TEC"
+    };
+
+    /// <summary>此刻这一路继电器在哪个位置（按影子说）。</summary>
+    private Side SideNow(int well)
+        => _electric[well] ? Side.Electric : _tecRelay && _tecOn[well] ? Side.Tec : Side.Off;
 
     /// <summary>TEC 功率线接不通时该怎么说：这一路既不能制冷也不能加热。</summary>
     private string NoTecReason(int well)
@@ -762,9 +786,10 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     }
 
     /// <summary>
-    /// 下发目标前确保热源在对的一侧。这里管两件事：**切到电加热**，以及 TEC 侧的
-    /// **功率线得是通的**（经继电器的机器：开机 / 安全停机之后、被人手扳过，线可能断着——
-    /// 断着的话目标写进温控器也是空写，现场「降温没反应」就是它）。
+    /// 下发目标（打开温控）前把继电器合到对的一只上：要升温 → 加热棒；要降温（或 TEC 加热）→
+    /// TEC 功率线（经继电器的机器：不控温时它是断着的，用户定的——不合上目标写进温控器也是空写，
+    /// 现场「降温没反应」就是它）。死区之内（目标 ≈ 夹套，判不出方向）保持现状，一只都不合，
+    /// 温度漂出死区由采集循环接通。
     /// 电加热 → TEC 的回切不在这里做——夹套没凉到（阈值 − 滞回）之前把 TEC 接回去会烧它，
     /// 由采集循环在条件满足的那一拍执行。
     /// </summary>
@@ -774,16 +799,16 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         if (side is true)
         {
             if (!ElectricReady) throw new InvalidOperationException(NoElectricReason(well, target));
-            if (!OnSide(well, true)) await SwitchAsync(well, toElectric: true, ct).ConfigureAwait(false);
+            if (!OnSide(well, Side.Electric)) await SwitchAsync(well, Side.Electric, ct).ConfigureAwait(false);
             return;
         }
 
-        // TEC 侧 / 保持现状。功率线不经继电器的机器到此为止
+        // TEC 侧 / 保持现状。功率线不经继电器的机器到此为止（它本来就一直在 TEC 侧）
         if (!_tecRelay) return;
         if (!ElectricReady) throw new InvalidOperationException(NoTecReason(well));
-        // 正在电加热侧的不在这里回切（见上）；两只都断着才在这里把功率线接上
-        if (!_electric[well] && !_tecOn[well])
-            await SwitchAsync(well, toElectric: false, ct).ConfigureAwait(false);
+        // 正在电加热侧的不在这里回切（见上）；全断着、而且判得出是要降温，才在这里把功率线合上
+        if (side is false && OnSide(well, Side.Off))
+            await SwitchAsync(well, Side.Tec, ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -793,52 +818,47 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     /// 上一拍的设定值做的判断，抢锁期间目标完全可能已经改了——不复核就会把刚下发的
     /// 指令的热源挪走。明确下发那条路不传它：那是人或配方当下的决定，不用再问。
     /// </summary>
-    private async Task SwitchAsync(int well, bool toElectric, CancellationToken ct,
+    private async Task SwitchAsync(int well, Side to, CancellationToken ct,
                                    Func<bool>? stillWanted = null)
     {
         var io = _links.Io!;
         await _switchLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            if (OnSide(well, toElectric)) return;           // 抢锁期间别人已经切完了
+            if (OnSide(well, to)) return;                   // 抢锁期间别人已经切完了
             if (stillWanted is not null && !stillWanted()) return;
             var gen = Volatile.Read(ref _stopGen[well]);
             var innerT = _rd.TempOf(well);
+            var toElectric = to == Side.Electric;
             // 切完要不要把输出重开，看的是**意图**不是设备上的 ENABLE：
             // 停控时 TG 还留着，光看 Setpoint 分不出「有没有人要控温」；而 ENABLE
             // 在切换序列里被我们自己关过，上一笔切换失败的话它会一直是 0
             var wasEnabled = _wantEnabled[well];
             _ctx.Log?.Invoke("info", $"{InstanceId} 工位 {AB(well)} 热源切换：" +
-                $"{(toElectric ? "TEC → 电加热" : _electric[well] ? "电加热 → TEC" : "接通 TEC 功率线")}（先关输出）");
+                $"{SideName(SideNow(well))} → {SideName(to)}（先关输出）");
 
             await innerT.StopAsync(ct).ConfigureAwait(false);                       // ① 带载切继电器 = 触点拉弧
             // ② 先断后通：加热棒继电器与 TEC 功率继电器不许同时闭合（TEC 和加热棒一起带电）。
-            //    每只写完就记影子——中途总线掉了，下一拍只补没写成的那一只
-            if (toElectric)
+            //    该断的先断、该合的再合；每只写完就记影子——中途总线掉了，下一拍只补没写成的那一只
+            if (to != Side.Electric && _electric[well])
             {
-                if (_tecRelay && _tecOn[well])
-                {
-                    await io.SetRelayAsync(_tecDoIdx[well], false, ct).ConfigureAwait(false);
-                    _tecOn[well] = false;
-                }
-                if (!_electric[well])
-                {
-                    await io.SetRelayAsync(_doIdx[well], true, ct).ConfigureAwait(false);
-                    _electric[well] = true;
-                }
+                await io.SetRelayAsync(_doIdx[well], false, ct).ConfigureAwait(false);
+                _electric[well] = false;
             }
-            else
+            if (to != Side.Tec && _tecRelay && _tecOn[well])
             {
-                if (_electric[well])
-                {
-                    await io.SetRelayAsync(_doIdx[well], false, ct).ConfigureAwait(false);
-                    _electric[well] = false;
-                }
-                if (_tecRelay && !_tecOn[well])
-                {
-                    await io.SetRelayAsync(_tecDoIdx[well], true, ct).ConfigureAwait(false);
-                    _tecOn[well] = true;
-                }
+                await io.SetRelayAsync(_tecDoIdx[well], false, ct).ConfigureAwait(false);
+                _tecOn[well] = false;
+            }
+            if (to == Side.Electric && !_electric[well])
+            {
+                await io.SetRelayAsync(_doIdx[well], true, ct).ConfigureAwait(false);
+                _electric[well] = true;
+            }
+            if (to == Side.Tec && _tecRelay && !_tecOn[well])
+            {
+                await io.SetRelayAsync(_tecDoIdx[well], true, ct).ConfigureAwait(false);
+                _tecOn[well] = true;
             }
 
             if (_feedback)                                                          // ③ 接了反馈就必须核实
@@ -867,9 +887,14 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
                 await innerT.EnableAsync(true, ct).ConfigureAwait(false);
             else if (wasEnabled)
                 _ctx.Log?.Invoke("info", $"{InstanceId} 工位 {AB(well)} 切换期间控温被停——输出保持关闭");
-            _ctx.Log?.Invoke("info", $"{InstanceId} 工位 {AB(well)} 已切至{(toElectric ? "电加热" : "TEC")}" +
+            _ctx.Log?.Invoke("info", $"{InstanceId} 工位 {AB(well)} 已切至{SideName(to)}" +
                 (_tecRelay
-                    ? toElectric ? "（TEC 功率线已断开、加热棒继电器已闭合）" : "（加热棒继电器已断开、TEC 功率线已接通）"
+                    ? to switch
+                    {
+                        Side.Electric => "（TEC 功率线断开、加热棒继电器闭合）",
+                        Side.Tec => "（加热棒继电器断开、TEC 功率线闭合）",
+                        _ => "（加热棒继电器与 TEC 功率线都断开）"
+                    }
                     : "") +
                 (_feedback ? "（反馈已核实）" : "（无反馈回路，未核实）"));
         }
@@ -906,14 +931,14 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
                 _electric[well] = false;
                 if (_tecRelay && _tecOn[well])
                 {
-                    // 安全态两只全断，跟断电落回的位置一样。E 级程序接着要降温的话，
-                    // 下发目标那一刻 EnsureSourceAsync 会把功率线重新接通
+                    // 停控即全断（用户定的）。E 级程序接着要降温的话，
+                    // 下发目标那一刻 EnsureSourceAsync 会把功率线重新合上
                     await io.SetRelayAsync(_tecDoIdx[well], false, ct).ConfigureAwait(false);
                     _tecOn[well] = false;
                 }
                 _switchedAt[well] = _ctx.Clock();
                 notes.Add($"工位 {AB(well)} 热源切换继电器已断开（落回 TEC 侧）" +
-                          (_tecRelay ? "；TEC 功率线也已断开（安全态两只全断，再下发目标时重新接通）" : ""));
+                          (_tecRelay ? "；TEC 功率线也已断开（停控即全断，再打开温控时按升温 / 降温接通）" : ""));
             }
             catch (Exception ex)
             {

@@ -113,10 +113,8 @@ public sealed class DualStationDriverTests
 
         await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(cfg), CancellationToken.None);
 
-        // 加热棒继电器全断；TEC 功率线（现场电气定的 DO6 = A、DO7 = B）接通——一帧写完
-        for (var i = 0; i < 6; i++) Assert.False(b.Io.Coils[i]);
-        Assert.True(b.Io.Coils[6]);
-        Assert.True(b.Io.Coils[7]);
+        // 八路全断：加热棒继电器与 TEC 功率线（DO7 = A、DO6 = B）都断着——不控温不合（用户定的）
+        Assert.All(b.Io.Coils, c => Assert.False(c));
         Assert.Contains(b.Io.Requests, r => r.StartsWith("写多DO"));
         foreach (var tc in new[] { 1, 2 })
         {
@@ -199,17 +197,18 @@ public sealed class DualStationDriverTests
     // ── 热源切换：「TEC 加热」**启用**时按阈值判（本段都带 TecOn()）───────
 
     [Fact]
-    public async Task 目标不过阈值_不碰继电器()
+    public async Task 目标不过阈值_不碰加热棒继电器_只合TEC功率线()
     {
         var b = Rig();
         await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(TecOn()), CancellationToken.None);
-        var before = b.Io.Requests.Count;
+        var mark = b.Io.Requests.Count;
 
         await Temp(s, 0).SetTargetAsync(new TempTarget(60), CancellationToken.None);
 
         Assert.Equal(60_00000, b.Rd.Get(1, "TG"));
-        Assert.Equal(before, b.Io.Requests.Count);       // 一条 IO8R 指令都没发
-        Assert.False(b.Io.Coils[0]);
+        Assert.False(b.Io.Coils[0]);                     // 加热棒那只没动
+        Assert.True(b.Io.Coils[7]);                      // TEC 功率线（DO7 = A）合上——TEC 加热启用，60 ℃ 走 TEC
+        Assert.Equal(new[] { "写DO 7=闭" }, b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写")).ToList());
     }
 
     [Fact]
@@ -472,17 +471,21 @@ public sealed class DualStationDriverTests
         var t = Temp(s, 0);
         await WaitJacket(t, 25.0);
 
-        // 先在 TEC 侧做一次降温：目标 10、夹套 25
+        // 先在 TEC 侧做一次降温：目标 10、夹套 25（要降温 → 合 TEC 功率线 DO7）
         await t.SetTargetAsync(new TempTarget(10), CancellationToken.None);
         Assert.False(b.Io.Coils[0]);
+        Assert.True(b.Io.Coils[7]);
 
-        // 夹套一路凉到 5 ℃，比目标低了 5 K——现在缺的是热，采集循环自己换挡
+        // 夹套一路凉到 5 ℃，比目标低了 5 K——现在缺的是热，采集循环自己换挡。
+        // 合 TEC 功率线也算一次切换，升温方向要等够 30 s 最短间隔：把钟拨过去
         b.Rd.Set(1, "TCADJTEMP", 5_00000);
         await WaitJacket(t, 5.0);
+        b.Now = b.Now.AddSeconds(31);
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         await s.StopAsync(CancellationToken.None);
 
         Assert.True(b.Io.Coils[0]);
+        Assert.False(b.Io.Coils[7]);                       // 升温：TEC 功率线断开，只剩加热棒
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
     }
 
@@ -911,9 +914,12 @@ public sealed class DualStationDriverTests
         Feed(s, 1, 80.0);
         await Reflux(s, 0).StartAsync(5, 120, CancellationToken.None);
         Assert.False(b.Io.Coils[0]);
+        Assert.True(b.Io.Coils[7]);                           // 阈值以内走 TEC：功率线合上
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
         var mark = b.Rd.Commands.Count;
 
+        // 合 TEC 功率线也算一次切换，跟随环切电加热要等够 30 s 最短间隔：把钟拨过去再喂 Tr
+        b.Now = b.Now.AddSeconds(31);
         Feed(s, 1, 87.0);                                     // 87 + 5 = 92 > 90
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
 
@@ -1056,11 +1062,12 @@ public sealed class DualStationDriverTests
         Assert.Equal(2, probe.DetectedChannels);
     }
 
-    // ── TEC 功率线：经 IO8R 的继电器（现场电气定的：DO6 = 工位 A、DO7 = 工位 B）──────
-    //    现场「降温没反应」：TEC 的功率线是经这两只接的，从前没人合它，TEC 根本没电
+    // ── TEC 功率线：经 IO8R 的继电器（现场电气定的：DO7 = 工位 A、DO6 = 工位 B）──────
+    //    现场「降温没反应」：TEC 的功率线是经这两只接的，从前没人合它，TEC 根本没电。
+    //    用户定的：不常合——不控温就断着，打开温控后按升温 / 降温只合该合的那一只
 
     [Fact]
-    public async Task 开机_TEC功率线DO6DO7接通_降温目标不再动继电器()
+    public async Task 开机全断_打开温控降温才合TEC功率线_停控就断()
     {
         var b = Rig();
         await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
@@ -1068,26 +1075,34 @@ public sealed class DualStationDriverTests
         var t = Temp(s, 0);
         await WaitJacket(t, 25.0);
 
-        Assert.True(b.Io.Coils[6]);
+        Assert.All(b.Io.Coils, c => Assert.False(c));    // 不控温一只都不合
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("DO7 = A") && l.Text.Contains("DO6 = B") && l.Text.Contains("都断着"));
+
+        var mark = b.Io.Requests.Count;
+        await t.SetTargetAsync(new TempTarget(10), CancellationToken.None);    // 打开温控，要降温 → 合 TEC 功率线
         Assert.True(b.Io.Coils[7]);
+        Assert.False(b.Io.Coils[6]);                       // B 没被牵连
         Assert.False(b.Io.Coils[0]);
-        Assert.False(b.Io.Coils[1]);
-        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("DO6") && l.Text.Contains("DO7") && l.Text.Contains("已接通"));
-
-        int Writes() { lock (b.Io.Requests) return b.Io.Requests.Count(r => r.StartsWith("写")); }
-        var before = Writes();
-        await t.SetTargetAsync(new TempTarget(10), CancellationToken.None);    // 降温：TEC 侧，线已经通着
-        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
-        await s.StopAsync(CancellationToken.None);
-
-        Assert.Equal(before, Writes());                    // 一只继电器都没再动
-        Assert.True(b.Io.Coils[6]);
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
         Assert.Equal(10_00000, b.Rd.Get(1, "TG"));
+        Assert.Equal(new[] { "写DO 7=闭" }, b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写")).ToList());
+
+        // 再跑一拍：还在降温，一只都不再动
+        mark = b.Io.Requests.Count;
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+        Assert.Empty(b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写")));
+
+        // 温控关（面板上那颗开关）：输出关，下一拍功率线断开
+        await t.StopAsync(CancellationToken.None);
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+        await s.StopAsync(CancellationToken.None);
+        Assert.Equal(0, b.Rd.Get(1, "ENABLE"));
+        Assert.False(b.Io.Coils[7]);
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("TEC → 全断"));
     }
 
     [Fact]
-    public async Task 切电加热先断TEC功率线再合加热棒_回TEC反过来_两只从不同时闭合()
+    public async Task 打开温控升温只合加热棒_不合TEC功率线()
     {
         var b = Rig();
         await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
@@ -1096,14 +1111,58 @@ public sealed class DualStationDriverTests
         await WaitJacket(t, 25.0);
         var mark = b.Io.Requests.Count;
 
-        await t.SetTargetAsync(new TempTarget(60), CancellationToken.None);    // 升温 → 电加热
+        await t.SetTargetAsync(new TempTarget(60), CancellationToken.None);    // 升温 → 只合加热棒
+        await s.StopAsync(CancellationToken.None);
+
         Assert.True(b.Io.Coils[0]);
-        Assert.False(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[7]);
+        Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
+        Assert.Equal(new[] { "写DO 0=闭" }, b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写")).ToList());
+    }
+
+    [Fact]
+    public async Task 死区之内判不出方向_一只都不合_漂出死区才接通()
+    {
+        var b = Rig();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
+        await s.StartAsync(CancellationToken.None);
+        var t = Temp(s, 0);
+        await WaitJacket(t, 25.0);
+
+        await t.SetTargetAsync(new TempTarget(26), CancellationToken.None);    // 差 1 K < 死区 2 K
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+        Assert.All(b.Io.Coils, c => Assert.False(c));
+        Assert.Equal(1, b.Rd.Get(1, "ENABLE"));            // 目标照常下发，只是还没决定合哪只
+
+        b.Rd.Set(1, "TCADJTEMP", 29_00000);                // 漂到 29：目标 26 低一个死区以上 → 要降温
+        await WaitJacket(t, 29.0);
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+        await s.StopAsync(CancellationToken.None);
+        Assert.True(b.Io.Coils[7]);
+        Assert.False(b.Io.Coils[0]);
+        Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
+    }
+
+    [Fact]
+    public async Task 降温转升温再转降温_先断后通_两只从不同时闭合()
+    {
+        var b = Rig();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
+        await s.StartAsync(CancellationToken.None);
+        var t = Temp(s, 0);
+        await WaitJacket(t, 25.0);
+        await t.SetTargetAsync(new TempTarget(10), CancellationToken.None);    // 降温：DO7 合
+        Assert.True(b.Io.Coils[7]);
+        var mark = b.Io.Requests.Count;
+
+        await t.SetTargetAsync(new TempTarget(60), CancellationToken.None);    // 改成升温 → 电加热
+        Assert.True(b.Io.Coils[0]);
+        Assert.False(b.Io.Coils[7]);
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
         var seq = b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写DO")).ToList();
-        Assert.Equal(new[] { "写DO 6=断", "写DO 0=闭" }, seq);   // 先断 TEC 功率线，再合加热棒
+        Assert.Equal(new[] { "写DO 7=断", "写DO 0=闭" }, seq);   // 先断 TEC 功率线，再合加热棒
 
-        // 夹套漂过死区要降温 → 回 TEC：先断加热棒，再接通 TEC 功率线
+        // 夹套漂过死区要降温 → 回 TEC：先断加热棒，再合 TEC 功率线
         b.Rd.Set(1, "TCADJTEMP", 63_00000);
         await WaitJacket(t, 63.0);
         mark = b.Io.Requests.Count;
@@ -1111,11 +1170,11 @@ public sealed class DualStationDriverTests
         await s.StopAsync(CancellationToken.None);
 
         Assert.False(b.Io.Coils[0]);
-        Assert.True(b.Io.Coils[6]);
+        Assert.True(b.Io.Coils[7]);
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
         seq = b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写DO")).ToList();
-        Assert.Equal(new[] { "写DO 0=断", "写DO 6=闭" }, seq);
-        Assert.True(b.Io.Coils[7]);                        // B 没被牵连
+        Assert.Equal(new[] { "写DO 0=断", "写DO 7=闭" }, seq);
+        Assert.False(b.Io.Coils[6]);                       // B 没被牵连
         Assert.False(b.Io.Coils[1]);
     }
 
@@ -1134,7 +1193,7 @@ public sealed class DualStationDriverTests
             () => t.SetTargetAsync(new TempTarget(10), CancellationToken.None));
 
         Assert.Contains("TEC 功率线", ex.Message);
-        Assert.Contains("DO6", ex.Message);
+        Assert.Contains("DO7", ex.Message);
         Assert.NotEqual(10_00000, b.Rd.Get(1, "TG"));     // 拒绝了就不留下发痕迹
         await s.StopAsync(CancellationToken.None);
     }
@@ -1159,26 +1218,30 @@ public sealed class DualStationDriverTests
     }
 
     [Fact]
-    public async Task SafeStop_本工位加热棒与TEC功率线全断_再下发目标时重新接通()
+    public async Task SafeStop_本工位加热棒与TEC功率线全断_再下发降温目标时重新合上()
     {
         var b = Rig();
         await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
         await s.StartAsync(CancellationToken.None);
         var t = Temp(s, 0);
+        var tb = Temp(s, 1);
         await WaitJacket(t, 25.0);
-        await t.SetTargetAsync(new TempTarget(60), CancellationToken.None);    // 电加热侧
-        Assert.True(b.Io.Coils[0]);
+        await t.SetTargetAsync(new TempTarget(10), CancellationToken.None);    // A 降温：DO7 合
+        await tb.SetTargetAsync(new TempTarget(10), CancellationToken.None);   // B 降温：DO6 合
+        Assert.True(b.Io.Coils[7]);
+        Assert.True(b.Io.Coils[6]);
 
         var notes = await s.SafeStopAsync(0, CancellationToken.None);
+        Assert.False(b.Io.Coils[7]);                       // 停控即全断
         Assert.False(b.Io.Coils[0]);
-        Assert.False(b.Io.Coils[6]);                       // 安全态两只全断，跟断电落回的位置一样
-        Assert.True(b.Io.Coils[7]);                        // B 没被牵连
+        Assert.True(b.Io.Coils[6]);                        // B 没被牵连
+        Assert.Equal(0, b.Rd.Get(1, "ENABLE"));
         Assert.Contains(notes!, n => n.Contains("TEC 功率线也已断开"));
 
-        // E 级程序接着要降温：下发目标把功率线重新接上，再开输出
+        // E 级程序接着要降温：下发目标把功率线重新合上，再开输出
         await t.SetTargetAsync(new TempTarget(5), CancellationToken.None);
         await s.StopAsync(CancellationToken.None);
-        Assert.True(b.Io.Coils[6]);
+        Assert.True(b.Io.Coils[7]);
         Assert.False(b.Io.Coils[0]);
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
         Assert.Equal(5_00000, b.Rd.Get(1, "TG"));
@@ -1193,19 +1256,38 @@ public sealed class DualStationDriverTests
         var t = Temp(s, 0);
         await WaitJacket(t, 25.0);
         await t.SetTargetAsync(new TempTarget(10), CancellationToken.None);    // 降温，TEC 侧
-        Assert.True(b.Io.Coils[6]);
+        Assert.True(b.Io.Coils[7]);
 
-        b.Io.Coils[6] = false;                             // 有人在模块面板上把它按断了
+        b.Io.Coils[7] = false;                             // 有人在模块面板上把它按断了
         var got = new List<Sample>();
         using var sub = s.Samples.Subscribe(new Collect(x => { lock (got) got.Add(x); }));
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         await s.StopAsync(CancellationToken.None);
 
-        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("TEC 功率继电器 DO6") && l.Text.Contains("不符"));
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("TEC 功率继电器 DO7") && l.Text.Contains("不符"));
         lock (got) Assert.Contains(got, x => x is { Tag: "tecpwr", Channel: 1 } && x.Value == 0);
         // 同一拍的自动换挡：这一路要降温、功率线却断着——接回来，输出重开
-        Assert.True(b.Io.Coils[6]);
+        Assert.True(b.Io.Coils[7]);
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
+    }
+
+    [Fact]
+    public async Task 没在控温时TEC功率继电器被手扳合_报出来_当拍断开()
+    {
+        var b = Rig();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
+        await s.StartAsync(CancellationToken.None);
+        var t = Temp(s, 0);
+        await WaitJacket(t, 25.0);
+        Assert.False(b.Io.Coils[7]);
+
+        b.Io.Coils[7] = true;                              // 没人要控温，却被按合了
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+        await s.StopAsync(CancellationToken.None);
+
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("TEC 功率继电器 DO7") && l.Text.Contains("没在控温"));
+        Assert.False(b.Io.Coils[7]);                       // 不控温不合：扳回去
+        Assert.Equal(0, b.Rd.Get(1, "ENABLE"));            // 没人要控温，输出照旧关着
     }
 
     [Fact]
@@ -1213,8 +1295,8 @@ public sealed class DualStationDriverTests
     {
         var b = Rig();
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => b.Drv.OpenAsync(
-            Conn(), b.Ctx(ParameterSet.Of((DualStationDriver.Fields.DoA, 6d))), CancellationToken.None));
-        Assert.Contains("DO6", ex.Message);
+            Conn(), b.Ctx(ParameterSet.Of((DualStationDriver.Fields.DoA, 7d))), CancellationToken.None));
+        Assert.Contains("DO7", ex.Message);
     }
 
     private sealed class Collect(Action<Sample> onNext) : IObserver<Sample>

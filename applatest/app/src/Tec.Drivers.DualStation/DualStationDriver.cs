@@ -43,8 +43,9 @@ public sealed class DualStationDriver : IDeviceDriver
         /// <summary>冷热判定死区（K）。只在「TEC 加热」不启用时用到。</summary>
         public const string Band = "热源死区";
         /// <summary>
-        /// TEC 功率线经不经 IO8R 的继电器。现场电气定的（2026-09-21）：经——DO6 = 工位 A、
-        /// DO7 = 工位 B，闭合 TEC 才有电。从前这两只没人合，现场「降温没反应」就是它。
+        /// TEC 功率线经不经 IO8R 的继电器。现场电气定的（2026-09-21）：经——DO7 = 工位 A、
+        /// DO6 = 工位 B，闭合 TEC 才有电。从前这两只没人合，现场「降温没反应」就是它。
+        /// 用户定的：**不常合**——不控温就断着，打开温控后按升温 / 降温只合该合的那一只。
         /// </summary>
         public const string TecRelay = "TEC功率继电器";
         public const string TecDoA = "TEC功率DO·工位A";
@@ -123,12 +124,13 @@ public sealed class DualStationDriver : IDeviceDriver
         Field.Num(Fields.DoB, "切换 DO·工位 B", 1, "", 0, 7, 1),
         Field.Num(Fields.DiA, "反馈 DI·工位 A", 0, "", 0, 7, 1),
         Field.Num(Fields.DiB, "反馈 DI·工位 B", 1, "", 0, 7, 1),
-        // TEC 的功率线也经 IO8R 的继电器（现场电气定的：DO6 = 工位 A、DO7 = 工位 B）。
-        // 不闭合 TEC 就没电——制冷、TEC 加热都不动。从前这两只没人管，现场「降温没反应」就是它
+        // TEC 的功率线也经 IO8R 的继电器（现场电气定的：DO7 = 工位 A、DO6 = 工位 B）。
+        // 不闭合 TEC 就没电——制冷、TEC 加热都不动。从前这两只没人管，现场「降温没反应」就是它。
+        // 用户定的：不常合，不控温就断着；打开温控后要降温才合它、要升温合加热棒那只
         Field.Sel(Fields.TecRelay, "TEC 功率继电器", new[] { "有", "无" }, "有")
-            with { Tip = "TEC 的功率线经 IO8R 继电器接通（闭合 = TEC 有电）。开机接通；切电加热时先断它再合加热棒，回 TEC 反过来；安全停机断开。功率线是硬线直连、不经继电器的机器选「无」" },
-        Field.Num(Fields.TecDoA, "TEC 功率 DO·工位 A", 6, "", 0, 7, 1),
-        Field.Num(Fields.TecDoB, "TEC 功率 DO·工位 B", 7, "", 0, 7, 1)
+            with { Tip = "TEC 的功率线经 IO8R 继电器接通（闭合 = TEC 有电）。默认断着；打开温控后要降温（或 TEC 加热）才合它，要升温合加热棒那只，两只从不同时合；停控 / 安全停机断开。功率线是硬线直连、不经继电器的机器选「无」" },
+        Field.Num(Fields.TecDoA, "TEC 功率 DO·工位 A", 7, "", 0, 7, 1),
+        Field.Num(Fields.TecDoB, "TEC 功率 DO·工位 B", 6, "", 0, 7, 1)
     })
     {
         Tip = "超温上限就是电加热模式的最高温度——写进 RD105 自己的保护寄存器，断了通信照样生效，" +
@@ -136,8 +138,8 @@ public sealed class DualStationDriver : IDeviceDriver
               "「切换阈值」这时不参与判断（只剩「夹套凉到阈值−滞回 才准接回 TEC」这条保护）；" +
               "启用后才是「目标超过阈值才切电加热」。切换阈值只能往下调（≤ 90 ℃）。「切换反馈」接了电加热" +
               "接触器辅助触点才选「有」——没接选「有」会让每次切换都等 2 秒然后报失败。" +
-              "TEC 功率线经 IO8R 的 DO6/DO7（现场电气定的）：开机接通、切电加热时先断它再合加热棒、安全停机断开；" +
-              "IO8R 打不开时这台既不能制冷也不能加热，控温目标会被拒绝。"
+              "TEC 功率线经 IO8R 的 DO7（A）/ DO6（B）（现场电气定的）：不控温就断着，打开温控后要降温才合它、" +
+              "要升温合加热棒那只，停控 / 安全停机断开；IO8R 打不开时这台既不能制冷也不能加热，控温目标会被拒绝。"
     };
 
     /// <summary>指令是静态声明的，没连硬件也要能编辑配方（§3.3）。这台真机没有搅拌，不认领搅拌指令。</summary>
@@ -169,7 +171,7 @@ public sealed class DualStationDriver : IDeviceDriver
 
             // IO8R 不通的后果不只是没有电加热：TEC 功率线也经它的继电器（DO6/DO7，现场电气定的），
             // 接不通就连制冷也没有——探测这一步不知道设备配置，两种后果都说
-            const string ioDown = "（开机会照常，但电加热不可用；TEC 功率线若也经 IO8R 继电器（现场那台：DO6/DO7），连制冷也没有）";
+            const string ioDown = "（开机会照常，但电加热不可用；TEC 功率线若也经 IO8R 继电器（现场那台：DO7/DO6），连制冷也没有）";
             if (links.IoOpenError is { } ioWhy)
                 lines.Add($"{ioWhy}{ioDown}");
             else if (links.Io is { } io)
