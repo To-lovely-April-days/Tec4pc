@@ -42,6 +42,13 @@ public sealed class DualStationDriver : IDeviceDriver
         public const string DiB = "反馈DI·工位B";
         /// <summary>冷热判定死区（K）。只在「TEC 加热」不启用时用到。</summary>
         public const string Band = "热源死区";
+        /// <summary>
+        /// TEC 功率线经不经 IO8R 的继电器。现场电气定的（2026-09-21）：经——DO6 = 工位 A、
+        /// DO7 = 工位 B，闭合 TEC 才有电。从前这两只没人合，现场「降温没反应」就是它。
+        /// </summary>
+        public const string TecRelay = "TEC功率继电器";
+        public const string TecDoA = "TEC功率DO·工位A";
+        public const string TecDoB = "TEC功率DO·工位B";
     }
 
     /// <summary>
@@ -115,14 +122,22 @@ public sealed class DualStationDriver : IDeviceDriver
         Field.Num(Fields.DoA, "切换 DO·工位 A", 0, "", 0, 7, 1),
         Field.Num(Fields.DoB, "切换 DO·工位 B", 1, "", 0, 7, 1),
         Field.Num(Fields.DiA, "反馈 DI·工位 A", 0, "", 0, 7, 1),
-        Field.Num(Fields.DiB, "反馈 DI·工位 B", 1, "", 0, 7, 1)
+        Field.Num(Fields.DiB, "反馈 DI·工位 B", 1, "", 0, 7, 1),
+        // TEC 的功率线也经 IO8R 的继电器（现场电气定的：DO6 = 工位 A、DO7 = 工位 B）。
+        // 不闭合 TEC 就没电——制冷、TEC 加热都不动。从前这两只没人管，现场「降温没反应」就是它
+        Field.Sel(Fields.TecRelay, "TEC 功率继电器", new[] { "有", "无" }, "有")
+            with { Tip = "TEC 的功率线经 IO8R 继电器接通（闭合 = TEC 有电）。开机接通；切电加热时先断它再合加热棒，回 TEC 反过来；安全停机断开。功率线是硬线直连、不经继电器的机器选「无」" },
+        Field.Num(Fields.TecDoA, "TEC 功率 DO·工位 A", 6, "", 0, 7, 1),
+        Field.Num(Fields.TecDoB, "TEC 功率 DO·工位 B", 7, "", 0, 7, 1)
     })
     {
         Tip = "超温上限就是电加热模式的最高温度——写进 RD105 自己的保护寄存器，断了通信照样生效，" +
               "任何目标温度都不得超过它。「TEC 加热」默认不启用：TEC 只当冷源，升温一律切电加热棒，" +
               "「切换阈值」这时不参与判断（只剩「夹套凉到阈值−滞回 才准接回 TEC」这条保护）；" +
               "启用后才是「目标超过阈值才切电加热」。切换阈值只能往下调（≤ 90 ℃）。「切换反馈」接了电加热" +
-              "接触器辅助触点才选「有」——没接选「有」会让每次切换都等 2 秒然后报失败。"
+              "接触器辅助触点才选「有」——没接选「有」会让每次切换都等 2 秒然后报失败。" +
+              "TEC 功率线经 IO8R 的 DO6/DO7（现场电气定的）：开机接通、切电加热时先断它再合加热棒、安全停机断开；" +
+              "IO8R 打不开时这台既不能制冷也不能加热，控温目标会被拒绝。"
     };
 
     /// <summary>指令是静态声明的，没连硬件也要能编辑配方（§3.3）。这台真机没有搅拌，不认领搅拌指令。</summary>
@@ -152,12 +167,15 @@ public sealed class DualStationDriver : IDeviceDriver
             catch (TimeoutException ex) { noReply = links.NoReply(ex); }
             catch (Exception ex) { lines.Add($"RD105：{ex.Message}"); }
 
+            // IO8R 不通的后果不只是没有电加热：TEC 功率线也经它的继电器（DO6/DO7，现场电气定的），
+            // 接不通就连制冷也没有——探测这一步不知道设备配置，两种后果都说
+            const string ioDown = "（开机会照常，但电加热不可用；TEC 功率线若也经 IO8R 继电器（现场那台：DO6/DO7），连制冷也没有）";
             if (links.IoOpenError is { } ioWhy)
-                lines.Add($"{ioWhy}（开机会照常，但电加热不可用）");
+                lines.Add($"{ioWhy}{ioDown}");
             else if (links.Io is { } io)
             {
                 try { await io.ReadRelaysAsync(ct).ConfigureAwait(false); lines.Add("IO8R：已响应"); }
-                catch (Exception ex) { lines.Add($"IO8R：{ex.Message}（开机会照常，但电加热不可用）"); }
+                catch (Exception ex) { lines.Add($"IO8R：{ex.Message}{ioDown}"); }
             }
 
             lines.Add("Tr / pH 探头各有自己的串口，在探头设备上分别测试");

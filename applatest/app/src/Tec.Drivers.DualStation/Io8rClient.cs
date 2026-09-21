@@ -39,10 +39,19 @@ public sealed class Io8rClient
         return _bus.WriteCoilAsync((ushort)index, closed, ct);
     }
 
-    /// <summary>八路全断，一帧完成（FC 0F）。SafeStop 用它——
-    /// 全断落回 TEC 侧，且一帧比八帧少七次「中途断线切了一半」的机会。</summary>
+    /// <summary>八路全断，一帧完成（FC 0F）。走人时用它——
+    /// 全断 = 断电落回的位置，且一帧比八帧少七次「中途断线切了一半」的机会。</summary>
     public Task AllOffAsync(CancellationToken ct = default)
         => _bus.WriteCoilsAsync(0, new bool[Points], ct);
+
+    /// <summary>八路一帧写成给定的样子（FC 0F）。开机复位用它：加热棒继电器全断、
+    /// TEC 功率线接通，一帧落定，不会停在「切了一半」。</summary>
+    public Task SetAllAsync(bool[] closed, CancellationToken ct = default)
+    {
+        if (closed.Length != Points)
+            throw new ArgumentException($"IO8R 有 {Points} 路 DO，给了 {closed.Length} 个值", nameof(closed));
+        return _bus.WriteCoilsAsync(0, closed, ct);
+    }
 }
 
 /// <summary>
