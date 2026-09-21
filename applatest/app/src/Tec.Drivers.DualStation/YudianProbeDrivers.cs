@@ -71,6 +71,17 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
     /// <summary>下拉项。数字项存的就是 "1"~"4"，老台面里存的数值 1 读出来也是 "1"，照样对得上。</summary>
     public static readonly IReadOnlyList<string> ChOptions = new[] { ChFollowWell, "1", "2", "3", "4" };
 
+    /// <summary>
+    /// 「输入规格」：模块没有面板，现场那台四路 InP 全是 51（线性电流），Pt100 接上去读不了——
+    /// 改 InP 只能走总线。这一项让用户明确说「把我手选的那一路写成 Pt100」，缺省照模块现状不写。
+    /// 写在开口子时做：写 06 功能码 → 重读 InP 核对 → 记日志；Loc 锁着写入就如实拒绝。
+    /// </summary>
+    public const string FieldInp = "输入规格";
+    public const string InpKeep = "照模块的 InP（不写）";
+    public const string InpWritePt100 = "写成 Pt100（InP=21）";
+    public const string InpWritePt100x100 = "写成 Pt100 两位小数（InP=22）";
+    public static readonly IReadOnlyList<string> InpOptionsThermal = new[] { InpKeep, InpWritePt100, InpWritePt100x100 };
+
     private readonly YudianKind _kind;
     private readonly TagDescriptor _tag;
 
@@ -101,20 +112,41 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
                   "波特率 19.2K。同一台模块的两支探头填同一个口 + 同一个地址，" +
                   "「宇电通道」分别选各自接的那一路。"
         };
-        ConfigSchema = new ParameterSchema(new[]
+        var cfg = new List<FieldSpec>
         {
             Field.Sel(FieldModuleCh, "宇电通道", ChOptions, ChFollowWell) with
             {
                 Tip = "这支探头接在模块的第几路输入上（RT/IN/COM 1~4）。缺省「跟工位走」：插在工位 A" +
                       "（通道 1）读模块上第 1 路同类输入、工位 B（通道 2）读第 2 路——哪几路同类从模块自己的" +
-                      " InP 读出来（现场那台 CH2/CH4 是 Pt100，Tr 探头就是 A→CH2、B→CH4）。" +
-                      "接得不一样就手选实际接的那一路；选错了开机会被指出来，并说明能读的是哪几路"
+                      " InP 读出来。接得不一样就手选实际接的那一路；选错了开机会被指出来，并说明能读的是哪几路"
             }
-        })
+        };
+        if (kind == YudianKind.Thermal)
+            cfg.Add(Field.Sel(FieldInp, "输入规格", InpOptionsThermal, InpKeep) with
+            {
+                Tip = "模块上那一路的输入规格（InP）不是 Pt100 时，选「写成 Pt100」再点「连接」：程序把手选的" +
+                      "那一路写成 Pt100（功能码 06），读回核对后才用。要先在「宇电通道」里手选那一路——" +
+                      "「跟工位走」不知道该写哪一路。缺省照模块现状，什么都不写。Loc 锁着写入会如实拒绝"
+            });
+        ConfigSchema = new ParameterSchema(cfg)
         {
             Tip = "标度按模块自己的 InP / 定标寄存器换算，接错种类（温度口插 pH 表）开机就会被指出来。" +
-                  "「测试连接」会把模块四路各是什么口、读数多少都摆出来，对接线就看它。"
+                  "「测试连接」会把模块四路各是什么口、原始值多少都摆出来，对接线就看它。"
         };
+    }
+
+    /// <summary>「输入规格」选了写：返回要写的 InP 代码；照模块现状（缺省）返回 null。</summary>
+    internal static ushort? ResolveInpWrite(ParameterSet config)
+    {
+        var raw = config.Str(FieldInp, InpKeep).Trim();
+        if (raw.Length == 0 || raw == InpKeep) return null;
+        var i = raw.IndexOf("InP=", StringComparison.OrdinalIgnoreCase);
+        if (i >= 0)
+        {
+            var digits = new string(raw[(i + 4)..].TakeWhile(char.IsDigit).ToArray());
+            if (ushort.TryParse(digits, out var code)) return code;
+        }
+        throw new InvalidOperationException($"「{FieldInp}」填的是「{raw}」，只认下拉里那几项");
     }
 
     /// <summary>
@@ -168,10 +200,15 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
             // 手摸一下探头看哪路的数在动，比翻接线照片靠谱。别的种类的口（pH 那两路）
             // 不算错——同一台模块两种口混着用是正常接法；一路能读的都没有才算不通
             var now = await client.ReadAsync(ct).ConfigureAwait(false);
-            var readout = $"宇电模块已响应（特征字 {id.FeatureWord:X4}）：{Readout(id, now)}";
+            var readout = $"宇电模块已响应：{Readout(id, now)}";
+            var kindName = YudianClient.KindName(_kind);
+            var hint = _kind == YudianKind.Thermal
+                ? $"。要把某一路改成 Pt100：「{FieldModuleCh}」手选那一路、「{FieldInp}」选「{InpWritePt100}」再点「连接」"
+                : "";
+            // 模块参数原样带上——没有说明书核对时，原始寄存器比任何解读都可靠，拿它去对手册
             return id.UsableChannels.Count > 0
-                ? new ProbeResult(true, $"{readout}——{YudianClient.KindName(_kind)}口是 {id.UsableList}") { DetectedChannels = 1 }
-                : new ProbeResult(false, $"{readout}——四路里没有一路是{YudianClient.KindName(_kind)}口，这支探头读不了它");
+                ? new ProbeResult(true, $"{readout}——{kindName}口是 {id.UsableList}｜模块参数：{id.Dump}") { DetectedChannels = 1 }
+                : new ProbeResult(false, $"{readout}——四路里没有一路是{kindName}口，这支探头读不了它{hint}｜模块参数：{id.Dump}");
         }
         catch (Exception ex)
         {
@@ -184,8 +221,9 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
     }
 
     /// <summary>
-    /// 「CH1 线性电流（InP=51）、CH2 Pt100（InP=21）24.6 ℃、CH3 线性电流（InP=51）、CH4 Pt100（InP=21）断线/超量程」——
-    /// 探测应答里那一串：每一路是什么口照模块的 InP 印，能读的带读数（小数位跟模块的标度走）。
+    /// 「CH1 线性电流（InP=51）原始值 -1999、CH2 Pt100（InP=21） 24.6 ℃、…」——探测应答里那一串：
+    /// 每一路是什么口照模块的 InP 印；能读的带读数（小数位跟模块的标度走）；读不了的把 PV 寄存器原样印出来，
+    /// 让人自己看它像不像温度（246 像 24.6 ℃，-1999 / 断线就不是）。
     /// </summary>
     internal string Readout(YudianIdentity id, YudianReading[] now)
     {
@@ -195,7 +233,9 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
             var c = id.Channels[i];
             var x = now[i];
             var decimals = c.Divisor is { } d && d >= 1 ? (int)Math.Round(Math.Log10(d)) : 1;
-            var value = !c.Usable ? ""
+            var fault = x.SensorFault ? "，断线/超量程" : "";
+            var value = !c.Enabled ? ""
+                : !c.Usable ? $" 原始值 {x.Raw}{fault}"
                 : x.SensorFault ? " 断线/超量程"
                 : x.Value is { } v ? " " + v.ToString($"F{decimals}", CultureInfo.InvariantCulture) + (_tag.Unit.Length > 0 ? $" {_tag.Unit}" : "")
                 : " 无读数";
@@ -206,8 +246,12 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
 
     public async Task<IDeviceSession> OpenAsync(ParameterSet connection, DriverContext ctx, CancellationToken ct)
     {
-        // 先把「读第几路」定下来——配置说不通就别去占串口。跟工位走的这里是 null，开口子读到 InP 再定
+        // 先把「读第几路」「要不要写 InP」定下来——配置说不通就别去占串口。跟工位走的这里是 null，开口子读到 InP 再定
         var moduleCh = ResolveModuleChannel(ctx.Config, ctx.ChannelNumbers);
+        var inpWrite = _kind == YudianKind.Thermal ? ResolveInpWrite(ctx.Config) : null;
+        if (inpWrite is not null && moduleCh is null)
+            throw new InvalidOperationException(
+                $"「{FieldInp}」选了写，可「{FieldModuleCh}」是「{ChFollowWell}」——不知道该写哪一路。先手选 1~4 那一路再连");
         var link = SerialFactory(connection);
         try
         {
@@ -216,7 +260,10 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
                 link.Transport, (byte)connection.Num(FieldAddr, 1), busLock: link.BusLock));
             var session = new YudianProbeSession(link, client, _kind, _tag, ctx,
                 moduleChannel: moduleCh,
-                period: TimeSpan.FromMilliseconds(Math.Clamp(connection.Num(FieldPeriod, 1000), 200, 5000)));
+                period: TimeSpan.FromMilliseconds(Math.Clamp(connection.Num(FieldPeriod, 1000), 200, 5000)))
+            {
+                InpWrite = inpWrite
+            };
             await session.InitAsync(ct).ConfigureAwait(false);
             return session;
         }
@@ -296,25 +343,37 @@ public sealed class YudianProbeSession : IDeviceSession
     /// <summary>这支探头最终读的那一路（1~4）。InitAsync 之前是 0。</summary>
     public int ModuleChannel => _moduleCh;
 
+    /// <summary>用户在「输入规格」里定的：开口子时把手选那一路的 InP 写成它。null = 照模块现状不写。</summary>
+    public ushort? InpWrite { get; init; }
+
     /// <summary>
     /// 开机自检：读模块身份，定下自己读哪一路并核对种类与标度——接反了直接开不了，
     /// 报错里点名模块上能读的是哪几路，改成哪一路一眼就知道。
+    /// 用户明确要写 InP 的，先写、读回核对，再按读回的身份走同一套核对。
     /// </summary>
     public async Task InitAsync(CancellationToken ct)
     {
         var id = await _client.InitAsync(_kind, ct).ConfigureAwait(false);
         var kindName = YudianClient.KindName(_kind);
         var field = YudianProbeDriverBase.FieldModuleCh;
+        _ctx.Log?.Invoke("info", $"{InstanceId} 宇电模块参数：{id.Dump}");
 
         if (_explicitCh is { } n)
         {
+            if (InpWrite is { } want) id = await WriteInpAsync(id, n, want, ct).ConfigureAwait(false);
+
             var setup = id.Channels[n - 1];
             if (!setup.Enabled)
                 throw new InvalidOperationException(
                     $"宇电模块的 CH{n} 是关闭的（In=0）——模块上{kindName}口是 {id.UsableList}；查「{field}」配置或模块参数");
             if (setup.Problem is { } p)
+            {
+                var fix = _kind == YudianKind.Thermal && InpWrite is null
+                    ? $"；要把 CH{n} 改成 Pt100，「{YudianProbeDriverBase.FieldInp}」选「{YudianProbeDriverBase.InpWritePt100}」再连"
+                    : "";
                 throw new InvalidOperationException(
-                    $"宇电模块 CH{n}：{p}——模块上{kindName}口是 {id.UsableList}，把「{field}」改成那一路（或选「{YudianProbeDriverBase.ChFollowWell}」）");
+                    $"宇电模块 CH{n}：{p}——模块上{kindName}口是 {id.UsableList}，把「{field}」改成那一路（或选「{YudianProbeDriverBase.ChFollowWell}」）{fix}");
+            }
             _moduleCh = n;
         }
         else
@@ -333,6 +392,37 @@ public sealed class YudianProbeSession : IDeviceSession
 
         if (id.WriteLocked)
             _ctx.Log?.Invoke("warn", $"{InstanceId} 宇电模块 Loc 锁着写入（只读不受影响，部署改参数时注意）");
+    }
+
+    /// <summary>
+    /// 把 CH n 所在那一组的 InP 写成 want（用户在「输入规格」里定的），写完重读身份核对。
+    /// 已经是了就不写；Loc 锁着如实拒绝；写了读回还不是，也如实报——不信应答只信读回。
+    /// </summary>
+    private async Task<YudianIdentity> WriteInpAsync(YudianIdentity id, int n, ushort want, CancellationToken ct)
+    {
+        var setup = id.Channels[n - 1];
+        var fieldInp = YudianProbeDriverBase.FieldInp;
+        if (!setup.Enabled)
+            throw new InvalidOperationException($"宇电模块的 CH{n} 是关闭的（In=0），「{fieldInp}」写不了它——先把模块上这一路打开");
+        if (setup.Group is < 1 or > 4)
+            throw new InvalidOperationException($"宇电模块 CH{n} 的 In={id.RawIn[n - 1]}，组号不是 1~4，不知道该写哪一组的 InP");
+        if (setup.Inp == want)
+        {
+            _ctx.Log?.Invoke("info", $"{InstanceId} 「{fieldInp}」要写 InP={want}，CH{n}（组 {setup.Group}）已经是 {YudianClient.InpName(want)}，不用写");
+            return id;
+        }
+        if (id.WriteLocked)
+            throw new InvalidOperationException(
+                $"宇电模块 Loc={id.Loc} 锁着写入，「{fieldInp}」改不了 CH{n} 的 InP（现在是 {setup.TypeName}）——先解锁再连");
+
+        await _client.WriteInpAsync(setup.Group, want, ct).ConfigureAwait(false);
+        var after = await _client.InitAsync(_kind, ct).ConfigureAwait(false);
+        var got = after.Channels[n - 1].Inp;
+        if (got != want)
+            throw new InvalidOperationException(
+                $"「{fieldInp}」把 CH{n}（组 {setup.Group}）的 InP 写成 {want} 了，读回来却是 {got}——写没生效，查模块的 Loc / 手册里 InP 的地址");
+        _ctx.Log?.Invoke("warn", $"{InstanceId} 「{fieldInp}」：CH{n}（组 {setup.Group}）的 InP 由 {setup.Inp} 写成 {want}（{YudianClient.InpName(want)}），读回核对一致");
+        return after;
     }
 
     public Task StartAsync(CancellationToken ct)

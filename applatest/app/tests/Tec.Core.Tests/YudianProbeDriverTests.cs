@@ -254,7 +254,111 @@ public sealed class YudianProbeDriverTests
         var r = await Wire(new YudianTrProbeDriver(), MakeFieldModule()).ProbeAsync(new ParameterSet(), CancellationToken.None);
 
         Assert.True(r.Success);
-        Assert.Contains("CH1 线性电流（InP=51）、CH2 Pt100（InP=21） 24.6 ℃、CH3 线性电流（InP=51）、CH4 Pt100（InP=21） 25.1 ℃——测温口是 CH2、CH4", r.Message);
+        // 读不了的那两路把 PV 寄存器原样印出来，让人自己看它像不像温度
+        Assert.Contains("CH1 线性电流（InP=51） 原始值 700、CH2 Pt100（InP=21） 24.6 ℃、CH3 线性电流（InP=51） 原始值 412、CH4 Pt100（InP=21） 25.1 ℃——测温口是 CH2、CH4", r.Message);
+        Assert.Contains("模块参数：In=1/2/3/4，InP=51/21/51/21，ScL=0/0/0/0，ScH=1400/0/1400/0，dPt=2，Loc=0，型号字 0", r.Message);
+    }
+
+    // ── 现场第二眼：四路 InP 全是 51——Pt100 接上去读不了，模块没面板，改 InP 只能走总线 ──
+
+    /// <summary>截图里那台：In 四路全开，InP 四路都是 51，型号字 8848（0x2290）。</summary>
+    private static FakeModbusSlave MakeAll51()
+    {
+        var dev = new FakeModbusSlave();
+        for (var i = 0; i < 4; i++) { dev.Regs[384 + i] = (ushort)(i + 1); dev.Regs[2048 + i] = 51; }
+        dev.Regs[2128] = 1;
+        dev.Regs[2131] = 8848;
+        dev.Regs[1537] = 246;                            // CH2 上接着 Pt100，寄存器里的原始值
+        return dev;
+    }
+
+    [Fact]
+    public async Task 四路全是51_测试连接把原始值和模块参数摆出来_并说怎么改成Pt100()
+    {
+        var r = await Wire(new YudianTrProbeDriver(), MakeAll51()).ProbeAsync(new ParameterSet(), CancellationToken.None);
+
+        Assert.False(r.Success);
+        Assert.Contains("CH1 线性电流（InP=51） 原始值 0、CH2 线性电流（InP=51） 原始值 246、", r.Message);
+        Assert.Contains("四路里没有一路是测温口", r.Message);
+        Assert.Contains("「宇电通道」手选那一路、「输入规格」选「写成 Pt100（InP=21）」再点「连接」", r.Message);
+        Assert.Contains("InP=51/51/51/51", r.Message);
+        Assert.Contains("型号字 8848", r.Message);
+    }
+
+    [Fact]
+    public async Task 输入规格_写成Pt100_写06读回核对_然后按Pt100读数()
+    {
+        var dev = MakeAll51();
+        var logs = new List<string>();
+        var drv = Wire(new YudianTrProbeDriver(), dev);
+        var cfg = ParameterSet.Of((YudianProbeDriverBase.FieldModuleCh, "2"),
+                                  (YudianProbeDriverBase.FieldInp, YudianProbeDriverBase.InpWritePt100));
+
+        await using var s = await drv.OpenAsync(new ParameterSet(), Ctx(new[] { 1 }, cfg, (_, t) => { lock (logs) logs.Add(t); }), CancellationToken.None);
+
+        Assert.Equal(21, dev.Regs[2049]);                                    // 只写了 CH2 那一组
+        Assert.Equal(51, dev.Regs[2048]); Assert.Equal(51, dev.Regs[2050]); Assert.Equal(51, dev.Regs[2051]);
+        Assert.Contains(dev.Requests, q => q == "写寄存器 2049=21");
+        lock (logs) Assert.Contains(logs, l => l.Contains("InP 由 51 写成 21") && l.Contains("读回核对一致"));
+
+        var got = new List<Sample>();
+        using var sub = s.Samples.Subscribe(new Collect(x => { lock (got) got.Add(x); }));
+        await ((YudianProbeSession)s).PollOnceAsync(CancellationToken.None);
+        lock (got) Assert.Equal(24.6, got.Single(x => x.Tag == "Tr").Value, 2);
+
+        // 再开一次：已经是 21 了就不再写
+        dev.Requests.Clear();
+        await using var s2 = await drv.OpenAsync(new ParameterSet(), Ctx(new[] { 1 }, cfg), CancellationToken.None);
+        Assert.DoesNotContain(dev.Requests, q => q.StartsWith("写寄存器"));
+    }
+
+    [Fact]
+    public async Task 输入规格_写的前提与失败都如实拒绝()
+    {
+        var drv = Wire(new YudianTrProbeDriver(), MakeAll51());
+
+        // 跟工位走 + 要写：不知道该写哪一路，占串口之前就拒绝
+        var follow = ParameterSet.Of((YudianProbeDriverBase.FieldInp, YudianProbeDriverBase.InpWritePt100));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => drv.OpenAsync(new ParameterSet(), Ctx(new[] { 1 }, follow), CancellationToken.None));
+        Assert.Contains("不知道该写哪一路", ex.Message);
+
+        // Loc 锁着：不写，说清
+        var locked = MakeAll51(); locked.Regs[2130] = 0b0010_0000;
+        var cfg = ParameterSet.Of((YudianProbeDriverBase.FieldModuleCh, "2"),
+                                  (YudianProbeDriverBase.FieldInp, YudianProbeDriverBase.InpWritePt100));
+        var ex2 = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => Wire(new YudianTrProbeDriver(), locked).OpenAsync(new ParameterSet(), Ctx(new[] { 1 }, cfg), CancellationToken.None));
+        Assert.Contains("Loc=32 锁着写入", ex2.Message);
+        Assert.DoesNotContain(locked.Requests, q => q.StartsWith("写寄存器"));
+
+        // 写了读回还是 51（模块应答了但不生效）：不信应答只信读回
+        var ex3 = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => Wire(new YudianTrProbeDriver(), new WriteIgnoringSlave()).OpenAsync(new ParameterSet(), Ctx(new[] { 1 }, cfg), CancellationToken.None));
+        Assert.Contains("读回来却是 51", ex3.Message);
+
+        // 手选的那一路不是 Pt100、又没选写：报错里带上「怎么改」
+        var ex4 = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => drv.OpenAsync(new ParameterSet(), Ctx(channel: 1, moduleCh: 2), CancellationToken.None));
+        Assert.Contains("CH2：这一路是线性电流（InP=51）", ex4.Message);
+        Assert.Contains("「输入规格」选「写成 Pt100（InP=21）」再连", ex4.Message);
+    }
+
+    /// <summary>应答 06 正常、寄存器却不变的从站——模拟「Loc 没报锁但写就是不生效」那种情况。</summary>
+    private sealed class WriteIgnoringSlave : TecControl.Core.Comm.ISerialTransport
+    {
+        private readonly FakeModbusSlave _inner = MakeAll51();
+        public bool IsOpen => _inner.IsOpen;
+        public void Open() => _inner.Open();
+        public void Close() => _inner.Close();
+        public void DiscardInput() => _inner.DiscardInput();
+        public void Dispose() => _inner.Dispose();
+        public int Read(byte[] buffer, int offset, int count, int timeoutMs) => _inner.Read(buffer, offset, count, timeoutMs);
+        public void Write(byte[] buffer, int offset, int count)
+        {
+            _inner.Write(buffer, offset, count);
+            for (var i = 0; i < 4; i++) _inner.Regs[2048 + i] = 51;     // 写什么都回滚
+        }
     }
 
     [Fact]

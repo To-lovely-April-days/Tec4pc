@@ -46,11 +46,30 @@ public sealed record YudianIdentity(
 
     /// <summary>「CH2、CH4」——报错里点名用。</summary>
     public string UsableList => UsableChannels.Count == 0 ? "没有一路" : string.Join("、", UsableChannels.Select(n => $"CH{n}"));
+
+    /// <summary>读回来的原始寄存器：In01~04、InP1~4、ScL1~4、ScH1~4。没有说明书核对时，把它们原样摆出来比任何解读都可靠。</summary>
+    public IReadOnlyList<ushort> RawIn { get; init; } = Array.Empty<ushort>();
+    public IReadOnlyList<ushort> RawInp { get; init; } = Array.Empty<ushort>();
+    public IReadOnlyList<ushort> RawScl { get; init; } = Array.Empty<ushort>();
+    public IReadOnlyList<ushort> RawSch { get; init; } = Array.Empty<ushort>();
+
+    /// <summary>「In=1/2/3/4，InP=51/51/51/51，ScL=0/0/0/0，ScH=1400/…，dPt=2，Loc=0，型号字 8848」——模块参数一览，探测应答和开机日志里带着。</summary>
+    public string Dump
+    {
+        get
+        {
+            static string J(IReadOnlyList<ushort> xs) => xs.Count == 0 ? "?" : string.Join("/", xs.Select(x => ((short)x).ToString()));
+            return $"In={J(RawIn)}，InP={J(RawInp)}，ScL={J(RawScl)}，ScH={J(RawSch)}，dPt={Dpt}，Loc={Loc}，型号字 {FeatureWord}";
+        }
+    }
 }
 
-/// <summary>一路的一次读数。SensorFault = 报警状态里的 oral 位（断线/超量程），值不可信。</summary>
+/// <summary>
+/// 一路的一次读数。Raw 是 PV 寄存器的原样（有符号）——这一路的规格认不出来时值是 null，原始数照样给，
+/// 让人自己看它像不像温度；SensorFault = 报警状态里的 oral 位（断线/超量程），值不可信。
+/// </summary>
 public readonly record struct YudianReading(
-    double? Value, bool SensorFault, bool AlarmHigh, bool AlarmLow, string? Problem);
+    double? Value, short Raw, bool SensorFault, bool AlarmHigh, bool AlarmLow, string? Problem);
 
 /// <summary>
 /// 宇电 AI-8848G D91（4 路）访问层。J7 / J4 除输入规格外寄存器完全一致，
@@ -101,6 +120,13 @@ public sealed class YudianClient
                 chans[i] = new YudianChannelSetup(false, 0, -1, null, null, null, null);
                 continue;
             }
+            if (g > 4)
+            {
+                // 个位 5~9 不是组号——别拿它去索引，那会把 ScL 当成 InP 读
+                chans[i] = new YudianChannelSetup(true, g, -1, null, null, null,
+                    $"In={inRegs[i]} 的个位 {g} 不是 1~4 的组号，规格定不出来，不猜");
+                continue;
+            }
             var inp = groups[g - 1];
             chans[i] = Setup(kind, g, inp,
                              scl: (short)groups[4 + (g - 1)],
@@ -108,8 +134,24 @@ public sealed class YudianClient
                              dpt);
         }
 
-        _id = new YudianIdentity(glob[3], glob[2], dpt, chans);
+        _id = new YudianIdentity(glob[3], glob[2], dpt, chans)
+        {
+            RawIn = inRegs,
+            RawInp = groups[..4],
+            RawScl = groups[4..8],
+            RawSch = groups[8..12]
+        };
         return _id;
+    }
+
+    /// <summary>
+    /// 把第 group 组（1~4）的输入规格写成 inp（功能码 06）。只在用户明确选了「写成 Pt100」时调用——
+    /// 模块没有面板，现场改参数只能走总线。写完由调用方重新 InitAsync 读回核对，不信应答信读回。
+    /// </summary>
+    public Task WriteInpAsync(int group, ushort inp, CancellationToken ct = default)
+    {
+        if (group is < 1 or > 4) throw new ArgumentOutOfRangeException(nameof(group), "组号只有 1~4");
+        return _bus.WriteRegisterAsync((ushort)(RegInp + group - 1), inp, ct);
     }
 
     /// <summary>
@@ -196,19 +238,20 @@ public sealed class YudianClient
             var ha = (bits & 0x02) != 0;
             var la = (bits & 0x04) != 0;
 
+            var raw = (short)pv[i];
             if (!ch.Enabled)
             {
-                outs[i] = new YudianReading(null, false, false, false, null);
+                outs[i] = new YudianReading(null, raw, false, false, false, null);
                 continue;
             }
             if (ch.Problem is not null || ch.Divisor is not { } div)
             {
-                outs[i] = new YudianReading(null, fault, ha, la, ch.Problem);
+                outs[i] = new YudianReading(null, raw, fault, ha, la, ch.Problem);
                 continue;
             }
             // 断线时寄存器里是残值，照样给出去但把 fault 挂上——
             // 由上层发成 Quality.Bad，跟 RD105 传感器越限一个待遇
-            outs[i] = new YudianReading((short)pv[i] / div, fault, ha, la, null);
+            outs[i] = new YudianReading(raw / div, raw, fault, ha, la, null);
         }
         return outs;
     }
