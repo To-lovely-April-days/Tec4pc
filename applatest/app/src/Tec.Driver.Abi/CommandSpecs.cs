@@ -75,8 +75,8 @@ public static class CommandSpecs
         // 原型的「升温至 / 降温至 / 夹套控温 Tj / 釜内控温 Tr」是同一条：
         // 方向由目标温度与当前温度的关系决定，控温对象是一个参数。
         // RD105 收到的也只是「TG = 目标、SPEED = 速率」这一组寄存器。
-        // 到达方式按 iControl Heat/Cool 的 Task 三档：尽快（设备最大能力）/
-        // 按时长（速率执行时由温差 ÷ 时长现算）/ 按速率（老行为，也是老文件的缺省）。
+        // 到达方式按 iControl Heat/Cool 的 Task 三档：尽快（不写斜率，目标一步给温控器，
+        // RD105 上是 SPEED=0）/ 按时长（速率执行时由温差 ÷ 时长现算）/ 按速率（老行为，也是老文件的缺省）。
         // 非线性斜坡（iControl 的 Ramp shape 指数）不做——驱动只有线性斜坡这一件事，
         // 形状曲线用「梯度控温」的分段表达，不装一个执行不出来的参数
         new CommandDescriptor(Control, "控温", ModTemp, typeof(ITemperatureControl),
@@ -90,7 +90,7 @@ public static class CommandSpecs
                 Field.Num("tol", "到达允差", 0.5, "℃", 0.1, 5, 0.1),
                 Field.Bool("wait", "到达后等待稳定", true)
             })
-            { Tip = "升温还是降温由目标温度决定，不用分两条指令。「尽快」按设备最大变温能力走；「按时长」的速率 = 温差 ÷ 时长，执行时按当时的实测温度现算。到达即结束；要停留就在后面接「恒温保持」。" },
+            { Tip = "升温还是降温由目标温度决定，不用分两条指令。「尽快」不限速：目标一步写给温控器，它按自己的最大能力到达；「按时长」的速率 = 温差 ÷ 时长，执行时按当时的实测温度现算。到达即结束；要停留就在后面接「恒温保持」。" },
             TerminationKind.Setpoint, RampEstimate,
             p => p.Str("task", "按速率") switch
             {

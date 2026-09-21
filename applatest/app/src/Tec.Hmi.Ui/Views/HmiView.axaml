@@ -588,6 +588,14 @@
                             <TextBlock Text="按时长" FontSize="11.5" Foreground="#6F6F6F"
                                        VerticalAlignment="Center" />
                           </StackPanel>
+                          <!-- 「尽快」= 普通模式的升温（用户要的）：不按速率不按时长，目标一步写给温控器，
+                               它按自己的最大能力走。跟配方里「到达方式 = 尽快」同一个词 -->
+                          <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center"
+                                      PointerPressed="OnRadFast">
+                            <Ellipse Classes="hrad" Classes.on="{Binding Cur.ByFast}" />
+                            <TextBlock Text="尽快" FontSize="11.5" Foreground="#6F6F6F"
+                                       VerticalAlignment="Center" />
+                          </StackPanel>
                         </StackPanel>
                         <!-- 蒸回流：没有速率/时长两档——夹套按 Tr+ΔT 持续跟随，
                              变化率由 Tr 的爬升决定，写目标限速按设备最大能力 -->
@@ -614,6 +622,9 @@
                             </StackPanel>
                           </Border>
                         </StackPanel>
+                        <TextBlock Text="不限速&#x0A;温控器按最大能力到达"
+                                   FontSize="10.5" Foreground="#6F6F6F" VerticalAlignment="Center"
+                                   Height="44" IsVisible="{Binding Cur.ByFast}" />
                       </StackPanel>
                     </DockPanel>
                   </StackPanel>

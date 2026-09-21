@@ -58,9 +58,10 @@ public static class CapabilityCommands
 
 /// <summary>
 /// 控温。到达即结束；勾了「到达后等待稳定」再多等一个允差窗。
-/// 升温还是降温不用问——RampAsync 给的是目标值，往哪边走由当前温度决定。
-/// 到达方式三档（iControl 的 Task）：尽快 = 设备最大变温能力（读的是
-/// 设备自己的 Limits，不是编的数）；按时长 = 温差 ÷ 时长按当时实测现算；
+/// 升温还是降温不用问——目标值给驱动，往哪边走由当前温度决定。
+/// 到达方式三档（iControl 的 Task）：尽快 = 普通模式的升温，不按速率不按时长，
+/// 目标一步写给温控器、它按自己的最大能力走（RD105 上是 SPEED=0 不限斜率）——
+/// 跟 HMI 手动面板的「尽快」同一个动作；按时长 = 温差 ÷ 时长按当时实测现算；
 /// 按速率 = 老行为，也是没有 task 键的老配方的缺省。
 /// </summary>
 public sealed class TempControlHandler : ICommandHandler
@@ -74,18 +75,19 @@ public sealed class TempControlHandler : ICommandHandler
         var began = ctx.Now();
 
         var current = kind == TempChannelKind.Jacket ? temp.CurrentJacket : temp.CurrentReactor;
-        var rate = CommandSpecs.TempTaskOf(p) switch
-        {
-            "尽快" => temp.Limits.MaxRatePerMin,
-            // 时长填 0 当「尽快」处理——除零得到的不是快，是 NaN
-            "按时长" => p.Num("dur") > 0
-                ? Math.Min(temp.Limits.MaxRatePerMin, Math.Abs(target - current) / p.Num("dur"))
-                : temp.Limits.MaxRatePerMin,
-            _ => p.Num("rate", 2)
-        };
+        var task = CommandSpecs.TempTaskOf(p);
+        // 时长填 0 当「尽快」处理——除零得到的不是快，是 NaN
+        var fast = task == "尽快" || (task == "按时长" && p.Num("dur") <= 0);
+        // 尽快不写斜率；这里的 rate 只拿来算下面的超时预算（按设备标称最大能力），不是下发值
+        var rate = fast ? temp.Limits.MaxRatePerMin
+            : task == "按时长" ? Math.Min(temp.Limits.MaxRatePerMin, Math.Abs(target - current) / p.Num("dur"))
+            : p.Num("rate", 2);
         rate = Math.Max(rate, 0.05);
 
-        await temp.RampAsync(target, rate, kind, ct).ConfigureAwait(false);
+        if (fast)
+            await temp.SetTargetAsync(new TempTarget(target, kind), ct).ConfigureAwait(false);
+        else
+            await temp.RampAsync(target, rate, kind, ct).ConfigureAwait(false);
         // 到不了的目标不能把通道永远挂住：兜底超时按「温差 / 速率」的 3 倍给
         var budget = TimeSpan.FromMinutes(Math.Abs(target - temp.CurrentReactor) / rate * 3 + 10);
         var reached = await temp.WaitReachedAsync(target, tol, budget, ct).ConfigureAwait(false);

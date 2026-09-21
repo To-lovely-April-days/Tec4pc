@@ -95,6 +95,7 @@ public partial class HmiView : UserControl
 
     private void OnRadRate(object? s, PointerPressedEventArgs e) { Vm?.Cur?.SetRampBy("rate"); e.Handled = true; }
     private void OnRadDur(object? s, PointerPressedEventArgs e) { Vm?.Cur?.SetRampBy("dur"); e.Handled = true; }
+    private void OnRadFast(object? s, PointerPressedEventArgs e) { Vm?.Cur?.SetRampBy("fast"); e.Handled = true; }
 
     private void OnVbTarget(object? s, PointerPressedEventArgs e)
     { if (Vm?.Cur is { } z) z.OpenKeypad(z.TargetKey); e.Handled = true; }

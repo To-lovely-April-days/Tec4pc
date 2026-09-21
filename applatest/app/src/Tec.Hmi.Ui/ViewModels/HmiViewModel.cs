@@ -1213,9 +1213,11 @@ public sealed class HmiZoneViewModel : ViewModelBase
     public string VbREnd => Pv("rEnd") > 0 ? Pv("rEnd").ToString("0") : "—";
     public string VbRDur => Pv("rDur") > 0 ? Txt.Fx(Pv("rDur")) : "—";
     public bool ByRate => RampBy == "rate" && !ModeFollow;
+    /// <summary>「尽快」：不限速，目标一步写给温控器（普通模式的升温）。速率 / 时长两格都不摆。</summary>
+    public bool ByFast => RampBy == "fast" && !ModeFollow;
     public string TargetLabel => ModeFollow ? "ΔT（Tj−Tr）" : $"目标 {(Mode == "Tj" ? "Tj" : "Tr")}";
     public string TargetUnit => ModeFollow ? "K" : "℃";
-    public string RampValLabel => ByRate ? "速率" : "时长";
+    public string RampValLabel => ByRate ? "速率" : ByFast ? "" : "时长";
 
     /// <summary>底部安全条：直接念安全层此刻的册子，不抄原型里的展示数。</summary>
     public IReadOnlyList<string> LimChipList
@@ -1283,7 +1285,15 @@ public sealed class HmiZoneViewModel : ViewModelBase
         RaiseZone();
     }
 
-    public void SetRampBy(string v) { RampBy = v; RaiseZone(); }
+    public void SetRampBy(string v)
+    {
+        if (RampBy == v) return;
+        RampBy = v;
+        Log("模式", v switch { "fast" => "到达方式：尽快（不限速）", "dur" => "到达方式：按时长", _ => "到达方式：按速率" });
+        // 温控开着就按新方式重新下发：切到「尽快」的那一刻斜率就该撤掉，不是等下次下发
+        if (TempOn) IssueTemp();
+        RaiseZone();
+    }
 
     public void ToggleTemp()
     {
@@ -1307,14 +1317,25 @@ public sealed class HmiZoneViewModel : ViewModelBase
         var kind = Mode == "Tj" ? TempChannelKind.Jacket : TempChannelKind.Reactor;
         var target = Pv(Mode == "Tj" ? "tj" : "tr");
         var cur = Mode == "Tj" ? t.CurrentJacket : t.CurrentReactor;
-        var rate = RampBy == "rate"
-            ? Math.Abs(Pv("rate"))
-            : Math.Abs(target - cur) / Math.Max(0.1, Pv("dur"));
-        rate = Math.Clamp(rate, 0.05, Math.Max(0.05, t.Limits.MaxRatePerMin));
+        // 「尽快」= 普通模式的升温（用户要的）：不按速率不按时长，目标一步写给温控器，
+        // 它按自己的最大能力走（RD105：SPEED=0 不限斜率）——跟配方里「到达方式 = 尽快」同一个意思
+        Task issue;
+        if (RampBy == "fast")
+        {
+            issue = t.SetTargetAsync(new TempTarget(target, kind), CancellationToken.None);
+        }
+        else
+        {
+            var rate = RampBy == "rate"
+                ? Math.Abs(Pv("rate"))
+                : Math.Abs(target - cur) / Math.Max(0.1, Pv("dur"));
+            rate = Math.Clamp(rate, 0.05, Math.Max(0.05, t.Limits.MaxRatePerMin));
+            issue = t.RampAsync(target, rate, kind, CancellationToken.None);
+        }
         // 下发可能被设备拒绝（「TEC 加热」没启用又没有电加热通路时的升温目标、
         // 超出保护范围的目标……）。**任务不能丢**：丢了的话开关看着是开的、
         // 实际一个字都没写进控制器，跟蒸回流那条路一样把它接住
-        t.RampAsync(target, rate, kind, CancellationToken.None).ContinueWith(task =>
+        issue.ContinueWith(task =>
         {
             if (task.Exception?.GetBaseException() is not { } ex) return;
             Avalonia.Threading.Dispatcher.UIThread.Post(() =>
@@ -2560,7 +2581,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
         nameof(Mode), nameof(ModeName), nameof(ModeTr), nameof(ModeTj), nameof(ModeFollow),
         nameof(CanReflux), nameof(ByDur),
         nameof(TempOn), nameof(StirOn), nameof(TrOn), nameof(PhOn),
-        nameof(RampBy), nameof(ByRate), nameof(TargetLabel), nameof(TargetUnit), nameof(RampValLabel),
+        nameof(RampBy), nameof(ByRate), nameof(ByFast), nameof(TargetLabel), nameof(TargetUnit), nameof(RampValLabel),
         nameof(VbTr), nameof(VbRate), nameof(VbDur), nameof(VbRpm), nameof(VbREnd), nameof(VbRDur),
         nameof(NowLine1), nameof(NowLine2), nameof(StirNow), nameof(PendCount), nameof(LimChipList),
         nameof(LastLog), nameof(HasCommit), nameof(CommitText), nameof(TrPend), nameof(RatePend),
