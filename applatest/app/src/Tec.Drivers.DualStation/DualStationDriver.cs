@@ -46,13 +46,14 @@ public sealed class DualStationDriver : IDeviceDriver
 
     /// <summary>
     /// 连接参数的缺省值——按现场那台机器填的（用户定的）：RD105 在 CH344 的 C 口（COM7）、
-    /// IO8R 在 B 口（COM10），两条都走 RS485 = Modbus-RTU、9600、站号 1。
+    /// IO8R 在 B 口（COM10），两条都走 RS485 = Modbus-RTU、站号 1；RD105 波特率 38400（用户定的，
+    /// 不是协议 §1 写的 485 口出厂 9600），IO8R 9600。
     /// COM 号是这台 PC 上的枚举结果，换台电脑可能变，属性栏里改就是了；这里只是少填几步。
     /// </summary>
     public static class Defaults
     {
         public const string PortRd105 = "COM7";
-        public const int BaudRd105 = 9600;
+        public const int BaudRd105 = 38400;
         public const string ProtoRd105 = Rd105Protocol.Modbus;
         public const int AddrRd105 = 1;
         public const string PortIo = "COM10";
@@ -77,7 +78,7 @@ public sealed class DualStationDriver : IDeviceDriver
     {
         Field.Port(Fields.PortRd105, "RD105 串口", Defaults.PortRd105, "TEC 温控器，8N1。下拉里是当前检测到的串口（现场那台在 CH344 的 C 口）"),
         Field.Sel(Fields.BaudRd105, "RD105 波特率", new[] { "9600", "19200", "38400", "57600", "115200" }, Defaults.BaudRd105.ToString())
-            with { Tip = "出厂值看接的是哪个口：TTL 口 38400，RS485 口 9600（协议 §1）" },
+            with { Tip = "现场那台是 38400。协议 §1 写的出厂值：TTL 口 38400，RS485 口 9600——选错了点「连接」会两档都试" },
         Field.Sel(Fields.ProtoRd105, "RD105 协议", Rd105Protocol.Options, Defaults.ProtoRd105)
             with { Tip = "接 TTL 口选 ASCII，接 RS485 口选 Modbus-RTU（协议 §2）。选错了点「连接」会换着试一遍并告诉你该改成什么" },
         Field.Num(Fields.AddrRd105, "RD105 站号", Defaults.AddrRd105, "", 1, 247, 1)

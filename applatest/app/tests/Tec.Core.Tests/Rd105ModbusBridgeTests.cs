@@ -240,12 +240,12 @@ public sealed class Rd105ModbusBridgeTests
             }
         };
 
-        // 协议 / 波特率一项没填：按缺省（Modbus-RTU、9600）试，再换着试另外三档
+        // 协议 / 波特率一项没填：按缺省（Modbus-RTU、38400）试，再换着试另外三档
         var r = await drv.ProbeAsync(ParameterSet.Of((DualStationDriver.Fields.HasIo, "无")), CancellationToken.None);
 
         Assert.False(r.Success);
-        Assert.Contains("COM7 @ 9600（Modbus-RTU 站号 1） 无应答", r.Message);
-        Assert.Contains("换着试了 ASCII @ 9600、Modbus-RTU 站号 1 @ 38400、ASCII @ 38400 也都没应答", r.Message);
+        Assert.Contains("COM7 @ 38400（Modbus-RTU 站号 1） 无应答", r.Message);
+        Assert.Contains("换着试了 ASCII @ 38400、Modbus-RTU 站号 1 @ 9600、ASCII @ 9600 也都没应答", r.Message);
     }
 
     [Fact]

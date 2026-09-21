@@ -33,9 +33,10 @@ public sealed class Rd105TecDriver : IDeviceDriver
     public const string FieldOverLow = "超温下限";
     public const string FieldMaxCurrent = "最大电流";
 
-    /// <summary>连接参数缺省——按现场那台机器：RD105 在 CH344 的 C 口（COM7），RS485 = Modbus-RTU、9600、站号 1。</summary>
+    /// <summary>连接参数缺省——按现场那台机器：RD105 在 CH344 的 C 口（COM7），RS485 = Modbus-RTU、站号 1，
+    /// 波特率 38400（用户定的；协议 §1 写的 485 口出厂值是 9600，「连接」时两档都会试）。</summary>
     public const string DefaultPort = "COM7";
-    public const int DefaultBaud = 9600;
+    public const int DefaultBaud = 38400;
     public const string DefaultProtocol = Rd105Protocol.Modbus;
     public const int DefaultAddress = 1;
 
@@ -59,7 +60,7 @@ public sealed class Rd105TecDriver : IDeviceDriver
         Field.Port(FieldPort, "串口", DefaultPort,
                    "下拉里是这台机器当前检测到的串口（Windows 形如 COM7，Linux 形如 /dev/ttyUSB0）"),
         Field.Sel(FieldBaud, "波特率", new[] { "9600", "19200", "38400", "57600", "115200" }, DefaultBaud.ToString())
-            with { Tip = "出厂值看接的是哪个口：TTL 口 38400，RS485 口 9600（协议 §1）" },
+            with { Tip = "现场那台是 38400。协议 §1 写的出厂值：TTL 口 38400，RS485 口 9600——选错了点「连接」会两档都试" },
         Field.Sel(FieldProtocol, "协议", Rd105Protocol.Options, DefaultProtocol)
             with { Tip = "接 TTL 口选 ASCII，接 RS485 口选 Modbus-RTU（协议 §2）。选错了点「连接」会换着试一遍并告诉你该改成什么" },
         Field.Num(FieldAddress, "站号", DefaultAddress, "", 1, 247, 1)
@@ -146,7 +147,8 @@ public sealed class Rd105TecDriver : IDeviceDriver
     internal static string NoReply(ParameterSet cn, Exception ex)
         => $"{LinkName(cn)} 无应答" +
            $"（{ex.Message.TrimEnd('\n', '\r')}）——查：①是不是接 RD105 的那一路串口；" +
-           "②波特率：TTL 口出厂 38400、RS485 口出厂 9600；③接线（TTL 的 TX/RX 要交叉、485 的 A/B、共地）";
+           "②波特率：现场那台是 38400（协议 §1 写的出厂值 TTL 口 38400、RS485 口出厂 9600，两档都会试）；" +
+           "③接线（TTL 的 TX/RX 要交叉、485 的 A/B、共地）";
 
     public async Task<IDeviceSession> OpenAsync(ParameterSet connection, DriverContext ctx, CancellationToken ct)
     {

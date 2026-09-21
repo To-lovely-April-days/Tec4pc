@@ -84,11 +84,11 @@ public sealed class DualStationDriverTests
     public void 连接参数缺省照现场那台机器填()
     {
         // 用户定的：RD105 在 CH344 的 C 口（COM7）、IO8R 在 B 口（COM10），
-        // 两条都是 RS485 = Modbus-RTU、9600、站号 1。装好程序不改一项点「连接」就该通。
+        // 两条都是 RS485 = Modbus-RTU、站号 1；RD105 38400（用户定的）、IO8R 9600。装好程序不改一项点「连接」就该通。
         var cn = new ParameterSet().FillDefaults(new DualStationDriver().ConnectionSchema);
 
         Assert.Equal("COM7", cn.Str(DualStationDriver.Fields.PortRd105));
-        Assert.Equal(9600, cn.Num(DualStationDriver.Fields.BaudRd105));
+        Assert.Equal(38400, cn.Num(DualStationDriver.Fields.BaudRd105));
         Assert.Equal(Rd105Protocol.Modbus, cn.Str(DualStationDriver.Fields.ProtoRd105));
         Assert.Equal(1, cn.Int(DualStationDriver.Fields.AddrRd105));
 

@@ -90,11 +90,12 @@ public sealed class Rd105TecDriverTests
     {
         var (driver, _) = Rig();
 
-        // 缺省照现场那台机器填：RD105 挂在 CH344 的 C 口（COM7），走 RS485 = Modbus-RTU、9600、站号 1。
-        // 装好程序不改任何东西点「连接」就该通——不是 COM1 / 38400 / ASCII 那种「反正总得填个什么」
+        // 缺省照现场那台机器填：RD105 挂在 CH344 的 C 口（COM7），走 RS485 = Modbus-RTU、站号 1，
+        // 波特率 38400（用户定的，不是协议 §1 写的 485 口出厂 9600）。
+        // 装好程序不改任何东西点「连接」就该通——不是 COM1 / ASCII 那种「反正总得填个什么」
         var cn = new ParameterSet().FillDefaults(driver.ConnectionSchema);
         Assert.Equal("COM7", cn.Str(Rd105TecDriver.FieldPort));
-        Assert.Equal(9600, cn.Num(Rd105TecDriver.FieldBaud));
+        Assert.Equal(38400, cn.Num(Rd105TecDriver.FieldBaud));
         Assert.Equal(Rd105Protocol.Modbus, cn.Str(Rd105TecDriver.FieldProtocol));
         Assert.Equal(1, cn.Int(Rd105TecDriver.FieldAddress));
         Assert.Equal(500, cn.Num(Rd105TecDriver.FieldPeriod));

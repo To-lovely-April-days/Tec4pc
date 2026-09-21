@@ -69,7 +69,8 @@ public sealed class DuoLinks : IDisposable
     /// </summary>
     public string NoReply(Exception ex)
         => $"{RdName} 无应答（{ex.Message.TrimEnd('\n', '\r')}）——查：①是不是接 RD105 的那一路串口；" +
-           "②波特率：TTL 口出厂 38400、RS485 口出厂 9600；③接线（TTL 的 TX/RX 要交叉、485 的 A/B、共地）";
+           "②波特率：现场那台是 38400（协议 §1 写的出厂值 TTL 口 38400、RS485 口出厂 9600，两档都会试）；" +
+           "③接线（TTL 的 TX/RX 要交叉、485 的 A/B、共地）";
 
     /// <summary>按连接参数开真串口。字段名与 DualStationDriver.ConnectionSchema 一一对应。</summary>
     public static DuoLinks Serial(ParameterSet cn)
