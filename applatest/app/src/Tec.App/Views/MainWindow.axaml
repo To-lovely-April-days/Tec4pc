@@ -169,12 +169,16 @@
              只有它是一张裸图浮在那儿，看着像没做完 -->
         <!-- 圈里是透的，露菜单栏的底色，不刷白：写 Transparent 而不是写死
              #bfc9d7，菜单栏底色哪天再动，这个圈自己就跟上了 -->
-        <Border Width="34" Height="34" CornerRadius="17" Background="Transparent"
-                BorderBrush="#474a4e" BorderThickness="2" ClipToBounds="True"
-                VerticalAlignment="Center" ToolTip.Tip="双工位反应器 RD105">
-          <ctl:DeviceArtView ArtKey="rd105" Fit="True" Width="24" Height="22"
-                             HorizontalAlignment="Center" VerticalAlignment="Center" />
-        </Border>
+        <!-- 点它开「温控器参数」窗（用户定的）：TEC 最大功率、两路实时电流、温控器自身温度、
+             两路 PID 与自整定……都在那扇窗里，读的是温控器此刻的寄存器 -->
+        <Button Classes="machine" Click="OnOpenDeviceSettings" VerticalAlignment="Center"
+                ToolTip.Tip="双工位反应器 RD105 · 温控器参数（最大功率 / 电流 / PID / 自整定）">
+          <Border Width="34" Height="34" CornerRadius="17" Background="Transparent"
+                  BorderBrush="#474a4e" BorderThickness="2" ClipToBounds="True">
+            <ctl:DeviceArtView ArtKey="rd105" Fit="True" Width="24" Height="22"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+        </Button>
         <!-- 用户区（照 gbg-account 原型 .um-anchor / .um-menu 重做）：
              头像 + 署名，点开 252 宽的账户菜单——头部是「谁在用这台机器」，
              下面四条带图标的菜单项 -->
@@ -353,6 +357,20 @@
       <Setter Property="Background" Value="White" />
       <Setter Property="BorderBrush" Value="#868b90" />
       <Setter Property="BorderThickness" Value="1" />
+    </Style>
+
+    <!-- 顶栏那颗机器图标钮：本身透明无边，圆圈是里面那个 Border 画的；悬停圈里压一层灰 -->
+    <Style Selector="Button.machine">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.machine:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="Button.machine:pointerover Border">
+      <Setter Property="Background" Value="#14000000" />
     </Style>
 
     <!-- 用户区那颗按钮本身 -->

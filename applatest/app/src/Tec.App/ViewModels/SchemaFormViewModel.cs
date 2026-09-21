@@ -62,11 +62,42 @@ public sealed class FieldViewModel : ViewModelBase
     public double? Max { get; }
     public ObservableCollection<string> Choices { get; }
 
-    public bool IsNumber => Spec.Kind == FieldKind.Number;
-    public bool IsDuration => Spec.Kind == FieldKind.Duration;
-    public bool IsChoice => Spec.Kind == FieldKind.Choice;
-    public bool IsToggle => Spec.Kind == FieldKind.Toggle;
-    public bool IsText => Spec.Kind == FieldKind.Text;
+    /// <summary>只读字段（设备参数面板里的型号、实时电流那些）：按值显示，不给编辑器。</summary>
+    public bool IsReadOnly => Spec.ReadOnly;
+    public bool IsNumber => Spec.Kind == FieldKind.Number && !Spec.ReadOnly;
+    public bool IsDuration => Spec.Kind == FieldKind.Duration && !Spec.ReadOnly;
+    public bool IsChoice => Spec.Kind == FieldKind.Choice && !Spec.ReadOnly;
+    public bool IsToggle => Spec.Kind == FieldKind.Toggle && !Spec.ReadOnly;
+    public bool IsText => Spec.Kind == FieldKind.Text && !Spec.ReadOnly;
+
+    /// <summary>只读字段显示的那一串：数值按小数位（NaN 印「—」，不印 NaN）、下拉印选项、开关印开/关。</summary>
+    public string ValueText
+    {
+        get
+        {
+            var raw = _target[Key];
+            switch (Spec.Kind)
+            {
+                case FieldKind.Number:
+                {
+                    if (raw is null) return "—";
+                    var v = _target.Num(Key, double.NaN);
+                    return double.IsNaN(v) ? "—" : v.ToString("F" + Spec.Decimals, CultureInfo.InvariantCulture);
+                }
+                case FieldKind.Duration: return DurationText;
+                case FieldKind.Toggle: return ToggleValue ? "开" : "关";
+                default:
+                {
+                    var s = _target.Str(Key);
+                    return s.Length == 0 ? "—" : s;
+                }
+            }
+        }
+    }
+
+    /// <summary>外面直接改了 target（参数面板从设备读回一组值）之后，让界面重读一遍。</summary>
+    public void Refresh() => RaiseAll(nameof(NumberText), nameof(DurationText), nameof(ChoiceValue),
+                                      nameof(ToggleValue), nameof(TextValue), nameof(ValueText), nameof(IsVisible));
 
     public string NumberText
     {
@@ -334,5 +365,11 @@ public sealed class SchemaFormViewModel : ViewModelBase
         foreach (var f in Fields) f.RefreshVisibility();
         RaiseAll(nameof(Profile), nameof(ProfileNote));   // 改一个格子，曲线与小字立刻跟着变
         _changed?.Invoke();
+    }
+
+    /// <summary>target 被外面整组改过（设备参数面板读回一组值）：每个字段重读一遍。</summary>
+    public void RefreshValues()
+    {
+        foreach (var f in Fields) f.Refresh();
     }
 }

@@ -388,6 +388,9 @@
                         Margin="0,0,0,10" IsVisible="{Binding HasSelection}">
               <Button Classes="pill" Content="手动控制面板" IsVisible="{Binding IsReactor}"
                       Click="OnOpenHmi" />
+              <Button Classes="pill" Content="温控器参数" IsVisible="{Binding IsReactor}"
+                      Click="OnOpenSettings"
+                      ToolTip.Tip="温控器自己的寄存器：最大功率、两路电流、PID、自整定……读的是它此刻的值" />
               <!-- 「连接」= 先测后开：按当前连接参数探一遍（固件 / 序列号 / 路数回显在上方），
                    再把会话重开。改了串口之后点它改动才生效 -->
               <Button Classes="pill" Content="连接" Command="{Binding Probe}"

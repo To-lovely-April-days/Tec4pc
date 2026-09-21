@@ -86,6 +86,13 @@ public partial class BenchView : UserControl
         HmiWindow.Open(vm.Ws, sel.Id, sel.Title, sel.Channels.OrderBy(x => x).ToArray());
     }
 
+    /// <summary>「温控器参数」：给选中的反应主机开参数窗（温控器自己的寄存器：最大功率、电流、PID、自整定）。</summary>
+    private void OnOpenSettings(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is not { Selected: { } sel } vm || !vm.IsReactor) return;
+        DeviceSettingsWindow.Open(vm.Ws, sel.Id, sel.Title);
+    }
+
     /// <summary>
     /// 设备库的分类头：点一下收起 / 展开这一类。
     /// Handled 掉，不然这一下会顺着冒到画布上去（画布的 PointerPressed 是取消选中）。

@@ -104,6 +104,12 @@ public partial class MainWindow : Window
         if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) BeginMoveDrag(e);
     }
 
+    /// <summary>顶栏机器图标：开台面上第一台反应主机的「温控器参数」窗。</summary>
+    private void OnOpenDeviceSettings(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainViewModel vm) DeviceSettingsWindow.OpenFirstHost(vm.Workspace);
+    }
+
     private void OnMinimize(object? sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
 
     private void OnMaximize(object? sender, RoutedEventArgs e)

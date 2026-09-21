@@ -1,0 +1,173 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:v="clr-namespace:Tec.App.Views"
+        x:Class="Tec.App.Views.DeviceSettingsWindow"
+        Width="860" Height="620" MinWidth="720" MinHeight="460"
+        WindowStartupLocation="CenterScreen"
+        SystemDecorations="None" Background="White"
+        FontFamily="{StaticResource UiFont}" FontSize="12" Foreground="#303337">
+
+  <!--
+    温控器参数面板的外壳。标题条照 HmiWindow 那套（无系统边框、深紫条可拖动、
+    窗钮用 Path 画）。里面左边一列分组，右边那一组的表单 + 读取 / 写入 / 动作 + 回执。
+    表单是 SchemaFormView——驱动声明 schema，界面不认设备。
+  -->
+
+  <Window.Styles>
+    <Style Selector="Button.lwin">
+      <Setter Property="Width" Value="30" />
+      <Setter Property="Height" Value="24" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.lwin:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#2effffff" />
+    </Style>
+    <Style Selector="Button.lwin.close:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#e81123" />
+    </Style>
+
+    <Style Selector="Button.pill">
+      <Setter Property="Height" Value="26" />
+      <Setter Property="Padding" Value="16,0" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="Background" Value="#f7f7f6" />
+      <Setter Property="BorderBrush" Value="#868b90" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Foreground" Value="#303337" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.pill:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#18000000" />
+      <Setter Property="BorderBrush" Value="#000000" />
+    </Style>
+    <Style Selector="Button.pill:disabled">
+      <Setter Property="Opacity" Value="0.45" />
+    </Style>
+
+    <!-- 左列分组：选中的那一项左边一条靛色条，跟属性栏设备块一个说法 -->
+    <Style Selector="ListBoxItem">
+      <Setter Property="Padding" Value="14,9" />
+      <Setter Property="FontSize" Value="12.5" />
+      <Setter Property="Foreground" Value="#303337" />
+      <Setter Property="BorderThickness" Value="4,0,0,0" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="ListBoxItem:selected">
+      <Setter Property="BorderBrush" Value="{StaticResource Shell}" />
+    </Style>
+    <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+      <Setter Property="Background" Value="#e9e8f2" />
+    </Style>
+    <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#ececeb" />
+    </Style>
+  </Window.Styles>
+
+  <Border BorderBrush="#3a0a0f" BorderThickness="1">
+    <DockPanel>
+      <Panel DockPanel.Dock="Top" Height="30">
+        <Border Background="{StaticResource Shell}" />
+        <TextBlock VerticalAlignment="Center" Margin="12,0,0,0"
+                   Foreground="White" FontSize="12"
+                   Text="{Binding DeviceLabel, StringFormat='{}{0} · 温控器参数'}" />
+        <Border Background="Transparent" Margin="0,0,68,0" PointerPressed="OnTitlebarPressed" />
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top"
+                    Margin="0,3,2,0">
+          <Button Classes="lwin" Click="OnMinimize" ToolTip.Tip="最小化">
+            <Path Data="M 0,0 H 11" Stroke="White" StrokeThickness="1.2" />
+          </Button>
+          <Button Classes="lwin close" Click="OnClose" ToolTip.Tip="关闭">
+            <Path Data="M 0,0 L 9,9 M 9,0 L 0,9" Stroke="White" StrokeThickness="1.2" />
+          </Button>
+        </StackPanel>
+      </Panel>
+
+      <Grid ColumnDefinitions="200,*">
+        <!-- 左列：链路状态 + 分组 -->
+        <Border Grid.Column="0" Background="{StaticResource PropsBg}" BorderBrush="#dcdedb" BorderThickness="0,0,1,0">
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Top" Text="{Binding Status}" FontSize="11" LineHeight="16"
+                       Foreground="#55595e" TextWrapping="Wrap" Margin="14,12,14,10" />
+            <ListBox ItemsSource="{Binding Groups}" SelectedItem="{Binding Selected, Mode=TwoWay}"
+                     Background="Transparent" BorderThickness="0">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <TextBlock Text="{Binding Title}" />
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </DockPanel>
+        </Border>
+
+        <!-- 右边：没连上就一句话；连上了摆选中那一组 -->
+        <Panel Grid.Column="1">
+          <StackPanel IsVisible="{Binding Unavailable}" VerticalAlignment="Center" HorizontalAlignment="Center"
+                      Spacing="8" MaxWidth="460">
+            <TextBlock Text="这台设备现在没连上，读不到它的参数" FontSize="14" Foreground="#303337"
+                       HorizontalAlignment="Center" />
+            <TextBlock Text="{Binding Status}" FontSize="12" Foreground="#8a6100" TextWrapping="Wrap"
+                       TextAlignment="Center" />
+            <TextBlock Text="到「台面」页选中它，点属性栏的「连接」；连上之后这里自动变成参数页"
+                       FontSize="11.5" Foreground="#888d92" TextWrapping="Wrap" TextAlignment="Center" />
+          </StackPanel>
+
+          <!-- 外层按窗口 VM 的 HasSelected 显隐，里层再换 DataContext——两件事写在同一个元素上，
+               DataContext 换成 null 之后 IsVisible 那条绑定就断了，整块留在屏上（Xvfb 里踩到） -->
+          <Panel IsVisible="{Binding HasSelected}">
+          <DockPanel DataContext="{Binding Selected}" Margin="0">
+            <!-- 头：组名 + 说明 -->
+            <StackPanel DockPanel.Dock="Top" Margin="22,16,22,8">
+              <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="Light" Foreground="#292b2e" />
+              <TextBlock Text="{Binding Tip}" IsVisible="{Binding HasTip}" FontSize="11" LineHeight="16"
+                         Foreground="#888d92" TextWrapping="Wrap" Margin="0,4,0,0" />
+            </StackPanel>
+
+            <!-- 底：钮 + 回执 -->
+            <Border DockPanel.Dock="Bottom" Background="{StaticResource PropsBg}" BorderBrush="#dcdedb"
+                    BorderThickness="0,1,0,0" Padding="22,10,22,12">
+              <StackPanel Spacing="8">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                  <Button Classes="pill" Content="读取" Command="{Binding Read}"
+                          ToolTip.Tip="从温控器重读这一组" />
+                  <Button Classes="pill" Content="写入" Command="{Binding Write}" IsVisible="{Binding Writable}"
+                          ToolTip.Tip="只写改过的项；温控器回显核对，不符会报出来" />
+                  <ItemsControl ItemsSource="{Binding Actions}" IsVisible="{Binding HasActions}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="10" /></ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <Button Classes="pill" Content="{Binding Label}" ToolTip.Tip="{Binding Tip}"
+                                Click="OnAction" IsEnabled="{Binding !Group.Busy}" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                  <TextBlock Text="正在跟温控器说话…" IsVisible="{Binding Busy}" FontSize="11"
+                             Foreground="#888d92" VerticalAlignment="Center" />
+                </StackPanel>
+                <TextBlock Text="{Binding Notes}" FontSize="11" LineHeight="16" Foreground="#3a3d41"
+                           TextWrapping="Wrap" MaxHeight="96" />
+              </StackPanel>
+            </Border>
+
+            <!-- 中：表单 -->
+            <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto"
+                          Padding="22,4,22,8">
+              <v:SchemaFormView DataContext="{Binding Form}" MaxWidth="520" HorizontalAlignment="Left" />
+            </ScrollViewer>
+          </DockPanel>
+          </Panel>
+        </Panel>
+      </Grid>
+    </DockPanel>
+  </Border>
+</Window>

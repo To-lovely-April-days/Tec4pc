@@ -24,7 +24,7 @@ public sealed class FakeRd105Device : ISerialTransport
         Set(1, "TCADJTEMP", 25_00000); Set(2, "TCADJTEMP", 25_00000);
         Set(1, "RESISTOR", 0); Set(2, "RESISTOR", 0);
         Set(1, "OUTV", 0); Set(2, "OUTV", 0);
-        _regs["SINTERIORTEMP"] = 24_00000;
+        _regs["SINTERIORTEMP"] = 24;        // 协议 §3.5.6：20 就是 20 ℃，这一项不带 1e-5 标度
         _regs["ERRORCODE"] = 0;
         _regs["FPV"] = 130;
     }

@@ -45,6 +45,9 @@ public sealed record FieldSpec(string Key, string Label, FieldKind Kind)
     public string? ChoicesFrom { get; init; }
 
     public string? Tip { get; init; }
+
+    /// <summary>只读：界面按值显示，不给编辑器（设备参数面板里的型号、固件、实时电流那些）。</summary>
+    public bool ReadOnly { get; init; }
 }
 
 /// <summary>

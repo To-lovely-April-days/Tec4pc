@@ -27,6 +27,9 @@
                        FontSize="12" Foreground="#3a3d41" TextWrapping="Wrap" Margin="0,0,10,0"
                        ToolTip.Tip="{Binding Tip}" />
 
+            <!-- 只读字段（设备参数面板的型号 / 实时电流那些）：按值印出来，不摆一个改了也不生效的输入框 -->
+            <TextBlock Grid.Column="1" Text="{Binding ValueText}" IsVisible="{Binding IsReadOnly}"
+                       FontSize="12" Foreground="#202225" VerticalAlignment="Center" TextWrapping="Wrap" />
             <TextBox Grid.Column="1" Classes="fin" Text="{Binding NumberText, Mode=TwoWay}"
                      IsVisible="{Binding IsNumber}" />
             <TextBox Grid.Column="1" Classes="fin" Text="{Binding DurationText, Mode=TwoWay}"

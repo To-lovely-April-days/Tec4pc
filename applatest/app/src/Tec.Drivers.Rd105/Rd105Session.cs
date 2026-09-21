@@ -14,10 +14,11 @@ namespace Tec.Drivers.Rd105;
 /// 目标、收数据、判到达。TecControl.Core 里那套主机侧串级（HostControlLoop）等
 /// 组合会话接上外部 Tr 再谈——设备自己看不见釜内，这一级谈串级就是空话。
 /// </summary>
-public sealed class Rd105Session : IDeviceSession
+public sealed class Rd105Session : IDeviceSession, IDeviceSettings
 {
     private readonly Rd105Link _link;
     private readonly DriverContext _ctx;
+    private readonly Rd105Settings _settings;
     private readonly Broadcast<Sample> _out = new();
     private readonly Rd105TemperatureControl[] _temps = new Rd105TemperatureControl[2];
     private readonly Rd105Tuning[] _tunings = new Rd105Tuning[2];
@@ -49,9 +50,19 @@ public sealed class Rd105Session : IDeviceSession
         _link.Controller.SnapshotReceived += OnSnapshot;
         _link.Controller.ErrorCodeReceived += OnErrorCode;
         _link.Controller.PollFaulted += OnFaulted;
+
+        // 参数面板（IDeviceSettings）：温控器自己的寄存器——最大功率、两路电流、PID、自整定……
+        _settings = new Rd105Settings(link, ctx.Config, ctx.Log);
     }
 
     public string InstanceId => _ctx.InstanceId;
+
+    // ── IDeviceSettings：全部转给 Rd105Settings ──
+    public IReadOnlyList<SettingsGroup> Groups => _settings.Groups;
+    public IReadOnlyList<SettingsAction> Actions => _settings.Actions;
+    public Task<ParameterSet> ReadAsync(string groupId, CancellationToken ct) => _settings.ReadAsync(groupId, ct);
+    public Task<IReadOnlyList<string>> WriteAsync(string groupId, ParameterSet values, CancellationToken ct) => _settings.WriteAsync(groupId, values, ct);
+    public Task<string> RunAsync(string actionId, CancellationToken ct) => _settings.RunAsync(actionId, ct);
 
     public DeviceState State
     {

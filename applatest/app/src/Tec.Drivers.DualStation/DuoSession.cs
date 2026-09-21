@@ -27,8 +27,15 @@ namespace Tec.Drivers.DualStation;
 ///  · 每次切换都走全套序列：关输出 → 切继电器 → （核反馈）→ 重开输出；
 ///  · 电加热用不了（没配 IO8R / 打不开）时，需要加热的目标直接拒绝，理由写明。
 /// </summary>
-public sealed class DuoSession : IDeviceSession, IExternalReactorTemp
+public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSettings
 {
+    // ── IDeviceSettings：温控器参数面板归里面那台 RD105 ──
+    public IReadOnlyList<SettingsGroup> Groups => _rd.Groups;
+    public IReadOnlyList<SettingsAction> Actions => _rd.Actions;
+    public Task<ParameterSet> ReadAsync(string groupId, CancellationToken ct) => _rd.ReadAsync(groupId, ct);
+    public Task<IReadOnlyList<string>> WriteAsync(string groupId, ParameterSet values, CancellationToken ct) => _rd.WriteAsync(groupId, values, ct);
+    public Task<string> RunAsync(string actionId, CancellationToken ct) => _rd.RunAsync(actionId, ct);
+
     private readonly DuoLinks _links;
     private readonly DriverContext _ctx;
     private readonly Broadcast<Sample> _out = new();
