@@ -72,9 +72,10 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
     public static readonly IReadOnlyList<string> ChOptions = new[] { ChFollowWell, "1", "2", "3", "4" };
 
     /// <summary>
-    /// 「输入规格」：模块没有面板，现场那台四路 InP 全是 51（线性电流），Pt100 接上去读不了——
-    /// 改 InP 只能走总线。这一项让用户明确说「把我手选的那一路写成 Pt100」，缺省照模块现状不写。
-    /// 写在开口子时做：写 06 功能码 → 重读 InP 核对 → 记日志；Loc 锁着写入就如实拒绝。
+    /// 「输入规格」：现场那台 J7 模块四路 InP 全是 51（4~20mA，说明书 §5.2 标注 J4 电流模块专用），
+    /// Pt100 接上去读不了——参数出厂配错了。模块没有面板，改 InP 只能走总线（说明书 §7：06 功能码，
+    /// 写入次数不限，只受 Loc 约束）。这一项让用户明确说「把我手选的那一路写成 Pt100」，缺省照模块现状不写。
+    /// 写在开口子时做：写 06 → 重读 InP 核对 → 记日志；Loc 锁着写入就如实拒绝。
     /// </summary>
     public const string FieldInp = "输入规格";
     public const string InpKeep = "照模块的 InP（不写）";
@@ -221,7 +222,7 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
     }
 
     /// <summary>
-    /// 「CH1 线性电流（InP=51）原始值 -1999、CH2 Pt100（InP=21） 24.6 ℃、…」——探测应答里那一串：
+    /// 「CH1 4~20mA（InP=51，J4） 原始值 -1999、CH2 Pt100（InP=21） 24.6 ℃、…」——探测应答里那一串：
     /// 每一路是什么口照模块的 InP 印；能读的带读数（小数位跟模块的标度走）；读不了的把 PV 寄存器原样印出来，
     /// 让人自己看它像不像温度（246 像 24.6 ℃，-1999 / 断线就不是）。
     /// </summary>

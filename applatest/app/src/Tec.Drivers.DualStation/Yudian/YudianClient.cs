@@ -24,7 +24,7 @@ public sealed record YudianChannelSetup(
     /// <summary>这一路开着、规格跟探头对得上、标度定得出——探头能读它。</summary>
     public bool Usable => Enabled && Problem is null && Divisor is not null;
 
-    /// <summary>「Pt100（InP=21）」「线性电流（InP=51）」——报错和探测应答里指着说的那一路是什么口。</summary>
+    /// <summary>「Pt100（InP=21）」「4~20mA（InP=51，J4）」——报错和探测应答里指着说的那一路是什么口。</summary>
     public string TypeName => Enabled ? YudianClient.InpName(Inp) : "关";
 }
 
@@ -155,8 +155,9 @@ public sealed class YudianClient
     }
 
     /// <summary>
-    /// InP 代码 → 人话。只写核对过的：热偶 0~7、Cu50 20、Pt100 21/22、线性电流 50/51；
-    /// 别的照代码原样印出来（「InP=13」），不猜它是什么口。
+    /// InP 代码 → 人话。照《AI-8 系列高精度多路 PID 调节器使用说明书》§5.2 的表抄的
+    /// （docs/宇电AI-8寄存器速查.md）；表里没有的照代码原样印出来（「InP=99」），不猜它是什么口。
+    /// 50/51 是电流输入，说明书标注 J4 模块专用——J7（热偶/热阻通用输入）上出现它就是参数配错了。
     /// </summary>
     public static string InpName(int inp) => inp switch
     {
@@ -168,12 +169,37 @@ public sealed class YudianClient
         5 => "J 偶（InP=5）",
         6 => "B 偶（InP=6）",
         7 => "N 偶（InP=7）",
+        8 => "WRe3-WRe25（InP=8）",
+        9 => "WRe5-WRe26（InP=9）",
+        12 => "F2 辐射高温计（InP=12）",
+        13 => "T 偶 0~300.00℃（InP=13）",
+        17 => "K 偶 0~300.00℃（InP=17）",
+        18 => "J 偶 0~300.00℃（InP=18）",
+        19 => "Ni120（InP=19）",
         20 => "Cu50（InP=20）",
         21 => "Pt100（InP=21）",
         22 => "Pt100 两位小数（InP=22）",
-        50 or 51 => $"线性电流（InP={inp}）",
+        23 => "Pt1000（InP=23，J0/J2）",
+        24 => "0~2000Ω（InP=24，J0/J2）",
+        25 => "0~75mV（InP=25）",
+        27 => "0~320Ω（InP=27）",
+        28 => "0~20mV（InP=28）",
+        29 => "0~50mV（InP=29）",
+        33 => "1~5V（InP=33，J3）",
+        34 => "0~5V（InP=34，J3）",
+        35 => "-10~+10mV（InP=35）",
+        36 => "-37.5~+37.5mV（InP=36）",
+        38 => "10~50mV（InP=38）",
+        39 => "15~75mV（InP=39）",
+        42 => "0~10V（InP=42，J3）",
+        43 => "2~10V（InP=43，J3）",
+        50 => "0~20mA（InP=50，J4）",
+        51 => "4~20mA（InP=51，J4）",
         _ => $"InP={inp}"
     };
+
+    /// <summary>说明书 §5.2 表里有、但既不是热偶/热阻也不是电流的规格（mV / V / Ω）。</summary>
+    private static bool IsOtherLinear(int inp) => inp is 24 or 25 or 27 or 28 or 29 or 33 or 34 or 35 or 36 or 38 or 39 or 42 or 43;
 
     /// <summary>该种探头叫什么口：报错里「模块上测温的是 CH2、CH4」那半句。</summary>
     public static string KindName(YudianKind kind) => kind == YudianKind.Thermal ? "测温" : "线性电流";
@@ -187,16 +213,20 @@ public sealed class YudianClient
         {
             case YudianKind.Thermal when isLinear:
                 return new(true, group, inp, null, null, null,
-                    $"这一路是线性电流（InP={inp}）——温度探头读不了它；接 4~20mA 变送器（pH）的才用这种口");
+                    $"这一路的输入规格是 {InpName(inp)}——说明书 §5.2 标注 50/51 是 J4 电流模块专用，" +
+                    "热阻探头读不了它；接的是 Pt100 就该把它写成 21");
+            case YudianKind.Thermal when IsOtherLinear(inp):
+                return new(true, group, inp, null, null, null,
+                    $"这一路的输入规格是 {InpName(inp)}——不是热偶/热阻，温度探头读不了它");
             case YudianKind.Thermal when thermalDecimals is null:
                 return new(true, group, inp, null, null, null,
-                    $"输入规格 InP={inp} 不在已核对的标度表里，换算系数定不出来，不猜");
+                    $"输入规格 InP={inp} 不在说明书 §5.2 的表里，换算系数定不出来，不猜");
             case YudianKind.Thermal:
                 return new(true, group, inp, Math.Pow(10, thermalDecimals.Value), null, null, null);
 
             case YudianKind.Linear when !isLinear:
                 return new(true, group, inp, null, null, null,
-                    $"这一路是{InpName(inp)}——是测温口，pH 变送器（4~20mA）读不了它");
+                    $"这一路的输入规格是 {InpName(inp)}——不是电流口，pH 变送器（4~20mA）读不了它");
             default:
                 // 线性：寄存器值就是「面板显示值去掉小数点」，隐含小数位 = dPt。
                 // ScL/ScH 同一套隐含小数位，换算完就是量程（pH 通常 0.00~14.00）
@@ -206,14 +236,15 @@ public sealed class YudianClient
     }
 
     /// <summary>
-    /// 测温型 InP → 寄存器隐含小数位。按手册量程表推的：量程写着 .00 的是两位
-    /// （13/17/18/19/22，×100 后都在 int16 之内），其余一位。**联调时拿真机核一遍**——
-    /// 表里没有的规格返回 null，宁可拒绝换算也不上一个猜的系数。
+    /// 测温型 InP → 寄存器隐含小数位。按说明书 §1.3「传感器测量范围」表：量程写着 .00 的是两位
+    /// （13 T、17 K、18 J、19 Ni120、22 Pt100、23 Pt1000，×100 后都在 int16 之内），其余一位
+    /// （Pt100 21 是 -200~+800℃，×10）。表里没有的规格返回 null，宁可拒绝换算也不上一个猜的系数。
+    /// dPt 只管面板显示，不影响上位机读到的数（§5.4）。
     /// </summary>
     private static int? ThermalDecimalsOf(int inp) => inp switch
     {
         0 or 1 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or 9 or 12 or 20 or 21 => 1,
-        13 or 17 or 18 or 19 or 22 => 2,
+        13 or 17 or 18 or 19 or 22 or 23 => 2,
         _ => null
     };
 

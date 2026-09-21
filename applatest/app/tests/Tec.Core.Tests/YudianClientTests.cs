@@ -104,23 +104,47 @@ public class YudianClientTests
         MakeJ7(dev);
         dev.Regs[2048] = 51;       // 组1 竟是 4~20mA
         var id = await yd.InitAsync(YudianKind.Thermal);
-        Assert.Contains("线性电流（InP=51）", id.Channels[0].Problem);
+        Assert.Contains("4~20mA（InP=51，J4）", id.Channels[0].Problem);
+        Assert.Contains("写成 21", id.Channels[0].Problem);
         Assert.False(id.Channels[0].Usable);
-        Assert.Equal("线性电流（InP=51）", id.Channels[0].TypeName);
+        Assert.Equal("4~20mA（InP=51，J4）", id.Channels[0].TypeName);
         var r = await yd.ReadAsync();
         Assert.Null(r[0].Value);   // 报了问题就不给数
+        Assert.Equal(0, r[0].Raw);
     }
 
     [Fact]
-    public async Task 不认识的InP_拒绝换算不猜系数()
+    public async Task 不认识的InP_拒绝换算不猜系数_mV口说清不是热阻()
     {
         var (dev, yd) = Rig();
         MakeJ7(dev);
-        dev.Regs[2048] = 23;       // Pt1000：手册标注 J7 不支持
+        dev.Regs[2048] = 99;       // 说明书 §5.2 表里没有
+        dev.Regs[2049] = 25;       // 0~75mV：表里有，但不是热偶/热阻
         var id = await yd.InitAsync(YudianKind.Thermal);
         Assert.Contains("不猜", id.Channels[0].Problem);
+        Assert.Contains("0~75mV（InP=25）", id.Channels[1].Problem);
+        Assert.Contains("不是热偶/热阻", id.Channels[1].Problem);
         var r = await yd.ReadAsync();
         Assert.Null(r[0].Value);
+        Assert.Null(r[1].Value);
+    }
+
+    [Fact]
+    public async Task 标度表照说明书1_3_两位小数的是13_17_18_19_22_23()
+    {
+        var (dev, yd) = Rig();
+        for (var i = 0; i < 4; i++) dev.Regs[384 + i] = (ushort)(i + 1);
+        dev.Regs[2048] = 23;   // Pt1000 -200.00~+300.00
+        dev.Regs[2049] = 19;   // Ni120 -50~+270.00
+        dev.Regs[2050] = 20;   // Cu50 -50~+150
+        dev.Regs[2051] = 12;   // F2 450~2000
+        dev.Regs[1536] = 2500; dev.Regs[1537] = 2500; dev.Regs[1538] = 250; dev.Regs[1539] = 4500;
+        await yd.InitAsync(YudianKind.Thermal);
+        var r = await yd.ReadAsync();
+        Assert.Equal(25.0, r[0].Value);
+        Assert.Equal(25.0, r[1].Value);
+        Assert.Equal(25.0, r[2].Value);
+        Assert.Equal(450.0, r[3].Value);
     }
 
     [Fact]
@@ -148,7 +172,7 @@ public class YudianClientTests
         dev.Regs[2048] = 21;       // 竟是 Pt100
         var id = await yd.InitAsync(YudianKind.Linear);
         Assert.Contains("Pt100（InP=21）", id.Channels[0].Problem);
-        Assert.Contains("测温口", id.Channels[0].Problem);
+        Assert.Contains("不是电流口", id.Channels[0].Problem);
     }
 
     [Fact]

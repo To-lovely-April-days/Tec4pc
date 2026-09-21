@@ -177,7 +177,7 @@ public sealed class YudianProbeDriverTests
         j4.Regs[1536] = 700; j4.Regs[1537] = 412;
         var ph = await Wire(new YudianPhProbeDriver(), j4).ProbeAsync(new ParameterSet(), CancellationToken.None);
         Assert.True(ph.Success);
-        Assert.Contains("CH1 线性电流（InP=51） 7.00、CH2 线性电流（InP=51） 4.12、CH3 关、CH4 关——线性电流口是 CH1、CH2", ph.Message);
+        Assert.Contains("CH1 4~20mA（InP=51，J4） 7.00、CH2 4~20mA（InP=51，J4） 4.12、CH3 关、CH4 关——线性电流口是 CH1、CH2", ph.Message);
     }
 
     // ── 现场那台：一台模块两种口混用——CH1/CH3 线性电流（pH 变送器）、CH2/CH4 Pt100（Tr） ──
@@ -243,7 +243,7 @@ public sealed class YudianProbeDriverTests
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(
             () => drv.OpenAsync(new ParameterSet(), Ctx(channel: 1, moduleCh: 1), CancellationToken.None));
-        Assert.Contains("CH1：这一路是线性电流（InP=51）", ex.Message);
+        Assert.Contains("CH1：这一路的输入规格是 4~20mA（InP=51，J4）", ex.Message);
         Assert.Contains("测温口是 CH2、CH4", ex.Message);
         Assert.Contains("改成那一路", ex.Message);
     }
@@ -255,7 +255,7 @@ public sealed class YudianProbeDriverTests
 
         Assert.True(r.Success);
         // 读不了的那两路把 PV 寄存器原样印出来，让人自己看它像不像温度
-        Assert.Contains("CH1 线性电流（InP=51） 原始值 700、CH2 Pt100（InP=21） 24.6 ℃、CH3 线性电流（InP=51） 原始值 412、CH4 Pt100（InP=21） 25.1 ℃——测温口是 CH2、CH4", r.Message);
+        Assert.Contains("CH1 4~20mA（InP=51，J4） 原始值 700、CH2 Pt100（InP=21） 24.6 ℃、CH3 4~20mA（InP=51，J4） 原始值 412、CH4 Pt100（InP=21） 25.1 ℃——测温口是 CH2、CH4", r.Message);
         Assert.Contains("模块参数：In=1/2/3/4，InP=51/21/51/21，ScL=0/0/0/0，ScH=1400/0/1400/0，dPt=2，Loc=0，型号字 0", r.Message);
     }
 
@@ -278,7 +278,7 @@ public sealed class YudianProbeDriverTests
         var r = await Wire(new YudianTrProbeDriver(), MakeAll51()).ProbeAsync(new ParameterSet(), CancellationToken.None);
 
         Assert.False(r.Success);
-        Assert.Contains("CH1 线性电流（InP=51） 原始值 0、CH2 线性电流（InP=51） 原始值 246、", r.Message);
+        Assert.Contains("CH1 4~20mA（InP=51，J4） 原始值 0、CH2 4~20mA（InP=51，J4） 原始值 246、", r.Message);
         Assert.Contains("四路里没有一路是测温口", r.Message);
         Assert.Contains("「宇电通道」手选那一路、「输入规格」选「写成 Pt100（InP=21）」再点「连接」", r.Message);
         Assert.Contains("InP=51/51/51/51", r.Message);
@@ -340,7 +340,7 @@ public sealed class YudianProbeDriverTests
         // 手选的那一路不是 Pt100、又没选写：报错里带上「怎么改」
         var ex4 = await Assert.ThrowsAsync<InvalidOperationException>(
             () => drv.OpenAsync(new ParameterSet(), Ctx(channel: 1, moduleCh: 2), CancellationToken.None));
-        Assert.Contains("CH2：这一路是线性电流（InP=51）", ex4.Message);
+        Assert.Contains("CH2：这一路的输入规格是 4~20mA（InP=51，J4）", ex4.Message);
         Assert.Contains("「输入规格」选「写成 Pt100（InP=21）」再连", ex4.Message);
     }
 
@@ -389,7 +389,7 @@ public sealed class YudianProbeDriverTests
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(
             () => drv.OpenAsync(new ParameterSet(), Ctx(1), CancellationToken.None));
-        Assert.Contains("线性电流（InP=51）", ex.Message);
+        Assert.Contains("4~20mA（InP=51，J4）", ex.Message);
     }
 
     [Fact]
