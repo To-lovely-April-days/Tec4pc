@@ -28,6 +28,8 @@ public sealed class Workspace : IHmiHost
     public string DataDir => ExperimentStore.DataDir;
 
     private readonly Dictionary<string, IDeviceSession> _sessions = new(StringComparer.Ordinal);
+    /// <summary>重建通道 / 重连一次只许一个在跑（见 RebuildChannelsAsync）。</summary>
+    private readonly SemaphoreSlim _rebuildGate = new(1, 1);
 
     /// <summary>跨会话喂釜温的订阅（见 RebuildChannelsAsync 2.5 节），重建时换新。</summary>
     private readonly List<IDisposable> _trFeedSubs = new();
@@ -303,6 +305,17 @@ public sealed class Workspace : IHmiHost
     /// </summary>
     public async Task RebuildChannelsAsync()
     {
+        // 重建是串行的：属性栏一次操作可能连着触发两次（换绑定通道时下拉刷新又推一次），
+        // 两次同时跑，一个正在 foreach 收会话、另一个已经在往 _sessions 里加——
+        // 「Collection was modified」（现场踩到）。后来的等前一个做完再做，不合并：
+        // 台面是它改完之后的样子，重做一遍拿到的就是最新状态
+        await _rebuildGate.WaitAsync().ConfigureAwait(false);
+        try { await RebuildChannelsCoreAsync().ConfigureAwait(false); }
+        finally { _rebuildGate.Release(); }
+    }
+
+    private async Task RebuildChannelsCoreAsync()
+    {
         await CloseSessionsAsync("台面改动，设备会话重开").ConfigureAwait(false);
         _channels.Clear();
         Engine.ResetSafety("台面重建，限值已重设");
@@ -453,12 +466,14 @@ public sealed class Workspace : IHmiHost
             try { await r.Completion.ConfigureAwait(false); } catch { }
         }
 
-        foreach (var s in _sessions.Values)
+        // 先把表摘空再逐个收：收会话要 await，这期间别让任何人再从表里读到一个正在死的会话
+        var closing = _sessions.Values.ToList();
+        _sessions.Clear();
+        _openFailures.Clear();
+        foreach (var s in closing)
         {
             try { await s.DisposeAsync().ConfigureAwait(false); } catch { }
         }
-        _sessions.Clear();
-        _openFailures.Clear();
     }
 
     /// <summary>有没有通道正在跑（运行中 / 暂停）。重连要先问它——不能为了点一下「连接」把别人的实验掐了。</summary>
@@ -483,14 +498,20 @@ public sealed class Workspace : IHmiHost
         if (AnyChannelRunning)
             return new ProbeResult(false, "有通道正在运行——重连要先停设备会话，先把通道停下来再连");
 
-        await CloseSessionsAsync("重新连接设备，会话重开").ConfigureAwait(false);
+        // 跟重建走同一把锁：测试要占串口，重建要开串口，两件事不能交错
+        await _rebuildGate.WaitAsync().ConfigureAwait(false);
         ProbeResult r;
-        try { r = await driver.ProbeAsync(dev.Connection, CancellationToken.None).ConfigureAwait(false); }
-        catch (Exception ex) { r = new ProbeResult(false, ex.Message); }
-        Log?.Write("设备", $"{dev.Display}（{dev.InstanceId}）连接测试：{(r.Success ? "成功" : "失败")}——{r.Message}",
-                   Operator, r.Success ? LogLevel.Info : LogLevel.Warn);
+        try
+        {
+            await CloseSessionsAsync("重新连接设备，会话重开").ConfigureAwait(false);
+            try { r = await driver.ProbeAsync(dev.Connection, CancellationToken.None).ConfigureAwait(false); }
+            catch (Exception ex) { r = new ProbeResult(false, ex.Message); }
+            Log?.Write("设备", $"{dev.Display}（{dev.InstanceId}）连接测试：{(r.Success ? "成功" : "失败")}——{r.Message}",
+                       Operator, r.Success ? LogLevel.Info : LogLevel.Warn);
 
-        await RebuildChannelsAsync().ConfigureAwait(false);
+            await RebuildChannelsCoreAsync().ConfigureAwait(false);
+        }
+        finally { _rebuildGate.Release(); }
         return r;
     }
 

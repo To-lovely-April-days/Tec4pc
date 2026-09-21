@@ -170,7 +170,8 @@ public sealed class YudianProbeDriverTests
         var r = await drv.ProbeAsync(new ParameterSet(), CancellationToken.None);
 
         Assert.True(r.Success);
-        Assert.Contains("CH1 Pt100（InP=21） 25.3 ℃、CH2 Pt100（InP=21） 断线/超量程（原始值 8100 = 810.0 ℃，高于量程上限 800.0）、CH3 关、CH4 关——测温口是 CH1、CH2", r.Message);
+        Assert.Contains("CH1 Pt100（InP=21） 25.3 ℃、CH2 Pt100（InP=21） 断线/超量程（原始值 8100 = 810.0 ℃，高于量程上限 800.0：模块量到的电阻像开路", r.Message);
+        Assert.Contains("J7 不支持））、CH3 关、CH4 关——测温口是 CH1、CH2", r.Message);
         Assert.DoesNotContain("全报断线", r.Message);                    // 还有一路好的，不上那段排查话
 
         // pH 表按 dPt 的小数位显示，没有单位
@@ -284,7 +285,7 @@ public sealed class YudianProbeDriverTests
         for (var i = 0; i < 4; i++) { low.Regs[384 + i] = 1; low.Regs[1536 + i] = unchecked((ushort)-20215); }
         low.Regs[2048] = 22; low.Regs[1664] = 0x0101; low.Regs[1665] = 0x0101;
         var r4 = await Wire(new YudianTrProbeDriver(), low).ProbeAsync(new ParameterSet(), CancellationToken.None);
-        Assert.Contains("CH2 Pt100 两位小数（InP=22） 断线/超量程（原始值 -20215 = -202.15 ℃，低于量程下限 -200.00）", r4.Message);
+        Assert.Contains("CH2 Pt100 两位小数（InP=22） 断线/超量程（原始值 -20215 = -202.15 ℃，低于量程下限 -200.00：模块量到的电阻接近 0——短路、RT 与 IN 接错位，或探头是热电偶）", r4.Message);
 
         // AAF.0 开着：加一句「标志锁住要手动清」
         dev.Regs[2072] = 1;

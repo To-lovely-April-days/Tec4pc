@@ -482,12 +482,55 @@ public sealed class BenchViewModel : ViewModelBase
         set
         {
             if (_selected is null) return;
+            // 下拉刷新（BuildBindTargets 清表再填）会把 SelectedItem 推成 null——那不是人选的「未绑定」；
+            // 没变也不动：从前每次推都重建一遍通道，两次重建撞在一起就是现场那句「Collection was modified」
+            if (value is null || value == BindTarget) return;
+
             _ws.Bench.Bindings.RemoveAll(x => x.DeviceId == _selected.Id);
-            if (value is not null && value.StartsWith("CH") && int.TryParse(value[2..], out var ch))
+            if (value.StartsWith("CH") && int.TryParse(value[2..], out var ch))
+            {
                 _ws.Bench.Bindings.Add(new Binding(_selected.Id, ch, BindingMode.Exclusive));
+                DockToChannel(_selected, ch);          // 画布上的探头挪到那条通道的工位上
+            }
+            else
+            {
+                // 未绑定 = 从工位上拔下来：图留在原地，但不再是插着的形态
+                var dev = _selected.Device;
+                dev.DockHostId = null; dev.DockAnchor = null; dev.Dock = DockSide.None;
+                _selected.DockVisualChanged();
+            }
             Raise();
+            RebuildLinks();
             _ = _ws.RebuildChannelsAsync();
         }
+    }
+
+    /// <summary>
+    /// 「绑定通道」在下拉里改了：把探头插到那条通道所在的工位上，画布跟着走——
+    /// 不然属性栏说的是 CH1，图上还插在 B 孔，读数标签也贴在 B 孔（用户问的）。
+    /// 那个工位的同类口被别的探头占着，就只改绑定不挪图（两支探头不能插同一个口）。
+    /// </summary>
+    private void DockToChannel(DeviceNodeViewModel node, int ch)
+    {
+        var host = Devices.FirstOrDefault(d => d.Channels.Contains(ch));
+        if (host is null) return;
+        var slot = host.Channels.ToList().IndexOf(ch);
+        var anchor = BenchDock.Anchors.FirstOrDefault(a => a.Slot == slot && BenchDock.Accepts(node.BaseArtKey, a));
+        if (anchor is null || TakenAnchors(host.Id, node.Id).Contains(anchor.Id)) return;
+
+        var dev = node.Device;
+        dev.DockHostId = host.Id;
+        dev.DockAnchor = anchor.Id;
+        dev.DockSlot = anchor.Slot;
+        dev.DockSideTag = anchor.Side;
+        dev.Dock = anchor.Kind == PortKind.Top ? DockSide.Top : anchor.Side == "L" ? DockSide.Left : DockSide.Right;
+        if (BenchDock.InsertArtFor(node.BaseArtKey, anchor.Id) is { } ins)
+        {
+            var p = BenchDock.SnapPosition(ins, anchor, new Point(host.X, host.Y), host.Width);
+            dev.Position = new BPoint(p.X, p.Y);
+            node.MoveTo(p);
+        }
+        node.DockVisualChanged();
     }
 
     /// <summary>反应器的孔位 → 通道，可独立启停（原型 d.wells）。</summary>

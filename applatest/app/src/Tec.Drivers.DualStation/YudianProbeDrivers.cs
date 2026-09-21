@@ -95,7 +95,8 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
         "①每改一次 InP 都要把模块断电重上电（说明书原话「PT100 输入需要先接好线再重新上电」）；" +
         "②看模块自己的面板：那一路 PV 闪就是输入有问题（§8），面板正常而这里不正常才是程序的事；" +
         "③接线（§2.4.5）：Pt100 三线制颜色相同（阻值小）的两根接 IN 和 COM、剩下一根接 RT；两线制在 IN–COM 之间跨短接片；" +
-        "④探头要是热电偶不是热阻，「输入规格」要写成 K 型（IN 正、COM 负）";
+        "④用万用表量探头：同色两根之间 ≈0 Ω，任一根对单独那根室温下 Pt100 ≈110 Ω（Pt1000 ≈1100 Ω 这台 J7 不认、热电偶只有几欧、断线无穷大）；" +
+        "⑤探头要是热电偶不是热阻，「输入规格」要写成 K 型（IN 正、COM 负）";
 
     private readonly YudianKind _kind;
     private readonly TagDescriptor _tag;
@@ -105,6 +106,7 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
     {
         _kind = kind;
         _tag = tag;
+        SerialFactory = cn => SerialPortPool.Rent(cn.Str(FieldPort, defaultPort), (int)cn.Num(FieldBaud, 19200));
         Info = new DriverInfo(id, name, "宇电", "1.0.0")
         {
             ChannelsPerDevice = 0,          // 绑定到主机的通道上，不自带通道
@@ -196,9 +198,12 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
     /// <summary>探头只采集；pH 的采集指令由会话认领，不在这里声明新指令。</summary>
     public IReadOnlyList<CommandDescriptor> Commands { get; } = Array.Empty<CommandDescriptor>();
 
-    /// <summary>测试用：换掉串口池，假从站/假总线整链回归。</summary>
-    public Func<ParameterSet, SharedSerial> SerialFactory { get; set; } =
-        cn => SerialPortPool.Rent(cn.Str(FieldPort, "COM4"), (int)cn.Num(FieldBaud, 19200));
+    /// <summary>
+    /// 测试用：换掉串口池，假从站/假总线整链回归。
+    /// 兜底口名是这台驱动的缺省（COM8）——不是写死的 COM4：刚拖上台面、属性栏还没打开过的探头，
+    /// 连接参数是空的，从前就按 COM4 去开，属性栏里明明显示 COM8（Xvfb 截图踩到）。
+    /// </summary>
+    public Func<ParameterSet, SharedSerial> SerialFactory { get; set; }
 
     public async Task<ProbeResult> ProbeAsync(ParameterSet connection, CancellationToken ct)
     {
@@ -280,8 +285,10 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
         var shown = $"原始值 {x.Raw} = {v.ToString($"F{decimals}", CultureInfo.InvariantCulture)}{unit}";
         if (YudianClient.RangeOf(c.Inp) is not var (lo, hi)) return shown;
         string F(double d) => d.ToString($"F{decimals}", CultureInfo.InvariantCulture);
-        return v < lo ? $"{shown}，低于量程下限 {F(lo)}"
-             : v > hi ? $"{shown}，高于量程上限 {F(hi)}"
+        // 现场两眼：-202.15（下限之下）是 RT 与 IN 短在一起时量到 ≈0 Ω；311.11（上限之上）是模块量到了
+        // 开路一样大的电阻——线断、没接探头，或探头根本不是 Pt100（Pt1000 阻值是它 10 倍）
+        return v < lo ? $"{shown}，低于量程下限 {F(lo)}：模块量到的电阻接近 0——短路、RT 与 IN 接错位，或探头是热电偶"
+             : v > hi ? $"{shown}，高于量程上限 {F(hi)}：模块量到的电阻像开路——线断、没接探头，或探头不是 Pt100（Pt1000 阻值是 10 倍，J7 不支持）"
              : $"{shown}，在量程内——标志可能锁着没清";
     }
 
