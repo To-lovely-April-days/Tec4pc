@@ -65,6 +65,16 @@ public sealed class HmiVesselView : Control
         AvaloniaProperty.Register<HmiVesselView, string>(nameof(PhText), "—");
     public string PhText { get => GetValue(PhTextProperty); set => SetValue(PhTextProperty, value); }
 
+    public static readonly StyledProperty<string> TjTextProperty =
+        AvaloniaProperty.Register<HmiVesselView, string>(nameof(TjText), "—");
+    /// <summary>夹套实测（TT 那只变送器的读数气泡；用户要的：夹套温度得在图上实时看得见）。</summary>
+    public string TjText { get => GetValue(TjTextProperty); set => SetValue(TjTextProperty, value); }
+
+    public static readonly StyledProperty<string?> TjSetTextProperty =
+        AvaloniaProperty.Register<HmiVesselView, string?>(nameof(TjSetText));
+    /// <summary>夹套气泡的第三行（「设定 65.0 ℃」/「跟随 Tr+5 K」）；null = 夹套不是控温对象，气泡矮一档、描边灰。</summary>
+    public string? TjSetText { get => GetValue(TjSetTextProperty); set => SetValue(TjSetTextProperty, value); }
+
     public static readonly StyledProperty<int> ThermProperty =
         AvaloniaProperty.Register<HmiVesselView, int>(nameof(Therm));
     /// <summary>升温/降温状态（原型 v60）：1 = 升温夹套染暖色，-1 = 降温染冷色，其余原色。</summary>
@@ -74,7 +84,7 @@ public sealed class HmiVesselView : Control
     {
         AffectsRender<HmiVesselView>(RunningProperty, RpmProperty, PaddlePhaseProperty,
             ShowTrProperty, ShowPhProperty, TrTextProperty, TrSetTextProperty, PhTextProperty,
-            ThermProperty);
+            TjTextProperty, TjSetTextProperty, ThermProperty);
     }
 
     public HmiVesselView() => ClipToBounds = true;
@@ -210,6 +220,19 @@ public sealed class HmiVesselView : Control
         ctx.DrawLine(ln15, new Point(29, 205.5), new Point(23, 205.5));
         ctx.DrawEllipse(Brushes.White, ln15, new Point(15, 205.5), 8, 8);
         Text(ctx, "TT", 15, 205.5, 7.5, Mut);
+
+        // ── 夹套读数气泡：锚在 TT 变送器上方（原型没有这一只；用户要的：夹套温度实时在图上）。
+        //    夹套是控温对象（Tj / 蒸回流跟随）时多一行「设定 / 跟随」、描边蓝，跟 Tr 气泡一个规矩
+        {
+            var tjTgt = TjSetText is not null;
+            double top = tjTgt ? 150 : 162;
+            ctx.DrawLine(ln15, new Point(15, 196), new Point(15, 197.5));
+            ctx.DrawRectangle(Brushes.White, P(tjTgt ? Blue : Mut2, 2),
+                new RoundedRect(new Rect(-20, top, 60, 196 - top), 3));
+            Text(ctx, "夹套 Tj", 10, top + 8, 8, Mut);
+            Text(ctx, TjText, 10, top + 22, 13, Ink);
+            if (tjTgt) Text(ctx, TjSetText!, 10, top + 37, 8.5, Mut);   // 「跟随 Tr+5.0 K」这一行最长，留点边
+        }
 
         // ── 台面带上的大号状态图标（原型 v60：translate(194,230) scale(2)，
         //    暗底用亮一档的配色；线宽随组一起放大，跟 SVG 一个缩法）──

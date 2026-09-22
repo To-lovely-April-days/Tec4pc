@@ -1196,11 +1196,21 @@ public sealed class HmiZoneViewModel : ViewModelBase
     public bool ByDur => RampBy == "dur" && !ModeFollow;
 
     public string TrText => F1(TrVal) + (TrVal is null ? "" : " ℃");
-    // 釜上的「设定」牌念**已下发**的值：待下发的改动只亮在输入格的琥珀色里，
-    // 别让图上的数抢在「下发设定值」之前变。蒸回流没有 Tr 目标（Tr 由沸点决定），
-    // 牌子念的是跟随差
+    // 釜上的「设定」牌念**回路真正在追的值**：回路开着就读温控器此刻的设定值（ITemperatureStatus），
+    // 关着才念面板记的那个数。待下发的改动只亮在输入格的琥珀色里，别让图上的数抢在「下发设定值」
+    // 之前变。从前念的是面板按模式各记一份的数：在 Tj 模式下发了 −10、切到 Tr 模式牌子写「设定 20」，
+    // 温控器明明在追 −10（用户踩到）。蒸回流没有 Tr 目标（Tr 由沸点决定），牌子念的是跟随差
     public string? TrSetText => Mode == "Tj" ? null
-        : ModeFollow ? $"ΔT {F1(Sets["dt"])} K" : $"设定 {F1(Sets["tr"])} ℃";
+        : ModeFollow ? $"ΔT {F1(Sets["dt"])} K" : $"设定 {F1(LoopSetpoint ?? Sets["tr"])} ℃";
+
+    /// <summary>回路此刻真正在追的设定值；回路关着 / 设备不报就是 null。</summary>
+    private double? LoopSetpoint
+        => Temp is ITemperatureStatus { Active: true, Setpoint: { } sp } ? sp : null;
+
+    // 夹套气泡（用户要的：夹套温度实时在图上）。夹套是控温对象时多一行设定 / 跟随
+    public string TjText => F1(TjVal) + (TjVal is null ? "" : " ℃");
+    public string? TjSetText => Mode == "Tj" ? $"设定 {F1(LoopSetpoint ?? Sets["tj"])} ℃"
+        : ModeFollow ? $"跟随 Tr+{F1(Sets["dt"])} K" : null;
     public string PhText => PhVal is { } p ? p.ToString("0.00") : "—";
     public bool VesselRunning => TempOn || EngineRunning;
 
@@ -1316,8 +1326,20 @@ public sealed class HmiZoneViewModel : ViewModelBase
             return;
         }
         if (Mode == m) return;
+        var from = Mode;
         Mode = m;
         Log("模式", "切换到 " + ModeName);
+        // 温控开着换模式：**目标温度带过去**，别让换个模式把温度改了。Tr / Tj 两个模式在面板上
+        // 各记一份目标，从前换模式是按新模式那份重新下发——在 Tj 下发了 −10、切到 Tr 就把
+        // 缺省的 20 发给了温控器（用户踩到）。换的是控温对象和判到达的依据，不是温度
+        if (TempOn && m is "Tr" or "Tj" && from is "Tr" or "Tj")
+        {
+            var carry = LoopSetpoint ?? Pv(from == "Tj" ? "tj" : "tr");
+            var key = m == "Tj" ? "tj" : "tr";
+            Sets[key] = carry;
+            Pending.Remove(key);
+            Log("模式", $"目标 {Txt.Fx(carry)} ℃ 带到 {ModeName}");
+        }
         if (TempOn) IssueTemp();
         RaiseZone();
     }
@@ -1346,6 +1368,13 @@ public sealed class HmiZoneViewModel : ViewModelBase
     private void IssueTemp()
     {
         if (Temp is not { } t) return;
+        // 发出去的就是要记下的：温控开关 / 换模式 / 换到达方式这几条路都从这里下发，用的是
+        // 「待下发优先」的 Pv()。发了却还留在待下发里，格子亮着琥珀色、釜上的牌子写着旧数，
+        // 温控器已经在追新数（用户踩到）——温度这几项一并落成设定值
+        var moved = new List<string>();
+        foreach (var k in new[] { "tr", "tj", "rate", "dur", "dt" })
+            if (Pending.Remove(k, out var v)) { Sets[k] = v; moved.Add($"{k} = {Txt.Fx(v)}"); }
+        if (moved.Count > 0) Log("下发", $"随温控一并下发：{string.Join("，", moved)}");
         if (Mode == "TrTj")
         {
             IssueReflux(t);
@@ -2607,6 +2636,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
 
     private void RaiseZone() => RaiseAll(
         nameof(TrVal), nameof(TjVal), nameof(TrText), nameof(TrSetText), nameof(PhText),
+        nameof(TjText), nameof(TjSetText),
         nameof(VesselRunning), nameof(RpmVal), nameof(TjBox), nameof(TjNote), nameof(TjHi),
         nameof(DtBox), nameof(DtNote), nameof(RpmBox), nameof(RpmOff), nameof(RpmNote),
         nameof(DoseBox), nameof(DoseOff), nameof(DoseNote), nameof(TcBox), nameof(TcNote),

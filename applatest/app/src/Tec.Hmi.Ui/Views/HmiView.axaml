@@ -159,6 +159,7 @@
             PaddlePhase="{Binding PaddlePhase}" Therm="{Binding Therm}"
             ShowTr="{Binding TrOn}" ShowPh="{Binding PhOn}"
             TrText="{Binding TrText}" TrSetText="{Binding TrSetText}"
+            TjText="{Binding TjText}" TjSetText="{Binding TjSetText}"
             PhText="{Binding PhText}" />
       </DockPanel>
     </DataTemplate>
@@ -493,6 +494,7 @@
                       PaddlePhase="{Binding Cur.PaddlePhase}" Therm="{Binding Cur.Therm}"
                       ShowTr="{Binding Cur.TrOn}" ShowPh="{Binding Cur.PhOn}"
                       TrText="{Binding Cur.TrText}" TrSetText="{Binding Cur.TrSetText}"
+                      TjText="{Binding Cur.TjText}" TjSetText="{Binding Cur.TjSetText}"
                       PhText="{Binding Cur.PhText}" />
                 </Border>
               </StackPanel>
