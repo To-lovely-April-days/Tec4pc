@@ -61,14 +61,44 @@ public class YudianClientTests
     {
         var (dev, yd) = Rig();
         MakeJ7(dev);
+        dev.Regs[1536] = unchecked((ushort)-2022);   // CH1 −202.2：量程 −200 之下（短路时的码）
         dev.Regs[1664] = 0x0102;   // CH1 oral（断线），CH2 HA 上限
         dev.Regs[1665] = 0x0400;   // CH3 LA 下限
         await yd.InitAsync(YudianKind.Thermal);
         var r = await yd.ReadAsync();
         Assert.True(r[0].SensorFault);
+        Assert.False(r[0].AlarmLatched);
         Assert.True(r[1].AlarmHigh);
         Assert.True(r[2].AlarmLow);
         Assert.False(r[3].SensorFault || r[3].AlarmHigh || r[3].AlarmLow);
+    }
+
+    [Fact]
+    public async Task 报警位锁着但读数在量程内_值照常用_只挂latched()
+    {
+        // 现场踩到：TEC 满功率时干扰让模块瞬间报了一次断线，AAF 不自动复位把标志锁住，
+        // 之后 PV 明明正常，上位机却按 Bad 发，Tr 曲线再也没回来
+        var (dev, yd) = Rig();
+        MakeJ7(dev);
+        dev.Regs[1536] = unchecked((ushort)-185);    // −18.5 ℃，量程内
+        dev.Regs[1664] = 0x0100;                     // CH1 oral 挂着
+        await yd.InitAsync(YudianKind.Thermal);
+        var r = await yd.ReadAsync();
+        Assert.False(r[0].SensorFault);
+        Assert.True(r[0].AlarmLatched);
+        Assert.Equal(-18.5, r[0].Value);
+    }
+
+    [Fact]
+    public async Task 没挂报警位但读数在量程外_照样Bad()
+    {
+        var (dev, yd) = Rig();
+        MakeJ7(dev);
+        dev.Regs[1537] = 31111;                      // CH2 两位小数：311.11，开路的码，量程上限 300
+        await yd.InitAsync(YudianKind.Thermal);
+        var r = await yd.ReadAsync();
+        Assert.True(r[1].SensorFault);
+        Assert.False(r[1].AlarmLatched);
     }
 
     [Fact]

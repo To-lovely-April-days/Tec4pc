@@ -33,6 +33,24 @@ public sealed class SharedSerial : IDisposable
         if (!Transport.IsOpen) Transport.Open();
     }
 
+    /// <summary>
+    /// 口子中途掉了之后重开（LinkRecovery 调）。共口的另一台也在用这条线，所以拿着总线锁做——
+    /// 别在人家一问一答中间把口子抽掉。真串口换个新 SerialPort；假链路（测试）关了再开。
+    /// </summary>
+    public void Reopen()
+    {
+        BusLock.Wait();
+        try
+        {
+            if (Transport is SerialPortTransport sp) sp.Reopen();
+            else { try { Transport.Close(); } catch { } Transport.Open(); }
+        }
+        finally
+        {
+            BusLock.Release();
+        }
+    }
+
     /// <summary>归还（不是关口子）：引用数落零才真正关串口。</summary>
     public void Dispose() => _release?.Invoke();
 }

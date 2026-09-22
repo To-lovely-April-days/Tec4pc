@@ -232,12 +232,14 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
             if (id.UsableChannels.Count == 0)
                 return new ProbeResult(false, $"{readout}——四路里没有一路是{kindName}口，这支探头读不了它{hint}｜模块参数：{id.Dump}");
 
-            // 能读的几路全报断线/超量程：链路是通的，但一个数都拿不到——把该查的说在这里，别让人对着「已连接」发呆
+            // 能读的几路全报断线/超量程：链路是通的，但一个数都拿不到——把该查的说在这里，别让人对着「已连接」发呆。
+            // 读数都在量程内、只是报警字里「输入故障」位全挂着（刚写完 InP 没重上电就是这样）：值照常用，排查话照样说
             var allFault = id.UsableChannels.All(n => now[n - 1].SensorFault);
-            var fault = allFault
-                ? $"；能读的几路全报断线/超量程——{FaultHint}" +
-                  (id.AnyFaultLatched ? "；AAF 里「输入故障报警不自动复位」开着（bit0=1），断线标志锁住要手动清（说明书 §5.3）" : "")
-                : "";
+            var allFlag = !allFault && id.UsableChannels.All(n => now[n - 1].SensorFault || now[n - 1].AlarmLatched);
+            var latched = id.AnyFaultLatched ? "；AAF 里「输入故障报警不自动复位」开着（bit0=1），断线标志锁住要手动清（说明书 §5.3）" : "";
+            var fault = allFault ? $"；能读的几路全报断线/超量程——{FaultHint}{latched}"
+                      : allFlag ? $"；能读的几路报警字里「输入故障」位都挂着（读数在量程内，照常用）——{FaultHint}{latched}"
+                      : "";
             return new ProbeResult(true, $"{readout}——{kindName}口是 {id.UsableList}{fault}｜模块参数：{id.Dump}") { DetectedChannels = 1 };
         }
         catch (Exception ex)
@@ -271,6 +273,7 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
                 : !c.Usable ? $" 原始值 {x.Raw}{fault}"
                 : x.SensorFault ? $" 断线/超量程（{FaultDetail(c, x, decimals)}）"
                 : x.Value is { } v ? " " + v.ToString($"F{decimals}", CultureInfo.InvariantCulture) + (_tag.Unit.Length > 0 ? $" {_tag.Unit}" : "")
+                                     + (x.AlarmLatched ? "（「输入故障」位挂着，读数在量程内——标志可能锁着没清）" : "")
                 : " 无读数";
             parts[i] = $"CH{i + 1} {c.TypeName}{value}";
         }
@@ -279,7 +282,8 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
 
     /// <summary>
     /// 「原始值 -20215 = -202.15 ℃，低于量程下限 -200.00」——断线/超量程那一路的原始值拿说明书 §1.3 的量程对一下：
-    /// 压在下限之下 / 顶在上限之上是模块量到了不像样的东西；落在量程内的多半是标志锁着没清。
+    /// 压在下限之下 / 顶在上限之上是模块量到了不像样的东西。断线/超量程本身就是按量程判的，
+    /// 落在量程内的走不到这里（那是 AlarmLatched，Readout 里单独标）；量程定不出来的规格才按 oral 位判、只印原始值。
     /// </summary>
     internal string FaultDetail(YudianChannelSetup c, YudianReading x, int decimals)
     {
@@ -292,7 +296,7 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
         // 开路一样大的电阻——线断、没接探头，或探头根本不是 Pt100（Pt1000 阻值是它 10 倍）
         return v < lo ? $"{shown}，低于量程下限 {F(lo)}：模块量到的电阻接近 0——短路、RT 与 IN 接错位，或探头是热电偶"
              : v > hi ? $"{shown}，高于量程上限 {F(hi)}：模块量到的电阻像开路——线断、没接探头，或探头不是 Pt100（Pt1000 阻值是 10 倍，J7 不支持）"
-             : $"{shown}，在量程内——标志可能锁着没清";
+             : shown;
     }
 
     public async Task<IDeviceSession> OpenAsync(ParameterSet connection, DriverContext ctx, CancellationToken ct)
@@ -350,6 +354,9 @@ public sealed class YudianProbeSession : IDeviceSession
     private Task? _pollTask;
     private int _fails;
     private bool _faultHinted;
+    private bool _latchHinted;
+    /// <summary>串口中途掉了之后的自愈：读失败按规矩关掉重开口子（LinkRecovery 的说明）。</summary>
+    private readonly LinkRecovery _recover;
 
     internal YudianProbeSession(SharedSerial link, YudianClient client, YudianKind kind,
                                 TagDescriptor tag, DriverContext ctx, int? moduleChannel, TimeSpan period)
@@ -363,7 +370,11 @@ public sealed class YudianProbeSession : IDeviceSession
         _period = period;
         var chs = ctx.ChannelNumbers.Count > 0 ? ctx.ChannelNumbers : new[] { 0 };
         _sensors = chs.Select(c => new ProbeSensor(c, tag)).ToArray();
+        _recover = new LinkRecovery($"{ctx.InstanceId} 宇电模块", link.Reopen, (l, t) => _ctx.Log?.Invoke(l, t));
     }
+
+    /// <summary>重开过几次口子（测试用）。</summary>
+    internal int LinkReopens => _recover.Reopens;
 
     public string InstanceId => _ctx.InstanceId;
 
@@ -503,7 +514,8 @@ public sealed class YudianProbeSession : IDeviceSession
         try
         {
             var r = await _client.ReadAsync(ct).ConfigureAwait(false);
-            if (_fails > 0) { _ctx.Log?.Invoke("info", $"{InstanceId} 宇电模块恢复"); _fails = 0; }
+            if (_fails > 0) { _ctx.Log?.Invoke("info", $"{InstanceId} 宇电模块恢复（读失败 {_fails} 拍后）"); _fails = 0; }
+            _recover.Ok();
             var x = r[_moduleCh - 1];
             if (x.Value is not { } v) return;      // 配置问题在 Init 就报了；这里没值就不发
             var at = _ctx.Clock();
@@ -512,12 +524,26 @@ public sealed class YudianProbeSession : IDeviceSession
             {
                 // 每次进入断线只说一遍：说清原始值和该查什么；恢复了再断再说
                 _faultHinted = true;
-                _ctx.Log?.Invoke("warn", $"{InstanceId} 宇电模块 CH{_moduleCh} 断线/超量程（原始值 {x.Raw}），读数按 Bad 发——{YudianProbeDriverBase.FaultHint}");
+                _ctx.Log?.Invoke("warn", $"{InstanceId} 宇电模块 CH{_moduleCh} 断线/超量程（读数 {v}，原始值 {x.Raw}），按 Bad 发——{YudianProbeDriverBase.FaultHint}");
             }
             else if (!x.SensorFault && _faultHinted)
             {
                 _faultHinted = false;
                 _ctx.Log?.Invoke("info", $"{InstanceId} 宇电模块 CH{_moduleCh} 传感器恢复");
+            }
+            // 报警字里的 oral 位锁着、读数却在量程内：值照常用，标志单独说一遍——从前这时整路按 Bad 发，
+            // 面板上 Tr 一断就再也不回来（现场踩到）
+            if (x.AlarmLatched && !_latchHinted)
+            {
+                _latchHinted = true;
+                _ctx.Log?.Invoke("warn", $"{InstanceId} 宇电模块 CH{_moduleCh} 报警字里「输入故障」位挂着，但读数 {v} 在量程内——按 Good 发。" +
+                    "这个标志多半是 AAF「不自动复位」锁住的（说明书 §5.3），或干扰瞬间断线又回来了；" +
+                    "要清：模块面板上复位一次，或把那一组 AAF 的 bit0 关掉");
+            }
+            else if (!x.AlarmLatched && _latchHinted)
+            {
+                _latchHinted = false;
+                _ctx.Log?.Invoke("info", $"{InstanceId} 宇电模块 CH{_moduleCh} 报警标志已清");
             }
             foreach (var s in _sensors)
             {
@@ -534,6 +560,8 @@ public sealed class YudianProbeSession : IDeviceSession
                 var why = ex is IOException or UnauthorizedAccessException ? SerialFault.Explain(ex, _link.PortName) : ex.Message;
                 _ctx.Log?.Invoke("warn", $"{InstanceId} 宇电模块读失败：{why}（连续失败只报第一次）");
             }
+            // 口子死了就重开（现场：降温跑到 48 min 突然读不出来，之后再也没回来）
+            _recover.Failed(ex);
         }
     }
 

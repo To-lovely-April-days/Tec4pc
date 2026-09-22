@@ -45,6 +45,15 @@ public sealed class Rd105ModbusBridge : ISerialTransport
     public void Open() => _serial.Open();
     public void Close() => _serial.Close();
 
+    /// <summary>口子中途掉了之后重开（LinkRecovery 调）：套着的那条真串口换个新的。</summary>
+    public void Reopen()
+    {
+        if (_serial is SerialPortTransport sp) sp.Reopen();
+        else { try { _serial.Close(); } catch { } _serial.Open(); }
+        _tx.Clear();
+        _rx.Clear();
+    }
+
     public void DiscardInput()
     {
         _tx.Clear();

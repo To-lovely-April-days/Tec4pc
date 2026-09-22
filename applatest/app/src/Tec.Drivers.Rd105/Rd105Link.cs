@@ -30,6 +30,18 @@ public sealed class Rd105Link : IDisposable
         if (!_transport.IsOpen) _transport.Open();
     }
 
+    /// <summary>口子中途掉了之后重开（Rd105Session 轮询连着报错时经 LinkRecovery 调）。
+    /// Modbus 桥套着的是里面那条真串口；假链路（测试）关了再开。</summary>
+    public void Reopen()
+    {
+        switch (_transport)
+        {
+            case SerialPortTransport sp: sp.Reopen(); break;
+            case Rd105ModbusBridge b: b.Reopen(); break;
+            default: try { _transport.Close(); } catch { } _transport.Open(); break;
+        }
+    }
+
     public void Dispose()
     {
         Controller.Dispose();

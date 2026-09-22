@@ -71,10 +71,15 @@ public sealed record YudianIdentity(
 
 /// <summary>
 /// 一路的一次读数。Raw 是 PV 寄存器的原样（有符号）——这一路的规格认不出来时值是 null，原始数照样给，
-/// 让人自己看它像不像温度；SensorFault = 报警状态里的 oral 位（断线/超量程），值不可信。
+/// 让人自己看它像不像温度。
+/// SensorFault = 值不可信：换算出来的数在这种输入的量程之外（断线 / 短路时寄存器里是 311.11、−202.15
+/// 这类量程外的码），或者量程定不出来而报警字里的 oral 位挂着。
+/// AlarmLatched = 报警字里 oral 位挂着、值却在量程内：标志锁着没清（AAF 不自动复位，说明书 §5.3）或
+/// 干扰瞬间断线又回来了——值照常用，标志单独报出来。从前只看 oral 位，标志一锁，Tr 就永远 Bad（现场踩到）。
 /// </summary>
 public readonly record struct YudianReading(
-    double? Value, short Raw, bool SensorFault, bool AlarmHigh, bool AlarmLow, string? Problem);
+    double? Value, short Raw, bool SensorFault, bool AlarmHigh, bool AlarmLow, string? Problem,
+    bool AlarmLatched = false);
 
 /// <summary>
 /// 宇电 AI-8848G D91（4 路）访问层。J7 / J4 除输入规格外寄存器完全一致，
@@ -99,6 +104,7 @@ public sealed class YudianClient
 
     private readonly ModbusRtuClient _bus;
     private YudianIdentity? _id;
+    private YudianKind _kind;
 
     public YudianClient(ModbusRtuClient bus) => _bus = bus;
 
@@ -141,6 +147,7 @@ public sealed class YudianClient
                              dpt);
         }
 
+        _kind = kind;
         _id = new YudianIdentity(glob[3], glob[2], dpt, chans)
         {
             RawIn = inRegs,
@@ -301,9 +308,16 @@ public sealed class YudianClient
                 outs[i] = new YudianReading(null, raw, fault, ha, la, ch.Problem);
                 continue;
             }
-            // 断线时寄存器里是残值，照样给出去但把 fault 挂上——
-            // 由上层发成 Quality.Bad，跟 RD105 传感器越限一个待遇
-            outs[i] = new YudianReading(raw / div, raw, fault, ha, la, null);
+            // 值可不可信按**量程**判，不按报警字里的 oral 位判：断线 / 短路时寄存器里是量程外的码
+            // （311.11、−202.15 那种），照样给出去但把 fault 挂上，由上层发成 Quality.Bad。
+            // oral 位只说「出过事」——AAF 不自动复位时它锁住不清，干扰瞬间断线又回来也会留下它；
+            // 值在量程内就照常用，把「标志锁着」单独报出来（现场踩到：标志一锁 Tr 永远 Bad）。
+            // 量程定不出来的规格退回看 oral 位
+            var value = raw / div;
+            var range = _kind == YudianKind.Thermal ? RangeOf(ch.Inp)
+                      : ch.RangeLo is { } rl && ch.RangeHi is { } rh ? (rl, rh) : null;
+            var bad = range is var (lo, hi) ? value < lo || value > hi : fault;
+            outs[i] = new YudianReading(value, raw, bad, ha, la, null, AlarmLatched: fault && !bad);
         }
         return outs;
     }

@@ -362,10 +362,18 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         var at = _ctx.Clock();
         RefreshSwitches();
 
-        // dT：外部喂进来的 Tr − 本机的 Tj。两头都有才发，缺哪头都不编
+        // dT：外部喂进来的 Tr − 本机的 Tj。两头都有才发，缺哪头都不编。
+        // Tr 超过新鲜度窗没有新数（探头会话死了 / 口子掉了）就把里面那路的 Tr 置成无效——
+        // 判到达、面板读数、dT 全都别再吃残值（现场：探头口子掉了之后面板上 Tr 一直停在旧数）
         for (var w = 0; w < 2; w++)
         {
             var t = _rd.TempOf(w);
+            if (!TrValid(w) && !double.IsNaN(t.CurrentReactor))
+            {
+                t.FeedReactor(double.NaN);
+                _ctx.Log?.Invoke("warn", $"{InstanceId} 工位 {AB(w)} 釜内 Tr 超过 {TrFreshWindow.TotalSeconds:0} s 没有新数" +
+                    "（探头会话没出数？）——按无效处置：判到达退回按夹套，面板上显示「—」，有新数自动恢复");
+            }
             if (!double.IsNaN(t.CurrentReactor) && !double.IsNaN(t.CurrentJacket))
                 Push(t.Channel, "dT", t.CurrentReactor - t.CurrentJacket, at, Quality.Good);
         }

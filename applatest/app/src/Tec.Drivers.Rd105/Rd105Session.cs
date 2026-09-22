@@ -50,10 +50,18 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
         _link.Controller.SnapshotReceived += OnSnapshot;
         _link.Controller.ErrorCodeReceived += OnErrorCode;
         _link.Controller.PollFaulted += OnFaulted;
+        _recover = new LinkRecovery($"{ctx.InstanceId} RD105", link.Reopen, (l, t) => _ctx.Log?.Invoke(l, t));
 
         // 参数面板（IDeviceSettings）：温控器自己的寄存器——最大功率、两路电流、PID、自整定……
         _settings = new Rd105Settings(link, ctx.Config, ctx.Log);
     }
+
+    /// <summary>串口中途掉了之后的自愈（LinkRecovery 的规矩）；轮询连着报错时调。</summary>
+    private readonly LinkRecovery _recover;
+    private int _pollFails;
+
+    /// <summary>重开过几次口子（测试用）。</summary>
+    internal int LinkReopens => _recover.Reopens;
 
     public string InstanceId => _ctx.InstanceId;
 
@@ -158,6 +166,13 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
     private void OnSnapshot(TecSnapshot s)
     {
         var at = DateTimeOffset.Now;
+        if (_pollFails > 0)
+        {
+            _ctx.Log?.Invoke("info", $"{InstanceId} RD105 恢复（轮询失败 {_pollFails} 拍后）");
+            _pollFails = 0;
+            _recover.Ok();
+            if (State == DeviceState.Faulted) State = DeviceState.Ready;
+        }
         _temps[0].Observe(s.Temp1C);
         _temps[1].Observe(s.Temp2C);
 
@@ -253,8 +268,11 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
     /// </summary>
     private void OnFaulted(Exception ex)
     {
-        _ctx.Log?.Invoke("error", $"{InstanceId} 轮询异常：{ex.Message}");
+        // 连着失败只报第一次（从前每拍一条，一分钟刷一百多行）；口子死了就重开（LinkRecovery）
+        if (_pollFails++ == 0)
+            _ctx.Log?.Invoke("error", $"{InstanceId} 轮询异常：{ex.Message}（连续失败只报第一次）");
         State = DeviceState.Faulted;
+        _recover.Failed(ex);
     }
 
     public async ValueTask DisposeAsync()

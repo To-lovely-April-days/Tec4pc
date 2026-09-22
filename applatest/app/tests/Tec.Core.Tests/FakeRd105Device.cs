@@ -46,12 +46,16 @@ public sealed class FakeRd105Device : ISerialTransport
     // ── ISerialTransport ─────────────────────────────────────────────
 
     public bool IsOpen { get; private set; }
-    public void Open() => IsOpen = true;
+    /// <summary>置 true = 口子的句柄死了：一写就抛 IO 错，关掉重开才活过来。</summary>
+    public bool Dead { get; set; }
+    public int Opens { get; private set; }
+    public void Open() { IsOpen = true; Dead = false; Opens++; }
     public void Close() => IsOpen = false;
     public void DiscardInput() => _tx.Clear();
 
     public void Write(byte[] buffer, int offset, int count)
     {
+        if (Dead) throw new IOException("函数不正确。");
         if (!IsOpen) throw new InvalidOperationException("串口没打开");
         for (var i = 0; i < count; i++)
         {

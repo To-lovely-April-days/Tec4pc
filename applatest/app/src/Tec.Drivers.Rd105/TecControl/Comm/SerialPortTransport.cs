@@ -55,6 +55,15 @@ public sealed class SerialPortTransport : ISerialTransport
         if (_port.IsOpen) _port.Close();
     }
 
+    /// <summary>【本地改动】口子中途掉了（USB 转串被拔插 / 供电抖了一下）之后的自愈：把旧的 SerialPort
+    /// 扔掉换个新的再开——旧句柄已经死了，Close 多半会抛，抛了也照扔。Tec.Drivers.Rd105.LinkRecovery 调。</summary>
+    public void Reopen()
+    {
+        try { _port.Dispose(); } catch { }
+        _port = Create();
+        _port.Open();
+    }
+
     public void DiscardInput()
     {
         if (_port.IsOpen) _port.DiscardInBuffer();

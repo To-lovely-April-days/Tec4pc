@@ -1290,6 +1290,63 @@ public sealed class DualStationDriverTests
         Assert.Equal(0, b.Rd.Get(1, "ENABLE"));            // 没人要控温，输出照旧关着
     }
 
+    // ── 串口中途掉了：自愈 ─────────────────────────────────────────────
+
+    [Fact]
+    public async Task RD105串口中途死了_轮询报错只记一次_立刻重开_口子回来就恢复()
+    {
+        var b = Rig();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
+        await s.StartAsync(CancellationToken.None);
+        var t = Temp(s, 0);
+        await WaitJacket(t, 25.0);
+
+        b.Rd.Dead = true;                                  // 句柄死了：一写就抛 IO 错
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (DateTime.UtcNow < deadline && b.Rd.Dead) await Task.Delay(50);   // 轮询撞上 → 重开 → 假口子重开即活
+        Assert.False(b.Rd.Dead, "轮询报错后该把口子关掉重开");
+
+        b.Rd.Set(1, "TCADJTEMP", 30_00000);
+        await WaitJacket(t, 30.0);                         // 重开之后接着出数
+        await s.StopAsync(CancellationToken.None);
+        lock (b.Logs)
+        {
+            Assert.Single(b.Logs, l => l.Text.Contains("轮询异常"));           // 连着失败只报第一次
+            Assert.Contains(b.Logs, l => l.Text.Contains("RD105 串口已关掉重开"));
+            Assert.Contains(b.Logs, l => l.Text.Contains("RD105 恢复"));
+        }
+    }
+
+    [Fact]
+    public async Task 外部Tr超过新鲜度窗没有新数_按无效处置_dT不再发_有新数自动恢复()
+    {
+        var b = Rig();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
+        await s.StartAsync(CancellationToken.None);
+        var t = Temp(s, 0);
+        await WaitJacket(t, 25.0);
+        Feed(s, 1, 30.0);
+        var got = new List<Sample>();
+        using var sub = s.Samples.Subscribe(new Collect(x => { lock (got) got.Add(x); }));
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+        Assert.Equal(30.0, t.CurrentReactor);
+        lock (got) Assert.Contains(got, x => x is { Tag: "dT", Channel: 1 });
+
+        // 探头会话死了：11 s 没有新的 Tr（现场：口子掉了之后面板上 Tr 一直停在旧数、dT 还在按残值算）
+        b.Now = b.Now.AddSeconds(11);
+        lock (got) got.Clear();
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+        Assert.True(double.IsNaN(t.CurrentReactor));
+        lock (got) Assert.DoesNotContain(got, x => x.Tag == "dT");
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("没有新数") && l.Text.Contains("按无效处置"));
+
+        Feed(s, 1, 31.0);                                  // 口子回来了
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+        await s.StopAsync(CancellationToken.None);
+        Assert.Equal(31.0, t.CurrentReactor);
+        lock (got) Assert.Contains(got, x => x.Tag == "dT");
+    }
+
     // ── 回路状态口子（ITemperatureStatus）：面板重开 / 程序重启后拿它对账 ──────────
 
     [Fact]

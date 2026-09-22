@@ -35,6 +35,11 @@ public sealed class YudianProbeDriverTests
     private static DriverContext Ctx(int channel, double moduleCh = 1)
         => Ctx(new[] { channel }, ParameterSet.Of((YudianProbeDriverBase.FieldModuleCh, moduleCh)));
 
+    /// <summary>单通道 + 把日志（级别，正文）收进列表。</summary>
+    private static DriverContext CtxLog(int channel, List<(string, string)> logs)
+        => Ctx(new[] { channel }, ParameterSet.Of((YudianProbeDriverBase.FieldModuleCh, 1d)),
+               (l, t) => { lock (logs) logs.Add((l, t)); });
+
     /// <summary>「宇电通道」不填——走缺省（跟工位走）。</summary>
     private static DriverContext CtxFollow(params int[] channels) => Ctx(channels, new ParameterSet());
 
@@ -276,7 +281,8 @@ public sealed class YudianProbeDriverTests
     [Fact]
     public async Task 现场第三眼_写完InP四路全报断线_测试连接说清重新上电和接法_轮询只警告一次()
     {
-        // 截图里那台：In 四路都用组 1，InP1 已写成 21，四路都挂着 oral
+        // 截图里那台：In 四路都用组 1，InP1 已写成 21，四路都挂着 oral——可读数 24.0~24.3 都在量程内：
+        // 值照常用（不按 Bad），标志挂着单独标出来，排查话（重上电 / 面板 / 接线）照样说
         var dev = new FakeModbusSlave();
         for (var i = 0; i < 4; i++) { dev.Regs[384 + i] = 1; dev.Regs[1536 + i] = (ushort)(240 + i); }
         dev.Regs[2048] = 21; dev.Regs[2128] = 1; dev.Regs[2131] = 8848;
@@ -285,8 +291,8 @@ public sealed class YudianProbeDriverTests
 
         var r = await drv.ProbeAsync(new ParameterSet(), CancellationToken.None);
         Assert.True(r.Success);                                            // 链路是通的
-        Assert.Contains("CH3 Pt100（InP=21） 断线/超量程（原始值 242 = 24.2 ℃，在量程内——标志可能锁着没清）", r.Message);
-        Assert.Contains("能读的几路全报断线/超量程——①每改一次 InP 都要把模块断电重上电", r.Message);
+        Assert.Contains("CH3 Pt100（InP=21） 24.2 ℃（「输入故障」位挂着，读数在量程内——标志可能锁着没清）", r.Message);
+        Assert.Contains("能读的几路报警字里「输入故障」位都挂着（读数在量程内，照常用）——①每改一次 InP 都要把模块断电重上电", r.Message);
         Assert.Contains("PT100 输入需要先接好线再重新上电", r.Message);
         Assert.Contains("②看模块自己的面板", r.Message);
         Assert.Contains("颜色相同（阻值小）的两根接 IN 和 COM、剩下一根接 RT", r.Message);
@@ -305,20 +311,30 @@ public sealed class YudianProbeDriverTests
         Assert.Contains("AAF=1/0/0/0", r2.Message);
         Assert.Contains("断线标志锁住要手动清", r2.Message);
 
-        // 轮询：断线只警告一次，恢复了记一笔，再断再警告
+        // 轮询：读数在量程内就按 Good 发；标志挂着只说一遍，清了记一笔，再挂再说
         var logs = new List<string>();
         await using var s = await drv.OpenAsync(new ParameterSet(),
             Ctx(new[] { 1 }, ParameterSet.Of((YudianProbeDriverBase.FieldModuleCh, "3")), (_, t) => { lock (logs) logs.Add(t); }), CancellationToken.None);
         var ps = (YudianProbeSession)s;
+        var got = new List<Sample>();
+        using var sub = s.Samples.Subscribe(new Collect(x => { lock (got) got.Add(x); }));
         await ps.PollOnceAsync(CancellationToken.None);
         await ps.PollOnceAsync(CancellationToken.None);
-        lock (logs) Assert.Single(logs, l => l.Contains("CH3 断线/超量程（原始值 242）") && l.Contains("断电重上电"));
+        lock (got) Assert.All(got, x => Assert.Equal(Quality.Good, x.Quality));
+        lock (logs) Assert.Single(logs, l => l.Contains("CH3 报警字里「输入故障」位挂着") && l.Contains("读数 24.2 在量程内"));
+        lock (logs) Assert.DoesNotContain(logs, l => l.Contains("断线/超量程"));
         dev.Regs[1665] = 0;
         await ps.PollOnceAsync(CancellationToken.None);
-        lock (logs) Assert.Contains(logs, l => l.Contains("CH3 传感器恢复"));
+        lock (logs) Assert.Contains(logs, l => l.Contains("CH3 报警标志已清"));
         dev.Regs[1665] = 0x0101;
         await ps.PollOnceAsync(CancellationToken.None);
-        lock (logs) Assert.Equal(2, logs.Count(l => l.Contains("CH3 断线/超量程")));
+        lock (logs) Assert.Equal(2, logs.Count(l => l.Contains("CH3 报警字里「输入故障」位挂着")));
+
+        // 真断线（读数压在量程之下）才按 Bad 发、才上「断线/超量程」那段话
+        dev.Regs[1538] = unchecked((ushort)-2022);
+        await ps.PollOnceAsync(CancellationToken.None);
+        lock (got) Assert.Equal(Quality.Bad, got[^1].Quality);
+        lock (logs) Assert.Single(logs, l => l.Contains("CH3 断线/超量程（读数 -202.2，原始值 -2022）") && l.Contains("断电重上电"));
     }
 
     // ── 现场第二眼：四路 InP 全是 51——Pt100 接上去读不了，模块没面板，改 InP 只能走总线 ──
@@ -506,6 +522,58 @@ public sealed class YudianProbeDriverTests
         await ((YudianProbeSession)s).PollOnceAsync(CancellationToken.None);
 
         lock (got) Assert.Equal(Quality.Bad, got.Single(x => x.Tag == "Tr").Quality);
+    }
+
+    [Fact]
+    public async Task 报警位锁着读数正常_按Good发_日志说一遍标志锁着()
+    {
+        var j7 = MakeJ7();
+        j7.Regs[1536] = unchecked((ushort)-185);         // −18.5 ℃，量程内
+        j7.Regs[1664] = 0x0100;                          // CH1 oral 锁着
+        var logs = new List<(string, string)>();
+        var drv = Wire(new YudianTrProbeDriver(), j7);
+
+        await using var s = await drv.OpenAsync(new ParameterSet(), CtxLog(1, logs), CancellationToken.None);
+        var got = new List<Sample>();
+        using var sub = s.Samples.Subscribe(new Collect(x => { lock (got) got.Add(x); }));
+        await ((YudianProbeSession)s).PollOnceAsync(CancellationToken.None);
+        await ((YudianProbeSession)s).PollOnceAsync(CancellationToken.None);
+
+        lock (got) Assert.All(got.Where(x => x.Tag == "Tr"), x => Assert.Equal(Quality.Good, x.Quality));
+        lock (logs) Assert.Single(logs, l => l.Item2.Contains("「输入故障」位挂着") && l.Item2.Contains("AAF"));
+    }
+
+    [Fact]
+    public async Task 串口中途死了_读失败立刻关掉重开_口子回来就接着出数()
+    {
+        // 现场：降温跑到 48 min，宇电那条口子突然读不出来，之后再也没回来——
+        // USB 转串被抖了一下旧句柄死了，每一拍都报错，从前没人去重开
+        var j7 = MakeJ7();
+        j7.Regs[1536] = 250;
+        var logs = new List<(string, string)>();
+        var drv = Wire(new YudianTrProbeDriver(), j7);
+        await using var s = await drv.OpenAsync(new ParameterSet(), CtxLog(1, logs), CancellationToken.None);
+        var ps = (YudianProbeSession)s;
+        var got = new List<Sample>();
+        using var sub = s.Samples.Subscribe(new Collect(x => { lock (got) got.Add(x); }));
+        await ps.PollOnceAsync(CancellationToken.None);
+        lock (got) Assert.Single(got);
+
+        j7.Dead = true;                                  // 句柄死了：一写就抛 IO 错
+        var opens = j7.Opens;
+        await ps.PollOnceAsync(CancellationToken.None);  // 这一拍读失败 → 立刻关掉重开（假口子重开即活）
+        Assert.Equal(1, ps.LinkReopens);
+        Assert.Equal(opens + 1, j7.Opens);
+        Assert.False(j7.Dead);
+        lock (logs)
+        {
+            Assert.Contains(logs, l => l.Item2.Contains("读失败") && l.Item2.Contains("函数不正确"));
+            Assert.Contains(logs, l => l.Item2.Contains("串口已关掉重开"));
+        }
+
+        await ps.PollOnceAsync(CancellationToken.None);  // 下一拍就出数了
+        lock (got) Assert.Equal(2, got.Count);
+        lock (logs) Assert.Contains(logs, l => l.Item2.Contains("宇电模块恢复"));
     }
 
     [Fact]
