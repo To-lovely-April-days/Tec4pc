@@ -1010,6 +1010,37 @@ public sealed class BenchViewModel : ViewModelBase
                 AttachX = ax, AttachY = ay
             });
         }
+
+        // 主机两个工位的**夹套温度**（用户要的：拖到台面上就得看见夹套温度，不用插任何探头——
+        // 夹套探头是 RD105 自带的那两路 TC）。读数框挂在机器下沿两个外角，引线从观察窗
+        // 底部外角引出去：工位 1 往左下、工位 2 往右下，中间给「R1 · CH1 · CH2」那两行名字留着。
+        // 观察窗几何取自 rd105.svg：窗 1 x 134..226、窗 2 x 334..426，y 352..460；机身 548 高
+        const double JW = 96, JH = 34;
+        foreach (var host in Devices)
+        {
+            if (!BenchDock.IsHost(host.ArtKey) || host.Lifted) continue;
+            var s = host.Width / BenchDock.MachineVw;
+            var chs = host.Channels.OrderBy(x => x).ToArray();     // 索引即工位号（与工位状态同一约定）
+            var left = host.X + BenchDock.NodePad;
+            var y = host.Y + BenchDock.NodePad + BenchDock.MachineVh * s + 6;
+            for (var slot = 0; slot < 2; slot++)
+            {
+                var ch = chs.ElementAtOrDefault(slot);
+                if (ch <= 0) continue;                              // 没绑通道就没有读数可言
+                var anchor = new Point(left + (slot == 0 ? 136 : 424) * s, host.Y + BenchDock.NodePad + 458 * s);
+                var x = slot == 0 ? left - 4 : left + host.Width + 4 - JW;
+                var ax = slot == 0 ? x + JW - 14 : x + 14;
+                Tags.Add(new ReadTagViewModel("tj", ch)
+                {
+                    X = x, Y = y, W = JW, H = JH,
+                    FontSize = 14,
+                    BorderW = new Thickness(1.6),
+                    Radius = new CornerRadius(4),
+                    AnchorX = anchor.X, AnchorY = anchor.Y,
+                    AttachX = ax, AttachY = y
+                });
+            }
+        }
         RefreshTagValues();
 
         foreach (var h in Devices)
@@ -1091,6 +1122,13 @@ public sealed class BenchViewModel : ViewModelBase
                     // 釜内探头没绑 / 没读到就是 NaN——印「—」，不印「NaN ℃」
                     if (ch.Capabilities.Get<ITemperatureControl>() is { } tc && !double.IsNaN(tc.CurrentReactor))
                         txt = $"{tc.CurrentReactor:F1} ℃";
+                }
+                else if (t.Kind == "tj")
+                {
+                    // 夹套：主机自己那一路 TC 的实测。没连上 / 没读到就是 NaN——名目留着，数印「—」
+                    txt = ch.Capabilities.Get<ITemperatureControl>() is { } tc && !double.IsNaN(tc.CurrentJacket)
+                        ? $"夹套 {tc.CurrentJacket:F1} ℃"
+                        : "夹套 —";
                 }
                 else
                 {
@@ -1440,7 +1478,7 @@ public sealed class ReadTagViewModel : ViewModelBase
         Channel = channel;
     }
 
-    /// <summary>tr / ph，决定去通道上读哪一路。</summary>
+    /// <summary>tr / ph / tj（主机工位的夹套），决定去通道上读哪一路。</summary>
     public string Kind { get; }
     public int Channel { get; }
 
