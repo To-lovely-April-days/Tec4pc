@@ -1,0 +1,8 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Tec.LimitTest"
+        x:Class="Tec.LimitTest.MainWindow"
+        Title="控温极限测试" Width="1320" Height="840" MinWidth="1100" MinHeight="700"
+        Background="White">
+  <local:MainView/>
+</Window>

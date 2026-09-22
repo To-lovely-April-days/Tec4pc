@@ -1,0 +1,161 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Tec.LimitTest.MainView"
+             Background="White" FontSize="13">
+
+  <!-- 三栏：左 = 设备串口；中 = 矩阵 + 按钮 + 等水提示 + 条件 + 参数；右 = 实时读数 + 日志。界面从简。 -->
+
+  <Grid ColumnDefinitions="360,*,420" RowDefinitions="Auto,*" Margin="12">
+
+    <DockPanel Grid.ColumnSpan="3" Margin="0,0,0,8">
+      <TextBlock Text="控温极限测试" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+      <TextBlock Text="{Binding ConnStatus}" Margin="16,0,0,0" Foreground="#555555" VerticalAlignment="Center" TextWrapping="Wrap"/>
+    </DockPanel>
+
+    <!-- 左栏：设备与串口 -->
+    <ScrollViewer Grid.Row="1" Grid.Column="0" Margin="0,0,8,0">
+      <StackPanel Spacing="6">
+        <TextBlock Text="设备与串口" FontWeight="Bold"/>
+        <TextBlock Text="{Binding BenchPathText}" TextWrapping="Wrap" Foreground="#777777" FontSize="11"/>
+        <TextBlock Text="{Binding PortsHint}" TextWrapping="Wrap" Foreground="#777777" FontSize="11"/>
+        <ItemsControl ItemsSource="{Binding Devices}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Border BorderBrush="#DDDDDD" BorderThickness="1" Padding="6" Margin="0,2">
+                <StackPanel Spacing="3">
+                  <TextBlock Text="{Binding Label}" FontWeight="Bold"/>
+                  <TextBlock Text="{Binding Status}" Foreground="#555555" FontSize="11" TextWrapping="Wrap"/>
+                  <ItemsControl ItemsSource="{Binding Fields}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <Grid ColumnDefinitions="120,*" Margin="0,1">
+                          <TextBlock Text="{Binding Label}" VerticalAlignment="Center" FontSize="12"/>
+                          <TextBox Grid.Column="1" Text="{Binding Value}" FontSize="12" MinHeight="26" Padding="6,3"/>
+                        </Grid>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <Button Content="导入台面…" Click="Import_Click" IsEnabled="{Binding CanConnect}"/>
+          <Button Content="保存并连接" Click="Connect_Click" IsEnabled="{Binding CanConnect}"/>
+        </StackPanel>
+        <TextBlock TextWrapping="Wrap" Foreground="#777777" FontSize="11" Margin="0,6,0,0"
+                   Text="串口只能一个程序占着：开这个工具前把工作站 / 设备 HMI 关掉。台面文件跟工作站是同一种格式，可以「导入台面…」选工作站另存的 .tecbench。"/>
+      </StackPanel>
+    </ScrollViewer>
+
+    <!-- 中栏：矩阵、按钮、条件、参数 -->
+    <ScrollViewer Grid.Row="1" Grid.Column="1" Margin="4,0">
+      <StackPanel Spacing="8">
+        <TextBlock TextWrapping="Wrap" Foreground="#555555"
+                   Text="测试矩阵：勾要跑的格。同一水温下按「最低温 → 最高温 → 恒温」串着跑，两项之间先回温；换水温时停下来等你把冷却水调好。"/>
+        <ItemsControl ItemsSource="{Binding Cells}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <UniformGrid Columns="3"/>
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Border BorderBrush="#CCCCCC" BorderThickness="1" Padding="8" Margin="3" Background="{Binding Fill}" MinHeight="78">
+                <StackPanel Spacing="2">
+                  <CheckBox Content="{Binding Title}" IsChecked="{Binding Selected}" IsEnabled="{Binding CanEdit}"/>
+                  <TextBlock Text="{Binding StateText}" FontWeight="Bold"/>
+                  <TextBlock Text="{Binding Note}" FontSize="11" Foreground="#666666" TextWrapping="Wrap"/>
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <Button Content="开始" Click="Start_Click" IsEnabled="{Binding CanStart}" Background="#2E7D32" Foreground="White" Padding="22,8"/>
+          <Button Content="跳过当前" Click="Skip_Click" IsEnabled="{Binding CanSkip}" Padding="14,8"/>
+          <Button Content="停止" Click="Stop_Click" IsEnabled="{Binding CanStop}" Padding="14,8"/>
+          <Button Content="急停" Click="Estop_Click" Background="#C62828" Foreground="White" Padding="22,8"
+                  ToolTip.Tip="设备所有输出收安全态（TEC / 加热棒都断），整轮结束。没在跑也能按"/>
+        </StackPanel>
+
+        <Border IsVisible="{Binding IsWaitingWater}" Background="#FFF8E1" BorderBrush="#F9A825" BorderThickness="1" Padding="10">
+          <StackPanel Spacing="6">
+            <TextBlock Text="{Binding PromptText}" TextWrapping="Wrap" FontWeight="Bold"/>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="实际水温 ℃（手填）" VerticalAlignment="Center"/>
+              <TextBox Text="{Binding WaterText}" Width="90"/>
+              <Button Content="继续" Click="Continue_Click" Background="#1565C0" Foreground="White" Padding="18,6"/>
+              <TextBlock Text="不做这一组就点「跳过当前」" VerticalAlignment="Center" Foreground="#777777" FontSize="11"/>
+            </StackPanel>
+          </StackPanel>
+        </Border>
+
+        <TextBlock Text="{Binding StatusText}" FontWeight="Bold" TextWrapping="Wrap"/>
+        <TextBlock Text="{Binding PhaseText}" Foreground="#555555" TextWrapping="Wrap"/>
+        <TextBlock Text="{Binding BookPathText}" FontSize="11" Foreground="#777777" TextWrapping="Wrap"/>
+
+        <Grid ColumnDefinitions="*,*" Margin="0,8,0,0">
+          <StackPanel Grid.Column="0" Spacing="4" Margin="0,0,8,0">
+            <TextBlock Text="测试条件（手填）" FontWeight="Bold"/>
+            <Grid ColumnDefinitions="96,*" RowDefinitions="Auto,Auto,Auto,Auto">
+              <TextBlock Text="操作人" VerticalAlignment="Center"/>
+              <TextBox Grid.Column="1" Text="{Binding OperatorName}" Margin="0,1"/>
+              <TextBlock Grid.Row="1" Text="环境温度 ℃" VerticalAlignment="Center"/>
+              <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding AmbientText}" Margin="0,1"/>
+              <TextBlock Grid.Row="2" Text="补丁版本" VerticalAlignment="Center"/>
+              <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding PatchText}" Margin="0,1"/>
+              <TextBlock Grid.Row="3" Text="输出目录" VerticalAlignment="Center"/>
+              <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding OutDir}" Margin="0,1"/>
+            </Grid>
+            <Button Content="打开输出目录" Click="OpenOut_Click" Margin="0,4,0,0"/>
+          </StackPanel>
+          <StackPanel Grid.Column="1" Spacing="4">
+            <TextBlock Text="参数" FontWeight="Bold"/>
+            <Grid ColumnDefinitions="110,*,70,*" RowDefinitions="Auto,Auto,Auto,Auto">
+              <TextBlock Text="最低温目标 ℃" VerticalAlignment="Center"/>
+              <TextBox Grid.Column="1" Text="{Binding MinTargetText}" Margin="0,1,6,1"/>
+              <TextBlock Grid.Column="2" Text="跑 min" VerticalAlignment="Center"/>
+              <TextBox Grid.Column="3" Text="{Binding MinMinutesText}" Margin="0,1"/>
+              <TextBlock Grid.Row="1" Text="最高温目标 ℃" VerticalAlignment="Center"/>
+              <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding MaxTargetText}" Margin="0,1,6,1"/>
+              <TextBlock Grid.Row="1" Grid.Column="2" Text="跑 min" VerticalAlignment="Center"/>
+              <TextBox Grid.Row="1" Grid.Column="3" Text="{Binding MaxMinutesText}" Margin="0,1"/>
+              <TextBlock Grid.Row="2" Text="恒温目标 ℃" VerticalAlignment="Center"/>
+              <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding HoldTargetText}" Margin="0,1,6,1"/>
+              <TextBlock Grid.Row="2" Grid.Column="2" Text="恒温 min" VerticalAlignment="Center"/>
+              <TextBox Grid.Row="2" Grid.Column="3" Text="{Binding HoldMinutesText}" Margin="0,1"/>
+              <TextBlock Grid.Row="3" Text="提前结束阈值 ℃" VerticalAlignment="Center" ToolTip.Tip="最低温 / 最高温：最近 10 min 两工位夹套变化都不到这个数就提前结束；0 = 不提前"/>
+              <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding SettleText}" Margin="0,1,6,1"/>
+              <TextBlock Grid.Row="3" Grid.Column="2" Text="回温 ℃" VerticalAlignment="Center" ToolTip.Tip="两项之间先回到这个温度附近再做下一项"/>
+              <TextBox Grid.Row="3" Grid.Column="3" Text="{Binding ReturnTempText}" Margin="0,1"/>
+            </Grid>
+            <TextBlock TextWrapping="Wrap" Foreground="#777777" FontSize="11"
+                       Text="手填的只有操作人、环境温度、冷却水温度；LIMITED、超温上限从温控器读，切换阈值、死区从台面配置读，没读到留空。"/>
+          </StackPanel>
+        </Grid>
+      </StackPanel>
+    </ScrollViewer>
+
+    <!-- 右栏：实时与日志 -->
+    <Grid Grid.Row="1" Grid.Column="2" RowDefinitions="Auto,Auto,Auto,Auto,*" Margin="8,0,0,0">
+      <TextBlock Text="实时读数（每秒）" FontWeight="Bold"/>
+      <Border Grid.Row="1" BorderBrush="#DDDDDD" BorderThickness="1" Padding="8" Margin="0,4">
+        <TextBlock Text="{Binding AText}" TextWrapping="Wrap"/>
+      </Border>
+      <Border Grid.Row="2" BorderBrush="#DDDDDD" BorderThickness="1" Padding="8" Margin="0,0,0,4">
+        <TextBlock Text="{Binding BText}" TextWrapping="Wrap"/>
+      </Border>
+      <TextBlock Grid.Row="3" Text="日志" FontWeight="Bold" Margin="0,6,0,2"/>
+      <ListBox Grid.Row="4" ItemsSource="{Binding LogLines}" FontSize="11" BorderBrush="#DDDDDD" BorderThickness="1">
+        <ListBox.ItemTemplate>
+          <DataTemplate>
+            <TextBlock Text="{Binding}" TextWrapping="Wrap"/>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+    </Grid>
+  </Grid>
+</UserControl>

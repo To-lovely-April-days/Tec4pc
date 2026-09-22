@@ -1,0 +1,17 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Tec.LimitTest.App"
+             RequestedThemeVariant="Light">
+
+  <!-- 极限测试工具：Fluent 底座就够了，界面从简。 -->
+
+  <Application.Styles>
+    <FluentTheme>
+      <FluentTheme.Palettes>
+        <ColorPaletteResources x:Key="Light" Accent="#a41626" />
+        <ColorPaletteResources x:Key="Dark" Accent="#a41626" />
+      </FluentTheme.Palettes>
+    </FluentTheme>
+  </Application.Styles>
+
+</Application>

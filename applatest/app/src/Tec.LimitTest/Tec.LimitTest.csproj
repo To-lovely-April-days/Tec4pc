@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 控温极限测试工具：给现场做极限测试用的独立小程序（界面从简）。
+       托管与设备 HMI 同一套地基（HmiRuntime：真机驱动 / 台面 / 管线 / 安全层），
+       按「最低温 / 最高温 / 恒温稳定性 × 冷却水 20 / 15 / 7 ℃」的矩阵自动跑，
+       数据直接写进「控温极限测试记录」工作簿。
+       串口只能一个程序占着：它替代工作站 / HMI 运行，不同时开。地基在 Tec.LimitTest.Core。 -->
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>Tec.LimitTest</RootNamespace>
+    <AssemblyName>Tec.LimitTest</AssemblyName>
+    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.2.3" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.2.3" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.3" />
+    <!-- 串口下拉：问系统要这台机器真有的口 -->
+    <PackageReference Include="System.IO.Ports" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tec.LimitTest.Core\Tec.LimitTest.Core.csproj" />
+  </ItemGroup>
+
+</Project>

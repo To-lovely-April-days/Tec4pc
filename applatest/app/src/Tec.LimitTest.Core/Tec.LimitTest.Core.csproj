@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 控温极限测试工具的地基（不带界面，回归测试直接引用它）：
+       · RecordBook：「控温极限测试记录」工作簿——3 项 × 3 水温 = 9 张表 + 结果汇总矩阵，
+         公式留在表里由 Excel 算，程序只往黄格里填采到的数；
+       · LimitTestRunner：按矩阵串行跑最低温 / 最高温 / 恒温稳定性，换水温停下来等人；
+       · RuntimeRig：把 HmiRuntime（真机驱动 + 管线 + 安全层）接成 Runner 要的那几个口子。 -->
+
+  <PropertyGroup>
+    <RootNamespace>Tec.LimitTest</RootNamespace>
+    <AssemblyName>Tec.LimitTest.Core</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 写 .xlsx（MIT 许可）。只填值和公式文本，不在程序里算公式 -->
+    <PackageReference Include="ClosedXML" Version="0.105.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tec.Core\Tec.Core.csproj" />
+    <ProjectReference Include="..\Tec.Driver.Abi\Tec.Driver.Abi.csproj" />
+    <ProjectReference Include="..\Tec.Hmi.Runtime\Tec.Hmi.Runtime.csproj" />
+    <ProjectReference Include="..\Tec.Drivers.Rd105\Tec.Drivers.Rd105.csproj" />
+    <ProjectReference Include="..\Tec.Drivers.DualStation\Tec.Drivers.DualStation.csproj" />
+  </ItemGroup>
+
+</Project>
