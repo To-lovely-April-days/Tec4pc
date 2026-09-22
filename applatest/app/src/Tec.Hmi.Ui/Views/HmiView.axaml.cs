@@ -63,14 +63,16 @@ public partial class HmiView : UserControl
 
     // ── 导航 ────────────────────────────────────────────────────────
     private void OnNavOv(object? s, RoutedEventArgs e) { if (Vm is { } v) v.Page = "ov"; }
-    private void OnNavZ0(object? s, RoutedEventArgs e) { if (Vm is { } v) { v.Page = "z0"; v.ZTab = "ctl"; } }
-    private void OnNavZ1(object? s, RoutedEventArgs e) { if (Vm is { } v) { v.Page = "z1"; v.ZTab = "ctl"; } }
+    // 进通道页**不再把标签拨回「控制」**（用户提出：在通道 1 的曲线页出去再回来，落回了主界面，
+    // 不方便）。标签是全局的一档：看着曲线切到通道 2 还是曲线，从总览点进来也是上次那一页
+    private void OnNavZ0(object? s, RoutedEventArgs e) { if (Vm is { } v) v.Page = "z0"; }
+    private void OnNavZ1(object? s, RoutedEventArgs e) { if (Vm is { } v) v.Page = "z1"; }
     private void OnNavFiles(object? s, RoutedEventArgs e) { if (Vm is { } v) v.Page = "files"; }
     private void OnNavSys(object? s, RoutedEventArgs e) { if (Vm is { } v) v.Page = "sys"; }
     private void OnZoneCard(object? s, PointerPressedEventArgs e)
     {
         if (Vm is { } v && s is Control { DataContext: HmiZoneViewModel z })
-        { v.Page = z.Index == 1 ? "z0" : "z1"; v.ZTab = "ctl"; }
+            v.Page = z.Index == 1 ? "z0" : "z1";
     }
 
     private void OnTabOvApp(object? s, RoutedEventArgs e) { if (Vm is { } v) v.OvTab = "app"; }

@@ -303,13 +303,22 @@ public sealed class SafetyMonitor
     ///
     /// 联锁要比工作范围松一档才叫联锁：它防的是"跑飞了"，
     /// 不是"贴着上限干活"。操作人可以再往里收，收不回来的是余量本身（§7.5）。
+    ///
+    /// **变化率缺省不检测**（用户定的）：到达方式选「尽快」时目标是一步写给温控器的，
+    /// 斜率有多快算多快——设备标称的 MaxRatePerMin 在这条路上不是物理上限，按它
+    /// 乘个余量去卡实测斜率，一次正常的快速降温就会被判成「跑飞」中止。要盯斜率的
+    /// 话在面板安全页由操作人填一个值（那一层可以在底线之外**加**一条斜率）；
+    /// rateCheck = true 保留老行为（设备标称 × 余量）给还需要它的场合。
     /// </summary>
-    public static SafetyLimit FromTemperature(int channel, TempLimits l, SafetyAction action = SafetyAction.AbortChannel)
+    public static SafetyLimit FromTemperature(int channel, TempLimits l,
+        SafetyAction action = SafetyAction.AbortChannel, bool rateCheck = false)
         => new(channel, "Tr", l.Min - TempMargin, l.Max + TempMargin,
-               l.MaxRatePerMin * RateFactor, TimeSpan.FromSeconds(3), action)
+               rateCheck ? l.MaxRatePerMin * RateFactor : null, TimeSpan.FromSeconds(3), action)
         {
             FromDeviceLimits = true,
-            Note = $"由设备温度范围推导，留 {Fmt.Num(TempMargin, 0)} ℃ / {Fmt.Num((RateFactor - 1) * 100, 0)}% 联锁余量"
+            Note = rateCheck
+                ? $"由设备温度范围推导，留 {Fmt.Num(TempMargin, 0)} ℃ / {Fmt.Num((RateFactor - 1) * 100, 0)}% 联锁余量"
+                : $"由设备温度范围推导，留 {Fmt.Num(TempMargin, 0)} ℃ 联锁余量；变化率不检测（「尽快」模式下斜率有多快算多快）"
         };
 
     /// <summary>

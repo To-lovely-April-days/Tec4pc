@@ -2682,17 +2682,21 @@ public sealed class HmiZoneViewModel : ViewModelBase
         {
             var act = Tec.Core.Safety.SafetyActionWords.Of(b.Action);
             double effMin = op?.Min ?? b.Min ?? 0,
-                   effMax = op?.Max ?? b.Max ?? 0,
-                   effRate = op?.MaxRatePerMin ?? b.MaxRatePerMin ?? 0;
+                   effMax = op?.Max ?? b.Max ?? 0;
+            double? effRate = op?.MaxRatePerMin ?? b.MaxRatePerMin;
             rows.Add(new SafRow("Tr min", $"{N(effMin)} ℃",
                 $"低于此值 → {act} · 底线 {N(b.Min ?? 0)} ℃"
                 + (op?.Min is { } && op.Min > b.Min ? " · 已收紧" : ""), "trmin"));
             rows.Add(new SafRow("Tr max", $"{N(effMax)} ℃",
                 $"高于此值 → {act} · 底线 {N(b.Max ?? 0)} ℃"
                 + (op?.Max is { } && op.Max < b.Max ? " · 已收紧" : ""), "trmax"));
-            rows.Add(new SafRow("变温速率上限", $"{N(effRate)} ℃/min",
-                $"实测斜率越限 → {act} · 底线 {N(b.MaxRatePerMin ?? 0)} ℃/min"
-                + (op?.MaxRatePerMin is { } && op.MaxRatePerMin < b.MaxRatePerMin ? " · 已收紧" : ""),
+            // 变化率缺省不检测（用户定的）：「尽快」模式下斜率有多快算多快。要盯就点这行填一个值，填 0 = 关
+            rows.Add(new SafRow("变温速率上限", effRate is { } er ? $"{N(er)} ℃/min" : "关（不检测）",
+                effRate is null
+                    ? $"缺省不检测：「尽快」模式下斜率有多快算多快。要盯实测斜率就点这里填一个值（越限 → {act}），填 0 = 关"
+                    : $"实测斜率越限 → {act} · "
+                      + (b.MaxRatePerMin is { } br ? $"底线 {N(br)} ℃/min" : "底线不检测，这一条是操作人加的（填 0 = 关）")
+                      + (op?.MaxRatePerMin is { } && (b.MaxRatePerMin is null || op.MaxRatePerMin < b.MaxRatePerMin) ? " · 已收紧" : ""),
                 "trrate"));
         }
         foreach (var l in _ws.Engine.Safety.Limits.Where(l => l.Channel == Number))
@@ -2717,8 +2721,8 @@ public sealed class HmiZoneViewModel : ViewModelBase
         if (EngineRunning) { _owner.Toast("序列运行中不可修改限值"); return; }
         var op = OpTr;
         double curMin = op?.Min ?? b.Min ?? 0,
-               curMax = op?.Max ?? b.Max ?? 0,
-               curRate = op?.MaxRatePerMin ?? b.MaxRatePerMin ?? 0;
+               curMax = op?.Max ?? b.Max ?? 0;
+        double? curRate = op?.MaxRatePerMin ?? b.MaxRatePerMin;
         switch (key)
         {
             case "trmin":
@@ -2730,18 +2734,20 @@ public sealed class HmiZoneViewModel : ViewModelBase
                     v => ApplyOpLimit(curMin, v, curRate));
                 break;
             case "trrate":
-                _owner.OpenKeypadCustom("变温速率上限", "℃/min", 0.05, b.MaxRatePerMin ?? 99,
-                    v => ApplyOpLimit(curMin, curMax, v));
+                // 缺省不检测；填 0 = 关。底线有斜率时只能往里收，没有时随便填
+                _owner.OpenKeypadCustom("变温速率上限（0 = 关）", "℃/min", 0, b.MaxRatePerMin ?? 99,
+                    v => ApplyOpLimit(curMin, curMax, v <= 0 ? null : v));
                 break;
         }
     }
 
-    private void ApplyOpLimit(double min, double max, double rate)
+    private void ApplyOpLimit(double min, double max, double? rate)
     {
         var res = _ws.Engine.Safety.SetOperatorLimit(Number, "Tr", min, max, rate);
         static string N(double v) => Txt.Fx(v).Replace('-', '−');
         var msg = res is null ? "已回到设备底线"
-            : $"Tr {N(res.Min ?? 0)}…{N(res.Max ?? 0)} ℃ · ≤{N(res.MaxRatePerMin ?? 0)} ℃/min";
+            : $"Tr {N(res.Min ?? 0)}…{N(res.Max ?? 0)} ℃ · "
+              + (res.MaxRatePerMin is { } rr ? $"≤{N(rr)} ℃/min" : "斜率不检测");
         Log("改限值", msg);
         _ws.Log.Write("安全", $"CH{Number} 面板改限值：{msg}", _ws.Operator);
         _owner.Toast("安全限值已更新：" + msg);

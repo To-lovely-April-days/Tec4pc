@@ -195,8 +195,31 @@ public class AlarmTests
 
         Assert.True(lim.Max > dev.Max);
         Assert.True(lim.Min < dev.Min);
-        Assert.True(lim.MaxRatePerMin > dev.MaxRatePerMin);
+        // 变化率缺省**不检测**（用户定的）：「尽快」模式下目标一步写给温控器，斜率有多快算多快，
+        // 按设备标称速率去卡实测斜率会把一次正常的快速降温判成跑飞。要盯的话操作人在面板上填
+        Assert.Null(lim.MaxRatePerMin);
+        Assert.Contains("不检测", lim.Note);
         Assert.True(lim.FromDeviceLimits);
+
+        // 老行为留着给要它的场合：设备标称 × 余量
+        var strict = SafetyMonitor.FromTemperature(1, dev, rateCheck: true);
+        Assert.True(strict.MaxRatePerMin > dev.MaxRatePerMin);
+    }
+
+    [Fact]
+    public void 底线不检测斜率时_操作人可以自己加一条()
+    {
+        var m = new SafetyMonitor(new DataPipeline());
+        m.Add(SafetyMonitor.FromTemperature(1, new TempLimits(-40, 180, 5)));
+
+        var lim = m.SetOperatorLimit(1, "Tr", null, null, 8);
+        Assert.NotNull(lim);
+        Assert.Equal(8, lim!.MaxRatePerMin);
+        Assert.True(lim.FromOperator);
+
+        // 填 null（面板上填 0）= 关：回到底线，这一层撤掉
+        Assert.Null(m.SetOperatorLimit(1, "Tr", null, null, null));
+        Assert.DoesNotContain(m.Limits, l => l.FromOperator);
     }
 
     // ── 恢复与确认 ──────────────────────────────────────────────────
