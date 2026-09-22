@@ -1246,6 +1246,32 @@
     </Border>
   </Border>
 
+  <!-- ══ 确认弹窗（控着的时候换控温对象这类操作：先说清会发生什么，让人选）══ -->
+  <Border Background="#6B1A1A1A" IsVisible="{Binding AskOpen}" PointerPressed="OnMask">
+    <Border Width="540" HorizontalAlignment="Center" VerticalAlignment="Center"
+            Background="White" BorderBrush="#6F6F6F" BorderThickness="1" CornerRadius="4"
+            PointerPressed="OnDlgBody">
+      <StackPanel>
+        <Border Background="#2F8189" Padding="16,12">
+          <StackPanel>
+            <TextBlock Text="{Binding AskTitle}" FontSize="14.5" FontWeight="Medium" Foreground="White" />
+            <TextBlock Text="{Binding AskSub}" FontSize="11.5" Foreground="#B8DCDF" Margin="0,2,0,0" />
+          </StackPanel>
+        </Border>
+        <TextBlock Text="{Binding AskBody}" FontSize="12.5" Foreground="#1A1A1A" TextWrapping="Wrap"
+                   LineHeight="20" Margin="18,15" />
+        <Border BorderBrush="#DCDCDC" BorderThickness="0,1,0,0" Padding="18,11,18,15">
+          <StackPanel Orientation="Horizontal" Spacing="9" HorizontalAlignment="Right">
+            <Button Classes="hbt" Content="取消" Click="OnAskCancel" />
+            <Button Classes="hbt" Content="{Binding AskSecondary}" IsVisible="{Binding AskHasSecondary}"
+                    Click="OnAskSecondary" />
+            <Button Classes="hbt pri" Content="{Binding AskPrimary}" Click="OnAskPrimary" MinWidth="120" />
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </Border>
+  </Border>
+
   <!-- ══ 曲线颜色弹窗（原型 tcolors）══ -->
   <Border Background="#6B1A1A1A" IsVisible="{Binding TColOpen}" PointerPressed="OnMask">
     <Border Width="560" HorizontalAlignment="Center" VerticalAlignment="Center"

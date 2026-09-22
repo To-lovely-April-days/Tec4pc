@@ -830,6 +830,49 @@ public sealed class HmiViewModel : ViewModelBase
         ActOpen = false;
     }
 
+    // ── 确认弹窗（控着的时候动它：换控温对象这类操作）────────────────
+    //
+    // 面板上凡是「正在控的东西被动了」都不该顺手一点就生效（用户踩到：釜内控温跑着，
+    // 点了「夹套」就按夹套那边的参数动了）。换控温对象弹这张：先说清会发生什么，
+    // 三条路让人选——带着目标切 / 先停温控再切 / 不切。改到达方式只换斜率不换目标，
+    // 不弹，切完 toast 一句说清做了什么
+
+    private Action? _askPrimary, _askSecondary;
+
+    public bool AskOpen { get; private set; }
+    public string AskTitle { get; private set; } = "";
+    public string AskSub { get; private set; } = "";
+    public string AskBody { get; private set; } = "";
+    public string AskPrimary { get; private set; } = "";
+    public string AskSecondary { get; private set; } = "";
+    public bool AskHasSecondary => _askSecondary is not null;
+
+    public void OpenAsk(string title, string sub, string body, string primary, Action onPrimary,
+                        string? secondary = null, Action? onSecondary = null)
+    {
+        AskTitle = title;
+        AskSub = sub;
+        AskBody = body;
+        AskPrimary = primary;
+        AskSecondary = secondary ?? "";
+        _askPrimary = onPrimary;
+        _askSecondary = onSecondary;
+        AskOpen = true;
+        RaiseAll(nameof(AskOpen), nameof(AskTitle), nameof(AskSub), nameof(AskBody),
+                 nameof(AskPrimary), nameof(AskSecondary), nameof(AskHasSecondary));
+    }
+
+    public void AskCancel()
+    {
+        if (!AskOpen) return;
+        AskOpen = false;
+        _askPrimary = _askSecondary = null;
+        Raise(nameof(AskOpen));
+    }
+
+    public void AskPrimaryDo() { var a = _askPrimary; AskCancel(); a?.Invoke(); }
+    public void AskSecondaryDo() { var a = _askSecondary; AskCancel(); a?.Invoke(); }
+
     // ── Toast（原型 hint）────────────────────────────────────────────
 
     public string ToastText { get => _toastText; private set => Set(ref _toastText, value); }
@@ -1326,21 +1369,81 @@ public sealed class HmiZoneViewModel : ViewModelBase
             return;
         }
         if (Mode == m) return;
+        if (!TempOn) { SwitchModeNow(m, stopFirst: false); return; }
+
+        // 控着的时候换控温对象不是顺手一点的事（用户踩到：釜内控温跑着，点了「夹套」就按夹套
+        // 那边的参数动了）。先说清会发生什么，三条路让人选：带着目标切 / 先停温控再切 / 不切
+        var (body, primary) = AskTextFor(m);
+        _owner.OpenAsk(
+            title: $"正在{ModeName}" + (LoopSetpoint is { } sp ? $"，目标 {Txt.Fx(sp)} ℃" : ""),
+            sub: $"要切到{NameOf(m)}——温控开着，先定怎么切",
+            body: body,
+            primary: primary, onPrimary: () => SwitchModeNow(m, stopFirst: false),
+            secondary: "先停温控再切换", onSecondary: () => SwitchModeNow(m, stopFirst: true));
+    }
+
+    private static string NameOf(string m) => m switch
+    { "Tj" => "夹套控温 Tj", "TrTj" => "蒸回流 Tj−Tr", _ => "釜内控温 Tr" };
+
+    /// <summary>确认弹窗的正文与主钮文字：按「从哪个模式切到哪个模式」把会发生的事说清。</summary>
+    private (string Body, string Primary) AskTextFor(string m)
+    {
+        if (m == "TrTj")
+            return ($"切到蒸回流后夹套改为跟随釜内：目标 Tj = Tr + {Txt.Fx(Sets["dt"])} K，现在的目标不再有效；" +
+                    "跟随要有釜内 Tr 的有效读数，没有会拒绝并把温控关掉。\n" +
+                    "也可以先停温控再切，切完再打开。", "切到蒸回流");
+        if (Mode == "TrTj")
+        {
+            var start = m == "Tj" ? LoopSetpoint : TrVal;
+            var how = m == "Tj" ? "夹套当前的跟随目标" : "釜内当前实测，即恒温保持";
+            return ($"跟随停止，{NameOf(m)}以{(start is { } s ? $" {Txt.Fx(s)} ℃" : "面板记的目标")}起步（{how}）。\n" +
+                    "也可以先停温控再切，切完重新填目标、再打开。", "带着目标切换");
+        }
+        var cur = LoopSetpoint ?? Pv(TargetKey);
+        return ($"温控继续，目标 {Txt.Fx(cur)} ℃ 带过去——变的是控温对象和判到达的依据，不是温度。\n" +
+                "也可以先停温控再切，切完重新填目标、再打开。", "带着目标切换");
+    }
+
+    /// <summary>真正换模式。温控开着：目标带过去再重新下发；stopFirst：先把温控关了再换，不下发。</summary>
+    private void SwitchModeNow(string m, bool stopFirst)
+    {
+        if (Mode == m) return;
         var from = Mode;
+        if (stopFirst && TempOn)
+        {
+            TempOn = false;
+            if (Temp is { } t) _ = t.StopAsync(CancellationToken.None);
+            Log("开关", $"温控 关（换到{NameOf(m)}前先停）");
+        }
         Mode = m;
         Log("模式", "切换到 " + ModeName);
-        // 温控开着换模式：**目标温度带过去**，别让换个模式把温度改了。Tr / Tj 两个模式在面板上
-        // 各记一份目标，从前换模式是按新模式那份重新下发——在 Tj 下发了 −10、切到 Tr 就把
-        // 缺省的 20 发给了温控器（用户踩到）。换的是控温对象和判到达的依据，不是温度
-        if (TempOn && m is "Tr" or "Tj" && from is "Tr" or "Tj")
+        if (TempOn)
         {
-            var carry = LoopSetpoint ?? Pv(from == "Tj" ? "tj" : "tr");
-            var key = m == "Tj" ? "tj" : "tr";
-            Sets[key] = carry;
-            Pending.Remove(key);
-            Log("模式", $"目标 {Txt.Fx(carry)} ℃ 带到 {ModeName}");
+            // 温控开着换模式：**目标温度带过去**，别让换个模式把温度改了。Tr / Tj 两个模式在面板上
+            // 各记一份目标，从前换模式是按新模式那份重新下发——在 Tj 下发了 −10、切到 Tr 就把
+            // 缺省的 20 发给了温控器（用户踩到）。换的是控温对象和判到达的依据，不是温度。
+            // 从蒸回流出来：切夹套接着当前的跟随目标，切釜内按当前实测恒温；切进蒸回流目标它自己算
+            double? carry = (from, m) switch
+            {
+                ("TrTj", "Tr") => TrVal ?? Pv("tr"),
+                ("TrTj", "Tj") => LoopSetpoint ?? Pv("tj"),
+                (_, "TrTj") => (double?)null,
+                _ => LoopSetpoint ?? Pv(from == "Tj" ? "tj" : "tr")
+            };
+            if (carry is { } c)
+            {
+                var key = m == "Tj" ? "tj" : "tr";
+                Sets[key] = c;
+                Pending.Remove(key);
+                Log("模式", $"目标 {Txt.Fx(c)} ℃ 带到 {ModeName}");
+            }
+            IssueTemp();
+            _owner.Toast($"已切到{ModeName}，温控继续" + (carry is { } cc ? $"，目标 {Txt.Fx(cc)} ℃" : ""));
         }
-        if (TempOn) IssueTemp();
+        else if (stopFirst)
+        {
+            _owner.Toast($"温控已停，已切到{ModeName}——填好目标再打开「温控」");
+        }
         RaiseZone();
     }
 
@@ -1349,8 +1452,18 @@ public sealed class HmiZoneViewModel : ViewModelBase
         if (RampBy == v) return;
         RampBy = v;
         Log("模式", v switch { "fast" => "到达方式：尽快（不限速）", "dur" => "到达方式：按时长", _ => "到达方式：按速率" });
-        // 温控开着就按新方式重新下发：切到「尽快」的那一刻斜率就该撤掉，不是等下次下发
-        if (TempOn) IssueTemp();
+        // 温控开着就按新方式重新下发：切到「尽快」的那一刻斜率就该撤掉，不是等下次下发。
+        // 只换斜率不换目标，不弹确认，但要说一句做了什么——控着的东西被动了不能没声
+        if (TempOn)
+        {
+            IssueTemp();
+            _owner.Toast(v switch
+            {
+                "fast" => "到达方式改为尽快：斜率已撤，目标不变，温控继续",
+                "dur" => $"到达方式改为按时长 {Txt.Fx(Pv("dur"))} min：已按新斜率重新下发，目标不变",
+                _ => $"到达方式改为按速率 {Txt.Fx(Math.Abs(Pv("rate")))} ℃/min：已重新下发，目标不变"
+            });
+        }
         RaiseZone();
     }
 
@@ -1374,7 +1487,11 @@ public sealed class HmiZoneViewModel : ViewModelBase
         var moved = new List<string>();
         foreach (var k in new[] { "tr", "tj", "rate", "dur", "dt" })
             if (Pending.Remove(k, out var v)) { Sets[k] = v; moved.Add($"{k} = {Txt.Fx(v)}"); }
-        if (moved.Count > 0) Log("下发", $"随温控一并下发：{string.Join("，", moved)}");
+        if (moved.Count > 0)
+        {
+            Log("下发", $"随温控一并下发：{string.Join("，", moved)}");
+            _owner.Toast($"待下发的 {string.Join("，", moved)} 已随温控一并下发");
+        }
         if (Mode == "TrTj")
         {
             IssueReflux(t);

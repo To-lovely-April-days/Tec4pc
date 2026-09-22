@@ -125,8 +125,13 @@ public partial class HmiView : UserControl
 
     /// <summary>点遮罩空白处关弹窗；点弹窗本体不算（OnDlgBody 把事件吃掉）。</summary>
     private void OnMask(object? s, PointerPressedEventArgs e)
-    { Vm?.KpCancel(); Vm?.ActCancel(); Vm?.GtCancel(); Vm?.TColClose(); Vm?.TyClose(); }
+    { Vm?.KpCancel(); Vm?.ActCancel(); Vm?.GtCancel(); Vm?.TColClose(); Vm?.TyClose(); Vm?.AskCancel(); }
     private void OnDlgBody(object? s, PointerPressedEventArgs e) => e.Handled = true;
+
+    // ── 确认弹窗（换控温对象这类「控着的时候动它」的操作）──
+    private void OnAskPrimary(object? s, RoutedEventArgs e) => Vm?.AskPrimaryDo();
+    private void OnAskSecondary(object? s, RoutedEventArgs e) => Vm?.AskSecondaryDo();
+    private void OnAskCancel(object? s, RoutedEventArgs e) => Vm?.AskCancel();
 
     // ── 趋势曲线页 ──────────────────────────────────────────────────
 
