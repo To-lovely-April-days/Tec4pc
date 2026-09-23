@@ -99,7 +99,7 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
         _recover = new LinkRecovery($"{ctx.InstanceId} RD105", link.Reopen, (l, t) => _ctx.Log?.Invoke(l, t));
 
         // 参数面板（IDeviceSettings）：温控器自己的寄存器——最大功率、两路电流、PID、自整定……
-        _settings = new Rd105Settings(link, ctx.Config, ctx.Log);
+        _settings = new Rd105Settings(link, ctx.Config, ctx.Log, hostLoop: _host);
     }
 
     /// <summary>控温回路在上位机（true）还是温控器自己（false）。</summary>

@@ -63,6 +63,18 @@ public interface ITemperatureStatus : ICapability
     double? Setpoint { get; }
     /// <summary>回路是不是在控温（意图）：下发过目标且没停。热源切换序列中途临时关掉输出的那两秒不算停。</summary>
     bool Active { get; }
+
+    /// <summary>
+    /// 控温回路闭在上位机（true）还是设备自己（false）。界面据此把话说对：
+    /// 「尽快」是温控器按自己的最大能力走，还是上位机回路按最大输出（限幅）走。缺省 false。
+    /// </summary>
+    bool HostLoop => false;
+
+    /// <summary>
+    /// 串级（釜内控温）时外环算出来的夹套设定值——内环此刻真正在追的数。
+    /// 不是串级 / 没在控 / 设备不报就是 null（缺省 null），不拿目标冒充。
+    /// </summary>
+    double? CascadeInnerSetpoint => null;
 }
 
 /// <summary>自整定当前的状态。</summary>

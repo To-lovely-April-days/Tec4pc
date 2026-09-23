@@ -16,10 +16,10 @@ namespace Tec.Drivers.Rd105;
 /// 超温上下限 / 最大电流三项写完顺手同步回台面配置——不然下次「连接」ApplyProtection
 /// 又按台面配置写回去，面板上改的就白改了。
 ///
-/// 自整定：这里发的是**温控器自己的 AUTOPID=1**——控温跑的是温控器内部 PID（KP/KI/KD），
-/// 它整定完直接改写这三个寄存器，改的就是真正在用的那套。上位机那套继电器法整定
-/// （Rd105Tuning / HostControlLoop）算出来的是主机侧回路的增益，当前控温不走主机回路，
-/// 所以面板上不摆它，免得整了半天数落在没人用的地方。
+/// 自整定：这里发的是**温控器自己的 AUTOPID=1**——「控温方式」是温控器 PID 时控温跑的是温控器内部 PID
+/// （KP/KI/KD），它整定完直接改写这三个寄存器，改的就是真正在用的那套。
+/// 「控温方式」是上位机 PID 时（hostLoop）温控器只出功率，这三个寄存器与 AUTOPID 都不参与控温：
+/// 面板照实说明，温控器自整定拒绝（会跟上位机回路抢输出）；上位机回路的整定不在这个面板里。
 /// </summary>
 public sealed class Rd105Settings : IDeviceSettings
 {
@@ -62,13 +62,21 @@ public sealed class Rd105Settings : IDeviceSettings
     private readonly TecController _ctl;
     private readonly ParameterSet _config;
     private readonly Action<string, string>? _log;
+    private readonly bool _hostLoop;
 
-    public Rd105Settings(Rd105Link link, ParameterSet config, Action<string, string>? log)
+    /// <param name="hostLoop">
+    /// 「控温方式」是上位机 PID：温控器只按上位机给的百分比出功率（MODE=3），它自己的 KP/KI/KD 与
+    /// AUTOPID 都不参与控温——面板上照实说，温控器自整定拒绝（它会跟上位机回路抢输出）。
+    /// </param>
+    public Rd105Settings(Rd105Link link, ParameterSet config, Action<string, string>? log, bool hostLoop = false)
     {
         _client = link.Client;
         _ctl = link.Controller;
         _config = config;
         _log = log;
+        _hostLoop = hostLoop;
+        var channelTip = hostLoop ? ChannelTip + HostNote : ChannelTip;
+        var tuneTip = hostLoop ? HostTuneRefusal : TuneTip;
         Groups = new[]
         {
             new SettingsGroup(GroupStatus, "实时状态", StatusSchema())
@@ -80,8 +88,8 @@ public sealed class Rd105Settings : IDeviceSettings
                       "会先出一小段负输出，属正常；两分钟后还是负的、夹套不往上走，查输出极性 / 输出模式 / 接线。" +
                       "自整定状态是 AUTOPID：1 = 温控器正在整定，整定完它自己回 0 并改写 KP/KI/KD"
             },
-            new SettingsGroup(GroupTc1, "工位 A · TC1", ChannelSchema()) { Tip = ChannelTip },
-            new SettingsGroup(GroupTc2, "工位 B · TC2", ChannelSchema()) { Tip = ChannelTip },
+            new SettingsGroup(GroupTc1, "工位 A · TC1", ChannelSchema()) { Tip = channelTip },
+            new SettingsGroup(GroupTc2, "工位 B · TC2", ChannelSchema()) { Tip = channelTip },
             new SettingsGroup(GroupSys, "温控器", SysSchema())
             {
                 Tip = "地址与波特率只显示不改：改了这条链路当场就断，要改在台面属性栏的连接参数里一起改。" +
@@ -90,12 +98,21 @@ public sealed class Rd105Settings : IDeviceSettings
         };
         Actions = new[]
         {
-            new SettingsAction(ActTune1, "TC1 自整定") { Group = GroupTc1, Confirm = true, Tip = TuneTip },
+            new SettingsAction(ActTune1, "TC1 自整定") { Group = GroupTc1, Confirm = !hostLoop, Tip = tuneTip },
             new SettingsAction(ActTuneStop1, "停止 TC1 自整定") { Group = GroupTc1, Tip = "AUTOPID 写回 0" },
-            new SettingsAction(ActTune2, "TC2 自整定") { Group = GroupTc2, Confirm = true, Tip = TuneTip },
+            new SettingsAction(ActTune2, "TC2 自整定") { Group = GroupTc2, Confirm = !hostLoop, Tip = tuneTip },
             new SettingsAction(ActTuneStop2, "停止 TC2 自整定") { Group = GroupTc2, Tip = "AUTOPID 写回 0" }
         };
     }
+
+    private const string HostNote =
+        "　【当前「控温方式」是上位机 PID】温控器只按上位机给的百分比出功率（输出模式 = 通信设定输出百分比），" +
+        "这里的 PID 三个系数和温控器自整定都不参与控温；上位机回路的 PID 在增益表里" +
+        "（%AppData%\\TecDrivers\\gains\\<实例>-tc<n>.csv）。「最大输出占空比」LIMITED 照样是上位机回路输出的上限";
+
+    private const string HostTuneRefusal =
+        "「控温方式」是上位机 PID：温控器自己的自整定（AUTOPID）不参与控温，而且会跟上位机回路抢输出，这里不发。" +
+        "上位机回路的继电器法自整定在专门的 PID 界面里做";
 
     private const string ChannelTip =
         "「最大输出占空比」（LIMITED）就是这一路 TEC 的最大功率——输出电压不超过供电的这个百分比，协议上限 90。" +
@@ -366,6 +383,8 @@ public sealed class Rd105Settings : IDeviceSettings
             case ActTune1 or ActTune2:
             {
                 var tc = actionId == ActTune1 ? 1 : 2;
+                if (_hostLoop)
+                    throw new InvalidOperationException(HostTuneRefusal + "——没有往温控器写任何东西");
                 var enabled = await Q(tc, TecCmd.Enable, ct).ConfigureAwait(false) != 0;
                 if (!enabled)
                     return $"TC{tc} 输出是关的（ENABLE=0）——自整定要在控温跑着的时候做：先在 HMI 或配方里把这一路的目标温度下发、输出打开，再来";

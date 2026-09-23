@@ -17,6 +17,8 @@ public sealed class DuoTempControl : ITemperatureControl, IRefluxControl, IHeatS
     //    显式实现：类上那个 Active 是 IRefluxControl 的（跟随开没开），两回事
     public double? Setpoint => Inner.Setpoint;
     bool ITemperatureStatus.Active => _s.WantEnabled(_well);
+    bool ITemperatureStatus.HostLoop => ((ITemperatureStatus)Inner).HostLoop;
+    double? ITemperatureStatus.CascadeInnerSetpoint => ((ITemperatureStatus)Inner).CascadeInnerSetpoint;
 
     private readonly DuoSession _s;
     private readonly int _well;

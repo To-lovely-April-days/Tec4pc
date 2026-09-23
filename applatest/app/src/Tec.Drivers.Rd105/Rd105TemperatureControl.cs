@@ -80,6 +80,14 @@ public sealed class Rd105TemperatureControl : ITemperatureControl, ITemperatureS
     /// <summary>ITemperatureStatus：回路开着 = ENABLE 的影子（上位机方式下 = 回路激活且没被停）。</summary>
     public bool Active => Enabled;
 
+    /// <summary>ITemperatureStatus：上位机 PID 方式就是 true。</summary>
+    bool ITemperatureStatus.HostLoop => _loop is not null;
+
+    /// <summary>ITemperatureStatus：只有上位机串级、正在控、外环已经算出过内环设定时才有数。</summary>
+    double? ITemperatureStatus.CascadeInnerSetpoint
+        => _loop is not null && Enabled && Kind == TempChannelKind.Reactor
+           && _loop.GetStrategy(_tc) == ControlStrategy.Cascade ? InnerSetpoint : null;
+
     /// <summary>
     /// 本路输出开着没有（ENABLE 的影子）。热源切换要看它：**停着的通道不该被自动切换动**——
     /// 输出都关了，扳继电器没有意义，还会把安全停机落回 TEC 侧的继电器又扳回电加热。
@@ -176,6 +184,7 @@ public sealed class Rd105TemperatureControl : ITemperatureControl, ITemperatureS
             loop.StopProfile(_tc);
             loop.SetStrategy(_tc, strategy);
             loop.SuspendOutput(_tc, false);
+            InnerSetpoint = null;          // 换了对象：旧的内环设定不再成立，等外环下一拍算出新的
             await loop.StartChannelAsync(_tc, setpoint, ct: ct).ConfigureAwait(false);   // MODE=3、使能、PID 复位 + 前馈预置
         }
         Kind = kind;

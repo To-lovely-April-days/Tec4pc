@@ -194,6 +194,23 @@ public sealed class Rd105SettingsTests
     }
 
     [Fact]
+    public async Task 上位机PID方式_温控器自整定拒绝_一个字不写_面板说明PID不参与控温()
+    {
+        var dev = new FakeRd105Device();
+        dev.Open();
+        dev.Set(1, "ENABLE", 1);                           // 输出开着也拒绝：拒的是方式，不是时机
+        var s = new Rd105Settings(new Rd105Link(dev), new ParameterSet(), null, hostLoop: true);
+        var n = dev.Commands.Count;
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => s.RunAsync(Rd105Settings.ActTune1, CancellationToken.None));
+        Assert.Contains("上位机 PID", ex.Message);
+        Assert.Contains("没有往温控器写任何东西", ex.Message);
+        Assert.Equal(0, dev.Get(1, "AUTOPID"));
+        Assert.DoesNotContain(dev.Commands.Skip(n), c => c.Contains("AUTOPID="));
+        Assert.All(s.Actions.Where(a => a.Id is Rd105Settings.ActTune1 or Rd105Settings.ActTune2), a => Assert.False(a.Confirm));
+        Assert.Contains("不参与控温", s.Groups[1].Tip);
+    }
+
+    [Fact]
     public async Task 单机会话与组合主机会话都端出参数面板()
     {
         var dev = new FakeRd105Device();

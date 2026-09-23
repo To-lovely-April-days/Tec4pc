@@ -1250,18 +1250,36 @@ public sealed class HmiZoneViewModel : ViewModelBase
     private double? LoopSetpoint
         => Temp is ITemperatureStatus { Active: true, Setpoint: { } sp } ? sp : null;
 
-    // 夹套气泡（用户要的：夹套温度实时在图上）。夹套是控温对象时多一行设定 / 跟随
+    /// <summary>控温回路在上位机（上位机 PID）——「尽快」等说明文字按它换说法。</summary>
+    private bool HostLoop => Temp is ITemperatureStatus { HostLoop: true };
+
+    /// <summary>
+    /// 串级时外环算出来的夹套设定（内环此刻在追的数）。只有上位机串级、在控、Tr 模式才有；
+    /// 温控器 PID 方式下没有这个东西——釜内目标就是直接写给夹套的，不编一个「内环」出来。
+    /// </summary>
+    private double? CascadeInner => Mode == "Tr" && Temp is ITemperatureStatus { Active: true } st
+        ? st.CascadeInnerSetpoint : null;
+
+    // 夹套气泡（用户要的：夹套温度实时在图上）。夹套是控温对象时多一行设定 / 跟随；
+    // 串级时夹套是内环的被控量，多一行「内环 X ℃」——外环此刻要夹套到多少（用户要的）
     public string TjText => F1(TjVal) + (TjVal is null ? "" : " ℃");
     public string? TjSetText => Mode == "Tj" ? $"设定 {F1(LoopSetpoint ?? Sets["tj"])} ℃"
-        : ModeFollow ? $"跟随 Tr+{F1(Sets["dt"])} K" : null;
+        : ModeFollow ? $"跟随 Tr+{F1(Sets["dt"])} K"
+        : CascadeInner is { } inner ? $"内环 {F1(inner)} ℃" : null;
     public string PhText => PhVal is { } p ? p.ToString("0.00") : "—";
     public bool VesselRunning => TempOn || EngineRunning;
 
     public string TjBox => F1(TjVal);
     public string TjNote => Mode == "Tj" ? $"设定 {F1(Pv("tj"))}"
         : ModeFollow ? $"跟随 Tr+{F1(Sets["dt"])}"
+        : CascadeInner is { } inner ? $"内环 {F1(inner)}"
         : Temp is { } t ? $"上限 {Txt.Fx(t.Limits.Max)}" : "—";
     public bool TjHi => Mode is "Tj" or "TrTj";
+
+    /// <summary>「尽快」下面那行说明：温控器 PID 是温控器自己按最大能力走；上位机 PID 是回路按最大输出（LIMITED 限幅）走。</summary>
+    public string FastNote => HostLoop
+        ? "不限速\n上位机回路按最大输出（LIMITED）到达"
+        : "不限速\n温控器按最大能力到达";
     public string DtBox => TrVal is { } a && TjVal is { } b ? Sg(a - b) : "—";
     // 热流方向照实说：Tj 比 Tr 热是夹套在**给**热（加热补偿），
     // Tr 比 Tj 热才是釜里在放热（夹套在收）。原型演示稿把 −6.2 K 标成
@@ -1691,12 +1709,14 @@ public sealed class HmiZoneViewModel : ViewModelBase
     {
         ("tr", "Tr 釜内温度", "℃", "#2F8189"),
         ("tj", "Tj 夹套温度", "℃", "#4A4A4A"),
+        // 上位机 PID 下夹套回路在追的设定（串级 = 外环算出来的内环设定，单环 = 夹套目标）；温控器 PID 下没有这条
+        ("tjset", "Tj 设定（内环）", "℃", "#E0873A"),
         ("dt", "Tr−Tj 内外温差", "K", "#8E8E8E"),
         ("ph", "pH", "", "#6F6F6F"),
         ("rpm", "R 转速", "rpm", "#C9C9C9"),
     };
 
-    private readonly HashSet<string> _trends = new(StringComparer.Ordinal) { "tr", "tj", "dt" };
+    private readonly HashSet<string> _trends = new(StringComparer.Ordinal) { "tr", "tj", "tjset", "dt" };
     private readonly Dictionary<string, string> _traceColor = new(StringComparer.Ordinal);
     private double _winSec;          // 0 = 全程
     private double _offSec;          // 距最新点往回退的秒数
@@ -1716,9 +1736,10 @@ public sealed class HmiZoneViewModel : ViewModelBase
     public HmiChartModel? GraModel { get; private set; }
     public bool GraEmpty => GraModel is null;
 
-    // 没有搅拌能力就不列「R 转速」这张卡——图例摆一个恒 0 的数，读起来像读数
+    // 没有搅拌能力就不列「R 转速」这张卡——图例摆一个恒 0 的数，读起来像读数；
+    // 「Tj 设定（内环）」只在上位机 PID 下有（温控器 PID 不发这一路），不然也不列
     private IEnumerable<(string Key, string Name, string Unit, string Color)> TrendDefsHere
-        => TrendDefs.Where(d => d.Key != "rpm" || HasStir);
+        => TrendDefs.Where(d => (d.Key != "rpm" || HasStir) && (d.Key != "tjset" || HostLoop || Snap("Tjset").Length > 0));
 
     public IReadOnlyList<TrendRow> TrendRows => TrendDefsHere.Select(d => new TrendRow(
         d.Key, d.Name, d.Unit, ColorOf(d.Key),
@@ -1726,6 +1747,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
         {
             "tr" => F1(TrVal),
             "tj" => F1(TjVal),
+            "tjset" => F1(TempOn || EngineRunning ? Tag("Tjset") : null),
             "dt" => TrVal is { } a && TjVal is { } b ? Sg(a - b) : "—",
             "ph" => PhText,
             _ => RpmVal.ToString("0"),
@@ -1829,6 +1851,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
     {
         "tr" => Snap("Tr").Select(s => (s.WallClock, s.Value)).ToArray(),
         "tj" => Snap("Tj").Select(s => (s.WallClock, s.Value)).ToArray(),
+        "tjset" => Snap("Tjset").Select(s => (s.WallClock, s.Value)).ToArray(),
         "rpm" => Snap("rpm").Select(s => (s.WallClock, s.Value)).ToArray(),
         "ph" => Snap("pH").Select(s => (s.WallClock, s.Value)).ToArray(),
         _ => PairedDt(),
@@ -2771,7 +2794,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
         nameof(Mode), nameof(ModeName), nameof(ModeTr), nameof(ModeTj), nameof(ModeFollow),
         nameof(CanReflux), nameof(ByDur),
         nameof(TempOn), nameof(StirOn), nameof(TrOn), nameof(PhOn),
-        nameof(RampBy), nameof(ByRate), nameof(ByFast), nameof(TargetLabel), nameof(TargetUnit), nameof(RampValLabel),
+        nameof(RampBy), nameof(ByRate), nameof(ByFast), nameof(FastNote), nameof(TargetLabel), nameof(TargetUnit), nameof(RampValLabel),
         nameof(VbTr), nameof(VbRate), nameof(VbDur), nameof(VbRpm), nameof(VbREnd), nameof(VbRDur),
         nameof(NowLine1), nameof(NowLine2), nameof(StirNow), nameof(PendCount), nameof(LimChipList),
         nameof(LastLog), nameof(HasCommit), nameof(CommitText), nameof(TrPend), nameof(RatePend),

@@ -590,8 +590,8 @@
                             <TextBlock Text="按时长" FontSize="11.5" Foreground="#6F6F6F"
                                        VerticalAlignment="Center" />
                           </StackPanel>
-                          <!-- 「尽快」= 普通模式的升温（用户要的）：不按速率不按时长，目标一步写给温控器，
-                               它按自己的最大能力走。跟配方里「到达方式 = 尽快」同一个词 -->
+                          <!-- 「尽快」= 普通模式的升温（用户要的）：不按速率不按时长，目标一步给到回路，
+                               按最大能力走。跟配方里「到达方式 = 尽快」同一个词 -->
                           <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center"
                                       PointerPressed="OnRadFast">
                             <Ellipse Classes="hrad" Classes.on="{Binding Cur.ByFast}" />
@@ -624,7 +624,8 @@
                             </StackPanel>
                           </Border>
                         </StackPanel>
-                        <TextBlock Text="不限速&#x0A;温控器按最大能力到达"
+                        <!-- 温控器 PID：温控器按自己的最大能力走；上位机 PID：回路按最大输出（LIMITED）走 -->
+                        <TextBlock Text="{Binding Cur.FastNote}"
                                    FontSize="10.5" Foreground="#6F6F6F" VerticalAlignment="Center"
                                    Height="44" IsVisible="{Binding Cur.ByFast}" />
                       </StackPanel>

@@ -92,6 +92,9 @@ public class Rd105HostControlTests
         await WaitUntil(() => t.CurrentJacket > 26.5, 8000, "夹套往 30 走");
         Assert.True(St(t).Active);
         Assert.Equal(30, St(t).Setpoint);
+        // 面板用的两个口子：上位机回路；单环夹套没有「串级内环设定」
+        Assert.True(St(t).HostLoop);
+        Assert.Null(St(t).CascadeInnerSetpoint);
         // B 路没动：独立两路
         Assert.NotEqual(3, dev.Get(2, "MODE"));
         Assert.Equal(0, dev.Get(2, "PWMDUTY"));
@@ -145,6 +148,8 @@ public class Rd105HostControlTests
         Assert.Equal(TempChannelKind.Reactor, rd.TempOf(0).Kind);
         await WaitUntil(() => rd.TempOf(0).InnerSetpoint is { } i && i > 30.5, 6000, "串级外环把夹套设定值抬到 30 以上");
         Assert.Equal(30, St(t).Setpoint);
+        // 面板夹套气泡「内环 X ℃」念的就是这个：串级、在控时有数，而且不是釜内目标
+        Assert.True(St(t).CascadeInnerSetpoint is { } cis && cis > 30.5);
 
         var got = new List<Sample>();
         using var sub = s.Samples.Subscribe(new Collect(x => { lock (got) got.Add(x); }));
@@ -158,6 +163,25 @@ public class Rd105HostControlTests
         Assert.Contains("釜内 Tr 读数丢失", why);
         Assert.Equal(0, dev.Get(1, "PWMDUTY"));
         Assert.False(St(t).Active);
+        Assert.Null(St(t).CascadeInnerSetpoint);          // 停了就没有「内环在追的数」
+    }
+
+    [Fact]
+    public async Task 温控器PID方式_面板口子报不是上位机_没有内环设定()
+    {
+        var (drv, dev) = Standalone();
+        await using var s = await drv.OpenAsync(Conn(), Ctx(ParameterSet.Of((Rd105TecDriver.FieldControl, Rd105TecDriver.ControlDevice))),
+                                                CancellationToken.None);
+        await s.StartAsync(CancellationToken.None);
+        var rd = (Rd105Session)s;
+        var t = Temp(s, 0);
+        rd.TempOf(0).FeedReactor(20.0);
+        await t.SetTargetAsync(new TempTarget(30, TempChannelKind.Reactor), CancellationToken.None);
+        Assert.False(rd.HostControlled);
+        Assert.True(St(t).Active);
+        Assert.False(St(t).HostLoop);
+        Assert.Null(St(t).CascadeInnerSetpoint);          // 温控器 PID：釜内目标直接写给夹套，没有内环这回事
+        Assert.Equal(30_00000, dev.Get(1, "TG"));          // TG 按 1e-5 刻度
     }
 
     [Fact]
@@ -286,6 +310,7 @@ public class Rd105HostControlTests
         await s.StartAsync(CancellationToken.None);
         var t = Temp(s, 0);
         await WaitUntil(() => !double.IsNaN(t.CurrentJacket), 3000, "夹套读数");
+        Assert.True(St(t).HostLoop);                       // 组合会话那一层把「上位机回路」转发上来（面板「尽快」的说明按它换）
 
         // 升温：加热棒继电器（DO0）合、TEC 功率线（DO6）断，占空比负（加热棒吃负）
         await t.SetTargetAsync(new TempTarget(40, TempChannelKind.Jacket), CancellationToken.None);

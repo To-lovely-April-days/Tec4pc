@@ -222,7 +222,8 @@ public sealed class HmiVesselView : Control
         Text(ctx, "TT", 15, 205.5, 7.5, Mut);
 
         // ── 夹套读数气泡：锚在 TT 变送器上方（原型没有这一只；用户要的：夹套温度实时在图上）。
-        //    夹套是控温对象（Tj / 蒸回流跟随）时多一行「设定 / 跟随」、描边蓝，跟 Tr 气泡一个规矩
+        //    夹套是控温对象（Tj / 蒸回流跟随）时多一行「设定 / 跟随」、描边蓝，跟 Tr 气泡一个规矩；
+        //    上位机串级时夹套是内环的被控量，同样多一行「内环 X ℃」（外环此刻要夹套到多少）
         {
             var tjTgt = TjSetText is not null;
             double top = tjTgt ? 150 : 162;
