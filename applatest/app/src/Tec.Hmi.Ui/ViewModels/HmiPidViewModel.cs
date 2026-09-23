@@ -545,7 +545,7 @@ public sealed class HmiPidViewModel : ViewModelBase
 
     // ── 自整定 ─────────────────────────────────────────────────────
 
-    private string _tuneT = "", _tuneAmp = "30", _tuneHys = "0.05";
+    private string _tuneT = "", _tuneAmp = "20", _tuneHys = "0.05";
     private PidActuator _tuneAct = PidActuator.Tec;
     private bool _tuneActPicked;
 
@@ -564,23 +564,24 @@ public sealed class HmiPidViewModel : ViewModelBase
 
     public IReadOnlyList<HmiPidPoint> Points { get; private set; } = Array.Empty<HmiPidPoint>();
 
-    /// <summary>建议点位（用户定的）：TEC −20 / 0 / 25 / 50 / 80，加热棒 110 / 140。</summary>
-    private static readonly (double T, PidActuator A)[] Suggested =
-    {
-        (-20, PidActuator.Tec), (0, PidActuator.Tec), (25, PidActuator.Tec), (50, PidActuator.Tec), (80, PidActuator.Tec),
-        (110, PidActuator.Heater), (140, PidActuator.Heater)
-    };
+    /// <summary>
+    /// 建议点位（用户定的）：−20 / 0 / 25 / 50 / 80 / 110 / 140 ℃。用哪个执行器整按设备的热源策略给（0328）：
+    /// 「TEC 加热」启用时阈值以下是 TEC、以上是加热棒；不启用时 TEC 只制冷，比夹套此刻高的点（放着不管时夹套
+    /// 停在冷却水 / 室温附近，所以一般是 25 ℃ 以上）用加热棒——只制冷的 TEC 整不了比自然平衡温度高的点。
+    /// </summary>
+    private static readonly double[] Suggested = { -20, 0, 25, 50, 80, 110, 140 };
 
     private void RefreshPoints()
     {
         if (Bench is not { } b) { Points = Array.Empty<HmiPidPoint>(); Raise(nameof(Points)); return; }
         var tec = b.Rows(PidActuator.Tec);
         var heat = b.Rows(PidActuator.Heater);
-        Points = Suggested.Select(p =>
+        Points = Suggested.Select(t =>
         {
-            var rows = p.A == PidActuator.Heater ? heat : tec;
-            var done = rows.Any(r => Math.Abs(r.TemperatureC - p.T) <= 2 && r.FromAutoTune);
-            return new HmiPidPoint(p.T, $"{(done ? "✓ " : "")}{p.T:0} ℃ {(p.A == PidActuator.Heater ? "加热棒" : "TEC")}", done, p.A);
+            var a = b.SuggestActuator(t);
+            var rows = a == PidActuator.Heater ? heat : tec;
+            var done = rows.Any(r => Math.Abs(r.TemperatureC - t) <= 2 && r.FromAutoTune);
+            return new HmiPidPoint(t, $"{(done ? "✓ " : "")}{t:0} ℃ {(a == PidActuator.Heater ? "加热棒" : "TEC")}", done, a);
         }).ToList();
         Raise(nameof(Points));
     }
@@ -621,10 +622,12 @@ public sealed class HmiPidViewModel : ViewModelBase
         TuneCheck = check ?? "";
         CanStartTune = !b.Tuning && check is null;
         TuneSuggest = req is null ? "" : _tuneAct == PidActuator.Heater
-            ? "加热棒只加热：继电在 [0, 上限] 里摆，弱加热那半周靠自然散热降温——整定温度要高于不加热时的平衡温度"
+            ? "加热棒只加热：继电在 0 ~ 2×幅值 之间摆（幅值最多 LIMITED 的一半，一般 15 ~ 25 %；离室温近、维持它用不了多少功率的" +
+              "温度取小些，5 ~ 10 %），关着的那半周靠自然散热降温——整定温度比不加热时夹套会停的温度高得越多越快，太近了整不出振荡"
             : b.SuggestActuator(req.SetpointC) == PidActuator.Heater
                 ? "这个温度平时是加热棒在出力（「TEC 加热」没启用时 TEC 只制冷）；用 TEC 整也行，但表登记在 TEC 那张"
-                : "TEC：继电在设定值两边推；「TEC 加热」没启用时只在制冷一侧摆（强制冷 / 弱制冷）";
+                : "TEC：继电在设定值两边推；「TEC 加热」没启用时只在制冷一侧摆（强制冷 / 弱制冷，幅值最多 LIMITED 的一半），" +
+                  "弱的那半周靠自然回温——只能整比不制冷时夹套会停的温度（冷却水 / 室温附近）低不少的温度";
         TuneNote = b.Tuning ? b.TuneNote : "";
         RaiseAll(nameof(TuneTec), nameof(TuneHeater), nameof(Tuning), nameof(NotTuning), nameof(TuneNote),
                  nameof(TuneCheck), nameof(TuneSuggest), nameof(CanStartTune));
@@ -641,7 +644,10 @@ public sealed class HmiPidViewModel : ViewModelBase
         if (_zone.EngineRunning) { Fail("这一路在跑程序（配方 / 面板序列）——先结束程序再整定"); return; }
         _owner.OpenAsk("开始自整定", $"{Who} · {act} · {req.SetpointC:0.#} ℃",
             $"继电器法：输出在设定值两边来回推（幅值 {req.RelayAmplitudePercent:0} %、回差 {req.HysteresisC:0.###} ℃），" +
-            "温度会在设定值附近振荡几个周期，一般 10~60 min。要有人在场。" +
+            "温度会在设定值附近振荡几个周期。要有人在场。" +
+            (req.Actuator == PidActuator.Heater
+                ? "\n加热棒只加热：关着的那半周靠自然散热降温，一个周期可能十几二十分钟，整完可能要一两个小时（最长 4 h 自动放弃）。"
+                : "\nTEC 双向一般 10 ~ 60 min；只制冷时回温那半周靠自然回温，会慢一些（最长 4 h 自动放弃）。") +
             (running ? "\n这一路正在控温——开始整定会先把控温停掉。" : "") +
             $"\n整完输出关掉、继电器断开；成功时平稳型参数自动登记进{act}那张表。",
             "开始整定", () => _ = StartTuneAsync(b, req));

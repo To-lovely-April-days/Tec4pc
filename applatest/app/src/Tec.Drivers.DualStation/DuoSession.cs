@@ -256,6 +256,9 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         var tj = _rd.TempOf(well).CurrentJacket;
         if (!double.IsNaN(tj) && tj > _threshold - _hyst)
             return $"夹套 {tj:0.0} ℃ 还高于回切线 {_threshold - _hyst:0} ℃（阈值 − 滞回）——TEC 不能接到这么烫的夹套上，等它凉下来再用 TEC 整";
+        // 「TEC 加热」不启用：TEC 只制冷，跟加热棒一样是单方向，幅值同样不能超过 LIMITED 的一半
+        if (!_tecHeat && _rd.PidOf(well)?.OneSidedAmplitudeCheck(r, "TEC（「TEC 加热」没启用，只制冷）") is { } amp)
+            return amp;
         return null;
     }
 

@@ -378,6 +378,40 @@ public class PidTuningBenchTests
     }
 
     [Fact]
+    public async Task 单方向整定幅值不超过LIMITED一半_双向TEC不受限()
+    {
+        using var _ = Rd105HostControl.UseGainsDir(NewDir());
+        var d = new Duo();
+        d.Rd.Set(1, "LIMITED", 80);
+        await using var s = await d.Drv.OpenAsync(Duo.Conn(), d.Ctx(), CancellationToken.None);
+        await s.StartAsync(CancellationToken.None);
+        var b = Bench(s, 0);
+        var t = Temp(s, 0);
+        await WaitUntil(() => !double.IsNaN(t.CurrentJacket), 3000, "夹套读数");
+
+        // 加热棒只加热：LIMITED 80 → 幅值最多 40（上限按开机读到的 LIMITED 算，不是写死的 90）
+        var heat = b.CheckTune(new PidAutoTuneRequest(40, PidActuator.Heater, 50, 0.05));
+        Assert.Contains("一半", heat);
+        Assert.Contains("LIMITED 80", heat);
+        Assert.Contains("最多 40", heat);
+        Assert.Null(b.CheckTune(new PidAutoTuneRequest(40, PidActuator.Heater, 40, 0.05)));
+        // 「TEC 加热」不启用：TEC 只制冷，同样单方向
+        Assert.Contains("一半", b.CheckTune(new PidAutoTuneRequest(20, PidActuator.Tec, 50, 0.05)));
+        Assert.Null(b.CheckTune(new PidAutoTuneRequest(20, PidActuator.Tec, 20, 0.05)));
+        // 被拒的请求一个继电器都没动
+        var ex = await Assert.ThrowsAnyAsync<Exception>(
+            () => b.StartAutoTuneAsync(new PidAutoTuneRequest(40, PidActuator.Heater, 50, 0.05), CancellationToken.None));
+        Assert.Contains("一半", ex.Message);
+        Assert.False(b.Tuning);
+        Assert.False(d.Io.Coils[0]);
+
+        // 单机 RD105 的 TEC 是双向的：幅值不受这条限
+        var (drv, _) = Standalone();
+        await using var solo = await drv.OpenAsync(Conn(), Ctx(HostCfg()), CancellationToken.None);
+        Assert.DoesNotContain("一半", Bench(solo, 0).CheckTune(new PidAutoTuneRequest(20, PidActuator.Tec, 60, 0.05)) ?? "");
+    }
+
+    [Fact]
     public async Task 双工位TEC整定_TEC加热不启用只制冷继电_安全停机收尾()
     {
         using var _ = Rd105HostControl.UseGainsDir(NewDir());

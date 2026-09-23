@@ -75,6 +75,22 @@ public sealed class Rd105HostPid : IPidTuningBench
     /// <summary>组合会话接进来的热源配合；单独的 RD105 不填。</summary>
     public Rd105PidHooks Hooks { get; set; } = new();
 
+    /// <summary>这一路的最大输出 LIMITED（%），会话开机从温控器读来（读不到按 90）。单方向整定的幅值上限按它算。</summary>
+    public double Limited { get; internal set; } = 90;
+
+    /// <summary>
+    /// 单方向执行器（只加热的加热棒 / 只制冷的 TEC）继电在 [0, LIMITED] 里摆：幅值超过 LIMITED 的一半，
+    /// 继电中心就没处放了（被钉在正中、自寻中挪不动，输出只剩满 / 零两档，过冲最大）。
+    /// </summary>
+    public string? OneSidedAmplitudeCheck(PidAutoTuneRequest r, string what)
+    {
+        var max = Math.Floor(Limited / 2);
+        return r.RelayAmplitudePercent > max
+            ? $"继电幅值 {r.RelayAmplitudePercent:0} % 超过了最大输出 LIMITED {Limited:0} % 的一半——{what}只能单方向出力，" +
+              $"继电要在 0 ~ {Limited:0} % 里摆，幅值最多 {max:0} %（建议 15 ~ 25 %：幅值越大过冲越大，回头那半周要等得越久）"
+            : null;
+    }
+
     private string Who => $"{_instanceId} TC{_tc}";
 
     private static ActuatorMode Mode(PidActuator a) => a == PidActuator.Heater ? ActuatorMode.HeatOnly : ActuatorMode.Bidirectional;
@@ -348,9 +364,13 @@ public sealed class Rd105HostPid : IPidTuningBench
         {
             if (!_tuning || _tuneReq is not { } r) return "";
             var head = $"{ActuatorName(r.Actuator)}，{r.SetpointC:0.0} ℃，幅值 {r.RelayAmplitudePercent:0} %、回差 {r.HysteresisC:0.###} ℃";
-            return _tuneCycles <= 0
+            // 输出是 0 = 单方向执行器的被动半周：加热棒关着等自然降温 / TEC 关着等自然回温
+            var idle = _live is { Tuning: true } l && Math.Abs(l.DutyPercent) < 1e-9
+                ? $"；这半周输出 0，等温度自己{(r.Actuator == PidActuator.Heater ? "降" : "升")}回设定值（靠自然散热，可能要十几分钟）"
+                : "";
+            return (_tuneCycles <= 0
                 ? $"自整定中（{head}）：把温度推到设定值附近，等它来回穿越…"
-                : $"自整定中（{head}）：已完成 {_tuneCycles} 个振荡周期（一般要 4 个）";
+                : $"自整定中（{head}）：已完成 {_tuneCycles} 个振荡周期（一般要 4 个）") + idle;
         }
     }
 
@@ -370,6 +390,7 @@ public sealed class Rd105HostPid : IPidTuningBench
         if (double.IsNaN(_temp.CurrentJacket)) return "夹套温度没有读数——自整定靠它判穿越，读不到整不了";
         if (r.Actuator == PidActuator.Heater && Hooks.Prepare is null)
             return "这台温控器单独使用、没有加热棒切换——只能用 TEC 整";
+        if (r.Actuator == PidActuator.Heater && OneSidedAmplitudeCheck(r, "加热棒") is { } amp) return amp;
         return Hooks.Check?.Invoke(r);
     }
 

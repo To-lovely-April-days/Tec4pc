@@ -56,7 +56,9 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
             Period = _period,
             SyncMode = ChannelSyncMode.Independent,      // 两路各自独立：TC1 = 工位 A、TC2 = 工位 B
             ManagePwmFrequency = false,                  // FPWM 是设备全局的，两路可能各在一侧，不由回路改
-            MaxConsecutiveFailures = 20                  // 连着 20 拍（约 10 s）读不到才停控：串口抖一下由 LinkRecovery 重开
+            MaxConsecutiveFailures = 20,                 // 连着 20 拍（约 10 s）读不到才停控：串口抖一下由 LinkRecovery 重开
+            // 加热棒 / 只制冷的 TEC 整定时，回头那半周靠自然散热 / 回温，一个半周可能十几二十分钟：给 4 h
+            AutoTuneTimeout = TimeSpan.FromHours(4)
         };
 
         for (var i = 0; i < 2; i++)
@@ -222,6 +224,7 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
                     var m = _pids[tc - 1]?.Manual.Inner ?? new PidTuning(Rd105HostControl.FallbackInner.Kp,
                         Rd105HostControl.FallbackInner.Ki, Rd105HostControl.FallbackInner.Kd);
                     _loop.ConfigurePid(tc, m.Kp, m.Ki, m.Kd, limited, _invert);
+                    if (_pids[tc - 1] is { } pid) pid.Limited = limited;
                 }
                 catch (Exception ex)
                 {
