@@ -7,7 +7,7 @@ rem so a UTF-8 Chinese path inside a command would not match the real file name.
 setlocal
 cd /d "%~dp0\.."
 set VER=%1
-if "%VER%"=="" set VER=0324
+if "%VER%"=="" set VER=0325
 rem strip leading zeros (0323 -> 323): "set /a" would read a leading zero as octal, and /p:Version wants plain digits
 for /f "tokens=* delims=0" %%a in ("%VER%") do set VERNUM=%%a
 if "%VERNUM%"=="" set VERNUM=0

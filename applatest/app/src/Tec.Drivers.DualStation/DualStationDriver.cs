@@ -110,6 +110,16 @@ public sealed class DualStationDriver : IDeviceDriver
         Field.Num(Rd105TecDriver.FieldOverUp, "超温上限", 180, "℃", -50, 300, 1),
         Field.Num(Rd105TecDriver.FieldOverLow, "超温下限", -40, "℃", -80, 100, 1),
         Field.Num(Rd105TecDriver.FieldMaxCurrent, "最大电流", 5, "A", 0.5, 20, 0.1),
+        // 控温回路闭在哪里（用户定的：搬到上位机——釜内串级、按温度分段的增益表、前馈都在那边；
+        // 温控器 PID 只有夹套单环、出厂参数，「釜内」目标也只是把同一个数写给夹套）
+        Field.Sel(Rd105TecDriver.FieldControl, "控温方式", Rd105TecDriver.ControlOptions, Rd105TecDriver.ControlHost)
+            with { Tip = Rd105TecDriver.HostControlTip },
+        // 极性按现场实测（2026-09-23）：降温时输出读回 +90、升温 −90 → TEC 侧「反向」、加热棒吃负占空比。
+        // 接反了上位机回路的跑飞检测两三分钟内会停控并说明，改这两项再开
+        Field.Sel(Rd105TecDriver.FieldInvert, "TEC 输出反向", Rd105TecDriver.InvertOptions, Rd105TecDriver.InvertYes)
+            with { Tip = "上位机 PID 下用：回路算出「要加热」写正占空比还是写负。这台实测降温 +90、升温 −90，所以缺省反向；跑飞检测报「方向接反」就改它" },
+        Field.Sel(Rd105TecDriver.FieldHeaterSign, "加热棒占空比", Rd105TecDriver.HeaterSignOptions, Rd105TecDriver.HeaterNeg)
+            with { Tip = "上位机 PID 下用：加热棒那只 SSR 接在哪个引脚（固件按占空比符号路由）。这台实测电加热侧读回 −90，所以缺省负" },
         // TEC 的反向输出加热启不启用。默认「不启用」：TEC 只当冷源，所有加热都走电加热棒，
         // 继电器按「这一刻该升温还是该降温」切。启用后才回到「只有超过阈值才切电加热」那套
         Field.Sel(Fields.TecHeat, "TEC 加热", new[] { "不启用", "启用" }, "不启用"),

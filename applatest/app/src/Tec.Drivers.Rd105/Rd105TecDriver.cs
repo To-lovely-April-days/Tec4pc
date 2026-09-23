@@ -33,6 +33,27 @@ public sealed class Rd105TecDriver : IDeviceDriver
     public const string FieldOverLow = "超温下限";
     public const string FieldMaxCurrent = "最大电流";
 
+    /// <summary>控温回路闭在哪里：温控器自己的 PID（写 TG / SPEED），还是上位机主循环（MODE=3 每拍写占空比，
+    /// 串级 / 增益调度 / 前馈都在上位机，TecControl.Core 那套）。</summary>
+    public const string FieldControl = "控温方式";
+    public const string ControlDevice = "温控器 PID";
+    public const string ControlHost = "上位机 PID（串级）";
+    public static readonly string[] ControlOptions = { ControlDevice, ControlHost };
+
+    /// <summary>上位机回路的 TEC 侧输出方向：回路算出「要加热」写正还是写负。这台机器实测降温时读回 +90、
+    /// 升温 −90，所以缺省「反向」（回路正 = 加热 → 写成负）。接反了跑飞检测会在两三分钟内停控并说明。</summary>
+    public const string FieldInvert = "TEC 输出反向";
+    public const string InvertNo = "不反向";
+    public const string InvertYes = "反向";
+    public static readonly string[] InvertOptions = { InvertNo, InvertYes };
+
+    /// <summary>加热棒（PWM 固态继电器）吃的是哪个符号的占空比。固件按符号把占空比路由到两个 PWM 引脚，
+    /// SSR 接在哪个引脚上由现场接线定——这台实测是负的（电加热侧读回 −90 %）。</summary>
+    public const string FieldHeaterSign = "加热棒占空比";
+    public const string HeaterNeg = "负";
+    public const string HeaterPos = "正";
+    public static readonly string[] HeaterSignOptions = { HeaterNeg, HeaterPos };
+
     /// <summary>连接参数缺省——按现场那台机器：RD105 在 CH344 的 C 口（COM7），RS485 = Modbus-RTU、站号 1，
     /// 波特率 38400（用户定的；协议 §1 写的 485 口出厂值是 9600，「连接」时两档都会试）。</summary>
     public const string DefaultPort = "COM7";
@@ -76,12 +97,25 @@ public sealed class Rd105TecDriver : IDeviceDriver
     {
         Field.Num(FieldOverUp, "超温上限", 180, "℃", -50, 300, 1),
         Field.Num(FieldOverLow, "超温下限", -40, "℃", -80, 100, 1),
-        Field.Num(FieldMaxCurrent, "最大电流", 5, "A", 0.5, 20, 0.1)
+        Field.Num(FieldMaxCurrent, "最大电流", 5, "A", 0.5, 20, 0.1),
+        // 单独当温控器用缺省还是走它自己的 PID；双工位主机那边缺省上位机（用户定的）
+        Field.Sel(FieldControl, "控温方式", ControlOptions, ControlDevice)
+            with { Tip = HostControlTip },
+        Field.Sel(FieldInvert, "TEC 输出反向", InvertOptions, InvertNo)
+            with { Tip = "只在上位机 PID 下用：回路算出「要加热」写正占空比还是写负。接反了跑飞检测两三分钟内会停控并说明，改一下这项再开" },
+        Field.Sel(FieldHeaterSign, "加热棒占空比", HeaterSignOptions, HeaterPos)
+            with { Tip = "只在上位机 PID 下用：加热棒那只 SSR 接在正引脚还是负引脚（固件按占空比符号路由）" }
     })
     {
         Tip = "超温与限流写进温控器自己的保护寄存器，断了通信也照样生效——" +
               "这不是上位机的软限值，是设备的硬保护。安全监控的默认限值也从这里推。"
     };
+
+    public const string HostControlTip =
+        "「温控器 PID」：写目标和斜率，温控器自己闭环（出厂 3000/150/0，单环夹套）。" +
+        "「上位机 PID（串级）」：温控器只采温度、出功率（MODE=3），回路在上位机：夹套单环 / 釜内串级（外环吃宇电的 Tr）、" +
+        "按温度分段的增益表（自整定自动登记，落在 %AppData%\\TecDrivers\\gains\\）、稳态前馈、跑飞检测。" +
+        "代价：通信断了温控器保持最后一个输出，只剩它自己的超温保护兜底";
 
     /// <summary>指令是静态声明的，没连硬件也要能编辑配方（§3.3）。</summary>
     public IReadOnlyList<CommandDescriptor> Commands { get; } = CommandSpecs.Temperature;
@@ -158,7 +192,7 @@ public sealed class Rd105TecDriver : IDeviceDriver
         try
         {
             link.Open();
-            var session = new Rd105Session(link, ctx, connection);
+            var session = new Rd105Session(link, ctx, connection, Rd105HostDefaults.Standalone);
             // 开机第一件事是把超温与限流写进设备的保护寄存器，再谈控温
             await session.ApplyProtectionAsync(ct).ConfigureAwait(false);
             return session;

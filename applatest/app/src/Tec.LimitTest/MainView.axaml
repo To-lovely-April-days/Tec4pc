@@ -52,12 +52,23 @@
     <!-- 中栏：矩阵、按钮、条件、参数 -->
     <ScrollViewer Grid.Row="1" Grid.Column="1" Margin="4,0">
       <StackPanel Spacing="8">
+        <Grid ColumnDefinitions="Auto,Auto,16,Auto,*">
+          <TextBlock Text="控温对象" VerticalAlignment="Center" Margin="0,0,6,0"/>
+          <ComboBox Grid.Column="1" SelectedIndex="{Binding ObjectIndex}" IsEnabled="{Binding CanEditPlan}" MinWidth="170"
+                    ToolTip.Tip="夹套：温控器自带那路 TC，单环。釜内：上位机串级，外环吃宇电探头的 Tr——台面里「控温方式」得是「上位机 PID（串级）」而且两个工位的 Tr 都有读数，否则开始时拒绝。到达、提前结束、稳定度都按被控量判">
+            <ComboBoxItem Content="夹套 Tj（单环）"/>
+            <ComboBoxItem Content="釜内 Tr（串级）"/>
+          </ComboBox>
+          <TextBlock Grid.Column="3" Text="冷却水温度 ℃" VerticalAlignment="Center" Margin="0,0,6,0"/>
+          <TextBox Grid.Column="4" Text="{Binding WatersText}" IsEnabled="{Binding CanEditPlan}"
+                   ToolTip.Tip="逗号分开，顺序就是跑的顺序；不低于 7 ℃（冷水机的下限）。推荐 20 / 12 / 7"/>
+        </Grid>
         <TextBlock TextWrapping="Wrap" Foreground="#555555"
-                   Text="测试矩阵：勾要跑的格。同一水温下按「最低温 → 最高温 → 恒温」串着跑，两项之间先回温；换水温时停下来等你把冷却水调好。"/>
+                   Text="测试矩阵：勾要跑的格。每个水温下按「最低温 → 恒温」串着跑，两项之间先回温；换水温时停下来等你把冷却水调好。最高温不用冷却水、只测一次，放最后跑，跑完不回温（自然冷却）。"/>
         <ItemsControl ItemsSource="{Binding Cells}">
           <ItemsControl.ItemsPanel>
             <ItemsPanelTemplate>
-              <UniformGrid Columns="3"/>
+              <UniformGrid Columns="2"/>
             </ItemsPanelTemplate>
           </ItemsControl.ItemsPanel>
           <ItemsControl.ItemTemplate>
@@ -85,8 +96,8 @@
           <StackPanel Spacing="6">
             <TextBlock Text="{Binding PromptText}" TextWrapping="Wrap" FontWeight="Bold"/>
             <StackPanel Orientation="Horizontal" Spacing="8">
-              <TextBlock Text="实际水温 ℃（手填）" VerticalAlignment="Center"/>
-              <TextBox Text="{Binding WaterText}" Width="90"/>
+              <TextBlock Text="实际水温 ℃（手填）" VerticalAlignment="Center" IsVisible="{Binding PromptNeedsWater}"/>
+              <TextBox Text="{Binding WaterText}" Width="90" IsVisible="{Binding PromptNeedsWater}"/>
               <Button Content="继续" Click="Continue_Click" Background="#1565C0" Foreground="White" Padding="18,6"/>
               <TextBlock Text="不做这一组就点「跳过当前」" VerticalAlignment="Center" Foreground="#777777" FontSize="11"/>
             </StackPanel>
@@ -114,7 +125,7 @@
           </StackPanel>
           <StackPanel Grid.Column="1" Spacing="4">
             <TextBlock Text="参数" FontWeight="Bold"/>
-            <Grid ColumnDefinitions="110,*,70,*" RowDefinitions="Auto,Auto,Auto,Auto">
+            <Grid ColumnDefinitions="110,*,70,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
               <TextBlock Text="最低温目标 ℃" VerticalAlignment="Center"/>
               <TextBox Grid.Column="1" Text="{Binding MinTargetText}" Margin="0,1,6,1"/>
               <TextBlock Grid.Column="2" Text="跑 min" VerticalAlignment="Center"/>
@@ -127,13 +138,15 @@
               <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding HoldTargetText}" Margin="0,1,6,1"/>
               <TextBlock Grid.Row="2" Grid.Column="2" Text="恒温 min" VerticalAlignment="Center"/>
               <TextBox Grid.Row="2" Grid.Column="3" Text="{Binding HoldMinutesText}" Margin="0,1"/>
-              <TextBlock Grid.Row="3" Text="提前结束阈值 ℃" VerticalAlignment="Center" ToolTip.Tip="最低温 / 最高温：最近 10 min 两工位夹套变化都不到这个数就提前结束；0 = 不提前"/>
+              <TextBlock Grid.Row="3" Text="提前结束阈值 ℃" VerticalAlignment="Center" ToolTip.Tip="最低温 / 最高温：最近 10 min 两工位被控量变化都不到这个数就提前结束；0 = 不提前"/>
               <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding SettleText}" Margin="0,1,6,1"/>
-              <TextBlock Grid.Row="3" Grid.Column="2" Text="回温 ℃" VerticalAlignment="Center" ToolTip.Tip="两项之间先回到这个温度附近再做下一项"/>
+              <TextBlock Grid.Row="3" Grid.Column="2" Text="回温 ℃" VerticalAlignment="Center" ToolTip.Tip="两项之间先回到这个温度附近再做下一项（一律控夹套）"/>
               <TextBox Grid.Row="3" Grid.Column="3" Text="{Binding ReturnTempText}" Margin="0,1"/>
+              <TextBlock Grid.Row="4" Text="稳定度窗口 min" VerticalAlignment="Center" ToolTip.Tip="恒温：取记录最后这么多分钟的每秒数据算峰峰值 / 标准差 / 与目标差（±0.01 看这几项）"/>
+              <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding StabilityText}" Margin="0,1,6,1"/>
             </Grid>
             <TextBlock TextWrapping="Wrap" Foreground="#777777" FontSize="11"
-                       Text="手填的只有操作人、环境温度、冷却水温度；LIMITED、超温上限从温控器读，切换阈值、死区从台面配置读，没读到留空。"/>
+                       Text="手填的只有操作人、环境温度、冷却水温度；LIMITED、超温上限从温控器读，切换阈值、死区从台面配置读，没读到留空。恒温稳定度用每秒数据算（表里 2 min 一行那份只是抽样）。"/>
           </StackPanel>
         </Grid>
       </StackPanel>

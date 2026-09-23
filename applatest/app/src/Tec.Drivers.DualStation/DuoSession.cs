@@ -178,9 +178,21 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
             TimeScale = 1,
             Clock = ctx.Clock,
             Log = ctx.Log
-        }, connection);
+        }, connection, Rd105HostDefaults.DualStation);
         _fwd = _rd.Samples.Subscribe(new Fwd(_out));
         _rd.StateChanged += (_, st) => { if (st != DeviceState.Disposed) State = st; };
+        // 上位机回路把某一路停了（Tr 丢失 / 跑飞 / 连续通信失败）：这一路就算不控了，
+        // 下一拍采集循环把它的两只继电器都断开（不控温不合，用户定的）
+        for (var w = 0; w < 2; w++)
+        {
+            var well = w;
+            _rd.TempOf(w).Tripped += why =>
+            {
+                NoteStop(well);
+                SuppressReflux(well);
+                _ctx.Log?.Invoke("error", $"{InstanceId} 工位 {AB(well)} 控温已被回路停下（{why}）——继电器下一拍断开");
+            };
+        }
 
         _temps = new[] { new DuoTempControl(this, 0), new DuoTempControl(this, 1) };
     }
@@ -224,6 +236,11 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         // 只在功率线经 IO8R 继电器的机器上发——事后「那一炉为什么降不下去」看它
         new TagDescriptor("tecpwr", "TEC 功率线", "", DataShape.State)
             { Nominal = new ValueRange(0, 1) },
+        // 上位机 PID 下里面那台 RD105 会话发的：TEC 电流、串级外环算出的夹套设定值（原样转发）
+        new TagDescriptor("cur", "TEC 电流", "A", DataShape.Scalar)
+            { Nominal = new ValueRange(0, 20) },
+        new TagDescriptor("Tjset", "夹套设定（串级）", "℃", DataShape.Scalar)
+            { Nominal = new ValueRange(-40, 180) },
         new TagDescriptor("fault", "设备告警字", "", DataShape.State)
             { Nominal = new ValueRange(0, 0) }
     };
@@ -849,7 +866,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
             _ctx.Log?.Invoke("info", $"{InstanceId} 工位 {AB(well)} 热源切换：" +
                 $"{SideName(SideNow(well))} → {SideName(to)}（先关输出）");
 
-            await innerT.StopAsync(ct).ConfigureAwait(false);                       // ① 带载切继电器 = 触点拉弧
+            await innerT.EnableAsync(false, ct).ConfigureAwait(false);              // ① 带载切继电器 = 触点拉弧（只关输出，回路挂起，目标留着）
             // ② 先断后通：加热棒继电器与 TEC 功率继电器不许同时闭合（TEC 和加热棒一起带电）。
             //    该断的先断、该合的再合；每只写完就记影子——中途总线掉了，下一拍只补没写成的那一只
             if (to != Side.Electric && _electric[well])
@@ -894,6 +911,9 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
             }
 
             _switchedAt[well] = _ctx.Clock();
+            // ③.5 继电器扳到哪一侧，回路的执行器形态跟着换（上位机 PID：加热棒 = 只加热、TEC = 双向；
+            //     温控器 PID 下是空操作）。要在重开输出之前换——带着 TEC 的积分去驱动加热棒只会过冲
+            innerT.SetActuator(to == Side.Electric);
             // ④ 原来开着、而且这两秒里没人喊停，才重开输出
             if (wasEnabled && innerT.Setpoint is not null && Volatile.Read(ref _stopGen[well]) == gen)
                 await innerT.EnableAsync(true, ct).ConfigureAwait(false);

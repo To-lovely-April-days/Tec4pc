@@ -74,7 +74,8 @@ public sealed class RuntimeRig : IRig, IDisposable, IAsyncDisposable
                 ? s.Value : null;
         var heat = Get("heat");
         var pwr = Get("tecpwr");
-        var cur = now - _curAt <= CurrentPeriod * 3 ? _cur[well] : null;
+        // 电流：上位机 PID 下会话自己每两秒发一路 cur；温控器 PID 下没有，退回参数窗每 5 s 读的那份
+        var cur = Get("cur") ?? (now - _curAt <= CurrentPeriod * 3 ? _cur[well] : null);
         return new WellReading(
             Tj: Get("Tj"),
             Tr: Get("Tr"),
@@ -112,8 +113,8 @@ public sealed class RuntimeRig : IRig, IDisposable, IAsyncDisposable
         return cfg.Has(key) ? cfg.Num(key, schemaDefault) : schemaDefault;
     }
 
-    public Task SetTargetAsync(int well, double target, CancellationToken ct)
-        => Temp(well).SetTargetAsync(new TempTarget(target, TempChannelKind.Jacket), ct);
+    public Task SetTargetAsync(int well, double target, TempChannelKind kind, CancellationToken ct)
+        => Temp(well).SetTargetAsync(new TempTarget(target, kind), ct);
 
     public Task StopAsync(int well, CancellationToken ct) => Temp(well).StopAsync(ct);
 

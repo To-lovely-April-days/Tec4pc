@@ -512,10 +512,13 @@ public sealed class Rd105TecDriverTests
         // 整定不出来时得能手填——现场总有整定失败又必须开工的时候
         await tuning.SetGainsAsync(TempChannelKind.Jacket, new PidTuning(2.5, 0.02, 12),
                                    CancellationToken.None);
-        // 釜内那套增益不归这一级管（设备上没有 Tr），写也明着拒绝
-        await Assert.ThrowsAsync<NotSupportedException>(
-            () => tuning.SetGainsAsync(TempChannelKind.Reactor, new PidTuning(0.8, 0.001, 30),
-                                       CancellationToken.None));
+        // 釜内那套是串级外环的增益（Kp ℃/℃、Ki 1/s、Kd s）：能写；至于串级跑不跑得起来，
+        // 看「控温方式」是不是上位机、有没有 Tr——那是 SetStrategy / 下发目标时判的事
+        await tuning.SetGainsAsync(TempChannelKind.Reactor, new PidTuning(0.8, 0.001, 30), CancellationToken.None);
+        // 温控器 PID 方式下选釜内策略明着拒绝（设备上没有 Tr）
+        var ex = await Assert.ThrowsAsync<NotSupportedException>(
+            () => tuning.SetStrategyAsync(TempChannelKind.Reactor, CancellationToken.None));
+        Assert.Contains("上位机 PID", ex.Message);
     }
 
     private sealed class Collect(Action<Sample> onNext) : IObserver<Sample>

@@ -41,8 +41,8 @@ public interface IRig
     /// <summary>台面配置里的「热源切换死区」（K），写进恒温表的条件块。</summary>
     double? Band { get; }
 
-    /// <summary>下发夹套目标，「尽快」（目标一步写给温控器，斜率不限）。热源切换由驱动自己做。</summary>
-    Task SetTargetAsync(int well, double target, CancellationToken ct);
+    /// <summary>下发目标，「尽快」（不限斜率）。kind = 控夹套还是控釜内（釜内 = 上位机串级，没有 Tr 驱动会拒绝）。热源切换由驱动自己做。</summary>
+    Task SetTargetAsync(int well, double target, TempChannelKind kind, CancellationToken ct);
 
     /// <summary>停这一路的控温（关输出）。</summary>
     Task StopAsync(int well, CancellationToken ct);

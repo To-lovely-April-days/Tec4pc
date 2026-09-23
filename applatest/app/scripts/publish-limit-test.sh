@@ -7,7 +7,7 @@
 set -e
 cd "$(dirname "$0")/.."
 RID=${1:-win-x64}
-VER=${2:-0324}
+VER=${2:-0325}
 OUT=dist/tec-limit-test-$RID
 
 # **绝不 PublishTrimmed**：Avalonia 的反射绑定会被裁剪弄坏（跟 publish-hmi.sh 同一条规矩）。

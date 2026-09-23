@@ -1,3 +1,4 @@
+using Tec.Driver.Abi;
 using Tec.LimitTest.Records;
 
 namespace Tec.LimitTest.Runs;
@@ -8,8 +9,19 @@ namespace Tec.LimitTest.Runs;
 /// </summary>
 public sealed class TestSettings
 {
-    /// <summary>冷却水温度分组（℃），用户定的：20 / 15 / 7。顺序就是跑的顺序。</summary>
-    public double[] Waters { get; set; } = { 20, 15, 7 };
+    /// <summary>冷却水温度分组（℃）：最低温、恒温各测一遍。推荐 20 / 12 / 7（不低于 7，用户定的），顺序就是跑的顺序。</summary>
+    public double[] Waters { get; set; } = { 20, 12, 7 };
+
+    /// <summary>最高温只测一次、不用冷却水（升温靠加热棒，跟水温无关——用户定的），放在最后跑、跑完不回温。</summary>
+    public bool MaxOnce { get; set; } = true;
+
+    /// <summary>控温对象：夹套（单环）还是釜内（串级，外环吃宇电的 Tr）。判到达、提前结束、稳定度都按它。</summary>
+    public TempChannelKind Object { get; set; } = TempChannelKind.Jacket;
+
+    public string ObjectName => Object == TempChannelKind.Reactor ? "釜内 Tr（串级）" : "夹套 Tj";
+
+    /// <summary>恒温稳定度按最后这么多分钟的每秒数据算。</summary>
+    public int StabilityWindowMinutes { get; set; } = 30;
 
     public double MinTarget { get; set; } = -40;
     public double MaxTarget { get; set; } = 150;
@@ -55,6 +67,7 @@ public sealed class TestSettings
     public BookSpec ToBookSpec() => new()
     {
         Waters = (double[])Waters.Clone(),
+        MaxOnce = MaxOnce,
         MinRows = Math.Max(2, MinMinutes + 1),
         MaxRows = Math.Max(2, MaxMinutes + 1),
         HoldRows = Math.Max(2, HoldMinutes / Math.Max(1, HoldStepMinutes) + 1),
@@ -111,5 +124,8 @@ public sealed class PlanCell
         _ => "跳过"
     };
 
-    public override string ToString() => $"{TestKinds.Name(Kind)} @ 冷却水 {Water:0.#} ℃";
+    public override string ToString() => $"{TestKinds.Name(Kind)} @ {(double.IsNaN(Water) ? "无冷却水" : $"冷却水 {Water:0.#} ℃")}";
+
+    /// <summary>同一格（项 + 水温键；NaN 跟 NaN 算同一个）。</summary>
+    public bool Is(TestKind kind, double water) => Kind == kind && (double.IsNaN(Water) ? double.IsNaN(water) : Water == water);
 }

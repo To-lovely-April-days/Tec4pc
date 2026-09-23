@@ -13,8 +13,8 @@
     <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
     <!-- 版本 = 打到的补丁号：标题栏显示它，记录表「补丁版本」缺省填它。
          出包脚本（scripts/publish-limit-test.sh / .cmd）用 /p:Version /p:InformationalVersion 覆盖 -->
-    <Version>1.0.324</Version>
-    <InformationalVersion>0324</InformationalVersion>
+    <Version>1.0.325</Version>
+    <InformationalVersion>0325</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 

@@ -24,16 +24,26 @@ public sealed class DualStationDriverTests
         /// <summary>会话读的钟。要验「自动切电加热的最短间隔」就得能把它往前拨。</summary>
         public DateTimeOffset Now = DateTimeOffset.Now;
 
-        public DriverContext Ctx(ParameterSet? config = null) => new()
+        /// <summary>
+        /// 这份文件里的用例都是照「温控器自己的 PID」写的（断言 TG / SPEED / ENABLE 那些指令）。
+        /// 主机缺省已改成上位机 PID（用户定的），这里没指明的就按温控器 PID 跑——
+        /// 上位机那条路的用例在 Rd105HostControlTests 里。
+        /// </summary>
+        public DriverContext Ctx(ParameterSet? config = null)
         {
-            InstanceId = "DUO1",
-            ChannelNumbers = new[] { 1, 2 },
-            Config = config ?? new ParameterSet(),
-            Simulated = false,
-            TimeScale = 1,
-            Clock = () => Now,
-            Log = (lvl, text) => { lock (Logs) Logs.Add((lvl, text)); }
-        };
+            config ??= new ParameterSet();
+            if (!config.Has(Rd105TecDriver.FieldControl)) config[Rd105TecDriver.FieldControl] = Rd105TecDriver.ControlDevice;
+            return new DriverContext
+            {
+                InstanceId = "DUO1",
+                ChannelNumbers = new[] { 1, 2 },
+                Config = config,
+                Simulated = false,
+                TimeScale = 1,
+                Clock = () => Now,
+                Log = (lvl, text) => { lock (Logs) Logs.Add((lvl, text)); }
+            };
+        }
     }
 
     private static Bench Rig(bool withIo = true)

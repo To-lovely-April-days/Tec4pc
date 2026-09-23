@@ -52,13 +52,13 @@ public class RuntimeRigTests
         Assert.Null(await rig.ReadLimitedAsync(0, CancellationToken.None));     // 仿真没有参数面板：留空，不编
         Assert.Equal(-40, rig.Limits(0)!.Min);
 
-        await WaitUntil(() => rig.Read(0).Tj is not null);
+        await WaitUntil(() => rig.Read(0).Tj is not null && rig.Read(0).Source is not null);   // heat 那一路比 Tj 晚一拍
         var r0 = rig.Read(0);
         Assert.Equal("TEC", r0.Source);
         Assert.Null(r0.Cur);
         Assert.Null(r0.TecPower);           // 仿真不发 tecpwr
 
-        await rig.SetTargetAsync(0, 5, CancellationToken.None);
+        await rig.SetTargetAsync(0, 5, Tec.Driver.Abi.TempChannelKind.Jacket, CancellationToken.None);
         await Task.Delay(rt.Clock.RealDelay(TimeSpan.FromMinutes(8)) + TimeSpan.FromMilliseconds(200));
         var r1 = rig.Read(0);
         Assert.True(r1.Tj < 20, $"下发 5 ℃ 八分钟后夹套还在 {r1.Tj}");

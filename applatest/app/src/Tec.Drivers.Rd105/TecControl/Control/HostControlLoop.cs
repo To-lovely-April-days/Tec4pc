@@ -89,6 +89,10 @@ public enum ChannelSyncMode
 
     /// <summary>硬件跟随：依赖设备 CONTMODE=2（通道 2 输出由固件复制通道 1）。</summary>
     HardwareFollow,
+
+    /// <summary>【本地改动】两路各自独立：TC1 = 工位 A、TC2 = 工位 B 各有各的回路和设定值，
+    /// 谁也不镜像谁、停一路不动另一路（双工位反应主机的拓扑，设备 CONTMODE=0）。</summary>
+    Independent,
 }
 
 /// <summary>
@@ -218,6 +222,19 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         /// 刷新会被固件看门狗自动撤销（约 1 分钟），因此手动模式也需每周期重写。</summary>
         public double? ManualDutyPercent;
 
+        /// <summary>【本地改动】串级外环的外部被控量来源（双工位主机：釜内 Tr 由宇电模块另采，
+        /// 不在这台温控器的两路 TC 上）。null = 沿用 OuterFeedbackSensor 指的那路 TC。</summary>
+        public Func<double>? OuterSource;
+
+        /// <summary>【本地改动】输出挂起：热源切换序列「关输出 → 扳继电器 → 开输出」那两秒里，
+        /// 回路不算也不写（算了也执行不了，积分只会攒债）；恢复时 dt 从头计。</summary>
+        public volatile bool Suspended;
+
+        /// <summary>【本地改动】只加热执行器（电加热棒）的占空比符号。固件把哪个符号路由到
+        /// 加热棒那只 SSR 的引脚，由现场接线决定——这台机器实测是负的（温控器自己的 PID
+        /// 升温时读回 −90 %）。</summary>
+        public int HeaterSign = 1;
+
         public bool Busy => Active || Tuner is not null;
     }
 
@@ -253,6 +270,31 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         if (ch == 1 && SyncMode == ChannelSyncMode.HostMirror)
             await controller.SetDutyPercentAsync(2, duty, ct).ConfigureAwait(false);
     }
+
+    /// <summary>【本地改动】按路触发的安全停机（哪一路、为什么）。SafetyTripped 照旧整体发一份。</summary>
+    public event Action<int, string>? ChannelTripped;
+
+    /// <summary>【本地改动】要不要由回路改写设备全局的 FPWM。单釜机器按执行器形态改（加热棒 0.5 Hz、
+    /// TEC 10 Hz）；双工位机器两路可能一路在加热棒、一路在 TEC，FPWM 只有一个，改了必顾此失彼——关掉，
+    /// FPWM 留给参数窗的人定。</summary>
+    public bool ManagePwmFrequency { get; set; } = true;
+
+    /// <summary>【本地改动】给某路的串级外环换一个外部被控量来源（釜内 Tr）；null 回到本机 TC。</summary>
+    public void SetOuterSource(int ch, Func<double>? source) => State(ch).OuterSource = source;
+
+    /// <summary>【本地改动】挂起 / 恢复某路的输出（热源切换那两秒）。挂起期间回路不算不写。</summary>
+    public void SuspendOutput(int ch, bool suspend)
+    {
+        var s = State(ch);
+        if (s.Suspended == suspend) return;
+        s.Suspended = suspend;
+        if (!suspend) s.LastUpdateTime = default;      // dt 从恢复那一拍重新计，别把挂起的几秒算进积分
+    }
+
+    public bool IsSuspended(int ch) => State(ch).Suspended;
+
+    /// <summary>【本地改动】只加热执行器的占空比符号（+1 / −1），见 ChannelState.HeaterSign。</summary>
+    public void SetHeaterSign(int ch, int sign) => State(ch).HeaterSign = sign < 0 ? -1 : 1;
 
     /// <summary>每个控制周期结束后发布（后台线程回调）。</summary>
     public event Action<ControlCycleResult>? CycleCompleted;
@@ -296,6 +338,14 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         s.ManualGains = new PidGains(kp, ki, kd);
     }
 
+    /// <summary>【本地改动】只换手动增益，不动输出上限与方向（参数面板改 PID 时用）。</summary>
+    public void SetManualGains(int ch, double kp, double ki, double kd)
+    {
+        var s = State(ch);
+        s.Pid.SetGains(kp, ki, kd);
+        s.ManualGains = new PidGains(kp, ki, kd);
+    }
+
     /// <summary>该通道 PID 的输出下限：只加热执行器为 0（负半轴不存在），双向为 −上限。</summary>
     private static double OutputFloor(ChannelState s) =>
         s.Actuator == ActuatorMode.HeatOnly ? 0 : -s.MaxDutyMagnitude;
@@ -309,10 +359,23 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
     public void SetActuatorMode(int ch, ActuatorMode mode)
     {
         var s = State(ch);
-        if (s.Busy && s.Actuator != mode)
+        // 【本地改动】双工位主机的继电器由程序自己扳：挂起输出 → 扳继电器 → 换形态 → 恢复，
+        // 这时候通道是「运行中但挂起」，允许切；没挂起的运行中照旧不许（形态必须跟接线一致）
+        if (s.Busy && s.Actuator != mode && !s.Suspended)
             throw new InvalidOperationException($"通道{ch}正在运行，请先停止再切换执行器形态（并确认接线已相应改好）");
+        var changed = s.Actuator != mode;
         s.Actuator = mode;
         s.Pid.SetOutputLimits(OutputFloor(s), s.MaxDutyMagnitude);
+        if (changed && s.Active)
+        {
+            // 换了执行器就是换了对象（加热棒和 TEC 的增益差一个量级）：积分清零、按前馈预置，
+            // 跑飞检测重新给宽限期——不然刚换上的那一拍还背着上一个执行器攒的积分
+            s.Pid.Reset();
+            if (s.Feedforward.Predict(s.InnerSetpointC) is { } preset) s.Pid.PresetIntegral(preset);
+            s.Runaway.Start(DateTime.Now);
+            s.SaturationWarned = false;
+            s.SteadyCycles = 0;
+        }
     }
 
     public ActuatorMode GetActuatorMode(int ch) => State(ch).Actuator;
@@ -628,7 +691,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         s.LastDutyPercent = 0;
         await controller.SetDutyPercentAsync(ch, 0, ct).ConfigureAwait(false);
         await controller.SetEnableAsync(ch, false, ct).ConfigureAwait(false);
-        if (ch == 1)
+        if (ch == 1 && SyncMode != ChannelSyncMode.Independent)     // 【本地改动】独立两路：停 A 不动 B
         {
             // 无论哪种同步方式，主通道停止时通道 2 一并归零关闭
             await controller.SetDutyPercentAsync(2, 0, ct).ConfigureAwait(false);
@@ -651,7 +714,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                 "负占空比会被固件路由到制冷 PWM 引脚，而 TEC 功率线已断开");
 
         var raw = s.Actuator == ActuatorMode.HeatOnly
-            ? Math.Clamp(dutyPercent, 0, 100)          // 加热棒引脚路由固定，反向无意义
+            ? s.HeaterSign * Math.Clamp(dutyPercent, 0, 100)   // 加热棒引脚路由固定，反向无意义；符号看接线【本地改动】
             : Math.Clamp(s.InvertOutput ? -dutyPercent : dutyPercent, -100, 100);
         await PrepareOutputAsync(ch, ct).ConfigureAwait(false);
         await WriteDutyAsync(ch, raw, ct).ConfigureAwait(false);
@@ -673,11 +736,12 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         // 加热棒经过零型 SSR 切市电，须 0.5Hz 时间比例调功（50Hz 下 0.5% 分辨率，
         // 默认 10Hz 只有 10%）；TEC 用高频档减小电流脉动。每次启动都写，
         // 防止上一场加热棒会话把 0.5Hz 残留给 TEC 运行（0.5Hz 斩波对 TEC 是热循环折磨）。
-        await controller.SetPwmFrequencyAsync(
-            State(ch).Actuator == ActuatorMode.HeatOnly ? HeaterPwmFrequencyLevel : TecPwmFrequencyLevel,
-            ct).ConfigureAwait(false);
+        if (ManagePwmFrequency)      // 【本地改动】双工位机器不动设备全局的 FPWM
+            await controller.SetPwmFrequencyAsync(
+                State(ch).Actuator == ActuatorMode.HeatOnly ? HeaterPwmFrequencyLevel : TecPwmFrequencyLevel,
+                ct).ConfigureAwait(false);
 
-        if (ch == 1)
+        if (ch == 1 && SyncMode != ChannelSyncMode.Independent)     // 【本地改动】独立两路各管各的
         {
             if (SyncMode == ChannelSyncMode.HostMirror)
             {
@@ -756,7 +820,14 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
             var s = State(ch);
             var pv = Pv(s, ch, snapshot);
 
-            if (s.Tuner is not null)
+            if (s.Suspended)
+            {
+                // 【本地改动】热源切换那两秒：不算不写，也不重写手动输出（输出本来就关着）
+                infos[ch - 1] = new ChannelCycleInfo(s.Active, s.Tuner is not null, s.Tuner?.CompletedCycles ?? 0,
+                    s.SetpointC, pv, 0, 0, 0, 0)
+                { Cascade = s.Strategy == ControlStrategy.Cascade, InnerSetpointC = s.InnerSetpointC };
+            }
+            else if (s.Tuner is not null)
             {
                 infos[ch - 1] = await RunTuningStepAsync(ch, s, snapshot, pv, ct).ConfigureAwait(false);
             }
@@ -832,11 +903,13 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         var outerPv = double.NaN;
         if (cascade)
         {
-            outerPv = s.OuterFeedbackSensor == 1 ? snapshot.Temp1C : snapshot.Temp2C;
+            // 【本地改动】外环被控量可以来自外部（双工位主机：宇电采的釜内 Tr）
+            outerPv = s.OuterSource is { } src ? src() : s.OuterFeedbackSensor == 1 ? snapshot.Temp1C : snapshot.Temp2C;
             if (double.IsNaN(outerPv))
             {
-                await TripChannelAsync(ch,
-                    $"通道{ch}串级外环传感器（TC{s.OuterFeedbackSensor}）读数丢失，已停控").ConfigureAwait(false);
+                await TripChannelAsync(ch, s.OuterSource is not null
+                    ? $"通道{ch}串级外环的釜内 Tr 读数丢失（宇电探头断线 / 探头会话没出数），已停控"
+                    : $"通道{ch}串级外环传感器（TC{s.OuterFeedbackSensor}）读数丢失，已停控").ConfigureAwait(false);
                 return new ChannelCycleInfo(false, false, 0, s.SetpointC, pv, 0, 0, 0, 0);
             }
 
@@ -999,9 +1072,9 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
             : pidOut;
         if (s.Actuator == ActuatorMode.HeatOnly)
         {
-            // 只加热执行器：占空比恒 ≥0（负值会被固件路由到制冷 PWM 引脚，线已断开）。
-            // 反向输出对加热棒无意义（引脚路由由固件固定），忽略以免正输出被反成负、加热棒永不动作。
-            duty = Math.Clamp(duty, 0, 100);
+            // 只加热执行器：占空比幅度恒 ≥0（另一侧的引脚上没有负载）。
+            // 反向输出对加热棒无意义（引脚路由由固件固定）；写到设备上的符号按接线定（HeaterSign）【本地改动】
+            duty = s.HeaterSign * Math.Clamp(duty, 0, 100);
         }
         else
         {
@@ -1062,7 +1135,9 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         }
 
         await WriteDutyAsync(ch, duty, ct).ConfigureAwait(false);
-        s.LastDutyPercent = duty;
+        // 饱和判据拿 LastDutyPercent 跟 PID 的限幅比：只加热执行器写到设备上的可能是负号（HeaterSign），
+        // 这里记的是 PID 那一侧的量（≥0），别让 −90 被当成「贴着 0 下限」【本地改动】
+        s.LastDutyPercent = s.Actuator == ActuatorMode.HeatOnly ? Math.Abs(duty) : duty;
 
         return new ChannelCycleInfo(true, false, 0, s.SetpointC, pv, duty,
             s.Pid.LastP, s.Pid.LastI, s.Pid.LastD)
@@ -1095,8 +1170,9 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         }
 
         var duty = tuner.Process(snapshot.Timestamp, pv);
-        // 只加热执行器：引脚路由固件固定，反向无意义（反向会把正摆动送成负、加热棒不动作）
-        if (s.Actuator != ActuatorMode.HeatOnly && s.InvertOutput) duty = -duty;
+        // 只加热执行器：引脚路由固件固定，反向无意义（反向会把正摆动送成负、加热棒不动作）；符号按接线【本地改动】
+        if (s.Actuator == ActuatorMode.HeatOnly) duty = s.HeaterSign * duty;
+        else if (s.InvertOutput) duty = -duty;
 
         await WriteDutyAsync(ch, duty, ct).ConfigureAwait(false);
         s.LastDutyPercent = duty;
@@ -1142,6 +1218,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
     {
         try { await StopChannelAsync(ch).ConfigureAwait(false); }
         catch { /* 尽力而为 */ }
+        ChannelTripped?.Invoke(ch, reason);      // 【本地改动】
         SafetyTripped?.Invoke(reason);
     }
 
@@ -1154,6 +1231,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
             {
                 try { await StopChannelAsync(ch).ConfigureAwait(false); }
                 catch { /* 通信中断时无法归零，由设备端硬件保护兜底 */ }
+                ChannelTripped?.Invoke(ch, reason);      // 【本地改动】
             }
         }
         SafetyTripped?.Invoke(reason);

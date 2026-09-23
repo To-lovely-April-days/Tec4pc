@@ -18,15 +18,18 @@ internal sealed class Rd105Tuning : ITemperatureTuning
 
     private readonly HostControlLoop _loop;
     private readonly Action<string, string> _log;
+    private readonly Func<bool>? _canCascade;
     private TempChannelKind _kind = TempChannelKind.Jacket;
     private double _tuningSetpointC = double.NaN;
 
-    public Rd105Tuning(int channel, int tc, HostControlLoop loop, Action<string, string> log)
+    /// <param name="canCascade">上位机方式下「此刻有没有釜内 Tr 可吃」；null = 温控器方式，谈不上串级。</param>
+    public Rd105Tuning(int channel, int tc, HostControlLoop loop, Action<string, string> log, Func<bool>? canCascade = null)
     {
         Channel = channel;
         _tc = tc;
         _loop = loop;
         _log = log;
+        _canCascade = canCascade;
         _loop.AutoTuneFinished += OnFinished;
     }
 
@@ -41,18 +44,23 @@ internal sealed class Rd105Tuning : ITemperatureTuning
     public event EventHandler<TuningOutcome>? TuningFinished;
 
     /// <summary>
-    /// 这一级只有夹套单环：两路 TC 测的都是夹套，设备自己看不见釜内 Tr。
-    /// 「釜内串级」要靠组合会话把宇电的 Tr 接进来才成立，在这里选 Reactor
-    /// 就是许一个兑现不了的回路——直接拒绝，不悄悄降级成夹套。
+    /// 两路 TC 测的都是夹套，设备自己看不见釜内 Tr。「釜内串级」只在上位机方式、而且组合会话
+    /// 已经把宇电的 Tr 喂进来时才成立；否则选 Reactor 就是许一个兑现不了的回路——直接拒绝，
+    /// 不悄悄降级成夹套。自整定本身整的永远是内环（夹套），这里的策略只决定整定完回路按哪个对象控。
     /// </summary>
     public Task SetStrategyAsync(TempChannelKind kind, CancellationToken ct)
     {
         if (kind == TempChannelKind.Reactor)
-            throw new NotSupportedException(
-                "这台 RD105 的两路 TC 测的都是夹套，设备上没有釜内 Tr——" +
-                "釜内控温由双工位组合主机（外部 Tr）实现，不在这一级");
+        {
+            if (_canCascade is null)
+                throw new NotSupportedException(
+                    "「控温方式」是温控器 PID：它的两路 TC 测的都是夹套，设备上没有釜内 Tr——" +
+                    "釜内串级要在设备属性里把「控温方式」改成上位机 PID");
+            if (!_canCascade())
+                throw new InvalidOperationException("釜内 Tr 没有读数（宇电探头没接 / 断线）——釜内串级做不了，先接好探头");
+        }
         _kind = kind;
-        _loop.SetStrategy(_tc, ControlStrategy.Direct);
+        _loop.SetStrategy(_tc, kind == TempChannelKind.Reactor ? ControlStrategy.Cascade : ControlStrategy.Direct);
         return Task.CompletedTask;
     }
 
@@ -65,13 +73,15 @@ internal sealed class Rd105Tuning : ITemperatureTuning
     public Task SetGainsAsync(TempChannelKind kind, PidTuning gains, CancellationToken ct)
     {
         if (kind == TempChannelKind.Reactor)
-            throw new NotSupportedException("这一级只有夹套单环，釜内那套增益不归它管");
-        _loop.ConfigurePid(_tc, gains.Kp, gains.Ki, gains.Kd, MaxDutyPercent, invertOutput: false);
+        {
+            // 外环增益：Kp ℃/℃、Ki 1/s、Kd s；偏置限幅沿用缺省
+            _loop.ConfigureCascade(_tc, gains.Kp, gains.Ki, gains.Kd, Rd105HostControl.FallbackOuterMaxBiasC);
+            return Task.CompletedTask;
+        }
+        // 手填的内环增益：只换三个系数，输出上限与方向照会话开机时配的（LIMITED、反向）走
+        _loop.SetManualGains(_tc, gains.Kp, gains.Ki, gains.Kd);
         return Task.CompletedTask;
     }
-
-    /// <summary>内环占空比上限。</summary>
-    private const double MaxDutyPercent = 100;
 
     /// <summary>继电器法的默认激励：±20% 占空比、0.2 ℃ 回差。回差太小会被噪声触发。</summary>
     private const double RelayAmplitudePercent = 20;
@@ -90,6 +100,7 @@ internal sealed class Rd105Tuning : ITemperatureTuning
 
         try
         {
+            if (!_loop.IsRunning) _loop.Start();     // 温控器 PID 方式下回路平时不转，整定时转起来
             await _loop.StartAutoTuneAsync(_tc, setpointC, RelayAmplitudePercent, HysteresisC, ct)
                        .ConfigureAwait(false);
         }

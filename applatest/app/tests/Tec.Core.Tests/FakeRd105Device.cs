@@ -38,6 +38,35 @@ public sealed class FakeRd105Device : ISerialTransport
     /// <summary>收到过的完整指令，按先后顺序。断言用。</summary>
     public List<string> Commands { get; } = new();
 
+    // ── 热模型（只给上位机回路的测试用）──────────────────────────────
+    // MODE=3 且 ENABLE=1 时按 PWMDUTY 积分夹套温度：100 % 时每秒 GainCPerSec 度，再向环境漏热。
+    // HeatSign 说哪个符号是升温：+1 = 正占空比升温（TecControl 的约定）；现场那台是 −1（降温 +90、升温 −90）。
+
+    /// <summary>置 true 后 DATADEMAND 应答前先按真实流逝的时间推一步温度。</summary>
+    public bool Thermal { get; set; }
+    public double HeatSign { get; set; } = 1;
+    public double GainCPerSec { get; set; } = 0.3;
+    public double LeakPerSec { get; set; } = 0.002;
+    public double AmbientC { get; set; } = 25;
+    private readonly System.Diagnostics.Stopwatch _clock = System.Diagnostics.Stopwatch.StartNew();
+    private double _lastStep;
+
+    private void Step()
+    {
+        if (!Thermal) return;
+        var now = _clock.Elapsed.TotalSeconds;
+        var dt = now - _lastStep;
+        _lastStep = now;
+        if (dt <= 0) return;
+        for (var ch = 1; ch <= 2; ch++)
+        {
+            var t = Get(ch, "TCADJTEMP") / 1e5;
+            var duty = Get(ch, "MODE") == 3 && Get(ch, "ENABLE") == 1 ? Get(ch, "PWMDUTY") / 20_000.0 : 0;
+            t += (HeatSign * duty / 100.0 * GainCPerSec - (t - AmbientC) * LeakPerSec) * dt;
+            Set(ch, "TCADJTEMP", (long)Math.Round(t * 1e5));
+        }
+    }
+
     public long Get(int? ch, string name) => _regs.TryGetValue(Key(ch, name), out var v) ? v : 0;
     public void Set(int? ch, string name, long value) => _regs[Key(ch, name)] = value;
 
@@ -112,6 +141,7 @@ public sealed class FakeRd105Device : ISerialTransport
     /// </summary>
     private void ReplyAll()
     {
+        Step();
         var f = new[]
         {
             $"TC1:TCADJTEMP={Get(1, "TCADJTEMP")}",

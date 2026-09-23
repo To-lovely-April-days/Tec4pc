@@ -10,9 +10,12 @@ namespace Tec.Drivers.Rd105;
 /// 每路探头测的都是夹套 Tj（docs/双工位反应主机驱动需求.md §3）。
 /// 釜内 Tr / pH 不在这台设备上——宇电采集模块另采，由组合会话拼进来。
 ///
-/// 控温交给温控器自己的 PID（TG 目标 + SPEED 速率 + TCENABLE），上位机只下发
-/// 目标、收数据、判到达。TecControl.Core 里那套主机侧串级（HostControlLoop）等
-/// 组合会话接上外部 Tr 再谈——设备自己看不见釜内，这一级谈串级就是空话。
+/// 两种控温方式（设备配置「控温方式」，见 Rd105TemperatureControl）：
+/// · 温控器 PID：写 TG + SPEED + TCENABLE，会话自己开轮询收温度、告警、输出；
+/// · 上位机 PID：TecControl.Core 那套 HostControlLoop 跑在这里——两路各自独立（Independent），
+///   每拍读快照 → 算 PID → 写占空比（MODE=3）；快照 / 告警 / 电流 / 输出都从回路的周期回调拿，
+///   不再另开轮询（串口上一条链两个人问只会互相挤）。串级外环吃组合会话喂进来的 Tr。
+///   增益表按路落盘（%AppData%\TecDrivers\gains\），自整定登记 / 学到稳态偏置就存。
 /// </summary>
 public sealed class Rd105Session : IDeviceSession, IDeviceSettings
 {
@@ -24,37 +27,86 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
     private readonly Rd105Tuning[] _tunings = new Rd105Tuning[2];
     private readonly HostControlLoop _loop;
     private readonly TimeSpan _period;
+    private readonly bool _host;
+    private readonly bool _invert;
+    private readonly int _heaterSign;
+    private readonly string[] _gainPaths = new string[2];
     private DeviceState _state = DeviceState.Connected;
     private TecErrorCode _fault = TecErrorCode.None;
     private int _dutyBusy;
     private long _dutyAt;
 
-    public Rd105Session(Rd105Link link, DriverContext ctx, ParameterSet connection)
+    public Rd105Session(Rd105Link link, DriverContext ctx, ParameterSet connection, Rd105HostDefaults? defaults = null)
     {
         _link = link;
         _ctx = ctx;
         _period = TimeSpan.FromMilliseconds(
             Math.Clamp(connection.Num(Rd105TecDriver.FieldPeriod, 500), 200, 5000));
+        defaults ??= Rd105HostDefaults.Standalone;
+        _host = defaults.HostOf(ctx.Config);
+        _invert = defaults.InvertOf(ctx.Config);
+        _heaterSign = defaults.HeaterSignOf(ctx.Config);
 
-        // 主机侧控制环：继电器法自整定、增益调度在它里面。这里只建不启——
-        // 控温照旧走温控器自己的 PID，只有整定才用得上它。
-        _loop = new HostControlLoop(link.Controller) { Period = _period };
+        // 主机侧控制环：继电器法自整定、增益调度在它里面。温控器 PID 方式下只建不启（只有整定用得上）；
+        // 上位机方式下 StartAsync 把它跑起来，控温、采集都走它
+        _loop = new HostControlLoop(link.Controller)
+        {
+            Period = _period,
+            SyncMode = ChannelSyncMode.Independent,      // 两路各自独立：TC1 = 工位 A、TC2 = 工位 B
+            ManagePwmFrequency = false,                  // FPWM 是设备全局的，两路可能各在一侧，不由回路改
+            MaxConsecutiveFailures = 20                  // 连着 20 拍（约 10 s）读不到才停控：串口抖一下由 LinkRecovery 重开
+        };
 
         for (var i = 0; i < 2; i++)
         {
             var ch = ctx.ChannelNumbers.Count > i ? ctx.ChannelNumbers[i] : i;
-            _temps[i] = new Rd105TemperatureControl(ch, tc: i + 1, link, ctx.Config, _out);
-            _tunings[i] = new Rd105Tuning(ch, tc: i + 1, _loop, (lvl, text) => ctx.Log?.Invoke(lvl, text));
+            _temps[i] = new Rd105TemperatureControl(ch, tc: i + 1, link, ctx.Config, _out, _host ? _loop : null);
+            _tunings[i] = new Rd105Tuning(ch, tc: i + 1, _loop, (lvl, text) => ctx.Log?.Invoke(lvl, text),
+                                          canCascade: _host ? () => !double.IsNaN(_temps[i].CurrentReactor) : null);
+            var tc = i + 1;
+            _loop.ConfigurePid(tc, Rd105HostControl.FallbackInner.Kp, Rd105HostControl.FallbackInner.Ki,
+                               Rd105HostControl.FallbackInner.Kd, 90, _invert);
+            _loop.ConfigureCascade(tc, Rd105HostControl.FallbackOuter.Kp, Rd105HostControl.FallbackOuter.Ki,
+                                   Rd105HostControl.FallbackOuter.Kd, Rd105HostControl.FallbackOuterMaxBiasC);
+            _loop.SetHeaterSign(tc, _heaterSign);
+            _gainPaths[i] = Rd105HostControl.GainsPath(ctx.InstanceId, tc);
+            var n = Rd105HostControl.Load(_loop.GetGainSchedule(tc), _gainPaths[i]);
+            if (_host)
+                ctx.Log?.Invoke("info", $"{ctx.InstanceId} TC{tc} 上位机 PID：" +
+                    (n > 0 ? $"{Rd105HostControl.Describe(_loop.GetGainSchedule(tc))}（{_gainPaths[i]}）"
+                           : $"增益表空（{_gainPaths[i]}），先用保守缺省 Kp {Rd105HostControl.FallbackInner.Kp} / Ki {Rd105HostControl.FallbackInner.Ki} / Kd {Rd105HostControl.FallbackInner.Kd}——请先在常用温度点自整定") +
+                    $"；TEC 输出{(_invert ? "反向" : "不反向")}、加热棒占空比{(_heaterSign < 0 ? "负" : "正")}");
         }
 
-        _link.Controller.SnapshotReceived += OnSnapshot;
-        _link.Controller.ErrorCodeReceived += OnErrorCode;
-        _link.Controller.PollFaulted += OnFaulted;
+        if (_host)
+        {
+            _loop.CycleCompleted += OnCycle;
+            _loop.CycleFaulted += OnFaulted;
+            _loop.ChannelTripped += OnChannelTripped;
+            _loop.SaturationWarning += msg => _ctx.Log?.Invoke("warn", $"{InstanceId} {msg}");
+            _loop.GainScheduleChanged += SaveGains;
+        }
+        else
+        {
+            _link.Controller.SnapshotReceived += OnSnapshot;
+            _link.Controller.ErrorCodeReceived += OnErrorCode;
+            _link.Controller.PollFaulted += OnFaulted;
+            _loop.GainScheduleChanged += SaveGains;        // 整定登记的表也要存，下次切到上位机方式就有
+            // 温控器 PID 方式下自整定借用回路（它会把 MODE 写成 3）：整定完把 MODE 写回 0，
+            // 不然之后写 TG 温控器也不动——它还在等通信占空比
+            _loop.AutoTuneFinished += o => _ = RestoreDeviceModeAsync(o.Channel);
+        }
         _recover = new LinkRecovery($"{ctx.InstanceId} RD105", link.Reopen, (l, t) => _ctx.Log?.Invoke(l, t));
 
         // 参数面板（IDeviceSettings）：温控器自己的寄存器——最大功率、两路电流、PID、自整定……
         _settings = new Rd105Settings(link, ctx.Config, ctx.Log);
     }
+
+    /// <summary>控温回路在上位机（true）还是温控器自己（false）。</summary>
+    public bool HostControlled => _host;
+
+    /// <summary>这一路的增益表文件（测试与日志用）。</summary>
+    public string GainsPathOf(int well) => _gainPaths[well];
 
     /// <summary>串口中途掉了之后的自愈（LinkRecovery 的规矩）；轮询连着报错时调。</summary>
     private readonly LinkRecovery _recover;
@@ -105,6 +157,12 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
         // 「夹套已经满功率还压不住放热」，没有这一路看不出来
         new TagDescriptor("duty", "控温输出", "%", DataShape.Scalar)
             { Nominal = new ValueRange(-100, 100) },
+        // 上位机方式下每两秒从温控器读一次的 TEC 电流（回路周期回调里带着）；温控器方式不发
+        new TagDescriptor("cur", "TEC 电流", "A", DataShape.Scalar)
+            { Nominal = new ValueRange(0, 20) },
+        // 串级时外环算出来的夹套设定值（釜内控温时夹套实际在追的数）；单环时 = Tset
+        new TagDescriptor("Tjset", "夹套设定（串级）", "℃", DataShape.Scalar)
+            { Nominal = new ValueRange(-40, 150) },
         // 设备告警字。安全层盯着它：非 0 即告警，> 0 就该动作。
         // 发成一路采样而不是另开一条通道，是因为安全层本来就是按采样求值的，
         // 顺带还能进记录、能画在时间轴上——告警什么时候出现的一目了然
@@ -134,15 +192,98 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
         try { OnErrorCode(await _link.Controller.ReadErrorCodeAsync(ct).ConfigureAwait(false)); }
         catch (Exception ex) { _ctx.Log?.Invoke("warn", $"{InstanceId} 初次读告警字失败：{ex.Message}"); }
 
-        _link.Controller.StartPolling(_period);
+        if (_host)
+        {
+            // 回路的输出上限 = 温控器自己的 LIMITED（最大输出占空比）：读不到按 90
+            for (var tc = 1; tc <= 2; tc++)
+            {
+                try
+                {
+                    var cfg = await _link.Controller.ReadChannelConfigAsync(tc, ct).ConfigureAwait(false);
+                    var limited = Math.Clamp(cfg.MaxDutyPercent, 5, 100);
+                    var g = _loop.GetGainSchedule(tc).GainsAt(25) ?? Rd105HostControl.FallbackInner;
+                    _loop.ConfigurePid(tc, g.Kp, g.Ki, g.Kd, limited, _invert);
+                }
+                catch (Exception ex)
+                {
+                    _ctx.Log?.Invoke("warn", $"{InstanceId} TC{tc} 读 LIMITED 失败：{ex.Message}——回路输出上限按 90 %");
+                }
+            }
+            _loop.Start();
+        }
+        else
+        {
+            _link.Controller.StartPolling(_period);
+        }
         if (State != DeviceState.Faulted) State = DeviceState.Ready;
     }
 
-    public Task StopAsync(CancellationToken ct)
+    public async Task StopAsync(CancellationToken ct)
     {
-        _link.Controller.StopPolling();
+        if (_host)
+        {
+            // 停会话 = 回路停、两路输出归零关使能（回路一停没人写占空比，固件那边约一分钟也会自己撤）
+            try { await _loop.ShutdownAsync().ConfigureAwait(false); } catch { }
+        }
+        else
+        {
+            _link.Controller.StopPolling();
+        }
         State = DeviceState.Connected;
-        return Task.CompletedTask;
+    }
+
+    /// <summary>上位机回路每个周期的回调：快照、告警字、电流、两路输出都从这里进采样流。</summary>
+    private void OnCycle(ControlCycleResult r)
+    {
+        OnSnapshot(r.Snapshot);
+        if (r.ErrorCode is { } code) OnErrorCode(code);
+        var at = DateTimeOffset.Now;
+        if (r.Current1A is { } c1) Push(_temps[0].Channel, "cur", c1, at, Quality.Good);
+        if (r.Current2A is { } c2) Push(_temps[1].Channel, "cur", c2, at, Quality.Good);
+        var infos = new[] { r.Ch1, r.Ch2 };
+        for (var i = 0; i < 2; i++)
+        {
+            var info = infos[i];
+            Push(_temps[i].Channel, "duty", info.DutyPercent, at, Quality.Good);
+            if (info.Active)
+            {
+                var inner = info.Cascade ? info.InnerSetpointC : info.SetpointC;
+                _temps[i].InnerSetpoint = inner;
+                Push(_temps[i].Channel, "Tjset", inner, at, Quality.Good);
+            }
+        }
+    }
+
+    private async Task RestoreDeviceModeAsync(int tc)
+    {
+        try
+        {
+            await _link.Controller.SetModeAsync(tc, 0, CancellationToken.None).ConfigureAwait(false);
+            _ctx.Log?.Invoke("info", $"{InstanceId} TC{tc} 自整定结束，输出模式已写回 0（双向，温控器自己的 PID）");
+        }
+        catch (Exception ex)
+        {
+            _ctx.Log?.Invoke("error", $"{InstanceId} TC{tc} 自整定后写回 MODE=0 失败：{ex.Message}——温控器 PID 不会动，到参数窗把「输出模式」改回双向");
+        }
+    }
+
+    private void OnChannelTripped(int tc, string reason)
+    {
+        _ctx.Log?.Invoke("error", $"{InstanceId} 上位机回路停控：{reason}");
+        _temps[tc - 1].OnTripped(reason);
+    }
+
+    private void SaveGains(int tc)
+    {
+        try
+        {
+            Rd105HostControl.Save(_loop.GetGainSchedule(tc), _gainPaths[tc - 1]);
+            _ctx.Log?.Invoke("info", $"{InstanceId} TC{tc} 增益表已保存：{Rd105HostControl.Describe(_loop.GetGainSchedule(tc))}（{_gainPaths[tc - 1]}）");
+        }
+        catch (Exception ex)
+        {
+            _ctx.Log?.Invoke("error", $"{InstanceId} TC{tc} 增益表保存失败：{ex.Message}（{_gainPaths[tc - 1]}）");
+        }
     }
 
     /// <summary>
@@ -186,7 +327,7 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
         Push(_temps[1].Channel, "Tj", s.Temp2C, at, q2);
         if (_temps[0].Setpoint is { } sp1) Push(_temps[0].Channel, "Tset", sp1, at, Quality.Good);
         if (_temps[1].Setpoint is { } sp2) Push(_temps[1].Channel, "Tset", sp2, at, Quality.Good);
-        ReadDuty();
+        if (!_host) ReadDuty();      // 上位机方式下输出是自己写的，回路回调里直接发
     }
 
     /// <summary>
@@ -280,6 +421,10 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
         _link.Controller.SnapshotReceived -= OnSnapshot;
         _link.Controller.ErrorCodeReceived -= OnErrorCode;
         _link.Controller.PollFaulted -= OnFaulted;
+        _loop.CycleCompleted -= OnCycle;
+        _loop.CycleFaulted -= OnFaulted;
+        _loop.ChannelTripped -= OnChannelTripped;
+        _loop.GainScheduleChanged -= SaveGains;
         foreach (var t in _tunings) t.Detach();
         try { await _loop.ShutdownAsync().ConfigureAwait(false); } catch { }
         _loop.Dispose();

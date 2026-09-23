@@ -24,8 +24,17 @@ public static class TestKinds
 /// <summary>工作簿的规格：几个水温、每张表多少行、恒温表的记录间隔。建簿时定死，之后只填。</summary>
 public sealed record BookSpec
 {
-    /// <summary>冷却水温度分组（℃），用户定的：20 / 15 / 7。</summary>
-    public double[] Waters { get; init; } = { 20, 15, 7 };
+    /// <summary>「最高温不用冷却水、只测一次」那张表的水温键（NaN = 无冷却水）。</summary>
+    public const double NoWater = double.NaN;
+
+    /// <summary>冷却水温度分组（℃）：最低温、恒温各在每个水温下测一遍。推荐 20 / 12 / 7（不低于 7，用户定的）。</summary>
+    public double[] Waters { get; init; } = { 20, 12, 7 };
+
+    /// <summary>最高温只测一次、不用冷却水（升温靠加热棒，跟水温无关——用户定的）。false = 也按水温各测一遍。</summary>
+    public bool MaxOnce { get; init; } = true;
+
+    /// <summary>某一项要测的水温键列表：最高温只测一次时就是 [NaN]。</summary>
+    public IEnumerable<double> WatersOf(TestKind k) => k == TestKind.MaxTemp && MaxOnce ? new[] { NoWater } : Waters;
     /// <summary>最低温表的行数（1 min 一行，含 t=0）。</summary>
     public int MinRows { get; init; } = 61;
     public int MaxRows { get; init; } = 61;
@@ -84,7 +93,7 @@ public sealed class RecordBook : IDisposable
     public const string SummarySheet = "结果汇总";
 
     // 条件块的键（Runner 与测试按它填）
-    public const string CDate = "date", COperator = "operator", CAmbient = "ambient", CWater = "water",
+    public const string CDate = "date", COperator = "operator", CAmbient = "ambient", CWater = "water", CObject = "object",
                         CPatch = "patch", CResult = "result", CNote = "note",
                         CTargetA = "targetA", CTargetB = "targetB", CMode = "mode",
                         CLimitedA = "limitedA", CLimitedB = "limitedB",
@@ -126,7 +135,7 @@ public sealed class RecordBook : IDisposable
         Spec = spec ?? new BookSpec();
         BuildReadme();
         foreach (var kind in TestKinds.All)
-            foreach (var water in Spec.Waters)
+            foreach (var water in Spec.WatersOf(kind))
                 BuildTestSheet(kind, water);
         BuildSummary();
         // 打开时全算一遍：程序不算公式，簿里没有缓存值
@@ -136,7 +145,13 @@ public sealed class RecordBook : IDisposable
     }
 
     public static string SheetName(TestKind kind, double water)
-        => $"{TestKinds.Short(kind)} {water.ToString("0.#", CultureInfo.InvariantCulture)}℃";
+        => double.IsNaN(water)
+            ? $"{TestKinds.Short(kind)}（无冷却水）"
+            : $"{TestKinds.Short(kind)} {water.ToString("0.#", CultureInfo.InvariantCulture)}℃";
+
+    /// <summary>水温键的人话：「20 ℃」/「无冷却水」。</summary>
+    public static string WaterText(double water)
+        => double.IsNaN(water) ? "无冷却水" : water.ToString("0.#", CultureInfo.InvariantCulture) + " ℃";
 
     public SheetLayout Layout(TestKind kind, double water) => _layouts[SheetName(kind, water)];
 
@@ -171,6 +186,22 @@ public sealed class RecordBook : IDisposable
         foreach (var (k, v) in values)
             if (lay.Col.TryGetValue(k, out var c)) ws.Cell(r, c).Value = v;
         return true;
+    }
+
+    /// <summary>填汇总块里由程序算的那几格（1 s 数据算的稳定度那种，Excel 里没有原始数据算不出来）。</summary>
+    public void SetSummary(TestKind kind, double water, string key, XLCellValue value)
+    {
+        var lay = Layout(kind, water);
+        if (!lay.Sum.TryGetValue(key, out var at))
+            throw new ArgumentException($"「{lay.Name}」没有汇总项 {key}", nameof(key));
+        _wb.Worksheet(lay.Name).Cell(at.Row, at.Col).Value = value;
+    }
+
+    public XLCellValue GetSummary(TestKind kind, double water, string key)
+    {
+        var lay = Layout(kind, water);
+        var at = lay.Sum[key];
+        return _wb.Worksheet(lay.Name).Cell(at.Row, at.Col).Value;
     }
 
     public XLCellValue GetCell(TestKind kind, double water, int index, string colKey)
@@ -285,9 +316,10 @@ public sealed class RecordBook : IDisposable
         var lines = new[]
         {
             "这份表怎么来的",
-            "  工具按「最低温 / 最高温 / 恒温稳定性 × 冷却水 20 / 15 / 7 ℃」的矩阵自动跑，每项每个水温一张表，共 9 张，最后一张「结果汇总」是矩阵。",
+            "  工具按「最低温、恒温稳定性 × 冷却水 20 / 12 / 7 ℃」自动跑，每项每个水温一张表；最高温不用冷却水、只测一次，单独一张；最后一张「结果汇总」是矩阵。",
+            "  控温对象（夹套 / 釜内）在工具里选，每张表的条件块里写着；釜内是上位机串级（外环吃宇电的 Tr），要接了探头才做得了。",
             "  黄底蓝字：数据格，工具每到一个记录点写一行（最低温 / 最高温每 1 min，恒温每 2 min）。没采到的格子留空，工具不编数——空着的可以事后手填。",
-            "  黑字浅蓝底：公式，Excel 打开时算，别手改。",
+            "  黑字浅蓝底：公式，Excel 打开时算，别手改。恒温表汇总里「1 s」字样的几格是工具用每秒数据算好填进去的值（Excel 里没有每秒数据）。",
             "哪些是人填的",
             "  操作人、环境温度、补丁版本：开始前在工具里填一次，每张表都带上。",
             "  冷却水温度：工具在每一组水温开始前停下来问你，冷水机上看到多少填多少（手填，不是测的）。",
@@ -349,8 +381,11 @@ public sealed class RecordBook : IDisposable
             new(CDate, "日期", Blank.Value, "yyyy-mm-dd", "工具填：测试当天"),
             new(COperator, "操作人", Blank.Value, null, "工具里填的"),
             new(CAmbient, "环境温度 ℃", Blank.Value, FmtC, "工具里填的（手填）"),
-            new(CWater, "冷却水温度 ℃（手填）", Blank.Value, FmtC,
-                $"这一组按 {water:0.#} ℃ 做；工具在开始前问你，冷水机上看到多少填多少——不是测的"),
+            double.IsNaN(water)
+                ? new(CWater, "冷却水", "无（升温不用冷却水）", null, "最高温只测一次、不用冷却水（用户定的）")
+                : new(CWater, "冷却水温度 ℃（手填）", Blank.Value, FmtC,
+                      $"这一组按 {water:0.#} ℃ 做；工具在开始前问你，冷水机上看到多少填多少——不是测的"),
+            new(CObject, "控温对象", Blank.Value, null, "工具填：夹套（单环）/ 釜内（串级，外环吃宇电的 Tr）"),
         };
         switch (kind)
         {
@@ -483,10 +518,13 @@ public sealed class RecordBook : IDisposable
         rr = lay.FirstRow;
         foreach (var s in sums)
         {
-            if (s.Key is not null && s.Formula is not null)
+            if (s.Key is not null)
             {
                 Lbl(ws.Cell(rr, sc), s.Label);
-                Fml(ws.Cell(rr, sc + 1), s.Formula(lay.SumAddr), s.Fmt, s.Comment);
+                if (s.Formula is not null)
+                    Fml(ws.Cell(rr, sc + 1), s.Formula(lay.SumAddr), s.Fmt, s.Comment);
+                else
+                    Inp(ws.Cell(rr, sc + 1), s.Fmt, s.Comment);     // 程序算好填的值格
             }
             rr++;
         }
@@ -541,6 +579,17 @@ public sealed class RecordBook : IDisposable
             }
             list.Add(new("relays", "继电器动作总次数", _ => $"IF(COUNT({Rng(KRelay)})=0,\"\",SUM({Rng(KRelay)}))", "0",
                 "恒温期间正常应该是 0；有数就是在抖"));
+            list.Add(new(null, "", null, null, null));
+            // 下面这几格是工具用每秒数据算好填的值（Excel 里没有每秒数据）：最后 30 min 的稳定度
+            list.Add(new("stabWindow", "稳定度统计窗口 min（1 s 数据，程序算）", null, "0", "取恒温记录最后这么多分钟的每秒数据算"));
+            foreach (var w in new[] { "A", "B" })
+            {
+                list.Add(new($"{w}TjPp1s", $"{w} Tj 峰峰值 ℃（1 s，程序算）", null, "0.000", null));
+                list.Add(new($"{w}TjSd1s", $"{w} Tj 标准差 ℃（1 s，程序算）", null, "0.0000", null));
+                list.Add(new($"{w}TrPp1s", $"{w} Tr 峰峰值 ℃（1 s，程序算）", null, "0.000", "没接探头就是空"));
+                list.Add(new($"{w}TrSd1s", $"{w} Tr 标准差 ℃（1 s，程序算）", null, "0.0000", null));
+                list.Add(new($"{w}Err1s", $"{w} 被控量平均与目标差 ℃（1 s，程序算）", null, "0.000", "控夹套看 Tj、控釜内看 Tr"));
+            }
             return list;
         }
 
@@ -601,31 +650,39 @@ public sealed class RecordBook : IDisposable
             title.Style.Font.FontName = FontName;
             title.Style.Font.Bold = true;
             title.Style.Font.FontSize = 11;
+            var cols = Spec.WatersOf(kind).ToArray();
+            if (cols.Length == 1 && double.IsNaN(cols[0]))
+            {
+                // 最高温只有一张表：列头换成「无冷却水 · A/B」，占前两列
+                Hdr(ws, r, 2, "无冷却水 · A");
+                Hdr(ws, r, 3, "无冷却水 · B");
+            }
             r++;
 
             foreach (var (label, keyA, keyB, fmt, note) in MatrixRows(kind))
             {
                 Lbl(ws.Cell(r, 1), label);
-                for (var i = 0; i < waters.Length; i++)
+                for (var i = 0; i < cols.Length; i++)
                 {
-                    var lay = Layout(kind, waters[i]);
+                    var lay = Layout(kind, cols[i]);
                     Fml(ws.Cell(r, 2 + i * 2), $"'{lay.Name}'!{lay.SumAddr(keyA)}", fmt);
                     Fml(ws.Cell(r, 3 + i * 2), $"'{lay.Name}'!{lay.SumAddr(keyB)}", fmt);
                 }
                 if (note is not null) Note(ws, r, noteCol, note);
                 r++;
             }
-            // 条件里那几项也拉过来：结果、实测水温
+            // 条件里那几项也拉过来：结果、实测水温、控温对象
             foreach (var (label, condKey, fmt) in new[]
                      {
-                         ("冷却水温度 ℃（手填）", CWater, FmtC),
-                         ("结果", CResult, (string?)null)
+                         ("冷却水温度（手填）", CWater, (string?)null),
+                         ("控温对象", CObject, null),
+                         ("结果", CResult, null)
                      })
             {
                 Lbl(ws.Cell(r, 1), label);
-                for (var i = 0; i < waters.Length; i++)
+                for (var i = 0; i < cols.Length; i++)
                 {
-                    var lay = Layout(kind, waters[i]);
+                    var lay = Layout(kind, cols[i]);
                     // 文本格：直接引用空格会显示 0，套一层 IF
                     var f = $"IF('{lay.Name}'!{lay.CondAddr(condKey)}=\"\",\"\",'{lay.Name}'!{lay.CondAddr(condKey)})";
                     Fml(ws.Cell(r, 2 + i * 2), f, fmt);
@@ -671,6 +728,11 @@ public sealed class RecordBook : IDisposable
                 yield return ("Tr 平均与目标差 ℃", "ATrDiff", "BTrDiff", "0.00", null);
                 yield return ("输出平均 %", "AOutAvg", "BOutAvg", FmtP, null);
                 yield return ("继电器动作总次数", "relays", "relays", "0", "两工位合计；正常应该是 0");
+                yield return ("Tj 峰峰值 ℃（1 s 数据，最后 30 min）", "ATjPp1s", "BTjPp1s", "0.000", "工具用每秒数据算的，±0.01 看这几行");
+                yield return ("Tj 标准差 ℃（1 s）", "ATjSd1s", "BTjSd1s", "0.0000", null);
+                yield return ("Tr 峰峰值 ℃（1 s）", "ATrPp1s", "BTrPp1s", "0.000", null);
+                yield return ("Tr 标准差 ℃（1 s）", "ATrSd1s", "BTrSd1s", "0.0000", null);
+                yield return ("被控量平均与目标差 ℃（1 s）", "AErr1s", "BErr1s", "0.000", "控夹套看 Tj、控釜内看 Tr");
                 break;
         }
     }

@@ -61,8 +61,14 @@ public sealed class CellRow : Bindable
     }
 
     public TestKind Kind { get; }
+    /// <summary>水温键；NaN = 不用冷却水的那格（最高温只测一次）。</summary>
     public double Water { get; }
-    public string Title => $"{TestKinds.Name(Kind)} · {Water:0.#} ℃";
+    public string Title => double.IsNaN(Water)
+        ? $"{TestKinds.Name(Kind)} · 无冷却水（只测一次）"
+        : $"{TestKinds.Name(Kind)} · 冷却水 {Water:0.#} ℃";
+
+    /// <summary>同一格（项 + 水温键；NaN 跟 NaN 算同一个）。</summary>
+    public bool Is(TestKind kind, double water) => Kind == kind && (double.IsNaN(Water) ? double.IsNaN(water) : Water == water);
     public bool Selected { get => _selected; set => Set(ref _selected, value); }
     public string StateText { get => _stateText; set => Set(ref _stateText, value); }
     public string Note { get => _note; set => Set(ref _note, value); }
@@ -121,9 +127,7 @@ public sealed class MainViewModel : Bindable
         _host = host;
         _outDir = host.OutDir;
         _patch = ToolVersion;
-        foreach (var w in new[] { 20d, 15, 7 })
-            foreach (var k in TestKinds.All)
-                Cells.Add(new CellRow(k, w));
+        RebuildCells();
         LoadDevices();
         _timer = new DispatcherTimer(TimeSpan.FromSeconds(1), DispatcherPriority.Background, (_, _) => Tick());
         _timer.Start();
@@ -268,8 +272,59 @@ public sealed class MainViewModel : Bindable
     public string SettleText { get => _settle; set => Set(ref _settle, value); }
     private string _returnTemp = "25";
     public string ReturnTempText { get => _returnTemp; set => Set(ref _returnTemp, value); }
+    private string _stability = "30";
+    /// <summary>恒温稳定度按最后这么多分钟的每秒数据算。</summary>
+    public string StabilityText { get => _stability; set => Set(ref _stability, value); }
+
+    /// <summary>控温对象：0 = 夹套 Tj（单环），1 = 釜内 Tr（上位机串级）。</summary>
+    private int _objectIndex;
+    public int ObjectIndex { get => _objectIndex; set => Set(ref _objectIndex, value); }
+    private TempChannelKind ObjectKind => ObjectIndex == 1 ? TempChannelKind.Reactor : TempChannelKind.Jacket;
+
+    /// <summary>冷却水温度列表（℃，逗号分开，顺序就是跑的顺序）。改了矩阵跟着重排；跑着的时候锁住。</summary>
+    private string _waters = "20, 12, 7";
+    public string WatersText
+    {
+        get => _waters;
+        set { if (Set(ref _waters, value) && !IsRunning) RebuildCells(); }
+    }
+
+    public bool CanEditPlan => !IsRunning;
 
     public ObservableCollection<CellRow> Cells { get; } = new();
+
+    /// <summary>解析水温列表：逗号 / 顿号 / 空格分开；不低于 7 ℃（冷水机的下限，用户定的）；不重复。</summary>
+    private static double[]? ParseWaters(string text, out string? error)
+    {
+        error = null;
+        var parts = text.Split(new[] { ',', '，', '、', ';', '；', ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var list = new List<double>();
+        foreach (var p in parts)
+        {
+            if (!double.TryParse(p, NumberStyles.Float, CultureInfo.InvariantCulture, out var v))
+            { error = $"冷却水温度填的不是数：{p}"; return null; }
+            if (v < 7) { error = $"冷却水温度 {v:0.#} ℃ 低于 7 ℃（冷水机的下限，你定的）"; return null; }
+            if (list.Contains(v)) { error = $"冷却水温度 {v:0.#} ℃ 填重了"; return null; }
+            list.Add(v);
+        }
+        if (list.Count == 0) { error = "冷却水温度一个都没填"; return null; }
+        return list.ToArray();
+    }
+
+    /// <summary>按水温列表重排矩阵：每个水温 最低温 + 恒温，最后一格是不用水的最高温（只测一次）。已勾的状态尽量保留。</summary>
+    private void RebuildCells()
+    {
+        if (ParseWaters(WatersText, out _) is not { } waters) return;     // 填到一半：先不动，开始时再说
+        var prev = Cells.ToList();
+        bool Sel(TestKind k, double w) => prev.FirstOrDefault(c => c.Is(k, w))?.Selected ?? true;
+        Cells.Clear();
+        foreach (var w in waters)
+        {
+            Cells.Add(new CellRow(TestKind.MinTemp, w) { Selected = Sel(TestKind.MinTemp, w) });
+            Cells.Add(new CellRow(TestKind.Hold, w) { Selected = Sel(TestKind.Hold, w) });
+        }
+        Cells.Add(new CellRow(TestKind.MaxTemp, BookSpec.NoWater) { Selected = Sel(TestKind.MaxTemp, BookSpec.NoWater) });
+    }
 
     // ── 运行 ──────────────────────────────────────────────────────
 
@@ -285,6 +340,9 @@ public sealed class MainViewModel : Bindable
     public string PhaseText { get => _phase; set => Set(ref _phase, value); }
     private string _prompt = "";
     public string PromptText { get => _prompt; set => Set(ref _prompt, value); }
+    /// <summary>等人的那一组要不要填实际水温（最高温那组不用水，只要点「继续」）。</summary>
+    private bool _promptNeedsWater = true;
+    public bool PromptNeedsWater { get => _promptNeedsWater; set => Set(ref _promptNeedsWater, value); }
     private string _water = "";
     public string WaterText { get => _water; set => Set(ref _water, value); }
     private string _bookPath = "";
@@ -316,16 +374,23 @@ public sealed class MainViewModel : Bindable
             MaxMinutes = (int)D(MaxMinutesText, "最高温时长", ref error),
             HoldMinutes = (int)D(HoldMinutesText, "恒温时长", ref error),
             SettleBand = D(SettleText, "提前结束阈值", ref error),
-            ReturnTemp = D(ReturnTempText, "回温目标", ref error)
+            ReturnTemp = D(ReturnTempText, "回温目标", ref error),
+            StabilityWindowMinutes = (int)D(StabilityText, "稳定度窗口", ref error),
+            Object = ObjectKind,
+            MaxOnce = true
         };
         if (!string.IsNullOrWhiteSpace(AmbientText)) s.Ambient = D(AmbientText, "环境温度", ref error);
         if (error is not null) return null;
+        if (ParseWaters(WatersText, out var werr) is not { } waters) { error = werr; return null; }
+        s.Waters = waters;
         if (s.MinMinutes < 1 || s.MaxMinutes < 1 || s.HoldMinutes < 1) { error = "时长至少 1 min"; return null; }
+        if (s.StabilityWindowMinutes < 1) { error = "稳定度窗口至少 1 min"; return null; }
         if (string.IsNullOrWhiteSpace(s.Operator)) { error = "操作人没填"; return null; }
         if (Cells.All(c => !c.Selected)) { error = "矩阵里一格都没勾"; return null; }
-        if (_host.Rig is not null)
+        if (_host.Rig is { } rig)
+        {
             for (var w = 0; w < 2; w++)
-                if (_host.Rig.Limits(w) is { } lim)
+                if (rig.Limits(w) is { } lim)
                 {
                     if (s.MinTarget < lim.Min || s.MaxTarget > lim.Max)
                     {
@@ -333,6 +398,17 @@ public sealed class MainViewModel : Bindable
                         return null;
                     }
                 }
+            // 控釜内：被控量是宇电的 Tr，此刻就得有读数——没有的话驱动也会拒绝，这里先说清楚
+            if (s.Object == TempChannelKind.Reactor)
+            {
+                var missing = Enumerable.Range(0, 2).Where(w => rig.Read(w).Tr is null).Select(w => w == 0 ? "A" : "B").ToArray();
+                if (missing.Length > 0)
+                {
+                    error = $"控釜内要有釜内 Tr 读数，工位 {string.Join("、", missing)} 现在没有（宇电探头没接 / 探头会话没连上）；先接好探头，或改控夹套";
+                    return null;
+                }
+            }
+        }
         return s;
     }
 
@@ -348,7 +424,7 @@ public sealed class MainViewModel : Bindable
         var rig = _host.Rig!;
         _runner = new LimitTestRunner(rig, s, OutDir.Trim(), log: _host.Log);
         foreach (var c in _runner.Plan)
-            c.Selected = Cells.First(x => x.Kind == c.Kind && x.Water == c.Water).Selected;
+            c.Selected = Cells.FirstOrDefault(x => x.Is(c.Kind, c.Water))?.Selected ?? false;
         foreach (var c in Cells) c.CanEdit = false;
         _runner.Changed += () => Dispatcher.UIThread.Post(Refresh);
         _stop = new CancellationTokenSource();
@@ -393,6 +469,12 @@ public sealed class MainViewModel : Bindable
     public void Continue()
     {
         if (_runner is not { } r || !IsWaitingWater) return;
+        if (!r.PromptNeedsWater)
+        {
+            // 最高温那组不用水：点「继续」就是「水已停」
+            r.ConfirmWater(double.NaN);
+            return;
+        }
         if (!double.TryParse(WaterText.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var v))
         {
             StatusText = "实际水温填的不是数：" + WaterText;
@@ -407,10 +489,11 @@ public sealed class MainViewModel : Bindable
     {
         if (_runner is { } r)
         {
-            foreach (var c in Cells)
-                c.From(r.Cell(c.Kind, c.Water));
+            foreach (var pc in r.Plan)
+                Cells.FirstOrDefault(c => c.Is(pc.Kind, pc.Water))?.From(pc);
             StatusText = r.Status;
             PromptText = r.Prompt ?? "";
+            PromptNeedsWater = r.PromptNeedsWater;
             var el = r.Elapsed;
             PhaseText = r.Current is { } cur
                 ? $"{cur} · {r.Phase} · 已 {(int)el.TotalMinutes} min {el.Seconds:00} s"
@@ -423,6 +506,7 @@ public sealed class MainViewModel : Bindable
         Raise(nameof(CanSkip));
         Raise(nameof(CanConnect));
         Raise(nameof(IsWaitingWater));
+        Raise(nameof(CanEditPlan));
     }
 
     private void Tick()
