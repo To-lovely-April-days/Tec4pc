@@ -1,0 +1,306 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:v="clr-namespace:Tec.Hmi.Ui.Views;assembly=Tec.Hmi.Ui"
+             x:Class="Tec.Hmi.Ui.Views.HmiPidView"
+             FontSize="12" Foreground="#1A1A1A">
+
+  <!-- 「PID 整定」页（上位机 PID）：左边两张增益表 + 手动参数，右边在用参数 / 实时稳定度 / 自整定。
+       面板、按钮、开关的样子沿用 HmiView 里那套（hpnl / hpnh / hbt / hmode / hsw），这里只补表格小格 -->
+  <UserControl.Styles>
+    <Style Selector="TextBox.pc">
+      <Setter Property="Height" Value="26" /><Setter Property="MinHeight" Value="26" /><Setter Property="MinWidth" Value="0" />
+      <Setter Property="FontSize" Value="11.5" /><Setter Property="Padding" Value="4,0" />
+      <Setter Property="BorderBrush" Value="#D6D6D6" /><Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="2" /><Setter Property="Background" Value="White" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Margin" Value="0,0,3,0" />
+    </Style>
+    <Style Selector="TextBox.pm">
+      <Setter Property="Height" Value="28" /><Setter Property="MinHeight" Value="28" /><Setter Property="MinWidth" Value="0" />
+      <Setter Property="FontSize" Value="12" /><Setter Property="Padding" Value="6,0" />
+      <Setter Property="BorderBrush" Value="#C9C9C9" /><Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="3" /><Setter Property="Background" Value="White" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TextBlock.th">
+      <Setter Property="FontSize" Value="10.5" /><Setter Property="Foreground" Value="#6F6F6F" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TextBlock.ro">
+      <Setter Property="FontSize" Value="11" /><Setter Property="Foreground" Value="#8E8E8E" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TextBlock.sub">
+      <Setter Property="FontSize" Value="11" /><Setter Property="Foreground" Value="#6F6F6F" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="Border.prow">
+      <Setter Property="Padding" Value="6,3" /><Setter Property="BorderBrush" Value="#EFEFEF" />
+      <Setter Property="BorderThickness" Value="0,0,0,1" /><Setter Property="Background" Value="White" />
+    </Style>
+    <Style Selector="Border.prow.use">
+      <Setter Property="Background" Value="#E4F4F4" />
+      <Setter Property="BorderBrush" Value="#4FB1B8" /><Setter Property="BorderThickness" Value="3,0,0,1" />
+    </Style>
+    <Style Selector="Button.sm">
+      <Setter Property="Height" Value="30" /><Setter Property="Padding" Value="11,0" /><Setter Property="FontSize" Value="12" />
+    </Style>
+    <Style Selector="Button.x">
+      <Setter Property="Width" Value="24" /><Setter Property="Height" Value="24" /><Setter Property="Padding" Value="0" />
+      <Setter Property="Background" Value="Transparent" /><Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Foreground" Value="#9A9A9A" /><Setter Property="FontSize" Value="14" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" /><Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.chip">
+      <Setter Property="Height" Value="26" /><Setter Property="Padding" Value="9,0" /><Setter Property="FontSize" Value="11" />
+      <Setter Property="Background" Value="#F4F4F4" /><Setter Property="BorderBrush" Value="#D6D6D6" />
+      <Setter Property="BorderThickness" Value="1" /><Setter Property="CornerRadius" Value="13" />
+      <Setter Property="Foreground" Value="#3D3D3D" /><Setter Property="Margin" Value="0,0,5,5" />
+    </Style>
+    <Style Selector="Button.chip.done">
+      <Setter Property="Background" Value="#E4F4F4" /><Setter Property="BorderBrush" Value="#4FB1B8" />
+      <Setter Property="Foreground" Value="#1F5F64" />
+    </Style>
+  </UserControl.Styles>
+
+  <Panel>
+    <!-- 没有整定台：温控器 PID 方式 / 没连上 -->
+    <Border Classes="hpnl" IsVisible="{Binding NoBench}" Padding="24" VerticalAlignment="Top">
+      <StackPanel Spacing="8">
+        <TextBlock Text="上位机 PID 整定" FontSize="14" FontWeight="Medium" />
+        <TextBlock Text="{Binding NoBenchText}" FontSize="12.5" Foreground="#4A4A4A" TextWrapping="Wrap" />
+      </StackPanel>
+    </Border>
+
+    <Grid ColumnDefinitions="*,372" IsVisible="{Binding HasBench}">
+
+      <!-- ── 左：增益表 + 手动参数 ── -->
+      <DockPanel Grid.Column="0" Margin="0,0,10,0">
+
+        <!-- 手动参数（表空 / 调度关时回路用的那组）-->
+        <Border DockPanel.Dock="Bottom" Classes="hpnl" Margin="0,8,0,0">
+          <StackPanel>
+            <Border Classes="hpnh" Height="36">
+              <DockPanel VerticalAlignment="Center">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6">
+                  <Button Classes="hbt sm" Content="放弃" Click="OnManualRevert" IsEnabled="{Binding ManualDirty}" />
+                  <Button Classes="hbt pri sm" Content="应用手动参数" Click="OnManualApply" />
+                </StackPanel>
+                <TextBlock Text="手动参数" FontSize="12.5" FontWeight="Medium" VerticalAlignment="Center" />
+                <TextBlock Text="表里没有这个执行器的行、或关了增益调度时，回路用这一组" Classes="sub"
+                           Margin="10,0,0,0" VerticalAlignment="Center" />
+              </DockPanel>
+            </Border>
+            <Grid ColumnDefinitions="Auto,70,70,62,16,Auto,62,80,50,16,Auto,56" Margin="12,8,12,10">
+              <TextBlock Grid.Column="0" Text="内环 Kp / Ki / Kd" Classes="th" Margin="0,0,8,0" />
+              <TextBox Grid.Column="1" Classes="pm" Text="{Binding MKp}" Margin="0,0,4,0" />
+              <TextBox Grid.Column="2" Classes="pm" Text="{Binding MKi}" Margin="0,0,4,0" />
+              <TextBox Grid.Column="3" Classes="pm" Text="{Binding MKd}" />
+              <TextBlock Grid.Column="5" Text="外环 Kp / Ki / Kd" Classes="th" Margin="0,0,8,0" />
+              <TextBox Grid.Column="6" Classes="pm" Text="{Binding MOKp}" Margin="0,0,4,0" />
+              <TextBox Grid.Column="7" Classes="pm" Text="{Binding MOKi}" Margin="0,0,4,0" />
+              <TextBox Grid.Column="8" Classes="pm" Text="{Binding MOKd}" />
+              <TextBlock Grid.Column="10" Text="偏置 ±℃" Classes="th" Margin="0,0,8,0" />
+              <TextBox Grid.Column="11" Classes="pm" Text="{Binding MBias}" />
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <Border Classes="hpnl">
+          <DockPanel>
+            <Border DockPanel.Dock="Top" Classes="hpnh" Height="44">
+              <DockPanel VerticalAlignment="Center">
+                <Grid DockPanel.Dock="Left" ColumnDefinitions="96,96" Height="30" Margin="0,0,12,0">
+                  <Button Grid.Column="0" Classes="hmode" Classes.on="{Binding TableTec}" Content="TEC 表"
+                          Tag="tec" Click="OnTable" />
+                  <Button Grid.Column="1" Classes="hmode" Classes.on="{Binding TableHeater}" Content="加热棒表"
+                          Tag="heater" Click="OnTable" />
+                </Grid>
+                <TextBlock Text="{Binding TableSummary}" Classes="sub" VerticalAlignment="Center" />
+              </DockPanel>
+            </Border>
+
+            <!-- 按钮 + 说明 -->
+            <StackPanel DockPanel.Dock="Bottom" Margin="10,6,10,8" Spacing="5">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <Button Classes="hbt sm" Content="＋ 新增行" Click="OnAddRow" />
+                <Button Classes="hbt pri sm" Content="应用表格" Click="OnApply" IsEnabled="{Binding TableDirty}" />
+                <Button Classes="hbt sm" Content="放弃修改" Click="OnRevert" IsEnabled="{Binding TableDirty}" />
+                <Button Classes="hbt sm" Content="从盘上重读" Click="OnReload" />
+                <Button Classes="hbt sm" Content="清空这张表" Click="OnClear" />
+                <Button Classes="hbt sm" Content="{Binding OtherWell, StringFormat=复制到工位 {0}}" Click="OnCopy" />
+              </StackPanel>
+              <TextBlock Text="{Binding TableNote}" FontSize="11" Foreground="#B5651D" TextWrapping="Wrap"
+                         IsVisible="{Binding TableDirty}" />
+              <TextBlock Text="{Binding ErrorText}" FontSize="11.5" Foreground="#C0392B" TextWrapping="Wrap"
+                         IsVisible="{Binding HasError}" />
+              <TextBlock Text="{Binding TablePath, StringFormat=文件：{0}（格式同 TecControl.App 的 gain-schedule.csv）}"
+                         FontSize="10" Foreground="#9A9A9A" TextWrapping="Wrap" />
+            </StackPanel>
+
+            <!-- 表头 -->
+            <Border DockPanel.Dock="Top" Padding="6,5" Background="#F6F6F6"
+                    BorderBrush="#E4E4E4" BorderThickness="0,0,0,1">
+              <Grid ColumnDefinitions="58,64,76,54,52,76,44,46,46,40,48,48,26">
+                <TextBlock Grid.Column="0" Text="温度 ℃" Classes="th" />
+                <TextBlock Grid.Column="1" Text="Kp" Classes="th" />
+                <TextBlock Grid.Column="2" Text="Ki" Classes="th" />
+                <TextBlock Grid.Column="3" Text="Kd" Classes="th" />
+                <TextBlock Grid.Column="4" Text="外环Kp" Classes="th" />
+                <TextBlock Grid.Column="5" Text="外环Ki" Classes="th" />
+                <TextBlock Grid.Column="6" Text="外Kd" Classes="th" />
+                <TextBlock Grid.Column="7" Text="偏置±" Classes="th" />
+                <TextBlock Grid.Column="8" Text="加热比" Classes="th" IsVisible="{Binding HeatColumn}" />
+                <TextBlock Grid.Column="9" Text="Tu s" Classes="th" />
+                <TextBlock Grid.Column="10" Text="稳态偏置" Classes="th" />
+                <TextBlock Grid.Column="11" Text="来源" Classes="th" />
+              </Grid>
+            </Border>
+
+            <Panel>
+              <TextBlock Text="这张表还是空的。在右边自整定一次会自动建一行；也可以点「＋ 新增行」手工填。"
+                         Classes="sub" Margin="14,14" IsVisible="{Binding TableEmpty}" />
+              <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <ItemsControl ItemsSource="{Binding Rows}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Border Classes="prow" Classes.use="{Binding InUse}">
+                        <Grid ColumnDefinitions="58,64,76,54,52,76,44,46,46,40,48,48,26">
+                          <TextBox Grid.Column="0" Classes="pc" Text="{Binding T}" />
+                          <TextBox Grid.Column="1" Classes="pc" Text="{Binding Kp}" />
+                          <TextBox Grid.Column="2" Classes="pc" Text="{Binding Ki}" />
+                          <TextBox Grid.Column="3" Classes="pc" Text="{Binding Kd}" />
+                          <TextBox Grid.Column="4" Classes="pc" Text="{Binding OKp}" />
+                          <TextBox Grid.Column="5" Classes="pc" Text="{Binding OKi}" />
+                          <TextBox Grid.Column="6" Classes="pc" Text="{Binding OKd}" />
+                          <TextBox Grid.Column="7" Classes="pc" Text="{Binding Bias}" />
+                          <TextBox Grid.Column="8" Classes="pc" Text="{Binding Heat}" IsVisible="{Binding HeatEditable}" />
+                          <TextBlock Grid.Column="9" Text="{Binding Tu}" Classes="ro" />
+                          <TextBlock Grid.Column="10" Text="{Binding Steady}" Classes="ro" />
+                          <TextBlock Grid.Column="11" Text="{Binding Origin}" Classes="ro" />
+                          <Button Grid.Column="12" Classes="x" Content="×" Click="OnRemoveRow"
+                                  ToolTip.Tip="删这一行（点「应用表格」才生效）" />
+                        </Grid>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </ScrollViewer>
+            </Panel>
+          </DockPanel>
+        </Border>
+      </DockPanel>
+
+      <!-- ── 右：在用 / 实时 / 自整定 ── -->
+      <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="8">
+
+          <Border Classes="hpnl">
+            <StackPanel>
+              <Border Classes="hpnh" Height="36">
+                <DockPanel VerticalAlignment="Center">
+                  <Border DockPanel.Dock="Right" Classes="hsw" Classes.on="{Binding Scheduling}"
+                          PointerPressed="OnSched" ToolTip.Tip="关了就固定用手动参数（只管这一路）">
+                    <StackPanel Orientation="Horizontal" Spacing="7">
+                      <TextBlock Text="增益调度" VerticalAlignment="Center" />
+                      <Border Classes="hswt"><Ellipse Classes="hswk" /></Border>
+                    </StackPanel>
+                  </Border>
+                  <TextBlock Text="此刻在用" FontSize="12.5" FontWeight="Medium" VerticalAlignment="Center" />
+                </DockPanel>
+              </Border>
+              <StackPanel Margin="12,8,12,10" Spacing="4">
+                <TextBlock Text="{Binding UseHead}" FontSize="12" FontWeight="Medium" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding UseInner}" FontSize="11.5" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding UseOuter}" FontSize="11.5" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding UseExtra}" Classes="sub" />
+                <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
+                  <TextBlock Text="看某温度" Classes="th" />
+                  <TextBox Classes="pm" Width="64" Text="{Binding PreviewT}" />
+                  <TextBlock Text="℃ 会用什么（当前这张表）" Classes="th" />
+                </StackPanel>
+                <TextBlock Text="{Binding PreviewText}" Classes="sub" />
+              </StackPanel>
+            </StackPanel>
+          </Border>
+
+          <Border Classes="hpnl">
+            <StackPanel>
+              <Border Classes="hpnh" Height="36">
+                <DockPanel VerticalAlignment="Center">
+                  <TextBlock Text="实时 · 稳定度" FontSize="12.5" FontWeight="Medium" VerticalAlignment="Center" />
+                  <TextBlock Text="最近 5 min，±0.01 看这里" Classes="sub" Margin="10,0,0,0" VerticalAlignment="Center" />
+                </DockPanel>
+              </Border>
+              <StackPanel Margin="12,8,12,10" Spacing="4">
+                <TextBlock Text="{Binding LiveHead}" FontSize="12" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding LivePid}" Classes="sub" />
+                <TextBlock Text="{Binding StabLine1}" FontSize="11.5" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding StabLine2}" FontSize="11.5" TextWrapping="Wrap"
+                           Foreground="{Binding StabGood, Converter={x:Static v:HmiPidView.GoodBrush}}" />
+              </StackPanel>
+            </StackPanel>
+          </Border>
+
+          <Border Classes="hpnl">
+            <StackPanel>
+              <Border Classes="hpnh" Height="36">
+                <DockPanel VerticalAlignment="Center">
+                  <TextBlock Text="自整定（继电器法）" FontSize="12.5" FontWeight="Medium" VerticalAlignment="Center" />
+                  <TextBlock Text="要有人在场" Classes="sub" Margin="10,0,0,0" VerticalAlignment="Center" />
+                </DockPanel>
+              </Border>
+              <StackPanel Margin="12,8,12,10" Spacing="6">
+                <!-- 进度与结果放最上面：整定要跑几十分钟，人回来第一眼要看到它 -->
+                <TextBlock Text="{Binding TuneNote}" FontSize="12" FontWeight="Medium" Foreground="#C77800"
+                           TextWrapping="Wrap" IsVisible="{Binding Tuning}" />
+                <Border IsVisible="{Binding HasResult}" Padding="9,7" CornerRadius="3" BorderThickness="1"
+                        BorderBrush="#D6D6D6" Background="#FAFAFA">
+                  <StackPanel Spacing="3">
+                    <TextBlock Text="{Binding ResultTitle}" FontSize="12" FontWeight="Medium" />
+                    <TextBlock Text="{Binding ResultText}" FontSize="11" Foreground="#4A4A4A" TextWrapping="Wrap" />
+                  </StackPanel>
+                </Border>
+                <TextBlock Text="建议点位（打勾 = 表里已经有这一温度的自整定结果）" Classes="th" />
+                <ItemsControl ItemsSource="{Binding Points}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Button Classes="chip" Classes.done="{Binding Done}" Content="{Binding Text}" Click="OnPoint" />
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <Grid ColumnDefinitions="Auto,64,Auto,*" RowDefinitions="Auto,Auto">
+                  <TextBlock Grid.Column="0" Text="温度" Classes="th" Margin="0,0,6,0" />
+                  <TextBox Grid.Column="1" Classes="pm" Text="{Binding TuneT}" IsEnabled="{Binding NotTuning}" />
+                  <TextBlock Grid.Column="2" Text="℃  执行器" Classes="th" Margin="6,0,6,0" />
+                  <Grid Grid.Column="3" ColumnDefinitions="*,*" Height="28">
+                    <Button Grid.Column="0" Classes="hmode" Classes.on="{Binding TuneTec}" Content="TEC"
+                            Tag="tec" Click="OnAct" IsEnabled="{Binding NotTuning}" />
+                    <Button Grid.Column="1" Classes="hmode" Classes.on="{Binding TuneHeater}" Content="加热棒"
+                            Tag="heater" Click="OnAct" IsEnabled="{Binding NotTuning}" />
+                  </Grid>
+                  <StackPanel Grid.Row="1" Grid.ColumnSpan="4" Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
+                    <TextBlock Text="继电幅值" Classes="th" />
+                    <TextBox Classes="pm" Width="52" Text="{Binding TuneAmp}" IsEnabled="{Binding NotTuning}" />
+                    <TextBlock Text="%   回差" Classes="th" />
+                    <TextBox Classes="pm" Width="60" Text="{Binding TuneHys}" IsEnabled="{Binding NotTuning}" />
+                    <TextBlock Text="℃" Classes="th" />
+                  </StackPanel>
+                </Grid>
+                <TextBlock Text="{Binding TuneSuggest}" Classes="sub" />
+                <TextBlock Text="{Binding TuneCheck}" FontSize="11" Foreground="#C0392B" TextWrapping="Wrap" />
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <Button Classes="hbt pri sm" Content="开始自整定" Click="OnTuneStart" IsEnabled="{Binding CanStartTune}" />
+                  <Button Classes="hbt sm" Content="取消" Click="OnTuneCancel" IsEnabled="{Binding Tuning}" />
+                </StackPanel>
+              </StackPanel>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </ScrollViewer>
+    </Grid>
+  </Panel>
+</UserControl>

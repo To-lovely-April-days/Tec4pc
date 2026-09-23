@@ -25,6 +25,8 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
     private readonly Broadcast<Sample> _out = new();
     private readonly Rd105TemperatureControl[] _temps = new Rd105TemperatureControl[2];
     private readonly Rd105Tuning[] _tunings = new Rd105Tuning[2];
+    /// <summary>上位机 PID 的整定台（面板「PID 整定」页）；温控器 PID 方式下没有。</summary>
+    private readonly Rd105HostPid?[] _pids = new Rd105HostPid?[2];
     private readonly HostControlLoop _loop;
     private readonly TimeSpan _period;
     private readonly bool _host;
@@ -70,12 +72,20 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
                                    Rd105HostControl.FallbackOuter.Kd, Rd105HostControl.FallbackOuterMaxBiasC);
             _loop.SetHeaterSign(tc, _heaterSign);
             _gainPaths[i] = Rd105HostControl.GainsPath(ctx.InstanceId, tc);
-            var n = Rd105HostControl.Load(_loop.GetGainSchedule(tc), _gainPaths[i]);
             if (_host)
-                ctx.Log?.Invoke("info", $"{ctx.InstanceId} TC{tc} 上位机 PID：" +
-                    (n > 0 ? $"{Rd105HostControl.Describe(_loop.GetGainSchedule(tc))}（{_gainPaths[i]}）"
-                           : $"增益表空（{_gainPaths[i]}），先用保守缺省 Kp {Rd105HostControl.FallbackInner.Kp} / Ki {Rd105HostControl.FallbackInner.Ki} / Kd {Rd105HostControl.FallbackInner.Kd}——请先在常用温度点自整定") +
+            {
+                // 整定台：两张表（TEC / 加热棒）+ 手动参数 / 调度开关，开会话时从盘上读
+                var pid = new Rd105HostPid(ch, tc, _loop, _temps[i], ctx.InstanceId, (lvl, text) => ctx.Log?.Invoke(lvl, text));
+                _pids[i] = pid;
+                var said = pid.Load();
+                ctx.Log?.Invoke("info", $"{ctx.InstanceId} TC{tc} 上位机 PID：{said}（{Rd105HostControl.GainsDir}）" +
                     $"；TEC 输出{(_invert ? "反向" : "不反向")}、加热棒占空比{(_heaterSign < 0 ? "负" : "正")}");
+            }
+            else
+            {
+                // 温控器 PID 方式下只有整定借用回路；表照样读，切到上位机方式时就有
+                Rd105HostControl.Load(_loop.GetGainSchedule(tc), _gainPaths[i]);
+            }
         }
 
         if (_host)
@@ -107,6 +117,9 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
 
     /// <summary>这一路的增益表文件（测试与日志用）。</summary>
     public string GainsPathOf(int well) => _gainPaths[well];
+
+    /// <summary>这一路的整定台（上位机 PID 方式才有）。组合会话要往上面接热源配合。</summary>
+    public Rd105HostPid? PidOf(int well) => well is 0 or 1 ? _pids[well] : null;
 
     /// <summary>串口中途掉了之后的自愈（LinkRecovery 的规矩）；轮询连着报错时调。</summary>
     private readonly LinkRecovery _recover;
@@ -171,7 +184,11 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
     };
 
     public IReadOnlyList<ICapability> CapabilitiesOf(int well)
-        => well is 0 or 1 ? new ICapability[] { _temps[well], _tunings[well] } : Array.Empty<ICapability>();
+        => well is 0 or 1
+            ? (_pids[well] is { } pid
+                ? new ICapability[] { _temps[well], _tunings[well], pid }
+                : new ICapability[] { _temps[well], _tunings[well] })
+            : Array.Empty<ICapability>();
 
     /// <summary>温度指令认领 ABI 的能力通用执行器（与仿真同一份语义）。</summary>
     public ICommandHandler? Resolve(string commandId) => CapabilityCommands.Resolve(commandId);
@@ -201,8 +218,10 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
                 {
                     var cfg = await _link.Controller.ReadChannelConfigAsync(tc, ct).ConfigureAwait(false);
                     var limited = Math.Clamp(cfg.MaxDutyPercent, 5, 100);
-                    var g = _loop.GetGainSchedule(tc).GainsAt(25) ?? Rd105HostControl.FallbackInner;
-                    _loop.ConfigurePid(tc, g.Kp, g.Ki, g.Kd, limited, _invert);
+                    // 手动那组照整定台读回来的（上次存的 / 缺省），这里只换输出上限与方向
+                    var m = _pids[tc - 1]?.Manual.Inner ?? new PidTuning(Rd105HostControl.FallbackInner.Kp,
+                        Rd105HostControl.FallbackInner.Ki, Rd105HostControl.FallbackInner.Kd);
+                    _loop.ConfigurePid(tc, m.Kp, m.Ki, m.Kd, limited, _invert);
                 }
                 catch (Exception ex)
                 {
@@ -245,6 +264,7 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
         {
             var info = infos[i];
             Push(_temps[i].Channel, "duty", info.DutyPercent, at, Quality.Good);
+            _pids[i]?.OnCycle(info);
             if (info.Active)
             {
                 var inner = info.Cascade ? info.InnerSetpointC : info.SetpointC;
@@ -275,6 +295,8 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
 
     private void SaveGains(int tc)
     {
+        // 上位机方式：两张表（TEC / 加热棒）都归整定台存
+        if (_pids[tc - 1] is { } pid) { pid.SaveTables(); return; }
         try
         {
             Rd105HostControl.Save(_loop.GetGainSchedule(tc), _gainPaths[tc - 1]);
@@ -426,6 +448,7 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
         _loop.ChannelTripped -= OnChannelTripped;
         _loop.GainScheduleChanged -= SaveGains;
         foreach (var t in _tunings) t.Detach();
+        foreach (var p in _pids) p?.Detach();
         try { await _loop.ShutdownAsync().ConfigureAwait(false); } catch { }
         _loop.Dispose();
         await StopAsync(CancellationToken.None).ConfigureAwait(false);

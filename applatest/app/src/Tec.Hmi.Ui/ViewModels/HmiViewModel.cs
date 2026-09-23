@@ -71,6 +71,7 @@ public sealed class HmiViewModel : ViewModelBase
     public bool ZSeqTab => _zTab == "seq";
     public bool ZSafTab => _zTab == "saf";
     public bool ZExpTab => _zTab == "exp";
+    public bool ZPidTab => _zTab == "pid";
 
     public bool ShowOvApp => IsOv && OvApp;
     public bool ShowOvGra => IsOv && OvGra;
@@ -80,10 +81,11 @@ public sealed class HmiViewModel : ViewModelBase
     public bool ShowZSeq => IsZone && _zTab == "seq";
     public bool ShowZSaf => IsZone && _zTab == "saf";
     public bool ShowZExp => IsZone && _zTab == "exp";
+    public bool ShowZPid => IsZone && _zTab == "pid";
     public bool ShowFiles => IsFiles;
     public bool ShowSys => IsSys;
     /// <summary>兜底：认不出的标签给一句实话（正常路径全部页都已接入）。</summary>
-    public bool ZStub => IsZone && !(ZCtl || _zTab is "gra" or "seq" or "saf" or "exp");
+    public bool ZStub => IsZone && !(ZCtl || _zTab is "gra" or "seq" or "saf" or "exp" or "pid");
     public bool ShowStub => false;
 
     /// <summary>还没接入的页给一句实话，不摆一个点了没反应的空壳。</summary>
@@ -103,10 +105,11 @@ public sealed class HmiViewModel : ViewModelBase
         RaiseAll(nameof(Page), nameof(OvTab), nameof(ZTab), nameof(IsOv), nameof(IsZone),
                  nameof(IsFiles), nameof(IsSys), nameof(OnZ0), nameof(OnZ1), nameof(Cur),
                  nameof(OvApp), nameof(OvSeq), nameof(OvGra), nameof(ZCtl), nameof(ZOther),
-                 nameof(ZGraTab), nameof(ZSeqTab), nameof(ZSafTab), nameof(ZExpTab),
+                 nameof(ZGraTab), nameof(ZSeqTab), nameof(ZSafTab), nameof(ZExpTab), nameof(ZPidTab),
                  nameof(ShowOvApp), nameof(ShowOvGra), nameof(ShowOvSeq), nameof(ShowZCtl),
-                 nameof(ShowZGra), nameof(ShowZSeq), nameof(ShowZSaf), nameof(ShowZExp),
+                 nameof(ShowZGra), nameof(ShowZSeq), nameof(ShowZSaf), nameof(ShowZExp), nameof(ShowZPid),
                  nameof(ShowFiles), nameof(ShowSys), nameof(ZStub), nameof(ShowStub));
+        if (ShowZPid && Cur is { } zp) zp.Pid.Refresh();
         // 切页别等下一拍——空一秒的页面看着像坏了
         if (ShowZGra && Cur is { } z) z.RefreshGra();
         if (ShowZSeq && Cur is { } z2) z2.RefreshSeq();
@@ -899,6 +902,8 @@ public sealed class HmiViewModel : ViewModelBase
             z.WantTl = ShowOvSeq;
             z.Refresh();
         }
+        // PID 整定页：只在有人看的那一路刷（稳定度要扫五分钟的样点）
+        if (ShowZPid && Cur is { } zp) zp.Pid.Refresh();
         if (ShowOvGra) RefreshOvChart();
         if (ShowZExp) ExpRefresh(reloadArchive: false);
         if (ShowFiles) FilesRefresh();
@@ -952,6 +957,25 @@ public sealed class HmiZoneViewModel : ViewModelBase
     private IDosing? Dose => Ch?.Capabilities.Get<IDosing>();
     private IRefluxControl? Reflux => Ch?.Capabilities.Get<IRefluxControl>();
     private IHeatSource? Heat => Ch?.Capabilities.Get<IHeatSource>();
+
+    /// <summary>上位机 PID 的整定台（「PID 整定」页背后那一层）；温控器 PID 方式 / 没连上是 null。</summary>
+    internal IPidTuningBench? PidBench => Ch?.Capabilities.Get<IPidTuningBench>();
+
+    /// <summary>控温方式：true = 上位机 PID，false = 温控器 PID，null = 设备不报 / 没连上。</summary>
+    internal bool? HostLoopKnown => Temp is ITemperatureStatus st ? st.HostLoop : null;
+
+    private HmiPidViewModel? _pid;
+    /// <summary>「PID 整定」页。</summary>
+    public HmiPidViewModel Pid => _pid ??= new HmiPidViewModel(_owner, _ws, this);
+
+    /// <summary>自整定开始时驱动已经把这一路的控温停了：面板的温控开关跟着关，不等三拍对账。</summary>
+    internal void NoteTempStoppedForTuning()
+    {
+        if (!TempOn) return;
+        TempOn = false;
+        Log("整定", "开始自整定——这一路的控温已停，温控开关跟着关");
+        RaiseZone();
+    }
 
     public bool HasPh => Ch?.Capabilities.All.OfType<IScalarSensor>()
         .Any(s => s.Tags.Any(t => t.Tag == "pH")) == true;

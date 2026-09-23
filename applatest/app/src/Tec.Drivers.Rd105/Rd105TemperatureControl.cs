@@ -174,6 +174,9 @@ public sealed class Rd105TemperatureControl : ITemperatureControl, ITemperatureS
     private async Task HostArmAsync(TempChannelKind kind, double setpoint, CancellationToken ct)
     {
         var loop = _loop!;
+        if (loop.IsTuning(_tc))
+            throw new InvalidOperationException(
+                $"工位 {(_tc == 1 ? "A" : "B")}（TC{_tc}）正在自整定——先在面板「PID 整定」页取消，再下发控温目标");
         var strategy = kind == TempChannelKind.Reactor ? ControlStrategy.Cascade : ControlStrategy.Direct;
         if (strategy == ControlStrategy.Cascade && double.IsNaN(_tr))
             throw new InvalidOperationException(

@@ -45,6 +45,7 @@ public sealed class DuoTempControl : ITemperatureControl, IRefluxControl, IHeatS
 
     public async Task SetTargetAsync(TempTarget target, CancellationToken ct)
     {
+        _s.GuardTuning(_well);  // 自整定占着继电器与回路：先拒绝，一个继电器都别动
         _s.NoteStart(_well);    // 这一路要控温了（热源切换按意图判，不按设备上的 ENABLE）
         _s.StopReflux(_well);   // 明确下发新目标 = 下一步接管，跟随环退位
         await _s.EnsureSourceAsync(_well, target.Value, ct).ConfigureAwait(false);
@@ -53,6 +54,7 @@ public sealed class DuoTempControl : ITemperatureControl, IRefluxControl, IHeatS
 
     public async Task RampAsync(double target, double ratePerMin, TempChannelKind kind, CancellationToken ct)
     {
+        _s.GuardTuning(_well);
         _s.NoteStart(_well);
         _s.StopReflux(_well);
         await _s.EnsureSourceAsync(_well, target, ct).ConfigureAwait(false);
@@ -75,7 +77,10 @@ public sealed class DuoTempControl : ITemperatureControl, IRefluxControl, IHeatS
     // ── 蒸回流（夹套跟随）。StopAsync 与 ITemperatureControl 同签名，
     //    显式实现分开：停跟随 ≠ 停控温——目标停在最后一次下发的值上
     Task IRefluxControl.StartAsync(double deltaT, double maxTj, CancellationToken ct)
-        => _s.StartRefluxAsync(_well, deltaT, maxTj, ct);
+    {
+        _s.GuardTuning(_well);
+        return _s.StartRefluxAsync(_well, deltaT, maxTj, ct);
+    }
 
     Task IRefluxControl.StopAsync(CancellationToken ct)
     {

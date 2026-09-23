@@ -123,7 +123,8 @@ internal sealed class Rd105Tuning : ITemperatureTuning
 
     private void OnFinished(AutoTuneOutcome o)
     {
-        if (o.Channel != _tc) return;
+        // 只认自己发起的那次：面板「PID 整定」页（Rd105HostPid）发起的整定由它自己收尾、记日志
+        if (o.Channel != _tc || TuningState != TuningState.Running) return;
 
         // 取保守组（Tyreus–Luyben）：算法作者自己的注释就写着温控推荐用这一组——
         // ZN 那组响应快但会超调，控温超调意味着实际把料多加热了一段

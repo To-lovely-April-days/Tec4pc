@@ -99,6 +99,22 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     /// 临时关掉的 ENABLE。</summary>
     internal bool WantEnabled(int well) => well is 0 or 1 && _wantEnabled[well];
 
+    /// <summary>
+    /// 这一路正在自整定（面板「PID 整定」页发起）。整定期间继电器归整定占着：采集循环不自动换挡、
+    /// 也不因为「没在控温」把它断开；下发控温目标拒绝。整定结束（任何原因）落旗，下一拍全断。
+    /// </summary>
+    private readonly bool[] _tuning = new bool[2];
+
+    internal bool Tuning(int well) => well is 0 or 1 && Volatile.Read(ref _tuning[well]);
+
+    /// <summary>整定中拒绝下发控温目标 / 开蒸回流（DuoTempControl 调）。</summary>
+    internal void GuardTuning(int well)
+    {
+        if (Tuning(well))
+            throw new InvalidOperationException(
+                $"工位 {AB(well)} 正在自整定——先在面板「PID 整定」页取消，再下发控温目标");
+    }
+
     /// <summary>停控（含安全停机）走过这里：让正在进行的切换知道「别再把输出打开」。</summary>
     internal void NoteStop(int well)
     {
@@ -195,6 +211,79 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         }
 
         _temps = new[] { new DuoTempControl(this, 0), new DuoTempControl(this, 1) };
+
+        // 上位机 PID 的整定台：自整定要按执行器把继电器扳好、整定期间不自动换挡、结束了断开
+        for (var w = 0; w < 2; w++)
+        {
+            var well = w;
+            if (_rd.PidOf(w) is { } pid)
+                pid.Hooks = new Rd105PidHooks
+                {
+                    Suggest = sp => SuggestTuneActuator(well, sp),
+                    Check = r => CheckTune(well, r),
+                    StopControl = ct => _temps[well].StopAsync(ct),
+                    Prepare = (r, ct) => PrepareTuneAsync(well, r, ct),
+                    Ended = () => EndTune(well)
+                };
+        }
+    }
+
+    // ── 自整定的热源配合（面板「PID 整定」页）──────────────────────────
+    //
+    // 继电器法要在设定值两边来回推，推的只能是一个执行器——整定期间绝不能换热源。
+    // TEC 侧：TEC 功率线合、加热棒断；「TEC 加热」不启用时只许制冷（强制冷 / 弱制冷两个半周）。
+    // 加热棒侧：加热棒合、功率线断；只加热（强加热 / 弱加热，弱的那半周靠自然散热）。
+    // 结果登记进对应执行器那张表——同一温度，TEC 和加热棒的过程增益差一个量级。
+
+    private PidActuator SuggestTuneActuator(int well, double setpointC)
+    {
+        if (setpointC > _threshold) return PidActuator.Heater;          // 阈值以上 TEC 不接
+        if (_tecHeat) return PidActuator.Tec;                            // TEC 正反都能出力
+        // TEC 只能制冷：维持这个温度要加热（高过此刻夹套一个死区）就只能用加热棒
+        var tj = _rd.TempOf(well).CurrentJacket;
+        return !double.IsNaN(tj) && setpointC > tj + _band ? PidActuator.Heater : PidActuator.Tec;
+    }
+
+    private string? CheckTune(int well, PidAutoTuneRequest r)
+    {
+        if (r.Actuator == PidActuator.Heater)
+            return ElectricReady ? null
+                : $"电加热用不了（{(_links.Io is null ? "这台没配 IO8R 切换模块" : "IO8R 没打开")}）——加热棒那张表整不了";
+
+        if (_tecRelay && !ElectricReady) return NoTecReason(well);
+        if (r.SetpointC > _threshold)
+            return $"整定温度 {r.SetpointC:0.#} ℃ 高于电加热切换阈值 {_threshold:0} ℃——这个温度 TEC 不接，选加热棒整";
+        var tj = _rd.TempOf(well).CurrentJacket;
+        if (!double.IsNaN(tj) && tj > _threshold - _hyst)
+            return $"夹套 {tj:0.0} ℃ 还高于回切线 {_threshold - _hyst:0} ℃（阈值 − 滞回）——TEC 不能接到这么烫的夹套上，等它凉下来再用 TEC 整";
+        return null;
+    }
+
+    private async Task<bool> PrepareTuneAsync(int well, PidAutoTuneRequest r, CancellationToken ct)
+    {
+        var side = r.Actuator == PidActuator.Heater ? Side.Electric : Side.Tec;
+        Volatile.Write(ref _tuning[well], true);        // 先立旗：采集循环这一拍起不再自动换挡 / 断开
+        try
+        {
+            if (!OnSide(well, side)) await SwitchAsync(well, side, ct).ConfigureAwait(false);
+            else _rd.TempOf(well).SetActuator(side == Side.Electric);    // 已经在这一侧：执行器形态对齐
+        }
+        catch
+        {
+            Volatile.Write(ref _tuning[well], false);
+            throw;
+        }
+        var coolOnly = side == Side.Tec && !_tecHeat;
+        _ctx.Log?.Invoke("info", $"{InstanceId} 工位 {AB(well)} 自整定：热源在{SideName(side)}侧" +
+            (coolOnly ? "（「TEC 加热」没启用：只制冷继电，TEC 不反向出力）" : "") + "，整定期间不自动换挡");
+        return coolOnly;
+    }
+
+    private void EndTune(int well)
+    {
+        if (!Volatile.Read(ref _tuning[well])) return;
+        Volatile.Write(ref _tuning[well], false);
+        _ctx.Log?.Invoke("info", $"{InstanceId} 工位 {AB(well)} 自整定结束——没在控温，继电器下一拍全断");
     }
 
     public string InstanceId => _ctx.InstanceId;
@@ -248,7 +337,8 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     public IReadOnlyList<ICapability> CapabilitiesOf(int well)
         => well is 0 or 1
             ? new ICapability[] { _temps[well] }
-                .Concat(_rd.CapabilitiesOf(well).OfType<ITemperatureTuning>()).ToArray()
+                .Concat(_rd.CapabilitiesOf(well).OfType<ITemperatureTuning>())
+                .Concat(_rd.CapabilitiesOf(well).OfType<IPidTuningBench>()).ToArray()
             : Array.Empty<ICapability>();
 
     /// <summary>温度指令认领 ABI 的能力通用执行器——与仿真同一份语义，
@@ -472,6 +562,8 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     /// </summary>
     private async Task AutoSourceAsync(int well, CancellationToken ct)
     {
+        // 自整定期间继电器归整定占着：不换挡，也不因为「没在控温」断开
+        if (Tuning(well)) return;
         var innerT = _rd.TempOf(well);
 
         // 这一刻这一路到底想干什么。**看的是意图（_wantEnabled）而不是设备上的 ENABLE**：
@@ -496,7 +588,8 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
             // 输出关着不带载，不必等夹套凉。绝不自动切到电加热：没人要它加热
             if (OnSide(well, Side.Off)) return;
             side = Side.Off;
-            stillWanted = () => !_wantEnabled[well];
+            // 抢锁期间有人发起了自整定（它刚把继电器扳好）：别在它后面把继电器断开
+            stillWanted = () => !_wantEnabled[well] && !Tuning(well);
         }
         else
         {
@@ -944,7 +1037,9 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         if (well is not (0 or 1)) return Array.Empty<string>();
         var notes = new List<string>();
 
-        // 先清跟随（联锁③）：不清的话下一拍跟随环又把目标写回去、把输出重新打开
+        // 先清跟随（联锁③）：不清的话下一拍跟随环又把目标写回去、把输出重新打开。
+        // 正在自整定也一并落旗：下面停输出会把整定器清掉，继电器照常断开
+        Volatile.Write(ref _tuning[well], false);
         NoteStop(well);
         if (SuppressReflux(well))
             notes.Add($"工位 {AB(well)} 蒸回流跟随已停——安全停机后不会再有目标写回去");

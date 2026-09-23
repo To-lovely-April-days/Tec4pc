@@ -126,6 +126,17 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         /// <summary>增益调度表（自整定结果按温度登记，运行时插值）。</summary>
         public readonly PidGainSchedule GainSchedule = new();
 
+        /// <summary>【本地改动】加热棒（只加热执行器）那张增益表。双工位主机上加热棒不只在高温段用——
+        /// 「TEC 加热」不启用时阈值以下的升温也走它，同一温度可能是 TEC 也可能是加热棒在出力，
+        /// 按温度分段（SegmentBoundaryC）分不开，只能按执行器分两张表。</summary>
+        public readonly PidGainSchedule HeaterSchedule = new();
+
+        /// <summary>【本地改动】此刻执行器对应的那张表：查参数、学稳态偏置、登记自整定结果都走它。</summary>
+        public PidGainSchedule ActiveSchedule => Actuator == ActuatorMode.HeatOnly ? HeaterSchedule : GainSchedule;
+
+        /// <summary>【本地改动】这一路单独关掉增益调度（固定用手动参数）。全局开关 GainSchedulingEnabled 照旧。</summary>
+        public bool SchedulingOff;
+
         /// <summary>手动参数（增益表为空时使用），由 ConfigurePid 记录。</summary>
         public PidGains? ManualGains;
 
@@ -386,6 +397,28 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
     /// <summary>启用增益调度：表内有点时按设定值插值覆盖手动参数。</summary>
     public bool GainSchedulingEnabled { get; set; } = true;
 
+    /// <summary>【本地改动】某路某执行器那张增益表（TEC 双向 / 加热棒只加热各一张，见 ChannelState.HeaterSchedule）。</summary>
+    public PidGainSchedule GetGainSchedule(int ch, ActuatorMode mode)
+        => mode == ActuatorMode.HeatOnly ? State(ch).HeaterSchedule : State(ch).GainSchedule;
+
+    /// <summary>【本地改动】按路开关增益调度（两个工位各有各的表，开关也各管各的）。</summary>
+    public void SetGainScheduling(int ch, bool on) => State(ch).SchedulingOff = !on;
+
+    /// <summary>【本地改动】这一路此刻按不按增益表走（全局开关与按路开关都开着才算）。</summary>
+    public bool IsGainScheduling(int ch) => Scheduling(State(ch));
+
+    private bool Scheduling(ChannelState s) => GainSchedulingEnabled && !s.SchedulingOff;
+
+    /// <summary>【本地改动】手动内环参数（ConfigurePid / SetManualGains 记下的那组）；没配过是 null。</summary>
+    public PidGains? GetManualGains(int ch) => State(ch).ManualGains;
+
+    /// <summary>【本地改动】手动外环参数与偏置限幅（ConfigureCascade 记下的那组）。</summary>
+    public (PidGains? Gains, double MaxBiasC) GetManualOuter(int ch)
+        => (State(ch).ManualOuterGains, State(ch).ManualOuterMaxBiasC);
+
+    /// <summary>【本地改动】这一路正在自整定。</summary>
+    public bool IsTuning(int ch) => State(ch).Tuner is not null;
+
     /// <summary>
     /// 加热相对制冷的有效度比值。实测本机加热膜约为 TEC 制冷的 2 倍，
     /// 用输出归一化（正输出除以该比值）代替"两套增益硬切换"，零点连续、无抖动。
@@ -555,7 +588,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
     /// </summary>
     private void ApplyOuterTuning(ChannelState s, double setpointC)
     {
-        var tuning = GainSchedulingEnabled ? s.GainSchedule.OuterAt(setpointC) : null;
+        var tuning = Scheduling(s) ? s.ActiveSchedule.OuterAt(setpointC) : null;     // 【本地改动】按执行器选表、按路开关
         tuning ??= s.ManualOuterGains is { } manual
             ? new OuterTuning(manual, s.ManualOuterMaxBiasC)
             : null;
@@ -635,7 +668,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
             s.LastOuterErrorC = double.NaN;
             s.InnerSetpointC = setpointC;
             ApplyOuterTuning(s, setpointC);   // 先装限幅，预置才会按正确范围截断
-            if (s.GainSchedule.SteadyBiasAt(setpointC) is { } bias)
+            if (s.ActiveSchedule.SteadyBiasAt(setpointC) is { } bias)     // 【本地改动】按执行器选表
             {
                 s.OuterPid.PresetIntegral(bias);
                 s.InnerSetpointC = Math.Clamp(setpointC + bias, InnerSetpointMinC, InnerSetpointMaxC);
@@ -651,10 +684,21 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
     }
 
     /// <summary>启动继电器法自整定（会激起 ±回差以上的小幅温度振荡）。</summary>
-    public async Task StartAutoTuneAsync(int ch, double setpointC,
+    public Task StartAutoTuneAsync(int ch, double setpointC,
         double relayAmplitudePercent, double hysteresisC, CancellationToken ct = default)
+        => StartAutoTuneAsync(ch, setpointC, relayAmplitudePercent, hysteresisC, coolOnly: false, ct);
+
+    /// <summary>
+    /// 【本地改动】coolOnly = TEC 只许制冷：继电在 [−上限, 0] 里摆（强制冷 / 弱制冷两个半周，
+    /// 弱制冷半周靠环境漏热回升）。双工位主机「TEC 加热」不启用时 TEC 侧整定用它——
+    /// TEC 反向加热在那台机器上没接 / 没验过，整定也不能让它反向出力。
+    /// </summary>
+    public async Task StartAutoTuneAsync(int ch, double setpointC,
+        double relayAmplitudePercent, double hysteresisC, bool coolOnly, CancellationToken ct = default)
     {
         var s = State(ch);
+        if (coolOnly && s.Actuator == ActuatorMode.HeatOnly)
+            throw new InvalidOperationException($"通道{ch}执行器是加热棒（只加热），不能按只制冷整定");
         if (s.Active)
             throw new InvalidOperationException($"通道{ch}正在闭环控温，请先停止再自整定");
         s.SetpointC = setpointC;
@@ -670,14 +714,17 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         var h = Math.Clamp(Math.Abs(relayAmplitudePercent), 1, 100);
         var bias = s.LastSteadyOutput ?? s.Feedforward.Predict(setpointC) ?? 0;
         var ceiling = Math.Max(1, s.Pid.OutputMax);
-        if (h >= ceiling) bias = 0;   // 幅值本身已覆盖全量程时无偏置可言
+        if (h >= ceiling && !coolOnly) bias = 0;   // 幅值本身已覆盖全量程时无偏置可言
 
         // 只加热执行器：输出下限 0，继电摆动整体落在正半轴（弱加热半周靠自然散热降温）。
         // 此时幅值不能超过上限的一半，否则可行偏置域为空——整定器会把偏置收缩到中点，
         // 等效幅值被迫减小，建议界面幅值 ≤ 上限/2。
+        // 【本地改动】只制冷：上限 0、下限 −上限，继电整体落在负半轴（同样的道理反过来）
+        var floor = s.Actuator == ActuatorMode.HeatOnly ? 0 : double.NaN;
+        if (coolOnly) { floor = -ceiling; ceiling = 0; }
         s.Tuner = new RelayAutoTuner(setpointC, relayAmplitudePercent, hysteresisC, bias,
             outputCeilingPercent: ceiling,
-            outputFloorPercent: s.Actuator == ActuatorMode.HeatOnly ? 0 : double.NaN);
+            outputFloorPercent: floor);
         s.TuneStartTime = DateTime.Now;
     }
 
@@ -945,7 +992,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                 var effBias = bias;
                 s.OuterClampBinding = false;
                 if (OuterBiasClampBandC > 0 && s.OuterCrossingArmed
-                    && s.GainSchedule.SteadyBiasAt(s.SetpointC) is { } clampRef)
+                    && s.ActiveSchedule.SteadyBiasAt(s.SetpointC) is { } clampRef)     // 【本地改动】按执行器选表
                 {
                     // 进带一次即锁存（带边按拍重判会被噪声来回触发，实测抖动 4 次）
                     if (!s.OuterClampLatched
@@ -985,7 +1032,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                 // 积分从不冻结，稳态偏置过时最多偏一次、由正常积分接管收敛。
                 var outerErr = s.SetpointC - outerPv;
                 if (s.Profile is null
-                    && s.GainSchedule.SteadyBiasAt(s.SetpointC) is { } steadyI)
+                    && s.ActiveSchedule.SteadyBiasAt(s.SetpointC) is { } steadyI)     // 【本地改动】按执行器选表
                 {
                     if (s.OuterApproachDischargeArmed
                         && Math.Abs(outerErr) <= OuterDischargeApproachBandC)
@@ -1015,7 +1062,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                         outerErr) is { } widened)
                 {
                     s.OuterPid.SetOutputLimits(-widened, widened);
-                    if (s.GainSchedule.WidenOuterBiasLimit(s.SetpointC, widened))
+                    if (s.ActiveSchedule.WidenOuterBiasLimit(s.SetpointC, widened))     // 【本地改动】按执行器选表
                         GainScheduleChanged?.Invoke(ch);
                     else
                         s.ManualOuterMaxBiasC = widened;   // 表里没有该温度点时至少本次运行生效
@@ -1035,7 +1082,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                         ? prev + 0.05 * (bias - prev)   // 低通，约 20 次外环更新的时间常数
                         : bias;
                     if (++s.OuterSteadyCycles >= OuterSteadyCyclesToLearn
-                        && s.GainSchedule.LearnSteadyBias(s.SetpointC, s.LastSteadyBias.Value))
+                        && s.ActiveSchedule.LearnSteadyBias(s.SetpointC, s.LastSteadyBias.Value))     // 【本地改动】按执行器选表
                         GainScheduleChanged?.Invoke(ch);
                 }
                 else
@@ -1052,7 +1099,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         var innerSetpoint = s.InnerSetpointC;
 
         // 增益调度：按当前设定值插值出该温区的参数（表为空时沿用手动参数）
-        if (GainSchedulingEnabled && s.GainSchedule.GainsAt(innerSetpoint) is { } scheduled)
+        if (Scheduling(s) && s.ActiveSchedule.GainsAt(innerSetpoint) is { } scheduled)     // 【本地改动】按执行器选表、按路开关
             s.Pid.SetGains(scheduled.Kp, scheduled.Ki, scheduled.Kd);
         else if (s.ManualGains is { } manual)
             s.Pid.SetGains(manual.Kp, manual.Ki, manual.Kd);
@@ -1065,7 +1112,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         // 就是加热棒本身的增益——再除一个（多半来自 TEC 时代的）比值只会让闭环与整定失配。
         var heatRatio = s.Actuator == ActuatorMode.HeatOnly
             ? 1.0
-            : (GainSchedulingEnabled ? s.GainSchedule.HeatRatioAt(innerSetpoint) : null)
+            : (Scheduling(s) ? s.ActiveSchedule.HeatRatioAt(innerSetpoint) : null)     // 【本地改动】
               ?? HeatingEffectivenessRatio;
         var duty = pidOut > 0 && heatRatio > 0
             ? pidOut / heatRatio
@@ -1202,7 +1249,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         if (success && result is not null)
         {
             var outer = PidGainSchedule.SuggestOuter(result.UltimatePeriodTuSeconds);
-            s.GainSchedule.Learn(new GainPoint(
+            s.ActiveSchedule.Learn(new GainPoint(     // 【本地改动】登记进整定时那个执行器的表
                 s.SetpointC, result.Conservative, result.UltimateGainKu, result.UltimatePeriodTuSeconds,
                 outer.Gains, outer.MaxBiasC));
             GainScheduleChanged?.Invoke(ch);

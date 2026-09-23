@@ -37,22 +37,47 @@ public static class Rd105HostControl
     public static readonly PidGains FallbackOuter = new(2.5, 0.0079, 0);
     public const double FallbackOuterMaxBiasC = 8;
 
+    private static readonly AsyncLocal<string?> DirOverride = new();
+
+    /// <summary>
+    /// 测试用：这一段异步流程里（开会话之前调）增益表放到 dir。不碰进程级的环境变量——
+    /// 并行跑的测试各用各的目录，互不串。返回的东西 Dispose 了就恢复。
+    /// </summary>
+    public static IDisposable UseGainsDir(string dir)
+    {
+        var old = DirOverride.Value;
+        DirOverride.Value = dir;
+        return new Restore(() => DirOverride.Value = old);
+    }
+
+    private sealed class Restore(Action undo) : IDisposable
+    {
+        public void Dispose() => undo();
+    }
+
     /// <summary>增益表目录，可用环境变量 TEC_GAINS_DIR 改。</summary>
     public static string GainsDir
     {
         get
         {
+            if (DirOverride.Value is { } o) return o;
             var env = Environment.GetEnvironmentVariable("TEC_GAINS_DIR");
             if (!string.IsNullOrWhiteSpace(env)) return env;
             return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "TecDrivers", "gains");
         }
     }
 
-    public static string GainsPath(string instanceId, int tc)
-    {
-        var safe = string.Concat(instanceId.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c));
-        return Path.Combine(GainsDir, $"{safe}-tc{tc}.csv");
-    }
+    /// <summary>TEC 那张表（0325 起就是这个文件）。</summary>
+    public static string GainsPath(string instanceId, int tc) => Path.Combine(GainsDir, $"{Safe(instanceId)}-tc{tc}.csv");
+
+    /// <summary>加热棒那张表（0327 起按执行器分两张）。</summary>
+    public static string HeaterGainsPath(string instanceId, int tc) => Path.Combine(GainsDir, $"{Safe(instanceId)}-tc{tc}-heater.csv");
+
+    /// <summary>手动 PID 参数与这一路的调度开关。</summary>
+    public static string ParamsPath(string instanceId, int tc) => Path.Combine(GainsDir, $"{Safe(instanceId)}-tc{tc}-pid.json");
+
+    private static string Safe(string instanceId)
+        => string.Concat(instanceId.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c));
 
     /// <summary>把这一路的增益表从盘上读进来。返回读到几个工作点（文件不存在 = 0）。</summary>
     public static int Load(PidGainSchedule schedule, string path)

@@ -326,6 +326,16 @@
           </StackPanel>
           </Panel>
         </Button>
+        <!-- 第六页：上位机 PID 整定（用户要的：各温度段的 PID、参数调节、自整定）——原型没有这一页 -->
+        <Button Classes="htab" Classes.on="{Binding ZPidTab}" Click="OnTabZStub" Tag="pid">
+          <Panel>
+          <Rectangle Classes="htop" />
+          <StackPanel Orientation="Horizontal" Spacing="9">
+            <Border Classes="htic"><ctl:TecIcon Key="hmi-pid" Size="16" Tint="#4A4A4A" /></Border>
+            <TextBlock Text="PID 整定" VerticalAlignment="Center" />
+          </StackPanel>
+          </Panel>
+        </Button>
       </StackPanel>
 
       <!-- 文件 / 系统页的单页签 -->
@@ -922,6 +932,11 @@
                 </Border>
               </StackPanel>
             </DockPanel>
+
+            <!-- ── PID 整定（上位机 PID：两张增益表、手动参数、在用参数、自整定）── -->
+            <Panel IsVisible="{Binding ShowZPid}" Margin="0,10,0,0">
+              <v:HmiPidView DataContext="{Binding Cur.Pid}" />
+            </Panel>
 
             <!-- ── 数据导出（原型 zExp）── -->
             <DockPanel IsVisible="{Binding ShowZExp}" Margin="0,10,0,0">

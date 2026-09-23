@@ -75,7 +75,7 @@ public class Rd105HostControlTests
         await using var s = await drv.OpenAsync(Conn(), Ctx(HostCfg(), logs), CancellationToken.None);
         await s.StartAsync(CancellationToken.None);
         Assert.True(((Rd105Session)s).HostControlled);
-        Assert.Contains(logs, l => l.Contains("上位机 PID") && l.Contains("增益表空"));
+        Assert.Contains(logs, l => l.Contains("上位机 PID") && l.Contains("表都空着"));
 
         var got = new List<Sample>();
         using var sub = s.Samples.Subscribe(new Collect(x => { lock (got) got.Add(x); }));
@@ -240,8 +240,8 @@ public class Rd105HostControlTests
             var (drv, dev) = Standalone();
             var logs = new List<string>();
             await using var s = await drv.OpenAsync(Conn(), Ctx(HostCfg(), logs), CancellationToken.None);
-            Assert.Contains(logs, l => l.Contains("TC1 上位机 PID") && l.Contains("增益表 25 ℃"));
-            Assert.Contains(logs, l => l.Contains("TC2 上位机 PID") && l.Contains("增益表空"));
+            Assert.Contains(logs, l => l.Contains("TC1 上位机 PID") && l.Contains("TEC 表 25 ℃"));
+            Assert.Contains(logs, l => l.Contains("TC2 上位机 PID") && l.Contains("表都空着"));
             Assert.Equal(path, ((Rd105Session)s).GainsPathOf(0));
         }
         finally

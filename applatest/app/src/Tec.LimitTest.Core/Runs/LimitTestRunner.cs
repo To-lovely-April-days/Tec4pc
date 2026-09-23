@@ -202,13 +202,14 @@ public sealed class LimitTestRunner
     private async Task<double> WaitWaterAsync(double water, CancellationToken ct)
     {
         _waterGate = new TaskCompletionSource<double>(TaskCreationOptions.RunContinuationsAsynchronously);
-        State = RunnerState.WaitingWater;
         var noWater = double.IsNaN(water);
+        // 提示先立好、状态最后翻：别的线程（界面）看见「等水」时提示一定已经在了
         PromptNeedsWater = !noWater;
         Prompt = noWater
             ? "最高温不用冷却水：把冷水机停了（或把水关了），点「继续」。这一项跑完不回温，自然冷却"
             : $"请把冷却水调到 {water:0.#} ℃，等水温稳住，把冷水机上看到的实际水温填进来，点「继续」";
         Status = noWater ? "等停水（最高温）" : $"等冷却水 {water:0.#} ℃";
+        State = RunnerState.WaitingWater;
         Touch();
         using var reg = ct.Register(() => _waterGate.TrySetCanceled());
         double actual;
@@ -223,10 +224,12 @@ public sealed class LimitTestRunner
             { c.State = CellState.Skipped; c.Note = "这一组跳过"; }
             Log("warn", $"{RecordBook.WaterText(water)} 这一组跳过");
             _waterGate = null;
+            State = RunnerState.Running;     // 先翻状态再清提示：「等水」时提示一定在（反过来界面会看见等水却没提示）
             Prompt = null;
             return double.NaN;
         }
         _waterGate = null;
+        State = RunnerState.Running;
         Prompt = null;
         Log("info", noWater
             ? "最高温（无冷却水）开始"
