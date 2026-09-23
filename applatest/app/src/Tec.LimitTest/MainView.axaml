@@ -8,7 +8,7 @@
   <Grid ColumnDefinitions="360,*,420" RowDefinitions="Auto,*" Margin="12">
 
     <DockPanel Grid.ColumnSpan="3" Margin="0,0,0,8">
-      <TextBlock Text="控温极限测试" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+      <TextBlock Text="{Binding Heading}" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
       <TextBlock Text="{Binding ConnStatus}" Margin="16,0,0,0" Foreground="#555555" VerticalAlignment="Center" TextWrapping="Wrap"/>
     </DockPanel>
 

@@ -52,10 +52,14 @@ public sealed class ToolHost : IAsyncDisposable
                 try { File.Copy(hmi, BenchPath); } catch { /* 拷不了就让 HmiRuntime 写缺省的 */ }
             }
         }
-        Runtime = new HmiRuntime(DataDir);
-        Runtime.Boot();
+        // 先建好、开完机再发布出去：界面那只每秒的定时器会来读 Runtime.Log，
+        // Boot 跑到一半（Log 还是 null）就被它撞上，定时器抛了异常就再也不走了——
+        // 实时读数、日志从此不刷新，人看不出来（重连时 Prepare 是在线程池线程上跑的，撞得上）
+        var rt = new HmiRuntime(DataDir);
+        rt.Boot();
+        Runtime = rt;
         Started = false;
-        Runtime.Log.Write(Category, $"工具就绪 · 台面 {BenchPath} · 输出 {OutDir}", Actor);
+        rt.Log.Write(Category, $"工具就绪 · 台面 {BenchPath} · 输出 {OutDir}", Actor);
     }
 
     /// <summary>把界面上改过的连接参数写回 bench.json。</summary>
@@ -103,8 +107,12 @@ public sealed class ToolHost : IAsyncDisposable
 
     public async Task DisconnectAsync()
     {
-        Rig?.Dispose();
-        Rig = null;
+        if (Rig is { } rig)
+        {
+            Rig = null;
+            // 不在界面线程上干等它那条电流轮询收尾（串口一问一答最长两秒）
+            try { await rig.DisposeAsync().ConfigureAwait(false); } catch { }
+        }
         if (Runtime is { } rt)
         {
             Runtime = null;
@@ -115,10 +123,10 @@ public sealed class ToolHost : IAsyncDisposable
 
     /// <summary>Runner 的日志口：level = info / warn / error。</summary>
     public void Log(string level, string text)
-        => Runtime?.Log.Write(Category, text, Actor,
+        => Runtime?.Log?.Write(Category, text, Actor,
             level is "error" ? LogLevel.Error : level is "warn" ? LogLevel.Warn : LogLevel.Info);
 
-    public IReadOnlyList<LogEntry> Tail(int max) => Runtime?.Log.Tail(max) ?? Array.Empty<LogEntry>();
+    public IReadOnlyList<LogEntry> Tail(int max) => Runtime?.Log?.Tail(max) ?? Array.Empty<LogEntry>();
 
     public ValueTask DisposeAsync() => new(DisconnectAsync());
 }

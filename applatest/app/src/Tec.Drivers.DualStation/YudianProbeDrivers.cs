@@ -203,8 +203,8 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
 
     /// <summary>
     /// 测试用：换掉串口池，假从站/假总线整链回归。
-    /// 兜底口名是这台驱动的缺省（COM8）——不是写死的 COM4：刚拖上台面、属性栏还没打开过的探头，
-    /// 连接参数是空的，从前就按 COM4 去开，属性栏里明明显示 COM8（Xvfb 截图踩到）。
+    /// 兜底口名是这台驱动的缺省（现在是 COM3，CH344 的 D 口）——不是写死的 COM4：刚拖上台面、属性栏还没打开过的探头，
+    /// 连接参数是空的，从前就按 COM4 去开，属性栏里明明显示的是缺省口（Xvfb 截图踩到）。
     /// </summary>
     public Func<ParameterSet, SharedSerial> SerialFactory { get; set; }
 

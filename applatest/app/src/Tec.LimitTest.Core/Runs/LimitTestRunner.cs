@@ -171,7 +171,7 @@ public sealed class LimitTestRunner
             foreach (var c in _plan)
                 if (c.State == CellState.Pending) { c.State = CellState.Skipped; c.Note = "没跑到"; }
             if (!_emergency) await StopWellsAsync().ConfigureAwait(false);
-            try { Book.Save(); } catch (Exception ex) { Log("error", $"记录表保存失败：{ex.Message}"); }
+            SafeSave();
             State = RunnerState.Finished;
             Current = null;
             Prompt = null;
@@ -265,7 +265,8 @@ public sealed class LimitTestRunner
                 book.SetCondition(kind, water, RecordBook.CBand, V(_rig.Band));
                 break;
         }
-        book.Save();
+        // 表在 Excel 里开着时替换文件会失败（共享冲突）：数在内存里，下一次保存补上，不为这个中止测试
+        SafeSave();
 
         var csvPath = Path.Combine(_outDir, "csv",
             $"{_now():yyyyMMdd_HHmm}_{TestKinds.Short(kind)}_{water.ToString("0.#", CultureInfo.InvariantCulture)}C.csv");
@@ -313,7 +314,7 @@ public sealed class LimitTestRunner
         finally
         {
             book.SetCondition(kind, water, RecordBook.CResult, result);
-            try { book.Save(); } catch (Exception ex) { Log("error", $"记录表保存失败：{ex.Message}"); }
+            SafeSave();
             if (cell.State is CellState.Aborted or CellState.Skipped && !_emergency)
                 await StopWellsAsync().ConfigureAwait(false);
             _cell.Dispose();
@@ -354,7 +355,7 @@ public sealed class LimitTestRunner
             }
             if (reached[0] is not null && reached[1] is not null)
             {
-                Book!.Save();
+                SafeSave();
                 return now;
             }
             if (el.TotalMinutes >= _s.HoldReachMaxMinutes)
@@ -431,7 +432,7 @@ public sealed class LimitTestRunner
                         [RecordBook.KBTr] = V(b.Tr), [RecordBook.KBSrc] = b.Source ?? ""
                     });
                 relayActions = 0;
-                try { book.Save(); } catch (Exception ex) { Log("error", $"记录表保存失败：{ex.Message}"); }
+                SafeSave();
                 Touch();
                 if (idx >= rows - 1) return "完成";
             }
@@ -546,6 +547,31 @@ public sealed class LimitTestRunner
             await StopWellsAsync().ConfigureAwait(false);
             Phase = "";
             Touch();
+        }
+    }
+
+    private int _saveFails;
+
+    /// <summary>
+    /// 保存记录表，失败不中止测试：表在 Excel / WPS 里开着时替换文件会报共享冲突，
+    /// 数据都还在内存里，关掉 Excel 后下一个记录点就补上；连续失败只报第一次，救回来记一笔。
+    /// </summary>
+    private void SafeSave()
+    {
+        if (Book is not { } book) return;
+        try
+        {
+            book.Save();
+            if (_saveFails > 0)
+            {
+                Log("info", $"记录表保存恢复（失败 {_saveFails} 次后），之前没落盘的行已一并写入");
+                _saveFails = 0;
+            }
+        }
+        catch (Exception ex)
+        {
+            if (_saveFails++ == 0)
+                Log("error", $"记录表保存失败：{ex.Message}——表是不是在 Excel 里开着？数据留在内存里，关掉后下一个记录点补上（连续失败只报第一次）");
         }
     }
 

@@ -9,15 +9,44 @@
 - **串口只能一个程序占着。** 把工作站（Tec.App）和设备 HMI 关掉再开这个工具；测完再开回去。
 - 台面：工具自己的数据目录是 `%AppData%\TecLimitTest\`，里面的 `bench.json` 就是台面（格式跟工作站的
   台面文件一样）。第一次开机没有的话，先从设备 HMI 的 `%AppData%\TecHmi\bench.json` 拷一份；那也没有就写一份
-  缺省的（主机 + 两支宇电探头，串口按驱动缺省 COM7 / COM10 / COM8）。串口不对在左栏改，点「保存并连接」。
-  也可以「导入台面…」选工作站另存的 `.tecbench` 或实验文件 `.tec`。
+  缺省的（主机 + 两支宇电探头，串口按驱动缺省：RD105 COM7、IO8R COM10、两支宇电探头都是 COM3）。
+  串口不对在左栏改，点「保存并连接」。也可以「导入台面…」选工作站另存的 `.tecbench`、设备 HMI 的 `bench.json`
+  或实验文件 `.tec`（取里面的台面）。
 - 运行：`dotnet run --project src/Tec.LimitTest`，或发布后双击 `Tec.LimitTest.exe`。
   数据目录可用环境变量 `TEC_LIMIT_DATA` 改。
 
+## 装到别的电脑
+
+出包（在装了 .NET 8 SDK 的开发机上；目标电脑**不用装 .NET**）：
+
+```bash
+scripts/publish-limit-test.sh win-x64 0324      # Linux / macOS 开发机
+scripts\publish-limit-test.cmd 0324             # Windows 开发机
+```
+
+最后一个参数是版本号（`.sh` 前面还有一个 RID；`.cmd` 只认 win-x64，就这一个参数），一般填打到的补丁号：
+标题栏显示它，记录表「补丁版本」缺省填它。
+产物在 `dist/tec-limit-test-win-x64/`：单文件 `Tec.LimitTest.exe`、几个 `.pdb`（报错时栈里带行号，留着别删）和这份 README，
+顺手打成 `dist/Tec.LimitTest-win-x64-<版本号>.zip`。版本号就写四位补丁号（0323 这种），两边脚本都认。
+**绝不加 `PublishTrimmed`**（Avalonia 反射绑定会被裁剪弄坏，规矩同 HMI）。
+
+目标电脑上：
+
+1. 整个目录拷过去（U 盘、共享都行），随便放哪，比如 `D:\TecLimitTest\`。第一次双击 exe 会解压几秒，之后就快了。
+   杀毒软件拦「未知发布者」就放行——没有签名，是自己出的包。
+2. 装 USB 转串驱动（现场那台是 CH344，四口）。装完在设备管理器里看 COM 号，**每台电脑的 COM 号都可能不一样**。
+3. 打开工具，左栏把 RD105 / IO8R / 宇电的串口改成这台电脑上的 COM 号，点「保存并连接」。
+   改过的台面存在 `%AppData%\TecLimitTest\bench.json`，下次开机还在；也可以「导入台面…」直接选工作站另存的 `.tecbench`
+   或另一台机器上的 `bench.json`。
+   程序起不来（双击没反应）看 `%TEMP%\TecLimitTest-crash.log`。
+4. 测完把这三样带回来：`我的文档\控温极限测试\` 里的 `.xlsx` 和 `csv\`，`%AppData%\TecLimitTest\Logs\` 里的日志。
+
+Linux 目标机：RID 用 `linux-x64` / `linux-arm64`，运行账号要进 `dialout` 组，要装中文字体（`fonts-noto-cjk`），串口名形如 `/dev/ttyUSB0`；细节同 `src/Tec.Hmi/README-部署.md`。
+
 ## 界面怎么用
 
-1. 左栏填串口，点「保存并连接」。顶上写「已连接：双工位反应主机（R1）· CH1 / CH2」才算连上；
-   哪台设备没开起来，它下面的状态会写原因。
+1. 左栏填串口，点「保存并连接」。顶上写「已连接：双工位反应主机（R1）· CH1 / CH2」才算连上
+   （名字来自台面里那台主机的标签）；哪台设备没开起来，它下面的状态会写原因。
 2. 填测试条件：操作人、环境温度（手填）、补丁版本、输出目录（缺省 我的文档\控温极限测试）。
 3. 参数缺省 −40 / 150 / 25 ℃，60 / 60 / 120 min，都可以改。目标超出温控器超温上下限会拒绝开始。
 4. 矩阵里勾要跑的格。同一个水温下按「最低温 → 最高温 → 恒温」串着跑，两项之间先回到 25 ℃ 附近。

@@ -97,11 +97,30 @@ public sealed class MainViewModel : Bindable
     private Task? _run;
     private bool _busy;
 
+    /// <summary>程序版本 = 出包时填的补丁号（csproj 的 InformationalVersion），标题栏和「补丁版本」缺省值都用它。</summary>
+    public static string ToolVersion { get; } = ReadVersion();
+
+    private static string ReadVersion()
+    {
+        var asm = typeof(MainViewModel).Assembly;
+        var info = asm.GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+                      .OfType<System.Reflection.AssemblyInformationalVersionAttribute>()
+                      .FirstOrDefault()?.InformationalVersion;
+        if (!string.IsNullOrWhiteSpace(info))
+        {
+            var plus = info.IndexOf('+');
+            return plus > 0 ? info[..plus] : info;
+        }
+        return asm.GetName().Version is { } v ? $"{v.Major}.{v.Minor}.{v.Build}" : "?";
+    }
+
+    public string Heading => $"控温极限测试 · 版本 {ToolVersion}";
+
     public MainViewModel(ToolHost host)
     {
         _host = host;
         _outDir = host.OutDir;
-        _patch = typeof(RecordBook).Assembly.GetName().Version is { } v ? $"{v.Major}.{v.Minor}.{v.Build}" : "";
+        _patch = ToolVersion;
         foreach (var w in new[] { 20d, 15, 7 })
             foreach (var k in TestKinds.All)
                 Cells.Add(new CellRow(k, w));

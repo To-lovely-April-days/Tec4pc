@@ -13,7 +13,7 @@ namespace Tec.LimitTest.Runs;
 /// 下发走通道的 ITemperatureControl（夹套目标、尽快），热源切换驱动自己做；
 /// 安全层触发（Tr 越限、设备告警字、信号丢失）转成 Tripped。
 /// </summary>
-public sealed class RuntimeRig : IRig, IDisposable
+public sealed class RuntimeRig : IRig, IDisposable, IAsyncDisposable
 {
     private readonly HmiRuntime _rt;
     private readonly Channel[] _wells;
@@ -47,7 +47,17 @@ public sealed class RuntimeRig : IRig, IDisposable
             _curLoop = Task.Run(CurrentLoopAsync);
     }
 
-    public string Describe => $"{_hostDev?.Display ?? _wells[0].HostInstanceId} · {_wells[0].Name} / {_wells[1].Name}";
+    /// <summary>「双工位反应主机（R1）· CH1 / CH2」——名字来自台面里的标签，跟左栏设备行一个写法。</summary>
+    public string Describe
+    {
+        get
+        {
+            var id = _wells[0].HostInstanceId;
+            var name = _hostDev?.Display ?? id;
+            var who = name == id ? id : $"{name}（{id}）";
+            return $"{who} · {_wells[0].Name} / {_wells[1].Name}";
+        }
+    }
 
     public int WellCount => 2;
 
@@ -175,6 +185,18 @@ public sealed class RuntimeRig : IRig, IDisposable
         _rt.Engine.Safety.Triggered -= OnTrip;
         _cts.Cancel();
         try { _curLoop?.Wait(TimeSpan.FromSeconds(2)); } catch { }
+        _cts.Dispose();
+    }
+
+    /// <summary>同 Dispose，但等电流轮询收尾时不占着调用线程（界面上重连时用它）。</summary>
+    public async ValueTask DisposeAsync()
+    {
+        _rt.Engine.Safety.Triggered -= OnTrip;
+        _cts.Cancel();
+        if (_curLoop is { } loop)
+        {
+            try { await loop.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false); } catch { }
+        }
         _cts.Dispose();
     }
 }
