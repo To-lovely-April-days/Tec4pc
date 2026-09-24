@@ -52,7 +52,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     // 这三项**每拍重读**（见 RefreshSwitches）：属性栏上的「TEC 加热」「冷水机」是开关，
     // 人按下去就该生效，不该还要先把设备断开重连。其余配置照旧开会话时读一次
     private bool _tecHeat;                  // TEC 反向输出加热启不启用（默认不启用）
-    private bool _chiller;                  // 冷水机开没开（人标的；默认已关）——降温挡合不合 TEC 看它
+    private bool _chiller;                  // 冷水机开没开（人标的；缺省已开——用户定的：降温时冷水机一定开着）——降温挡合不合 TEC 看它
     private double _band;                   // 升降温死区（只在 TEC 加热不启用时用：下发目标时定挡）
     private readonly int _heaterSign;       // 加热棒吃哪个符号的占空比（温控器 PID 方式下判「TEC 没在制冷」用）
     private readonly double _threshold;     // 电加热切换阈值（≤ 90，用户定的死上限）
@@ -182,7 +182,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
 
         // 默认不启用：现场 TEC 的反向那一极接的是加热棒 SSR，TEC 只能制冷；加热一律走电加热棒
         _tecHeat = cfg.Str(F.TecHeat, "不启用") == "启用";
-        _chiller = cfg.Str(F.Chiller, "已关") == "已开";
+        _chiller = cfg.Str(F.Chiller, "已开") == "已开";
         _heaterSign = Rd105HostDefaults.DualStation.HeaterSignOf(cfg);
         // 阈值上限 90 是死的（用户定的：只能比 90 小）——表单已经限了，这里再拴一道
         _threshold = Math.Min(90, cfg.Num(F.Threshold, 90));
@@ -437,7 +437,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
             (_tecHeat
                 ? $"——目标高于 {_threshold:F0} ℃ 才切电加热"
                 : $"——升温系统 = 加热棒、降温系统 = TEC，下发目标时按方向定挡（死区 {_band:F1} K）：升温挡只用加热棒、不接 TEC；" +
-                  $"降温挡「冷水机」{(_chiller ? "已开" : "已关（要 TEC 制冷先开冷水机再把它改成已开）")}") +
+                  $"降温挡「冷水机」{(_chiller ? "已开（下发降温目标就接 TEC，冷水机得真开着）" : "已关（降温目标不接 TEC，只自然凉；要 TEC 制冷把它改成已开）")}") +
             $"；回切线 {_threshold - _hyst:F0} ℃（阈值 {_threshold:F0} − 滞回 {_hyst:F0}）");
 
         _ioOk = false;
@@ -856,7 +856,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
                     _wantHeatSince[w] = null;
                 }
             }
-            var chiller = _ctx.Config.Str(F.Chiller, "已关") == "已开";
+            var chiller = _ctx.Config.Str(F.Chiller, "已开") == "已开";
             if (chiller != _chiller)
             {
                 _chiller = chiller;

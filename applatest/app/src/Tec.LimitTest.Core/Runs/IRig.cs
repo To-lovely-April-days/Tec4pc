@@ -44,12 +44,6 @@ public interface IRig
     /// <summary>下发目标，「尽快」（不限斜率）。kind = 控夹套还是控釜内（釜内 = 上位机串级，没有 Tr 驱动会拒绝）。热源切换由驱动自己做。</summary>
     Task SetTargetAsync(int well, double target, TempChannelKind kind, CancellationToken ct);
 
-    /// <summary>
-    /// 把台面配置里的「冷水机」标成已开 / 已关（0333：降温挡只有标成已开才接 TEC；冷水机是手动的，
-    /// 操作人在「等水」提示上点了「继续」就是在说它开着 / 停了）。没有这项配置的机器什么都不做。
-    /// </summary>
-    void SetChiller(bool on) { }
-
     /// <summary>停这一路的控温（关输出）。</summary>
     Task StopAsync(int well, CancellationToken ct);
 

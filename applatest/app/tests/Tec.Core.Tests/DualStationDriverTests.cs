@@ -74,10 +74,13 @@ public sealed class DualStationDriverTests
         => ParameterSet.Of(new (string, object?)[] { (DualStationDriver.Fields.TecHeat, "启用") }
                            .Concat(more).ToArray());
 
-    /// <summary>「冷水机」标为已开的设备配置（0333：降温挡只有标成已开才合 TEC 功率线；缺省已关）。</summary>
+    /// <summary>「冷水机」标为已开的设备配置（0333：降温挡只有标成已开才合 TEC 功率线；0334 起这也是缺省，写明只为醒目）。</summary>
     private static ParameterSet ChillerOn(params (string Key, object? Value)[] more)
         => ParameterSet.Of(new (string, object?)[] { (DualStationDriver.Fields.Chiller, "已开") }
                            .Concat(more).ToArray());
+
+    /// <summary>「冷水机」标为已关：降温目标不接 TEC、只自然凉（0334 起不是缺省了，要验这条路得明说）。</summary>
+    private static ParameterSet ChillerOff() => ParameterSet.Of((DualStationDriver.Fields.Chiller, "已关"));
 
     private static ITemperatureControl Temp(IDeviceSession s, int well)
         => s.CapabilitiesOf(well).OfType<ITemperatureControl>().Single();
@@ -533,7 +536,7 @@ public sealed class DualStationDriverTests
     public async Task 釜内目标低于釜温_降温挡_冷水机关_全断自然凉_到了目标加热棒接手()
     {
         var b = Rig();
-        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(ChillerOff()), CancellationToken.None);
         await s.StartAsync(CancellationToken.None);
         var t = Temp(s, 0);
         b.Rd.Set(1, "TCADJTEMP", 80_00000);               // 夹套 80
@@ -581,7 +584,7 @@ public sealed class DualStationDriverTests
     public async Task 切换写继电器失败_下一拍接着切_输出还接得回来()
     {
         var b = Rig();
-        var cfg = new ParameterSet();
+        var cfg = ChillerOff();                            // 先标着已关：降温目标全断，等人把它改成已开再接 TEC
         await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(cfg), CancellationToken.None);
         await s.StartAsync(CancellationToken.None);
         var t = Temp(s, 0);
@@ -679,7 +682,7 @@ public sealed class DualStationDriverTests
     public async Task 升温挡里夹套冲过目标不接TEC_新目标更低才是降温挡_冷水机开关当拍生效()
     {
         var b = Rig();
-        var cfg = new ParameterSet();                      // 缺省：冷水机已关
+        var cfg = ChillerOff();                            // 标着已关（0334 起缺省是已开）
         await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(cfg), CancellationToken.None);
         await s.StartAsync(CancellationToken.None);
         var t = Temp(s, 0);

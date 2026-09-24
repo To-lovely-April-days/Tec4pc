@@ -487,7 +487,7 @@ public class Rd105HostControlTests
         await t.StopAsync(CancellationToken.None);
         var lines = File.ReadAllLines(path!);
         // 热源侧·挡位·冷水机（0333）：事后看「那一炉为什么没制冷」就靠这一列
-        Assert.Contains(lines.Skip(1), l => l.Split(',')[18] == "电加热·升温挡·冷水机关" && l.Split(',')[15] == "加热棒");
+        Assert.Contains(lines.Skip(1), l => l.Split(',')[18] == "电加热·升温挡·冷水机开" && l.Split(',')[15] == "加热棒");
         Assert.Contains(lines.Skip(1), l => l.Split(',')[19].Contains("升温挡"));        // 定挡那句跟在「开始」后面
 
         var (drv, dev) = Standalone();
@@ -663,8 +663,10 @@ public class Rd105HostControlTests
 
         public static ParameterSet Conn() => ParameterSet.Of((Rd105TecDriver.FieldPeriod, 200d), (DualStationDriver.Fields.Tick, 200d));
 
-        /// <summary>「冷水机」标为已开（0333：降温挡只有标成已开才合 TEC 功率线；缺省已关）。</summary>
+        /// <summary>「冷水机」标为已开（0333：降温挡只有标成已开才合 TEC 功率线；0334 起这是缺省）。</summary>
         public static ParameterSet ChillerOn() => ParameterSet.Of((DualStationDriver.Fields.Chiller, "已开"));
+        /// <summary>「冷水机」标为已关：降温目标不接 TEC。</summary>
+        public static ParameterSet ChillerOff() => ParameterSet.Of((DualStationDriver.Fields.Chiller, "已关"));
     }
 
     [Fact]
@@ -782,7 +784,7 @@ public class Rd105HostControlTests
     public async Task 自整定建议看冷水机_关着只建议加热棒_TEC整定拒绝并说清()
     {
         var b = new Duo();
-        var cfg = new ParameterSet();                      // 冷水机缺省已关
+        var cfg = Duo.ChillerOff();
         await using var s = await b.Drv.OpenAsync(Duo.Conn(), b.Ctx(cfg), CancellationToken.None);
         await s.StartAsync(CancellationToken.None);
         var t = Temp(s, 0);
