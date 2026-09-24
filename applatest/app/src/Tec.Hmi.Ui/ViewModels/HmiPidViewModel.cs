@@ -8,7 +8,7 @@ namespace Tec.Hmi.Ui.ViewModels;
 public sealed class HmiPidRow : ViewModelBase
 {
     private readonly HmiPidViewModel _owner;
-    private string _t = "", _kp = "", _ki = "", _kd = "", _okp = "", _oki = "", _okd = "", _bias = "", _heat = "";
+    private string _t = "", _kp = "", _ki = "", _kd = "", _okp = "", _oki = "", _okd = "", _bias = "", _heat = "", _steady = "";
     private bool _inUse;
 
     internal HmiPidRow(HmiPidViewModel owner, PidGainRow? src, bool heatEditable)
@@ -26,6 +26,7 @@ public sealed class HmiPidRow : ViewModelBase
         _okd = F(src.OuterKd, "0.###");
         _bias = F(src.OuterMaxBiasC, "0.##");
         _heat = F(src.HeatRatio, "0.###");
+        _steady = F(src.SteadyBiasC, "0.##");
     }
 
     /// <summary>从表里读出来的原行（带着自整定的 Ku/Tu 与学到的稳态偏置）；新增的行是 null。</summary>
@@ -50,9 +51,13 @@ public sealed class HmiPidRow : ViewModelBase
     public string OKd { get => _okd; set => Edit(ref _okd, value, nameof(OKd)); }
     public string Bias { get => _bias; set => Edit(ref _bias, value, nameof(Bias)); }
     public string Heat { get => _heat; set => Edit(ref _heat, value, nameof(Heat)); }
+    /// <summary>
+    /// 稳态偏置（夹套设定 − 釜内目标，℃）：串级下发时预置外环积分、两枪放电的参照。回路到温后自己学（±0.05 ℃ 里待满 60 s）；
+    /// 0335 起也能手填——釜内稳住时看夹套比釜内高多少（现场 50 ℃ 是 5.5）。空 = 没有，回路只能从 0 攒。
+    /// </summary>
+    public string Steady { get => _steady; set => Edit(ref _steady, value, nameof(Steady)); }
 
     public string Tu => Source is { TuSeconds: > 0 } s ? s.TuSeconds.ToString("0", CultureInfo.InvariantCulture) : "—";
-    public string Steady => Source?.SteadyBiasC is { } b ? b.ToString("+0.00;−0.00;0.00", CultureInfo.InvariantCulture) : "—";
     public string Origin => Source is null ? "新增" : Source.FromAutoTune ? "自整定" : "手工";
 
     /// <summary>此刻回路插值用到的行（设定值两侧那两行 / 只有一行时就是它）。</summary>
@@ -75,11 +80,14 @@ public sealed class HmiPidRow : ViewModelBase
             OuterKi = Opt(OKi, "外环 Ki"),
             OuterKd = Opt(OKd, "外环 Kd"),
             OuterMaxBiasC = Opt(Bias, "偏置上限"),
-            HeatRatio = HeatEditable ? Opt(Heat, "加热比") : null
+            HeatRatio = HeatEditable ? Opt(Heat, "加热比") : null,
+            SteadyBiasC = Opt(Steady, "稳态偏置")
         };
-        // 自整定测得的 Ku/Tu、运行中学到的稳态偏置原样带回去——温度没改的话它们还成立
+        if (row.SteadyBiasC is { } sb && Math.Abs(sb) > 60)
+            throw new ArgumentException($"第 {line} 行「稳态偏置」{sb} 不像话（夹套比釜内高 / 低不会超过 60 ℃）");
+        // 自整定测得的 Ku/Tu 原样带回去——温度没改的话它们还成立（稳态偏置按格子里填的走，空就是没有）
         if (Source is { } src && Math.Abs(src.TemperatureC - row.TemperatureC) < 1e-9)
-            row = row with { Ku = src.Ku, TuSeconds = src.TuSeconds, SteadyBiasC = src.SteadyBiasC };
+            row = row with { Ku = src.Ku, TuSeconds = src.TuSeconds };
         return row;
     }
 }

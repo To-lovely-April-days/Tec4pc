@@ -288,6 +288,10 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         public bool EchoMismatchSaid;
         public double EchoOffsetSaid;
         public long EchoSaidAtTick;
+        /// <summary>【本地改动】上一拍写的占空比（温控器回显慢一拍：回显等于上一拍写的也算对上）；不符 / 对上从什么时候起持续。</summary>
+        public double EchoPrevWritten = double.NaN;
+        public long EchoOffSinceTick;
+        public long EchoOkSinceTick;
     }
 
     private readonly ChannelState[] _channels = [new(), new()];
@@ -330,19 +334,37 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
     /// 连着 20 拍就「连续通信失败」停控——温控器明明在正常工作。差值是设备的规矩（启动电压 / 最小输出），
     /// PID 的积分会把稳定的偏移吃掉；说清楚差多少，让人去参数窗核。
     /// </summary>
+    /// <summary>
+    /// 【本地改动】（0335）回显不符要持续这么久才说（对上了也要持续这么久才说「又对上了」）。现场逐拍记录：温控器回显的多半是
+    /// **上一拍**写的值（applied(t) = written(t−1) 占 89 %），起步还有每拍 15 % 的斜率限制（0 → −15 → −30 … 3 s 到满）；
+    /// 保温段写入值每拍在 ±2 % 里抖，回显永远慢一拍，按拍比就「对不上 / 又对上了」来回报——40 min 刷了 962 条。
+    /// </summary>
+    public int EchoDwellMs { get; set; } = 5000;
+
     private void NoteDutyEcho(int ch, double written, double echo)
     {
         var s = State(ch);
         s.AppliedDutyPercent = echo;
+        var prev = s.EchoPrevWritten;
+        s.EchoPrevWritten = written;
         var off = echo - written;
-        if (Math.Abs(off) <= 0.02)                  // PWMDUTY 分辨率 0.00005 %：0.02 以内算对上
+        var now = Environment.TickCount64;
+        // 对上：等于这一拍写的，或等于上一拍写的（回显慢一拍）。PWMDUTY 分辨率 0.00005 %：0.02 以内算相等
+        if (Math.Abs(off) <= 0.02 || (!double.IsNaN(prev) && Math.Abs(echo - prev) <= 0.02))
         {
+            s.EchoOffSinceTick = 0;
             if (!s.EchoMismatchSaid) return;
+            if (s.EchoOkSinceTick == 0) s.EchoOkSinceTick = now;
+            if (now - s.EchoOkSinceTick < EchoDwellMs) return;
             s.EchoMismatchSaid = false;
+            s.EchoOkSinceTick = 0;
             ChannelNotice?.Invoke(ch, "info", $"通道{ch}占空比回显又对上了（写 {written:F2} % 回显 {echo:F2} %）");
             return;
         }
-        var now = Environment.TickCount64;
+        s.EchoOkSinceTick = 0;
+        // 不符要持续够久才算「温控器按自己的规矩改了写入值」：起步的斜率限制、换挡瞬间那几拍都不算
+        if (s.EchoOffSinceTick == 0) s.EchoOffSinceTick = now;
+        if (now - s.EchoOffSinceTick < EchoDwellMs) return;
         // 说过就不再说，除非差值变了 0.5 % 以上**而且**离上次说过去了一分钟（有最小输出的温控器差值每拍都在变）
         if (s.EchoMismatchSaid && (Math.Abs(off - s.EchoOffsetSaid) < 0.5 || now - s.EchoSaidAtTick < 60_000)) return;
         s.EchoMismatchSaid = true;

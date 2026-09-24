@@ -77,7 +77,7 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
             _tunings[i] = new Rd105Tuning(ch, tc, _loop, (lvl, text) => ctx.Log?.Invoke(lvl, text),
                                           canCascade: _host ? () => !double.IsNaN(temp.CurrentReactor) : null);
             _loop.ConfigurePid(tc, Rd105HostControl.FallbackInner.Kp, Rd105HostControl.FallbackInner.Ki,
-                               Rd105HostControl.FallbackInner.Kd, 90, _invert);
+                               Rd105HostControl.FallbackInner.Kd, 90, _invert, Rd105HostControl.InnerDerivativeFilterSeconds);
             _loop.ConfigureCascade(tc, Rd105HostControl.FallbackOuter.Kp, Rd105HostControl.FallbackOuter.Ki,
                                    Rd105HostControl.FallbackOuter.Kd, Rd105HostControl.FallbackOuterMaxBiasC);
             _loop.SetHeaterSign(tc, _heaterSign);
@@ -262,7 +262,7 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
                     // 手动那组照整定台读回来的（上次存的 / 缺省），这里只换输出上限与方向
                     var m = _pids[tc - 1]?.Manual.Inner ?? new PidTuning(Rd105HostControl.FallbackInner.Kp,
                         Rd105HostControl.FallbackInner.Ki, Rd105HostControl.FallbackInner.Kd);
-                    _loop.ConfigurePid(tc, m.Kp, m.Ki, m.Kd, limited, _invert);
+                    _loop.ConfigurePid(tc, m.Kp, m.Ki, m.Kd, limited, _invert, Rd105HostControl.InnerDerivativeFilterSeconds);
                     if (_pids[tc - 1] is { } pid) pid.Limited = limited;
                 }
                 catch (Exception ex)

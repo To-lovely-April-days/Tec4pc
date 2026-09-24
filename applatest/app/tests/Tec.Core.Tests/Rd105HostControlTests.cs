@@ -292,15 +292,38 @@ public class Rd105HostControlTests
 
         // 环境 25、目标 25.3：维持它只要零点几个百分点——全在温控器的「最小输出」之下，每一拍回显都不符
         await t.SetTargetAsync(new TempTarget(25.3, TempChannelKind.Jacket), CancellationToken.None);
-        await Task.Delay(6000);                            // 200 ms 一拍：30 拍，比「连续 20 拍」多
+        await Task.Delay(3000);                            // 不符要持续 5 s 才说（0335）：3 s 时还没说
+        Assert.DoesNotContain(logs, l => l.Contains("温控器回显"));
+        await Task.Delay(4000);                            // 200 ms 一拍：35 拍，比「连续 20 拍」多
         Assert.Null(why);
         Assert.True(St(t).Active);
         Assert.DoesNotContain(logs, l => l.Contains("轮询异常"));
         Assert.Single(logs, l => l.Contains("温控器回显") && l.Contains("不当通信失败"));   // 说一次，不每拍刷
         lock (got) Assert.Contains(got, x => x.Tag == "duty" && Math.Abs(Math.Abs(x.Value) - 6.43) < 0.01);   // 画的是回显
 
-        dev.DutyMinPercent = 0;                            // 参数窗把启动电压改回 0 之后：对上了，再说一次
-        await WaitUntil(() => logs.Any(l => l.Contains("回显又对上了")), 4000, "回显对上");
+        dev.DutyMinPercent = 0;                            // 参数窗把启动电压改回 0 之后：对上了、持续 5 s，再说一次
+        await WaitUntil(() => logs.Any(l => l.Contains("回显又对上了")), 9000, "回显对上");
+        await t.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task 温控器回显慢一拍_每拍写入值在抖_一条不符都不说()
+    {
+        // 现场逐拍记录：回显的是上一拍写的值（89 % 的拍）、保温段写入值每拍在 ±2 % 里抖，按拍比就「对不上 / 又对上了」
+        // 来回报——40 min 刷了 962 条。回显等于上一拍写的算对上
+        var (drv, dev) = Standalone();
+        dev.HeatSign = -1;
+        dev.EchoLag = true;
+        var logs = new List<string>();
+        await using var s = await drv.OpenAsync(Conn(), Ctx(HostCfg((Rd105TecDriver.FieldInvert, Rd105TecDriver.InvertYes)), logs), CancellationToken.None);
+        await s.StartAsync(CancellationToken.None);
+        var t = Temp(s, 0);
+        await WaitUntil(() => !double.IsNaN(t.CurrentJacket), 3000, "夹套读数");
+
+        await t.SetTargetAsync(new TempTarget(40, TempChannelKind.Jacket), CancellationToken.None);   // 升温：占空比每拍都在变
+        await Task.Delay(7000);
+        Assert.True(St(t).Active);
+        Assert.DoesNotContain(logs, l => l.Contains("温控器回显") || l.Contains("回显又对上了"));
         await t.StopAsync(CancellationToken.None);
     }
 

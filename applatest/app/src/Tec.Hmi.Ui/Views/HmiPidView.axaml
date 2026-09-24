@@ -152,7 +152,8 @@
                 <TextBlock Grid.Column="7" Text="偏置±" Classes="th" />
                 <TextBlock Grid.Column="8" Text="加热比" Classes="th" IsVisible="{Binding HeatColumn}" />
                 <TextBlock Grid.Column="9" Text="Tu s" Classes="th" />
-                <TextBlock Grid.Column="10" Text="稳态偏置" Classes="th" />
+                <TextBlock Grid.Column="10" Text="稳态偏置" Classes="th"
+                           ToolTip.Tip="夹套设定 − 釜内目标（℃）：串级下发时预置外环积分。回路到温后自己学（釜内在 ±0.05 里待满 60 s）；也可以手填——釜内稳住时看夹套比釜内高多少。空 = 没有，回路只能从 0 攒、落地慢" />
                 <TextBlock Grid.Column="11" Text="来源" Classes="th" />
               </Grid>
             </Border>
@@ -176,7 +177,7 @@
                           <TextBox Grid.Column="7" Classes="pc" Text="{Binding Bias}" />
                           <TextBox Grid.Column="8" Classes="pc" Text="{Binding Heat}" IsVisible="{Binding HeatEditable}" />
                           <TextBlock Grid.Column="9" Text="{Binding Tu}" Classes="ro" />
-                          <TextBlock Grid.Column="10" Text="{Binding Steady}" Classes="ro" />
+                          <TextBox Grid.Column="10" Classes="pc" Text="{Binding Steady}" />
                           <TextBlock Grid.Column="11" Text="{Binding Origin}" Classes="ro" />
                           <Button Grid.Column="12" Classes="x" Content="×" Click="OnRemoveRow"
                                   ToolTip.Tip="删这一行（点「应用表格」才生效）" />

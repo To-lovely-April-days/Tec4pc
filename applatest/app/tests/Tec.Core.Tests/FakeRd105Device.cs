@@ -41,6 +41,10 @@ public sealed class FakeRd105Device : ISerialTransport
     /// </summary>
     public double DutyMinPercent { get; set; }
 
+    /// <summary>像现场那台一样回显慢一拍：写 PWMDUTY 时存新值、回显**上一次**存的值（现场逐拍记录 89 % 的拍是这样）。</summary>
+    public bool EchoLag { get; set; }
+    private readonly Dictionary<string, long> _prevDuty = new();
+
     /// <summary>收到过的完整指令，按先后顺序。断言用。</summary>
     public List<string> Commands { get; } = new();
 
@@ -134,8 +138,14 @@ public sealed class FakeRd105Device : ISerialTransport
             if (key.EndsWith(":PWMDUTY", StringComparison.Ordinal) && v != 0 && DutyMinPercent > 0
                 && Math.Abs(v) / 20_000.0 < DutyMinPercent)
                 v = (long)Math.Round(Math.Sign(v) * DutyMinPercent * 20_000);
+            var echoV = v;
+            if (EchoLag && key.EndsWith(":PWMDUTY", StringComparison.Ordinal))
+            {
+                echoV = _prevDuty.TryGetValue(key, out var p) ? p : 0;
+                _prevDuty[key] = v;
+            }
             _regs[key] = v;
-            Reply(key, v.ToString());
+            Reply(key, echoV.ToString());
             return;
         }
         Reply(key, value);

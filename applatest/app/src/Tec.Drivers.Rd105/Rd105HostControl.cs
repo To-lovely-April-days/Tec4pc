@@ -40,6 +40,12 @@ public static class Rd105HostControl
     public static readonly PidGains FallbackOuter = new(2.5, 0.0079, 0);
     public const double FallbackOuterMaxBiasC = 8;
 
+    /// <summary>
+    /// 内环微分的一阶滤波时间常数（s）。源工程缺省 2 s；这台机器夹套读数每拍抖 0.008 K，Kd 几百时 2 s 的滤波把它放大成
+    /// ±7 % 的输出、加热棒的固态继电器无意义地开关（0335，现场逐拍记录）。8 s 把这份噪声压掉四分之三，夹套几分钟量级的动态不受影响。
+    /// </summary>
+    public const double InnerDerivativeFilterSeconds = 8;
+
     private static readonly AsyncLocal<string?> DirOverride = new();
 
     /// <summary>

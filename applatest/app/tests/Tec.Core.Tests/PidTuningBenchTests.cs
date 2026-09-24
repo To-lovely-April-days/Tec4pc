@@ -149,6 +149,31 @@ public class PidTuningBenchTests
     }
 
     [Fact]
+    public async Task 稳态偏置可以手填_进表_预览与在用都拿它()
+    {
+        // 0335：稳态偏置从前只能等回路学（釜内 ±0.05 里待满 60 s），两炉都差一点没学到；现场量得出来（夹套比釜内高 5.5）就该能填
+        using var _ = Rd105HostControl.UseGainsDir(NewDir());
+        var (drv, _) = Standalone();
+        await using var s = await drv.OpenAsync(Conn(), Ctx(HostCfg()), CancellationToken.None);
+        var b = Bench(s, 0);
+        b.ApplyRows(PidActuator.Heater, new[]
+        {
+            new PidGainRow(50, 11.63, 0.0157, 150) { OuterKp = 3, OuterKi = 0.004364, OuterKd = 0, OuterMaxBiasC = 15, SteadyBiasC = 5.5 }
+        });
+        var row = Assert.Single(b.Rows(PidActuator.Heater));
+        Assert.Equal(5.5, row.SteadyBiasC);
+        Assert.Equal(5.5, b.Preview(PidActuator.Heater, 50).SteadyBiasC);
+        Assert.Equal(5.5, b.Preview(PidActuator.Heater, 55).SteadyBiasC);   // 15 ℃ 内沿用
+        Assert.Null(b.Preview(PidActuator.Heater, 80).SteadyBiasC);
+
+        // 重读盘上的表还在；清掉这一格就是没有
+        b.Reload();
+        Assert.Equal(5.5, Assert.Single(b.Rows(PidActuator.Heater)).SteadyBiasC);
+        b.ApplyRows(PidActuator.Heater, new[] { row with { SteadyBiasC = null } });
+        Assert.Null(Assert.Single(b.Rows(PidActuator.Heater)).SteadyBiasC);
+    }
+
+    [Fact]
     public async Task 表不合法整张不动_两度以内合并()
     {
         using var _ = Rd105HostControl.UseGainsDir(NewDir());
