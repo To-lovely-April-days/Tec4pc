@@ -335,7 +335,8 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
             var info = infos[i];
             _recorders[i]?.Write(info, _temps[i].CurrentReactor, ActuatorName(_loop.GetActuatorMode(i + 1)), r.CycleMs, LoopExtra?.Invoke(i));
             // 曲线上的「控温输出」是温控器回显（实际存下）的那个数；它按自己的规矩改了写入值时，画的是它真出的力
-            Push(_temps[i].Channel, "duty", info.AppliedDutyPercent ?? info.DutyPercent, at, Quality.Good);
+            _temps[i].LastDuty = info.AppliedDutyPercent ?? info.DutyPercent;
+            Push(_temps[i].Channel, "duty", _temps[i].LastDuty, at, Quality.Good);
             _pids[i]?.OnCycle(info);
             if (info.Active)
             {
@@ -468,6 +469,7 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
                 for (var i = 0; i < 2; i++)
                 {
                     var duty = await _link.Controller.ReadDutyPercentAsync(i + 1).ConfigureAwait(false);
+                    _temps[i].LastDuty = duty;
                     Push(_temps[i].Channel, "duty", duty, DateTimeOffset.Now, Quality.Good);
                 }
             }

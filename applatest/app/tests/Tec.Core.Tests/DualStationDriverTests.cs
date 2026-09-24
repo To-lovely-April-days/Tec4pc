@@ -74,6 +74,11 @@ public sealed class DualStationDriverTests
         => ParameterSet.Of(new (string, object?)[] { (DualStationDriver.Fields.TecHeat, "启用") }
                            .Concat(more).ToArray());
 
+    /// <summary>「冷水机」标为已开的设备配置（0333：降温挡只有标成已开才合 TEC 功率线；缺省已关）。</summary>
+    private static ParameterSet ChillerOn(params (string Key, object? Value)[] more)
+        => ParameterSet.Of(new (string, object?)[] { (DualStationDriver.Fields.Chiller, "已开") }
+                           .Concat(more).ToArray());
+
     private static ITemperatureControl Temp(IDeviceSession s, int well)
         => s.CapabilitiesOf(well).OfType<ITemperatureControl>().Single();
 
@@ -402,10 +407,10 @@ public sealed class DualStationDriverTests
     }
 
     [Fact]
-    public async Task 默认不启用TEC加热_要降温才回TEC_且夹套得先凉够()
+    public async Task 降温挡_冷水机开_夹套凉到回切线以下才合TEC_之前全断自然凉()
     {
         var b = Rig();
-        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(ChillerOn()), CancellationToken.None);
         await s.StartAsync(CancellationToken.None);
         var t = Temp(s, 0);
         await WaitJacket(t, 25.0);
@@ -413,41 +418,52 @@ public sealed class DualStationDriverTests
         await t.SetTargetAsync(new TempTarget(120), CancellationToken.None);
         Assert.True(b.Io.Coils[0]);
 
-        // 目标降到 50，可夹套还烫着（95 ℃）：要降温，但这一刻不许接回 TEC
+        // 目标降到 50 = 降温挡，可夹套还烫着（95 ℃）：TEC 不能接到这么烫的夹套上——
+        // 加热棒也不留着（要降温了，接触器没理由吸着），全断自然凉；按段报一次「没有制冷能力」
         b.Rd.Set(1, "TCADJTEMP", 95_00000);
         await WaitJacket(t, 95.0);
         await t.SetTargetAsync(new TempTarget(50), CancellationToken.None);
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
-        Assert.True(b.Io.Coils[0]);
+        Assert.False(b.Io.Coils[0]);
+        Assert.False(b.Io.Coils[6]);
+        Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
+        lock (b.Logs) Assert.Single(b.Logs, l => l.Level == "error" && l.Text.Contains("没有制冷能力"));
 
-        // 凉到 84 ℃（< 90 − 5）才回 TEC——这条硬约束两种模式都不让步
+        // 凉到 84 ℃（< 90 − 5）才合 TEC——这条硬约束两种模式都不让步
         b.Rd.Set(1, "TCADJTEMP", 84_00000);
         await WaitJacket(t, 84.0);
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         await s.StopAsync(CancellationToken.None);
 
         Assert.False(b.Io.Coils[0]);
-        Assert.Equal(1, b.Rd.Get(1, "ENABLE"));          // 回切完输出照旧开着
+        Assert.True(b.Io.Coils[6]);
+        Assert.Equal(1, b.Rd.Get(1, "ENABLE"));          // 切完输出照旧开着
     }
 
     [Fact]
-    public async Task 默认不启用TEC加热_死区之内不折腾继电器()
+    public async Task 死区之内的目标按升温挡_合加热棒不合TEC()
     {
+        // 目标比当前低不到一个死区（或高于当前）都是升温挡：加热棒本来就是维持温度的那套，
+        // 差那零点几度靠关加热棒自然凉，不值得去接 TEC（0333 之前：死区之内一只都不合）
         var b = Rig();
         await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
         await s.StartAsync(CancellationToken.None);
         var t = Temp(s, 0);
         await WaitJacket(t, 25.0);
-        int Writes() { lock (b.Io.Requests) return b.Io.Requests.Count(r => r.StartsWith("写")); }
-        var before = Writes();
 
         await t.SetTargetAsync(new TempTarget(26.5), CancellationToken.None);   // 差 1.5 K < 死区 2 K
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
-        await s.StopAsync(CancellationToken.None);
+        Assert.True(b.Io.Coils[0]);
+        Assert.False(b.Io.Coils[6]);
+        Assert.Equal(26_50000, b.Rd.Get(1, "TG"));
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("升温挡") && l.Text.Contains("目标 26.5"));
 
-        Assert.False(b.Io.Coils[0]);
-        Assert.Equal(before, Writes());                  // 一条写继电器的帧都没发
-        Assert.Equal(26_50000, b.Rd.Get(1, "TG"));       // 目标照常下发，只是不换挡
+        await t.SetTargetAsync(new TempTarget(24), CancellationToken.None);     // 低 1 K：还是升温挡
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+        await s.StopAsync(CancellationToken.None);
+        Assert.True(b.Io.Coils[0]);
+        Assert.False(b.Io.Coils[6]);
+        lock (b.Logs) Assert.DoesNotContain(b.Logs, l => l.Text.Contains("降温挡："));
     }
 
     [Fact]
@@ -473,34 +489,48 @@ public sealed class DualStationDriverTests
     }
 
     [Fact]
-    public async Task 默认不启用TEC加热_温度自己漂出死区_采集循环把它切到电加热()
+    public async Task 降温挡_冷水机开_TEC没在制冷而温度不高于目标够一分钟_交给加热棒_不回头()
     {
         var b = Rig();
-        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(ChillerOn()), CancellationToken.None);
         await s.StartAsync(CancellationToken.None);
         var t = Temp(s, 0);
         await WaitJacket(t, 25.0);
 
-        // 先在 TEC 侧做一次降温：目标 10、夹套 25（要降温 → 合 TEC 功率线 DO6）
+        // 降温挡：目标 10、夹套 25（冷水机已开 → 合 TEC 功率线 DO6）
         await t.SetTargetAsync(new TempTarget(10), CancellationToken.None);
         Assert.False(b.Io.Coils[0]);
         Assert.True(b.Io.Coils[6]);
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("降温挡：目标 10.0"));
 
-        // 夹套一路凉到 5 ℃，比目标低了 5 K——现在缺的是热，采集循环自己换挡。
-        // 合 TEC 功率线也算一次切换，升温方向要等够 30 s 最短间隔：把钟拨过去
+        // 夹套一路凉到 5 ℃，比目标低了 5 K，温控器输出 0（假机 PWMDUTY 没人写就是 0）：要维持 10 ℃ 得加热，
+        // TEC 给不了。这不是一拍就换——等满交接时间（缺省 60 s）才交给加热棒；温度漂动本身不换挡
         b.Rd.Set(1, "TCADJTEMP", 5_00000);
         await WaitJacket(t, 5.0);
-        b.Now = b.Now.AddSeconds(31);
+        await Task.Delay(1200);                            // 让内层会话读一次 PWMDUTY（一秒一轮）
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+        Assert.True(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[0]);
+        b.Now = b.Now.AddSeconds(61);
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+        Assert.True(b.Io.Coils[0]);
+        Assert.False(b.Io.Coils[6]);                       // 交接：TEC 功率线断开，只剩加热棒
+        Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("降温挡 → 升温挡") && l.Text.Contains("TEC 已收到 0"));
+
+        // 不回头：夹套又漂到 15（高过目标 5 K）也不再接 TEC——升温挡里过了头就是关加热棒自然凉
+        b.Rd.Set(1, "TCADJTEMP", 15_00000);
+        await WaitJacket(t, 15.0);
+        b.Now = b.Now.AddSeconds(61);
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         await s.StopAsync(CancellationToken.None);
-
         Assert.True(b.Io.Coils[0]);
-        Assert.False(b.Io.Coils[6]);                       // 升温：TEC 功率线断开，只剩加热棒
-        Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
+        Assert.False(b.Io.Coils[6]);
+        lock (b.Logs) Assert.Single(b.Logs, l => l.Text.Contains("已切至TEC"));   // 只有一开始那一次
     }
 
     [Fact]
-    public async Task 釜温已经高过目标_就不许再去接电加热棒()
+    public async Task 釜内目标低于釜温_降温挡_冷水机关_全断自然凉_到了目标加热棒接手()
     {
         var b = Rig();
         await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
@@ -510,15 +540,24 @@ public sealed class DualStationDriverTests
         await WaitJacket(t, 80.0);
         Feed(s, 1, 95.0);                                  // 釜里 95 ℃——放热已经起来了
 
-        // 「恒温保持」下发的是下发那一刻的釜温；放热让 Tr 跑到目标上面去之后，
-        // 光看夹套会判成「要升温」（88 > 80+2），一头把电加热棒接上——
-        // 往一个正在放热的釜里补热。这一条硬否决就是拦它的
+        // 釜内目标 88 比釜温 95 低超过死区 = 降温挡（釜内目标按新鲜的 Tr 定挡，不按夹套——夹套 80 < 88 光看它会判成升温）。
+        // 「冷水机」标为已关：TEC 没水不能开，加热棒也不接——全断自然凉，warn 一次说清楚
         await t.SetTargetAsync(new TempTarget(88), CancellationToken.None);
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
-        await s.StopAsync(CancellationToken.None);
+        Assert.False(b.Io.Coils[0]);
+        Assert.False(b.Io.Coils[6]);
+        Assert.Equal(88_00000, b.Rd.Get(1, "TG"));         // 目标照常下发
+        lock (b.Logs) Assert.Single(b.Logs, l => l.Level == "warn" && l.Text.Contains("「冷水机」标为已关") && l.Text.Contains("自然凉"));
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+        lock (b.Logs) Assert.Single(b.Logs, l => l.Level == "warn" && l.Text.Contains("「冷水机」标为已关"));   // 按段只报一次
 
-        Assert.False(b.Io.Coils[0]);                       // 留在 TEC 侧
-        Assert.Equal(88_00000, b.Rd.Get(1, "TG"));         // 目标照常下发，只是不接加热棒
+        // 釜温自然凉到 88 以下：加热棒接手维持（降温挡 → 升温挡），TEC 从头到尾没接
+        Feed(s, 1, 87.8);
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+        await s.StopAsync(CancellationToken.None);
+        Assert.True(b.Io.Coils[0]);
+        Assert.False(b.Io.Coils[6]);
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("降温挡 → 升温挡") && l.Text.Contains("自然凉到了目标"));
     }
 
     [Fact]
@@ -542,7 +581,8 @@ public sealed class DualStationDriverTests
     public async Task 切换写继电器失败_下一拍接着切_输出还接得回来()
     {
         var b = Rig();
-        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
+        var cfg = new ParameterSet();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(cfg), CancellationToken.None);
         await s.StartAsync(CancellationToken.None);
         var t = Temp(s, 0);
         await WaitJacket(t, 25.0);
@@ -551,10 +591,16 @@ public sealed class DualStationDriverTests
         Assert.True(b.Io.Coils[0]);
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
 
-        // 到温之后夹套漂过死区，该回 TEC 了——可这一笔写继电器撞上总线不应答。
-        // 切换序列在 ① 关输出之后抛出，输出停在关闭状态
+        // 到温之后下发 10 ℃ = 降温挡，冷水机没标开：全断自然凉
         b.Rd.Set(1, "TCADJTEMP", 63_00000);
         await WaitJacket(t, 63.0);
+        await t.SetTargetAsync(new TempTarget(10), CancellationToken.None);
+        Assert.False(b.Io.Coils[0]);
+        Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
+
+        // 人把「冷水机」标成已开：该合 TEC 功率线了——可这一笔写继电器撞上总线不应答。
+        // 切换序列在 ① 关输出之后抛出，输出停在关闭状态
+        cfg[DualStationDriver.Fields.Chiller] = "已开";
         b.Io.Mute = true;
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         Assert.Equal(0, b.Rd.Get(1, "ENABLE"));            // 输出确实被关掉了
@@ -566,13 +612,14 @@ public sealed class DualStationDriverTests
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         await s.StopAsync(CancellationToken.None);
 
-        Assert.False(b.Io.Coils[0]);                       // 回到 TEC 侧
+        Assert.True(b.Io.Coils[6]);                        // TEC 功率线合上了
+        Assert.False(b.Io.Coils[0]);
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));            // 控温继续
-        Assert.Equal(60_00000, b.Rd.Get(1, "TG"));
+        Assert.Equal(10_00000, b.Rd.Get(1, "TG"));
     }
 
     [Fact]
-    public async Task 恒温保持下发的自指目标_不把继电器拽到加热棒侧()
+    public async Task 恒温保持_目标等于此刻釜温_升温挡_加热棒接上维持_不接TEC()
     {
         var b = Rig();
         await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
@@ -580,21 +627,24 @@ public sealed class DualStationDriverTests
         var t = Temp(s, 0);
         b.Rd.Set(1, "TCADJTEMP", 80_00000);
         await WaitJacket(t, 80.0);
-        Feed(s, 1, 88.0);                                  // 釜里 88，夹套 80：放热已经起来了
+        Feed(s, 1, 88.0);                                  // 釜里 88，夹套 80
 
-        // 「恒温保持」下发的就是下发那一刻的釜温，跟目标**严格相等**——
-        // 光看夹套会判成「要升温」（88 > 80+2），一头把电加热棒接上。
-        // 这一档必须也挡住，不能只挡「已经超出一个死区」那一档
+        // 「恒温保持」下发的就是下发那一刻的釜温：不比当前低 = 升温挡，加热棒是维持温度的那套；
+        // 放热起来釜温冲过目标也只是加热棒收到 0 自然凉，不会去接 TEC（冷水机没开）
         await t.SetTargetAsync(new TempTarget(t.CurrentReactor), CancellationToken.None);
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+        Feed(s, 1, 91.0);                                  // 冲过目标 3 K
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         await s.StopAsync(CancellationToken.None);
 
-        Assert.False(b.Io.Coils[0]);
+        Assert.True(b.Io.Coils[0]);
+        Assert.False(b.Io.Coils[6]);
         Assert.Equal(88_00000, b.Rd.Get(1, "TG"));         // 目标照常下发
+        lock (b.Logs) Assert.DoesNotContain(b.Logs, l => l.Text.Contains("降温挡："));
     }
 
     [Fact]
-    public async Task 蒸回流跟随也要守最短间隔_不跟着Tr抖()
+    public async Task 蒸回流全程升温挡_夹套冲过目标也不回TEC_Tr抖也不换挡()
     {
         var b = Rig();
         await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
@@ -602,60 +652,74 @@ public sealed class DualStationDriverTests
         var t = Temp(s, 0);
         await WaitJacket(t, 25.0);
 
-        Feed(s, 1, 40.0);                                  // 目标 45 > 25+2 → 切电加热
+        Feed(s, 1, 40.0);                                  // 目标 45 > 25 → 升温挡，切电加热
         await Reflux(s, 0).StartAsync(5, 120, CancellationToken.None);
         Assert.True(b.Io.Coils[0]);
+        var writes = b.Io.Requests.Count(r => r.StartsWith("写DO"));
 
-        // 夹套一路被顶到 60：目标 45 比它低一个死区以上 → 回 TEC（制冷方向不等）
+        // 夹套一路被顶到 60：目标 45 比它低——0333 之前这里回 TEC；现在升温挡里过了头就是加热棒收到 0，继电器不动
         b.Rd.Set(1, "TCADJTEMP", 60_00000);
         await WaitJacket(t, 60.0);
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
-        Assert.False(b.Io.Coils[0]);
+        Assert.True(b.Io.Coils[0]);
+        Assert.False(b.Io.Coils[6]);
 
-        // Tr 一抖又要升温了。跟随环是唯一每拍自动改目标的环路，它也得守最短间隔——
-        // 不守的话这条路会绕开防抖，继电器跟着 Tr 的噪声一拍一切
-        var writes = b.Io.Requests.Count(r => r.StartsWith("写DO"));
-        Feed(s, 1, 70.0);                                  // 目标 75 > 60+2
+        // Tr 抖上抖下：跟随目标跟着改，挡位不变、继电器一条都不写
+        Feed(s, 1, 70.0);
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
-        Assert.False(b.Io.Coils[0]);
-        Assert.Equal(writes, b.Io.Requests.Count(r => r.StartsWith("写DO")));   // 一条都没发
-
-        b.Now = b.Now.AddSeconds(31);
-        Feed(s, 1, 70.0);                                  // 钟往前拨过了新鲜度窗，Tr 要重新喂
+        Feed(s, 1, 40.0);
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         await s.StopAsync(CancellationToken.None);
-        Assert.True(b.Io.Coils[0]);                        // 等够了才切
-        Assert.True(Reflux(s, 0).Active, "跟随不该被这道闸弄停");
+        Assert.True(b.Io.Coils[0]);
+        Assert.Equal(writes, b.Io.Requests.Count(r => r.StartsWith("写DO")));
+        Assert.True(Reflux(s, 0).Active, "跟随不该被弄停");
     }
 
     [Fact]
-    public async Task 自动切电加热要等最短间隔_但抢冷一刻不等()
+    public async Task 升温挡里夹套冲过目标不接TEC_新目标更低才是降温挡_冷水机开关当拍生效()
     {
         var b = Rig();
-        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
+        var cfg = new ParameterSet();                      // 缺省：冷水机已关
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(cfg), CancellationToken.None);
         await s.StartAsync(CancellationToken.None);
         var t = Temp(s, 0);
         await WaitJacket(t, 25.0);
 
-        await t.SetTargetAsync(new TempTarget(60), CancellationToken.None);   // 升温 → 电加热
+        await t.SetTargetAsync(new TempTarget(60), CancellationToken.None);   // 升温挡 → 电加热
         Assert.True(b.Io.Coils[0]);
 
-        // 掉头要降温：夹套 25 ℃ 早在滞回线以下，这一拍就该回 TEC——
-        // 制冷是安全动作，不受最短间隔约束
+        // 夹套冲到 63（高过目标一个死区以上）：0333 之前这一拍就回 TEC「抢冷」；现在升温挡里不接 TEC——
+        // 用户定的：加热过程冷水机没开，TEC 没水不能开；过了头关加热棒自然凉
+        b.Rd.Set(1, "TCADJTEMP", 63_00000);
+        await WaitJacket(t, 63.0);
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+        Assert.True(b.Io.Coils[0]);
+        Assert.False(b.Io.Coils[6]);
+        lock (b.Logs) Assert.DoesNotContain(b.Logs, l => l.Text.Contains("已切至TEC"));
+
+        // 明确下发更低的目标才是降温挡。冷水机标着已关：全断自然凉，warn 一次
         await t.SetTargetAsync(new TempTarget(10), CancellationToken.None);
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         Assert.False(b.Io.Coils[0]);
+        Assert.False(b.Io.Coils[6]);
+        lock (b.Logs) Assert.Single(b.Logs, l => l.Level == "warn" && l.Text.Contains("「冷水机」标为已关"));
 
-        // 紧接着夹套掉到 5 ℃，又缺热了。刚切过——自动换挡得等够 30 s
-        b.Rd.Set(1, "TCADJTEMP", 5_00000);
-        await WaitJacket(t, 5.0);
+        // 人开了冷水机、把属性栏改成已开：这一拍就接 TEC（夹套 63 在回切线 85 以下）
+        cfg[DualStationDriver.Fields.Chiller] = "已开";
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+        Assert.True(b.Io.Coils[6]);
         Assert.False(b.Io.Coils[0]);
+        Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("「冷水机」改为已开"));
 
-        b.Now = b.Now.AddSeconds(31);
+        // 关冷水机前把它改回已关：TEC 功率线当拍断开（没水不能开 TEC），降温挡照旧、只能自然凉
+        cfg[DualStationDriver.Fields.Chiller] = "已关";
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         await s.StopAsync(CancellationToken.None);
-        Assert.True(b.Io.Coils[0]);
+        Assert.False(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[0]);
+        Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("「冷水机」改为已关"));
     }
 
     [Fact]
@@ -701,9 +765,12 @@ public sealed class DualStationDriverTests
         // 开机就该把「这台只能制冷」讲清楚，不必等配方撞上去
         lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("只能制冷"));
 
-        await t.SetTargetAsync(new TempTarget(10), CancellationToken.None);   // 降温：允许
-        b.Rd.Set(1, "TCADJTEMP", 5_00000);                                    // 夹套凉过头，现在缺热
+        await t.SetTargetAsync(new TempTarget(10), CancellationToken.None);   // 降温挡：允许（功率线硬线直连，没有继电器可扳）
+        b.Rd.Set(1, "TCADJTEMP", 5_00000);                                    // 夹套凉过头，现在缺热：温控器输出 0 够一分钟交给加热棒
         await WaitJacket(t, 5.0);
+        await Task.Delay(1200);                                               // 让内层会话读一次 PWMDUTY
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+        b.Now = b.Now.AddSeconds(61);
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         await s.StopAsync(CancellationToken.None);
@@ -717,10 +784,11 @@ public sealed class DualStationDriverTests
     }
 
     [Fact]
-    public async Task 要降温却因为夹套还烫接不回TEC_按段报一次没有制冷能力()
+    public async Task 要降温却因为夹套还烫接不上TEC_按段报一次没有制冷能力_原因变了再报()
     {
         var b = Rig();
-        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
+        var cfg = ChillerOn();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(cfg), CancellationToken.None);
         await s.StartAsync(CancellationToken.None);
         var t = Temp(s, 0);
         await WaitJacket(t, 25.0);
@@ -728,19 +796,32 @@ public sealed class DualStationDriverTests
         await t.SetTargetAsync(new TempTarget(120), CancellationToken.None);   // 上电加热
         b.Rd.Set(1, "TCADJTEMP", 95_00000);                                    // 夹套 95 ℃，高过回切线 85
         await WaitJacket(t, 95.0);
-        await t.SetTargetAsync(new TempTarget(50), CancellationToken.None);     // 抢冷
+        await t.SetTargetAsync(new TempTarget(50), CancellationToken.None);     // 降温挡
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
 
-        Assert.True(b.Io.Coils[0]);                       // 还在电加热侧：这条保护不让步
+        Assert.False(b.Io.Coils[0]);                      // 全断自然凉：这条保护不让步，加热棒也不留着
+        Assert.False(b.Io.Coils[6]);
         lock (b.Logs) Assert.Single(b.Logs, l => l.Level == "error" && l.Text.Contains("没有制冷能力"));
 
-        // 凉到 84 就能接回 TEC，报过的那一段也翻篇
+        // 原因换成「冷水机关」：另一段，再报一次（warn）；夹套那条不重复
+        cfg[DualStationDriver.Fields.Chiller] = "已关";
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+        lock (b.Logs)
+        {
+            Assert.Single(b.Logs, l => l.Level == "error" && l.Text.Contains("没有制冷能力"));
+            Assert.Single(b.Logs, l => l.Level == "warn" && l.Text.Contains("「冷水机」标为已关"));
+        }
+
+        // 冷水机又开、夹套也凉到 84：接 TEC，报过的那两段都翻篇
+        cfg[DualStationDriver.Fields.Chiller] = "已开";
         b.Rd.Set(1, "TCADJTEMP", 84_00000);
         await WaitJacket(t, 84.0);
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         await s.StopAsync(CancellationToken.None);
         Assert.False(b.Io.Coils[0]);
+        Assert.True(b.Io.Coils[6]);
     }
 
     [Fact]
@@ -1080,7 +1161,7 @@ public sealed class DualStationDriverTests
     public async Task 开机全断_打开温控降温才合TEC功率线_停控就断()
     {
         var b = Rig();
-        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(ChillerOn()), CancellationToken.None);
         await s.StartAsync(CancellationToken.None);
         var t = Temp(s, 0);
         await WaitJacket(t, 25.0);
@@ -1131,25 +1212,28 @@ public sealed class DualStationDriverTests
     }
 
     [Fact]
-    public async Task 死区之内判不出方向_一只都不合_漂出死区才接通()
+    public async Task 死区之内的目标是升温挡_合加热棒_夹套漂上去也不换挡()
     {
         var b = Rig();
-        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(ChillerOn()), CancellationToken.None);
         await s.StartAsync(CancellationToken.None);
         var t = Temp(s, 0);
         await WaitJacket(t, 25.0);
 
-        await t.SetTargetAsync(new TempTarget(26), CancellationToken.None);    // 差 1 K < 死区 2 K
+        await t.SetTargetAsync(new TempTarget(26), CancellationToken.None);    // 差 1 K < 死区 2 K：升温挡
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
-        Assert.All(b.Io.Coils, c => Assert.False(c));
-        Assert.Equal(1, b.Rd.Get(1, "ENABLE"));            // 目标照常下发，只是还没决定合哪只
+        Assert.True(b.Io.Coils[0]);
+        Assert.False(b.Io.Coils[6]);
+        Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
 
-        b.Rd.Set(1, "TCADJTEMP", 29_00000);                // 漂到 29：目标 26 低一个死区以上 → 要降温
+        // 漂到 29（目标 26 低一个死区以上）：0333 之前这里接 TEC；现在挡位下发时定，温度漂动不换挡——
+        // 冷水机标着已开也不接，加热过程里不用 TEC 降温
+        b.Rd.Set(1, "TCADJTEMP", 29_00000);
         await WaitJacket(t, 29.0);
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         await s.StopAsync(CancellationToken.None);
-        Assert.True(b.Io.Coils[6]);
-        Assert.False(b.Io.Coils[0]);
+        Assert.False(b.Io.Coils[6]);
+        Assert.True(b.Io.Coils[0]);
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
     }
 
@@ -1157,26 +1241,26 @@ public sealed class DualStationDriverTests
     public async Task 降温转升温再转降温_先断后通_两只从不同时闭合()
     {
         var b = Rig();
-        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(ChillerOn()), CancellationToken.None);
         await s.StartAsync(CancellationToken.None);
         var t = Temp(s, 0);
         await WaitJacket(t, 25.0);
-        await t.SetTargetAsync(new TempTarget(10), CancellationToken.None);    // 降温：DO6 合
+        await t.SetTargetAsync(new TempTarget(10), CancellationToken.None);    // 降温挡：DO6 合
         Assert.True(b.Io.Coils[6]);
         var mark = b.Io.Requests.Count;
 
-        await t.SetTargetAsync(new TempTarget(60), CancellationToken.None);    // 改成升温 → 电加热
+        await t.SetTargetAsync(new TempTarget(60), CancellationToken.None);    // 改成升温挡 → 电加热
         Assert.True(b.Io.Coils[0]);
         Assert.False(b.Io.Coils[6]);
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
         var seq = b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写DO")).ToList();
         Assert.Equal(new[] { "写DO 6=断", "写DO 0=闭" }, seq);   // 先断 TEC 功率线，再合加热棒
 
-        // 夹套漂过死区要降温 → 回 TEC：先断加热棒，再合 TEC 功率线
+        // 到温后下发更低的目标 = 降温挡 → TEC：先断加热棒，再合 TEC 功率线（夹套 63 在回切线以下）
         b.Rd.Set(1, "TCADJTEMP", 63_00000);
         await WaitJacket(t, 63.0);
         mark = b.Io.Requests.Count;
-        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+        await t.SetTargetAsync(new TempTarget(30), CancellationToken.None);
         await s.StopAsync(CancellationToken.None);
 
         Assert.False(b.Io.Coils[0]);
@@ -1231,7 +1315,7 @@ public sealed class DualStationDriverTests
     public async Task SafeStop_本工位加热棒与TEC功率线全断_再下发降温目标时重新合上()
     {
         var b = Rig();
-        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(ChillerOn()), CancellationToken.None);
         await s.StartAsync(CancellationToken.None);
         var t = Temp(s, 0);
         var tb = Temp(s, 1);
@@ -1261,7 +1345,7 @@ public sealed class DualStationDriverTests
     public async Task TEC功率继电器被手扳断_读回对不上报出来_要降温的那一路当拍接回()
     {
         var b = Rig();
-        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(ChillerOn()), CancellationToken.None);
         await s.StartAsync(CancellationToken.None);
         var t = Temp(s, 0);
         await WaitJacket(t, 25.0);

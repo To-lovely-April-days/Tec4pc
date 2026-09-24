@@ -231,6 +231,9 @@ public sealed class LimitTestRunner
         _waterGate = null;
         State = RunnerState.Running;
         Prompt = null;
+        // 操作人点了「继续」= 冷水机按提示开着 / 停了：把台面配置「冷水机」标上，降温挡才接 TEC（0333）；
+        // 最高温那一组标成已关——回温靠关加热棒自然凉，不会去开没水的 TEC
+        _rig.SetChiller(!noWater);
         Log("info", noWater
             ? "最高温（无冷却水）开始"
             : $"冷却水 {water:0.#} ℃ 这一组开始，实际水温（手填）{actual:0.0} ℃");

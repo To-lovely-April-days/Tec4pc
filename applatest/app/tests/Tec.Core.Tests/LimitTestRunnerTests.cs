@@ -47,6 +47,9 @@ public class LimitTestRunnerTests
         public bool RefuseReactor;
         public int Stops, SafeStops;
         public List<(int Well, double Target, TempChannelKind Kind)> Targets = new();
+        /// <summary>Runner 每次按操作人的「继续」标的冷水机开 / 关（0333）。</summary>
+        public List<bool> Chiller = new();
+        public void SetChiller(bool on) => Chiller.Add(on);
 
         public FakeRig(Clock clk) { _clk = clk; _last = clk.Now; }
 
@@ -203,6 +206,8 @@ public class LimitTestRunnerTests
 
         Assert.Equal(RunnerState.Finished, runner.State);
         Assert.Equal("全部跑完", runner.Status);
+        // 操作人点了「继续」= 冷水机按提示开着 / 停了：台面配置「冷水机」跟着标（降温挡才接 TEC；最高温不开没水的 TEC）
+        Assert.Equal(new[] { true, false }, rig.Chiller);
         Assert.All(runner.Plan.Where(c => c.Selected), c => Assert.True(c.State is CellState.Done or CellState.EndedEarly, c.Note));
         Assert.All(runner.Plan.Where(c => !c.Selected), c => Assert.Equal(CellState.Unselected, c.State));
 

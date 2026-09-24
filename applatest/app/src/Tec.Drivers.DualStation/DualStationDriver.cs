@@ -40,8 +40,13 @@ public sealed class DualStationDriver : IDeviceDriver
         public const string DoB = "切换DO·工位B";
         public const string DiA = "反馈DI·工位A";
         public const string DiB = "反馈DI·工位B";
-        /// <summary>冷热判定死区（K）。只在「TEC 加热」不启用时用到。</summary>
+        /// <summary>升降温死区（K）。只在「TEC 加热」不启用时用到：目标比当前温度低不到这个数不算降温（加热棒关着自然凉）。</summary>
         public const string Band = "热源死区";
+        /// <summary>
+        /// 冷水机开没开（手动开关，软件不能自动，用户定的）：「已关」（默认）/「已开」。TEC 没有冷却水不能开——
+        /// 降温挡只有标成「已开」才合 TEC 功率线；升温挡不看它（升温、保温一律只用加热棒）。属性栏上改了当拍生效。
+        /// </summary>
+        public const string Chiller = "冷水机";
         /// <summary>
         /// TEC 功率线经不经 IO8R 的继电器。现场电气定的（2026-09-21）：经——DO6 = 工位 A、
         /// DO7 = 工位 B，闭合 TEC 才有电。从前这两只没人合，现场「降温没反应」就是它。
@@ -77,7 +82,7 @@ public sealed class DualStationDriver : IDeviceDriver
         ChannelsPerDevice = 2,
         SimulatorIncluded = false,
         IconKey = "rd105",
-        Description = "RD105 双路夹套控温 + IO8R 热源切换（TEC ⇄ 电加热）。" +
+        Description = "RD105 双路夹套控温 + IO8R 热源切换（升温挡 = 电加热棒、降温挡 = TEC 制冷）。" +
                       "釜内 Tr 与 pH 由宇电探头设备各自采集，插到工位上即归该路。",
         Capabilities = new[] { nameof(ITemperatureControl), nameof(IRefluxControl), nameof(ITemperatureTuning) }
     };
@@ -126,15 +131,24 @@ public sealed class DualStationDriver : IDeviceDriver
         // 加热棒是交流 + 固态继电器：出厂 10 Hz 功率只有 10 % 一档，保温段来回擦。缺省 1 Hz（2 % 一档）；
         // 加热棒功率明显大于保温所需的机器选 0.5 Hz
         Field.Sel(Rd105TecDriver.FieldFpwm, "PWM 输出频率", Rd105TecDriver.FpwmOptions, "1 Hz") with { Tip = Rd105TecDriver.FpwmTip },
-        // TEC 的反向输出加热启不启用。默认「不启用」：TEC 只当冷源，所有加热都走电加热棒，
-        // 继电器按「这一刻该升温还是该降温」切。启用后才回到「只有超过阈值才切电加热」那套
+        // TEC 的反向输出加热启不启用。默认「不启用」（这台机器 TEC 的反向那一极接的是加热棒 SSR，TEC 只能制冷）：
+        // 升温系统 = 加热棒（负占空比、按功率调）、降温系统 = TEC（正占空比、按功率调），下发目标时按方向定挡（0333）。
+        // 启用后才回到「只有超过阈值才切电加热」那套
         Field.Sel(Fields.TecHeat, "TEC 加热", new[] { "不启用", "启用" }, "不启用"),
+        // 冷水机是手动开关、软件不能自动（用户定的）：这里是人告诉软件它开没开。降温挡只有「已开」才合 TEC 功率线——
+        // 没有冷却水不能开 TEC；升温 / 保温不看它（一律只用加热棒，不用 TEC 防过冲）
+        Field.Sel(Fields.Chiller, "冷水机", new[] { "已关", "已开" }, "已关")
+            with { Tip = "冷水机是手动开关的，软件不知道它开没开——开了就把这里改成「已开」（当拍生效，不用断开重连）。" +
+                         "降温目标只有标成「已开」才接 TEC 制冷；标「已关」时降温只能关加热棒自然凉，到了目标加热棒接手维持。" +
+                         "升温、保温阶段不看它：加热过程里不用 TEC 降温（冷水机没开）。关冷水机之前先把这里改回「已关」，TEC 功率线当拍断开" },
         // 上限 90 是死的（用户定的：只能比 90 小）——TEC 通路的工程上限
         Field.Num(Fields.Threshold, "电加热切换阈值", 90, "℃", 40, 90, 1),
         Field.Num(Fields.Hysteresis, "回切滞回", 5, "K", 2, 20, 1),
-        // 冷热判定的死区：|目标 − 夹套| 在这个带子里就当作「到了」，保持当前热源不动。
-        // 没有它，恒温时目标在实测上下擦来擦去，继电器会跟着抖
-        Field.Num(Fields.Band, "热源切换死区", 2, "K", 0.5, 10, 0.5),
+        // 升降温死区：下发目标时目标比当前温度低不到这个数就不算降温（加热棒关着自然凉那几分之一度，不值得接 TEC），
+        // 其余按升温挡；「TEC 加热」启用时不用
+        Field.Num(Fields.Band, "升降温死区", 2, "K", 0.5, 10, 0.5)
+            with { Tip = "下发目标时按它定挡：目标比当前温度（釜内串级看 Tr，其余看夹套）低超过这个数才算降温挡（TEC 制冷）；" +
+                         "低得不到这个数、或高于当前温度都是升温挡（只用加热棒）。挡位下发时定，中途温度漂动不换挡" },
         Field.Sel(Fields.Feedback, "切换反馈", new[] { "无", "有" }, "无"),
         Field.Num(Fields.DoA, "切换 DO·工位 A", 0, "", 0, 7, 1),
         Field.Num(Fields.DoB, "切换 DO·工位 B", 1, "", 0, 7, 1),
@@ -144,18 +158,19 @@ public sealed class DualStationDriver : IDeviceDriver
         // 不闭合 TEC 就没电——制冷、TEC 加热都不动。从前这两只没人管，现场「降温没反应」就是它。
         // 用户定的：不常合，不控温就断着；打开温控后要降温才合它、要升温合加热棒那只
         Field.Sel(Fields.TecRelay, "TEC 功率继电器", new[] { "有", "无" }, "有")
-            with { Tip = "TEC 的功率线经 IO8R 继电器接通（闭合 = TEC 有电）。默认断着；打开温控后要降温（或 TEC 加热）才合它，要升温合加热棒那只，两只从不同时合；停控 / 安全停机断开。功率线是硬线直连、不经继电器的机器选「无」" },
+            with { Tip = "TEC 的功率线经 IO8R 继电器接通（闭合 = TEC 有电）。默认断着；降温挡且「冷水机」已开才合它，升温挡合加热棒那只，两只从不同时合；停控 / 安全停机断开。功率线是硬线直连、不经继电器的机器选「无」" },
         Field.Num(Fields.TecDoA, "TEC 功率 DO·工位 A", 6, "", 0, 7, 1),
         Field.Num(Fields.TecDoB, "TEC 功率 DO·工位 B", 7, "", 0, 7, 1)
     })
     {
         Tip = "超温上限就是电加热模式的最高温度——写进 RD105 自己的保护寄存器，断了通信照样生效，" +
-              "任何目标温度都不得超过它。「TEC 加热」默认不启用：TEC 只当冷源，升温一律切电加热棒，" +
-              "「切换阈值」这时不参与判断（只剩「夹套凉到阈值−滞回 才准接回 TEC」这条保护）；" +
+              "任何目标温度都不得超过它。「TEC 加热」默认不启用：升温系统 = 加热棒、降温系统 = TEC，下发目标时按方向定挡——" +
+              "升温挡只用加热棒（过冲靠加热棒提前收功率、过了头关加热棒自然凉，不接 TEC），降温挡「冷水机」已开且夹套凉到" +
+              "阈值−滞回 以下才合 TEC，TEC 收到 0 温度还往下就交给加热棒维持；「切换阈值」只剩那条保护。" +
               "启用后才是「目标超过阈值才切电加热」。切换阈值只能往下调（≤ 90 ℃）。「切换反馈」接了电加热" +
               "接触器辅助触点才选「有」——没接选「有」会让每次切换都等 2 秒然后报失败。" +
-              "TEC 功率线经 IO8R 的 DO6（A）/ DO7（B）（现场电气定的）：不控温就断着，打开温控后要降温才合它、" +
-              "要升温合加热棒那只，停控 / 安全停机断开；IO8R 打不开时这台既不能制冷也不能加热，控温目标会被拒绝。"
+              "TEC 功率线经 IO8R 的 DO6（A）/ DO7（B）（现场电气定的）：不控温就断着，停控 / 安全停机断开；" +
+              "IO8R 打不开时这台既不能制冷也不能加热，控温目标会被拒绝。"
     };
 
     /// <summary>指令是静态声明的，没连硬件也要能编辑配方（§3.3）。这台真机没有搅拌，不认领搅拌指令。</summary>

@@ -312,13 +312,13 @@ public class Rd105HostControlTests
         // 「TEC 加热」不启用：TEC 侧从前按双向算——夹套低于设定 PID 往正半轴要「加热」，物理上那一极是断着的加热棒 SSR，
         // 积分白攒；等真要制冷时先得把它退掉。现在回路形态是只制冷：限幅 [−上限, 0]
         var b = new Duo();
-        await using var s = await b.Drv.OpenAsync(Duo.Conn(), b.Ctx(), CancellationToken.None);
+        await using var s = await b.Drv.OpenAsync(Duo.Conn(), b.Ctx(Duo.ChillerOn()), CancellationToken.None);
         await s.StartAsync(CancellationToken.None);
         var t = Temp(s, 0);
         var bench = s.CapabilitiesOf(0).OfType<IPidTuningBench>().Single();
         await WaitUntil(() => !double.IsNaN(t.CurrentJacket), 3000, "夹套读数");
 
-        await t.SetTargetAsync(new TempTarget(20, TempChannelKind.Jacket), CancellationToken.None);   // 环境 25：TEC 侧
+        await t.SetTargetAsync(new TempTarget(20, TempChannelKind.Jacket), CancellationToken.None);   // 环境 25：降温挡，冷水机已开 → TEC 侧
         Assert.True(b.Io.Coils[6]);
         await WaitUntil(() => b.Rd.Get(1, "PWMDUTY") > 0, 3000, "制冷（反向配置下制冷是正的）");
         await WaitUntil(() => t.CurrentJacket < 22, 20000, () => $"夹套往 20 走（{t.CurrentJacket:F2}）");
@@ -486,7 +486,9 @@ public class Rd105HostControlTests
         var path = ((DuoSession)s).InnerLoopLogPath(0);
         await t.StopAsync(CancellationToken.None);
         var lines = File.ReadAllLines(path!);
-        Assert.Contains(lines.Skip(1), l => l.Split(',')[18] == "电加热" && l.Split(',')[15] == "加热棒");
+        // 热源侧·挡位·冷水机（0333）：事后看「那一炉为什么没制冷」就靠这一列
+        Assert.Contains(lines.Skip(1), l => l.Split(',')[18] == "电加热·升温挡·冷水机关" && l.Split(',')[15] == "加热棒");
+        Assert.Contains(lines.Skip(1), l => l.Split(',')[19].Contains("升温挡"));        // 定挡那句跟在「开始」后面
 
         var (drv, dev) = Standalone();
         dev.Set(null, "FPWM", 2);
@@ -660,13 +662,16 @@ public class Rd105HostControlTests
         };
 
         public static ParameterSet Conn() => ParameterSet.Of((Rd105TecDriver.FieldPeriod, 200d), (DualStationDriver.Fields.Tick, 200d));
+
+        /// <summary>「冷水机」标为已开（0333：降温挡只有标成已开才合 TEC 功率线；缺省已关）。</summary>
+        public static ParameterSet ChillerOn() => ParameterSet.Of((DualStationDriver.Fields.Chiller, "已开"));
     }
 
     [Fact]
     public async Task 主机缺省上位机PID_升温切加热棒_占空比负_降温回TEC_占空比正()
     {
         var b = new Duo();
-        await using var s = await b.Drv.OpenAsync(Duo.Conn(), b.Ctx(), CancellationToken.None);
+        await using var s = await b.Drv.OpenAsync(Duo.Conn(), b.Ctx(Duo.ChillerOn()), CancellationToken.None);
         await s.StartAsync(CancellationToken.None);
         var t = Temp(s, 0);
         await WaitUntil(() => !double.IsNaN(t.CurrentJacket), 3000, "夹套读数");
@@ -709,6 +714,92 @@ public class Rd105HostControlTests
         Assert.False(b.Io.Coils[6], "不该切到 TEC");
         Assert.DoesNotContain(b.Logs, l => l.Contains("已切至TEC"));
         Assert.True(St(t).Active);
+    }
+
+    [Fact]
+    public async Task 升温挡_釜内串级_釜温冲过目标_加热棒收到0_不接TEC()
+    {
+        // 用户定的（0333）：加热过程里不用 TEC 降温——冷水机没开，TEC 没水不能开。过冲就是加热棒收到 0 自然凉
+        var b = new Duo();
+        await using var s = await b.Drv.OpenAsync(Duo.Conn(), b.Ctx(Duo.ChillerOn()), CancellationToken.None);   // 就算标着冷水机开也不接
+        await s.StartAsync(CancellationToken.None);
+        var t = Temp(s, 0);
+        await WaitUntil(() => !double.IsNaN(t.CurrentJacket), 3000, "夹套读数");
+        using var feed = new TrFeeder(s, 1, 20.0);
+        await Task.Delay(100);
+
+        await t.SetTargetAsync(new TempTarget(30, TempChannelKind.Reactor), CancellationToken.None);
+        Assert.True(b.Io.Coils[0]);
+        Assert.Equal("升温挡（只用加热棒）", ((IHeatSource)t).Regime);
+        await WaitUntil(() => b.Rd.Get(1, "PWMDUTY") < 0, 3000, "加热");
+
+        // 放热：釜温冲到 34（高过目标 4 K，夹套还在 30 以下）——外环要夹套往下、内环只加热出 0，继电器不动
+        Volatile.Write(ref feed.Value, 34.0);
+        await WaitUntil(() => b.Rd.Get(1, "PWMDUTY") == 0, 8000, () => $"加热棒收到 0（占空比 {b.Rd.Get(1, "PWMDUTY")}）");
+        await Task.Delay(1500);                            // 采集循环 200 ms 一拍：够它「想」换挡好几回
+        Assert.True(b.Io.Coils[0], "加热棒继电器不该断");
+        Assert.False(b.Io.Coils[6], "升温挡里不许接 TEC");
+        Assert.DoesNotContain(b.Logs, l => l.Contains("已切至TEC") || l.Contains("降温挡："));
+        Assert.True(St(t).Active);
+        Assert.Equal("升温挡（只用加热棒）", ((IHeatSource)t).Regime);
+    }
+
+    [Fact]
+    public async Task 降温挡_TEC收到0温度仍不高于目标够交接时间_交给加热棒_不回头()
+    {
+        var b = new Duo();
+        await using var s = await b.Drv.OpenAsync(Duo.Conn(), b.Ctx(Duo.ChillerOn()), CancellationToken.None);
+        await s.StartAsync(CancellationToken.None);
+        ((DuoSession)s).HandoverDwell = TimeSpan.FromSeconds(1);
+        var t = Temp(s, 0);
+        await WaitUntil(() => !double.IsNaN(t.CurrentJacket), 3000, "夹套读数");
+
+        await t.SetTargetAsync(new TempTarget(20, TempChannelKind.Jacket), CancellationToken.None);   // 25 → 20：降温挡
+        Assert.True(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[0]);
+        Assert.Equal("降温挡（TEC 制冷）", ((IHeatSource)t).Regime);
+        await WaitUntil(() => b.Rd.Get(1, "PWMDUTY") > 0, 3000, "制冷");
+
+        // 夹套被冷却水拉到 15（低于目标 5 K）：只制冷的回路贴着 0、想加热给不了。过了交接时间交给加热棒——
+        // 要维持的 20 ℃ 高于冷却水能给的平衡点，TEC 再等也等不来热
+        b.Rd.Set(1, "TCADJTEMP", 15_00000);
+        await WaitUntil(() => b.Io.Coils[0] && !b.Io.Coils[6], 6000, () => $"交给加热棒（DO0 {b.Io.Coils[0]} DO6 {b.Io.Coils[6]}）\n" + string.Join("\n", b.Logs.TakeLast(8)));
+        Assert.Contains(b.Logs, l => l.Contains("降温挡 → 升温挡") && l.Contains("TEC 已收到 0"));
+        Assert.Equal("升温挡（只用加热棒）", ((IHeatSource)t).Regime);
+        await WaitUntil(() => b.Rd.Get(1, "PWMDUTY") < 0, 4000, "加热棒出力（负占空比）");
+        Assert.True(St(t).Active);
+
+        // 不回头：夹套又漂到 24（高过目标 4 K）——加热棒收到 0，不再接 TEC
+        b.Rd.Set(1, "TCADJTEMP", 24_00000);
+        await WaitUntil(() => b.Rd.Get(1, "PWMDUTY") == 0, 6000, "加热棒收到 0");
+        await Task.Delay(1500);
+        Assert.True(b.Io.Coils[0]);
+        Assert.False(b.Io.Coils[6]);
+        Assert.Single(b.Logs, l => l.Contains("降温挡 → 升温挡"));
+    }
+
+    [Fact]
+    public async Task 自整定建议看冷水机_关着只建议加热棒_TEC整定拒绝并说清()
+    {
+        var b = new Duo();
+        var cfg = new ParameterSet();                      // 冷水机缺省已关
+        await using var s = await b.Drv.OpenAsync(Duo.Conn(), b.Ctx(cfg), CancellationToken.None);
+        await s.StartAsync(CancellationToken.None);
+        var t = Temp(s, 0);
+        var bench = s.CapabilitiesOf(0).OfType<IPidTuningBench>().Single();
+        await WaitUntil(() => !double.IsNaN(t.CurrentJacket), 3000, "夹套读数");
+
+        Assert.Equal(PidActuator.Heater, bench.SuggestActuator(10));       // 比夹套 25 低得多也只能加热棒：TEC 没水
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => bench.StartAutoTuneAsync(new PidAutoTuneRequest(10, PidActuator.Tec, 20, 0.05), CancellationToken.None));
+        Assert.Contains("冷水机", ex.Message);
+        Assert.False(b.Io.Coils[6]);
+
+        cfg[DualStationDriver.Fields.Chiller] = "已开";
+        await Task.Delay(500);                             // 采集循环重读配置
+        Assert.Equal(PidActuator.Tec, bench.SuggestActuator(10));
+        Assert.Equal(PidActuator.Heater, bench.SuggestActuator(24));       // 差不到一个死区：维持要靠加热棒
+        Assert.Equal(PidActuator.Heater, bench.SuggestActuator(60));
     }
 
     [Fact]

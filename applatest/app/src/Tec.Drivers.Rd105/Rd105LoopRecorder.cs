@@ -39,7 +39,7 @@ public sealed class Rd105LoopRecorder : IDisposable
 
     public bool Active { get { lock (_gate) return _w is not null; } }
 
-    /// <summary>下发目标：开一个新文件（已经在记就只记一行「目标改为」）。</summary>
+    /// <summary>下发目标：开一个新文件（已经在记就只记一行「目标改为」）。开文件之前攒下的事件（组合会话定挡那句）跟在「开始」后面。</summary>
     public void Start(string kind, double setpoint, string how)
     {
         lock (_gate)
@@ -49,6 +49,8 @@ public sealed class Rd105LoopRecorder : IDisposable
                 _pendingNote = Join(_pendingNote, $"目标改为 {setpoint:0.##} ℃（{kind}，{how}）");
                 return;
             }
+            var before = _pendingNote;
+            _pendingNote = null;
             try
             {
                 var dir = Rd105HostControl.LoopLogDir;
@@ -59,7 +61,7 @@ public sealed class Rd105LoopRecorder : IDisposable
                 _w.WriteLine(Header);
                 _startedAt = DateTimeOffset.Now;
                 _rows = 0;
-                _pendingNote = $"开始：{kind} {setpoint:0.##} ℃（{how}）";
+                _pendingNote = Join($"开始：{kind} {setpoint:0.##} ℃（{how}）", before ?? "");
                 _log("info", $"{_instanceId} TC{_tc} 控温记录 → {_path}");
                 Prune(dir);
             }
@@ -72,10 +74,10 @@ public sealed class Rd105LoopRecorder : IDisposable
         }
     }
 
-    /// <summary>回路的提示 / 停控原因这类事件：挂到下一行的 note 里。</summary>
+    /// <summary>回路的提示 / 停控原因 / 组合会话的定挡这类事件：挂到下一行的 note 里。还没开文件的（下发目标先定挡再开文件）攒着，开了跟在「开始」后面。</summary>
     public void Note(string text)
     {
-        lock (_gate) if (_w is not null) _pendingNote = Join(_pendingNote, text);
+        lock (_gate) _pendingNote = Join(_pendingNote, text);
     }
 
     /// <summary>回路每拍一行。</summary>
@@ -160,7 +162,8 @@ public sealed class Rd105LoopRecorder : IDisposable
         return s.IndexOfAny(new[] { ',', '"', '\n', '\r' }) >= 0 ? "\"" + s.Replace("\"", "\"\"") + "\"" : s;
     }
 
-    private static string Join(string? a, string b) => string.IsNullOrEmpty(a) ? b : a + "；" + b;
+    private static string Join(string? a, string b)
+        => string.IsNullOrEmpty(a) ? b : string.IsNullOrEmpty(b) ? a : a + "；" + b;
 
     /// <summary>目录里 60 天前的记录删掉（尽力而为），别让它无限长。</summary>
     private static void Prune(string dir)

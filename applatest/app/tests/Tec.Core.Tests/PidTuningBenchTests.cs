@@ -331,6 +331,9 @@ public class PidTuningBenchTests
         };
 
         public static ParameterSet Conn() => ParameterSet.Of((Rd105TecDriver.FieldPeriod, 200d), (DualStationDriver.Fields.Tick, 200d));
+
+        /// <summary>「冷水机」标为已开（0333：TEC 没有冷却水不能开，TEC 那张表只有标成已开才整得了）。</summary>
+        public static ParameterSet ChillerOn() => ParameterSet.Of((DualStationDriver.Fields.Chiller, "已开"));
     }
 
     [Fact]
@@ -338,13 +341,13 @@ public class PidTuningBenchTests
     {
         using var _ = Rd105HostControl.UseGainsDir(NewDir());
         var d = new Duo();
-        await using var s = await d.Drv.OpenAsync(Duo.Conn(), d.Ctx(), CancellationToken.None);
+        await using var s = await d.Drv.OpenAsync(Duo.Conn(), d.Ctx(Duo.ChillerOn()), CancellationToken.None);
         await s.StartAsync(CancellationToken.None);
         var b = Bench(s, 0);
         var t = Temp(s, 0);
         await WaitUntil(() => !double.IsNaN(t.CurrentJacket), 3000, "夹套读数");
 
-        // 建议：阈值以上加热棒；「TEC 加热」不启用时比夹套高一个死区也是加热棒，低的是 TEC
+        // 建议：阈值以上加热棒；「TEC 加热」不启用时比夹套低超过一个死区（要制冷才维持得住）才是 TEC，其余加热棒
         Assert.Equal(PidActuator.Heater, b.SuggestActuator(95));
         Assert.Equal(PidActuator.Heater, b.SuggestActuator(50));
         Assert.Equal(PidActuator.Tec, b.SuggestActuator(5));
@@ -383,7 +386,7 @@ public class PidTuningBenchTests
         using var _ = Rd105HostControl.UseGainsDir(NewDir());
         var d = new Duo();
         d.Rd.Set(1, "LIMITED", 80);
-        await using var s = await d.Drv.OpenAsync(Duo.Conn(), d.Ctx(), CancellationToken.None);
+        await using var s = await d.Drv.OpenAsync(Duo.Conn(), d.Ctx(Duo.ChillerOn()), CancellationToken.None);
         await s.StartAsync(CancellationToken.None);
         var b = Bench(s, 0);
         var t = Temp(s, 0);
@@ -416,7 +419,7 @@ public class PidTuningBenchTests
     {
         using var _ = Rd105HostControl.UseGainsDir(NewDir());
         var d = new Duo();
-        await using var s = await d.Drv.OpenAsync(Duo.Conn(), d.Ctx(), CancellationToken.None);
+        await using var s = await d.Drv.OpenAsync(Duo.Conn(), d.Ctx(Duo.ChillerOn()), CancellationToken.None);
         await s.StartAsync(CancellationToken.None);
         var b = Bench(s, 0);
         var t = Temp(s, 0);

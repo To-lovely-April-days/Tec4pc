@@ -5,7 +5,7 @@ namespace Tec.Drivers.DualStation;
 
 /// <summary>
 /// 一个工位的控温能力：套在 RD105 的 TC 回路外面，唯一多干的一件事是
-/// **下发目标前把热源切到对的一侧**（需求 §2）。控温、限值、判到达全部
+/// **下发目标前定挡、把热源切到对的一侧**（需求 §2）。控温、限值、判到达全部
 /// 委托给里面那路——不复制逻辑，只加切换这一层。
 /// 蒸回流（IRefluxControl）转发给组合会话的跟随环：跟随长在采集循环里，
 /// 这里只是开关和状态。
@@ -40,6 +40,8 @@ public sealed class DuoTempControl : ITemperatureControl, IRefluxControl, IHeatS
     public bool TecHeating => _s.TecHeating;
     public bool ElectricAvailable => _s.ElectricReady;
     public bool OnElectric => _s.OnElectric(_well);
+    /// <summary>升温挡 / 降温挡（0333）——界面印在热源牌子上；没在控 / 「TEC 加热」启用为 null。</summary>
+    public string? Regime => _s.RegimeText(_well);
 
     public double CurrentReactor => Inner.CurrentReactor;
     public double CurrentJacket => Inner.CurrentJacket;
@@ -53,7 +55,7 @@ public sealed class DuoTempControl : ITemperatureControl, IRefluxControl, IHeatS
         _s.StopReflux(_well);   // 明确下发新目标 = 下一步接管，跟随环退位
         try
         {
-            await _s.EnsureSourceAsync(_well, target.Value, ct).ConfigureAwait(false);
+            await _s.EnsureSourceAsync(_well, target.Value, target.Kind, ct).ConfigureAwait(false);
             await Inner.SetTargetAsync(target, ct).ConfigureAwait(false);
         }
         catch
@@ -73,7 +75,7 @@ public sealed class DuoTempControl : ITemperatureControl, IRefluxControl, IHeatS
         _s.StopReflux(_well);
         try
         {
-            await _s.EnsureSourceAsync(_well, target, ct).ConfigureAwait(false);
+            await _s.EnsureSourceAsync(_well, target, kind, ct).ConfigureAwait(false);
             await Inner.RampAsync(target, ratePerMin, kind, ct).ConfigureAwait(false);
         }
         catch

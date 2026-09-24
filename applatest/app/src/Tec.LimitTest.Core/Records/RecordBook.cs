@@ -408,7 +408,7 @@ public sealed class RecordBook : IDisposable
                 break;
             default:
                 list.Add(new(CTarget, "恒温目标 ℃", Blank.Value, FmtC, "工具填：两工位同一个目标"));
-                list.Add(new(CBand, "热源死区 K", Blank.Value, "0.0", "工具从台面配置读的（「热源切换死区」）"));
+                list.Add(new(CBand, "热源死区 K", Blank.Value, "0.0", "工具从台面配置读的（「升降温死区」，0333 前叫「热源切换死区」）"));
                 list.Add(new(CReachA, "A 到达用时 min", Blank.Value, "0.0", "下发到夹套首次进 ±0.5 ℃ 的用时；恒温记录从两路都到之后开始"));
                 list.Add(new(CReachB, "B 到达用时 min", Blank.Value, "0.0", null));
                 break;

@@ -71,6 +71,21 @@ public sealed class Rd105TemperatureControl : ITemperatureControl, ITemperatureS
     /// <summary>这一路的逐拍记录（上位机方式下会话装上）：下发目标开文件、停控收文件。</summary>
     internal Rd105LoopRecorder? Recorder { get; set; }
 
+    /// <summary>组合会话的事件（定挡 / 交接 / 冷水机）挂到逐拍记录的下一行里；没在记就丢掉。</summary>
+    public void Note(string text) => Recorder?.Note(text);
+
+    /// <summary>回路此刻的执行器形态；温控器 PID 方式下没有（null）。</summary>
+    public ActuatorMode? Actuator => _loop?.GetActuatorMode(_tc);
+
+    /// <summary>
+    /// 上位机 PID 这一拍算出的输出（PID 那一侧：反向、加热棒符号都还没动过，限幅 [下限, 上限]）。
+    /// 只制冷形态下贴着上限 0 = 回路想加热而没有加热那一极；温控器 PID 方式下 null。
+    /// </summary>
+    public double? PidOutput => _loop is null ? null : _loop.GetChannelStatus(_tc).LastDutyPercent;
+
+    /// <summary>最近一次写进 / 读回温控器的占空比（%，带符号）；还没有为 NaN。会话每拍刷。</summary>
+    public double LastDuty { get; internal set; } = double.NaN;
+
     /// <summary>
     /// 限值取设备侧的超温保护值，不在界面里写死。
     /// 最大速率按 RD105 的 SPEED 量程与工艺上限取 5 ℃/min（ProfileSegment 也是这个上限）。

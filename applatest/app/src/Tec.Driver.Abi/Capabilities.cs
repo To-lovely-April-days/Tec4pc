@@ -174,6 +174,12 @@ public interface IHeatSource : ICapability
 
     /// <summary>当前在哪一侧：false = TEC，true = 电加热。</summary>
     bool OnElectric { get; }
+
+    /// <summary>
+    /// 这一路此刻在哪个挡（0333）：「升温挡（只用加热棒）」/「降温挡（TEC 制冷）」/「降温挡·冷水机关（自然凉）」……
+    /// 没在控温、或这台机器不分挡（「TEC 加热」启用）就是 null。界面照原话印在热源牌子上。
+    /// </summary>
+    string? Regime => null;
 }
 
 public interface IStirrer : ICapability

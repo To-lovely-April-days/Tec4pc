@@ -116,6 +116,17 @@ public sealed class RuntimeRig : IRig, IDisposable, IAsyncDisposable
     public Task SetTargetAsync(int well, double target, TempChannelKind kind, CancellationToken ct)
         => Temp(well).SetTargetAsync(new TempTarget(target, kind), ct);
 
+    /// <summary>改的是台面设备身上那一份配置本体，主机会话每拍重读——当拍生效，不用断开重连。</summary>
+    public void SetChiller(bool on)
+    {
+        var cfg = _hostDev?.Config;
+        if (cfg is null) return;
+        var v = on ? "已开" : "已关";
+        if (cfg.Has(DualStationDriver.Fields.Chiller) && cfg.Str(DualStationDriver.Fields.Chiller, "已关") == v) return;
+        cfg[DualStationDriver.Fields.Chiller] = v;
+        _log?.Invoke("info", $"台面配置「冷水机」标为{v}（按操作人在「等水」提示上的确认）");
+    }
+
     public Task StopAsync(int well, CancellationToken ct) => Temp(well).StopAsync(ct);
 
     public async Task<IReadOnlyList<string>> SafeStopAsync(CancellationToken ct)
