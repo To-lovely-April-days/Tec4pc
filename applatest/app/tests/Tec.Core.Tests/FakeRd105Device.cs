@@ -35,6 +35,12 @@ public sealed class FakeRd105Device : ISerialTransport
     /// <summary>置 true 后所有查询都不应答，用来验证超时路径。</summary>
     public bool Mute { get; set; }
 
+    /// <summary>
+    /// 像现场那台一样按自己的规矩改写小占空比：非零、绝对值小于这个百分比的 PWMDUTY 存成这个百分比（带符号）并回显。
+    /// 0 = 原样存、原样回显。现场看到：写 −4.41 % 回显 −6.43 %。
+    /// </summary>
+    public double DutyMinPercent { get; set; }
+
     /// <summary>收到过的完整指令，按先后顺序。断言用。</summary>
     public List<string> Commands { get; } = new();
 
@@ -123,7 +129,15 @@ public sealed class FakeRd105Device : ISerialTransport
 
         // 写：存下来并原样回显，真机就是这么答的
         if (key == "DATADEMAND") { ReplyAll(); return; }
-        if (long.TryParse(value, out var v)) _regs[key] = v;
+        if (long.TryParse(value, out var v))
+        {
+            if (key.EndsWith(":PWMDUTY", StringComparison.Ordinal) && v != 0 && DutyMinPercent > 0
+                && Math.Abs(v) / 20_000.0 < DutyMinPercent)
+                v = (long)Math.Round(Math.Sign(v) * DutyMinPercent * 20_000);
+            _regs[key] = v;
+            Reply(key, v.ToString());
+            return;
+        }
         Reply(key, value);
     }
 

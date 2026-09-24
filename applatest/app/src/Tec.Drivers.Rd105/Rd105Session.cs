@@ -270,7 +270,8 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
         for (var i = 0; i < 2; i++)
         {
             var info = infos[i];
-            Push(_temps[i].Channel, "duty", info.DutyPercent, at, Quality.Good);
+            // 曲线上的「控温输出」是温控器回显（实际存下）的那个数；它按自己的规矩改了写入值时，画的是它真出的力
+            Push(_temps[i].Channel, "duty", info.AppliedDutyPercent ?? info.DutyPercent, at, Quality.Good);
             _pids[i]?.OnCycle(info);
             if (info.Active)
             {

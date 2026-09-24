@@ -42,6 +42,9 @@ public sealed record ChannelCycleInfo(
 
     /// <summary>【本地改动】串级外环的釜内 Tr 读数丢了、正在保持（外环冻结、内环设定钳到主设定）：已保持多少秒；没在保持为 null。</summary>
     public double? OuterHoldSeconds { get; init; }
+
+    /// <summary>【本地改动】温控器回显（实际存下）的占空比；跟 DutyPercent 不一样时说明设备按自己的规矩改了。没回显过为 null。</summary>
+    public double? AppliedDutyPercent { get; init; }
 }
 
 /// <summary>一个完整控制周期的结果（后台线程发布）。电流每 4 个周期采样一次，其余周期为 null。</summary>
@@ -256,6 +259,13 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         public int HeaterSign = 1;
 
         public bool Busy => Active || Tuner is not null;
+
+        /// <summary>【本地改动】最近一次写占空比时温控器回显的值（设备实际存下的）。</summary>
+        public double AppliedDutyPercent = double.NaN;
+        /// <summary>【本地改动】回显不符已经说过了（说过就不每拍刷；差值变了 / 隔够久再说一次）。</summary>
+        public bool EchoMismatchSaid;
+        public double EchoOffsetSaid;
+        public long EchoSaidAtTick;
     }
 
     private readonly ChannelState[] _channels = [new(), new()];
@@ -286,9 +296,39 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
     /// <summary>主通道(1)的占空比写入按 SyncMode 决定是否镜像到通道 2。</summary>
     private async Task WriteDutyAsync(int ch, double duty, CancellationToken ct)
     {
-        await controller.SetDutyPercentAsync(ch, duty, ct).ConfigureAwait(false);
+        var echo = await controller.SetDutyPercentAsync(ch, duty, ct).ConfigureAwait(false);
+        NoteDutyEcho(ch, duty, echo);
         if (ch == 1 && SyncMode == ChannelSyncMode.HostMirror)
             await controller.SetDutyPercentAsync(2, duty, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 【本地改动】温控器回显的占空比跟写进去的不一样：记下来、说一声，**不当通信失败**。
+    /// 现场：夹套到温后加热棒只要 4 %，写 −4.41 % 温控器回显 −6.43 %（差 2.02 %），从前这算坏帧 → 重发 → 仍不符 → 抛，
+    /// 连着 20 拍就「连续通信失败」停控——温控器明明在正常工作。差值是设备的规矩（启动电压 / 最小输出），
+    /// PID 的积分会把稳定的偏移吃掉；说清楚差多少，让人去参数窗核。
+    /// </summary>
+    private void NoteDutyEcho(int ch, double written, double echo)
+    {
+        var s = State(ch);
+        s.AppliedDutyPercent = echo;
+        var off = echo - written;
+        if (Math.Abs(off) <= 0.02)                  // PWMDUTY 分辨率 0.00005 %：0.02 以内算对上
+        {
+            if (!s.EchoMismatchSaid) return;
+            s.EchoMismatchSaid = false;
+            ChannelNotice?.Invoke(ch, "info", $"通道{ch}占空比回显又对上了（写 {written:F2} % 回显 {echo:F2} %）");
+            return;
+        }
+        var now = Environment.TickCount64;
+        // 说过就不再说，除非差值变了 0.5 % 以上**而且**离上次说过去了一分钟（有最小输出的温控器差值每拍都在变）
+        if (s.EchoMismatchSaid && (Math.Abs(off - s.EchoOffsetSaid) < 0.5 || now - s.EchoSaidAtTick < 60_000)) return;
+        s.EchoMismatchSaid = true;
+        s.EchoOffsetSaid = off;
+        s.EchoSaidAtTick = now;
+        ChannelNotice?.Invoke(ch, "warn",
+            $"通道{ch}写占空比 {written:F2} %，温控器回显 {echo:F2} %（差 {off:+0.00;-0.00} %）：按回显的算，不当通信失败。" +
+            "差值一直在 2 % 左右多半是参数窗「正向 / 反向启动电压」（不需要就设 0）；只在小占空比时出现是温控器有最小输出，这一段控不细");
     }
 
     /// <summary>【本地改动】按路触发的安全停机（哪一路、为什么）。SafetyTripped 照旧整体发一份。</summary>
@@ -1272,6 +1312,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
             ProfileProgress = profileProgress,
             ProfileName = profileName,
             OuterHoldSeconds = holding ? (snapshot.Timestamp - s.OuterLostSince!.Value).TotalSeconds : null,   // 【本地改动】
+            AppliedDutyPercent = double.IsNaN(s.AppliedDutyPercent) ? null : s.AppliedDutyPercent,
         };
     }
 

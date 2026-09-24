@@ -1109,6 +1109,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
         TcVal = Tag("Tc");
         TorqueVal = Tag("torque");
         HeatState = Tag("heat") is { } hs ? (int)Math.Round(hs) : -1;
+        _tecPwr = Tag("tecpwr");
         FlowVal = Dose is null ? null : Tag("flow") ?? 0;
         PhVal = ReadPh();
         TrRate = MeasuredTrRate();
@@ -1294,11 +1295,13 @@ public sealed class HmiZoneViewModel : ViewModelBase
     public bool HeatHot => HeatState > 0;
     /// <summary>「TEC 加热」没启用时 TEC 侧只有冷源——这一刻升不上去，牌子上就得写出来。</summary>
     private bool CoolOnly => Heat is { TecHeating: false };
+    /// <summary>TEC 功率线（标签 tecpwr，经继电器的机器才有）：0 = 断着。热源 0 + 功率线断 = 两只继电器都断着，不是「在 TEC 侧」。</summary>
+    private double? _tecPwr;
     public string HeatText => HeatState switch
     {
         1 => "电加热（未核实）",
         2 => "电加热（已核实）",
-        0 => CoolOnly ? "TEC（只制冷）" : "TEC",
+        0 => _tecPwr == 0 ? "全断（加热棒与 TEC 都没接通）" : CoolOnly ? "TEC（只制冷）" : "TEC",
         _ => ""
     };
     public bool ModeTr => Mode == "Tr";

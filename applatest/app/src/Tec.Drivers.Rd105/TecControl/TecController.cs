@@ -83,9 +83,13 @@ public sealed class TecController(TecClient client) : IDisposable
     public Task SetModeAsync(int ch, int mode, CancellationToken ct = default) =>
         client.SetAsync(ch, TecCmd.Mode, mode, ct);
 
-    /// <summary>写输出占空比（PWMDUTY，±100%）。设备须处于 MODE=3（通信设定电压百分比）。</summary>
-    public Task SetDutyPercentAsync(int ch, double percent, CancellationToken ct = default) =>
-        client.SetAsync(ch, TecCmd.PwmDuty, TecScale.DutyPercentToRaw(Math.Clamp(percent, -100, 100)), ct);
+    /// <summary>
+    /// 写输出占空比（PWMDUTY，±100%）。设备须处于 MODE=3（通信设定电压百分比）。
+    /// 【本地改动】返回设备回显（实际存下）的占空比；回显不符不再当失败——由回路记下来、按回显算（TecClient.SetEchoAsync）。
+    /// </summary>
+    public async Task<double> SetDutyPercentAsync(int ch, double percent, CancellationToken ct = default) =>
+        TecScale.DutyPercentFromRaw(await client.SetEchoAsync(ch, TecCmd.PwmDuty,
+            TecScale.DutyPercentToRaw(Math.Clamp(percent, -100, 100)), ct).ConfigureAwait(false));
 
     public async Task<double> ReadDutyPercentAsync(int ch, CancellationToken ct = default) =>
         TecScale.DutyPercentFromRaw(await client.QueryAsync(ch, TecCmd.PwmDuty, ct).ConfigureAwait(false));

@@ -78,6 +78,16 @@ public sealed class TecClient(ISerialTransport transport) : IDisposable
             return null;
         }, ct);
 
+    /// <summary>
+    /// 【本地改动】写、然后把设备回显（实际存下）的值原样带回来，回显不符**不抛**。控温回路写 PWMDUTY 用它：
+    /// 现场 RD105 在 MODE=3 下会按自己的规矩改写小占空比（写 −4.41 % 回显 −6.43 %），那不是通信坏了，是设备的意思——
+    /// 照它的算、记下来，别当断链停控（从前回显不符 = 坏帧 → 重发 → 仍不符 → 抛 → 连着 20 拍就停控，现场撞上了）。
+    /// 坏帧照旧重发。
+    /// </summary>
+    public Task<long> SetEchoAsync(int? channel, string name, long value, CancellationToken ct = default) =>
+        ExecParsedAsync(TecAscii.BuildSet(channel, name, value),
+            reply => TecAscii.GetField(reply, channel, name), ct);
+
     /// <summary>发送一条原始指令并返回完整应答文本（瞬时无应答自动重试）。</summary>
     public async Task<string> ExecAsync(string command, CancellationToken ct = default)
     {

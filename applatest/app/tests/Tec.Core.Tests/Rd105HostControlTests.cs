@@ -273,6 +273,38 @@ public class Rd105HostControlTests
     }
 
     [Fact]
+    public async Task 温控器改写小占空比_回显不符不当通信失败_说一次_曲线画回显()
+    {
+        // 现场：夹套到温后加热棒只要 4 %，写 −4.41 % 温控器回显 −6.43 %——从前算坏帧、连着 20 拍就「连续通信失败」停控
+        var (drv, dev) = Standalone();
+        dev.HeatSign = -1;
+        dev.DutyMinPercent = 6.43;
+        var logs = new List<string>();
+        var cfg = HostCfg((Rd105TecDriver.FieldInvert, Rd105TecDriver.InvertYes));
+        await using var s = await drv.OpenAsync(Conn(), Ctx(cfg, logs), CancellationToken.None);
+        await s.StartAsync(CancellationToken.None);
+        var t = Temp(s, 0);
+        await WaitUntil(() => !double.IsNaN(t.CurrentJacket), 3000, "夹套读数");
+        var got = new List<Sample>();
+        using var sub = s.Samples.Subscribe(new Collect(x => { lock (got) got.Add(x); }));
+        string? why = null;
+        ((Rd105Session)s).TempOf(0).Tripped += r => why = r;
+
+        // 环境 25、目标 25.3：维持它只要零点几个百分点——全在温控器的「最小输出」之下，每一拍回显都不符
+        await t.SetTargetAsync(new TempTarget(25.3, TempChannelKind.Jacket), CancellationToken.None);
+        await Task.Delay(6000);                            // 200 ms 一拍：30 拍，比「连续 20 拍」多
+        Assert.Null(why);
+        Assert.True(St(t).Active);
+        Assert.DoesNotContain(logs, l => l.Contains("轮询异常"));
+        Assert.Single(logs, l => l.Contains("温控器回显") && l.Contains("不当通信失败"));   // 说一次，不每拍刷
+        lock (got) Assert.Contains(got, x => x.Tag == "duty" && Math.Abs(Math.Abs(x.Value) - 6.43) < 0.01);   // 画的是回显
+
+        dev.DutyMinPercent = 0;                            // 参数窗把启动电压改回 0 之后：对上了，再说一次
+        await WaitUntil(() => logs.Any(l => l.Contains("回显又对上了")), 4000, "回显对上");
+        await t.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
     public async Task 上位机整定口子_两路各看自己的Tr_不越界()
     {
         // for 循环变量被 lambda 捕获：循环跑完 i == 2，调用时 _temps[2] 越界（IndexOutOfRangeException）
