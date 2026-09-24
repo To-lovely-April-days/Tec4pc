@@ -1348,13 +1348,15 @@ public sealed class DualStationDriverTests
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         Assert.True(double.IsNaN(t.CurrentReactor));
         lock (got) Assert.DoesNotContain(got, x => x.Tag == "dT");
-        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("没有新数") && l.Text.Contains("按无效处置"));
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("没有新数") && l.Text.Contains("按无效处置") && l.Text.Contains("钳到釜内设定"));
 
+        b.Now = b.Now.AddSeconds(4);
         Feed(s, 1, 31.0);                                  // 口子回来了
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         await s.StopAsync(CancellationToken.None);
         Assert.Equal(31.0, t.CurrentReactor);
         lock (got) Assert.Contains(got, x => x.Tag == "dT");
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Level == "info" && l.Text.Contains("釜内 Tr 恢复（中断 4 s"));
     }
 
     // ── 回路状态口子（ITemperatureStatus）：面板重开 / 程序重启后拿它对账 ──────────

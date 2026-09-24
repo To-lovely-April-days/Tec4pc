@@ -9,7 +9,8 @@ namespace Tec.Driver.Abi;
 /// </summary>
 public static class Txt
 {
-    public static string Fx(double v) => v.ToString("0.##", CultureInfo.InvariantCulture);
+    // NaN 是「没读到」，不是一个数——印出来就是「—」，别让「目标 NaN ℃」进日志和弹窗
+    public static string Fx(double v) => double.IsNaN(v) ? "—" : v.ToString("0.##", CultureInfo.InvariantCulture);
 
     public static string Fx(object? v)
         => v is null ? "" : v is double d ? Fx(d) : Convert.ToString(v, CultureInfo.InvariantCulture) ?? "";

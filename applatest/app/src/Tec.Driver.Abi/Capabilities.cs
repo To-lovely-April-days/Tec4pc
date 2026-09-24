@@ -75,6 +75,18 @@ public interface ITemperatureStatus : ICapability
     /// 不是串级 / 没在控 / 设备不报就是 null（缺省 null），不拿目标冒充。
     /// </summary>
     double? CascadeInnerSetpoint => null;
+
+    /// <summary>
+    /// 回路正在「保持」的说明——串级外环的釜内 Tr 读数丢了、等它回来那一段（夹套设定钳到釜内设定）；
+    /// 没在保持就是 null（缺省 null）。面板拿它提示，不拿它当停控。
+    /// </summary>
+    string? Holding => null;
+
+    /// <summary>
+    /// 最近一次被回路**自己**停下的原因（Tr 丢失超过宽限 / 跑飞 / 连续通信失败）；人手停的、重新下发之后为 null
+    /// （缺省 null）。面板对账发现回路停了，拿它把「为什么停」说出来。
+    /// </summary>
+    string? LastStop => null;
 }
 
 /// <summary>自整定当前的状态。</summary>

@@ -29,6 +29,8 @@ public sealed class Rd105TecDriver : IDeviceDriver
     public const string FieldAddress = "站号";
     public const string FieldParity = "校验";
     public const string FieldPeriod = "控制周期";
+    /// <summary>串级（釜内）控温时釜内 Tr 读数断了先保持多久再停控（秒，0 = 当拍停控）。</summary>
+    public const string FieldTrGrace = "Tr 丢失宽限";
     public const string FieldOverUp = "超温上限";
     public const string FieldOverLow = "超温下限";
     public const string FieldMaxCurrent = "最大电流";
@@ -86,7 +88,10 @@ public sealed class Rd105TecDriver : IDeviceDriver
             with { Tip = "接 TTL 口选 ASCII，接 RS485 口选 Modbus-RTU（协议 §2）。选错了点「连接」会换着试一遍并告诉你该改成什么" },
         Field.Num(FieldAddress, "站号", DefaultAddress, "", 1, 247, 1)
             with { Tip = "只在 Modbus-RTU 下用，出厂 1（协议 §3.5.3）" },
-        Field.Num(FieldPeriod, "控制周期", 500, "ms", 200, 5000, 100)
+        Field.Num(FieldPeriod, "控制周期", 500, "ms", 200, 5000, 100),
+        Field.Num(FieldTrGrace, "Tr 丢失宽限", 30, "s", 0, 120, 5)
+            with { Tip = "上位机 PID、釜内（串级）控温时釜内 Tr 读数断了：夹套设定先钳到釜内设定保持这么久，回来就接着控，" +
+                         "回不来才停控。0 = 断了当拍停控。Tr 由探头会话喂进来，10 s 没新数就算断" }
     })
     {
         Tip = "帧格式固定 8N1。点「测试连接」会真的开口子读型号与固件版本——" +

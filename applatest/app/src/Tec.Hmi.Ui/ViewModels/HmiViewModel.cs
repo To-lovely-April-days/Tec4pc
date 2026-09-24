@@ -1101,8 +1101,9 @@ public sealed class HmiZoneViewModel : ViewModelBase
     public void Refresh()
     {
         RefreshLink();
-        TrVal = Temp?.CurrentReactor;
-        TjVal = Temp?.CurrentJacket;
+        // NaN 是「没读到」：进面板一律当 null，别让它漏到 Sg / 温差 / 徽章 / 带过去的目标里（截图里的「−NaN K」）
+        TrVal = Nz(Temp?.CurrentReactor);
+        TjVal = Nz(Temp?.CurrentJacket);
         RpmVal = Stir?.CurrentRpm ?? 0;
         TotalVal = Dose?.TotalVolume;
         TcVal = Tag("Tc");
@@ -1123,6 +1124,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
         EngineRunning = r?.State is Tec.Core.Records.ChannelRunState.Running
                                   or Tec.Core.Records.ChannelRunState.Paused;
         SyncWithLoop();
+        RefreshLoopNotice();
         // 程序在跑 = 温控当然是开的，不用等面板那个开关也被按下
         Therm = !(TempOn || EngineRunning) ? 0
             : Tag("Tset") is { } sp && TrVal is { } tr
@@ -1137,7 +1139,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
         // 没连上就不写「待机」——待机是连着的机器闲着，跟没连上不是一回事
         HeadRt = EngineRunning && run is not null
             ? Fmt.Hms(run.Elapsed(_ws.Clock.Now))
-            : ThermOn ? "" : !LinkOk ? LinkShort : TempOn ? "控温中" : "待机";
+            : ThermOn ? "" : !LinkOk ? LinkShort : TempOn ? (_holdingOn ? "控温中 · 等 Tr" : "控温中") : "待机";
         HeadCtl = EngineRunning ? "程序控制" : "手动控制";
         // 有 t=0 标记时把「标记 X +时长」缀在右上（原型 zHead 的 rt 段）
         if (MarkText.Length > 0)
@@ -1159,7 +1161,10 @@ public sealed class HmiZoneViewModel : ViewModelBase
         {
             HeadPct = 0;
             // 待机时把「温控开关关着」说在头上：设定值填了、下发了、机器没动，八成是这个开关
-            HeadNote = !LinkOk ? LinkText : TempOn ? "手动控制 · 温控中" : "手动待机 · 温控开关关着（打开才下发目标）";
+            HeadNote = !LinkOk ? LinkText
+                : TempOn ? (_holdingOn ? "手动控制 · 温控中 · 等釜内 Tr 回来" : "手动控制 · 温控中")
+                : LoopNotice is not null ? "手动待机 · 回路自己停了控温（原因见下）"
+                : "手动待机 · 温控开关关着（打开才下发目标）";
         }
         RaiseZone();
     }
@@ -1167,6 +1172,41 @@ public sealed class HmiZoneViewModel : ViewModelBase
     private double? Tag(string tag)
         => _ws.Pipeline.TryLatest(Number, tag, _ws.Clock.Now, out var s)
            && s.Quality is Quality.Good or Quality.Simulated ? s.Value : null;
+
+    private static double? Nz(double? v) => v is { } x && !double.IsNaN(x) ? x : null;
+
+    // ── 回路自己要说的话：保持中（串级丢了釜内 Tr）/ 自己停了（为什么）────────
+    //
+    // 现场：釜内 50 ℃ 串级升温，探头样本断了 10 s，回路停控——面板上只剩「温控」开关自己灭了，原因只在设备日志里。
+    // 回路的这两句从 ITemperatureStatus 读：保持中每秒带秒数刷（只比「有 / 无」，别比文本）；
+    // 停了而且是回路自己停的，把原因摆在面板上（控制页温控卡与趋势页顶上各一条琥珀色）
+
+    /// <summary>回路此刻要说的一句话；没话说就是 null。</summary>
+    public string? LoopNotice { get; private set; }
+    private bool _holdingOn;
+
+    private void RefreshLoopNotice()
+    {
+        var st = Temp as ITemperatureStatus;
+        var holding = st?.Holding;
+        var on = holding is not null;
+        if (on != _holdingOn)
+        {
+            _holdingOn = on;
+            if (on)
+            {
+                Log("回路", "釜内 Tr 读数丢失，夹套设定钳到釜内设定保持，等它回来");
+                _owner.Toast("釜内 Tr 读数丢失，夹套设定已钳到釜内设定，宽限内回来自动继续");
+            }
+            else if (st is { Active: true })
+            {
+                Log("回路", "釜内 Tr 已恢复，串级继续");
+                _owner.Toast("釜内 Tr 已恢复，串级继续");
+            }
+        }
+        LoopNotice = holding
+            ?? (!(TempOn || EngineRunning) && st?.LastStop is { } why ? $"回路自己停了控温：{why}" : null);
+    }
 
     // ── 面板开关 ⇄ 回路真实状态对账 ─────────────────────────────────
     //
@@ -1200,7 +1240,13 @@ public sealed class HmiZoneViewModel : ViewModelBase
         else
         {
             TempOn = false;
-            Log("对账", "回路已停（安全停机 / 程序 / 别处停的）——面板「温控」开关跟着关");
+            if (st.LastStop is { } why)
+            {
+                // 回路自己停的（Tr 丢失超过宽限 / 跑飞 / 连续通信失败）：原因摆出来，别让人以为从没开过
+                Log("对账", $"回路自己停了控温（{why}）——面板「温控」开关跟着关");
+                _owner.Toast($"回路已停控：{why}");
+            }
+            else Log("对账", "回路已停（安全停机 / 程序 / 别处停的）——面板「温控」开关跟着关");
         }
     }
 
@@ -1235,7 +1281,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
     // NaN 也是「没读到」：釜内探头没绑 / 没数时 CurrentReactor 就是 NaN，印「—」不印「NaN」
     private static string F1(double? v) => v is { } x && !double.IsNaN(x)
         ? (x < 0 ? "−" : "") + Math.Abs(x).ToString("0.0") : "—";
-    private static string Sg(double v) => (v >= 0 ? "+" : "−") + Math.Abs(v).ToString("0.0");
+    private static string Sg(double v) => double.IsNaN(v) ? "—" : (v >= 0 ? "+" : "−") + Math.Abs(v).ToString("0.0");
 
     public string ModeName => Mode switch
     { "Tj" => "夹套控温 Tj", "TrTj" => "蒸回流 Tj−Tr", _ => "釜内控温 Tr" };
@@ -1542,6 +1588,16 @@ public sealed class HmiZoneViewModel : ViewModelBase
         var kind = Mode == "Tj" ? TempChannelKind.Jacket : TempChannelKind.Reactor;
         var target = Pv(Mode == "Tj" ? "tj" : "tr");
         var cur = Mode == "Tj" ? t.CurrentJacket : t.CurrentReactor;
+        // 「按时长」要拿此刻实测算速率：实测是「—」（釜内探头没读数）就算不出来，别把 NaN 速率发下去
+        if (RampBy == "dur" && double.IsNaN(cur))
+        {
+            TempOn = false;
+            var what = Mode == "Tj" ? "夹套" : "釜内";
+            Log("拒绝", $"{what}没有读数，「按时长」算不出速率");
+            _owner.Toast($"{what}温度没有读数，「按时长」算不出速率——先把探头接好，或改「按速率」/「尽快」");
+            RaiseZone();
+            return;
+        }
         // 「尽快」= 普通模式的升温（用户要的）：不按速率不按时长，目标一步写给温控器，
         // 它按自己的最大能力走（RD105：SPEED=0 不限斜率）——跟配方里「到达方式 = 尽快」同一个意思
         Task issue;
@@ -2064,8 +2120,9 @@ public sealed class HmiZoneViewModel : ViewModelBase
         var ctx = new EstimationContext();
         if (Temp is { } t)
         {
-            ctx.Temperature = t.CurrentReactor;
-            ctx.Jacket = t.CurrentJacket;
+            // 读数是 NaN（探头没接）就不播——估算拿缺省起点，别让 NaN 进排期
+            if (double.IsFinite(t.CurrentReactor)) ctx.Temperature = t.CurrentReactor;
+            if (double.IsFinite(t.CurrentJacket)) ctx.Jacket = t.CurrentJacket;
             ctx.MaxTempRatePerMin = Math.Max(0.05, t.Limits.MaxRatePerMin);
         }
         if (Stir is { } s) ctx.Rpm = s.CurrentRpm;
@@ -2810,7 +2867,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
         nameof(VesselRunning), nameof(RpmVal), nameof(TjBox), nameof(TjNote), nameof(TjHi),
         nameof(DtBox), nameof(DtNote), nameof(RpmBox), nameof(RpmOff), nameof(RpmNote),
         nameof(DoseBox), nameof(DoseOff), nameof(DoseNote), nameof(TcBox), nameof(TcNote),
-        nameof(RateBox), nameof(RateOff), nameof(RateNote), nameof(HeadName), nameof(HeadRt),
+        nameof(RateBox), nameof(RateOff), nameof(RateNote), nameof(HeadName), nameof(HeadRt), nameof(LoopNotice),
         nameof(HeadCtl), nameof(HeadNote), nameof(HeadPct), nameof(EngineRunning),
         nameof(LinkText), nameof(LinkShort), nameof(LinkOk),
         nameof(Therm), nameof(ThermOn), nameof(ThermText),

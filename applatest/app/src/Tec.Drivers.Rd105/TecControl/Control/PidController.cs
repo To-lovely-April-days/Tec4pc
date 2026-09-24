@@ -100,6 +100,19 @@ public sealed class PidController
     }
 
     /// <summary>
+    /// 【本地改动】只重置微分历史（被控量断了一段再回来时用：别跨整个断档算斜率）：积分、增益、限幅都不动。
+    /// </summary>
+    public void ResetDerivative()
+    {
+        lock (_lock)
+        {
+            _first = true;
+            _dFiltered = 0;
+            LastD = 0;
+        }
+    }
+
+    /// <summary>
     /// 预置积分项（启动控温时用）。稳态所需输出往往不为零，让积分从零累积会白白多花
     /// 几个时间常数；预置到稳态值附近可显著缩短整定时间而不必加大增益。
     /// </summary>

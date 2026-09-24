@@ -96,7 +96,10 @@ public sealed class DualStationDriver : IDeviceDriver
         Field.Num(Fields.AddrIo, "IO8R 站号", Defaults.AddrIo, "", 1, 247, 1),
         Field.Sel(Fields.BaudIo, "IO8R 波特率", new[] { "4800", "9600", "19200", "38400", "57600", "115200" }, Defaults.BaudIo.ToString()),
         Field.Num(Rd105TecDriver.FieldPeriod, "控制周期", 500, "ms", 200, 5000, 100),
-        Field.Num(Fields.Tick, "模块轮询周期", 1000, "ms", 100, 5000, 100)
+        Field.Num(Fields.Tick, "模块轮询周期", 1000, "ms", 100, 5000, 100),
+        Field.Num(Rd105TecDriver.FieldTrGrace, "Tr 丢失宽限", 30, "s", 0, 120, 5)
+            with { Tip = "釜内（串级）控温时宇电釜内 Tr 断了（10 s 没新数）：夹套设定先钳到釜内设定保持这么久，Tr 回来就接着串级，" +
+                         "回不来才停控、继电器全断。0 = 断了当拍停控（0328 之前的行为）" }
     })
     {
         Tip = "主机只管自己的两条串口（RD105 与 IO8R）。釜内 Tr 与 pH 的串口在" +

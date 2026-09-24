@@ -59,6 +59,12 @@ public sealed class Rd105TemperatureControl : ITemperatureControl, ITemperatureS
     /// <summary>串级时外环算出的夹套设定值；单环 / 温控器方式下就是 Setpoint。没在控就是 null。</summary>
     public double? InnerSetpoint { get; internal set; }
 
+    /// <summary>回路正在「保持」的说明（串级丢了釜内 Tr、等它回来：夹套设定钳到釜内设定）；没在保持就是 null。会话每拍刷。</summary>
+    public string? Holding { get; internal set; }
+
+    /// <summary>最近一次被回路自己停下的原因；人手停的 / 重新下发之后为 null。面板拿它说清「为什么停了」。</summary>
+    public string? LastStop { get; private set; }
+
     /// <summary>上位机回路把这一路停了（读数丢失 / 跑飞 / 连续通信失败）。组合会话据此把继电器落回去。</summary>
     public event Action<string>? Tripped;
 
@@ -87,6 +93,11 @@ public sealed class Rd105TemperatureControl : ITemperatureControl, ITemperatureS
     double? ITemperatureStatus.CascadeInnerSetpoint
         => _loop is not null && Enabled && Kind == TempChannelKind.Reactor
            && _loop.GetStrategy(_tc) == ControlStrategy.Cascade ? InnerSetpoint : null;
+
+    /// <summary>ITemperatureStatus：保持中的那句话只在回路开着时算数。</summary>
+    string? ITemperatureStatus.Holding => Enabled ? Holding : null;
+
+    string? ITemperatureStatus.LastStop => LastStop;
 
     /// <summary>
     /// 本路输出开着没有（ENABLE 的影子）。热源切换要看它：**停着的通道不该被自动切换动**——
@@ -127,6 +138,7 @@ public sealed class Rd105TemperatureControl : ITemperatureControl, ITemperatureS
             Setpoint = target.Value;
             InnerSetpoint = target.Value;
             Enabled = true;
+            LastStop = null;
             return;
         }
 
@@ -136,11 +148,14 @@ public sealed class Rd105TemperatureControl : ITemperatureControl, ITemperatureS
         Setpoint = target.Value;
         InnerSetpoint = _loop.GetStrategy(_tc) == ControlStrategy.Cascade ? InnerSetpoint : target.Value;
         Enabled = true;
+        LastStop = null;
     }
 
     public async Task RampAsync(double target, double ratePerMin, TempChannelKind kind, CancellationToken ct)
     {
         Guard(target);
+        if (!double.IsFinite(ratePerMin))
+            throw new ArgumentOutOfRangeException(nameof(ratePerMin), "变温速率不是有效数（釜内没有读数时「按时长」算不出速率）");
         if (_loop is null)
         {
             // 温控器的 SPEED 是 ℃/秒，配方里写的是 ℃/分
@@ -152,6 +167,7 @@ public sealed class Rd105TemperatureControl : ITemperatureControl, ITemperatureS
             Setpoint = target;
             InnerSetpoint = target;
             Enabled = true;
+            LastStop = null;
             return;
         }
 
@@ -165,6 +181,7 @@ public sealed class Rd105TemperatureControl : ITemperatureControl, ITemperatureS
         _loop.StartProfile(_tc, SegmentProfile.Linear(target, rate));
         Setpoint = target;
         Enabled = true;
+        LastStop = null;
     }
 
     /// <summary>
@@ -205,7 +222,8 @@ public sealed class Rd105TemperatureControl : ITemperatureControl, ITemperatureS
         while (DateTimeOffset.UtcNow < deadline)
         {
             ct.ThrowIfCancellationRequested();
-            var pv = double.IsNaN(_tr) ? _tj : _tr;
+            // 上位机串级（釜内）下 Tr 断了不退回按夹套判：保持期夹套设定就是釜内目标，几十秒就「到」——那是假到达
+            var pv = double.IsNaN(_tr) && (Kind == TempChannelKind.Jacket || _loop is null) ? _tj : _tr;
             if (!double.IsNaN(pv) && Math.Abs(pv - target) <= Math.Abs(tolerance)) return true;
             await Task.Delay(200, ct).ConfigureAwait(false);
         }
@@ -225,6 +243,8 @@ public sealed class Rd105TemperatureControl : ITemperatureControl, ITemperatureS
         }
         InnerSetpoint = null;
         Enabled = false;
+        Holding = null;
+        LastStop = null;           // 人手停的，不是回路停的
     }
 
     /// <summary>
@@ -268,6 +288,8 @@ public sealed class Rd105TemperatureControl : ITemperatureControl, ITemperatureS
     {
         Enabled = false;
         InnerSetpoint = null;
+        Holding = null;
+        LastStop = reason;
         Tripped?.Invoke(reason);
     }
 
@@ -279,6 +301,8 @@ public sealed class Rd105TemperatureControl : ITemperatureControl, ITemperatureS
 
     private void Guard(double target)
     {
+        if (!double.IsFinite(target))
+            throw new ArgumentOutOfRangeException(nameof(target), "目标温度不是有效数（读数是「—」时别拿它当目标）");
         if (target < _overLow || target > _overUp)
             throw new ArgumentOutOfRangeException(nameof(target),
                 $"目标温度 {target:F1} ℃ 超出设备保护范围 {_overLow:F0}~{_overUp:F0} ℃");

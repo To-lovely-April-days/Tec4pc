@@ -16,6 +16,26 @@ namespace Tec.Core.Tests;
 /// </summary>
 public class RelayAutoTunerOneSidedTests
 {
+    [Fact]
+    public void PID只重置微分_积分增益限幅不动()
+    {
+        // 串级外环丢了被控量再回来：别跨整个断档算斜率，但维持这个温度的积分（偏置）没过时
+        var pid = new PidController();
+        pid.Configure(0.5, 0.1, 5, -8, 8, derivativeFilterSeconds: 0);
+        pid.Update(50, 48, 2);                 // 误差 2、P = 1：没顶到限幅，积分在积
+        pid.Update(50, 48.5, 2);
+        Assert.NotEqual(0, pid.LastD);
+        var i = pid.LastI;
+        Assert.NotEqual(0, i);
+        pid.ResetDerivative();
+        Assert.Equal(0, pid.LastD);
+        Assert.Equal(i, pid.LastI);
+        Assert.Equal(0.5, pid.Kp); Assert.Equal(8, pid.OutputMax);
+        pid.Update(50, 46, 2);                 // 断档里 Tr 走了 2.5 ℃：第一拍不算斜率
+        Assert.Equal(0, pid.LastD);
+        Assert.True(pid.LastI >= i);           // 积分从原值接着积
+    }
+
     /// <summary>
     /// 一阶热对象：dT/dt = g·q − k·(T − Ta)，执行器 q 以时间常数 lag 跟随输出 u（加热棒 / SSR 的热惯性）。
     /// 返回整定器最终状态、用了多少秒，以及第一次越过设定值（继电换向）那一拍的时刻与偏置。

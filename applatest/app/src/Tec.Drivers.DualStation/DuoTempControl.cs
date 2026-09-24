@@ -19,6 +19,8 @@ public sealed class DuoTempControl : ITemperatureControl, IRefluxControl, IHeatS
     bool ITemperatureStatus.Active => _s.WantEnabled(_well);
     bool ITemperatureStatus.HostLoop => ((ITemperatureStatus)Inner).HostLoop;
     double? ITemperatureStatus.CascadeInnerSetpoint => ((ITemperatureStatus)Inner).CascadeInnerSetpoint;
+    string? ITemperatureStatus.Holding => ((ITemperatureStatus)Inner).Holding;
+    string? ITemperatureStatus.LastStop => ((ITemperatureStatus)Inner).LastStop;
 
     private readonly DuoSession _s;
     private readonly int _well;
@@ -46,19 +48,39 @@ public sealed class DuoTempControl : ITemperatureControl, IRefluxControl, IHeatS
     public async Task SetTargetAsync(TempTarget target, CancellationToken ct)
     {
         _s.GuardTuning(_well);  // 自整定占着继电器与回路：先拒绝，一个继电器都别动
+        var wasOn = _s.WantEnabled(_well);
         _s.NoteStart(_well);    // 这一路要控温了（热源切换按意图判，不按设备上的 ENABLE）
         _s.StopReflux(_well);   // 明确下发新目标 = 下一步接管，跟随环退位
-        await _s.EnsureSourceAsync(_well, target.Value, ct).ConfigureAwait(false);
-        await Inner.SetTargetAsync(target, ct).ConfigureAwait(false);
+        try
+        {
+            await _s.EnsureSourceAsync(_well, target.Value, ct).ConfigureAwait(false);
+            await Inner.SetTargetAsync(target, ct).ConfigureAwait(false);
+        }
+        catch
+        {
+            // 下发被拒（釜内没读数、超出保护范围……）：原来没在控就别留一个「想控温」的旗——
+            // 留着的话采集循环会按它合继电器、面板对账也把它当开着（幽灵开）
+            if (!wasOn) _s.NoteStop(_well);
+            throw;
+        }
     }
 
     public async Task RampAsync(double target, double ratePerMin, TempChannelKind kind, CancellationToken ct)
     {
         _s.GuardTuning(_well);
+        var wasOn = _s.WantEnabled(_well);
         _s.NoteStart(_well);
         _s.StopReflux(_well);
-        await _s.EnsureSourceAsync(_well, target, ct).ConfigureAwait(false);
-        await Inner.RampAsync(target, ratePerMin, kind, ct).ConfigureAwait(false);
+        try
+        {
+            await _s.EnsureSourceAsync(_well, target, ct).ConfigureAwait(false);
+            await Inner.RampAsync(target, ratePerMin, kind, ct).ConfigureAwait(false);
+        }
+        catch
+        {
+            if (!wasOn) _s.NoteStop(_well);
+            throw;
+        }
     }
 
     public Task<bool> WaitReachedAsync(double target, double tolerance, TimeSpan timeout, CancellationToken ct)

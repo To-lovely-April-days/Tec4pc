@@ -58,16 +58,19 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
             ManagePwmFrequency = false,                  // FPWM 是设备全局的，两路可能各在一侧，不由回路改
             MaxConsecutiveFailures = 20,                 // 连着 20 拍（约 10 s）读不到才停控：串口抖一下由 LinkRecovery 重开
             // 加热棒 / 只制冷的 TEC 整定时，回头那半周靠自然散热 / 回温，一个半周可能十几二十分钟：给 4 h
-            AutoTuneTimeout = TimeSpan.FromHours(4)
+            AutoTuneTimeout = TimeSpan.FromHours(4),
+            // 串级丢了釜内 Tr 先保持（外环冻结、夹套设定钳到釜内设定）再停控；连接参数可调，0 = 当拍停控
+            OuterLossGrace = TimeSpan.FromSeconds(Math.Clamp(connection.Num(Rd105TecDriver.FieldTrGrace, 30), 0, 120))
         };
 
         for (var i = 0; i < 2; i++)
         {
             var ch = ctx.ChannelNumbers.Count > i ? ctx.ChannelNumbers[i] : i;
             _temps[i] = new Rd105TemperatureControl(ch, tc: i + 1, link, ctx.Config, _out, _host ? _loop : null);
-            _tunings[i] = new Rd105Tuning(ch, tc: i + 1, _loop, (lvl, text) => ctx.Log?.Invoke(lvl, text),
-                                          canCascade: _host ? () => !double.IsNaN(_temps[i].CurrentReactor) : null);
             var tc = i + 1;
+            var temp = _temps[i];   // 别在 lambda 里捕获 for 的循环变量：循环跑完它是 2，调用时 _temps[2] 越界
+            _tunings[i] = new Rd105Tuning(ch, tc, _loop, (lvl, text) => ctx.Log?.Invoke(lvl, text),
+                                          canCascade: _host ? () => !double.IsNaN(temp.CurrentReactor) : null);
             _loop.ConfigurePid(tc, Rd105HostControl.FallbackInner.Kp, Rd105HostControl.FallbackInner.Ki,
                                Rd105HostControl.FallbackInner.Kd, 90, _invert);
             _loop.ConfigureCascade(tc, Rd105HostControl.FallbackOuter.Kp, Rd105HostControl.FallbackOuter.Ki,
@@ -95,6 +98,7 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
             _loop.CycleCompleted += OnCycle;
             _loop.CycleFaulted += OnFaulted;
             _loop.ChannelTripped += OnChannelTripped;
+            _loop.ChannelNotice += OnChannelNotice;
             _loop.SaturationWarning += msg => _ctx.Log?.Invoke("warn", $"{InstanceId} {msg}");
             _loop.GainScheduleChanged += SaveGains;
         }
@@ -272,8 +276,13 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
             {
                 var inner = info.Cascade ? info.InnerSetpointC : info.SetpointC;
                 _temps[i].InnerSetpoint = inner;
+                // 串级丢了 Tr 在保持：面板拿这句提示（每拍带秒数）；Tjset 照发——趋势里橙线从偏置那头落到釜内设定就是它
+                _temps[i].Holding = info.OuterHoldSeconds is { } held
+                    ? $"釜内 Tr 读数丢失 {held:0} s，夹套按 {inner:F1} ℃ 保持（{_loop.OuterLossGrace.TotalSeconds:0} s 内回来接着串级，回不来停控）"
+                    : null;
                 Push(_temps[i].Channel, "Tjset", inner, at, Quality.Good);
             }
+            else _temps[i].Holding = null;
         }
     }
 
@@ -295,6 +304,10 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
         _ctx.Log?.Invoke("error", $"{InstanceId} 上位机回路停控：{reason}");
         _temps[tc - 1].OnTripped(reason);
     }
+
+    /// <summary>回路的提示（不是停控）：串级丢了釜内 Tr 进保持 / Tr 回来接着算。</summary>
+    private void OnChannelNotice(int tc, string level, string text)
+        => _ctx.Log?.Invoke(level, $"{InstanceId} {text}");
 
     private void SaveGains(int tc)
     {
@@ -449,6 +462,7 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
         _loop.CycleCompleted -= OnCycle;
         _loop.CycleFaulted -= OnFaulted;
         _loop.ChannelTripped -= OnChannelTripped;
+        _loop.ChannelNotice -= OnChannelNotice;
         _loop.GainScheduleChanged -= SaveGains;
         foreach (var t in _tunings) t.Detach();
         foreach (var p in _pids) p?.Detach();

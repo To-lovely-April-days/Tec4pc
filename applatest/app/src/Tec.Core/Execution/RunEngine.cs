@@ -343,7 +343,9 @@ public sealed class RunEngine
             case SafetyAction.AbortChannel:
                 if (Runner(e.Channel) is not { } r ||
                     r.State is not (ChannelRunState.Running or ChannelRunState.Paused))
-                    return new[] { "该通道未在运行，无需中止" };
+                    // 手动面板控温（没在跑配方）时安全层不动设备：停不停由控温回路自己定（丢 Tr 先保持再停控），
+                    // 别写「无需中止」——红罩上那句会让人以为什么都没发生
+                    return new[] { "该通道没在跑配方，安全层不动设备；手动控温由回路自己处置（面板有提示，原因在设备日志）" };
                 r.Abort(null, e.Message, emergency: true);
                 // 收安全态与 E 级紧急程序（Tsafe / Rsafe）都由 ChannelRunner 做，
                 // 逐条另记（EventKind.SafeStop）

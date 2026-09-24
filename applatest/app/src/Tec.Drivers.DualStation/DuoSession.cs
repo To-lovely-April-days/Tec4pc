@@ -146,6 +146,8 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     /// <summary>安全压制：SafeStop/停控清跟随时立起，跟随环写到一半撞见它要把输出关回去。</summary>
     private readonly bool[] _refluxKill = new bool[2];
     private readonly DateTimeOffset[] _trFedAt = { DateTimeOffset.MinValue, DateTimeOffset.MinValue };
+    /// <summary>Tr 从什么时候起没了（超过新鲜度窗 / 喂进来的是 Bad）；回来时记一条「恢复（中断 N s）」。</summary>
+    private readonly DateTimeOffset?[] _trLostAt = new DateTimeOffset?[2];
 
     /// <summary>Tr 新鲜度窗：跟随环只吃这窗内喂过的釜温——探头会话死了残值还在，不能追着残值走。</summary>
     private static readonly TimeSpan TrFreshWindow = TimeSpan.FromSeconds(10);
@@ -359,11 +361,21 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         for (var w = 0; w < 2; w++)
         {
             var t = _rd.TempOf(w);
-            if (t.Channel == channel)
+            if (t.Channel != channel) continue;
+            var good = quality == Quality.Good;
+            var wasNaN = double.IsNaN(t.CurrentReactor);
+            t.FeedReactor(good ? value : double.NaN);
+            var now = _ctx.Clock();
+            DateTimeOffset? lost = null;
+            lock (_refluxGate)
             {
-                t.FeedReactor(quality == Quality.Good ? value : double.NaN);
-                lock (_refluxGate) _trFedAt[w] = _ctx.Clock();
+                _trFedAt[w] = now;
+                if (!good) _trLostAt[w] ??= now;
+                else if (wasNaN && _trLostAt[w] is { } since) { lost = since; _trLostAt[w] = null; }
             }
+            // 断过再回来记一句（探头会话那边只说自己恢复了，这边说的是「这一路的釜内 Tr 又能用了」）
+            if (lost is { } l)
+                _ctx.Log?.Invoke("info", $"{InstanceId} 工位 {AB(w)} 釜内 Tr 恢复（中断 {(now - l).TotalSeconds:0} s，Tr {value:F2} ℃）——判到达、dT、串级外环都接着用它");
         }
     }
 
@@ -481,8 +493,10 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
             if (!TrValid(w) && !double.IsNaN(t.CurrentReactor))
             {
                 t.FeedReactor(double.NaN);
+                lock (_refluxGate) _trLostAt[w] ??= at;
                 _ctx.Log?.Invoke("warn", $"{InstanceId} 工位 {AB(w)} 釜内 Tr 超过 {TrFreshWindow.TotalSeconds:0} s 没有新数" +
-                    "（探头会话没出数？）——按无效处置：判到达退回按夹套，面板上显示「—」，有新数自动恢复");
+                    "（探头会话没出数？）——按无效处置：面板上显示「—」、dT 停发；釜内串级先把夹套设定钳到釜内设定保持，" +
+                    "宽限内没回来会停控；有新数自动恢复");
             }
             if (!double.IsNaN(t.CurrentReactor) && !double.IsNaN(t.CurrentJacket))
                 Push(t.Channel, "dT", t.CurrentReactor - t.CurrentJacket, at, Quality.Good);
@@ -573,7 +587,12 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         // 切换序列第 ① 步自己就会把 ENABLE 关掉，拿它当「有没有人要控温」会把
         // 「我刚关的」和「别人要停」混成一件事
         bool? want = null;
-        if (_wantEnabled[well] && innerT.Setpoint is { } sp) want = SideFor(well, sp);
+        if (_wantEnabled[well] && innerT.Setpoint is { } sp)
+        {
+            // 串级丢了釜内 Tr、回路在保持（夹套设定钳到釜内设定）：不换挡，等 Tr 回来或回路停控
+            if (((ITemperatureStatus)innerT).Holding is not null) return;
+            want = SideFor(well, sp, JacketTargetOf(innerT, sp));
+        }
 
         // 「本路暂时没有制冷能力」那条闩：只在**确实卡着**的时候armed，别的时候一律重新上膛。
         // 放热反应「抢冷 → 缓过来 → 再抢冷」是常见序列，第二次不能是静默的
@@ -602,7 +621,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
             side = w ? Side.Electric : Side.Tec;
             if (OnSide(well, side)) return;
             stillWanted = () => _wantEnabled[well] && _rd.TempOf(well).Setpoint is { } now
-                                && SideFor(well, now) == w;
+                                && SideFor(well, now, JacketTargetOf(_rd.TempOf(well), now)) == w;
         }
 
         if (side == Side.Electric)
@@ -867,18 +886,28 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
            $"DO{_tecDoIdx[well]} 接通——接不通 TEC 就没电，这一路现在既不能制冷也不能加热，先把 IO8R 弄通";
 
     /// <summary>
+    /// 换挡判据该拿夹套跟谁比：串级（釜内）时夹套在追的是外环算出的内环设定（釜内设定 + 偏置），不是釜内设定——
+    /// 拿釜内设定比，串级升温夹套一越过「釜内设定 + 死区」就被判成「要降温」、把加热棒切成只制冷的 TEC
+    /// （现场釜内 50 ℃：内环设定 58，夹套到 52 就该切了，差 0.1 min 被停控抢在前面）。单环 / 外环还没算出来时就是设定值本身。
+    /// </summary>
+    private static double JacketTargetOf(Rd105TemperatureControl t, double setpoint)
+        => t.Kind == TempChannelKind.Reactor && t.InnerSetpoint is { } inner ? inner : setpoint;
+
+    /// <summary>
     /// 这个目标该落在哪一侧：true = 电加热，false = TEC，null = 保持现状（不折腾继电器）。
     ///
     /// TEC 加热启用时就是原来那条：超过阈值才要电加热，阈值以内 TEC 正反都能出力。
     /// 不启用时 TEC 只能制冷，于是按「该升温还是该降温」判——比的是 RD105 的被控量：
-    /// PID 闭在夹套上，目标写进 TG，实测就是 Tj。死区之内当作到了，保持现状，
-    /// 不让恒温时的上下擦动把继电器带得来回抖。
+    /// PID 闭在夹套上，夹套此刻在追 jacketTarget（单环 = 目标本身，串级 = 内环设定），实测就是 Tj。
+    /// 死区之内当作到了，保持现状，不让恒温时的上下擦动把继电器带得来回抖。
+    /// 安全否决那一条比的仍是釜内目标（釜里不比目标凉就别加热）。
     /// </summary>
-    private bool? SideFor(int well, double target)
+    private bool? SideFor(int well, double target, double? jacketTarget = null)
     {
         if (_tecHeat) return target > _threshold;
 
         var t = _rd.TempOf(well);
+        var jt = jacketTarget ?? target;
 
         // 安全否决：**釜里已经不比目标凉了，就别再往上加热**。
         // 「恒温保持」下发的目标就是下发那一刻的 Tr（自指，严格相等），放热一起来
@@ -894,8 +923,8 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         // 尤其别扳向加热侧；下一拍读到了采集循环自己会切
         var tj = t.CurrentJacket;
         if (double.IsNaN(tj)) return null;
-        if (target > tj + _band) return true;   // 要升温 → 只能电加热棒
-        if (target < tj - _band) return false;  // 要降温 → 只有 TEC 是冷源
+        if (jt > tj + _band) return true;       // 要升温 → 只能电加热棒
+        if (jt < tj - _band) return false;      // 要降温 → 只有 TEC 是冷源
         return null;
     }
 

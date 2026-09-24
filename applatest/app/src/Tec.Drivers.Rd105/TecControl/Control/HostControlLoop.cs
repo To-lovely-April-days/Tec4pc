@@ -39,6 +39,9 @@ public sealed record ChannelCycleInfo(
 
     /// <summary>正在执行的曲线名称；未执行为 null。</summary>
     public string? ProfileName { get; init; }
+
+    /// <summary>【本地改动】串级外环的釜内 Tr 读数丢了、正在保持（外环冻结、内环设定钳到主设定）：已保持多少秒；没在保持为 null。</summary>
+    public double? OuterHoldSeconds { get; init; }
 }
 
 /// <summary>一个完整控制周期的结果（后台线程发布）。电流每 4 个周期采样一次，其余周期为 null。</summary>
@@ -203,6 +206,12 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
 
         public DateTime LastOuterUpdate;
 
+        /// <summary>【本地改动】串级外环的外部被控量（釜内 Tr）丢失的起点；null = 没丢。</summary>
+        public DateTime? OuterLostSince;
+
+        /// <summary>【本地改动】曲线在 Tr 丢失保持期暂停的时刻；恢复时把 ProfileStart 往后挪这么久。</summary>
+        public DateTime? ProfileHoldAt;
+
         // ---- 设定值生成层（时间驱动曲线） ----
         public ITemperatureProfile? Profile;
         public DateTime ProfileStart;
@@ -284,6 +293,9 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
 
     /// <summary>【本地改动】按路触发的安全停机（哪一路、为什么）。SafetyTripped 照旧整体发一份。</summary>
     public event Action<int, string>? ChannelTripped;
+
+    /// <summary>【本地改动】按路的提示（路号、级别 "warn" / "info"、正文）：串级外环丢了釜内 Tr 进入保持、Tr 回来接着算。不是停控。</summary>
+    public event Action<int, string, string>? ChannelNotice;
 
     /// <summary>【本地改动】要不要由回路改写设备全局的 FPWM。单釜机器按执行器形态改（加热棒 0.5 Hz、
     /// TEC 10 Hz）；双工位机器两路可能一路在加热棒、一路在 TEC，FPWM 只有一个，改了必顾此失彼——关掉，
@@ -562,6 +574,14 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
     /// <summary>外环更新周期。内外环周期比建议 ≥4:1，默认 2s（内环 500ms）。</summary>
     public TimeSpan OuterPeriod { get; set; } = TimeSpan.FromSeconds(2);
 
+    /// <summary>
+    /// 【本地改动】串级外环的外部被控量（釜内 Tr）读不到时先保持多久再停控。保持期：外环冻结（不算、不放电、
+    /// 不学偏置、不扩程）、曲线暂停、内环设定钳到主设定值（不高于、不低于釜内设定——夹套停在釜内设定上，
+    /// 传热推不过设定，盲区里不会把釜推过头）、内环照跑；Tr 在这段里回来就无扰接着串级。0 = 读不到当拍停控。
+    /// 只对外部来源（SetOuterSource）生效：本机 TC 读 NaN 是探头没接，不是暂态。
+    /// </summary>
+    public TimeSpan OuterLossGrace { get; set; } = TimeSpan.FromSeconds(30);
+
     /// <summary>内环设定值安全限幅（℃），防止外环把腔体温度推到极端值。</summary>
     public double InnerSetpointMinC { get; set; } = -50;
     public double InnerSetpointMaxC { get; set; } = 200;
@@ -621,6 +641,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         s.Profile = profile;
         s.ProfileStart = DateTime.Now;
         s.ProfileStartC = s.SetpointC;
+        s.ProfileHoldAt = s.OuterLostSince is null ? null : s.ProfileStart;   // 【本地改动】保持期里起的曲线从头就暂停
     }
 
     public void StopProfile(int ch) => State(ch).Profile = null;
@@ -666,6 +687,8 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
             s.OuterClampLatched = false;
             s.OuterClampBinding = false;
             s.LastOuterErrorC = double.NaN;
+            s.OuterLostSince = null;                 // 【本地改动】
+            s.ProfileHoldAt = null;
             s.InnerSetpointC = setpointC;
             ApplyOuterTuning(s, setpointC);   // 先装限幅，预置才会按正确范围截断
             if (s.ActiveSchedule.SteadyBiasAt(setpointC) is { } bias)     // 【本地改动】按执行器选表
@@ -736,6 +759,8 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         s.Tuner = null;
         s.ManualDutyPercent = null;
         s.LastDutyPercent = 0;
+        s.OuterLostSince = null;                     // 【本地改动】
+        s.ProfileHoldAt = null;
         await controller.SetDutyPercentAsync(ch, 0, ct).ConfigureAwait(false);
         await controller.SetEnableAsync(ch, false, ct).ConfigureAwait(false);
         if (ch == 1 && SyncMode != ChannelSyncMode.Independent)     // 【本地改动】独立两路：停 A 不动 B
@@ -872,7 +897,10 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                 // 【本地改动】热源切换那两秒：不算不写，也不重写手动输出（输出本来就关着）
                 infos[ch - 1] = new ChannelCycleInfo(s.Active, s.Tuner is not null, s.Tuner?.CompletedCycles ?? 0,
                     s.SetpointC, pv, 0, 0, 0, 0)
-                { Cascade = s.Strategy == ControlStrategy.Cascade, InnerSetpointC = s.InnerSetpointC };
+                {
+                    Cascade = s.Strategy == ControlStrategy.Cascade, InnerSetpointC = s.InnerSetpointC,
+                    OuterHoldSeconds = s.OuterLostSince is { } lost ? (snapshot.Timestamp - lost).TotalSeconds : null
+                };
             }
             else if (s.Tuner is not null)
             {
@@ -925,10 +953,71 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
             : (snapshot.Timestamp - s.LastUpdateTime).TotalSeconds;
         s.LastUpdateTime = snapshot.Timestamp;
 
-        // ① 设定值生成层：时间驱动曲线（结晶降温等）
+        // 【本地改动】串级外环的外部被控量（釜内 Tr）读不到：不再当拍停控，先「保持」再说（OuterLossGrace）。
+        // 保持 = 外环冻结（不算、不放电、不学偏置、不扩程）、曲线暂停、内环设定钳到主设定值——夹套停在釜内设定上，
+        // 传热推不过设定，盲区里不会把釜推过头；内环照跑。Tr 在宽限内回来就无扰接着串级：积分沿用（它是维持
+        // 这个温度的偏置，没过时）、微分历史重置（别跨整个盲区算斜率）、外环 dt 从下一拍重计、曲线从暂停处续。
+        // 宽限过了还没回来才停控。本机 TC 当外环（OuterSource 为 null）读 NaN 是探头没接，不是暂态，照旧当拍停控。
+        // 现场：釜内 50 ℃ 串级升温到 3.2 min 探头样本断了 10 s，回路当拍停控、加热棒关了，面板上只剩开关自己灭了
+        var cascade = s.Strategy == ControlStrategy.Cascade;
+        var outerPv = double.NaN;
+        var holding = false;
+        if (cascade)
+        {
+            // 外环被控量可以来自外部（双工位主机：宇电采的釜内 Tr）
+            outerPv = s.OuterSource is { } src ? src() : s.OuterFeedbackSensor == 1 ? snapshot.Temp1C : snapshot.Temp2C;
+            if (double.IsNaN(outerPv))
+            {
+                if (s.OuterSource is null || OuterLossGrace <= TimeSpan.Zero)
+                {
+                    await TripChannelAsync(ch, s.OuterSource is not null
+                        ? $"通道{ch}串级外环的釜内 Tr 读数丢失（宇电探头断线 / 探头会话没出数），已停控"
+                        : $"通道{ch}串级外环传感器（TC{s.OuterFeedbackSensor}）读数丢失，已停控").ConfigureAwait(false);
+                    return new ChannelCycleInfo(false, false, 0, s.SetpointC, pv, 0, 0, 0, 0);
+                }
+                var held = Math.Clamp(s.SetpointC, InnerSetpointMinC, InnerSetpointMaxC);
+                if (s.OuterLostSince is null)
+                {
+                    s.OuterLostSince = snapshot.Timestamp;
+                    s.ProfileHoldAt ??= snapshot.Timestamp;
+                    s.OuterSteadyCycles = 0;
+                    ChannelNotice?.Invoke(ch, "warn",
+                        $"通道{ch}串级外环的釜内 Tr 读数丢失：外环冻结，夹套设定从 {s.InnerSetpointC:F1} ℃ 收到 {held:F1} ℃" +
+                        $"（不高于、不低于釜内设定）；{OuterLossGrace.TotalSeconds:0} s 内 Tr 回来就接着串级，回不来就停控");
+                }
+                if (snapshot.Timestamp - s.OuterLostSince.Value >= OuterLossGrace)
+                {
+                    await TripChannelAsync(ch,
+                        $"通道{ch}串级外环的釜内 Tr 读数丢失超过 {OuterLossGrace.TotalSeconds:0} s（宇电探头断线 / 探头会话没出数）——" +
+                        $"这段里夹套已按釜内设定 {s.SetpointC:F1} ℃ 保持，仍无读数，已停控。修好探头后重新下发目标，或改控夹套").ConfigureAwait(false);
+                    return new ChannelCycleInfo(false, false, 0, s.SetpointC, pv, 0, 0, 0, 0);
+                }
+                s.InnerSetpointC = held;
+                holding = true;
+            }
+            else if (s.OuterLostSince is { } since)
+            {
+                var lostFor = (snapshot.Timestamp - since).TotalSeconds;
+                s.OuterLostSince = null;
+                s.OuterPid.ResetDerivative();
+                s.LastOuterUpdate = default;              // 下一拍外环 dt = OuterPeriod，别把断掉的几十秒一口气积进去
+                s.BiasGuard.Reset();
+                var resumed = "";
+                if (s.ProfileHoldAt is { } at)
+                {
+                    s.ProfileStart += snapshot.Timestamp - at;
+                    s.ProfileHoldAt = null;
+                    if (s.Profile is not null) resumed = "、曲线从暂停处续";
+                }
+                ChannelNotice?.Invoke(ch, "info",
+                    $"通道{ch}釜内 Tr 已恢复（丢失 {lostFor:F0} s，Tr {outerPv:F2} ℃）：串级外环接着算，积分沿用 {s.OuterPid.LastI:F2} ℃、微分重置{resumed}");
+            }
+        }
+
+        // ① 设定值生成层：时间驱动曲线（结晶降温等）。【本地改动】Tr 丢失保持期曲线暂停
         double? profileProgress = null;
         var profileName = s.Profile?.Name;
-        if (s.Profile is { } profile)
+        if (s.Profile is { } profile && s.ProfileHoldAt is null)
         {
             var elapsed = (snapshot.Timestamp - s.ProfileStart).TotalMinutes;
             var total = profile.TotalMinutes(s.ProfileStartC);
@@ -945,21 +1034,9 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
             }
         }
 
-        // ② 闭环控制层：串级时先跑外环，算出内环设定值
-        var cascade = s.Strategy == ControlStrategy.Cascade;
-        var outerPv = double.NaN;
-        if (cascade)
+        // ② 闭环控制层：串级时先跑外环，算出内环设定值（【本地改动】Tr 丢失保持期整段跳过，内环设定已钳在主设定）
+        if (cascade && !holding)
         {
-            // 【本地改动】外环被控量可以来自外部（双工位主机：宇电采的釜内 Tr）
-            outerPv = s.OuterSource is { } src ? src() : s.OuterFeedbackSensor == 1 ? snapshot.Temp1C : snapshot.Temp2C;
-            if (double.IsNaN(outerPv))
-            {
-                await TripChannelAsync(ch, s.OuterSource is not null
-                    ? $"通道{ch}串级外环的釜内 Tr 读数丢失（宇电探头断线 / 探头会话没出数），已停控"
-                    : $"通道{ch}串级外环传感器（TC{s.OuterFeedbackSensor}）读数丢失，已停控").ConfigureAwait(false);
-                return new ChannelCycleInfo(false, false, 0, s.SetpointC, pv, 0, 0, 0, 0);
-            }
-
             var outerDt = s.LastOuterUpdate == default
                 ? OuterPeriod.TotalSeconds
                 : (snapshot.Timestamp - s.LastOuterUpdate).TotalSeconds;
@@ -1091,7 +1168,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                 }
             }
         }
-        else
+        else if (!cascade)
         {
             s.InnerSetpointC = s.SetpointC;
         }
@@ -1170,7 +1247,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
             SaturationWarning?.Invoke(cascade
                 // 串级启动阶段外环通常会把内环设定推到偏置限幅以索取最大能力，属正常现象
                 ? $"通道{ch}输出已连续满幅 {mins:F0} 分钟：外环正要求最大能力" +
-                  $"（内部 {outerPv:F2}℃ → 主设定 {s.SetpointC:F2}℃；腔体 {pv:F2}℃ → 外环要求 {innerSetpoint:F2}℃）。" +
+                  $"（内部 {(holding ? "Tr 丢失保持中" : $"{outerPv:F2}℃")} → 主设定 {s.SetpointC:F2}℃；腔体 {pv:F2}℃ → 外环要求 {innerSetpoint:F2}℃）。" +
                   "串级启动阶段属正常，待内部接近主设定值后会自动退出饱和；" +
                   "若内部已接近主设定值仍持续满幅，再检查制冷能力或输出上限"
                 : $"通道{ch}输出已连续满幅 {mins:F0} 分钟（当前 {pv:F2}℃，设定 {innerSetpoint:F2}℃）：" +
@@ -1194,6 +1271,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
             OuterMeasuredC = outerPv,
             ProfileProgress = profileProgress,
             ProfileName = profileName,
+            OuterHoldSeconds = holding ? (snapshot.Timestamp - s.OuterLostSince!.Value).TotalSeconds : null,   // 【本地改动】
         };
     }
 
