@@ -1,6 +1,7 @@
 using System.Threading;
 using Tec.Driver.Abi;
 using Tec.Drivers.Rd105;
+using TecControl.Core.Control;
 using F = Tec.Drivers.DualStation.DualStationDriver.Fields;
 
 namespace Tec.Drivers.DualStation;
@@ -271,7 +272,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         try
         {
             if (!OnSide(well, side)) await SwitchAsync(well, side, ct).ConfigureAwait(false);
-            else _rd.TempOf(well).SetActuator(side == Side.Electric);    // 已经在这一侧：执行器形态对齐
+            else _rd.TempOf(well).SetActuator(ModeOf(side));             // 已经在这一侧：执行器形态对齐
         }
         catch
         {
@@ -837,6 +838,10 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
                 _ctx.Log?.Invoke("info", $"{InstanceId} 「TEC 加热」改为{(tec ? "启用" : "不启用")}" +
                     (tec ? $"——目标高于 {_threshold:F0} ℃ 才切电加热"
                          : "——TEC 只当冷源，升温一律走电加热棒"));
+                // 正在 TEC 侧的工位：回路的执行器形态跟着翻（双向 ⇄ 只制冷只改限幅，运行中也能改）
+                for (var w = 0; w < 2; w++)
+                    if (!_electric[w])
+                        try { _rd.TempOf(w).SetActuator(TecMode); } catch (Exception ex) { _ctx.Log?.Invoke("warn", $"{InstanceId} 工位 {AB(w)} 执行器形态没跟上：{ex.Message}"); }
             }
             _band = Math.Clamp(_ctx.Config.Num(F.Band, 2), 0.5, 10);
         }
@@ -848,6 +853,11 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
 
     /// <summary>电加热通路可不可用：配了切换模块而且开起来了。</summary>
     internal bool ElectricReady => _links.Io is not null && _ioOk;
+
+    /// <summary>TEC 侧回路的执行器形态：「TEC 加热」启用 = 双向；不启用 = 只制冷（正半轴那一极接的是加热棒 SSR、继电器断着）。</summary>
+    private ActuatorMode TecMode => _tecHeat ? ActuatorMode.Bidirectional : ActuatorMode.CoolOnly;
+
+    private ActuatorMode ModeOf(Side side) => side == Side.Electric ? ActuatorMode.HeatOnly : TecMode;
 
     /// <summary>TEC 反向输出加热启没启用（界面按能力问它）。</summary>
     internal bool TecHeating => _tecHeat;
@@ -1038,7 +1048,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
             _switchedAt[well] = _ctx.Clock();
             // ③.5 继电器扳到哪一侧，回路的执行器形态跟着换（上位机 PID：加热棒 = 只加热、TEC = 双向；
             //     温控器 PID 下是空操作）。要在重开输出之前换——带着 TEC 的积分去驱动加热棒只会过冲
-            innerT.SetActuator(to == Side.Electric);
+            innerT.SetActuator(ModeOf(to));
             // ④ 原来开着、而且这两秒里没人喊停，才重开输出
             if (wasEnabled && innerT.Setpoint is not null && Volatile.Read(ref _stopGen[well]) == gen)
                 await innerT.EnableAsync(true, ct).ConfigureAwait(false);

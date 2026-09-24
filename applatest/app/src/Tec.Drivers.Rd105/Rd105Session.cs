@@ -115,7 +115,16 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
         _recover = new LinkRecovery($"{ctx.InstanceId} RD105", link.Reopen, (l, t) => _ctx.Log?.Invoke(l, t));
 
         // 参数面板（IDeviceSettings）：温控器自己的寄存器——最大功率、两路电流、PID、自整定……
-        _settings = new Rd105Settings(link, ctx.Config, ctx.Log, hostLoop: _host);
+        _settings = new Rd105Settings(link, ctx.Config, ctx.Log, hostLoop: _host)
+        {
+            MaxDutyWritten = (tc, pct) =>
+            {
+                if (!_host) return;
+                _loop.SetMaxDuty(tc, pct);
+                if (_pids[tc - 1] is { } pid) pid.Limited = pct;
+                _ctx.Log?.Invoke("info", $"{InstanceId} TC{tc} 最大输出 LIMITED 改为 {pct} %——回路的输出上限跟着改");
+            }
+        };
     }
 
     /// <summary>控温回路在上位机（true）还是温控器自己（false）。</summary>
@@ -234,7 +243,28 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
                 {
                     _ctx.Log?.Invoke("warn", $"{InstanceId} TC{tc} 读 LIMITED 失败：{ex.Message}——回路输出上限按 90 %");
                 }
+                // 启动电压（FDEADV / BDEADV）：不为 0 的话温控器会在写进去的占空比上垫一层——写 −4.41 % 回显 −6.43 % 就是它
+                try
+                {
+                    var fwd = await _link.Client.QueryAsync(tc, "FDEADV", ct).ConfigureAwait(false) / 200.0;
+                    var bwd = await _link.Client.QueryAsync(tc, "BDEADV", ct).ConfigureAwait(false) / 200.0;
+                    if (fwd != 0 || bwd != 0)
+                        _ctx.Log?.Invoke("warn", $"{InstanceId} TC{tc} 启动电压：正向 {fwd:0.###} % / 反向 {bwd:0.###} %——写占空比时温控器会在这上面垫一层" +
+                            "（反向那一极是加热棒），回显会比写入多这么多、小输出段控不细；不需要就到参数窗把它设成 0");
+                }
+                catch (Exception ex) { _ctx.Log?.Invoke("warn", $"{InstanceId} TC{tc} 读启动电压失败：{ex.Message}"); }
             }
+            // PWM 频率档是设备全局的，回路不动它（两路可能一路加热棒一路 TEC）；开机说一声，让人知道它在哪一档
+            try
+            {
+                var fpwm = await _link.Controller.ReadPwmFrequencyAsync(ct).ConfigureAwait(false);
+                var hz = fpwm switch { 0 => "0.5 Hz", 1 => "1 Hz", 2 => "10 Hz", 3 => "100 Hz", _ => $"档 {fpwm}" };
+                _ctx.Log?.Invoke(fpwm >= 2 ? "warn" : "info", $"{InstanceId} 温控器 PWM 输出频率 FPWM = {hz}" + (fpwm >= 2
+                    ? "——加热棒接的是过零型固态继电器的话，10 Hz 一个周期只有 5 个市电整周、功率 10 % 一档，到温后会来回擦；" +
+                      "建议到参数窗改成 0.5 Hz 或 1 Hz（两路共用一个值）"
+                    : ""));
+            }
+            catch (Exception ex) { _ctx.Log?.Invoke("warn", $"{InstanceId} 读 FPWM 失败：{ex.Message}"); }
             _loop.Start();
         }
         else

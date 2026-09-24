@@ -119,12 +119,21 @@ public sealed class PidGainSchedule
     /// 小于此幅度的变化视为噪声，不算"变了"（返回 false）。学习每 2 秒发生一次，
     /// 若每次都算变更会把持久化触发得过于频繁。
     /// </param>
-    public bool LearnSteadyBias(double temperatureC, double biasC, double changeThresholdC = 0.05)
+    public bool LearnSteadyBias(double temperatureC, double biasC, double changeThresholdC = 0.05, bool createIfMissing = false)
     {
         lock (_lock)
         {
             var idx = FindNear(temperatureC);
-            if (idx < 0) return false;
+            if (idx < 0)
+            {
+                // 【本地改动】表里没有这个温度：按此刻插值出来的参数新建一行带着稳态偏置（Ku/Tu 记 0 = 不是自整定的）。
+                // 自整定只在几个点整过，中间温度第一次跑到稳态也该记下来，下次启动才有预置、两枪放电才开得了
+                if (!createIfMissing || GainsAt(temperatureC) is not { } gains) return false;
+                var outer = OuterAt(temperatureC);
+                _points.Add(new GainPoint(temperatureC, gains, 0, 0, outer?.Gains,
+                    outer is null ? 0 : Math.Max(outer.MaxBiasC, Math.Abs(biasC) + 4), biasC));
+                return true;
+            }
 
             // 顺带保证限幅够用：既然实测维持该温度就要这么大偏置，限幅至少要在此之上留出
             // 抗扰余量，否则下次到这个温度会卡在限幅上永远差一截（只放宽不收窄）。
@@ -236,10 +245,31 @@ public sealed class PidGainSchedule
     {
         lock (_lock)
         {
+            // 【本地改动】稳态偏置离得太远的不拿来预置：50 ℃ 学到的偏置喂给 140 ℃ 只会错（内环参数取最近行是另一回事）
             return Interpolate<double?>(_points, setpointC,
                 p => p.SteadyBiasC is not null,
                 p => p.SteadyBiasC,
-                (lo, hi, f) => Lerp(lo.SteadyBiasC!.Value, hi.SteadyBiasC!.Value, f));
+                (lo, hi, f) => Lerp(lo.SteadyBiasC!.Value, hi.SteadyBiasC!.Value, f),
+                edgeMaxDistanceC: SteadyBiasReachC);
+        }
+    }
+
+    /// <summary>【本地改动】稳态偏置只在离登记点这么近（℃）时才沿用到两头之外 / 只有一行时。</summary>
+    public double SteadyBiasReachC { get; set; } = 15;
+
+    /// <summary>【本地改动】离设定值最近的、登记过外环参数的工作点有多远（℃）；一个都没有为 null。外环该查哪张表用它比。</summary>
+    public double? NearestOuterDistance(double setpointC)
+    {
+        lock (_lock)
+        {
+            double? best = null;
+            foreach (var p in _points)
+                if (p.OuterGains is not null && p.OuterMaxBiasC > 0 && SameSegment(p.TemperatureC, setpointC))
+                {
+                    var d = Math.Abs(p.TemperatureC - setpointC);
+                    if (best is null || d < best) best = d;
+                }
+            return best;
         }
     }
 
@@ -289,15 +319,17 @@ public sealed class PidGainSchedule
     /// </summary>
     private T? Interpolate<T>(List<GainPoint> all, double setpointC,
         Func<GainPoint, bool> filter, Func<GainPoint, T?> single,
-        Func<GainPoint, GainPoint, double, T> blend)
+        Func<GainPoint, GainPoint, double, T> blend, double edgeMaxDistanceC = double.PositiveInfinity)
     {
         var usable = all.Where(p => filter(p) && SameSegment(p.TemperatureC, setpointC))
             .OrderBy(p => p.TemperatureC).ToList();
         if (usable.Count == 0) return default;
-        if (usable.Count == 1) return single(usable[0]);
+        // 【本地改动】两头之外 / 只有一行时取最近行，但可以限距离（稳态偏置用）
+        T? Edge(GainPoint p) => Math.Abs(p.TemperatureC - setpointC) <= edgeMaxDistanceC ? single(p) : default;
+        if (usable.Count == 1) return Edge(usable[0]);
 
-        if (setpointC <= usable[0].TemperatureC) return single(usable[0]);
-        if (setpointC >= usable[^1].TemperatureC) return single(usable[^1]);
+        if (setpointC <= usable[0].TemperatureC) return Edge(usable[0]);
+        if (setpointC >= usable[^1].TemperatureC) return Edge(usable[^1]);
 
         for (var i = 1; i < usable.Count; i++)
         {

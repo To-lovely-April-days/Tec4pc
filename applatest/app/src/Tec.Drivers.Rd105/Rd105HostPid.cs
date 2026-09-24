@@ -321,21 +321,25 @@ public sealed class Rd105HostPid : IPidTuningBench
 
     public PidInUse Preview(PidActuator actuator, double temperatureC) => Compose(actuator, temperatureC, temperatureC);
 
-    /// <summary>照回路的规矩算：内环按内环设定查、外环 / 稳态偏置按主设定查；表里没有或调度关了就是手动那组。</summary>
+    /// <summary>
+    /// 照回路的规矩算：内环按内环设定查此刻执行器那张表；外环 / 稳态偏置按主设定查——外环的对象是釜，跟执行器无关，
+    /// 查的是两张表里离主设定最近的外环工作点所在那张（HostControlLoop.GetOuterSchedule）；表里没有或调度关了就是手动那组。
+    /// </summary>
     private PidInUse Compose(PidActuator a, double innerAt, double outerAt)
     {
         var sched = Schedule(a);
+        var outerSched = _loop.GetOuterSchedule(_tc, outerAt);
         var on = Scheduling;
         var m = Manual;
         var g = on ? sched.GainsAt(innerAt) : null;
-        var o = on ? sched.OuterAt(outerAt) : null;
+        var o = on ? outerSched.OuterAt(outerAt) : null;
         var heat = a == PidActuator.Heater ? 1.0 : (on ? sched.HeatRatioAt(innerAt) : null) ?? _loop.HeatingEffectivenessRatio;
         return new PidInUse(
             innerAt, a,
             g is null ? m.Inner : new PidTuning(g.Kp, g.Ki, g.Kd), g is not null,
             o is null ? m.Outer : new PidTuning(o.Gains.Kp, o.Gains.Ki, o.Gains.Kd),
             o?.MaxBiasC ?? m.OuterMaxBiasC, o is not null,
-            sched.SteadyBiasAt(outerAt), heat);
+            outerSched.SteadyBiasAt(outerAt), heat);
     }
 
     /// <summary>会话在回路每拍回调里喂进来。</summary>

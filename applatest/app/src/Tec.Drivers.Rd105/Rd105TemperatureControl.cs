@@ -281,7 +281,10 @@ public sealed class Rd105TemperatureControl : ITemperatureControl, ITemperatureS
     /// 温控器 PID 方式下没有这回事（固件自己按符号路由）。
     /// </summary>
     public void SetActuator(bool electric)
-        => _loop?.SetActuatorMode(_tc, electric ? ActuatorMode.HeatOnly : ActuatorMode.Bidirectional);
+        => SetActuator(electric ? ActuatorMode.HeatOnly : ActuatorMode.Bidirectional);
+
+    /// <summary>三态：加热棒 = 只加热；TEC = 双向，或「TEC 加热」不启用时只制冷（正半轴那一极接的是加热棒 SSR、继电器断着）。</summary>
+    public void SetActuator(ActuatorMode mode) => _loop?.SetActuatorMode(_tc, mode);
 
     /// <summary>回路把这一路停了（会话收到 ChannelTripped 时调）。</summary>
     internal void OnTripped(string reason)

@@ -304,6 +304,99 @@ public class Rd105HostControlTests
         await t.StopAsync(CancellationToken.None);
     }
 
+    private static long DutyOf(string cmd) => long.Parse(cmd.Split('=')[1].TrimEnd('@'));
+
+    [Fact]
+    public async Task TEC只制冷_形态CoolOnly_要加热时输出0积分不往正攒_要制冷立刻有冷()
+    {
+        // 「TEC 加热」不启用：TEC 侧从前按双向算——夹套低于设定 PID 往正半轴要「加热」，物理上那一极是断着的加热棒 SSR，
+        // 积分白攒；等真要制冷时先得把它退掉。现在回路形态是只制冷：限幅 [−上限, 0]
+        var b = new Duo();
+        await using var s = await b.Drv.OpenAsync(Duo.Conn(), b.Ctx(), CancellationToken.None);
+        await s.StartAsync(CancellationToken.None);
+        var t = Temp(s, 0);
+        var bench = s.CapabilitiesOf(0).OfType<IPidTuningBench>().Single();
+        await WaitUntil(() => !double.IsNaN(t.CurrentJacket), 3000, "夹套读数");
+
+        await t.SetTargetAsync(new TempTarget(20, TempChannelKind.Jacket), CancellationToken.None);   // 环境 25：TEC 侧
+        Assert.True(b.Io.Coils[6]);
+        await WaitUntil(() => b.Rd.Get(1, "PWMDUTY") > 0, 3000, "制冷（反向配置下制冷是正的）");
+        await WaitUntil(() => t.CurrentJacket < 22, 20000, () => $"夹套往 20 走（{t.CurrentJacket:F2}）");
+
+        // 夹套被外界拉到 15（低于设定 5 ℃）：PID 想加热——只制冷给不了：输出 0、积分不往正半轴攒、一笔负（加热那一极）都不写
+        var n = b.Rd.Commands.Count;
+        b.Rd.Set(1, "TCADJTEMP", 15_00000);
+        await Task.Delay(3000);
+        Assert.Equal(0, b.Rd.Get(1, "PWMDUTY"));
+        Assert.True(bench.Live is { } live && live.I <= 1e-6, $"积分往正攒了：{bench.Live?.I}");
+        Assert.All(b.Rd.Commands.Skip(n).Where(c => c.StartsWith("TC1:PWMDUTY=")), c => Assert.True(DutyOf(c) >= 0, c));
+
+        // 夹套跳到 24（高于设定 4 ℃）：立刻就有冷，不用先退债
+        b.Rd.Set(1, "TCADJTEMP", 24_00000);
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        await WaitUntil(() => b.Rd.Get(1, "PWMDUTY") > 0, 3000, "制冷");
+        Assert.True(sw.ElapsedMilliseconds < 1500, $"要冷等了 {sw.ElapsedMilliseconds} ms");
+    }
+
+    [Fact]
+    public async Task 串级_加热棒贴着0时外环正向欠账能退_Tr过头后夹套设定往下走()
+    {
+        // 原来内环贴着 0（加热棒关着）就把外环积分双向冻住：Tr 越过设定后攒下的正向偏置退不掉，夹套设定一直比该有的高。
+        // 外环 Ki 调大到 0.5 让这事在几秒里看得见
+        var b = new Duo();
+        await using var s = await b.Drv.OpenAsync(Duo.Conn(), b.Ctx(), CancellationToken.None);
+        await s.StartAsync(CancellationToken.None);
+        var t = Temp(s, 0);
+        var bench = s.CapabilitiesOf(0).OfType<IPidTuningBench>().Single();
+        await WaitUntil(() => !double.IsNaN(t.CurrentJacket), 3000, "夹套读数");
+        bench.SetManual(new PidManual(new PidTuning(8, 0.02, 0), new PidTuning(2.5, 0.5, 0), 8));
+        using var feed = new TrFeeder(s, 1, 29.0);           // 釜内 29、目标 30：外环 P = 2.5，积分从这里往上攒
+        await Task.Delay(100);
+        await t.SetTargetAsync(new TempTarget(30, TempChannelKind.Reactor), CancellationToken.None);
+        Assert.True(b.Io.Coils[0]);
+        await WaitUntil(() => St(t).CascadeInnerSetpoint is { } i && i > 37, 15000, () => $"外环积分攒到顶（内环设定 {St(t).CascadeInnerSetpoint}）");
+
+        // 釜内过头到 31（e = −1）、夹套被拉到 40（高过内环设定）：加热棒 0、贴着下限。原来这时外环积分双向冻结，
+        // 内环设定停在 30 + 8 − 2.5 = 35.5 不动；现在正向欠账能退：几秒内落到 30 以下
+        feed.Value = 31.0;
+        b.Rd.Set(1, "TCADJTEMP", 40_00000);
+        await Task.Delay(1500);
+        Assert.Equal(0, b.Rd.Get(1, "PWMDUTY"));
+        await WaitUntil(() => St(t).CascadeInnerSetpoint is { } i && i < 29, 30000, () => $"内环设定没往下走：{St(t).CascadeInnerSetpoint}");
+        Assert.True(St(t).Active);
+    }
+
+    [Fact]
+    public async Task 参数窗改LIMITED_回路输出上限跟着改()
+    {
+        var b = new Duo();
+        await using var s = await b.Drv.OpenAsync(Duo.Conn(), b.Ctx(), CancellationToken.None);
+        await s.StartAsync(CancellationToken.None);
+        var t = Temp(s, 0);
+        await WaitUntil(() => !double.IsNaN(t.CurrentJacket), 3000, "夹套读数");
+        await t.SetTargetAsync(new TempTarget(60, TempChannelKind.Jacket), CancellationToken.None);
+        await WaitUntil(() => b.Rd.Get(1, "PWMDUTY") == -90 * 20_000, 4000, () => $"加热满幅 −90（{b.Rd.Get(1, "PWMDUTY")}）");
+
+        var notes = await ((IDeviceSettings)s).WriteAsync(Rd105Settings.GroupTc1, ParameterSet.Of((Rd105Settings.KLimited, 50d)), CancellationToken.None);
+        Assert.Contains(notes, x => x.Contains("LIMITED=50"));
+        await WaitUntil(() => b.Rd.Get(1, "PWMDUTY") == -50 * 20_000, 4000, () => $"回路上限跟着改成 50（{b.Rd.Get(1, "PWMDUTY")}）");
+        Assert.Contains(b.Logs, l => l.Contains("LIMITED 改为 50 %"));
+    }
+
+    [Fact]
+    public async Task 开会话读FPWM与启动电压_说清楚()
+    {
+        var (drv, dev) = Standalone();
+        dev.Set(null, "FPWM", 2);                          // 出厂 10 Hz
+        dev.Set(1, "BDEADV", 404);                         // 反向启动电压 2.02 %（现场回显多出来的那 2.02）
+        var logs = new List<string>();
+        await using var s = await drv.OpenAsync(Conn(), Ctx(HostCfg(), logs), CancellationToken.None);
+        await s.StartAsync(CancellationToken.None);
+        Assert.Contains(logs, l => l.StartsWith("warn") && l.Contains("FPWM = 10 Hz") && l.Contains("0.5 Hz"));
+        Assert.Contains(logs, l => l.StartsWith("warn") && l.Contains("TC1 启动电压") && l.Contains("反向 2.02 %"));
+        Assert.DoesNotContain(logs, l => l.Contains("TC2 启动电压"));
+    }
+
     [Fact]
     public async Task 上位机整定口子_两路各看自己的Tr_不越界()
     {

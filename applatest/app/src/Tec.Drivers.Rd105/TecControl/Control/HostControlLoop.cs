@@ -84,6 +84,13 @@ public enum ActuatorMode
     /// 使用前必须先按目标温度改写双通道过温阈值。
     /// </summary>
     HeatOnly,
+
+    /// <summary>
+    /// 【本地改动】TEC 只制冷：占空比恒 ≤0。双工位主机「TEC 加热」不启用时 TEC 侧用它——反向那一极物理上接的是
+    /// 加热棒的 SSR、而加热棒继电器在 TEC 侧是断开的，正输出什么都不发生；按双向算的话 PID 往正半轴白攒积分，
+    /// 要制冷时得先把它退掉（几分钟到几十分钟没有冷）。
+    /// </summary>
+    CoolOnly,
 }
 
 /// <summary>四片 TEC（两路输出）的同步方式。</summary>
@@ -123,11 +130,21 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         public bool SaturationWarned;
 
         /// <summary>最近一次稳态下的 PID 内部输出（未取反），用于下次启动的积分预置。
-        /// 仅在误差足够小且未饱和时以低通方式更新。</summary>
-        public double? LastSteadyOutput;
+        /// 仅在误差足够小且未饱和时以低通方式更新。【本地改动】按执行器各存一份：加热棒的 +15 % 和 TEC 的 −20 %
+        /// 不是一个量纲，切换时拿另一个执行器的数预置只会错。</summary>
+        public double? LastSteadyOutput
+        {
+            get => Actuator == ActuatorMode.HeatOnly ? HeaterSteadyOutput : TecSteadyOutput;
+            set { if (Actuator == ActuatorMode.HeatOnly) HeaterSteadyOutput = value; else TecSteadyOutput = value; }
+        }
+        public double? TecSteadyOutput;
+        public double? HeaterSteadyOutput;
 
-        /// <summary>跨设定值的稳态前馈模型（自动学习"任意温度需要多少输出"）。</summary>
-        public readonly SteadyStateFeedforward Feedforward = new();
+        /// <summary>跨设定值的稳态前馈模型（自动学习"任意温度需要多少输出"）。【本地改动】按执行器各一份、不按 100 ℃ 分段
+        /// （段按执行器分，不按温度）——切换时拿另一个执行器学到的稳态输出去预置只会错。</summary>
+        public readonly SteadyStateFeedforward TecFeedforward = new() { SegmentBoundaryC = double.NaN };
+        public readonly SteadyStateFeedforward HeaterFeedforward = new() { SegmentBoundaryC = double.NaN };
+        public SteadyStateFeedforward Feedforward => Actuator == ActuatorMode.HeatOnly ? HeaterFeedforward : TecFeedforward;
 
         /// <summary>增益调度表（自整定结果按温度登记，运行时插值）。</summary>
         public readonly PidGainSchedule GainSchedule = new();
@@ -351,7 +368,11 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         var s = State(ch);
         if (s.Suspended == suspend) return;
         s.Suspended = suspend;
-        if (!suspend) s.LastUpdateTime = default;      // dt 从恢复那一拍重新计，别把挂起的几秒算进积分
+        if (!suspend)
+        {
+            s.LastUpdateTime = default;      // dt 从恢复那一拍重新计，别把挂起的几秒算进积分
+            s.Pid.ResetDerivative();         // 挂起那两秒温度走了一截，别拿它算斜率踢输出
+        }
     }
 
     public bool IsSuspended(int ch) => State(ch).Suspended;
@@ -393,10 +414,10 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
     public void ConfigurePid(int ch, double kp, double ki, double kd,
         double maxDutyPercent, bool invertOutput, double derivativeFilterSeconds = 2.0)
     {
-        var magnitude = Math.Clamp(Math.Abs(maxDutyPercent), 0, 100);
+        var magnitude = Math.Clamp(Math.Abs(maxDutyPercent), 1, 100);
         var s = State(ch);
         s.MaxDutyMagnitude = magnitude;
-        s.Pid.Configure(kp, ki, kd, OutputFloor(s), magnitude, derivativeFilterSeconds);
+        s.Pid.Configure(kp, ki, kd, OutputFloor(s), OutputCeiling(s), derivativeFilterSeconds);
         s.InvertOutput = invertOutput;
         s.ManualGains = new PidGains(kp, ki, kd);
     }
@@ -413,6 +434,20 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
     private static double OutputFloor(ChannelState s) =>
         s.Actuator == ActuatorMode.HeatOnly ? 0 : -s.MaxDutyMagnitude;
 
+    /// <summary>【本地改动】输出上限：只制冷执行器为 0（正半轴不存在），其余为 +上限。</summary>
+    private static double OutputCeiling(ChannelState s) =>
+        s.Actuator == ActuatorMode.CoolOnly ? 0 : s.MaxDutyMagnitude;
+
+    /// <summary>【本地改动】只换输出上限（参数窗改了温控器的 LIMITED 时跟上），增益、方向不动。</summary>
+    public void SetMaxDuty(int ch, double maxDutyPercent)
+    {
+        var s = State(ch);
+        s.MaxDutyMagnitude = Math.Clamp(Math.Abs(maxDutyPercent), 1, 100);
+        s.Pid.SetOutputLimits(OutputFloor(s), OutputCeiling(s));
+    }
+
+    private static bool TecFamily(ActuatorMode m) => m != ActuatorMode.HeatOnly;
+
     /// <summary>
     /// 设置执行器形态（手动换线过渡方案）。运行/整定中禁止切换——形态必须与当时的
     /// 实际接线一致，只能停下来、改完线再切。切到只加热时内环输出下限抬到 0：
@@ -424,12 +459,13 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         var s = State(ch);
         // 【本地改动】双工位主机的继电器由程序自己扳：挂起输出 → 扳继电器 → 换形态 → 恢复，
         // 这时候通道是「运行中但挂起」，允许切；没挂起的运行中照旧不许（形态必须跟接线一致）
-        if (s.Busy && s.Actuator != mode && !s.Suspended)
+        // 【本地改动】TEC 双向 ⇄ 只制冷 只是改限幅（「TEC 加热」开关翻了），不换对象，运行中也许改
+        if (s.Busy && s.Actuator != mode && !s.Suspended && !(TecFamily(s.Actuator) && TecFamily(mode)))
             throw new InvalidOperationException($"通道{ch}正在运行，请先停止再切换执行器形态（并确认接线已相应改好）");
-        var changed = s.Actuator != mode;
+        var swapped = TecFamily(s.Actuator) != TecFamily(mode);      // 换了对象（加热棒 ⇄ TEC）才复位
         s.Actuator = mode;
-        s.Pid.SetOutputLimits(OutputFloor(s), s.MaxDutyMagnitude);
-        if (changed && s.Active)
+        s.Pid.SetOutputLimits(OutputFloor(s), OutputCeiling(s));
+        if (swapped && s.Active)
         {
             // 换了执行器就是换了对象（加热棒和 TEC 的增益差一个量级）：积分清零、按前馈预置，
             // 跑飞检测重新给宽限期——不然刚换上的那一拍还背着上一个执行器攒的积分
@@ -646,9 +682,26 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
     /// 外环快慢取决于"腔体→内部"的传热速度，低温段整体变慢，外环也必须跟着变慢，
     /// 因此外环参数与内环一样需要随温度调度。
     /// </summary>
+    /// <summary>
+    /// 【本地改动】外环（釜内 → 夹套）的参数与稳态偏置该查哪张表：外环的对象是釜，跟此刻是加热棒还是 TEC 在出力无关，
+    /// 不能随继电器换来换去（换一次外环增益和限幅就跳一次）。取两张表里离设定值最近的那个外环工作点所在的表；
+    /// 都没登记外环的就用此刻执行器那张（让手动参数兜底）。
+    /// </summary>
+    public PidGainSchedule GetOuterSchedule(int ch, double setpointC) => OuterSchedule(State(ch), setpointC);
+
+    private static PidGainSchedule OuterSchedule(ChannelState s, double setpointC)
+    {
+        var tec = s.GainSchedule.NearestOuterDistance(setpointC);
+        var heater = s.HeaterSchedule.NearestOuterDistance(setpointC);
+        if (tec is null && heater is null) return s.ActiveSchedule;
+        if (heater is null) return s.GainSchedule;
+        if (tec is null) return s.HeaterSchedule;
+        return tec <= heater ? s.GainSchedule : s.HeaterSchedule;
+    }
+
     private void ApplyOuterTuning(ChannelState s, double setpointC)
     {
-        var tuning = Scheduling(s) ? s.ActiveSchedule.OuterAt(setpointC) : null;     // 【本地改动】按执行器选表、按路开关
+        var tuning = Scheduling(s) ? OuterSchedule(s, setpointC).OuterAt(setpointC) : null;     // 【本地改动】外环按釜选表、按路开关
         tuning ??= s.ManualOuterGains is { } manual
             ? new OuterTuning(manual, s.ManualOuterMaxBiasC)
             : null;
@@ -731,7 +784,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
             s.ProfileHoldAt = null;
             s.InnerSetpointC = setpointC;
             ApplyOuterTuning(s, setpointC);   // 先装限幅，预置才会按正确范围截断
-            if (s.ActiveSchedule.SteadyBiasAt(setpointC) is { } bias)     // 【本地改动】按执行器选表
+            if (OuterSchedule(s, setpointC).SteadyBiasAt(setpointC) is { } bias)     // 【本地改动】外环按釜选表
             {
                 s.OuterPid.PresetIntegral(bias);
                 s.InnerSetpointC = Math.Clamp(setpointC + bias, InnerSetpointMinC, InnerSetpointMaxC);
@@ -762,6 +815,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         var s = State(ch);
         if (coolOnly && s.Actuator == ActuatorMode.HeatOnly)
             throw new InvalidOperationException($"通道{ch}执行器是加热棒（只加热），不能按只制冷整定");
+        coolOnly |= s.Actuator == ActuatorMode.CoolOnly;     // 【本地改动】形态本身就是只制冷
         if (s.Active)
             throw new InvalidOperationException($"通道{ch}正在闭环控温，请先停止再自整定");
         s.SetpointC = setpointC;
@@ -776,7 +830,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         // 初值不准也不致命：整定器 Seeking 段带自寻中，会把中心逐步挪到位。
         var h = Math.Clamp(Math.Abs(relayAmplitudePercent), 1, 100);
         var bias = s.LastSteadyOutput ?? s.Feedforward.Predict(setpointC) ?? 0;
-        var ceiling = Math.Max(1, s.Pid.OutputMax);
+        var ceiling = Math.Max(1, s.MaxDutyMagnitude);       // 【本地改动】只制冷时 Pid.OutputMax 是 0，上限要拿幅度
         if (h >= ceiling && !coolOnly) bias = 0;   // 幅值本身已覆盖全量程时无偏置可言
 
         // 只加热执行器：输出下限 0，继电摆动整体落在正半轴（弱加热半周靠自然散热降温）。
@@ -824,6 +878,9 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
             throw new InvalidOperationException(
                 $"通道{ch}当前为只加热执行器（电加热棒）：手动输出不能为负。" +
                 "负占空比会被固件路由到制冷 PWM 引脚，而 TEC 功率线已断开");
+        if (s.Actuator == ActuatorMode.CoolOnly && dutyPercent > 0)
+            throw new InvalidOperationException(
+                $"通道{ch}当前为只制冷执行器（TEC，「TEC 加热」不启用）：手动输出不能为正——正半轴那一极接的是加热棒的 SSR，而加热棒继电器断着");
 
         var raw = s.Actuator == ActuatorMode.HeatOnly
             ? s.HeaterSign * Math.Clamp(dutyPercent, 0, 100)   // 加热棒引脚路由固定，反向无意义；符号看接线【本地改动】
@@ -1090,10 +1147,17 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                 // 内环饱和或钳位正在约束偏置时冻结外环积分——两者同理：
                 // 输出执行不了/被界住时继续积分只会累积过零后要还的债。
                 // 判据对上下限各查一侧：只加热模式贴着 0 下限（要降温却无制冷）同样是饱和。
-                var innerSaturated = s.LastDutyPercent >= s.Pid.OutputMax - 1e-6
-                                     || s.LastDutyPercent <= s.Pid.OutputMin + 1e-6;
+                // 【本地改动】只冻会把内环推得更深的方向：内环顶在上限还要往上、贴在下限还要往下才冻；积分往回走（退债）
+                // 不冻——只加热执行器贴着 0 时 Tr 已过设定，外环正向欠账要能退掉，不然夹套设定一直比该有的高、Tr 停在设定
+                // 之上（原来两个方向都冻）。LastDutyPercent 存的是 PID 那一侧的输出，跟 PID 限幅比才对得上
+                var innerHigh = s.LastDutyPercent >= s.Pid.OutputMax - 1e-6;
+                var innerLow = s.LastDutyPercent <= s.Pid.OutputMin + 1e-6;
+                var innerSaturated = innerHigh || innerLow;
+                var outerErr0 = s.SetpointC - outerPv;
+                var freeze = (innerHigh && outerErr0 > 0 && s.OuterPid.LastI >= 0)
+                             || (innerLow && outerErr0 < 0 && s.OuterPid.LastI <= 0);
                 var bias = s.OuterPid.Update(s.SetpointC, outerPv, outerDt,
-                    freezeIntegral: innerSaturated || s.OuterClampBinding);
+                    freezeIntegral: freeze || s.OuterClampBinding);
 
                 // 腔体跟踪缺口前馈：腔体离它的目标还差多少，就按比例多推一把，
                 // 等效把腔体跟随加速 (1+k) 倍——趋近段提前归位消掉剩余下冲，
@@ -1109,7 +1173,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                 var effBias = bias;
                 s.OuterClampBinding = false;
                 if (OuterBiasClampBandC > 0 && s.OuterCrossingArmed
-                    && s.ActiveSchedule.SteadyBiasAt(s.SetpointC) is { } clampRef)     // 【本地改动】按执行器选表
+                    && OuterSchedule(s, s.SetpointC).SteadyBiasAt(s.SetpointC) is { } clampRef)     // 【本地改动】外环按釜选表
                 {
                     // 进带一次即锁存（带边按拍重判会被噪声来回触发，实测抖动 4 次）
                     if (!s.OuterClampLatched
@@ -1149,7 +1213,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                 // 积分从不冻结，稳态偏置过时最多偏一次、由正常积分接管收敛。
                 var outerErr = s.SetpointC - outerPv;
                 if (s.Profile is null
-                    && s.ActiveSchedule.SteadyBiasAt(s.SetpointC) is { } steadyI)     // 【本地改动】按执行器选表
+                    && OuterSchedule(s, s.SetpointC).SteadyBiasAt(s.SetpointC) is { } steadyI)     // 【本地改动】外环按釜选表
                 {
                     if (s.OuterApproachDischargeArmed
                         && Math.Abs(outerErr) <= OuterDischargeApproachBandC)
@@ -1179,7 +1243,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                         outerErr) is { } widened)
                 {
                     s.OuterPid.SetOutputLimits(-widened, widened);
-                    if (s.ActiveSchedule.WidenOuterBiasLimit(s.SetpointC, widened))     // 【本地改动】按执行器选表
+                    if (OuterSchedule(s, s.SetpointC).WidenOuterBiasLimit(s.SetpointC, widened))     // 【本地改动】外环按釜选表
                         GainScheduleChanged?.Invoke(ch);
                     else
                         s.ManualOuterMaxBiasC = widened;   // 表里没有该温度点时至少本次运行生效
@@ -1198,8 +1262,10 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                     s.LastSteadyBias = s.LastSteadyBias is { } prev
                         ? prev + 0.05 * (bias - prev)   // 低通，约 20 次外环更新的时间常数
                         : bias;
+                    // 【本地改动】学到的稳态偏置记进外环那张表；表里没有这个温度的行就按插值参数新建一行带着它——
+                    // 自整定只在几个点整过，中间的温度第一次跑到稳态也该记下来，下次启动才有预置、两枪放电才开得了
                     if (++s.OuterSteadyCycles >= OuterSteadyCyclesToLearn
-                        && s.ActiveSchedule.LearnSteadyBias(s.SetpointC, s.LastSteadyBias.Value))     // 【本地改动】按执行器选表
+                        && OuterSchedule(s, s.SetpointC).LearnSteadyBias(s.SetpointC, s.LastSteadyBias.Value, createIfMissing: true))
                         GainScheduleChanged?.Invoke(ch);
                 }
                 else
@@ -1240,6 +1306,12 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
             // 反向输出对加热棒无意义（引脚路由由固件固定）；写到设备上的符号按接线定（HeaterSign）【本地改动】
             duty = s.HeaterSign * Math.Clamp(duty, 0, 100);
         }
+        else if (s.Actuator == ActuatorMode.CoolOnly)
+        {
+            // 【本地改动】只制冷：正半轴那一极接的是加热棒的 SSR、继电器断着，一笔正的都不写
+            duty = Math.Clamp(duty, -100, 0);
+            if (s.InvertOutput) duty = -duty;
+        }
         else
         {
             duty = Math.Clamp(duty, -100, 100);
@@ -1250,15 +1322,28 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         // 只加热模式仅看加热侧饱和：贴着 0 下限时温度上漂是"没有制冷能力"，不是接反。
         var satHigh = pidOut >= s.Pid.OutputMax - 1e-6;
         var satLow = pidOut <= s.Pid.OutputMin + 1e-6;
-        var saturated = s.Actuator == ActuatorMode.HeatOnly ? satHigh : satHigh || satLow;
+        // 【本地改动】单方向执行器只看它能出力的那一侧：贴着 0 是「没有另一侧」，不是饱和
+        var saturated = s.Actuator switch
+        {
+            ActuatorMode.HeatOnly => satHigh,
+            ActuatorMode.CoolOnly => satLow,
+            _ => satHigh || satLow
+        };
         if (s.Runaway.Check(snapshot.Timestamp, innerSetpoint, pv, saturated))
         {
-            await TripChannelAsync(ch, s.Actuator == ActuatorMode.HeatOnly
-                ? $"通道{ch}加热满幅期间温度持续不升反降，已自动停控。可能原因：" +
-                  "①加热棒市电未通/固态继电器故障；②PWM 引脚接线脱落；③使能线未接通"
-                : $"通道{ch}输出饱和期间温度持续背离设定值，已自动停控。可能原因：" +
-                  "①输出方向接反（检查“反向输出”勾选与接线极性）；" +
-                  "②制冷废热未被带走；③散热失效").ConfigureAwait(false);
+            await TripChannelAsync(ch, s.Actuator switch
+            {
+                ActuatorMode.HeatOnly =>
+                    $"通道{ch}加热满幅期间温度持续不升反降，已自动停控。可能原因：" +
+                    "①加热棒市电未通/固态继电器故障；②PWM 引脚接线脱落；③使能线未接通",
+                ActuatorMode.CoolOnly =>
+                    $"通道{ch}制冷满幅期间温度持续不降反升，已自动停控。可能原因：" +
+                    "①TEC 功率线没接通 / 冷却水没开；②散热失效；③输出方向接反（检查「TEC 输出反向」）",
+                _ =>
+                    $"通道{ch}输出饱和期间温度持续背离设定值，已自动停控。可能原因：" +
+                    "①输出方向接反（检查“反向输出”勾选与接线极性）；" +
+                    "②制冷废热未被带走；③散热失效"
+            }).ConfigureAwait(false);
             return new ChannelCycleInfo(false, false, 0, s.SetpointC, pv, 0, 0, 0, 0);
         }
 
@@ -1299,9 +1384,9 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         }
 
         await WriteDutyAsync(ch, duty, ct).ConfigureAwait(false);
-        // 饱和判据拿 LastDutyPercent 跟 PID 的限幅比：只加热执行器写到设备上的可能是负号（HeaterSign），
-        // 这里记的是 PID 那一侧的量（≥0），别让 −90 被当成「贴着 0 下限」【本地改动】
-        s.LastDutyPercent = s.Actuator == ActuatorMode.HeatOnly ? Math.Abs(duty) : duty;
+        // 饱和判据拿 LastDutyPercent 跟 PID 的限幅比，所以这里记的是 PID 那一侧的输出（反向、加热比、加热棒符号都还没动过的）
+        // ——写到设备上的数在 ChannelCycleInfo.DutyPercent 里【本地改动】
+        s.LastDutyPercent = pidOut;
 
         return new ChannelCycleInfo(true, false, 0, s.SetpointC, pv, duty,
             s.Pid.LastP, s.Pid.LastI, s.Pid.LastD)

@@ -68,6 +68,9 @@ public sealed class Rd105Settings : IDeviceSettings
     /// 「控温方式」是上位机 PID：温控器只按上位机给的百分比出功率（MODE=3），它自己的 KP/KI/KD 与
     /// AUTOPID 都不参与控温——面板上照实说，温控器自整定拒绝（它会跟上位机回路抢输出）。
     /// </param>
+    /// <summary>参数窗写了某路的 LIMITED（最大输出占空比）：会话接上去让回路的上限跟着改。</summary>
+    internal Action<int, int>? MaxDutyWritten { get; set; }
+
     public Rd105Settings(Rd105Link link, ParameterSet config, Action<string, string>? log, bool hostLoop = false)
     {
         _client = link.Client;
@@ -303,6 +306,7 @@ public sealed class Rd105Settings : IDeviceSettings
             {
                 var pct = (int)Math.Clamp(Math.Round(v.Num(spec.Key)), 0, 90);
                 await _client.SetAsync(tc, TecCmd.MaxDuty, pct, ct).ConfigureAwait(false);
+                MaxDutyWritten?.Invoke(tc!.Value, pct);      // 上位机回路的输出上限跟着改（不然回路还按旧上限刹车、设备在更低处钳）
                 return $"{who}最大输出占空比 = {pct} %（LIMITED={pct}）";
             }
             case KSetCurrent:
