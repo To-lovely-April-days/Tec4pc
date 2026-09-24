@@ -199,6 +199,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
             Log = ctx.Log
         }, connection, Rd105HostDefaults.DualStation);
         _fwd = _rd.Samples.Subscribe(new Fwd(_out));
+        _rd.LoopExtra = w => SideName(SideNow(w));          // 逐拍记录里带上热源在哪一侧
         _rd.StateChanged += (_, st) => { if (st != DeviceState.Disposed) State = st; };
         // 上位机回路把某一路停了（Tr 丢失 / 跑飞 / 连续通信失败）：这一路就算不控了，
         // 下一拍采集循环把它的两只继电器都断开（不控温不合，用户定的）
@@ -352,6 +353,9 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     public ICommandHandler? Resolve(string commandId) => CapabilityCommands.Resolve(commandId);
 
     internal Rd105TemperatureControl InnerTemp(int well) => _rd.TempOf(well);
+
+    /// <summary>这一工位正在记的控温记录文件（测试用）。</summary>
+    internal string? InnerLoopLogPath(int well) => _rd.LoopLogPathOf(well);
 
     /// <summary>
     /// 工作台喂进来的外部釜温（宇电 Tr 探头会话发的）。质量不好就按 NaN 处置——

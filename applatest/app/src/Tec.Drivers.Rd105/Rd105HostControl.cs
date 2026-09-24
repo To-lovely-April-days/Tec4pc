@@ -9,13 +9,16 @@ namespace Tec.Drivers.Rd105;
 /// 单独的 RD105 温控器驱动缺省温控器自己的 PID、不反向、正；双工位反应主机缺省上位机 PID，
 /// 而且按现场实测的极性（降温 +90、升温 −90）缺省反向、负。
 /// </summary>
-public sealed record Rd105HostDefaults(string Control, string Invert, string HeaterSign)
+public sealed record Rd105HostDefaults(string Control, string Invert, string HeaterSign, string Fpwm = Rd105TecDriver.FpwmKeep)
 {
     public static readonly Rd105HostDefaults Standalone =
         new(Rd105TecDriver.ControlDevice, Rd105TecDriver.InvertNo, Rd105TecDriver.HeaterPos);
 
+    /// <summary>双工位主机：加热棒是交流 + 固态继电器，PWM 频率缺省 1 Hz（功率 2 % 一档）。</summary>
     public static readonly Rd105HostDefaults DualStation =
-        new(Rd105TecDriver.ControlHost, Rd105TecDriver.InvertYes, Rd105TecDriver.HeaterNeg);
+        new(Rd105TecDriver.ControlHost, Rd105TecDriver.InvertYes, Rd105TecDriver.HeaterNeg, "1 Hz");
+
+    public string FpwmOf(ParameterSet cfg) => cfg.Str(Rd105TecDriver.FieldFpwm, Fpwm);
 
     public bool HostOf(ParameterSet cfg) => cfg.Str(Rd105TecDriver.FieldControl, Control) == Rd105TecDriver.ControlHost;
     public bool InvertOf(ParameterSet cfg) => cfg.Str(Rd105TecDriver.FieldInvert, Invert) == Rd105TecDriver.InvertYes;
@@ -75,6 +78,20 @@ public static class Rd105HostControl
 
     /// <summary>手动 PID 参数与这一路的调度开关。</summary>
     public static string ParamsPath(string instanceId, int tc) => Path.Combine(GainsDir, $"{Safe(instanceId)}-tc{tc}-pid.json");
+
+    /// <summary>每次控温的逐拍记录放哪（Rd105LoopRecorder）：环境变量 TEC_LOOPLOG_DIR 可改；测试的 UseGainsDir 顺带把它也隔开。</summary>
+    public static string LoopLogDir
+    {
+        get
+        {
+            if (DirOverride.Value is { } o) return Path.Combine(o, "loops");
+            var env = Environment.GetEnvironmentVariable("TEC_LOOPLOG_DIR");
+            if (!string.IsNullOrWhiteSpace(env)) return env;
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "TecDrivers", "loops");
+        }
+    }
+
+    internal static string SafeName(string instanceId) => Safe(instanceId);
 
     private static string Safe(string instanceId)
         => string.Concat(instanceId.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c));

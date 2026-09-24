@@ -398,6 +398,106 @@ public class Rd105HostControlTests
     }
 
     [Fact]
+    public async Task 串级_外环积分分离_离设定远只用P_进带才积()
+    {
+        // 现场：釜内 90 ℃ 一步到位，趋近那十几分钟外环积分攒了 20 多 K，Tr 到 90 夹套设定还在 108。
+        // 外环 Ki 调大到 0.5 让积分攒不攒几秒就看得见；偏置上限 30 让 P 在 e = 5 时不顶限（12.5 < 30）
+        var b = new Duo();
+        await using var s = await b.Drv.OpenAsync(Duo.Conn(), b.Ctx(), CancellationToken.None);
+        await s.StartAsync(CancellationToken.None);
+        var t = Temp(s, 0);
+        var bench = s.CapabilitiesOf(0).OfType<IPidTuningBench>().Single();
+        await WaitUntil(() => !double.IsNaN(t.CurrentJacket), 3000, "夹套读数");
+        bench.SetManual(new PidManual(new PidTuning(8, 0.02, 0), new PidTuning(2.5, 0.5, 0), 30));
+        using var feed = new TrFeeder(s, 1, 25.0);           // e = 5：带（3 ℃）外
+        await Task.Delay(100);
+        await t.SetTargetAsync(new TempTarget(30, TempChannelKind.Reactor), CancellationToken.None);
+        await WaitUntil(() => St(t).CascadeInnerSetpoint is { } i && i > 42, 6000, () => $"P 顶起来（{St(t).CascadeInnerSetpoint}）");
+        await Task.Delay(6000);                            // 3 个外环周期：老规矩下 I 每周期涨 0.5 × 5 × 2 = 5 ℃
+        var far = St(t).CascadeInnerSetpoint!.Value;
+        Assert.True(far < 43.5, $"带外还在积分：内环设定 {far:F2}（该是 30 + 2.5 × 5 = 42.5）");
+
+        feed.Value = 28.0;                                 // e = 2：进带，积分开始攒
+        await WaitUntil(() => St(t).CascadeInnerSetpoint is { } i && i > 30 + 5 + 1.5, 8000, () => $"进带没积分：{St(t).CascadeInnerSetpoint}");
+    }
+
+    [Fact]
+    public async Task 每次下发目标记一份逐拍CSV_目标改了记一行_停控收尾()
+    {
+        using var dir = Rd105HostControl.UseGainsDir(Path.Combine(Path.GetTempPath(), "tec-loop-" + Guid.NewGuid().ToString("N")));
+        var (drv, _) = Standalone();
+        var logs = new List<string>();
+        await using var s = await drv.OpenAsync(Conn(), Ctx(HostCfg(), logs), CancellationToken.None);
+        await s.StartAsync(CancellationToken.None);
+        var rd = (Rd105Session)s;
+        var t = Temp(s, 0);
+        await WaitUntil(() => !double.IsNaN(t.CurrentJacket), 3000, "夹套读数");
+        Assert.Null(rd.LoopLogPathOf(0));
+
+        await t.SetTargetAsync(new TempTarget(30, TempChannelKind.Jacket), CancellationToken.None);
+        var path = rd.LoopLogPathOf(0);
+        Assert.NotNull(path);
+        Assert.StartsWith(Rd105HostControl.LoopLogDir, path);
+        Assert.Contains(logs, l => l.Contains("控温记录 →") && l.Contains(path!));
+        await Task.Delay(1500);
+        await t.SetTargetAsync(new TempTarget(32, TempChannelKind.Jacket), CancellationToken.None);   // 控着改目标：同一个文件
+        Assert.Equal(path, rd.LoopLogPathOf(0));
+        await Task.Delay(800);
+        await t.StopAsync(CancellationToken.None);
+        Assert.Null(rd.LoopLogPathOf(0));
+        Assert.Contains(logs, l => l.Contains("控温记录已收尾（操作人停控）"));
+
+        var lines = File.ReadAllLines(path!);
+        Assert.Equal(Rd105LoopRecorder.Header, lines[0].TrimStart('\uFEFF'));
+        Assert.True(lines.Length > 8, $"只有 {lines.Length} 行");
+        Assert.Contains("开始：夹套 30 ℃（尽快）", lines[1]);
+        Assert.Contains(lines, l => l.Contains("目标改为 32 ℃"));
+        Assert.EndsWith("停止：操作人停控", lines[^1]);
+        // 每行 20 列：时间、秒、模式、设定、内环设定、Tr、Tj、写入、回显、P、I、D、外环 P/I/D、执行器、保持、耗时、extra、note
+        var cols = lines[2].Split(',');
+        Assert.Equal(20, cols.Length);
+        Assert.Equal("Tj", cols[2]);
+        Assert.Equal("30", cols[3]);
+        Assert.Equal("TEC双向", cols[15]);
+
+        // 再下发：新文件
+        await t.SetTargetAsync(new TempTarget(28, TempChannelKind.Jacket), CancellationToken.None);
+        Assert.NotNull(rd.LoopLogPathOf(0));
+        Assert.NotEqual(path, rd.LoopLogPathOf(0));
+        await t.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task 开会话按台面配置写FPWM_主机缺省1Hz_单机缺省不改_记录带热源侧()
+    {
+        var b = new Duo();
+        await using var s = await b.Drv.OpenAsync(Duo.Conn(), b.Ctx(), CancellationToken.None);
+        await s.StartAsync(CancellationToken.None);
+        Assert.Equal(1, b.Rd.Get(null, "FPWM"));
+        Assert.Contains(b.Logs, l => l.Contains("FPWM 已按台面配置写成 1 Hz"));
+        Assert.DoesNotContain(b.Logs, l => l.StartsWith("warn") && l.Contains("FPWM = 10 Hz"));
+
+        // 组合会话的逐拍记录带热源在哪一侧
+        using var dir = Rd105HostControl.UseGainsDir(Path.Combine(Path.GetTempPath(), "tec-loop-" + Guid.NewGuid().ToString("N")));
+        var t = Temp(s, 0);
+        await WaitUntil(() => !double.IsNaN(t.CurrentJacket), 3000, "夹套读数");
+        await t.SetTargetAsync(new TempTarget(40, TempChannelKind.Jacket), CancellationToken.None);
+        await Task.Delay(1200);
+        var path = ((DuoSession)s).InnerLoopLogPath(0);
+        await t.StopAsync(CancellationToken.None);
+        var lines = File.ReadAllLines(path!);
+        Assert.Contains(lines.Skip(1), l => l.Split(',')[18] == "电加热" && l.Split(',')[15] == "加热棒");
+
+        var (drv, dev) = Standalone();
+        dev.Set(null, "FPWM", 2);
+        var logs = new List<string>();
+        await using var solo = await drv.OpenAsync(Conn(), Ctx(HostCfg(), logs), CancellationToken.None);
+        await solo.StartAsync(CancellationToken.None);
+        Assert.Equal(2, dev.Get(null, "FPWM"));            // 「不改」：留温控器里的
+        Assert.DoesNotContain(logs, l => l.Contains("已按台面配置写成"));
+    }
+
+    [Fact]
     public async Task 上位机整定口子_两路各看自己的Tr_不越界()
     {
         // for 循环变量被 lambda 捕获：循环跑完 i == 2，调用时 _temps[2] 越界（IndexOutOfRangeException）

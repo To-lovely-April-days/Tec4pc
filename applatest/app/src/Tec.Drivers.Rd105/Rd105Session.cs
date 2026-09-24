@@ -27,11 +27,15 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
     private readonly Rd105Tuning[] _tunings = new Rd105Tuning[2];
     /// <summary>上位机 PID 的整定台（面板「PID 整定」页）；温控器 PID 方式下没有。</summary>
     private readonly Rd105HostPid?[] _pids = new Rd105HostPid?[2];
+    /// <summary>每次控温的逐拍记录（上位机方式）；温控器 PID 方式下没有拍子，不记。</summary>
+    private readonly Rd105LoopRecorder?[] _recorders = new Rd105LoopRecorder?[2];
+    private long _loadWarnedAt = long.MinValue / 2;
     private readonly HostControlLoop _loop;
     private readonly TimeSpan _period;
     private readonly bool _host;
     private readonly bool _invert;
     private readonly int _heaterSign;
+    private readonly string _fpwmWant;
     private readonly string[] _gainPaths = new string[2];
     private DeviceState _state = DeviceState.Connected;
     private TecErrorCode _fault = TecErrorCode.None;
@@ -48,6 +52,7 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
         _host = defaults.HostOf(ctx.Config);
         _invert = defaults.InvertOf(ctx.Config);
         _heaterSign = defaults.HeaterSignOf(ctx.Config);
+        _fpwmWant = defaults.FpwmOf(ctx.Config);
 
         // 主机侧控制环：继电器法自整定、增益调度在它里面。温控器 PID 方式下只建不启（只有整定用得上）；
         // 上位机方式下 StartAsync 把它跑起来，控温、采集都走它
@@ -82,6 +87,8 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
                 // 整定台：两张表（TEC / 加热棒）+ 手动参数 / 调度开关，开会话时从盘上读
                 var pid = new Rd105HostPid(ch, tc, _loop, _temps[i], ctx.InstanceId, (lvl, text) => ctx.Log?.Invoke(lvl, text));
                 _pids[i] = pid;
+                _recorders[i] = new Rd105LoopRecorder(ctx.InstanceId, tc, (lvl, text) => ctx.Log?.Invoke(lvl, text));
+                _temps[i].Recorder = _recorders[i];
                 var said = pid.Load();
                 ctx.Log?.Invoke("info", $"{ctx.InstanceId} TC{tc} 上位机 PID：{said}（{Rd105HostControl.GainsDir}）" +
                     $"；TEC 输出{(_invert ? "反向" : "不反向")}、加热棒占空比{(_heaterSign < 0 ? "负" : "正")}");
@@ -135,6 +142,12 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
 
     /// <summary>这一路的整定台（上位机 PID 方式才有）。组合会话要往上面接热源配合。</summary>
     public Rd105HostPid? PidOf(int well) => well is 0 or 1 ? _pids[well] : null;
+
+    /// <summary>逐拍记录里「extra」那一列由谁填（组合会话：热源在哪一侧）；按工位号问。</summary>
+    public Func<int, string?>? LoopExtra { get; set; }
+
+    /// <summary>这一路正在记的控温记录文件（测试 / 日志用）；没在记为 null。</summary>
+    public string? LoopLogPathOf(int well) => well is 0 or 1 ? _recorders[well]?.Path : null;
 
     /// <summary>串口中途掉了之后的自愈（LinkRecovery 的规矩）；轮询连着报错时调。</summary>
     private readonly LinkRecovery _recover;
@@ -224,6 +237,19 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
         try { OnErrorCode(await _link.Controller.ReadErrorCodeAsync(ct).ConfigureAwait(false)); }
         catch (Exception ex) { _ctx.Log?.Invoke("warn", $"{InstanceId} 初次读告警字失败：{ex.Message}"); }
 
+        // PWM 频率档（FPWM，设备全局、两路共用）按台面配置写；「不改」= 用温控器里存的
+        var fpwmWant = _fpwmWant;
+        var fpwmLevel = Array.IndexOf(Rd105TecDriver.FpwmOptions, fpwmWant) - 1;
+        if (fpwmLevel >= 0)
+        {
+            try
+            {
+                await _link.Controller.SetPwmFrequencyAsync(fpwmLevel, ct).ConfigureAwait(false);
+                _ctx.Log?.Invoke("info", $"{InstanceId} 温控器 PWM 输出频率 FPWM 已按台面配置写成 {fpwmWant}（两路共用）");
+            }
+            catch (Exception ex) { _ctx.Log?.Invoke("warn", $"{InstanceId} 写 FPWM = {fpwmWant} 失败：{ex.Message}——用温控器里存的"); }
+        }
+
         if (_host)
         {
             // 回路的输出上限 = 温控器自己的 LIMITED（最大输出占空比）：读不到按 90
@@ -296,10 +322,18 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
         var at = DateTimeOffset.Now;
         if (r.Current1A is { } c1) Push(_temps[0].Channel, "cur", c1, at, Quality.Good);
         if (r.Current2A is { } c2) Push(_temps[1].Channel, "cur", c2, at, Quality.Good);
+        // 一拍的串口耗时超过周期：dt 拉长、温控器可能答不过来（超时）——五分钟说一次
+        if (r.CycleLoad > 1 && Environment.TickCount64 - _loadWarnedAt > 300_000)
+        {
+            _loadWarnedAt = Environment.TickCount64;
+            _ctx.Log?.Invoke("warn", $"{InstanceId} 控制周期 {_period.TotalMilliseconds:0} ms 里串口用了 {r.CycleMs:0} ms（{r.CycleLoad:P0}）——" +
+                $"周期跟不上，每拍 dt 拉长、温控器可能答不过来；把连接参数「控制周期」调到 {Math.Ceiling(r.CycleMs / 100) * 100 + 200:0} ms 左右");
+        }
         var infos = new[] { r.Ch1, r.Ch2 };
         for (var i = 0; i < 2; i++)
         {
             var info = infos[i];
+            _recorders[i]?.Write(info, _temps[i].CurrentReactor, ActuatorName(_loop.GetActuatorMode(i + 1)), r.CycleMs, LoopExtra?.Invoke(i));
             // 曲线上的「控温输出」是温控器回显（实际存下）的那个数；它按自己的规矩改了写入值时，画的是它真出的力
             Push(_temps[i].Channel, "duty", info.AppliedDutyPercent ?? info.DutyPercent, at, Quality.Good);
             _pids[i]?.OnCycle(info);
@@ -336,9 +370,19 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
         _temps[tc - 1].OnTripped(reason);
     }
 
-    /// <summary>回路的提示（不是停控）：串级丢了釜内 Tr 进保持 / Tr 回来接着算。</summary>
+    /// <summary>回路的提示（不是停控）：串级丢了釜内 Tr 进保持 / Tr 回来接着算 / 回显不符。</summary>
     private void OnChannelNotice(int tc, string level, string text)
-        => _ctx.Log?.Invoke(level, $"{InstanceId} {text}");
+    {
+        _ctx.Log?.Invoke(level, $"{InstanceId} {text}");
+        _recorders[tc - 1]?.Note(text);
+    }
+
+    private static string ActuatorName(ActuatorMode m) => m switch
+    {
+        ActuatorMode.HeatOnly => "加热棒",
+        ActuatorMode.CoolOnly => "TEC只制冷",
+        _ => "TEC双向"
+    };
 
     private void SaveGains(int tc)
     {
@@ -497,6 +541,7 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
         _loop.GainScheduleChanged -= SaveGains;
         foreach (var t in _tunings) t.Detach();
         foreach (var p in _pids) p?.Detach();
+        foreach (var rec in _recorders) rec?.Dispose();
         try { await _loop.ShutdownAsync().ConfigureAwait(false); } catch { }
         _loop.Dispose();
         await StopAsync(CancellationToken.None).ConfigureAwait(false);

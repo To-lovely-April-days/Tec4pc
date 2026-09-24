@@ -123,6 +123,9 @@ public sealed class DualStationDriver : IDeviceDriver
             with { Tip = "上位机 PID 下用：回路算出「要加热」写正占空比还是写负。这台实测降温 +90、升温 −90，所以缺省反向；跑飞检测报「方向接反」就改它" },
         Field.Sel(Rd105TecDriver.FieldHeaterSign, "加热棒占空比", Rd105TecDriver.HeaterSignOptions, Rd105TecDriver.HeaterNeg)
             with { Tip = "上位机 PID 下用：加热棒那只 SSR 接在哪个引脚（固件按占空比符号路由）。这台实测电加热侧读回 −90，所以缺省负" },
+        // 加热棒是交流 + 固态继电器：出厂 10 Hz 功率只有 10 % 一档，保温段来回擦。缺省 1 Hz（2 % 一档）；
+        // 加热棒功率明显大于保温所需的机器选 0.5 Hz
+        Field.Sel(Rd105TecDriver.FieldFpwm, "PWM 输出频率", Rd105TecDriver.FpwmOptions, "1 Hz") with { Tip = Rd105TecDriver.FpwmTip },
         // TEC 的反向输出加热启不启用。默认「不启用」：TEC 只当冷源，所有加热都走电加热棒，
         // 继电器按「这一刻该升温还是该降温」切。启用后才回到「只有超过阈值才切电加热」那套
         Field.Sel(Fields.TecHeat, "TEC 加热", new[] { "不启用", "启用" }, "不启用"),

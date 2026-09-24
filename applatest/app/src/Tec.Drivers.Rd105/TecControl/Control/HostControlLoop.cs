@@ -45,6 +45,11 @@ public sealed record ChannelCycleInfo(
 
     /// <summary>【本地改动】温控器回显（实际存下）的占空比；跟 DutyPercent 不一样时说明设备按自己的规矩改了。没回显过为 null。</summary>
     public double? AppliedDutyPercent { get; init; }
+
+    /// <summary>【本地改动】串级外环这一拍的 P / I / D（℃）；单环为 NaN。逐拍记录排查外环积分攒了多少用。</summary>
+    public double OuterP { get; init; } = double.NaN;
+    public double OuterI { get; init; } = double.NaN;
+    public double OuterD { get; init; } = double.NaN;
 }
 
 /// <summary>一个完整控制周期的结果（后台线程发布）。电流每 4 个周期采样一次，其余周期为 null。</summary>
@@ -658,6 +663,14 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
     /// </summary>
     public TimeSpan OuterLossGrace { get; set; } = TimeSpan.FromSeconds(30);
 
+    /// <summary>
+    /// 【本地改动】外环积分分离：釜内离设定值超过这么多（℃）时外环只用 P，不积分。NaN = 关。
+    /// 现场：釜内 90 ℃ 一步到位，釜的时间常数二十分钟，趋近那十几分钟里外环积分攒了 20 多 K，
+    /// Tr 到 90 时夹套设定还在 108、夹套 110 只能自然凉——过冲 1 ℃ 多还在往上。远处的偏差交给 P 和偏置上限，
+    /// 积分只在带内攒维持温度要的那几度。学到的稳态偏置预置照旧（带外冻在预置值上）。
+    /// </summary>
+    public double OuterIntegralBandC { get; set; } = 3;
+
     /// <summary>内环设定值安全限幅（℃），防止外环把腔体温度推到极端值。</summary>
     public double InnerSetpointMinC { get; set; } = -50;
     public double InnerSetpointMaxC { get; set; } = 200;
@@ -1155,7 +1168,8 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                 var innerSaturated = innerHigh || innerLow;
                 var outerErr0 = s.SetpointC - outerPv;
                 var freeze = (innerHigh && outerErr0 > 0 && s.OuterPid.LastI >= 0)
-                             || (innerLow && outerErr0 < 0 && s.OuterPid.LastI <= 0);
+                             || (innerLow && outerErr0 < 0 && s.OuterPid.LastI <= 0)
+                             || (!double.IsNaN(OuterIntegralBandC) && Math.Abs(outerErr0) > OuterIntegralBandC);   // 积分分离
                 var bias = s.OuterPid.Update(s.SetpointC, outerPv, outerDt,
                     freezeIntegral: freeze || s.OuterClampBinding);
 
@@ -1398,6 +1412,9 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
             ProfileName = profileName,
             OuterHoldSeconds = holding ? (snapshot.Timestamp - s.OuterLostSince!.Value).TotalSeconds : null,   // 【本地改动】
             AppliedDutyPercent = double.IsNaN(s.AppliedDutyPercent) ? null : s.AppliedDutyPercent,
+            OuterP = cascade ? s.OuterPid.LastP : double.NaN,
+            OuterI = cascade ? s.OuterPid.LastI : double.NaN,
+            OuterD = cascade ? s.OuterPid.LastD : double.NaN,
         };
     }
 

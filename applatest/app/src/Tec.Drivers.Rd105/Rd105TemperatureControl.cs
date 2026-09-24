@@ -68,6 +68,9 @@ public sealed class Rd105TemperatureControl : ITemperatureControl, ITemperatureS
     /// <summary>上位机回路把这一路停了（读数丢失 / 跑飞 / 连续通信失败）。组合会话据此把继电器落回去。</summary>
     public event Action<string>? Tripped;
 
+    /// <summary>这一路的逐拍记录（上位机方式下会话装上）：下发目标开文件、停控收文件。</summary>
+    internal Rd105LoopRecorder? Recorder { get; set; }
+
     /// <summary>
     /// 限值取设备侧的超温保护值，不在界面里写死。
     /// 最大速率按 RD105 的 SPEED 量程与工艺上限取 5 ℃/min（ProfileSegment 也是这个上限）。
@@ -149,6 +152,7 @@ public sealed class Rd105TemperatureControl : ITemperatureControl, ITemperatureS
         InnerSetpoint = _loop.GetStrategy(_tc) == ControlStrategy.Cascade ? InnerSetpoint : target.Value;
         Enabled = true;
         LastStop = null;
+        Recorder?.Start(target.Kind == TempChannelKind.Reactor ? "釜内" : "夹套", target.Value, "尽快");
     }
 
     public async Task RampAsync(double target, double ratePerMin, TempChannelKind kind, CancellationToken ct)
@@ -182,6 +186,7 @@ public sealed class Rd105TemperatureControl : ITemperatureControl, ITemperatureS
         Setpoint = target;
         Enabled = true;
         LastStop = null;
+        Recorder?.Start(kind == TempChannelKind.Reactor ? "釜内" : "夹套", target, $"按速率 {rate:0.##} ℃/min，从 {from:0.##} ℃ 起");
     }
 
     /// <summary>
@@ -245,6 +250,7 @@ public sealed class Rd105TemperatureControl : ITemperatureControl, ITemperatureS
         Enabled = false;
         Holding = null;
         LastStop = null;           // 人手停的，不是回路停的
+        Recorder?.Stop("操作人停控");
     }
 
     /// <summary>
@@ -293,6 +299,7 @@ public sealed class Rd105TemperatureControl : ITemperatureControl, ITemperatureS
         InnerSetpoint = null;
         Holding = null;
         LastStop = reason;
+        Recorder?.Stop("回路停控：" + reason);
         Tripped?.Invoke(reason);
     }
 

@@ -52,6 +52,15 @@ public sealed class Rd105TecDriver : IDeviceDriver
     /// <summary>加热棒（PWM 固态继电器）吃的是哪个符号的占空比。固件按符号把占空比路由到两个 PWM 引脚，
     /// SSR 接在哪个引脚上由现场接线定——这台实测是负的（电加热侧读回 −90 %）。</summary>
     public const string FieldHeaterSign = "加热棒占空比";
+
+    /// <summary>PWM 输出频率档（FPWM，设备全局、两路共用）：开会话按这项写进温控器；「不改」= 用温控器里存的。</summary>
+    public const string FieldFpwm = "PWM 输出频率";
+    public const string FpwmKeep = "不改";
+    public static readonly string[] FpwmOptions = { FpwmKeep, "0.5 Hz", "1 Hz", "10 Hz", "100 Hz" };
+    public const string FpwmTip =
+        "FPWM，两路共用。加热棒接过零型固态继电器（交流）时一个 PWM 周期只能按整个市电周波通断：10 Hz 一周期 5 个周波、" +
+        "功率只有 10 % 一档，保温只要几个百分点就在 0 和 10 之间来回擦；1 Hz 是 2 % 一档，0.5 Hz 是 1 % 一档。" +
+        "加热棒功率明显大于保温所需就选 0.5 Hz；TEC 在低频下电流脉动大、效率差一些。「不改」= 用温控器里存的";
     public const string HeaterNeg = "负";
     public const string HeaterPos = "正";
     public static readonly string[] HeaterSignOptions = { HeaterNeg, HeaterPos };
@@ -109,7 +118,8 @@ public sealed class Rd105TecDriver : IDeviceDriver
         Field.Sel(FieldInvert, "TEC 输出反向", InvertOptions, InvertNo)
             with { Tip = "只在上位机 PID 下用：回路算出「要加热」写正占空比还是写负。接反了跑飞检测两三分钟内会停控并说明，改一下这项再开" },
         Field.Sel(FieldHeaterSign, "加热棒占空比", HeaterSignOptions, HeaterPos)
-            with { Tip = "只在上位机 PID 下用：加热棒那只 SSR 接在正引脚还是负引脚（固件按占空比符号路由）" }
+            with { Tip = "只在上位机 PID 下用：加热棒那只 SSR 接在正引脚还是负引脚（固件按占空比符号路由）" },
+        Field.Sel(FieldFpwm, "PWM 输出频率", FpwmOptions, FpwmKeep) with { Tip = FpwmTip }
     })
     {
         Tip = "超温与限流写进温控器自己的保护寄存器，断了通信也照样生效——" +
