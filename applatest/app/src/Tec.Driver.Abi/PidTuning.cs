@@ -28,7 +28,10 @@ public sealed record PidGainRow(double TemperatureC, double Kp, double Ki, doubl
     public double? OuterKd { get; init; }
     /// <summary>串级外环偏置上限 ±℃（外环最多把夹套设定拉离釜内目标多少）。</summary>
     public double? OuterMaxBiasC { get; init; }
-    /// <summary>加热比（TEC 双向时加热 / 制冷有效度之比）；空 = 用全局值。加热棒表不用它。</summary>
+    /// <summary>
+    /// 加热比 = 加热 / 制冷有效度之比；空 = 用全局值。TEC 表那行的给 TEC 双向用（正半轴除以它）；
+    /// 加热棒表那行的给「加热棒 + TEC 双向」（0336 双向挡）用——PID 按加热棒整，负半轴给 TEC 时乘它。只加热不用。
+    /// </summary>
     public double? HeatRatio { get; init; }
 
     /// <summary>自整定测得的临界增益（只读）；手工行是 0。</summary>
@@ -54,7 +57,14 @@ public sealed record PidInUse(
     double OuterMaxBiasC,
     bool OuterFromTable,
     double? SteadyBiasC,
-    double HeatRatio);
+    double HeatRatio)
+{
+    /// <summary>
+    /// 此刻是「加热棒 + TEC 双向」（0336 双向挡）：执行器算加热棒（参数按加热棒那张表），但负半轴也出力（TEC 制冷，乘加热比）。
+    /// 预览（Preview）永远是 false。
+    /// </summary>
+    public bool Bidirectional { get; init; }
+}
 
 /// <summary>回路最近一拍（约 0.5 s 一拍）。</summary>
 public sealed record PidLive(

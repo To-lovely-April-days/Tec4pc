@@ -150,7 +150,8 @@
                 <TextBlock Grid.Column="5" Text="外环Ki" Classes="th" />
                 <TextBlock Grid.Column="6" Text="外Kd" Classes="th" />
                 <TextBlock Grid.Column="7" Text="偏置±" Classes="th" />
-                <TextBlock Grid.Column="8" Text="加热比" Classes="th" IsVisible="{Binding HeatColumn}" />
+                <TextBlock Grid.Column="8" Text="加热比" Classes="th" IsVisible="{Binding HeatColumn}"
+                           ToolTip.Tip="{Binding HeatColumnTip}" />
                 <TextBlock Grid.Column="9" Text="Tu s" Classes="th" />
                 <TextBlock Grid.Column="10" Text="稳态偏置" Classes="th"
                            ToolTip.Tip="夹套设定 − 釜内目标（℃）：串级下发时预置外环积分。回路到温后自己学（釜内在 ±0.05 里待满 60 s）；也可以手填——釜内稳住时看夹套比釜内高多少。空 = 没有，回路只能从 0 攒、落地慢" />

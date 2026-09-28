@@ -397,7 +397,7 @@ public sealed class RecordBook : IDisposable
                 list.Add(new(CLimitedB, "B 最大功率 LIMITED %", Blank.Value, FmtP, null));
                 break;
             case TestKind.MaxTemp:
-                list.Add(new(CThreshold, "电加热切换阈值 ℃", Blank.Value, FmtC, "工具从台面配置读的"));
+                list.Add(new(CThreshold, "TEC 接入上限 ℃", Blank.Value, FmtC, "工具从台面配置读的（0336 前叫「电加热切换阈值」）：夹套高过它 TEC 断开、只加热棒"));
                 list.Add(new(CTargetA, "工位 A 目标 ℃", Blank.Value, FmtC, "工具填：下发的夹套目标"));
                 list.Add(new(CTargetB, "工位 B 目标 ℃", Blank.Value, FmtC, null));
                 list.Add(new(CMode, "到达方式", "尽快", null, null));

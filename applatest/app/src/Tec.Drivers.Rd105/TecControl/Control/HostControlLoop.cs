@@ -96,6 +96,15 @@ public enum ActuatorMode
     /// 要制冷时得先把它退掉（几分钟到几十分钟没有冷）。
     /// </summary>
     CoolOnly,
+
+    /// <summary>
+    /// 【本地改动】（0336）加热棒 + TEC 双向：**一个 PID，正半轴给加热棒、负半轴给 TEC 制冷**，占空比 ±上限。
+    /// 双工位主机「冷水机」标已开时用它（双向挡）——反应会放热也会吸热，控得住就得两边随时能出力；
+    /// 哪只继电器合着由组合会话按 PID 输出的符号扳（连续 3 s 同号才扳），回路本身不管继电器。
+    /// 参数按**加热棒那张表**（PID 是在加热棒上整的，正半轴原样给加热棒），负半轴乘该行的「加热比」
+    /// （加热棒比 TEC 强几倍，TEC 就要多出几倍功率）再给 TEC。加热棒 ⇄ 加热棒 + TEC 是同一组参数，换形态只改下限、不复位。
+    /// </summary>
+    HeaterTec,
 }
 
 /// <summary>四片 TEC（两路输出）的同步方式。</summary>
@@ -139,17 +148,20 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         /// 不是一个量纲，切换时拿另一个执行器的数预置只会错。</summary>
         public double? LastSteadyOutput
         {
-            get => Actuator == ActuatorMode.HeatOnly ? HeaterSteadyOutput : TecSteadyOutput;
-            set { if (Actuator == ActuatorMode.HeatOnly) HeaterSteadyOutput = value; else TecSteadyOutput = value; }
+            get => HeaterSide ? HeaterSteadyOutput : TecSteadyOutput;
+            set { if (HeaterSide) HeaterSteadyOutput = value; else TecSteadyOutput = value; }
         }
         public double? TecSteadyOutput;
         public double? HeaterSteadyOutput;
+
+        /// <summary>【本地改动】（0336）PID 是按加热棒整的那两种形态：只加热、加热棒 + TEC 双向。表 / 前馈 / 稳态输出都走加热棒那份。</summary>
+        public bool HeaterSide => HeaterTable(Actuator);
 
         /// <summary>跨设定值的稳态前馈模型（自动学习"任意温度需要多少输出"）。【本地改动】按执行器各一份、不按 100 ℃ 分段
         /// （段按执行器分，不按温度）——切换时拿另一个执行器学到的稳态输出去预置只会错。</summary>
         public readonly SteadyStateFeedforward TecFeedforward = new() { SegmentBoundaryC = double.NaN };
         public readonly SteadyStateFeedforward HeaterFeedforward = new() { SegmentBoundaryC = double.NaN };
-        public SteadyStateFeedforward Feedforward => Actuator == ActuatorMode.HeatOnly ? HeaterFeedforward : TecFeedforward;
+        public SteadyStateFeedforward Feedforward => HeaterSide ? HeaterFeedforward : TecFeedforward;
 
         /// <summary>增益调度表（自整定结果按温度登记，运行时插值）。</summary>
         public readonly PidGainSchedule GainSchedule = new();
@@ -159,8 +171,8 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         /// 按温度分段（SegmentBoundaryC）分不开，只能按执行器分两张表。</summary>
         public readonly PidGainSchedule HeaterSchedule = new();
 
-        /// <summary>【本地改动】此刻执行器对应的那张表：查参数、学稳态偏置、登记自整定结果都走它。</summary>
-        public PidGainSchedule ActiveSchedule => Actuator == ActuatorMode.HeatOnly ? HeaterSchedule : GainSchedule;
+        /// <summary>【本地改动】此刻执行器对应的那张表：查参数、学稳态偏置、登记自整定结果都走它（0336：加热棒 + TEC 双向也是加热棒那张）。</summary>
+        public PidGainSchedule ActiveSchedule => HeaterSide ? HeaterSchedule : GainSchedule;
 
         /// <summary>【本地改动】这一路单独关掉增益调度（固定用手动参数）。全局开关 GainSchedulingEnabled 照旧。</summary>
         public bool SchedulingOff;
@@ -407,6 +419,13 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
     /// <summary>【本地改动】只加热执行器的占空比符号（+1 / −1），见 ChannelState.HeaterSign。</summary>
     public void SetHeaterSign(int ch, int sign) => State(ch).HeaterSign = sign < 0 ? -1 : 1;
 
+    /// <summary>
+    /// 【本地改动】（0336）加热棒 + TEC 双向：PID 侧的量翻成写到设备上的数。正半轴是加热棒（符号按接线 HeaterSign），
+    /// 负半轴是 TEC 制冷（按「TEC 输出反向」）。现场那台两边都翻成相反的符号（升温 −、降温 +），正好是固件按符号路由的两个引脚。
+    /// </summary>
+    private static double ToDevice(ChannelState s, double pidSide)
+        => pidSide >= 0 ? s.HeaterSign * pidSide : s.InvertOutput ? -pidSide : pidSide;
+
     /// <summary>每个控制周期结束后发布（后台线程回调）。</summary>
     public event Action<ControlCycleResult>? CycleCompleted;
 
@@ -473,7 +492,13 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         s.Pid.SetOutputLimits(OutputFloor(s), OutputCeiling(s));
     }
 
-    private static bool TecFamily(ActuatorMode m) => m != ActuatorMode.HeatOnly;
+    /// <summary>
+    /// 【本地改动】（0336）PID 是按加热棒那张表整的形态：只加热、加热棒 + TEC 双向。另外两种（TEC 双向 / 只制冷）按 TEC 那张表。
+    /// 同一张表之内换形态只是改限幅（不换对象、不复位）；跨表才是换对象（加热棒 ⇄ TEC 的增益差一个量级，积分清零、按前馈预置）。
+    /// </summary>
+    public static bool HeaterTable(ActuatorMode m) => m is ActuatorMode.HeatOnly or ActuatorMode.HeaterTec;
+
+    private static bool SameTable(ActuatorMode a, ActuatorMode b) => HeaterTable(a) == HeaterTable(b);
 
     /// <summary>
     /// 设置执行器形态（手动换线过渡方案）。运行/整定中禁止切换——形态必须与当时的
@@ -486,10 +511,11 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         var s = State(ch);
         // 【本地改动】双工位主机的继电器由程序自己扳：挂起输出 → 扳继电器 → 换形态 → 恢复，
         // 这时候通道是「运行中但挂起」，允许切；没挂起的运行中照旧不许（形态必须跟接线一致）
-        // 【本地改动】TEC 双向 ⇄ 只制冷 只是改限幅（「TEC 加热」开关翻了），不换对象，运行中也许改
-        if (s.Busy && s.Actuator != mode && !s.Suspended && !(TecFamily(s.Actuator) && TecFamily(mode)))
+        // 【本地改动】同一张表之内换形态（TEC 双向 ⇄ 只制冷：「TEC 加热」开关翻了；只加热 ⇄ 加热棒 + TEC：夹套过 / 回 TEC 接入线）
+        // 只是改限幅，不换对象，运行中也许改
+        if (s.Busy && s.Actuator != mode && !s.Suspended && !SameTable(s.Actuator, mode))
             throw new InvalidOperationException($"通道{ch}正在运行，请先停止再切换执行器形态（并确认接线已相应改好）");
-        var swapped = TecFamily(s.Actuator) != TecFamily(mode);      // 换了对象（加热棒 ⇄ TEC）才复位
+        var swapped = !SameTable(s.Actuator, mode);      // 换了对象（加热棒 ⇄ TEC）才复位
         s.Actuator = mode;
         s.Pid.SetOutputLimits(OutputFloor(s), OutputCeiling(s));
         if (swapped && s.Active)
@@ -512,9 +538,9 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
     /// <summary>启用增益调度：表内有点时按设定值插值覆盖手动参数。</summary>
     public bool GainSchedulingEnabled { get; set; } = true;
 
-    /// <summary>【本地改动】某路某执行器那张增益表（TEC 双向 / 加热棒只加热各一张，见 ChannelState.HeaterSchedule）。</summary>
+    /// <summary>【本地改动】某路某执行器那张增益表（TEC 双向 / 加热棒只加热各一张，见 ChannelState.HeaterSchedule；加热棒 + TEC 双向用加热棒那张）。</summary>
     public PidGainSchedule GetGainSchedule(int ch, ActuatorMode mode)
-        => mode == ActuatorMode.HeatOnly ? State(ch).HeaterSchedule : State(ch).GainSchedule;
+        => HeaterTable(mode) ? State(ch).HeaterSchedule : State(ch).GainSchedule;
 
     /// <summary>【本地改动】按路开关增益调度（两个工位各有各的表，开关也各管各的）。</summary>
     public void SetGainScheduling(int ch, bool on) => State(ch).SchedulingOff = !on;
@@ -848,8 +874,8 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         double relayAmplitudePercent, double hysteresisC, bool coolOnly, CancellationToken ct = default)
     {
         var s = State(ch);
-        if (coolOnly && s.Actuator == ActuatorMode.HeatOnly)
-            throw new InvalidOperationException($"通道{ch}执行器是加热棒（只加热），不能按只制冷整定");
+        if (coolOnly && HeaterTable(s.Actuator))
+            throw new InvalidOperationException($"通道{ch}执行器是加热棒（{(s.Actuator == ActuatorMode.HeatOnly ? "只加热" : "加热棒 + TEC 双向")}），不能按只制冷整定");
         coolOnly |= s.Actuator == ActuatorMode.CoolOnly;     // 【本地改动】形态本身就是只制冷
         if (s.Active)
             throw new InvalidOperationException($"通道{ch}正在闭环控温，请先停止再自整定");
@@ -919,7 +945,9 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
 
         var raw = s.Actuator == ActuatorMode.HeatOnly
             ? s.HeaterSign * Math.Clamp(dutyPercent, 0, 100)   // 加热棒引脚路由固定，反向无意义；符号看接线【本地改动】
-            : Math.Clamp(s.InvertOutput ? -dutyPercent : dutyPercent, -100, 100);
+            : s.Actuator == ActuatorMode.HeaterTec
+                ? ToDevice(s, Math.Clamp(dutyPercent, -100, 100))   // 【本地改动】正半轴加热棒（按接线符号）、负半轴 TEC（按反向）
+                : Math.Clamp(s.InvertOutput ? -dutyPercent : dutyPercent, -100, 100);
         await PrepareOutputAsync(ch, ct).ConfigureAwait(false);
         await WriteDutyAsync(ch, raw, ct).ConfigureAwait(false);
         s.ManualDutyPercent = raw == 0 ? null : raw;
@@ -1336,7 +1364,16 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         var duty = pidOut > 0 && heatRatio > 0
             ? pidOut / heatRatio
             : pidOut;
-        if (s.Actuator == ActuatorMode.HeatOnly)
+        if (s.Actuator == ActuatorMode.HeaterTec)
+        {
+            // 【本地改动】（0336）加热棒 + TEC 双向：PID 是按加热棒那张表整的，正半轴原样给加热棒（不除加热比）；
+            // 负半轴给 TEC 要**乘**加热比（加热棒比 TEC 强几倍，TEC 就得多出几倍功率才是同一份出力）——
+            // 跟 TEC 双向那条「正半轴除以加热比」是同一个比值、反过来用（那边 PID 是按 TEC 整的）。
+            // 写到设备上：正半轴按加热棒的接线符号，负半轴按「TEC 输出反向」
+            duty = pidOut < 0 && heatRatio > 0 ? pidOut * heatRatio : pidOut;
+            duty = ToDevice(s, Math.Clamp(duty, -s.MaxDutyMagnitude, s.MaxDutyMagnitude));
+        }
+        else if (s.Actuator == ActuatorMode.HeatOnly)
         {
             // 只加热执行器：占空比幅度恒 ≥0（另一侧的引脚上没有负载）。
             // 反向输出对加热棒无意义（引脚路由由固件固定）；写到设备上的符号按接线定（HeaterSign）【本地改动】
@@ -1375,6 +1412,10 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                 ActuatorMode.CoolOnly =>
                     $"通道{ch}制冷满幅期间温度持续不降反升，已自动停控。可能原因：" +
                     "①TEC 功率线没接通 / 冷却水没开；②散热失效；③输出方向接反（检查「TEC 输出反向」）",
+                ActuatorMode.HeaterTec =>       // 【本地改动】
+                    $"通道{ch}输出饱和期间温度持续背离设定值，已自动停控。加热满幅不升：①加热棒市电未通 / 固态继电器故障；" +
+                    "②加热棒继电器没合上、PWM 引脚接线脱落；制冷满幅不降：③TEC 功率线没接通 / 冷却水没开；④散热失效；" +
+                    "⑤输出方向接反（检查「TEC 输出反向」「加热棒占空比」）",
                 _ =>
                     $"通道{ch}输出饱和期间温度持续背离设定值，已自动停控。可能原因：" +
                     "①输出方向接反（检查“反向输出”勾选与接线极性）；" +
@@ -1462,6 +1503,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         var duty = tuner.Process(snapshot.Timestamp, pv);
         // 只加热执行器：引脚路由固件固定，反向无意义（反向会把正摆动送成负、加热棒不动作）；符号按接线【本地改动】
         if (s.Actuator == ActuatorMode.HeatOnly) duty = s.HeaterSign * duty;
+        else if (s.Actuator == ActuatorMode.HeaterTec) duty = ToDevice(s, duty);      // 【本地改动】
         else if (s.InvertOutput) duty = -duty;
 
         await WriteDutyAsync(ch, duty, ct).ConfigureAwait(false);

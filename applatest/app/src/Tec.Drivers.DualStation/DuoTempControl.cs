@@ -40,7 +40,7 @@ public sealed class DuoTempControl : ITemperatureControl, IRefluxControl, IHeatS
     public bool TecHeating => _s.TecHeating;
     public bool ElectricAvailable => _s.ElectricReady;
     public bool OnElectric => _s.OnElectric(_well);
-    /// <summary>升温挡 / 降温挡（0333）——界面印在热源牌子上；没在控 / 「TEC 加热」启用为 null。</summary>
+    /// <summary>双向挡（0336）/ 升温挡 / 降温挡（0333）——界面印在热源牌子上；没在控 / 「TEC 加热」启用为 null。</summary>
     public string? Regime => _s.RegimeText(_well);
 
     public double CurrentReactor => Inner.CurrentReactor;

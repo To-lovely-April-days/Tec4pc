@@ -333,41 +333,132 @@ public class Rd105HostControlTests
     public async Task TEC只制冷_形态CoolOnly_要加热时输出0积分不往正攒_要制冷立刻有冷()
     {
         // 「TEC 加热」不启用：TEC 侧从前按双向算——夹套低于设定 PID 往正半轴要「加热」，物理上那一极是断着的加热棒 SSR，
-        // 积分白攒；等真要制冷时先得把它退掉。现在回路形态是只制冷：限幅 [−上限, 0]
-        var b = new Duo();
-        await using var s = await b.Drv.OpenAsync(Duo.Conn(), b.Ctx(Duo.ChillerOn()), CancellationToken.None);
+        // 积分白攒；等真要制冷时先得把它退掉。只制冷形态限幅 [−上限, 0]。0336 起组合会话只在 TEC 自整定时用它
+        //（冷水机已开是双向挡、已关不接 TEC），这里直接在回路上验这个形态
+        using var _ = Rd105HostControl.UseGainsDir(Path.Combine(Path.GetTempPath(), "tec-pid-" + Guid.NewGuid().ToString("N")));
+        var (drv, dev) = Standalone();
+        dev.HeatSign = -1;                                 // 现场极性：负占空比升温、正制冷
+        var cfg = HostCfg((Rd105TecDriver.FieldInvert, Rd105TecDriver.InvertYes));
+        await using var s = await drv.OpenAsync(Conn(), Ctx(cfg), CancellationToken.None);
         await s.StartAsync(CancellationToken.None);
-        var t = Temp(s, 0);
+        var rd = (Rd105Session)s;
+        var inner = rd.TempOf(0);
         var bench = s.CapabilitiesOf(0).OfType<IPidTuningBench>().Single();
-        await WaitUntil(() => !double.IsNaN(t.CurrentJacket), 3000, "夹套读数");
+        await WaitUntil(() => !double.IsNaN(inner.CurrentJacket), 3000, "夹套读数");
 
-        await t.SetTargetAsync(new TempTarget(20, TempChannelKind.Jacket), CancellationToken.None);   // 环境 25：降温挡，冷水机已开 → TEC 侧
-        Assert.True(b.Io.Coils[6]);
-        await WaitUntil(() => b.Rd.Get(1, "PWMDUTY") > 0, 3000, "制冷（反向配置下制冷是正的）");
-        await WaitUntil(() => t.CurrentJacket < 22, 20000, () => $"夹套往 20 走（{t.CurrentJacket:F2}）");
+        await inner.SetTargetAsync(new TempTarget(20, TempChannelKind.Jacket), CancellationToken.None);   // 环境 25：要制冷
+        await inner.EnableAsync(false, CancellationToken.None);
+        inner.SetActuator(ActuatorMode.CoolOnly);
+        await inner.EnableAsync(true, CancellationToken.None);
+        await WaitUntil(() => dev.Get(1, "PWMDUTY") > 0, 3000, "制冷（反向配置下制冷是正的）");
+        await WaitUntil(() => inner.CurrentJacket < 22, 20000, () => $"夹套往 20 走（{inner.CurrentJacket:F2}）");
 
         // 夹套被外界拉到 15（低于设定 5 ℃）：PID 想加热——只制冷给不了：输出 0、积分不往正半轴攒、一笔负（加热那一极）都不写
-        var n = b.Rd.Commands.Count;
-        b.Rd.Set(1, "TCADJTEMP", 15_00000);
+        var n = dev.Commands.Count;
+        dev.Set(1, "TCADJTEMP", 15_00000);
         await Task.Delay(3000);
-        Assert.Equal(0, b.Rd.Get(1, "PWMDUTY"));
+        Assert.Equal(0, dev.Get(1, "PWMDUTY"));
         Assert.True(bench.Live is { } live && live.I <= 1e-6, $"积分往正攒了：{bench.Live?.I}");
-        Assert.All(b.Rd.Commands.Skip(n).Where(c => c.StartsWith("TC1:PWMDUTY=")), c => Assert.True(DutyOf(c) >= 0, c));
+        Assert.All(dev.Commands.Skip(n).Where(c => c.StartsWith("TC1:PWMDUTY=")), c => Assert.True(DutyOf(c) >= 0, c));
 
         // 夹套跳到 24（高于设定 4 ℃）：立刻就有冷，不用先退债
-        b.Rd.Set(1, "TCADJTEMP", 24_00000);
+        dev.Set(1, "TCADJTEMP", 24_00000);
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        await WaitUntil(() => b.Rd.Get(1, "PWMDUTY") > 0, 3000, "制冷");
+        await WaitUntil(() => dev.Get(1, "PWMDUTY") > 0, 3000, "制冷");
         Assert.True(sw.ElapsedMilliseconds < 1500, $"要冷等了 {sw.ElapsedMilliseconds} ms");
+    }
+
+    [Fact]
+    public async Task 加热棒加TEC双向形态_正半轴加热棒负半轴TEC乘加热比_与只加热互换不复位_运行中就能换()
+    {
+        // 0336：一个 PID 两边出力。参数按加热棒那张表；负半轴给 TEC 时乘该行「加热比」（加热棒比 TEC 强几倍，TEC 就多出几倍）；
+        // 只加热 ⇄ 加热棒 + TEC 是同一张表之内换形态：只改下限、积分不清、运行中直接换（不必关输出）
+        using var _ = Rd105HostControl.UseGainsDir(Path.Combine(Path.GetTempPath(), "tec-pid-" + Guid.NewGuid().ToString("N")));
+        var (drv, dev) = Standalone();
+        dev.HeatSign = -1;
+        var cfg = HostCfg((Rd105TecDriver.FieldInvert, Rd105TecDriver.InvertYes), (Rd105TecDriver.FieldHeaterSign, Rd105TecDriver.HeaterNeg));
+        await using var s = await drv.OpenAsync(Conn(), Ctx(cfg), CancellationToken.None);
+        await s.StartAsync(CancellationToken.None);
+        var rd = (Rd105Session)s;
+        var inner = rd.TempOf(0);
+        var bench = s.CapabilitiesOf(0).OfType<IPidTuningBench>().Single();
+        // 加热棒表：40 ℃ 一行，纯 P（Kp 5）、加热比 2；TEC 表故意另一组（Kp 50），用错表一眼看得出
+        bench.ApplyRows(PidActuator.Heater, new[] { new PidGainRow(40, 5, 0, 0) { HeatRatio = 2 } });
+        bench.ApplyRows(PidActuator.Tec, new[] { new PidGainRow(40, 50, 0, 0) });
+        await WaitUntil(() => !double.IsNaN(inner.CurrentJacket), 3000, "夹套读数");
+        dev.Thermal = false;                               // 温度手拨，看 P 项干净
+
+        await inner.SetTargetAsync(new TempTarget(40, TempChannelKind.Jacket), CancellationToken.None);
+        await inner.EnableAsync(false, CancellationToken.None);
+        inner.SetActuator(ActuatorMode.HeaterTec);
+        await inner.EnableAsync(true, CancellationToken.None);
+        Assert.Equal(PidActuator.Heater, bench.CurrentActuator);
+        Assert.True(bench.InUse.Bidirectional);
+        Assert.Equal(2, bench.InUse.HeatRatio);
+        Assert.Equal(5, bench.InUse.Inner.Kp);
+
+        // 夹套 38（差 2 K）：PID +10 → 加热棒 10 %，符号按接线（负），不除加热比
+        dev.Set(1, "TCADJTEMP", 38_00000);
+        await WaitUntil(() => dev.Get(1, "PWMDUTY") == -200_000, 3000, () => $"加热棒 −10 %（此刻 {dev.Get(1, "PWMDUTY")}）");
+        // 夹套 42（高 2 K）：PID −10 → TEC 要乘加热比 2 = 20 %，反向配置下制冷写正
+        dev.Set(1, "TCADJTEMP", 42_00000);
+        await WaitUntil(() => dev.Get(1, "PWMDUTY") == 400_000, 3000, () => $"TEC +20 %（此刻 {dev.Get(1, "PWMDUTY")}）");
+
+        // 运行中直接换成只加热（不挂起也许换：同一张表）：下限钳 0，一笔正的（TEC 那一极）都不再写
+        var n = dev.Commands.Count;
+        inner.SetActuator(ActuatorMode.HeatOnly);
+        await Task.Delay(700);
+        Assert.Equal(0, dev.Get(1, "PWMDUTY"));
+        Assert.All(dev.Commands.Skip(n).Where(c => c.StartsWith("TC1:PWMDUTY=")), c => Assert.True(DutyOf(c) <= 0, c));
+        Assert.False(bench.InUse.Bidirectional);
+        // 换回来同样不用挂起；换成 TEC 双向（另一张表）就不许在运行中换
+        inner.SetActuator(ActuatorMode.HeaterTec);
+        await WaitUntil(() => dev.Get(1, "PWMDUTY") == 400_000, 3000, "TEC 又出力");
+        Assert.Throws<InvalidOperationException>(() => inner.SetActuator(ActuatorMode.Bidirectional));
+    }
+
+    [Fact]
+    public async Task 加热棒加TEC双向形态_换形态积分不清_换成TEC双向才清()
+    {
+        using var _ = Rd105HostControl.UseGainsDir(Path.Combine(Path.GetTempPath(), "tec-pid-" + Guid.NewGuid().ToString("N")));
+        var (drv, dev) = Standalone();
+        dev.HeatSign = -1;
+        var cfg = HostCfg((Rd105TecDriver.FieldInvert, Rd105TecDriver.InvertYes), (Rd105TecDriver.FieldHeaterSign, Rd105TecDriver.HeaterNeg));
+        await using var s = await drv.OpenAsync(Conn(), Ctx(cfg), CancellationToken.None);
+        await s.StartAsync(CancellationToken.None);
+        var rd = (Rd105Session)s;
+        var inner = rd.TempOf(0);
+        var bench = s.CapabilitiesOf(0).OfType<IPidTuningBench>().Single();
+        bench.SetManual(new PidManual(new PidTuning(1, 0.2, 0), new PidTuning(2.5, 0.0079, 0), 8));   // Ki 0.2、差 5 K：积分每秒攒 1 %
+        await WaitUntil(() => !double.IsNaN(inner.CurrentJacket), 3000, "夹套读数");
+        dev.Thermal = false;
+
+        await inner.SetTargetAsync(new TempTarget(30, TempChannelKind.Jacket), CancellationToken.None);   // 夹套 25：差 5 K
+        await inner.EnableAsync(false, CancellationToken.None);
+        inner.SetActuator(ActuatorMode.HeatOnly);
+        await inner.EnableAsync(true, CancellationToken.None);
+        await WaitUntil(() => bench.Live is { Active: true, I: > 3 }, 8000, () => $"积分攒起来（{bench.Live?.I}）");
+        var i0 = bench.Live!.I;
+
+        inner.SetActuator(ActuatorMode.HeaterTec);          // 同一张表：积分照旧（还在往上攒）
+        await Task.Delay(500);
+        Assert.True(bench.Live!.I >= i0 - 1e-6, $"积分被清了：{i0} → {bench.Live!.I}");
+
+        await inner.EnableAsync(false, CancellationToken.None);
+        inner.SetActuator(ActuatorMode.Bidirectional);      // 换对象（TEC 那张表）：清零、按前馈预置（没学过就是 0），从头再攒
+        await inner.EnableAsync(true, CancellationToken.None);
+        await Task.Delay(500);
+        Assert.True(bench.Live!.I < 1.5, $"换对象没复位：{i0} → {bench.Live!.I}");
     }
 
     [Fact]
     public async Task 串级_加热棒贴着0时外环正向欠账能退_Tr过头后夹套设定往下走()
     {
         // 原来内环贴着 0（加热棒关着）就把外环积分双向冻住：Tr 越过设定后攒下的正向偏置退不掉，夹套设定一直比该有的高。
-        // 外环 Ki 调大到 0.5 让这事在几秒里看得见
+        // 外环 Ki 调大到 0.5 让这事在几秒里看得见。冷水机已关 = 升温挡（只加热、贴着 0）——已开是双向挡，Tr 过头会接 TEC，不是这条要验的
+        using var _ = Rd105HostControl.UseGainsDir(Path.Combine(Path.GetTempPath(), "tec-pid-" + Guid.NewGuid().ToString("N")));   // 手动参数别落到真目录里污染别的用例
         var b = new Duo();
-        await using var s = await b.Drv.OpenAsync(Duo.Conn(), b.Ctx(), CancellationToken.None);
+        await using var s = await b.Drv.OpenAsync(Duo.Conn(), b.Ctx(Duo.ChillerOff()), CancellationToken.None);
         await s.StartAsync(CancellationToken.None);
         var t = Temp(s, 0);
         var bench = s.CapabilitiesOf(0).OfType<IPidTuningBench>().Single();
@@ -425,6 +516,7 @@ public class Rd105HostControlTests
     {
         // 现场：釜内 90 ℃ 一步到位，趋近那十几分钟外环积分攒了 20 多 K，Tr 到 90 夹套设定还在 108。
         // 外环 Ki 调大到 0.5 让积分攒不攒几秒就看得见；偏置上限 30 让 P 在 e = 5 时不顶限（12.5 < 30）
+        using var _ = Rd105HostControl.UseGainsDir(Path.Combine(Path.GetTempPath(), "tec-pid-" + Guid.NewGuid().ToString("N")));   // 手动参数别落到真目录里污染别的用例
         var b = new Duo();
         await using var s = await b.Drv.OpenAsync(Duo.Conn(), b.Ctx(), CancellationToken.None);
         await s.StartAsync(CancellationToken.None);
@@ -509,9 +601,9 @@ public class Rd105HostControlTests
         var path = ((DuoSession)s).InnerLoopLogPath(0);
         await t.StopAsync(CancellationToken.None);
         var lines = File.ReadAllLines(path!);
-        // 热源侧·挡位·冷水机（0333）：事后看「那一炉为什么没制冷」就靠这一列
-        Assert.Contains(lines.Skip(1), l => l.Split(',')[18] == "电加热·升温挡·冷水机开" && l.Split(',')[15] == "加热棒");
-        Assert.Contains(lines.Skip(1), l => l.Split(',')[19].Contains("升温挡"));        // 定挡那句跟在「开始」后面
+        // 热源侧·挡位·冷水机（0333 / 0336）：事后看「那一炉为什么没制冷」就靠这一列。缺省冷水机已开 = 双向挡，形态是「加热棒+TEC双向」
+        Assert.Contains(lines.Skip(1), l => l.Split(',')[18] == "电加热·双向挡·冷水机开" && l.Split(',')[15] == "加热棒+TEC双向");
+        Assert.Contains(lines.Skip(1), l => l.Split(',')[19].Contains("双向挡"));        // 定挡那句跟在「开始」后面
 
         var (drv, dev) = Standalone();
         dev.Set(null, "FPWM", 2);
@@ -744,9 +836,9 @@ public class Rd105HostControlTests
     [Fact]
     public async Task 升温挡_釜内串级_釜温冲过目标_加热棒收到0_不接TEC()
     {
-        // 用户定的（0333）：加热过程里不用 TEC 降温——冷水机没开，TEC 没水不能开。过冲就是加热棒收到 0 自然凉
+        // 用户定的（0333）：冷水机没开，TEC 没水不能开——升温挡里过冲就是加热棒收到 0 自然凉（冷水机已开是双向挡，见下一条）
         var b = new Duo();
-        await using var s = await b.Drv.OpenAsync(Duo.Conn(), b.Ctx(Duo.ChillerOn()), CancellationToken.None);   // 就算标着冷水机开也不接
+        await using var s = await b.Drv.OpenAsync(Duo.Conn(), b.Ctx(Duo.ChillerOff()), CancellationToken.None);
         await s.StartAsync(CancellationToken.None);
         var t = Temp(s, 0);
         await WaitUntil(() => !double.IsNaN(t.CurrentJacket), 3000, "夹套读数");
@@ -770,37 +862,125 @@ public class Rd105HostControlTests
     }
 
     [Fact]
-    public async Task 降温挡_TEC收到0温度仍不高于目标够交接时间_交给加热棒_不回头()
+    public async Task 双向挡_釜内串级_放热釜温冲过目标_功率转负够驻留时间合TEC_PID不复位_参数按加热棒表()
+    {
+        // 0336，用户定的：反应会放热也会吸热，控得住就得加热、制冷随时能出力——冷水机已开是双向挡，一个 PID 两边出力
+        var b = new Duo();
+        await using var s = await b.Drv.OpenAsync(Duo.Conn(), b.Ctx(Duo.ChillerOn()), CancellationToken.None);
+        await s.StartAsync(CancellationToken.None);
+        ((DuoSession)s).SignDwell = TimeSpan.FromSeconds(1);
+        var t = Temp(s, 0);
+        var bench = s.CapabilitiesOf(0).OfType<IPidTuningBench>().Single();
+        await WaitUntil(() => !double.IsNaN(t.CurrentJacket), 3000, "夹套读数");
+        using var feed = new TrFeeder(s, 1, 20.0);
+        await Task.Delay(100);
+
+        await t.SetTargetAsync(new TempTarget(30, TempChannelKind.Reactor), CancellationToken.None);
+        Assert.True(b.Io.Coils[0]);
+        Assert.False(b.Io.Coils[6]);
+        Assert.Equal("双向挡（加热棒 ↔ TEC 跟功率符号走）", ((IHeatSource)t).Regime);
+        await WaitUntil(() => b.Rd.Get(1, "PWMDUTY") < 0, 3000, "加热");
+        // 在用参数：执行器算加热棒（参数按加热棒那张表），但是双向的
+        Assert.Equal(PidActuator.Heater, bench.InUse.Actuator);
+        Assert.True(bench.InUse.Bidirectional);
+        Assert.Equal(PidActuator.Heater, bench.CurrentActuator);
+        var iBefore = bench.Live!.I;
+
+        // 放热：釜温冲到 34（高过目标 4 K）——外环要夹套往下、内环功率转负；连续够驻留时间合 TEC、断加热棒，回路不复位
+        Volatile.Write(ref feed.Value, 34.0);
+        await WaitUntil(() => b.Io.Coils[6] && !b.Io.Coils[0], 8000, () => $"接 TEC（DO0 {b.Io.Coils[0]} DO6 {b.Io.Coils[6]}，占空比 {b.Rd.Get(1, "PWMDUTY")}）\n" + string.Join("\n", b.Logs.TakeLast(8)));
+        // 继电器合上到切换序列写完日志还差一步（重开输出）：等那句
+        await WaitUntil(() => b.Logs.Any(l => l.Contains("已切至TEC")), 3000, () => string.Join("\n", b.Logs.TakeLast(8)));
+        Assert.Contains(b.Logs, l => l.Contains("双向挡：功率") && l.Contains("指向TEC") && l.Contains("PID 不复位"));
+        Assert.DoesNotContain(b.Logs, l => l.Contains("降温挡") || l.Contains("升温挡："));
+        await WaitUntil(() => b.Rd.Get(1, "PWMDUTY") > 0, 4000, "TEC 制冷（反向配置下制冷是正的）");
+        Assert.True(St(t).Active);
+        Assert.Equal("双向挡（加热棒 ↔ TEC 跟功率符号走）", ((IHeatSource)t).Regime);
+        Assert.Equal(PidActuator.Heater, bench.InUse.Actuator);      // 还是那张表、那个 PID
+        Assert.True(bench.InUse.Bidirectional);
+        // 没复位：积分不是从 0 起（换对象才清零——加热棒 ⇄ TEC 是换对象，加热棒 ⇄ 加热棒 + TEC 不是）
+        Assert.True(Math.Abs(bench.Live!.I) > 1e-6 || Math.Abs(iBefore) < 1e-6, $"积分被清了：{iBefore} → {bench.Live!.I}");
+
+        // 放热结束、釜温回落到 26（低于目标 4 K）：功率转正，合回加热棒、断 TEC
+        Volatile.Write(ref feed.Value, 26.0);
+        await WaitUntil(() => b.Io.Coils[0] && !b.Io.Coils[6], 8000, () => $"回加热棒（DO0 {b.Io.Coils[0]} DO6 {b.Io.Coils[6]}）\n" + string.Join("\n", b.Logs.TakeLast(8)));
+        await WaitUntil(() => b.Rd.Get(1, "PWMDUTY") < 0, 4000, "加热");
+        await WaitUntil(() => b.Logs.Any(l => l.Contains("已切至电加热")), 3000, () => string.Join("\n", b.Logs.TakeLast(8)));
+        Assert.True(St(t).Active);
+        Assert.Contains(b.Logs, l => l.Contains("指向电加热"));
+    }
+
+    [Fact]
+    public async Task 双向挡_夹套目标_被冷却水拉低功率转正合加热棒_再漂高转负回TEC()
     {
         var b = new Duo();
         await using var s = await b.Drv.OpenAsync(Duo.Conn(), b.Ctx(Duo.ChillerOn()), CancellationToken.None);
         await s.StartAsync(CancellationToken.None);
-        ((DuoSession)s).HandoverDwell = TimeSpan.FromSeconds(1);
+        ((DuoSession)s).SignDwell = TimeSpan.FromSeconds(1);
         var t = Temp(s, 0);
         await WaitUntil(() => !double.IsNaN(t.CurrentJacket), 3000, "夹套读数");
 
-        await t.SetTargetAsync(new TempTarget(20, TempChannelKind.Jacket), CancellationToken.None);   // 25 → 20：降温挡
+        await t.SetTargetAsync(new TempTarget(20, TempChannelKind.Jacket), CancellationToken.None);   // 25 → 20：起步合 TEC
         Assert.True(b.Io.Coils[6]);
         Assert.False(b.Io.Coils[0]);
-        Assert.Equal("降温挡（TEC 制冷）", ((IHeatSource)t).Regime);
         await WaitUntil(() => b.Rd.Get(1, "PWMDUTY") > 0, 3000, "制冷");
 
-        // 夹套被冷却水拉到 15（低于目标 5 K）：只制冷的回路贴着 0、想加热给不了。过了交接时间交给加热棒——
-        // 要维持的 20 ℃ 高于冷却水能给的平衡点，TEC 再等也等不来热
+        // 夹套被冷却水拉到 15（低于目标 5 K）：要维持 20 ℃ 得加热——功率转正够驻留时间就合加热棒（0333 要等一分钟「交接」，现在不用）
         b.Rd.Set(1, "TCADJTEMP", 15_00000);
-        await WaitUntil(() => b.Io.Coils[0] && !b.Io.Coils[6], 6000, () => $"交给加热棒（DO0 {b.Io.Coils[0]} DO6 {b.Io.Coils[6]}）\n" + string.Join("\n", b.Logs.TakeLast(8)));
-        Assert.Contains(b.Logs, l => l.Contains("降温挡 → 升温挡") && l.Contains("TEC 已收到 0"));
-        Assert.Equal("升温挡（只用加热棒）", ((IHeatSource)t).Regime);
+        await WaitUntil(() => b.Io.Coils[0] && !b.Io.Coils[6], 6000, () => $"合加热棒（DO0 {b.Io.Coils[0]} DO6 {b.Io.Coils[6]}）\n" + string.Join("\n", b.Logs.TakeLast(8)));
         await WaitUntil(() => b.Rd.Get(1, "PWMDUTY") < 0, 4000, "加热棒出力（负占空比）");
         Assert.True(St(t).Active);
 
-        // 不回头：夹套又漂到 24（高过目标 4 K）——加热棒收到 0，不再接 TEC
+        // 夹套又漂到 24（高过目标 4 K）：回 TEC——双向挡没有「不回头」
         b.Rd.Set(1, "TCADJTEMP", 24_00000);
-        await WaitUntil(() => b.Rd.Get(1, "PWMDUTY") == 0, 6000, "加热棒收到 0");
-        await Task.Delay(1500);
+        await WaitUntil(() => b.Io.Coils[6] && !b.Io.Coils[0], 6000, () => $"回 TEC（DO0 {b.Io.Coils[0]} DO6 {b.Io.Coils[6]}）\n" + string.Join("\n", b.Logs.TakeLast(8)));
+        await WaitUntil(() => b.Rd.Get(1, "PWMDUTY") > 0, 4000, "制冷");
+        await WaitUntil(() => b.Logs.Count(l => l.Contains("已切至TEC")) == 2, 3000, () => string.Join("\n", b.Logs.TakeLast(8)));
+        Assert.True(St(t).Active);
+        Assert.Single(b.Logs, l => l.Contains("已切至电加热"));
+        Assert.DoesNotContain(b.Logs, l => l.Contains("降温挡 → 升温挡"));
+    }
+
+    [Fact]
+    public async Task 双向挡_夹套过TEC接入上限_形态只改下限不关输出_凉了放开()
+    {
+        // 上位机 PID：夹套 > 上限 → TEC 断、只加热（下限钳 0），同一组参数只改限幅、输出不关；凉到 上限 − 滞回 放开
+        var b = new Duo();
+        var cfg = Duo.ChillerOn();
+        cfg[DualStationDriver.Fields.Hysteresis] = 5d;
+        await using var s = await b.Drv.OpenAsync(Duo.Conn(), b.Ctx(cfg), CancellationToken.None);
+        await s.StartAsync(CancellationToken.None);
+        ((DuoSession)s).SignDwell = TimeSpan.FromSeconds(1);
+        var t = Temp(s, 0);
+        var inner = ((DuoSession)s).InnerTemp(0);
+        await WaitUntil(() => !double.IsNaN(t.CurrentJacket), 3000, "夹套读数");
+        b.Rd.Thermal = false;                                   // 温度手拨
+
+        await t.SetTargetAsync(new TempTarget(60, TempChannelKind.Jacket), CancellationToken.None);   // 25 → 60：加热棒
+        Assert.True(b.Io.Coils[0]);
+        Assert.Equal(ActuatorMode.HeaterTec, inner.Actuator);
+
+        // 夹套冲到 95：锁存立起——形态改成只加热（下限 0），输出不关（没有 ENABLE=0），继电器不动；warn 一次
+        var n = b.Rd.Commands.Count;
+        b.Rd.Set(1, "TCADJTEMP", 95_00000);
+        await WaitUntil(() => inner.Actuator == ActuatorMode.HeatOnly, 3000, "只加热");
+        await WaitUntil(() => b.Logs.Any(l => l.Contains("执行器形态对齐") && l.Contains("输出不关")), 3000, () => string.Join("\n", b.Logs.TakeLast(6)));
+        Assert.DoesNotContain(b.Rd.Commands.Skip(n), c => c.Contains("TC1:ENABLE=0"));
         Assert.True(b.Io.Coils[0]);
         Assert.False(b.Io.Coils[6]);
-        Assert.Single(b.Logs, l => l.Contains("降温挡 → 升温挡"));
+        Assert.Single(b.Logs, l => l.StartsWith("warn") && l.Contains("高过 TEC 接入上限"));
+        Assert.Contains("夹套 > TEC 接入上限", ((IHeatSource)t).Regime);
+        await Task.Delay(1500);
+        Assert.Equal(0, b.Rd.Get(1, "PWMDUTY"));               // 想制冷也只能出 0：一笔正的（TEC 那一极）都不写
+        Assert.False(b.Io.Coils[6]);
+
+        // 凉到 84（≤ 90 − 5）：放开——形态回加热棒 + TEC 双向，功率转负够驻留时间合 TEC
+        b.Rd.Set(1, "TCADJTEMP", 84_00000);
+        await WaitUntil(() => inner.Actuator == ActuatorMode.HeaterTec, 3000, "放开");
+        Assert.Contains(b.Logs, l => l.Contains("放开 TEC"));
+        await WaitUntil(() => b.Io.Coils[6] && !b.Io.Coils[0], 6000, () => $"接 TEC（DO0 {b.Io.Coils[0]} DO6 {b.Io.Coils[6]}）\n" + string.Join("\n", b.Logs.TakeLast(8)));
+        await WaitUntil(() => b.Rd.Get(1, "PWMDUTY") > 0, 4000, "制冷");
+        Assert.True(St(t).Active);
     }
 
     [Fact]
@@ -895,10 +1075,11 @@ public class Rd105HostControlTests
     [Fact]
     public async Task 釜内串级_保持期不换挡_夹套高过釜内设定加死区也不切TEC()
     {
+        // 冷水机已关 = 升温挡：保持期不换热源（0329）。已开是双向挡，继电器照旧跟功率符号——那是另一条用例
         var b = new Duo();
         var conn = ParameterSet.Of((Rd105TecDriver.FieldPeriod, 200d), (DualStationDriver.Fields.Tick, 200d),
                                    (Rd105TecDriver.FieldTrGrace, 4d));
-        await using var s = await b.Drv.OpenAsync(conn, b.Ctx(), CancellationToken.None);
+        await using var s = await b.Drv.OpenAsync(conn, b.Ctx(Duo.ChillerOff()), CancellationToken.None);
         await s.StartAsync(CancellationToken.None);
         var t = Temp(s, 0);
         await WaitUntil(() => !double.IsNaN(t.CurrentJacket), 3000, "夹套读数");

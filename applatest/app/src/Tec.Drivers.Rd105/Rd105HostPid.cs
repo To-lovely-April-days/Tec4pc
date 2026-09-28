@@ -95,7 +95,8 @@ public sealed class Rd105HostPid : IPidTuningBench
 
     private static ActuatorMode Mode(PidActuator a) => a == PidActuator.Heater ? ActuatorMode.HeatOnly : ActuatorMode.Bidirectional;
 
-    private static PidActuator Of(ActuatorMode m) => m == ActuatorMode.HeatOnly ? PidActuator.Heater : PidActuator.Tec;
+    /// <summary>形态 → 表：只加热与「加热棒 + TEC 双向」（0336 双向挡）都是加热棒那张。</summary>
+    private static PidActuator Of(ActuatorMode m) => HostControlLoop.HeaterTable(m) ? PidActuator.Heater : PidActuator.Tec;
 
     public static string ActuatorName(PidActuator a) => a == PidActuator.Heater ? "加热棒" : "TEC";
 
@@ -239,8 +240,9 @@ public sealed class Rd105HostPid : IPidTuningBench
             outer = new PidGains(okp, oki, okd);
             bias = ob;
         }
+        // 加热比两张表都收（0336 起加热棒表那列给「加热棒 + TEC 双向」用：负半轴乘它）
         double? heat = null;
-        if (r.HeatRatio is { } hr && actuator == PidActuator.Tec)
+        if (r.HeatRatio is { } hr)
         {
             if (!double.IsFinite(hr) || hr <= 0.05 || hr > 20) throw new ArgumentException(At($"加热比 {hr} 不在 0.05 ~ 20"));
             heat = hr;
@@ -315,17 +317,18 @@ public sealed class Rd105HostPid : IPidTuningBench
             var live = _live;
             var sp = _loop.GetChannelStatus(_tc).SetpointC;
             var inner = live is { Cascade: true } l && double.IsFinite(l.InnerSetpointC) ? l.InnerSetpointC : sp;
-            return Compose(CurrentActuator, inner, sp);
+            return Compose(CurrentActuator, inner, sp, _loop.GetActuatorMode(_tc) == ActuatorMode.HeaterTec);
         }
     }
 
-    public PidInUse Preview(PidActuator actuator, double temperatureC) => Compose(actuator, temperatureC, temperatureC);
+    public PidInUse Preview(PidActuator actuator, double temperatureC) => Compose(actuator, temperatureC, temperatureC, false);
 
     /// <summary>
     /// 照回路的规矩算：内环按内环设定查此刻执行器那张表；外环 / 稳态偏置按主设定查——外环的对象是釜，跟执行器无关，
     /// 查的是两张表里离主设定最近的外环工作点所在那张（HostControlLoop.GetOuterSchedule）；表里没有或调度关了就是手动那组。
+    /// 加热比：TEC 表那行的给 TEC 双向用（正半轴除以它）；加热棒表那行的给「加热棒 + TEC 双向」用（负半轴乘它），只加热不用。
     /// </summary>
-    private PidInUse Compose(PidActuator a, double innerAt, double outerAt)
+    private PidInUse Compose(PidActuator a, double innerAt, double outerAt, bool heaterTec)
     {
         var sched = Schedule(a);
         var outerSched = _loop.GetOuterSchedule(_tc, outerAt);
@@ -333,13 +336,13 @@ public sealed class Rd105HostPid : IPidTuningBench
         var m = Manual;
         var g = on ? sched.GainsAt(innerAt) : null;
         var o = on ? outerSched.OuterAt(outerAt) : null;
-        var heat = a == PidActuator.Heater ? 1.0 : (on ? sched.HeatRatioAt(innerAt) : null) ?? _loop.HeatingEffectivenessRatio;
+        var heat = (on ? sched.HeatRatioAt(innerAt) : null) ?? _loop.HeatingEffectivenessRatio;
         return new PidInUse(
             innerAt, a,
             g is null ? m.Inner : new PidTuning(g.Kp, g.Ki, g.Kd), g is not null,
             o is null ? m.Outer : new PidTuning(o.Gains.Kp, o.Gains.Ki, o.Gains.Kd),
             o?.MaxBiasC ?? m.OuterMaxBiasC, o is not null,
-            outerSched.SteadyBiasAt(outerAt), heat);
+            outerSched.SteadyBiasAt(outerAt), heat) { Bidirectional = heaterTec };
     }
 
     /// <summary>会话在回路每拍回调里喂进来。</summary>

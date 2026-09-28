@@ -304,7 +304,11 @@ public sealed class Rd105TemperatureControl : ITemperatureControl, ITemperatureS
     public void SetActuator(bool electric)
         => SetActuator(electric ? ActuatorMode.HeatOnly : ActuatorMode.Bidirectional);
 
-    /// <summary>三态：加热棒 = 只加热；TEC = 双向，或「TEC 加热」不启用时只制冷（正半轴那一极接的是加热棒 SSR、继电器断着）。</summary>
+    /// <summary>
+    /// 四态：加热棒 = 只加热；TEC = 双向，或「TEC 加热」不启用时只制冷（正半轴那一极接的是加热棒 SSR、继电器断着）；
+    /// 加热棒 + TEC 双向（0336 双向挡）= 一个 PID 正半轴加热棒、负半轴 TEC，参数按加热棒表——跟只加热是同一组参数，
+    /// 互换只改下限、不复位（回路自己判：同一张表之内换形态运行中也许改）。
+    /// </summary>
     public void SetActuator(ActuatorMode mode) => _loop?.SetActuatorMode(_tc, mode);
 
     /// <summary>回路把这一路停了（会话收到 ChannelTripped 时调）。</summary>

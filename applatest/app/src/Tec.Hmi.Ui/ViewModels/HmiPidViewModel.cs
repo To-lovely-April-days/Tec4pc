@@ -154,7 +154,7 @@ public sealed class HmiPidViewModel : ViewModelBase
                 b.AutoTuneFinished += OnTuneFinished;
                 // 进页先看此刻执行器那张表（正在用加热棒 / 正拿加热棒整定，就别先摆一张空的 TEC 表）
                 _table = b.CurrentActuator;
-                RaiseAll(nameof(TableTec), nameof(TableHeater), nameof(HeatColumn));
+                RaiseAll(nameof(TableTec), nameof(TableHeater), nameof(HeatColumn), nameof(HeatColumnTip));
                 LoadRows();
                 LoadManual();
                 if (string.IsNullOrWhiteSpace(_tuneT)) TuneT = "25";
@@ -193,7 +193,11 @@ public sealed class HmiPidViewModel : ViewModelBase
 
     public bool TableTec => _table == PidActuator.Tec;
     public bool TableHeater => _table == PidActuator.Heater;
-    public bool HeatColumn => _table == PidActuator.Tec;
+    /// <summary>「加热比」两张表都有（0336 起加热棒表那列给双向挡用：TEC 那半轴乘它）；列头提示按表说。</summary>
+    public bool HeatColumn => true;
+    public string HeatColumnTip => _table == PidActuator.Tec
+        ? "加热 / 制冷有效度之比（TEC 双向、「TEC 加热」启用时用）：正半轴除以它。空 = 1"
+        : "加热棒 / TEC 制冷有效度之比，给双向挡（冷水机已开）用：PID 按加热棒整，负半轴给 TEC 时乘它——加热棒比 TEC 强 2 倍就填 2。空 = 1（只加热不用）";
 
     public ObservableCollection<HmiPidRow> Rows { get; } = new();
 
@@ -232,7 +236,7 @@ public sealed class HmiPidViewModel : ViewModelBase
         Rows.Clear();
         if (Bench is { } b)
             foreach (var r in b.Rows(_table))
-                Rows.Add(new HmiPidRow(this, r, heatEditable: _table == PidActuator.Tec));
+                Rows.Add(new HmiPidRow(this, r, heatEditable: true));
         TableDirty = false;
         TableNote = "";
         RaiseAll(nameof(TablePath), nameof(TableSummary), nameof(TableEmpty));
@@ -249,7 +253,7 @@ public sealed class HmiPidViewModel : ViewModelBase
         {
             _table = a;
             LoadRows();
-            RaiseAll(nameof(TableTec), nameof(TableHeater), nameof(HeatColumn));
+            RaiseAll(nameof(TableTec), nameof(TableHeater), nameof(HeatColumn), nameof(HeatColumnTip));
         }
         if (TableDirty)
             _owner.OpenAsk("换表", "当前这张表有改动还没应用", "换到另一张表会丢掉这些改动。", "丢掉改动并换表", go);
@@ -264,7 +268,7 @@ public sealed class HmiPidViewModel : ViewModelBase
             : Rows.Select(r => double.TryParse(r.T, NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : double.NaN)
                   .Where(double.IsFinite).DefaultIfEmpty(5).Max() + 20;
         var p = b.Preview(_table, t);
-        var row = new HmiPidRow(this, null, heatEditable: _table == PidActuator.Tec)
+        var row = new HmiPidRow(this, null, heatEditable: true)
         {
             T = t.ToString("0.#", CultureInfo.InvariantCulture),
             Kp = p.Inner.Kp.ToString("0.####", CultureInfo.InvariantCulture),
@@ -434,7 +438,10 @@ public sealed class HmiPidViewModel : ViewModelBase
     {
         var use = b.InUse;
         var live = b.Live;
-        var act = use.Actuator == PidActuator.Heater ? "加热棒（只加热）" : "TEC";
+        // 双向挡（0336）：执行器算加热棒（参数按加热棒表），负半轴也出力（TEC）
+        var act = use.Actuator == PidActuator.Heater
+            ? (use.Bidirectional ? "加热棒 + TEC（双向挡，参数按加热棒表）" : "加热棒（只加热）")
+            : "TEC";
         UseHead = live is { Tuning: true } ? $"执行器 {act} · 正在自整定"
             : live is { Active: true } l
                 ? $"执行器 {act} · 设定 {F2(l.SetpointC)} ℃" + (l.Cascade ? $" · 内环设定 {F2(l.InnerSetpointC)} ℃（串级）" : "（单环）")
@@ -442,7 +449,9 @@ public sealed class HmiPidViewModel : ViewModelBase
         UseInner = $"内环 {Fmt(use.Inner)}　{(use.InnerFromTable ? "← 增益表插值" : "← 手动参数")}";
         UseOuter = $"外环 {Fmt(use.Outer)}　偏置 ±{use.OuterMaxBiasC:0.#} ℃　{(use.OuterFromTable ? "← 增益表插值" : "← 手动参数")}";
         UseExtra = (use.SteadyBiasC is { } sb ? $"稳态偏置 {sb:+0.00;−0.00} ℃（串级启动时预置）　" : "") +
-                   (use.Actuator == PidActuator.Tec ? $"加热比 {use.HeatRatio:0.##}" : "加热棒不做加热比归一");
+                   (use.Actuator == PidActuator.Tec ? $"加热比 {use.HeatRatio:0.##}"
+                    : use.Bidirectional ? $"加热比 {use.HeatRatio:0.##}（TEC 那半轴乘它）"
+                    : $"加热比 {use.HeatRatio:0.##}（只加热不归一；双向挡里给 TEC 那半轴用）");
 
         if (live is null)
         {

@@ -17,18 +17,23 @@ namespace Tec.Drivers.DualStation;
 /// 热源切换（需求 §2）分两种模式，看设备配置「TEC 加热」：
 ///
 ///  **不启用（默认，这台机器）**：升温系统 = 加热棒（RD105 负占空比 → 固态继电器，按功率调），降温系统 =
-///  TEC（正占空比，按功率调）；一路只有一个输出，正负号选系统。**下发目标时按方向定挡**（0333，用户定的）：
-///  目标比当前温度低超过死区 = 降温挡，其余 = 升温挡。升温挡全程只用加热棒——过冲靠加热棒提前收功率、
-///  过了头关加热棒自然凉，**绝不接 TEC**（加热过程冷水机没开，TEC 没水不能开）。降温挡「冷水机」标为已开、
-///  夹套凉到 阈值−滞回 以下才合 TEC 功率线；接不上（冷水机关 / 夹套还烫）就两只都断着自然凉；TEC 收到 0
-///  温度还往下走（要维持的温度高于水温）、或自然凉到了目标，就交给加热棒维持（升温挡），一次交接不回头。
-///  中途温度漂动不换挡；只有新目标、冷水机开关、夹套过回切线、交接这四件事会动继电器。
+///  TEC（正占空比，按功率调）；一路只有一个输出，正负号选系统。再看「冷水机」：
+///
+///  · **「冷水机」已开（缺省）= 双向挡**（0336，用户定的：反应会放热也会吸热，控得住就得加热、制冷随时都能出力）：
+///    **一个 PID 两边出力**——正给加热棒、负给 TEC 制冷，同一组参数（加热棒那张表），过零积分不清、什么都不重置。
+///    **继电器跟着 PID 输出的符号走**：同号连续 3 s（SignDwell）才扳（关输出 → 断一只 → 合一只 → 开输出），保温段要的
+///    功率一直是正的（夹套往冷却水漏热）所以不抖，只在落地、放热起来 / 结束这种真要换方向的时候扳一次。
+///    下发目标那一刻按方向先合一只（低于当前超过死区合 TEC，其余合加热棒），之后就看符号。
+///    夹套 &gt; 「TEC 接入上限」（90）：TEC 断开、只加热棒出力、功率下限钳回 0（不复位），凉到 上限 − 滞回（缺省 85）再放开；
+///    定挡那一刻夹套已经高过那条线也先不接。
+///  · **「冷水机」已关 = 升温挡 / 降温挡**（0333）：**下发目标时按方向定挡**——目标比当前温度低超过死区 = 降温挡，
+///    其余 = 升温挡。升温挡全程只用加热棒（过冲靠加热棒提前收功率、过了头关加热棒自然凉，绝不接 TEC）；
+///    降温挡没水不接 TEC，两只都断着自然凉，自然凉到了目标交给加热棒维持（一次交接不回头）。中途温度漂动不换挡。
 ///
 ///  **启用**：TEC 反向输出也能加热，于是只有目标 &gt; 阈值才需要电加热棒（原来那套，不分挡）。
 ///
-/// 两种模式共同的硬条款：
-///  · 切回 TEC 必须实测夹套 ≤ 阈值 − 滞回——夹套还烫着就把 TEC 接回去，
-///    等于让它贴着超出耐温的热源；
+/// 各模式共同的硬条款：
+///  · TEC 不能接到烫夹套上（TEC 模块自身耐温）：接入看「TEC 接入上限」与「接入滞回」；
 ///  · 每次切换都走全套序列：关输出 → 切继电器 → （核反馈）→ 重开输出；
 ///  · 电加热用不了（没配 IO8R / 打不开）时，需要加热的目标直接拒绝，理由写明。
 /// </summary>
@@ -52,11 +57,11 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     // 这三项**每拍重读**（见 RefreshSwitches）：属性栏上的「TEC 加热」「冷水机」是开关，
     // 人按下去就该生效，不该还要先把设备断开重连。其余配置照旧开会话时读一次
     private bool _tecHeat;                  // TEC 反向输出加热启不启用（默认不启用）
-    private bool _chiller;                  // 冷水机开没开（人标的；缺省已开——用户定的：降温时冷水机一定开着）——降温挡合不合 TEC 看它
-    private double _band;                   // 升降温死区（只在 TEC 加热不启用时用：下发目标时定挡）
-    private readonly int _heaterSign;       // 加热棒吃哪个符号的占空比（温控器 PID 方式下判「TEC 没在制冷」用）
-    private readonly double _threshold;     // 电加热切换阈值（≤ 90，用户定的死上限）
-    private readonly double _hyst;          // 回切滞回
+    private bool _chiller;                  // 冷水机开没开（人标的；缺省已开——用户定的：降温时冷水机一定开着）——已开 = 双向挡，已关 = 升温挡 / 降温挡
+    private double _band;                   // 升降温死区（只在 TEC 加热不启用时用：下发目标时定挡 / 双向挡起步合哪只）
+    private readonly int _heaterSign;       // 加热棒吃哪个符号的占空比（温控器 PID 方式下判「TEC 没在制冷」/ 功率符号用）
+    private readonly double _threshold;     // TEC 接入上限（≤ 90，用户定的死上限；「TEC 加热」启用时兼作电加热切换阈值）
+    private readonly double _hyst;          // 接入滞回
     private readonly bool _feedback;        // 有没有接切换反馈 DI
     private readonly int[] _doIdx = new int[2];
     private readonly int[] _diIdx = new int[2];
@@ -79,20 +84,31 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     private readonly string?[] _noCoolSaid = new string?[2];
 
     /// <summary>
-    /// 这一路此刻在哪个挡（「TEC 加热」不启用时才有意义）。下发目标时按方向定（DecideRegime）；
-    /// 停控清掉；降温挡交给加热棒之后变升温挡（HandOver）。待定 = 定挡那一刻夹套读不到，采集循环读到了再定。
+    /// 这一路此刻在哪个挡（「TEC 加热」不启用时才有意义）。下发目标时定（DecideRegime）：「冷水机」已开 = 双向挡；
+    /// 已关按方向 = 升温挡 / 降温挡。停控清掉；降温挡交给加热棒之后变升温挡（HandOver）。待定 = 定挡那一刻夹套读不到，采集循环读到了再定。
     /// </summary>
-    private enum Regime { Undecided, Heating, Cooling }
+    private enum Regime { Undecided, Heating, Cooling, Both }
 
     private readonly Regime[] _regime = new Regime[2];
-    /// <summary>降温挡在 TEC 侧「回路想加热而 TEC 只能出 0」从什么时候起连续成立；够了交接。</summary>
-    private readonly DateTimeOffset?[] _wantHeatSince = new DateTimeOffset?[2];
 
     /// <summary>
-    /// 降温挡里 TEC 已收到 0、温度仍低于目标要持续多久才交给加热棒。一分钟：过了这一分钟还回不来，
-    /// 说明要维持的温度高于冷却水能给的平衡点，TEC 再等也等不来热。测试可以调短。
+    /// 双向挡里 PID 输出的符号要连续多久指向另一只继电器才扳过去（0336，用户定的 3 s）。过零那一拍不扳：
+    /// 一次切换要关输出一秒钟，符号在零附近来回的那几拍不值得。测试可以调短。
     /// </summary>
-    internal TimeSpan HandoverDwell { get; set; } = TimeSpan.FromSeconds(60);
+    internal TimeSpan SignDwell { get; set; } = TimeSpan.FromSeconds(3);
+
+    /// <summary>双向挡符号判据的死区（% 功率）：|输出| 不超过它不算有方向，保持现状、计时清零。</summary>
+    internal const double SignDeadbandPercent = 1.0;
+
+    /// <summary>双向挡：符号从什么时候起连续指向哪一侧（跟此刻继电器位置不同的那一侧）。</summary>
+    private readonly Side?[] _signSide = new Side?[2];
+    private readonly DateTimeOffset?[] _signSince = new DateTimeOffset?[2];
+
+    /// <summary>
+    /// 双向挡的「夹套烫」锁存：夹套 &gt; TEC 接入上限（90）立起——TEC 断开、只加热棒出力、功率下限钳 0；
+    /// 凉到 上限 − 滞回（88）落下。进双向挡那一刻夹套已经高过 88 也先立着（跟 0333 一样不把 TEC 接到烫夹套上）。
+    /// </summary>
+    private readonly bool[] _tecHot = new bool[2];
     /// <summary>
     /// 停控代数：每停一次加一。切换序列里 ①关输出 → ②切继电器 → ③核反馈 要走上两秒，
     /// 这期间操作人或安全层完全可能按下「停控」——那时 Enabled 早被 ① 置成 false 了，
@@ -142,7 +158,9 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         if (well is not (0 or 1)) return;
         _wantEnabled[well] = false;
         _regime[well] = Regime.Undecided;
-        _wantHeatSince[well] = null;
+        _signSide[well] = null;
+        _signSince[well] = null;
+        _tecHot[well] = false;
         System.Threading.Interlocked.Increment(ref _stopGen[well]);
     }
     /// <summary>反馈 DI 与继电器对不上的那一段只报一次，对上了再报一次「已对上」。</summary>
@@ -184,7 +202,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         _tecHeat = cfg.Str(F.TecHeat, "不启用") == "启用";
         _chiller = cfg.Str(F.Chiller, "已开") == "已开";
         _heaterSign = Rd105HostDefaults.DualStation.HeaterSignOf(cfg);
-        // 阈值上限 90 是死的（用户定的：只能比 90 小）——表单已经限了，这里再拴一道
+        // TEC 接入上限 90 是死的（用户定的：只能比 90 小，TEC 模块自身耐温）——表单已经限了，这里再拴一道
         _threshold = Math.Min(90, cfg.Num(F.Threshold, 90));
         _hyst = Math.Clamp(cfg.Num(F.Hysteresis, 5), 2, 20);
         _band = Math.Clamp(cfg.Num(F.Band, 2), 0.5, 10);
@@ -262,10 +280,11 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
 
     private PidActuator SuggestTuneActuator(int well, double setpointC)
     {
-        if (setpointC > _threshold) return PidActuator.Heater;          // 阈值以上 TEC 不接
+        if (setpointC > _threshold) return PidActuator.Heater;          // TEC 接入上限以上 TEC 不接
         if (_tecHeat) return PidActuator.Tec;                            // TEC 正反都能出力
         // TEC 只能制冷，而且没有冷却水不能开：冷水机没标开就只有加热棒；
-        // 开着的话，整定点比此刻夹套低超过死区（要制冷才维持得住）才用 TEC——跟下发目标定挡同一条规矩
+        // 开着的话，整定点比此刻夹套低超过死区（要制冷才维持得住）才用 TEC——跟下发目标起步合哪只同一条规矩。
+        // 双向挡（0336）跑的是加热棒那张表的参数，保温、升温整加热棒就是在整双向挡
         if (!_chiller) return PidActuator.Heater;
         var tj = _rd.TempOf(well).CurrentJacket;
         return !double.IsNaN(tj) && setpointC < tj - _band ? PidActuator.Tec : PidActuator.Heater;
@@ -279,12 +298,12 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
 
         if (_tecRelay && !ElectricReady) return NoTecReason(well);
         if (r.SetpointC > _threshold)
-            return $"整定温度 {r.SetpointC:0.#} ℃ 高于电加热切换阈值 {_threshold:0} ℃——这个温度 TEC 不接，选加热棒整";
+            return $"整定温度 {r.SetpointC:0.#} ℃ 高于 TEC 接入上限 {_threshold:0} ℃——这个温度 TEC 不接，选加热棒整";
         if (!_tecHeat && !_chiller)
             return "设备属性「冷水机」标为已关——TEC 没有冷却水不能开。先开冷水机、把「冷水机」改成已开，再整 TEC 那张表；或者选加热棒整";
         var tj = _rd.TempOf(well).CurrentJacket;
         if (!double.IsNaN(tj) && tj > _threshold - _hyst)
-            return $"夹套 {tj:0.0} ℃ 还高于回切线 {_threshold - _hyst:0} ℃（阈值 − 滞回）——TEC 不能接到这么烫的夹套上，等它凉下来再用 TEC 整";
+            return $"夹套 {tj:0.0} ℃ 还高于 TEC 接入线 {_threshold - _hyst:0} ℃（上限 − 滞回）——TEC 不能接到这么烫的夹套上，等它凉下来再用 TEC 整";
         // 「TEC 加热」不启用：TEC 只制冷，跟加热棒一样是单方向，幅值同样不能超过 LIMITED 的一半
         if (!_tecHeat && _rd.PidOf(well)?.OneSidedAmplitudeCheck(r, "TEC（「TEC 加热」没启用，只制冷）") is { } amp)
             return amp;
@@ -435,10 +454,11 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         RefreshSwitches();
         _ctx.Log?.Invoke("info", $"{InstanceId} 热源策略：「TEC 加热」{(_tecHeat ? "启用" : "不启用")}" +
             (_tecHeat
-                ? $"——目标高于 {_threshold:F0} ℃ 才切电加热"
-                : $"——升温系统 = 加热棒、降温系统 = TEC，下发目标时按方向定挡（死区 {_band:F1} K）：升温挡只用加热棒、不接 TEC；" +
-                  $"降温挡「冷水机」{(_chiller ? "已开（下发降温目标就接 TEC，冷水机得真开着）" : "已关（降温目标不接 TEC，只自然凉；要 TEC 制冷把它改成已开）")}") +
-            $"；回切线 {_threshold - _hyst:F0} ℃（阈值 {_threshold:F0} − 滞回 {_hyst:F0}）");
+                ? $"——目标高于 {_threshold:F0} ℃ 才切电加热；回切线 {_threshold - _hyst:F0} ℃（阈值 − 滞回）"
+                : $"——升温系统 = 加热棒、降温系统 = TEC 制冷；「冷水机」{(_chiller
+                    ? $"已开 = 双向挡：一个 PID 两边出力（正加热棒、负 TEC），继电器跟着功率符号走（同号连续 {SignDwell.TotalSeconds:0} s 才扳），冷水机得真开着"
+                    : $"已关 = 升温挡或降温挡（下发目标时按方向定挡，死区 {_band:F1} K）：升温挡只用加热棒，降温挡没水不接 TEC 只自然凉；要 TEC 制冷把它改成已开")}" +
+                  $"；TEC 接入上限 {_threshold:F0} ℃（夹套高过它 TEC 断开、只加热棒），凉到 {_threshold - _hyst:F0} ℃（上限 − 滞回 {_hyst:F0}）再接"));
 
         _ioOk = false;
         if (_links.Io is { } io)
@@ -457,7 +477,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
                     (_tecRelay
                         ? $"——加热棒继电器与 TEC 功率线（DO{_tecDoIdx[0]} = A、DO{_tecDoIdx[1]} = B）都断着，" +
                           (_tecHeat ? "打开温控后要降温合 TEC 功率线、要升温合加热棒"
-                                    : "打开温控后升温挡合加热棒、降温挡（「冷水机」已开）合 TEC 功率线")
+                                    : "打开温控后按方向先合一只（要制冷合 TEC 功率线、其余合加热棒），双向挡里再跟着功率符号扳")
                         : "——热源切换继电器在 TEC 侧"));
             }
             catch (Exception ex)
@@ -603,9 +623,9 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     }
 
     /// <summary>
-    /// 采集循环里的自动换挡。「TEC 加热」不启用时只有四件事会动继电器：定挡那一刻夹套读不到的补定挡、
-    /// 冷水机开关翻了、夹套过了回切线、降温挡交给加热棒（CheckHandover）。温度自己漂动**不换挡**——
-    /// 升温挡里过冲也不接 TEC（用户定的：加热过程冷水机没开，TEC 没水不能开；过了头关加热棒自然凉）。
+    /// 采集循环里的自动换挡。「TEC 加热」不启用时：双向挡（冷水机已开）继电器跟着 PID 输出的符号走（同号连续 SignDwell 才扳）、
+    /// 夹套过 / 回 TEC 接入线时只加热 ⇄ 加热棒 + TEC 换形态；升温挡 / 降温挡（冷水机已关）只有四件事会动继电器：
+    /// 定挡那一刻夹套读不到的补定挡、冷水机开关翻了、夹套过了接入线、降温挡交给加热棒（CheckHandover），温度自己漂动**不换挡**。
     ///
     /// 只动「要控温」的通道：停控 / 安全停机之后输出都关了，扳继电器没有意义，
     /// 还会把安全停机刚落回的继电器又扳回电加热。
@@ -637,12 +657,16 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         else
         {
             if (innerT.Setpoint is not { } sp) return;
-            // 串级丢了釜内 Tr、回路在保持（夹套设定钳到釜内设定）：不换挡，等 Tr 回来或回路停控
-            if (((ITemperatureStatus)innerT).Holding is not null) return;
+            // 串级丢了釜内 Tr、回路在保持（夹套设定钳到釜内设定）：升温挡 / 降温挡不换挡，等 Tr 回来或回路停控。
+            // 双向挡不设这个例外——一个 PID 的规矩就是继电器跟符号，保持期夹套设定钳到釜内设定、回路要制冷就接 TEC，
+            // 不然负半轴写到断着的 TEC 引脚上白攒积分
+            var holding = ((ITemperatureStatus)innerT).Holding is not null;
+            if (holding && (_tecHeat || _regime[well] != Regime.Both)) return;
             if (!_tecHeat)
             {
                 // 定挡那一刻夹套读不到（刚开机头一拍 / 探头脱落）：读到了再定
                 if (_regime[well] == Regime.Undecided) DecideRegime(well, sp, innerT.Kind, "采集循环");
+                if (holding) return;
                 CheckHandover(well, sp);
             }
             if (WantedSide(well, sp, out blocked) is not { } w)
@@ -656,6 +680,14 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
             if (Settled(well, side)) { SayBlocked(well, blocked); return; }
             stillWanted = () => _wantEnabled[well] && _rd.TempOf(well).Setpoint is { } now
                                 && WantedSide(well, now, out _) == w;
+            // 双向挡按符号扳：把「为什么扳」记进日志和逐拍记录（切换序列自己的两句只说从哪到哪）
+            if (_regime[well] == Regime.Both && !_tecHot[well] && !OnSide(well, side) && SideNow(well) != Side.Off)
+            {
+                var text = $"工位 {AB(well)} 双向挡：功率 {Demand(well):+0.0;−0.0} %（正加热 / 负制冷）已连续 {SignDwell.TotalSeconds:0} s 指向{SideName(side)}——" +
+                           (side == Side.Tec ? "合 TEC 功率线、断加热棒" : "合加热棒、断 TEC 功率线") + "（PID 不复位，积分照旧）";
+                _ctx.Log?.Invoke("info", $"{InstanceId} {text}");
+                innerT.Note(text);
+            }
         }
 
         if (side == Side.Electric)
@@ -728,7 +760,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
                 "——要么接上切换模块，要么在设备属性里打开「TEC 加热」");
         if (_tecHeat && cap > _threshold && !ElectricReady)
             _ctx.Log?.Invoke("warn", $"{InstanceId} 工位 {AB(well)} 蒸回流：夹套上限 {cap:F0} ℃ " +
-                $"高于电加热切换阈值 {_threshold:F0} ℃，但电加热不可用——跟到阈值那一刻会停跟随");
+                $"高于电加热切换阈值（TEC 接入上限）{_threshold:F0} ℃，但电加热不可用——跟到阈值那一刻会停跟随");
 
         NoteStart(well);
         lock (_refluxGate)
@@ -800,8 +832,9 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         try
         {
             // 联锁②：越过阈值先走全套热源切换序列（关输出→切继电器→核反馈→重开）。
-            // 「TEC 加热」不启用时蒸回流是**升温挡钉死的**：夹套跟着 Tr+ΔT 走，Tr 一抖跟随目标就落到夹套之下，
-            // 按方向定挡会判成降温、把加热棒断开——沸点平台上 Tr 本来就抖，继电器不能跟着它一拍一扳
+            // 「TEC 加热」不启用、冷水机已关时蒸回流是**升温挡钉死的**：夹套跟着 Tr+ΔT 走，Tr 一抖跟随目标就落到夹套之下，
+            // 按方向定挡会判成降温、把加热棒断开——沸点平台上 Tr 本来就抖，继电器不能跟着它一拍一扳。
+            // 冷水机已开是双向挡：继电器只看 PID 输出的符号（连续 3 s），跟随目标怎么抖都不按方向扳
             await EnsureSourceAsync(well, tg, TempChannelKind.Jacket, ct, heatingOnly: true).ConfigureAwait(false);
             // 限速写：SPEED 按设备最大变温能力限，TG 让温控器自己斜坡过去——
             // 不是每拍阶跃，Tj 的变化率有帽子
@@ -846,14 +879,13 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
                 _tecHeat = tec;
                 _ctx.Log?.Invoke("info", $"{InstanceId} 「TEC 加热」改为{(tec ? "启用" : "不启用")}" +
                     (tec ? $"——目标高于 {_threshold:F0} ℃ 才切电加热"
-                         : "——升温挡只用加热棒、降温挡 TEC 制冷，下发目标时定挡"));
+                         : "——冷水机已开双向挡（加热棒 ↔ TEC 跟功率符号走）、已关升温挡 / 降温挡，下发目标时定挡"));
                 // 正在 TEC 侧的工位：回路的执行器形态跟着翻（双向 ⇄ 只制冷只改限幅，运行中也能改）
                 for (var w = 0; w < 2; w++)
                 {
-                    if (_rd.TempOf(w).Actuator is { } m && m != ActuatorMode.HeatOnly && SideNow(w) != Side.Electric)
+                    if (_rd.TempOf(w).Actuator is { } m && m is ActuatorMode.Bidirectional or ActuatorMode.CoolOnly && SideNow(w) != Side.Electric)
                         try { _rd.TempOf(w).SetActuator(TecMode); } catch (Exception ex) { _ctx.Log?.Invoke("warn", $"{InstanceId} 工位 {AB(w)} 执行器形态没跟上：{ex.Message}"); }
-                    _regime[w] = Regime.Undecided;     // 换了规矩：在控的路下一拍按此刻温度重新定挡
-                    _wantHeatSince[w] = null;
+                    Redecide(w);                       // 换了规矩：在控的路下一拍按此刻温度重新定挡
                 }
             }
             var chiller = _ctx.Config.Str(F.Chiller, "已开") == "已开";
@@ -861,11 +893,14 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
             {
                 _chiller = chiller;
                 var text = chiller
-                    ? "「冷水机」改为已开：降温挡这一拍起可以接 TEC 功率线"
-                    : "「冷水机」改为已关：没有冷却水不能开 TEC——正在 TEC 侧的降温挡这一拍断开功率线、只能自然凉";
+                    ? "「冷水机」改为已开：在控的路这一拍起按双向挡走（一个 PID 两边出力，继电器跟功率符号）"
+                    : "「冷水机」改为已关：没有冷却水不能开 TEC——在控的路这一拍按方向重新定挡（升温挡 / 降温挡），正在 TEC 侧的断开功率线、只能自然凉";
                 _ctx.Log?.Invoke("info", $"{InstanceId} {text}");
                 for (var w = 0; w < 2; w++)
+                {
                     if (_wantEnabled[w]) _rd.TempOf(w).Note(text);
+                    Redecide(w);
+                }
             }
             _band = Math.Clamp(_ctx.Config.Num(F.Band, 2), 0.5, 10);
         }
@@ -875,6 +910,15 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         }
     }
 
+    /// <summary>规矩变了（「TEC 加热」/「冷水机」翻了）：在控的路下一拍按此刻温度重新定挡，符号计时、烫锁存一并清掉。</summary>
+    private void Redecide(int well)
+    {
+        _regime[well] = Regime.Undecided;
+        _signSide[well] = null;
+        _signSince[well] = null;
+        _tecHot[well] = false;
+    }
+
     /// <summary>电加热通路可不可用：配了切换模块而且开起来了。</summary>
     internal bool ElectricReady => _links.Io is not null && _ioOk;
 
@@ -882,10 +926,18 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     private ActuatorMode TecMode => _tecHeat ? ActuatorMode.Bidirectional : ActuatorMode.CoolOnly;
 
     /// <summary>
-    /// 继电器在哪个位置，回路就该是哪个形态。全断（降温挡但 TEC 接不上）按只加热算：出力 0 自然凉、
-    /// 积分不往制冷那边攒，交给加热棒时形态不用再换（一次交接就是合一只继电器）。
+    /// 继电器在哪个位置，回路就该是哪个形态。
+    /// · 双向挡（冷水机已开、没在整定）：不管哪只合着都是「加热棒 + TEC 双向」——一个 PID、加热棒那张表的参数，继电器只是跟着符号走；
+    ///   夹套烫（锁存立着）时按只加热（功率下限钳 0、TEC 断），同一张表之内换形态不复位。
+    /// · 其余：TEC 侧 = 只制冷 / 双向（「TEC 加热」启用）；加热棒侧与全断（降温挡但 TEC 接不上）按只加热算：出力 0 自然凉、
+    ///   积分不往制冷那边攒，交给加热棒时形态不用再换（一次交接就是合一只继电器）。
     /// </summary>
-    private ActuatorMode ModeOf(Side side) => side == Side.Tec ? TecMode : ActuatorMode.HeatOnly;
+    private ActuatorMode ModeOf(int well, Side side)
+    {
+        if (!_tecHeat && _regime[well] == Regime.Both && !Tuning(well) && side != Side.Off)
+            return _tecHot[well] ? ActuatorMode.HeatOnly : ActuatorMode.HeaterTec;
+        return side == Side.Tec ? TecMode : ActuatorMode.HeatOnly;
+    }
 
     /// <summary>TEC 反向输出加热启没启用（界面按能力问它）。</summary>
     internal bool TecHeating => _tecHeat;
@@ -900,7 +952,10 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         {
             Regime.Heating => "升温挡（只用加热棒）",
             Regime.Cooling => !_chiller ? "降温挡·冷水机关（自然凉）"
-                : TecDriving(well) ? "降温挡（TEC 制冷）" : "降温挡（等夹套凉到回切线）",
+                : TecDriving(well) ? "降温挡（TEC 制冷）" : "降温挡（等夹套凉到接入线）",
+            Regime.Both => _tecHot[well]
+                ? $"双向挡·夹套 > TEC 接入上限（TEC 断开、只加热棒，凉到 {_threshold - _hyst:0} ℃ 再放开）"
+                : "双向挡（加热棒 ↔ TEC 跟功率符号走）",
             _ => "待定挡（夹套读不到）"
         };
     }
@@ -909,6 +964,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     {
         Regime.Heating => "升温挡",
         Regime.Cooling => "降温挡",
+        Regime.Both => "双向挡",
         _ => "待定"
     };
 
@@ -930,7 +986,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     /// <summary>继电器在位、回路的执行器形态也对（温控器 PID 方式没有形态，只看继电器）。</summary>
     private bool Settled(int well, Side s) => OnSide(well, s) && ActuatorOk(well, s);
 
-    private bool ActuatorOk(int well, Side s) => _rd.TempOf(well).Actuator is not { } m || m == ModeOf(s);
+    private bool ActuatorOk(int well, Side s) => _rd.TempOf(well).Actuator is not { } m || m == ModeOf(well, s);
 
     /// <summary>
     /// TEC 此刻是不是在出力的那个执行器：功率线经继电器的机器看继电器；硬线直连的机器软件断不了它，
@@ -950,6 +1006,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     {
         ActuatorMode.HeatOnly => "只加热",
         ActuatorMode.CoolOnly => "只制冷",
+        ActuatorMode.HeaterTec => "加热棒 + TEC 双向",
         _ => "双向"
     };
 
@@ -962,17 +1019,19 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         => $"IO8R {(_links.IoOpenError is not null ? "没打开" : "没响应")}，而工位 {AB(well)} 的 TEC 功率线经它的 " +
            $"DO{_tecDoIdx[well]} 接通——接不通 TEC 就没电，这一路现在既不能制冷也不能加热，先把 IO8R 弄通";
 
-    // ── 定挡（「TEC 加热」不启用，0333）──────────────────────────────
+    // ── 定挡（「TEC 加热」不启用，0333 / 0336）────────────────────────
     //
     // 一路 RD105 只有一个输出，正负号选系统：负 → 固态继电器 → 加热棒（升温系统），正 → H 桥 → TEC（降温系统），
-    // 两边都按功率大小连续调。问题从来不在 PID，在「两个系统什么时候接在线上」。用户定的：
-    // 加热过程里不用 TEC 降温（冷水机没开，TEC 没水不能开）；降温靠 TEC，冷水机必须开着（手动）。
-    // 所以下发目标时按方向定挡，中途温度漂动不换挡。
+    // 两边都按功率大小连续调。问题从来不在 PID，在「两个系统什么时候接在线上」。
+    // · 冷水机已开（缺省）= 双向挡（0336，用户定的：反应会放热也会吸热，控得住就得两边随时能出力）：一个 PID 两边出力，
+    //   继电器跟着输出符号走（同号连续 3 s 才扳）。
+    // · 冷水机已关 = 升温挡 / 降温挡（0333）：下发目标时按方向定挡，中途温度漂动不换挡；升温挡不接 TEC、降温挡没水不接 TEC。
 
     /// <summary>
-    /// 下发目标那一刻定挡：目标比当前温度低超过死区 = 降温挡，其余 = 升温挡（差不到一个死区的「降温」靠关加热棒
-    /// 自然凉，不值得接 TEC；加热棒本来就是维持温度的那套）。比的是这个目标的被控量：釜内（串级）看新鲜的 Tr，
-    /// 夹套 / Tr 不新鲜看 Tj。**夹套读不到就不定**（判不了方向别瞎扳继电器，尤其别扳向加热侧），采集循环读到了再定。
+    /// 下发目标那一刻定挡。「冷水机」已开 = 双向挡（起步合哪只在 WantedSide 里按方向定）；已关：目标比当前温度低超过死区 =
+    /// 降温挡，其余 = 升温挡（差不到一个死区的「降温」靠关加热棒自然凉，不值得接 TEC；加热棒本来就是维持温度的那套）。
+    /// 比的是这个目标的被控量：釜内（串级）看新鲜的 Tr，夹套 / Tr 不新鲜看 Tj。**夹套读不到就不定**（判不了方向别瞎扳继电器，
+    /// 尤其别扳向加热侧），采集循环读到了再定。
     /// </summary>
     private void DecideRegime(int well, double target, TempChannelKind kind, string how, Regime? force = null)
     {
@@ -981,19 +1040,99 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         if (double.IsNaN(tj)) { _regime[well] = Regime.Undecided; return; }
         var byTr = kind == TempChannelKind.Reactor && TrValid(well);
         var cur = byTr ? t.CurrentReactor : tj;
-        var r = force ?? (target < cur - _band ? Regime.Cooling : Regime.Heating);
+        var r = _chiller ? Regime.Both : force ?? (target < cur - _band ? Regime.Cooling : Regime.Heating);
         var was = _regime[well];
         _regime[well] = r;
-        _wantHeatSince[well] = null;
         if (r == was) return;
+        _signSide[well] = null;
+        _signSince[well] = null;
         var what = byTr ? "釜内" : "夹套";
-        var text = r == Regime.Heating
-            ? $"工位 {AB(well)} 升温挡：目标 {target:F1} ℃，{what} {cur:F1} ℃——只用加热棒（过冲靠加热棒提前收功率，过了头关加热棒自然凉），全程不接 TEC"
-            : $"工位 {AB(well)} 降温挡：目标 {target:F1} ℃ 比{what} {cur:F1} ℃ 低超过 {_band:F1} K——TEC 制冷" +
-              (_chiller ? "（「冷水机」已开）" : "，但「冷水机」没标开：先自然凉") +
-              "；TEC 收到 0 温度还往下、或自然凉到了目标，就交给加热棒维持";
+        string text;
+        switch (r)
+        {
+            case Regime.Both:
+                // 进双向挡那一刻夹套已经高过接入线（上限 − 滞回）：先不接 TEC——跟 0333 一样不把 TEC 接到烫夹套上
+                _tecHot[well] = tj > _threshold - _hyst;
+                text = $"工位 {AB(well)} 双向挡：目标 {target:F1} ℃，{what} {cur:F1} ℃（「冷水机」已开）——一个 PID 两边出力，正给加热棒、负给 TEC 制冷，" +
+                       $"继电器跟着功率符号走（同号连续 {SignDwell.TotalSeconds:0} s 才扳）；夹套 > TEC 接入上限 {_threshold:F0} ℃ 时 TEC 断开、只加热棒出力，" +
+                       $"凉到 {_threshold - _hyst:F0} ℃ 再放开" +
+                       (_tecHot[well] ? $"。此刻夹套 {tj:F1} ℃ 已高过 {_threshold - _hyst:F0} ℃：先只加热棒" : "");
+                break;
+            case Regime.Heating:
+                text = $"工位 {AB(well)} 升温挡：目标 {target:F1} ℃，{what} {cur:F1} ℃——只用加热棒（过冲靠加热棒提前收功率，过了头关加热棒自然凉），全程不接 TEC";
+                break;
+            default:
+                text = $"工位 {AB(well)} 降温挡：目标 {target:F1} ℃ 比{what} {cur:F1} ℃ 低超过 {_band:F1} K，但「冷水机」没标开：TEC 没水不接，" +
+                       "加热棒与功率线都断着自然凉；自然凉到了目标就交给加热棒维持";
+                break;
+        }
         _ctx.Log?.Invoke("info", $"{InstanceId} {text}（{how}）");
         t.Note(text);
+    }
+
+    /// <summary>
+    /// 双向挡的「夹套烫」锁存按此刻夹套更新：高过 TEC 接入上限立起（TEC 断开、只加热棒、功率下限钳 0），
+    /// 凉到 上限 − 滞回 落下（放开 TEC）。读不到夹套不动锁存、按不许接算。返回此刻许不许接 TEC。
+    /// </summary>
+    private bool TecPermitted(int well, double tj, out Blocked? blocked)
+    {
+        blocked = null;
+        if (double.IsNaN(tj)) return false;
+        if (_tecHot[well])
+        {
+            if (tj <= _threshold - _hyst)
+            {
+                _tecHot[well] = false;
+                var text = $"工位 {AB(well)} 双向挡：夹套凉到 {tj:F1} ℃（≤ 接入线 {_threshold - _hyst:F0} ℃）——放开 TEC，功率下限回到 −上限，要制冷时按符号合 TEC 功率线";
+                _ctx.Log?.Invoke("info", $"{InstanceId} {text}");
+                _rd.TempOf(well).Note(text);
+            }
+        }
+        else if (tj > _threshold)
+        {
+            _tecHot[well] = true;
+        }
+        if (_tecHot[well])
+            blocked = new Blocked("hot-both", "warn",
+                $"工位 {AB(well)} 双向挡：夹套 {tj:F1} ℃ 高过 TEC 接入上限 {_threshold:F0} ℃（TEC 模块自身耐温）——TEC 功率线断开、只加热棒出力，" +
+                $"功率下限钳到 0（PID 不复位）；凉到 {_threshold - _hyst:F0} ℃（上限 − 滞回）再放开。这一段只能靠加热棒收功率自然凉（这一段只报一次）");
+        return !_tecHot[well];
+    }
+
+    /// <summary>
+    /// 双向挡此刻回路要的功率（PID 那一侧，正 = 加热、负 = 制冷）：上位机 PID 直接看它算出的量；温控器 PID 看写进 / 读回的占空比，
+    /// 按「加热棒占空比」的符号翻成正 = 加热。读不到为 NaN。
+    /// </summary>
+    private double Demand(int well)
+    {
+        var t = _rd.TempOf(well);
+        if (t.PidOutput is { } pid) return pid;
+        var d = t.LastDuty;
+        return double.IsNaN(d) ? double.NaN : d * _heaterSign;
+    }
+
+    /// <summary>
+    /// 双向挡：功率符号说该在哪一侧。|功率| ≤ 死区不表态（保持现状、计时清零）；跟此刻继电器位置一样直接返回；
+    /// 指向另一侧要连续 SignDwell 才返回那一侧，没够返回 null（保持现状）。
+    /// </summary>
+    private Side? SignSide(int well)
+    {
+        var d = Demand(well);
+        Side? s = double.IsNaN(d) || Math.Abs(d) <= SignDeadbandPercent ? null : d > 0 ? Side.Electric : Side.Tec;
+        var now = SideNow(well);
+        if (s is null || s == now)
+        {
+            _signSide[well] = null;
+            _signSince[well] = null;
+            return s;
+        }
+        var at = _ctx.Clock();
+        if (_signSide[well] != s)
+        {
+            _signSide[well] = s;
+            _signSince[well] = at;
+        }
+        return at - _signSince[well]!.Value >= SignDwell ? s : null;
     }
 
     /// <summary>这一路此刻的被控量：釜内串级看新鲜的 Tr，其余看 Tj（读不到 NaN）。</summary>
@@ -1004,51 +1143,21 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     }
 
     /// <summary>
-    /// 降温挡交给加热棒的两条路（一次交接，不回头）：
-    /// · TEC 在出力那一侧，回路想加热而 TEC 只能出 0（只制冷形态贴着上限 0；温控器 PID 输出跑到加热棒那一极或 0）、
-    ///   被控量已不高于目标，连续 HandoverDwell——要维持的温度高于冷却水能给的平衡点，TEC 再等也等不来热；
-    /// · TEC 没接（冷水机关 / 夹套还烫）、自然凉到了目标——该加热棒接手维持了。
+    /// 降温挡（冷水机已关）交给加热棒（一次交接，不回头）：TEC 没接着（没水）、自然凉到了目标——该加热棒接手维持了。
+    /// 0333 那条「TEC 在出力、收到 0 温度仍不高于目标够 60 s 才交接」随 0336 撤掉：冷水机已开是双向挡（继电器跟符号走，
+    /// 没有交接这回事），降温挡里 TEC 根本接不上。
     /// </summary>
     private void CheckHandover(int well, double sp)
     {
-        if (_regime[well] != Regime.Cooling || _electric[well]) { _wantHeatSince[well] = null; return; }
+        if (_regime[well] != Regime.Cooling || _electric[well] || TecDriving(well)) return;
         var t = _rd.TempOf(well);
         var cur = Controlled(well);
-        if (double.IsNaN(cur)) { _wantHeatSince[well] = null; return; }
+        if (double.IsNaN(cur) || cur > sp) return;
         var what = t.Kind == TempChannelKind.Reactor && TrValid(well) ? "釜内" : "夹套";
-        if (TecDriving(well))
-        {
-            if (WantsHeat(t) && cur <= sp)
-            {
-                var now = _ctx.Clock();
-                _wantHeatSince[well] ??= now;
-                if (now - _wantHeatSince[well]!.Value >= HandoverDwell)
-                    HandOver(well, $"TEC 已收到 0 有 {HandoverDwell.TotalSeconds:0} s，{what} {cur:F2} ℃ 仍不高于目标 {sp:F2} ℃——要维持的温度高于冷却水能给的平衡点，TEC 等不来热");
-            }
-            else _wantHeatSince[well] = null;
-        }
-        else if (cur <= sp)
-        {
-            HandOver(well, $"TEC 没接着，{what}自然凉到了目标（{cur:F2} ℃ ≤ {sp:F2} ℃）");
-        }
-    }
-
-    /// <summary>回路此刻是不是「想加热而 TEC 出不了」：上位机只制冷形态贴着上限 0；温控器 PID 看输出的符号。</summary>
-    private bool WantsHeat(Rd105TemperatureControl t)
-    {
-        if (t.PidOutput is { } pid) return pid >= -0.5;
-        var d = t.LastDuty;
-        if (double.IsNaN(d)) return false;
-        return d * -_heaterSign <= 0.5;           // 制冷那一极的幅度 ≤ 0.5 %（0，或已经跑到加热棒那一极）
-    }
-
-    private void HandOver(int well, string why)
-    {
         _regime[well] = Regime.Heating;
-        _wantHeatSince[well] = null;
-        var text = $"工位 {AB(well)} 降温挡 → 升温挡：{why}——加热棒接手维持，这一步不再接 TEC（新目标再定挡）";
+        var text = $"工位 {AB(well)} 降温挡 → 升温挡：TEC 没接着，{what}自然凉到了目标（{cur:F2} ℃ ≤ {sp:F2} ℃）——加热棒接手维持，这一步不再接 TEC（新目标再定挡）";
         _ctx.Log?.Invoke("info", $"{InstanceId} {text}");
-        _rd.TempOf(well).Note(text);
+        t.Note(text);
     }
 
     /// <summary>降温挡里 TEC 为什么接不上（按段只报一次；Key 一样就不重复）。</summary>
@@ -1056,12 +1165,14 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
 
     /// <summary>
     /// 这个目标该落在哪一侧：null = 一只都不动（待定 / 「TEC 加热」启用下夹套还烫接不回 TEC）。
-    /// blocked 说的是「想接 TEC 而接不上」的原因（Off 或 null 时才有）。
+    /// blocked 说的是「想接 TEC 而接不上」的原因（Off、null 或双向挡夹套烫时才有）。
     ///
-    /// 「TEC 加热」启用：原来那条——超过阈值才要电加热，阈值以内 TEC 正反都能出力；回 TEC 要夹套凉到回切线以下。
-    /// 不启用：按挡走——升温挡 = 加热棒；降温挡 = 「冷水机」已开且夹套 ≤ 回切线 才 TEC，否则全断自然凉。
+    /// 「TEC 加热」启用：原来那条——超过阈值才要电加热，阈值以内 TEC 正反都能出力；回 TEC 要夹套凉到接入线以下。
+    /// 不启用：双向挡 = 夹套烫（锁存）就加热棒那只（只加热形态）；否则继电器跟功率符号走——fresh（刚下发目标）按方向起步：
+    /// 目标比被控量低超过死区合 TEC、其余合加热棒；之后符号连续 SignDwell 指向另一侧才扳，没表态保持现状。
+    /// 升温挡 = 加热棒；降温挡 = 冷水机已关不接 TEC，全断自然凉。
     /// </summary>
-    private Side? WantedSide(int well, double target, out Blocked? blocked)
+    private Side? WantedSide(int well, double target, out Blocked? blocked, bool fresh = false)
     {
         blocked = null;
         var t = _rd.TempOf(well);
@@ -1075,6 +1186,24 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         }
         switch (_regime[well])
         {
+            case Regime.Both:
+            {
+                if (!TecPermitted(well, tj, out blocked)) return Side.Electric;
+                if (!fresh)
+                {
+                    if (SignSide(well) is { } bySign) return bySign;
+                    var now = SideNow(well);
+                    if (now != Side.Off) return now;             // 符号没表态 / 还在计时：保持现状
+                }
+                else
+                {
+                    _signSide[well] = null;                      // 新目标：方向重新算，之前的计时作废
+                    _signSince[well] = null;
+                }
+                // 起步（刚下发目标 / 一只都没合着）：按方向——低于被控量超过死区要制冷，其余加热棒（保温要的功率是正的）
+                var cur = Controlled(well);
+                return !double.IsNaN(cur) && target < cur - _band ? Side.Tec : Side.Electric;
+            }
             case Regime.Heating:
                 return Side.Electric;
             case Regime.Cooling:
@@ -1082,7 +1211,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
                 {
                     blocked = new Blocked("chiller", "warn",
                         $"工位 {AB(well)} 降温挡（目标 {target:F1} ℃），但设备属性「冷水机」标为已关：TEC 没有冷却水不能开——" +
-                        "加热棒与 TEC 功率线都断着，只能自然凉，到了目标加热棒接手维持。要 TEC 制冷：先开冷水机，再把「冷水机」改成已开（当拍生效）（这一段只报一次）");
+                        "加热棒与 TEC 功率线都断着，只能自然凉，到了目标加热棒接手维持。要 TEC 制冷：先开冷水机，再把「冷水机」改成已开（当拍生效，之后按双向挡走）（这一段只报一次）");
                     return Side.Off;
                 }
                 if (hot) { blocked = HotJacket(well, tj); return Side.Off; }
@@ -1093,7 +1222,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     }
 
     private Blocked HotJacket(int well, double tj) => new("hot", "error",
-        $"工位 {AB(well)} 要降温，但夹套 {tj:F1} ℃ 还高于回切线 {_threshold - _hyst:F0} ℃（阈值 − 滞回）——" +
+        $"工位 {AB(well)} 要降温，但夹套 {tj:F1} ℃ 还高于 TEC 接入线 {_threshold - _hyst:F0} ℃（上限 − 滞回）——" +
         "TEC 不能接到这么烫的夹套上，这一段只能等它自然凉，本路暂时没有制冷能力（这一段只报一次）");
 
     /// <summary>「想接 TEC 而接不上」按段只报一次：原因变了再报，接上了 / 不再要 TEC 了翻篇。</summary>
@@ -1111,22 +1240,23 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     {
         var why = _links.Io is null ? "但这台没配 IO8R 切换模块" : "但 IO8R 没打开";
         if (_tecHeat)
-            return $"目标 {target:F1} ℃ 高于电加热切换阈值 {_threshold:F0} ℃，{why}——电加热用不了，这个目标上不去";
+            return $"目标 {target:F1} ℃ 高于电加热切换阈值（TEC 接入上限）{_threshold:F0} ℃，{why}——电加热用不了，这个目标上不去";
         var tj = _rd.TempOf(well).CurrentJacket;
         return $"「TEC 加热」没启用，升温只能走电加热棒（目标 {target:F1} ℃ 高过夹套 {tj:F1} ℃），{why}" +
                "——这一路现在只降得下去、升不上来。要用 TEC 反向输出加热，请在设备属性里把「TEC 加热」打开";
     }
 
     /// <summary>
-    /// 下发目标（打开温控）前定挡、把继电器合到对的一只上：升温挡 → 加热棒；降温挡 → 「冷水机」已开且夹套凉到
-    /// 回切线以下才合 TEC 功率线（经继电器的机器：不控温时它是断着的，用户定的——不合上目标写进温控器也是空写，
-    /// 现场「降温没反应」就是它），接不上就全断自然凉。夹套读不到（判不出方向）一只都不合，采集循环读到了再定。
-    /// 「TEC 加热」启用下电加热 → TEC 的回切要等夹套凉到回切线以下，由采集循环在条件满足的那一拍执行。
+    /// 下发目标（打开温控）前定挡、把继电器合到对的一只上：双向挡按方向起步（低于被控量超过死区合 TEC 功率线，其余合加热棒），
+    /// 之后继电器跟功率符号走；升温挡 → 加热棒；降温挡（冷水机已关）→ 全断自然凉。经继电器的机器：不控温时两只都断着（用户定的）——
+    /// 不合上目标写进温控器也是空写，现场「降温没反应」就是它。夹套读不到（判不出方向）一只都不合，采集循环读到了再定。
+    /// 蒸回流（heatingOnly）每拍都来：双向挡里不按方向重算（跟随目标抖不能扳继电器，只看符号），冷水机已关钉死升温挡。
+    /// 「TEC 加热」启用下电加热 → TEC 的回切要等夹套凉到接入线以下，由采集循环在条件满足的那一拍执行。
     /// </summary>
     internal async Task EnsureSourceAsync(int well, double target, TempChannelKind kind, CancellationToken ct, bool heatingOnly = false)
     {
         if (!_tecHeat) DecideRegime(well, target, kind, heatingOnly ? "蒸回流" : "下发目标", heatingOnly ? Regime.Heating : null);
-        var side = WantedSide(well, target, out var blocked);
+        var side = WantedSide(well, target, out var blocked, fresh: !heatingOnly);
         if (side is null)
         {
             SayBlocked(well, blocked);
@@ -1166,13 +1296,22 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
             if (stillWanted is not null && !stillWanted()) return;
             var gen = Volatile.Read(ref _stopGen[well]);
             var innerT = _rd.TempOf(well);
+            var mode = ModeOf(well, to);
+            if (relaysOk && innerT.Actuator is { } cur && HostControlLoop.HeaterTable(cur) == HostControlLoop.HeaterTable(mode))
+            {
+                // 继电器在位、只是同一张表之内换形态（只加热 ⇄ 加热棒 + TEC：夹套过 / 回 TEC 接入线；TEC 双向 ⇄ 只制冷）：
+                // 只改输出限幅、PID 不复位，回路运行中也许改——不必为它关一秒输出
+                innerT.SetActuator(mode);
+                _ctx.Log?.Invoke("info", $"{InstanceId} 工位 {AB(well)} 执行器形态对齐：{SideName(to)}侧按{ActuatorName(mode)}算（同一组参数，只改限幅，输出不关）");
+                return;
+            }
             var toElectric = to == Side.Electric;
             // 切完要不要把输出重开，看的是**意图**不是设备上的 ENABLE：
             // 停控时 TG 还留着，光看 Setpoint 分不出「有没有人要控温」；而 ENABLE
             // 在切换序列里被我们自己关过，上一笔切换失败的话它会一直是 0
             var wasEnabled = _wantEnabled[well];
             _ctx.Log?.Invoke("info", $"{InstanceId} 工位 {AB(well)} " + (relaysOk
-                ? $"执行器形态对齐：{SideName(to)}侧按{ActuatorName(ModeOf(to))}算（先关输出）"
+                ? $"执行器形态对齐：{SideName(to)}侧按{ActuatorName(mode)}算（先关输出）"
                 : $"热源切换：{SideName(SideNow(well))} → {SideName(to)}（先关输出）"));
 
             await innerT.EnableAsync(false, ct).ConfigureAwait(false);              // ① 带载切继电器 = 触点拉弧（只关输出，回路挂起，目标留着）
@@ -1220,15 +1359,16 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
             }
 
             // ③.5 继电器扳到哪一侧，回路的执行器形态跟着换（上位机 PID：加热棒 / 全断 = 只加热、TEC = 只制冷或双向；
-            //     温控器 PID 下是空操作）。要在重开输出之前换——带着 TEC 的积分去驱动加热棒只会过冲
-            innerT.SetActuator(ModeOf(to));
+            //     双向挡里两侧都是「加热棒 + TEC 双向」——同一个形态、同一个 PID，扳继电器什么都不复位；温控器 PID 下是空操作）。
+            //     要在重开输出之前换——带着 TEC 的积分去驱动加热棒只会过冲
+            innerT.SetActuator(mode);
             // ④ 原来开着、而且这两秒里没人喊停，才重开输出
             if (wasEnabled && innerT.Setpoint is not null && Volatile.Read(ref _stopGen[well]) == gen)
                 await innerT.EnableAsync(true, ct).ConfigureAwait(false);
             else if (wasEnabled)
                 _ctx.Log?.Invoke("info", $"{InstanceId} 工位 {AB(well)} 切换期间控温被停——输出保持关闭");
             if (relaysOk)
-                _ctx.Log?.Invoke("info", $"{InstanceId} 工位 {AB(well)} 执行器形态已对齐（{ActuatorName(ModeOf(to))}），输出{(wasEnabled ? "重开" : "关着")}");
+                _ctx.Log?.Invoke("info", $"{InstanceId} 工位 {AB(well)} 执行器形态已对齐（{ActuatorName(mode)}），输出{(wasEnabled ? "重开" : "关着")}");
             else
                 _ctx.Log?.Invoke("info", $"{InstanceId} 工位 {AB(well)} 已切至{SideName(to)}" +
                     (_tecRelay

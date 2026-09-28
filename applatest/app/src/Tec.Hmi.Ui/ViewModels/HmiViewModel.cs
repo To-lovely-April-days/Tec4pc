@@ -1297,7 +1297,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
     private bool CoolOnly => Heat is { TecHeating: false };
     /// <summary>TEC 功率线（标签 tecpwr，经继电器的机器才有）：0 = 断着。热源 0 + 功率线断 = 两只继电器都断着，不是「在 TEC 侧」。</summary>
     private double? _tecPwr;
-    // 牌子后面带上挡位（0333）：升温挡（只用加热棒）/ 降温挡（TEC 制冷）/ 降温挡·冷水机关（自然凉）——
+    // 牌子后面带上挡位：双向挡（加热棒 ↔ TEC 跟功率符号走，0336）/ 升温挡（只用加热棒）/ 降温挡·冷水机关（自然凉）（0333）——
     // 操作人一眼看出「这一步会不会接 TEC」「冷水机该不该开」
     public string HeatText => HasHeat ? HeatBase + (Heat?.Regime is { } r ? " · " + r : "") : "";
     private string HeatBase => HeatState switch

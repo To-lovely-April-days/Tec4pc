@@ -382,6 +382,7 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
     {
         ActuatorMode.HeatOnly => "加热棒",
         ActuatorMode.CoolOnly => "TEC只制冷",
+        ActuatorMode.HeaterTec => "加热棒+TEC双向",
         _ => "TEC双向"
     };
 

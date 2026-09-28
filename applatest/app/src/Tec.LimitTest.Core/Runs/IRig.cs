@@ -35,7 +35,7 @@ public interface IRig
     /// <summary>这一路的设备温度范围；Runner 拿它做「夹套跑出范围就中止」的兜底。</summary>
     TempLimits? Limits(int well);
 
-    /// <summary>台面配置里的「电加热切换阈值」（℃），写进最高温表的条件块。</summary>
+    /// <summary>台面配置里的「TEC 接入上限」（℃，0336 前叫「电加热切换阈值」，键没变），写进最高温表的条件块。</summary>
     double? Threshold { get; }
 
     /// <summary>台面配置里的「升降温死区」（K，0333 前叫「热源切换死区」），写进恒温表的条件块。</summary>
