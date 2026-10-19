@@ -75,6 +75,15 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     private readonly int[] _tecDoIdx = new int[2];
     /// <summary>TEC 功率继电器的影子：闭合 = TEC 有电。与 _electric 一样，每拍读回核对。</summary>
     private readonly bool[] _tecOn = new bool[2];
+    /// <summary>
+    /// 这一路当前是否真的需要冷却水。TEC 反向加热时仍在 TEC 侧，但阀必须关闭；
+    /// 因此不能只看 _tecOn。这个影子还用于两路共用阀的 OR 互锁。
+    /// </summary>
+    private readonly bool[] _tecCooling = new bool[2];
+    /// <summary>共用冷却水电磁阀的 DO，索引从 0 开始；默认 4 = 物理第五路。</summary>
+    private readonly int _coolingValveDo;
+    /// <summary>共用阀的影子状态，实际读回在 PollOnceAsync 中持续核对。</summary>
+    private bool _coolingValveOn;
     private readonly TimeSpan _tick;
 
     private readonly bool[] _electric = new bool[2];
@@ -216,6 +225,21 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         // TEC 功率线经 IO8R 继电器（现场电气定的：DO6 = A、DO7 = B）。没配 IO8R 的机器
         // 无所谓「经不经」——那台没有继电器可扳，只能当它是硬线接的
         _tecRelay = links.Io is not null && cfg.Str(F.TecRelay, "有") == "有";
+        _coolingValveDo = Math.Clamp((int)cfg.Num(F.CoolingValveDo, 4), 0, 7);
+        if (links.Io is not null)
+        {
+            for (var w = 0; w < 2; w++)
+            {
+                if (_coolingValveDo == _doIdx[w])
+                    throw new InvalidOperationException(
+                        $"设备配置冲突：共用冷却水电磁阀和工位 {AB(w)} 的「切换 DO」都填了 DO{_coolingValveDo}——" +
+                        "一只继电器不能既接电磁阀又接热源，改掉一个再连");
+                if (_tecRelay && _coolingValveDo == _tecDoIdx[w])
+                    throw new InvalidOperationException(
+                        $"设备配置冲突：共用冷却水电磁阀和工位 {AB(w)} 的「TEC 功率 DO」都填了 DO{_coolingValveDo}——" +
+                        "一只继电器不能既接电磁阀又接 TEC 功率线，改掉一个再连");
+            }
+        }
         if (_tecRelay)
             for (var w = 0; w < 2; w++)
                 if (_tecDoIdx[w] == _doIdx[w])
@@ -317,7 +341,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         try
         {
             // 继电器与执行器形态都到位才算在这一侧（SwitchAsync 自己判，已到位就什么都不动）
-            await SwitchAsync(well, side, ct).ConfigureAwait(false);
+            await SwitchAsync(well, side, ct, coolingWater: side == Side.Tec && !_tecHeat).ConfigureAwait(false);
         }
         catch
         {
@@ -472,12 +496,14 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
                 await io.AllOffAsync(ct).ConfigureAwait(false);
                 _electric[0] = _electric[1] = false;
                 _tecOn[0] = _tecOn[1] = false;
+                _tecCooling[0] = _tecCooling[1] = false;
+                _coolingValveOn = false;
                 _ioOk = true;
                 _ctx.Log?.Invoke("info", $"{InstanceId} IO8R 已复位：八路全断" +
                     (_tecRelay
                         ? $"——加热棒继电器与 TEC 功率线（DO{_tecDoIdx[0]} = A、DO{_tecDoIdx[1]} = B）都断着，" +
                           (_tecHeat ? "打开温控后要降温合 TEC 功率线、要升温合加热棒"
-                                    : "打开温控后按方向先合一只（要制冷合 TEC 功率线、其余合加热棒），双向挡里再跟着功率符号扳")
+                                    : "打开温控后按方向先合一只（要制冷先开共用冷却水阀、再合 TEC 功率线；其余合加热棒），双向挡里再跟着功率符号扳")
                         : "——热源切换继电器在 TEC 侧"));
             }
             catch (Exception ex)
@@ -572,6 +598,17 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
                 // _electric 比，会冒出假的「有人手扳了模块」告警，还会把 heat 记反一拍。
                 // 与 HeatStateOf 用同一道守卫：锁被占着就不比对
                 var settled = _switchLock.CurrentCount > 0;
+                var valve = dos[_coolingValveDo];
+                if (settled && valve != _coolingValveOn)
+                {
+                    _ctx.Log?.Invoke("warn", $"{InstanceId} 共用冷却水电磁阀 DO{_coolingValveDo} 实际" +
+                        $"{(valve ? "打开" : "关闭")}，与上位机命令不符——已按实际状态记录");
+                    _coolingValveOn = valve;
+                }
+                else if (!settled)
+                {
+                    valve = _coolingValveOn;       // 切换进行中，读回的是切换前快照
+                }
                 for (var w = 0; w < 2; w++)
                 {
                     var actual = dos[_doIdx[w]];
@@ -604,8 +641,10 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
                     {
                         tec = _tecOn[w];
                     }
+                    _tecCooling[w] = tec && _tecCooling[w];
                     Push(_rd.TempOf(w).Channel, "tecpwr", tec ? 1 : 0, at, Quality.Good);
                 }
+                // valve 变量已用于日志/切换快照；状态通过 _coolingValveOn 由后续自动换挡纠正。
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
@@ -637,6 +676,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         var innerT = _rd.TempOf(well);
 
         Side side;
+        bool? coolingWater = null;
         Blocked? blocked = null;
         // 抢到切换锁之后再问一遍「这一刻还该这么切吗」——这一路的判断是拿上一拍的
         // 状态做的，抢锁期间目标或开关状态都可能已经变了
@@ -677,7 +717,8 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
             side = w;
             // 「已经在那一侧」要两只继电器**和执行器形态**一起看：加热棒那只对了、TEC 功率线却断着
             // （被人手扳过 / 刚打开温控）也算没到位
-            if (Settled(well, side)) { SayBlocked(well, blocked); return; }
+            coolingWater = CoolingWaterFor(well, side);
+            if (Settled(well, side, coolingWater)) { SayBlocked(well, blocked); return; }
             stillWanted = () => _wantEnabled[well] && _rd.TempOf(well).Setpoint is { } now
                                 && WantedSide(well, now, out _) == w;
             // 双向挡按符号扳：把「为什么扳」记进日志和逐拍记录（切换序列自己的两句只说从哪到哪）
@@ -714,7 +755,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
 
         try
         {
-            await SwitchAsync(well, side, ct, stillWanted).ConfigureAwait(false);
+            await SwitchAsync(well, side, ct, stillWanted, coolingWater).ConfigureAwait(false);
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
@@ -976,15 +1017,51 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     private enum Side { Off, Tec, Electric }
 
     /// <summary>这一路的继电器是不是已经完全在某个位置（两只一起看）。</summary>
-    private bool OnSide(int well, Side s) => s switch
-    {
-        Side.Electric => _electric[well] && !(_tecRelay && _tecOn[well]),
-        Side.Tec => !_electric[well] && (!_tecRelay || _tecOn[well]),
-        _ => !_electric[well] && !(_tecRelay && _tecOn[well])
-    };
+    private bool OnSide(int well, Side s) => OnSide(well, s, s == Side.Tec && CoolingWaterFor(well, s));
 
-    /// <summary>继电器在位、回路的执行器形态也对（温控器 PID 方式没有形态，只看继电器）。</summary>
-    private bool Settled(int well, Side s) => OnSide(well, s) && ActuatorOk(well, s);
+    /// <summary>
+    /// 继电器位置加上共用冷却水阀一起判断。阀是两路共用的：目标这一路要制冷，
+    /// 或另一条仍在制冷，DO4 都必须保持打开。
+    /// </summary>
+    private bool OnSide(int well, Side s, bool coolingWater)
+    {
+        var source = s switch
+        {
+            Side.Electric => _electric[well] && !(_tecRelay && _tecOn[well]),
+            Side.Tec => !_electric[well] && (!_tecRelay || _tecOn[well]),
+            _ => !_electric[well] && !(_tecRelay && _tecOn[well])
+        };
+        if (!source || !_ioOk || _links.Io is null) return source;
+        var valveNeeded = (s == Side.Tec && coolingWater) || _tecCooling[1 - well];
+        return _coolingValveOn == valveNeeded;
+    }
+
+    /// <summary>继电器、共用阀和回路的执行器形态都到位（温控器 PID 方式没有形态）。</summary>
+    private bool Settled(int well, Side s, bool? coolingWater = null)
+        => OnSide(well, s, coolingWater ?? (s == Side.Tec && CoolingWaterFor(well, s))) && ActuatorOk(well, s);
+
+    /// <summary>
+    /// 当前 TEC 侧是否需要通冷却水。TEC 只能制冷时固定为真；TEC 允许反向加热时，
+    /// 优先看 PID 功率符号，尚未有输出时再看目标与被控温度的方向。
+    /// </summary>
+    private bool CoolingWaterFor(int well, Side to, double? target = null)
+    {
+        if (to != Side.Tec || !_tecHeat) return to == Side.Tec;
+        var demand = Demand(well);
+        if (!double.IsNaN(demand) && Math.Abs(demand) > SignDeadbandPercent)
+            return demand < 0;
+        var wanted = target ?? _rd.TempOf(well).Setpoint;
+        var current = Controlled(well);
+        return wanted is null || double.IsNaN(current) || wanted.Value < current;
+    }
+
+    /// <summary>在切换锁内操作共用冷却水阀，影子只在写入成功后更新。</summary>
+    private async Task SetCoolingValveAsync(bool open, CancellationToken ct)
+    {
+        if (!_ioOk || _links.Io is not { } io || _coolingValveOn == open) return;
+        await io.SetRelayAsync(_coolingValveDo, open, ct).ConfigureAwait(false);
+        _coolingValveOn = open;
+    }
 
     private bool ActuatorOk(int well, Side s) => _rd.TempOf(well).Actuator is not { } m || m == ModeOf(well, s);
 
@@ -1265,14 +1342,15 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         if (side == Side.Electric)
         {
             if (!ElectricReady) throw new InvalidOperationException(NoElectricReason(well, target));
-            await SwitchAsync(well, Side.Electric, ct).ConfigureAwait(false);
+            await SwitchAsync(well, Side.Electric, ct, coolingWater: false).ConfigureAwait(false);
             return;
         }
 
         // TEC 侧 / 全断（降温挡但 TEC 接不上）。功率线经继电器而 IO8R 不通：什么都接不上，拒绝并写明
         if (_tecRelay && !ElectricReady) throw new InvalidOperationException(NoTecReason(well));
         SayBlocked(well, blocked);
-        await SwitchAsync(well, side.Value, ct).ConfigureAwait(false);
+        var coolingWater = CoolingWaterFor(well, side.Value, target);
+        await SwitchAsync(well, side.Value, ct, coolingWater: coolingWater).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -1283,7 +1361,8 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     /// 指令的热源挪走。明确下发那条路不传它：那是人或配方当下的决定，不用再问。
     /// </summary>
     private async Task SwitchAsync(int well, Side to, CancellationToken ct,
-                                   Func<bool>? stillWanted = null)
+                                   Func<bool>? stillWanted = null,
+                                   bool? coolingWater = null)
     {
         // 继电器写只在配了 IO8R 的机器上发生（_electric / _tecRelay 没有 IO8R 一律 false）；
         // 没配的机器走到这里只是对齐形态（关输出 → 换形态 → 开输出）
@@ -1291,7 +1370,8 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         await _switchLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            var relaysOk = OnSide(well, to);
+            var water = coolingWater ?? CoolingWaterFor(well, to);
+            var relaysOk = OnSide(well, to, water);
             if (relaysOk && ActuatorOk(well, to)) return;   // 抢锁期间别人已经切完了 / 本来就在位
             if (stillWanted is not null && !stillWanted()) return;
             var gen = Volatile.Read(ref _stopGen[well]);
@@ -1327,6 +1407,10 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
                 await io!.SetRelayAsync(_tecDoIdx[well], false, ct).ConfigureAwait(false);
                 _tecOn[well] = false;
             }
+            // 共用阀必须先于 TEC 功率线打开，避免制冷设备无水带电；
+            // 切回加热 / 停控时，先断 TEC，再在没有另一工位制冷时关阀。
+            var valveNeeded = (to == Side.Tec && water) || _tecCooling[1 - well];
+            await SetCoolingValveAsync(valveNeeded, ct).ConfigureAwait(false);
             if (to == Side.Electric && !_electric[well])
             {
                 await io!.SetRelayAsync(_doIdx[well], true, ct).ConfigureAwait(false);
@@ -1362,6 +1446,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
             //     双向挡里两侧都是「加热棒 + TEC 双向」——同一个形态、同一个 PID，扳继电器什么都不复位；温控器 PID 下是空操作）。
             //     要在重开输出之前换——带着 TEC 的积分去驱动加热棒只会过冲
             innerT.SetActuator(mode);
+            _tecCooling[well] = to == Side.Tec && water;
             // ④ 原来开着、而且这两秒里没人喊停，才重开输出
             if (wasEnabled && innerT.Setpoint is not null && Volatile.Read(ref _stopGen[well]) == gen)
                 await innerT.EnableAsync(true, ct).ConfigureAwait(false);
@@ -1421,8 +1506,12 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
                     await io.SetRelayAsync(_tecDoIdx[well], false, ct).ConfigureAwait(false);
                     _tecOn[well] = false;
                 }
+                _tecCooling[well] = false;
+                // 电磁阀是两路共用的：另一工位仍制冷时保持打开，只有两路都不制冷才关闭。
+                await SetCoolingValveAsync(_tecCooling[1 - well], ct).ConfigureAwait(false);
                 notes.Add($"工位 {AB(well)} 热源切换继电器已断开（落回 TEC 侧）" +
-                          (_tecRelay ? "；TEC 功率线也已断开（停控即全断，再打开温控时按升温 / 降温接通）" : ""));
+                          (_tecRelay ? "；TEC 功率线也已断开（停控即全断，再打开温控时按升温 / 降温接通）" : "") +
+                          (_coolingValveOn ? "；另一工位仍制冷，冷却水阀保持打开" : "；冷却水阀已关闭"));
             }
             catch (Exception ex)
             {

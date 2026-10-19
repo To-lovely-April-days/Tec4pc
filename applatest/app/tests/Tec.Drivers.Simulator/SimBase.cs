@@ -154,4 +154,9 @@ public static class SimTime
     public static Task<bool> PollAsync(Func<bool> predicate, TimeSpan timeout, double scale,
                                        Func<DateTimeOffset> now, CancellationToken ct)
         => DriverTime.PollAsync(predicate, timeout, scale, now, ct);
+
+    public static Task<bool> PollStableAsync(Func<bool> predicate, TimeSpan timeout, double scale,
+                                              Func<DateTimeOffset> now, TimeSpan stableFor,
+                                              CancellationToken ct)
+        => DriverTime.PollStableAsync(predicate, timeout, scale, now, stableFor, ct);
 }

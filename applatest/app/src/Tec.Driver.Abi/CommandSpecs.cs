@@ -87,10 +87,10 @@ public static class CommandSpecs
                 Field.Num("rate", "变温速率", 2, "℃/min", 0.1, 16, 0.1) with { VisibleWhen = "task=按速率" },
                 Field.Num("dur", "变温时长", 30, "min", 0.1, null, 0.1) with { VisibleWhen = "task=按时长" },
                 Field.Sel("obj", "控温对象", Tobj, "釜内 Tr"),
-                Field.Num("tol", "到达允差", 0.5, "℃", 0.1, 5, 0.1),
+                Field.Num("tol", "到达允差", 0.1, "℃", 0.1, 5, 0.1),
                 Field.Bool("wait", "到达后等待稳定", true)
             })
-            { Tip = "升温还是降温由目标温度决定，不用分两条指令。「尽快」不限速：目标一步写给温控器，它按自己的最大能力到达；「按时长」的速率 = 温差 ÷ 时长，执行时按当时的实测温度现算。到达即结束；要停留就在后面接「恒温保持」。" },
+            { Tip = "升温还是降温由目标温度决定，不用分两条指令。「尽快」不限速：目标一步写给温控器，它按自己的最大能力到达；「按时长」的速率 = 温差 ÷ 时长，执行时按当时的实测温度现算。默认允差 ±0.1 ℃，并要求连续在带内后才算到达；要停留就在后面接「恒温保持」。" },
             TerminationKind.Setpoint, RampEstimate,
             p => p.Str("task", "按速率") switch
             {
@@ -104,12 +104,12 @@ public static class CommandSpecs
             new ParameterSchema(new[]
             {
                 Field.Num("dur", "保持时长", 30, "min", 1, null, 1),
-                Field.Num("tol", "控温允差", 0.1, "℃", 0.05, 2, 0.05),
+                Field.Num("tol", "控温允差", 0.1, "℃", 0.1, 2, 0.1),
                 Field.Sel("obj", "控温对象", Tobj, "釜内 Tr")
             }),
             TerminationKind.Timer,
             (p, _) => TimeSpan.FromSeconds(p.Num("dur") * 60),
-            p => $"保持当前温度 {F(p.Num("dur"))} min，允差 ±{F(p.Num("tol"))} ℃")
+            p => $"保持当前温度 {F(p.Num("dur"))} min，控温对象 {p.Str("obj")}，允差 ±{F(p.Num("tol"))} ℃")
         { IconKey = "temp-hold", SupportsHotEdit = true },
 
         // 分段表留着不是为了好看：二十段的结晶曲线拆成四十条步骤没法看，

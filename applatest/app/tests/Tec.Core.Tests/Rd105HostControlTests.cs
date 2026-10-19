@@ -1138,6 +1138,7 @@ public class Rd105HostControlTests
         Assert.False(await t.WaitReachedAsync(25, 0.5, TimeSpan.FromMilliseconds(600), CancellationToken.None));
         await t.StopAsync(CancellationToken.None);
         // 夹套模式没有 Tr 才退回按夹套判（单独当温控器用那种）
+        ((IExternalReactorTemp)s).FeedReactor(1, 40.0, Quality.Good);
         await t.SetTargetAsync(new TempTarget(25, TempChannelKind.Jacket), CancellationToken.None);
         Assert.True(await t.WaitReachedAsync(25, 0.5, TimeSpan.FromMilliseconds(600), CancellationToken.None));
     }

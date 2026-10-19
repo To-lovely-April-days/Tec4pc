@@ -369,9 +369,9 @@ internal sealed class ReactorWell : ITemperatureControl, IRefluxControl, IHeatSo
     }
 
     public Task<bool> WaitReachedAsync(double target, double tolerance, TimeSpan timeout, CancellationToken ct)
-        => SimTime.PollAsync(
+        => SimTime.PollStableAsync(
             () => Math.Abs((_kind == TempChannelKind.Jacket ? CurrentJacket : CurrentReactor) - target) <= tolerance,
-            timeout, _scale(), _now, ct);
+            timeout, _scale(), _now, TimeSpan.FromMilliseconds(400), ct);
 
     // ── 蒸回流（IRefluxControl）───────────────────────────────────────
     // StopAsync 与 ITemperatureControl 同签名，必须显式实现分开：

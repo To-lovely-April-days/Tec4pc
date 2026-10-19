@@ -239,12 +239,23 @@ public sealed class Rd105TemperatureControl : ITemperatureControl, ITemperatureS
     public async Task<bool> WaitReachedAsync(double target, double tolerance, TimeSpan timeout, CancellationToken ct)
     {
         var deadline = DateTimeOffset.UtcNow + timeout;
+        DateTimeOffset? inBandSince = null;
         while (DateTimeOffset.UtcNow < deadline)
         {
             ct.ThrowIfCancellationRequested();
-            // 上位机串级（釜内）下 Tr 断了不退回按夹套判：保持期夹套设定就是釜内目标，几十秒就「到」——那是假到达
-            var pv = double.IsNaN(_tr) && (Kind == TempChannelKind.Jacket || _loop is null) ? _tj : _tr;
-            if (!double.IsNaN(pv) && Math.Abs(pv - target) <= Math.Abs(tolerance)) return true;
+            // 控温对象明确选夹套时始终判 Tj；选釜内时，上位机串级判 Tr，
+            // 没有外环（单独温控器）才退回 Tj。不能因为 Tr 恰好有值就让 Tj 目标误判成 Tr 到达。
+            var pv = Kind == TempChannelKind.Jacket || _loop is null ? _tj : _tr;
+            if (!double.IsNaN(pv) && Math.Abs(pv - target) <= Math.Abs(tolerance))
+            {
+                inBandSince ??= DateTimeOffset.UtcNow;
+                // 至少跨过一个 200 ms 采样周期在带内，才认定达到；瞬时穿带后放热过冲不能提前结束。
+                if (DateTimeOffset.UtcNow - inBandSince.Value >= TimeSpan.FromMilliseconds(200)) return true;
+            }
+            else
+            {
+                inBandSince = null;
+            }
             await Task.Delay(200, ct).ConfigureAwait(false);
         }
         return false;

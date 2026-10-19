@@ -27,6 +27,35 @@ public static class DriverTime
         ct.ThrowIfCancellationRequested();
         return false;
     }
+
+    /// <summary>
+    /// 轮询并要求条件连续成立一段时间。单次穿过误差带不能算到达，
+    /// 否则放热或惯性过冲时会在刚好穿带的那一拍提前结束控温。
+    /// </summary>
+    public static async Task<bool> PollStableAsync(Func<bool> predicate, TimeSpan timeout, double scale,
+                                                   Func<DateTimeOffset> now, TimeSpan stableFor,
+                                                   CancellationToken ct)
+    {
+        var deadline = timeout > TimeSpan.Zero ? now() + timeout : DateTimeOffset.MaxValue;
+        DateTimeOffset? inBandSince = null;
+        while (!ct.IsCancellationRequested)
+        {
+            var at = now();
+            if (predicate())
+            {
+                inBandSince ??= at;
+                if (at - inBandSince.Value >= stableFor) return true;
+            }
+            else
+            {
+                inBandSince = null;
+            }
+            if (at >= deadline) return false;
+            await DelayAsync(TimeSpan.FromMilliseconds(200), scale, ct).ConfigureAwait(false);
+        }
+        ct.ThrowIfCancellationRequested();
+        return false;
+    }
 }
 
 /// <summary>
@@ -70,7 +99,7 @@ public sealed class TempControlHandler : ICommandHandler
     {
         var temp = CapabilityCommands.Temp(ctx);
         var target = p.Num("target");
-        var tol = p.Num("tol", 0.5);
+        var tol = p.Num("tol", 0.1);
         var kind = p.Str("obj", "釜内 Tr").Contains("Tj") ? TempChannelKind.Jacket : TempChannelKind.Reactor;
         var began = ctx.Now();
 
@@ -89,15 +118,35 @@ public sealed class TempControlHandler : ICommandHandler
         else
             await temp.RampAsync(target, rate, kind, ct).ConfigureAwait(false);
         // 到不了的目标不能把通道永远挂住：兜底超时按「温差 / 速率」的 3 倍给
-        var budget = TimeSpan.FromMinutes(Math.Abs(target - temp.CurrentReactor) / rate * 3 + 10);
+        var pvAtStart = kind == TempChannelKind.Jacket ? temp.CurrentJacket : temp.CurrentReactor;
+        var budget = TimeSpan.FromMinutes((double.IsNaN(pvAtStart) ? 0 : Math.Abs(target - pvAtStart)) / rate * 3 + 10);
         var reached = await temp.WaitReachedAsync(target, tol, budget, ct).ConfigureAwait(false);
 
+        var stable = reached;
         if (reached && p.Flag("wait", true))
-            await DriverTime.DelayAsync(TimeSpan.FromMinutes(1), ctx.TimeScale, ct).ConfigureAwait(false);
-
-        return new CommandOutcome(reached ? EndReason.Reached : EndReason.Timeout, ctx.Now() - began)
         {
-            Note = reached ? null : $"未在 {budget.TotalMinutes:F0} min 内到达 {target:F1} ℃"
+            // 「到达后等待稳定」要求整段稳定时间都在同一条 Tr/Tj 误差带内；
+            // 只延时而不复核会把放热反应刚穿过目标的瞬间误报成稳定。
+            var remaining = TimeSpan.FromMinutes(1);
+            var watchdog = TimeSpan.FromMinutes(3);
+            while (remaining > TimeSpan.Zero && watchdog > TimeSpan.Zero)
+            {
+                var pv = kind == TempChannelKind.Jacket ? temp.CurrentJacket : temp.CurrentReactor;
+                if (!double.IsNaN(pv) && Math.Abs(pv - target) <= Math.Abs(tol))
+                    remaining -= TimeSpan.FromSeconds(1);
+                else
+                    remaining = TimeSpan.FromMinutes(1); // 越界后重新累计连续稳定时间
+                await DriverTime.DelayAsync(TimeSpan.FromSeconds(1), ctx.TimeScale, ct).ConfigureAwait(false);
+                watchdog -= TimeSpan.FromSeconds(1);
+            }
+            stable = remaining <= TimeSpan.Zero;
+        }
+
+        return new CommandOutcome(stable ? EndReason.Reached : EndReason.Timeout, ctx.Now() - began)
+        {
+            Note = stable ? null : reached
+                ? $"到达 {target:F1} ℃ 后 3 min 内未能连续保持在 ±{Math.Abs(tol):F1} ℃"
+                : $"未在 {budget.TotalMinutes:F0} min 内到达 {target:F1} ℃"
         };
     }
 }
@@ -110,15 +159,16 @@ public sealed class TempGradientHandler : ICommandHandler
         var temp = CapabilityCommands.Temp(ctx);
         var began = ctx.Now();
         var rounds = input.Flag("loop") ? 2 : 1;   // 勾了「循环执行该曲线」就再走一遍
+        var kind = input.Str("obj", "釜内 Tr").Contains("Tj") ? TempChannelKind.Jacket : TempChannelKind.Reactor;
 
         for (var k = 0; k < rounds; k++)
             foreach (var row in input.RowsOrEmpty)
             {
                 ct.ThrowIfCancellationRequested();
                 var target = row.Num("t");
-                await temp.RampAsync(target, Math.Max(row.Num("r"), 0.01), TempChannelKind.Reactor, ct)
+                await temp.RampAsync(target, Math.Max(row.Num("r"), 0.01), kind, ct)
                           .ConfigureAwait(false);
-                await temp.WaitReachedAsync(target, 0.5, TimeSpan.FromHours(4), ct).ConfigureAwait(false);
+                await temp.WaitReachedAsync(target, 0.1, TimeSpan.FromHours(4), ct).ConfigureAwait(false);
                 await DriverTime.DelayAsync(TimeSpan.FromMinutes(row.Num("h")), ctx.TimeScale, ct).ConfigureAwait(false);
             }
 
@@ -126,16 +176,36 @@ public sealed class TempGradientHandler : ICommandHandler
     }
 }
 
-/// <summary>恒温保持：保持当前温度，只计时。</summary>
+/// <summary>恒温保持：按选定的 Tr/Tj 重新锁定目标，并要求整个保持时间都在允差内。</summary>
 public sealed class TempHoldHandler : ICommandHandler
 {
     public async Task<CommandOutcome> ExecuteAsync(CommandContext ctx, CommandInput p, CancellationToken ct)
     {
         var temp = CapabilityCommands.Temp(ctx);
         var began = ctx.Now();
-        await temp.SetTargetAsync(new TempTarget(temp.CurrentReactor), ct).ConfigureAwait(false);
-        await DriverTime.DelayAsync(TimeSpan.FromMinutes(p.Num("dur")), ctx.TimeScale, ct).ConfigureAwait(false);
-        return new CommandOutcome(EndReason.TimerElapsed, ctx.Now() - began);
+        var kind = p.Str("obj", "釜内 Tr").Contains("Tj") ? TempChannelKind.Jacket : TempChannelKind.Reactor;
+        var tol = Math.Max(0.1, Math.Abs(p.Num("tol", 0.1)));
+        var target = kind == TempChannelKind.Jacket ? temp.CurrentJacket : temp.CurrentReactor;
+        if (double.IsNaN(target))
+            throw new InvalidOperationException($"{(kind == TempChannelKind.Jacket ? "夹套 Tj" : "釜内 Tr")} 没有有效读数，不能开始恒温保持");
+        await temp.SetTargetAsync(new TempTarget(target, kind), ct).ConfigureAwait(false);
+
+        var remaining = TimeSpan.FromMinutes(Math.Max(0, p.Num("dur")));
+        var watchdog = remaining * 3 + TimeSpan.FromMinutes(3);
+        while (remaining > TimeSpan.Zero && watchdog > TimeSpan.Zero)
+        {
+            ct.ThrowIfCancellationRequested();
+            var pv = kind == TempChannelKind.Jacket ? temp.CurrentJacket : temp.CurrentReactor;
+            if (!double.IsNaN(pv) && Math.Abs(pv - target) <= tol)
+                remaining -= TimeSpan.FromSeconds(1);
+            await DriverTime.DelayAsync(TimeSpan.FromSeconds(1), ctx.TimeScale, ct).ConfigureAwait(false);
+            watchdog -= TimeSpan.FromSeconds(1);
+        }
+        var ok = remaining <= TimeSpan.Zero;
+        return new CommandOutcome(ok ? EndReason.TimerElapsed : EndReason.Timeout, ctx.Now() - began)
+        {
+            Note = ok ? null : $"恒温保持超时：{(kind == TempChannelKind.Jacket ? "夹套 Tj" : "釜内 Tr")} 未能连续保持在 ±{tol:F1} ℃"
+        };
     }
 }
 

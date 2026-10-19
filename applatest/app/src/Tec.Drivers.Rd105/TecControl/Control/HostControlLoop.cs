@@ -687,7 +687,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
     }
 
     /// <summary>误差在此范围内且输出未饱和时，认为处于稳态，记录输出用于下次积分预置。</summary>
-    public double SteadyBandC { get; set; } = 0.2;
+    public double SteadyBandC { get; set; } = 0.1;
 
     /// <summary>连续处于稳态多少个周期后才写入前馈模型（默认约 1 分钟 @500ms）。</summary>
     public int SteadyCyclesToLearn { get; set; } = 120;

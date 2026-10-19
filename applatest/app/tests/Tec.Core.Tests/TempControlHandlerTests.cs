@@ -17,8 +17,8 @@ public class TempControlHandlerTests
         public readonly List<string> Log = new();
         public int Channel => 1;
         public TempLimits Limits { get; } = new(-40, 180, 5);
-        public double CurrentReactor => 25;
-        public double CurrentJacket => 25;
+        public double CurrentReactor { get; set; } = 25;
+        public double CurrentJacket { get; set; } = 25;
         public Task SetTargetAsync(TempTarget t, CancellationToken ct)
         { Log.Add($"set {t.Value} {t.Kind}"); return Task.CompletedTask; }
         public Task RampAsync(double t, double r, TempChannelKind k, CancellationToken ct)
@@ -95,5 +95,24 @@ public class TempControlHandlerTests
 
         var old = await Run(("target", 70d), ("rate", 2d), ("wait", false));
         Assert.Equal(new[] { "ramp 70 2 Reactor" }, old.Log);
+    }
+
+    [Fact]
+    public async Task 恒温保持_按选择的控温对象下发目标()
+    {
+        var temp = new RecTemp { CurrentReactor = 25, CurrentJacket = 31 };
+        var ctx = new CommandContext
+        {
+            Channel = 1,
+            Capabilities = new OneCap(temp),
+            Now = () => DateTimeOffset.UnixEpoch,
+            TimeScale = 1000
+        };
+
+        await new TempHoldHandler().ExecuteAsync(ctx,
+            new CommandInput(ParameterSet.Of(("dur", 1d), ("tol", 0.1d), ("obj", "夹套 Tj"))),
+            CancellationToken.None);
+
+        Assert.Equal(new[] { "set 31 Jacket" }, temp.Log);
     }
 }

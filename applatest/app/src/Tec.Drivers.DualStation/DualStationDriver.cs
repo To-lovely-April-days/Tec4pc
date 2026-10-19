@@ -61,6 +61,8 @@ public sealed class DualStationDriver : IDeviceDriver
         public const string TecRelay = "TEC功率继电器";
         public const string TecDoA = "TEC功率DO·工位A";
         public const string TecDoB = "TEC功率DO·工位B";
+        /// <summary>共用冷却水电磁阀的 IO8R DO；0 起算，缺省 4 是物理第五路。</summary>
+        public const string CoolingValveDo = "冷却水电磁阀DO";
     }
 
     /// <summary>
@@ -171,7 +173,8 @@ public sealed class DualStationDriver : IDeviceDriver
         Field.Sel(Fields.TecRelay, "TEC 功率继电器", new[] { "有", "无" }, "有")
             with { Tip = "TEC 的功率线经 IO8R 继电器接通（闭合 = TEC 有电）。默认断着；要制冷才合它、要加热合加热棒那只（双向挡跟功率符号走），两只从不同时合；停控 / 安全停机断开。功率线是硬线直连、不经继电器的机器选「无」" },
         Field.Num(Fields.TecDoA, "TEC 功率 DO·工位 A", 6, "", 0, 7, 1),
-        Field.Num(Fields.TecDoB, "TEC 功率 DO·工位 B", 7, "", 0, 7, 1)
+        Field.Num(Fields.TecDoB, "TEC 功率 DO·工位 B", 7, "", 0, 7, 1),
+        Field.Num(Fields.CoolingValveDo, "共用冷却水电磁阀 DO", 4, "", 0, 7, 1)
     })
     {
         Tip = "超温上限就是电加热模式的最高温度——写进 RD105 自己的保护寄存器，断了通信照样生效，" +
@@ -182,6 +185,7 @@ public sealed class DualStationDriver : IDeviceDriver
               "「TEC 加热」启用后才是「目标超过上限才切电加热」。「切换反馈」接了电加热" +
               "接触器辅助触点才选「有」——没接选「有」会让每次切换都等 2 秒然后报失败。" +
               "TEC 功率线经 IO8R 的 DO6（A）/ DO7（B）（现场电气定的）：不控温就断着，停控 / 安全停机断开；" +
+              "共用冷却水电磁阀缺省接 DO4（代码索引 4 = 物理第五路）：任一路制冷前先开阀，任一路仍制冷阀保持打开，两路都不制冷才关阀；" +
               "IO8R 打不开时这台既不能制冷也不能加热，控温目标会被拒绝。"
     };
 

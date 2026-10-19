@@ -120,6 +120,9 @@ public sealed class DualStationDriverTests
         Assert.Equal(Rd105TecDriver.DefaultBaud, DualStationDriver.Defaults.BaudRd105);
         Assert.Equal(Rd105TecDriver.DefaultProtocol, DualStationDriver.Defaults.ProtoRd105);
         Assert.Equal(Rd105TecDriver.DefaultAddress, DualStationDriver.Defaults.AddrRd105);
+
+        var cfg = new ParameterSet().FillDefaults(new DualStationDriver().ConfigSchema);
+        Assert.Equal(4, cfg.Num(DualStationDriver.Fields.CoolingValveDo)); // 0 起算的第四索引 = 物理第五路
     }
 
     [Fact]
@@ -226,7 +229,71 @@ public sealed class DualStationDriverTests
         Assert.Equal(60_00000, b.Rd.Get(1, "TG"));
         Assert.False(b.Io.Coils[0]);                     // 加热棒那只没动
         Assert.True(b.Io.Coils[6]);                      // TEC 功率线（DO6 = A）合上——TEC 加热启用，60 ℃ 走 TEC
-        Assert.Equal(new[] { "写DO 6=闭" }, b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写")).ToList());
+        Assert.Equal(new[] { "写DO 4=闭", "写DO 6=闭" }, b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写")).ToList());
+    }
+
+    [Fact]
+    public async Task 共用冷却阀_制冷前先开DO4_任一路制冷阀保持打开_最后一路停止才关闭()
+    {
+        var b = Rig();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(ChillerOn()), CancellationToken.None);
+        await s.StartAsync(CancellationToken.None);
+        var a = Temp(s, 0);
+        var bb = Temp(s, 1);
+        await WaitJacket(a, 25.0);
+
+        var mark = b.Io.Requests.Count;
+        await a.SetTargetAsync(new TempTarget(10), CancellationToken.None);
+        Assert.True(b.Io.Coils[4]);
+        Assert.True(b.Io.Coils[6]);
+        Assert.Equal(new[] { "写DO 4=闭", "写DO 6=闭" },
+            b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写DO")).ToList());
+
+        // B 也制冷时共用阀已经打开，不能重复扳 DO4。
+        mark = b.Io.Requests.Count;
+        await bb.SetTargetAsync(new TempTarget(10), CancellationToken.None);
+        Assert.True(b.Io.Coils[4]);
+        Assert.True(b.Io.Coils[7]);
+        Assert.Equal(new[] { "写DO 7=闭" },
+            b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写DO")).ToList());
+
+        // 停 A 只断 A 的 TEC，B 仍制冷所以阀不能关。
+        mark = b.Io.Requests.Count;
+        await a.StopAsync(CancellationToken.None);
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+        Assert.False(b.Io.Coils[6]);
+        Assert.True(b.Io.Coils[4]);
+        Assert.Equal(new[] { "写DO 6=断" },
+            b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写DO")).ToList());
+
+        // 最后一路 B 也停，才关共用阀。
+        mark = b.Io.Requests.Count;
+        await bb.StopAsync(CancellationToken.None);
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+        await s.StopAsync(CancellationToken.None);
+        Assert.False(b.Io.Coils[7]);
+        Assert.False(b.Io.Coils[4]);
+        Assert.Equal(new[] { "写DO 7=断", "写DO 4=断" },
+            b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写DO")).ToList());
+    }
+
+    [Fact]
+    public async Task 加热过程共用冷却阀保持关闭()
+    {
+        var b = Rig();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
+        await s.StartAsync(CancellationToken.None);
+        var t = Temp(s, 0);
+        await WaitJacket(t, 25.0);
+
+        var mark = b.Io.Requests.Count;
+        await t.SetTargetAsync(new TempTarget(60), CancellationToken.None);
+        await s.StopAsync(CancellationToken.None);
+
+        Assert.True(b.Io.Coils[0]);
+        Assert.False(b.Io.Coils[4]);
+        Assert.Equal(new[] { "写DO 0=闭" },
+            b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写DO")).ToList());
     }
 
     [Fact]
@@ -504,7 +571,7 @@ public sealed class DualStationDriverTests
         Assert.True(b.Io.Coils[0]);
         Assert.False(b.Io.Coils[6]);
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
-        Assert.Equal(new[] { "写DO 6=断", "写DO 0=闭" }, b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写DO")).ToList());
+        Assert.Equal(new[] { "写DO 6=断", "写DO 4=断", "写DO 0=闭" }, b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写DO")).ToList());
         // 日志里的功率按回路的约定说（正加热 / 负制冷），不按这台设备的符号
         lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("功率 +20.0 %") && l.Text.Contains("已连续 3 s 指向电加热") && l.Text.Contains("PID 不复位"));
 
@@ -525,7 +592,7 @@ public sealed class DualStationDriverTests
         await s.StopAsync(CancellationToken.None);
         Assert.True(b.Io.Coils[6]);
         Assert.False(b.Io.Coils[0]);
-        Assert.Equal(new[] { "写DO 0=断", "写DO 6=闭" }, b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写DO")).ToList());
+        Assert.Equal(new[] { "写DO 0=断", "写DO 4=闭", "写DO 6=闭" }, b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写DO")).ToList());
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
         lock (b.Logs) Assert.DoesNotContain(b.Logs, l => l.Text.Contains("降温挡") || l.Text.Contains("升温挡："));
     }
@@ -1301,7 +1368,7 @@ public sealed class DualStationDriverTests
         Assert.False(b.Io.Coils[0]);
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
         Assert.Equal(10_00000, b.Rd.Get(1, "TG"));
-        Assert.Equal(new[] { "写DO 6=闭" }, b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写")).ToList());
+        Assert.Equal(new[] { "写DO 4=闭", "写DO 6=闭" }, b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写")).ToList());
 
         // 再跑一拍：还在降温，一只都不再动
         mark = b.Io.Requests.Count;
@@ -1379,7 +1446,7 @@ public sealed class DualStationDriverTests
         Assert.False(b.Io.Coils[6]);
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
         var seq = b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写DO")).ToList();
-        Assert.Equal(new[] { "写DO 6=断", "写DO 0=闭" }, seq);   // 先断 TEC 功率线，再合加热棒
+        Assert.Equal(new[] { "写DO 6=断", "写DO 4=断", "写DO 0=闭" }, seq);   // 先断 TEC、再关共用阀，最后合加热棒
 
         // 到温后下发更低的目标 = 降温挡 → TEC：先断加热棒，再合 TEC 功率线（夹套 63 在回切线以下）
         b.Rd.Set(1, "TCADJTEMP", 63_00000);
@@ -1392,7 +1459,7 @@ public sealed class DualStationDriverTests
         Assert.True(b.Io.Coils[6]);
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
         seq = b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写DO")).ToList();
-        Assert.Equal(new[] { "写DO 0=断", "写DO 6=闭" }, seq);
+        Assert.Equal(new[] { "写DO 0=断", "写DO 4=闭", "写DO 6=闭" }, seq); // 先断加热棒，先开共用阀，再合 TEC
         Assert.False(b.Io.Coils[7]);                       // B 没被牵连
         Assert.False(b.Io.Coils[1]);
     }
@@ -1431,7 +1498,9 @@ public sealed class DualStationDriverTests
         await t.SetTargetAsync(new TempTarget(10), CancellationToken.None);
         await s.StopAsync(CancellationToken.None);
 
-        Assert.All(b.Io.Coils, c => Assert.False(c));
+        Assert.False(b.Io.Coils[6]);                       // TEC 功率线未接继电器，DO6/DO7 不碰
+        Assert.False(b.Io.Coils[7]);
+        Assert.True(b.Io.Coils[4]);                        // 共用冷却水阀仍由 DO4 独立控制
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
         Assert.Equal(10_00000, b.Rd.Get(1, "TG"));
     }
