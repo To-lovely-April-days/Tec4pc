@@ -214,6 +214,9 @@ public interface ICoolingWaterValve : ICapability
     /// </summary>
     bool Opening => false;
 
+    /// <summary>联动的冷水机出毛病时的一个短词（「冷水机故障」「冷水机读不到」），面板状态签上照印、标红；一切正常 / 不联动是 null。</summary>
+    string? Alert => null;
+
     Task SetAsync(bool open, CancellationToken ct);
 }
 

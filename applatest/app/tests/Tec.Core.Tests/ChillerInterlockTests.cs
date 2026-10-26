@@ -529,6 +529,30 @@ public sealed class ChillerInterlockTests
         await Water(s).SetAsync(false, CancellationToken.None);
         Assert.False(b.Io.Coils[4]);
         Assert.Null(Water(s).Status);
+        Assert.Null(Water(s).Alert);
+    }
+
+    [Fact]
+    public async Task 冷水机报故障_读不到_能力报Alert短词_好了就清()
+    {
+        // 面板状态签上标红的那个短词：整句状态进了悬停提示，出毛病得在签上看得见
+        var b = Rig();
+        await using var s = await Open(b);
+        Assert.Null(Water(s).Alert);
+
+        b.Chiller.State = ChillerClient.Fault;
+        await Tick(s);
+        Assert.Equal("冷水机故障", Water(s).Alert);
+
+        b.Chiller.State = ChillerClient.Idle;
+        b.Chiller.Mute = true;
+        await Tick(s);
+        Assert.Equal("冷水机读不到", Water(s).Alert);
+
+        b.Chiller.Mute = false;
+        b.Now += TimeSpan.FromSeconds(11);                // 读不到之后隔 10 s 再试
+        await Tick(s);
+        Assert.Null(Water(s).Alert);
     }
 
     [Fact]

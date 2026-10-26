@@ -1688,6 +1688,12 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         }
     }
 
+    /// <summary>冷水机出毛病时面板状态签上那个短词：读不到（联动不起来）/ 报故障；不联动、一切正常是 null。</summary>
+    internal string? WaterAlert => _links.Chiller is null ? null
+        : !_chillerStateKnown ? "冷水机读不到"
+        : _chillerState == ChillerClient.Fault ? "冷水机故障"
+        : null;
+
     /// <summary>面板开关旁边那句：联动冷水机时说冷水机在干什么、关水在等什么；不联动 null。</summary>
     internal string? WaterStatus
     {

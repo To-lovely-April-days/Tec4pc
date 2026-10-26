@@ -368,19 +368,23 @@
            页签再宽也不跟左侧页签叠着（单通道六页签顶到「PID 整定」，现场踩到） -->
       <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="14"
                   HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,6,0,0">
-        <!-- 冷却水电磁阀（整机一只，IO8R DO4）：首页一眼看得见、一点就开关。
-             跟 TEC 自动联动；有路在制冷时关不了（驱动拒绝并说明）。连了冷水机：开 = 先开阀再开冷水机，
-             关 = 先停冷水机、停稳了再关阀（关的过程中开关显示还开着，小字说在等什么） -->
-        <Border Classes="hsw" Classes.on="{Binding WaterOn}" PointerPressed="OnTogWater"
+        <!-- 冷却水电磁阀（整机一只，IO8R DO4）：顶栏一枚状态签（原型 .sbi 那一类），一点就开关——
+             原来是「冷却水 + 整句状态 + 拨动开关」，用户嫌丑、占地方。开 / 关看底色和水滴（实心 = 开）；
+             开水在途 / 停机中水滴让位给菊花；只有过渡和出毛病时跟一个短词，整句状态在悬停提示里。
+             跟 TEC 自动联动；有路在制冷时关不了（驱动拒绝并说明，toast 照原话印） -->
+        <Border Classes="hwat" Classes.on="{Binding WaterOn}" Classes.warn="{Binding WaterWarn}"
+                Classes.off="{Binding WaterOffline}" PointerPressed="OnTogWater"
                 IsVisible="{Binding ShowWater}" VerticalAlignment="Center"
-                ToolTip.Tip="冷却水电磁阀（IO8R DO4）。接 TEC 前自动打开，两路都不制冷后自动关闭；制冷中关不了。手动打开的不会被自动关。连了冷水机时跟它联动：开水先开阀、再开冷水机；关水先停冷水机，等它停稳了再关阀">
-          <StackPanel Orientation="Horizontal" Spacing="7">
+                ToolTip.Tip="{Binding WaterTip}">
+          <StackPanel Orientation="Horizontal" Spacing="5">
+            <Panel Width="12" Height="12" VerticalAlignment="Center">
+              <ctl:TecIcon Key="hmi-r-drop-fill" Size="12" IsVisible="{Binding WaterDropOn}" />
+              <ctl:TecIcon Key="hmi-r-drop" Size="12" IsVisible="{Binding WaterDropOff}" />
+              <ctl:BusyRing Width="12" Height="12" Stroke="1.6" IsVisible="{Binding WaterBusy}" />
+            </Panel>
             <TextBlock Text="冷却水" VerticalAlignment="Center" />
-            <TextBlock Text="{Binding WaterNote}" FontSize="10.5" VerticalAlignment="Center" />
-            <!-- 开水在途菊花：阀开了、等通水延时 / 冷水机还没到正常运行（降温打开温控时自动开水也转） -->
-            <ctl:BusyRing Width="13" Height="13" Stroke="2"
-                          IsVisible="{Binding WaterBusy}" VerticalAlignment="Center" />
-            <Border Classes="hswt"><Ellipse Classes="hswk" /></Border>
+            <TextBlock Classes="st" Text="{Binding WaterShort}" VerticalAlignment="Center"
+                       IsVisible="{Binding WaterShort, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
           </StackPanel>
         </Border>
         <TextBlock FontSize="11.5" Foreground="#6F6F6F" VerticalAlignment="Center"
@@ -1646,6 +1650,31 @@
     <Style Selector="Border.hsw.on Ellipse.hswk">
       <Setter Property="HorizontalAlignment" Value="Right" /><Setter Property="Margin" Value="0,0,2,0" />
     </Style>
+
+    <!-- 冷却水状态签（顶栏，原型 .sbi 那一类）：白底灰字 = 关，浅青底青字 + 实心水滴 = 开，
+         浅红 = 冷水机出毛病，半透明 = 没连上。BEGIN hwat -->
+    <Style Selector="Border.hwat">
+      <Setter Property="BorderBrush" Value="#DCDCDC" /><Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="2" /><Setter Property="Background" Value="White" />
+      <Setter Property="Padding" Value="8,4,9,4" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Border.hwat:pointerover"><Setter Property="BorderBrush" Value="#4FB1B8" /></Style>
+    <Style Selector="Border.hwat TextBlock"><Setter Property="FontSize" Value="11" />
+      <Setter Property="Foreground" Value="#8E8E8E" /></Style>
+    <Style Selector="Border.hwat TextBlock.st"><Setter Property="FontSize" Value="10.5" /></Style>
+    <Style Selector="Border.hwat ctl|TecIcon"><Setter Property="Tint" Value="#8E8E8E" /></Style>
+    <Style Selector="Border.hwat ctl|BusyRing"><Setter Property="Brush" Value="#4FB1B8" /></Style>
+    <Style Selector="Border.hwat.on"><Setter Property="Background" Value="#E4F4F4" />
+      <Setter Property="BorderBrush" Value="#BFE0E2" /></Style>
+    <Style Selector="Border.hwat.on TextBlock"><Setter Property="Foreground" Value="#2F8189" /></Style>
+    <Style Selector="Border.hwat.on ctl|TecIcon"><Setter Property="Tint" Value="#2F8189" /></Style>
+    <Style Selector="Border.hwat.warn"><Setter Property="Background" Value="#FBEDEB" />
+      <Setter Property="BorderBrush" Value="#E8B9B3" /></Style>
+    <Style Selector="Border.hwat.warn TextBlock"><Setter Property="Foreground" Value="#C42B1C" /></Style>
+    <Style Selector="Border.hwat.warn ctl|TecIcon"><Setter Property="Tint" Value="#C42B1C" /></Style>
+    <Style Selector="Border.hwat.off"><Setter Property="Opacity" Value="0.6" /></Style>
+    <!-- END hwat -->
 
     <!-- 设定值框（vb）与标签 -->
     <Style Selector="TextBlock.hlbl">

@@ -23,6 +23,7 @@ public sealed class CoolingWaterValve : ICoolingWaterValve
     public string? Status => _s.WaterStatus;
     public bool Closing => _s.WaterClosing;
     public bool Opening => _s.WaterOpening;
+    public string? Alert => _s.WaterAlert;
 
     /// <summary>面板手动开关：手动开的不会被自动联动关掉；有路在制冷时关不了（拒绝并说明）。
     /// 连了冷水机：开 = 先开阀再开冷水机；关 = 先停冷水机，停稳了阀才关（返回时可能还开着）。</summary>

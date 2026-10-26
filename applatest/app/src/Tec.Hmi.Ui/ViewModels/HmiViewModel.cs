@@ -899,9 +899,9 @@ public sealed class HmiViewModel : ViewModelBase
     public bool HasWater => Water is not null || WaterConfigured;
     /// <summary>开关摆在顶栏右侧，所有页都在（阀是整机的，不归哪个工位）。</summary>
     public bool ShowWater => HasWater;
-    /// <summary>开关按「要的」显示：关水挂着（冷水机在停、阀等它停稳）算关——再点一下是又要水。阀还开着由小字说。</summary>
+    /// <summary>开关按「要的」显示：关水挂着（冷水机在停、阀等它停稳）算关——再点一下是又要水。阀还开着由短词「停机中」说。</summary>
     public bool WaterOn => Water is { IsOpen: true, Closing: false };
-    /// <summary>开关旁边那句小字：开着 / 关着 / 为什么不能动。</summary>
+    /// <summary>整句状态：开着 / 关着 / 为什么不能动。顶栏状态签放不下，进悬停提示（WaterTip）。</summary>
     public string WaterNote => Water switch
     {
         null => HasWater ? "设备未连接" : "",
@@ -919,7 +919,30 @@ public sealed class HmiViewModel : ViewModelBase
     /// 开关上转菊花：面板这一下的指令还没走完，或驱动说开水在途（阀开了、在等通水延时 / 冷水机还没到正常运行）——
     /// 降温打开温控时自动开水也算，人一眼看出「水在来的路上」。
     /// </summary>
-    public bool WaterBusy => _waterBusy || Water is { Opening: true };
+    public bool WaterBusy => _waterBusy || Water is { Opening: true } or { Closing: true };
+
+    // 顶栏状态签（原型 .sbi 那一类，用户嫌原来的拨动开关丑、占地方）：开 / 关看底色和水滴（实心 = 开），
+    // 在途时水滴让位给菊花；只有过渡和出毛病时才跟一个短词，整句状态在悬停提示里
+
+    /// <summary>跟在「冷却水」后面的短词：未连接 / 冷水机故障·读不到 / 开启中 / 停机中；平平常常开着关着时为空。</summary>
+    public string WaterShort => Water switch
+    {
+        null => HasWater ? "未连接" : "",
+        { Available: false } => "未连接",
+        { Alert: { } a } => a,
+        { Opening: true } => "开启中",
+        { Closing: true } => "停机中",
+        _ => ""
+    };
+    /// <summary>冷水机出毛病（故障 / 读不到）：状态签标红。</summary>
+    public bool WaterWarn => Water is { Available: true, Alert: not null };
+    /// <summary>设备没连 / IO8R 不通：状态签半透明，点了 toast 说为什么。</summary>
+    public bool WaterOffline => Water is not { Available: true };
+    public bool WaterDropOn => !WaterBusy && WaterOn;
+    public bool WaterDropOff => !WaterBusy && !WaterOn;
+    public string WaterTip => $"冷却水：{WaterNote}。点一下开 / 关。" +
+        "冷却水电磁阀（IO8R DO4）接 TEC 前自动打开，两路都不制冷后自动关闭；制冷中关不了。手动打开的不会被自动关。" +
+        "连了冷水机时跟它联动：开水先开阀、再开冷水机；关水先停冷水机，等它停稳了再关阀";
 
     public void ToggleWater()
     {
@@ -956,7 +979,8 @@ public sealed class HmiViewModel : ViewModelBase
         }, TaskScheduler.Default);
     }
 
-    private void RaiseWater() => RaiseAll(nameof(HasWater), nameof(ShowWater), nameof(WaterOn), nameof(WaterNote), nameof(WaterBusy));
+    private void RaiseWater() => RaiseAll(nameof(HasWater), nameof(ShowWater), nameof(WaterOn), nameof(WaterNote), nameof(WaterBusy),
+        nameof(WaterShort), nameof(WaterWarn), nameof(WaterOffline), nameof(WaterDropOn), nameof(WaterDropOff), nameof(WaterTip));
 
     // ── Toast（原型 hint）────────────────────────────────────────────
 
