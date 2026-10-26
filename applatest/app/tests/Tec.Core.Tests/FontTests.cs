@@ -32,7 +32,9 @@ public class FontTests
         Assert.NotEmpty(gids);
 
         var sub = f.Subset(gids);
-        var whole = new FileInfo(f.Path).Length;
+        // macOS 的 /Library/Fonts/Arial Unicode.ttf 是符号链接，FileInfo.Length 量的是链接本身（几十字节），得顺到真文件
+        var fi = new FileInfo(f.Path);
+        var whole = (fi.ResolveLinkTarget(returnFinalTarget: true) as FileInfo ?? fi).Length;
         Assert.True(sub.Length > 0);
         Assert.True(sub.Length < whole, $"子集 {sub.Length} 不比整份 {whole} 小");
 
