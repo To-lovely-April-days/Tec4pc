@@ -908,11 +908,18 @@ public sealed class HmiViewModel : ViewModelBase
         { Available: false } => "IO8R 未连接",
         // 跟冷水机联动时驱动给一句（「已开·冷水机正常运行」「冷水机延时停机·停稳后关阀」），照原话印
         { Status: { } s } => s,
+        { Opening: true } => "开启中",
         { IsOpen: true } => "已开",
         _ => "已关"
     };
 
     private bool _waterBusy;
+
+    /// <summary>
+    /// 开关上转菊花：面板这一下的指令还没走完，或驱动说开水在途（阀开了、在等通水延时 / 冷水机还没到正常运行）——
+    /// 降温打开温控时自动开水也算，人一眼看出「水在来的路上」。
+    /// </summary>
+    public bool WaterBusy => _waterBusy || Water is { Opening: true };
 
     public void ToggleWater()
     {
@@ -931,6 +938,7 @@ public sealed class HmiViewModel : ViewModelBase
     private void SetWater(ICoolingWaterValve v, bool open)
     {
         _waterBusy = true;
+        RaiseWater();
         v.SetAsync(open, CancellationToken.None).ContinueWith(task =>
         {
             Avalonia.Threading.Dispatcher.UIThread.Post(() =>
@@ -948,7 +956,7 @@ public sealed class HmiViewModel : ViewModelBase
         }, TaskScheduler.Default);
     }
 
-    private void RaiseWater() => RaiseAll(nameof(HasWater), nameof(ShowWater), nameof(WaterOn), nameof(WaterNote));
+    private void RaiseWater() => RaiseAll(nameof(HasWater), nameof(ShowWater), nameof(WaterOn), nameof(WaterNote), nameof(WaterBusy));
 
     // ── Toast（原型 hint）────────────────────────────────────────────
 

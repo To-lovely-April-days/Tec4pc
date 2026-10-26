@@ -24,6 +24,9 @@ public sealed class FakeChiller : ISerialTransport
     /// <summary>收到停机后直接空闲（不经延时停机）。</summary>
     public bool StopsAtOnce { get; set; }
 
+    /// <summary>收到开机先「准备启动」，Settle() 了才「正常运行」（压缩机延时保护那种）。</summary>
+    public bool StartsSlowly { get; set; }
+
     /// <summary>不认 FC04（回非法功能码），只认 FC03——协议应用实例那种。</summary>
     public bool OnlyFc03 { get; set; }
 
@@ -43,10 +46,11 @@ public sealed class FakeChiller : ISerialTransport
     /// <summary>收到的指令（人话），按先后顺序：「开机」「关机」「读状态」「读起停方式」。</summary>
     public List<string> Requests { get; } = new();
 
-    /// <summary>延时停机走完：变空闲。</summary>
+    /// <summary>延时停机走完：变空闲；准备启动走完：正常运行。</summary>
     public void Settle()
     {
         if (State == 3) State = 0;
+        else if (State == 1) State = 2;
     }
 
     public bool IsOpen { get; private set; }
@@ -117,7 +121,7 @@ public sealed class FakeChiller : ISerialTransport
     {
         Requests.Add(start ? "开机" : "关机");
         if (StartStopMode == 0) return;                          // 只能本地启停：远程指令不理
-        if (start) { if (State is 0 or 3) State = 2; }
+        if (start) { if (State is 0 or 3) State = (ushort)(StartsSlowly ? 1 : 2); }
         else if (State is 1 or 2) State = (ushort)(StopsAtOnce ? 0 : 3);
     }
 

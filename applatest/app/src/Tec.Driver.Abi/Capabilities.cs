@@ -208,6 +208,12 @@ public interface ICoolingWaterValve : ICapability
     /// </summary>
     bool Closing => false;
 
+    /// <summary>
+    /// 开水在途：阀开了，水还没真正备好——接 TEC 前的通水延时没过完，或联动的冷水机还没到「正常运行」
+    /// （最多等到开机告警时限，再久由告警说话）。面板开关在这段时间转菊花。不联动冷水机、没在通水延时里永远是 false。
+    /// </summary>
+    bool Opening => false;
+
     Task SetAsync(bool open, CancellationToken ct);
 }
 

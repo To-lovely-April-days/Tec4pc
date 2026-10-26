@@ -377,6 +377,9 @@
           <StackPanel Orientation="Horizontal" Spacing="7">
             <TextBlock Text="冷却水" VerticalAlignment="Center" />
             <TextBlock Text="{Binding WaterNote}" FontSize="10.5" VerticalAlignment="Center" />
+            <!-- 开水在途菊花：阀开了、等通水延时 / 冷水机还没到正常运行（降温打开温控时自动开水也转） -->
+            <ctl:BusyRing Width="13" Height="13" Stroke="2"
+                          IsVisible="{Binding WaterBusy}" VerticalAlignment="Center" />
             <Border Classes="hswt"><Ellipse Classes="hswk" /></Border>
           </StackPanel>
         </Border>

@@ -72,6 +72,15 @@ public sealed class ChillerInterlockTests
     private static ITemperatureControl Temp(IDeviceSession s, int well) => s.CapabilitiesOf(well).OfType<ITemperatureControl>().Single();
     private static Task Tick(IDeviceSession s) => ((DuoSession)s).PollOnceAsync(CancellationToken.None);
 
+    /// <summary>等内层 RD105 轮询把夹套温度端上来（双向挡起步按方向，要吃实测 Tj）。NaN 也算没到。</summary>
+    private static async Task WaitJacket(ITemperatureControl t, double value)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (DateTime.UtcNow < deadline && !(Math.Abs(t.CurrentJacket - value) <= 0.01))
+            await Task.Delay(30);
+        Assert.Equal(value, t.CurrentJacket, 1);
+    }
+
     private static async Task<IDeviceSession> Open(Bench b, ParameterSet? cfg = null, bool reconnecting = false)
     {
         var s = await b.Drv.OpenAsync(Conn(), b.Ctx(cfg, reconnecting), CancellationToken.None);
@@ -189,6 +198,70 @@ public sealed class ChillerInterlockTests
         Assert.True(b.Io.Coils[6]);
         var i = b.Seq.IndexOf("阀开"); var j = b.Seq.IndexOf("开机"); var k = b.Seq.IndexOf("DO6闭");
         Assert.True(i >= 0 && i < j && j < k, string.Join(" / ", b.Seq));
+    }
+
+    [Fact]
+    public async Task 降温打开温控_通水延时里采集拍挤进来_阀和冷水机只开一次()
+    {
+        // 现场踩到：设定比当前低、打开温控（出厂默认 = 双向挡，起步合 TEC），冷却水阀和冷水机开了又关、关了再开。
+        // 通水延时那几秒 TEC 功率线还没合，这一路看着不要水，采集拍的对账就把阀当成没人认领关掉了，
+        // 延时过了切换序列在锁里再开一遍
+        var b = Rig();
+        var cfg = new ParameterSet { [DualStationDriver.Fields.WaterLead] = 0.8d };
+        await using var s = await Open(b, cfg);
+        await s.StartAsync(CancellationToken.None);
+        var t = Temp(s, 0);
+        await WaitJacket(t, 25.0);
+        b.Seq.Clear();
+
+        var on = t.SetTargetAsync(new TempTarget(10), CancellationToken.None);   // 比夹套低超过死区：起步合 TEC
+        await Task.Delay(250);                            // 阀开了、冷水机开机发了，正在等通水
+        Assert.True(Water(s).Opening);                    // 面板转菊花
+        await Tick(s);                                    // 采集拍挤进通水延时
+        await Tick(s);
+        await on;
+
+        Assert.True(b.Io.Coils[4]);
+        Assert.True(b.Io.Coils[6]);
+        Assert.Equal(new[] { "阀开", "开机", "DO6闭" },
+            b.Seq.Where(x => x is "阀开" or "阀关" or "开机" or "关机" or "DO6闭"));
+        Assert.False(Water(s).Opening);                   // 冷水机转起来、通水延时过了：菊花收
+    }
+
+    [Fact]
+    public async Task 开冷却水_冷水机还没转起来时报Opening_转起来了收()
+    {
+        var b = Rig();
+        await using var s = await Open(b);
+        b.Chiller.StartsSlowly = true;                    // 收到开机先「准备启动」，下一拍才「正常运行」
+
+        await Water(s).SetAsync(true, CancellationToken.None);
+        Assert.True(Water(s).IsOpen);
+        Assert.True(Water(s).Opening);
+        Assert.Contains("开启中", Water(s).Status);
+
+        await Tick(s);                                    // 读到「准备启动」：还没转稳，接着转菊花
+        Assert.True(Water(s).Opening);
+        Assert.Contains("准备启动", Water(s).Status);
+
+        b.Chiller.Settle();
+        await Tick(s);
+        Assert.False(Water(s).Opening);
+        Assert.Contains("正常运行", Water(s).Status);
+    }
+
+    [Fact]
+    public async Task 开冷却水_冷水机一直没转起来_等满开机告警时限菊花也收()
+    {
+        var b = Rig();
+        b.Chiller.StartStopMode = 0;                      // 远程指令不理：一直空闲
+        await using var s = await Open(b);
+        await Water(s).SetAsync(true, CancellationToken.None);
+        Assert.True(Water(s).Opening);
+
+        b.Now += TimeSpan.FromSeconds(61);
+        await Tick(s);
+        Assert.False(Water(s).Opening);                   // 不让开关一直转：告警已经说了冷水机没转
     }
 
     [Fact]

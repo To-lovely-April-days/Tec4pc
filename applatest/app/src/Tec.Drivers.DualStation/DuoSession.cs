@@ -92,6 +92,16 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     /// 自动打开的不立这个旗。
     /// </summary>
     private volatile bool _waterManual;
+    /// <summary>
+    /// 这一路的切换序列正往要水的那一侧走（开阀 → 通水延时 → 合 TEC 功率线 / 进双向形态）：继电器还没合，
+    /// 光看继电器判不出这一路要水，对账会把刚开的阀当成没人认领关掉，延时过了再开一遍（开 → 关 → 开，现场踩到）。
+    /// 序列走完（合上了 / 不切了 / 失败了）就放手，之后按继电器判。计数：同一路可能有两条序列叠着等锁。
+    /// </summary>
+    private readonly int[] _waterClaim = new int[2];
+    /// <summary>正在等通水延时的序列有几条（面板开关这段时间转菊花）。</summary>
+    private int _waterLeading;
+    /// <summary>这一次开水是什么时候开始的：联动冷水机时到「正常运行」为止算开水在途（最多 ChillerStartWarn）。转起来 / 关水时清掉。</summary>
+    private DateTimeOffset? _waterOpenAt;
     private readonly TimeSpan _tick;
 
     // ── 冷水机联动（用户定的标准开关顺序）────────────────────────────
@@ -1382,14 +1392,30 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     }
 
     /// <summary>
+    /// 往要水的那一侧切（接 TEC / 硬线直连进双向形态）：从开阀到序列走完，这一路认领着冷却水（_waterClaim）——
+    /// 通水延时里继电器还没合，不认领的话对账会把阀和冷水机关掉，延时过了锁里再开一遍。
+    /// 不切了 / 失败了就放手，阀由对账收回去。
+    /// </summary>
+    private async Task SwitchAsync(int well, Side to, CancellationToken ct, Func<bool>? stillWanted = null)
+    {
+        if (!(to == Side.Tec || !_tecRelay && ModeOf(well, to) == ActuatorMode.HeaterTec))
+        {
+            await SwitchSequenceAsync(well, to, ct, stillWanted).ConfigureAwait(false);
+            return;
+        }
+        Interlocked.Increment(ref _waterClaim[well]);
+        try { await SwitchSequenceAsync(well, to, ct, stillWanted).ConfigureAwait(false); }
+        finally { Interlocked.Decrement(ref _waterClaim[well]); }
+    }
+
+    /// <summary>
     /// 切换动作全套序列（需求 §2.4）：关输出 → 切继电器 → 核反馈 → 重开输出。
     ///
     /// stillWanted：拿到锁之后再问一遍「这一刻还该往这边切吗」。采集循环那条路是拿着
     /// 上一拍的设定值做的判断，抢锁期间目标完全可能已经改了——不复核就会把刚下发的
     /// 指令的热源挪走。明确下发那条路不传它：那是人或配方当下的决定，不用再问。
     /// </summary>
-    private async Task SwitchAsync(int well, Side to, CancellationToken ct,
-                                   Func<bool>? stillWanted = null)
+    private async Task SwitchSequenceAsync(int well, Side to, CancellationToken ct, Func<bool>? stillWanted)
     {
         // 继电器写只在配了 IO8R 的机器上发生（_electric / _tecRelay 没有 IO8R 一律 false）；
         // 没配的机器走到这里只是对齐形态（关输出 → 换形态 → 开输出）
@@ -1595,6 +1621,22 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     /// <summary>关水挂着：冷水机停机已发，阀等它停稳再关（这时 WaterOn 还是 true）。</summary>
     internal bool WaterClosing => _waterClosing;
 
+    /// <summary>
+    /// 开水在途（面板开关转菊花）：在等通水延时；或联动冷水机、开机后还没读到「正常运行」——
+    /// 冷水机报故障 / 等满 ChillerStartWarn 就不算了（那时告警已经说了它为什么没转起来，开关别一直转）。
+    /// </summary>
+    internal bool WaterOpening
+    {
+        get
+        {
+            if (!_waterOn || _waterClosing) return false;
+            if (Volatile.Read(ref _waterLeading) > 0) return true;
+            if (_links.Chiller is null || _waterOpenAt is not { } t0) return false;
+            if (_chillerStateKnown && _chillerState is 2 or ChillerClient.Fault) return false;
+            return _ctx.Clock() - t0 < ChillerStartWarn;
+        }
+    }
+
     /// <summary>面板开关旁边那句：联动冷水机时说冷水机在干什么、关水在等什么；不联动 null。</summary>
     internal string? WaterStatus
     {
@@ -1603,6 +1645,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
             if (_links.Chiller is null) return null;
             var st = ChillerClient.StateName(ChillerState);
             if (_waterClosing) return $"冷水机{st}·停稳后关阀";
+            if (WaterOpening) return $"开启中·冷水机{st}";
             return _waterOn ? $"已开·冷水机{st}" : $"已关·冷水机{st}";
         }
     }
@@ -1642,6 +1685,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         if (_links.Chiller is null) return;
         // 阀开了才开冷水机（用户定的顺序）。手里的状态可能是上一拍的（人刚在冷水机上停了它）：
         // 照发不误，在转的冷水机收到开机什么都不变
+        _waterOpenAt = _ctx.Clock();
         _chillerStartPending = true;
         await TryStartChillerLockedAsync(ct).ConfigureAwait(false);
     }
@@ -1690,6 +1734,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
             _closingSlowSaid = false;
             _chillerStartAt = null;
             _chillerStartPending = false;
+            _waterOpenAt = null;
             _ctx.Log?.Invoke("info", $"{InstanceId} 关冷却水：先停冷水机，等它停稳再关阀（DO{_waterDo}）");
         }
         await AdvanceCloseLockedAsync(ct).ConfigureAwait(false);
@@ -1755,6 +1800,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
             _chillerState = st;
             _chillerStateKnown = true;
             _chillerNextTry = DateTimeOffset.MinValue;
+            if (st == 2) _waterOpenAt = null;           // 正常运行：开水走完了，面板收菊花
             if (_chillerFails > 0) { _ctx.Log?.Invoke("info", $"{InstanceId} 冷水机恢复（读失败 {_chillerFails} 次后）"); _chillerFails = 0; }
             if (_chillerLogged != st)
             {
@@ -1952,7 +1998,8 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         {
             var w = NeedsWater(0) ? 0 : 1;
             throw new InvalidOperationException(
-                $"工位 {AB(w)} 的 TEC 在制冷{(_regime[w] == Regime.Both ? "（双向挡）" : "")}——断水 TEC 会干烧，冷却水关不了。先停那一路的温控");
+                $"工位 {AB(w)} 的 TEC {(TecDriving(w) ? "在制冷" : "正要接上（在等通水）")}{(_regime[w] == Regime.Both ? "（双向挡）" : "")}——" +
+                "断水 TEC 会干烧，冷却水关不了。先停那一路的温控");
         }
         // 旗子在序列起跑时就立（不是跑完才立）：序列里冷水机开机要等它答话，链路慢要数秒——
         // 这期间采集拍会看到「阀开了、还没人认领」，从前的下场是阀被自动联动关掉（现场踩到）
@@ -1966,10 +2013,11 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     /// 这一路此刻要不要冷却水：TEC 带电（功率线经继电器的机器看继电器；硬线直连断不了电，
     /// 回路在 TEC 侧形态就要水）。**升温不要水**（继电器机在加热棒侧）：冷水机停、阀关——
     /// 用户定的（0522）：升温时冷水机与阀都关，要降温了（往 TEC 侧接）才开阀、开冷水机，
-    /// 「先通水再接 TEC」在切换序列里（EnsureWaterAsync）。
+    /// 「先通水再接 TEC」在切换序列里（EnsureWaterAsync）——序列从开阀到合上继电器这一段也算要水（_waterClaim）。
     /// </summary>
     private bool NeedsWater(int well)
-        => TecDriving(well) && (_tecRelay ? _tecOn[well] : _wantEnabled[well]);
+        => Volatile.Read(ref _waterClaim[well]) > 0
+           || TecDriving(well) && (_tecRelay ? _tecOn[well] : _wantEnabled[well]);
 
     /// <summary>
     /// 制冷先通水（用户定的）：阀没开就开，等通水延时再回去接 TEC。阀已经开着不等。
@@ -1985,7 +2033,10 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         _ctx.Log?.Invoke("info", $"{InstanceId} 工位 {AB(well)} 要接 TEC：冷却水阀（DO{_waterDo}）先打开" +
             (_links.Chiller is null ? "" : "、再开冷水机") + $"，等 {_waterLead.TotalSeconds:0} s 让水流起来再接");
         _rd.TempOf(well).Note($"冷却水阀 DO{_waterDo} 打开（接 TEC 前通水 {_waterLead.TotalSeconds:0} s）");
-        if (_waterLead > TimeSpan.Zero) await Task.Delay(_waterLead, ct).ConfigureAwait(false);
+        if (_waterLead <= TimeSpan.Zero) return;
+        Interlocked.Increment(ref _waterLeading);
+        try { await Task.Delay(_waterLead, ct).ConfigureAwait(false); }
+        finally { Interlocked.Decrement(ref _waterLeading); }
     }
 
     /// <summary>
