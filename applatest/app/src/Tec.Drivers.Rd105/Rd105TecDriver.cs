@@ -143,6 +143,7 @@ public sealed class Rd105TecDriver : IDeviceDriver
         {
             link = LinkFactory(connection);
             link.Open();
+            link.DisableRetriesForProbe();      // 探测本身就是换着试，链路层别再叠重试（慢）
             var (model, firmware, contMode) = await link.Controller.ReadDeviceInfoAsync(ct)
                                                         .ConfigureAwait(false);
             var mode = contMode is { } m ? $"，CONTMODE={m}" : "";

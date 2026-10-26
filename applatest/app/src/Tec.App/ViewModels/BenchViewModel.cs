@@ -163,6 +163,10 @@ public sealed class DeviceNodeViewModel : ViewModelBase
     private bool _sel;
     /// <summary>选中的设备在画布上描一圈框。</summary>
     public bool IsSelected { get => _sel; set => Set(ref _sel, value); }
+
+    private bool _connecting;
+    /// <summary>正在连这台（节点上叠菊花 + 「连接中…取消」）。台面重建逐台开会话时由 BenchViewModel 推进。</summary>
+    public bool IsConnecting { get => _connecting; set => Set(ref _connecting, value); }
 }
 
 /// <summary>
@@ -192,6 +196,8 @@ public sealed class BenchViewModel : ViewModelBase
         });
 
         Probe = new RelayCommand(async () => await ProbeAsync());
+        Disconnect = new RelayCommand(async () => await DisconnectAsync());
+        CancelConnect = new RelayCommand(() => ws.CancelConnect());
         ToggleRename = new RelayCommand(() => Renaming = !Renaming);
         ToggleWells = new RelayCommand(() => WellsOpen = !WellsOpen);
         ToggleChTable = new RelayCommand(() => ChTableOpen = !ChTableOpen);
@@ -200,6 +206,7 @@ public sealed class BenchViewModel : ViewModelBase
         ZoomOut = new RelayCommand(() => Scale(1 / 1.25));
         FitAll = new RelayCommand(Fit);
         ws.BenchChanged += (_, _) => Reload();
+        ws.ConnectProgressChanged += (_, _) => OnConnectProgress();
         Reload();
     }
 
@@ -226,6 +233,10 @@ public sealed class BenchViewModel : ViewModelBase
     public bool HasSaveHint => _saveHint.Length > 0;
 
     public RelayCommand Probe { get; }
+    /// <summary>「断开」：收掉这台设备的会话、停采集；设备和参数留在台面上。</summary>
+    public RelayCommand Disconnect { get; }
+    /// <summary>「取消连接」（横幅 / 节点菊花上的）：还没连的标成手动断开，随时点「连接」接回来。</summary>
+    public RelayCommand CancelConnect { get; }
     public RelayCommand ToggleRename { get; }
     public RelayCommand ToggleWells { get; }
     public RelayCommand ToggleChTable { get; }
@@ -392,7 +403,7 @@ public sealed class BenchViewModel : ViewModelBase
             _connDirty = false;
             RaiseAll(nameof(HasSelection), nameof(SelectedTitle), nameof(SelectedDriver), nameof(SelectedSub),
                      nameof(IsReactor), nameof(IsProbe), nameof(DeviceName), nameof(BindTarget),
-                     nameof(LinkText), nameof(LinkOk));
+                     nameof(LinkText), nameof(LinkOk), nameof(IsConnected));
         }
     }
 
@@ -447,6 +458,7 @@ public sealed class BenchViewModel : ViewModelBase
     // ── 链路状态（属性栏名字底下那一行）────────────────────────────
     //
     // 「已连接」只在会话真开着时才说；打不开把驱动报的原因原话带出来。
+    // 自动连接：拖入 / 开机 / 读盘都直接开会话起采集；「断开」过的才停在「未连接」。
     // 连接参数改了但还没重连的那段时间，如实标「未生效」——会话还拿着旧口子，
     // 填了 COM7 面板里却读不到数，就是没这一句闹的。
 
@@ -458,6 +470,7 @@ public sealed class BenchViewModel : ViewModelBase
         get
         {
             if (_selected is null) return "";
+            if (_selected.Id == _ws.ConnectingInstanceId) return "连接中…";
             var (text, _) = DeviceLink.Describe(_ws.Session(_selected.Id), _ws.OpenFailure(_selected.Id));
             return _connDirty ? $"{text} · 连接参数已改，点「连接」生效" : text;
         }
@@ -466,7 +479,26 @@ public sealed class BenchViewModel : ViewModelBase
     public bool LinkOk => _selected is not null && !_connDirty
         && DeviceLink.Describe(_ws.Session(_selected.Id), _ws.OpenFailure(_selected.Id)).Ok;
 
-    private void RaiseLink() => RaiseAll(nameof(LinkText), nameof(LinkOk));
+    /// <summary>选中那台的会话真开着——「断开」按钮只在它连着时才出现。</summary>
+    public bool IsConnected => _selected is not null && _ws.Session(_selected.Id) is not null;
+
+    private void RaiseLink() => RaiseAll(nameof(LinkText), nameof(LinkOk), nameof(IsConnected));
+
+    // ── 连接进度（顶部横幅 + 节点菊花，方案 B + C）────────────────────
+    // Workspace 逐台开会话时推 ConnectProgressChanged：横幅报「正在连接 谁（2/3）」，
+    // 正在连的那台节点顶菊花。「取消连接」见 CancelConnect。
+
+    /// <summary>正在逐台连接（横幅看它）。</summary>
+    public bool IsConnecting => _ws.IsConnecting;
+    public string ConnectText => $"正在连接 {_ws.ConnectDeviceName}…";
+    public string ConnectProgressText => $"{_ws.ConnectIndex + 1}/{_ws.ConnectTotal}";
+
+    private void OnConnectProgress()
+    {
+        foreach (var n in Devices) n.IsConnecting = n.Id == _ws.ConnectingInstanceId;
+        RaiseAll(nameof(IsConnecting), nameof(ConnectText), nameof(ConnectProgressText));
+        RaiseLink();    // 选中的正是正在连的那台时，链路行念「连接中…」
+    }
 
     /// <summary>探头绑到哪个通道（原型的「绑定通道」下拉，含「未绑定」）。</summary>
     public ObservableCollection<string> BindTargets { get; } = new();
@@ -830,6 +862,9 @@ public sealed class BenchViewModel : ViewModelBase
         var host = _host;
         var baseKey = _dragNode?.BaseArtKey ?? _dragNew?.ArtKey ?? "";
         var node = _dragNode;
+        // 拓扑签名（挂靠 + 绑定通道）：只挪位置的话它不变——纯挪位置不重建会话
+        //（连着的时候拖一下就重连一次，还会把跑着的通道停了——重建要收会话，现场嫌）
+        var sigBefore = node is null ? null : TopologySig(node.Device);
         var dev = node?.Device ?? CreateDevice();
         if (dev is null) { ClearDrag(); return; }
 
@@ -868,8 +903,19 @@ public sealed class BenchViewModel : ViewModelBase
         node?.MoveTo(new Point(dev.Position.X, dev.Position.Y));
         ClearDrag();
         RebuildLinks();
-        _ = _ws.RebuildChannelsAsync();
+        // 拓扑变了（新设备 / 挂靠或绑定变了）才重建会话；纯挪位置只打脏标记
+        //（脏标记平时靠 BenchChanged 打，不重建就自己打——位置随 .tec 落盘）
+        if (node is null || sigBefore != TopologySig(dev))
+            _ = _ws.RebuildChannelsAsync();
+        else
+            _ws.Store.MarkDirty();
     }
+
+    /// <summary>这台设备的拓扑签名：挂靠在哪个工位 + 绑到哪几条通道（含绑定方式）。只挪位置它不变。</summary>
+    private string TopologySig(DeviceInstance dev)
+        => $"{dev.DockHostId}|{dev.DockAnchor}|" +
+           string.Join(",", _ws.Bench.Bindings.Where(b => b.DeviceId == dev.InstanceId)
+                                              .Select(b => $"{b.ChannelNumber}:{b.Mode}"));
 
     /// <summary>
     /// 拖拽时把接口画出来：能插的亮、占用的暗、当前会插上的最大。
@@ -1321,6 +1367,10 @@ public sealed class BenchViewModel : ViewModelBase
             ChannelRows.Add(new ChannelRowViewModel(ch, host));
         }
 
+        // 打开实验的节奏改过之后，这个页面可能是在「连接中」才被建出来的——
+        // 横幅那几个属性不推一遍，横幅就愣是出不来（现场踩到）
+        RaiseAll(nameof(IsConnecting), nameof(ConnectText), nameof(ConnectProgressText));
+
         // 画布右下角那句「N 台设备 · M 个通道」得跟着变
         Raise(nameof(BenchSummary));
     }
@@ -1399,8 +1449,9 @@ public sealed class BenchViewModel : ViewModelBase
         => key == WellKnownChoices.SerialPorts ? SerialPortScan.Options(current) : null;
 
     /// <summary>
-    /// 「连接」：按当前连接参数先探一遍（固件 / 序列号 / 路数回显在按钮上方），
-    /// 再把会话重开——探完之后设备就是连着的，不是「测完了还得再连一次」。
+    /// 「连接」：打开这台设备的会话、开始采集。按当前连接参数先探一遍
+    /// （固件 / 序列号 / 路数回显在按钮上方），再把会话重开——探完之后设备
+    /// 就是连着的，不是「测完了还得再连一次」。
     /// 探不通照实说驱动报的原因；名字底下那行链路状态跟着会话重开一起刷新。
     /// </summary>
     private async Task ProbeAsync()
@@ -1409,7 +1460,7 @@ public sealed class BenchViewModel : ViewModelBase
 
         ProbeResult = "正在连接…";
         var id = sel.Id;
-        var r = await _ws.ReconnectAsync(id);
+        var r = await _ws.ConnectAsync(id);
         ProbeResult = r.Success
             ? $"连接成功：{r.Message}"
               + (string.IsNullOrEmpty(r.Firmware) ? "" : $"；固件 {r.Firmware}")
@@ -1417,6 +1468,23 @@ public sealed class BenchViewModel : ViewModelBase
               + (r.DetectedChannels is { } n ? $"；探测到 {n} 路" : "")
             : $"连接失败：{r.Message}";
         // 重建把节点整个换过一遍，选回同一台，链路那一行才念得到新会话
+        Selected = Devices.FirstOrDefault(d => d.Id == id) ?? Selected;
+        _connDirty = false;
+        RaiseLink();
+    }
+
+    /// <summary>
+    /// 「断开」：收掉这台设备的会话、停采集，回到「未连接」。设备和连接参数
+    /// 都留在台面上，想再连点「连接」就是。结果同样回显在按钮上方。
+    /// </summary>
+    private async Task DisconnectAsync()
+    {
+        if (_selected is not { } sel) return;
+
+        var id = sel.Id;
+        var r = await _ws.DisconnectAsync(id);
+        ProbeResult = r.Success ? "已断开" : $"断开失败：{r.Message}";
+        // 同 ProbeAsync：重建之后选回同一台，链路那一行才刷得对
         Selected = Devices.FirstOrDefault(d => d.Id == id) ?? Selected;
         _connDirty = false;
         RaiseLink();

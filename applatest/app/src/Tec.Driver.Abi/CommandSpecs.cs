@@ -87,10 +87,13 @@ public static class CommandSpecs
                 Field.Num("rate", "变温速率", 2, "℃/min", 0.1, 16, 0.1) with { VisibleWhen = "task=按速率" },
                 Field.Num("dur", "变温时长", 30, "min", 0.1, null, 0.1) with { VisibleWhen = "task=按时长" },
                 Field.Sel("obj", "控温对象", Tobj, "釜内 Tr"),
-                Field.Num("tol", "到达允差", 0.5, "℃", 0.1, 5, 0.1),
-                Field.Bool("wait", "到达后等待稳定", true)
+                // 允差缺省 ±0.1 ℃（用户定的）；判到达要求连续稳定——单次读数擦进允差不算
+                Field.Num("tol", "到达允差", TempReach.DefaultTolerance, "℃", 0.05, 5, 0.05),
+                Field.Bool("wait", "到达后等待稳定", true),
+                Field.Num("settle", "连续稳定时长", TempReach.DefaultSettleSeconds, "s", 0, 1800, 5)
             })
-            { Tip = "升温还是降温由目标温度决定，不用分两条指令。「尽快」不限速：目标一步写给温控器，它按自己的最大能力到达；「按时长」的速率 = 温差 ÷ 时长，执行时按当时的实测温度现算。到达即结束；要停留就在后面接「恒温保持」。" },
+            { Tip = "升温还是降温由目标温度决定，不用分两条指令。「尽快」不限速：目标一步写给温控器，它按自己的最大能力到达；「按时长」的速率 = 温差 ÷ 时长，执行时按当时的实测温度现算。" +
+                    "判到达看控温对象：釜内 Tr 看 Tr、夹套 Tj 看 Tj；勾了「到达后等待稳定」要连续「稳定时长」都在允差内才算到达，中途出界重新计时。到达即结束；要停留就在后面接「恒温保持」。" },
             TerminationKind.Setpoint, RampEstimate,
             p => p.Str("task", "按速率") switch
             {

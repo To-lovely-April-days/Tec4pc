@@ -1,0 +1,3 @@
+git am -3 0052perchannellifecycle.patch
+
+git am --keep-cr

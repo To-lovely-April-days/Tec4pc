@@ -42,9 +42,24 @@ public sealed class FakeModbusSlave : ISerialTransport
     /// <summary>每次应答前先吐这几个脏字节——模拟 485 收发切换的毛刺（现场读到的是 F8 打头）。</summary>
     public byte[] LeadingNoise { get; set; } = Array.Empty<byte>();
 
+    /// <summary>接下来这么多次应答装没听见（逐次递减，归零自动恢复）——模拟瞬时丢帧，
+    /// 验证主站重试把它救回来（Mute 是一直不答）。</summary>
+    public int MuteNext { get; set; }
+
+    /// <summary>接下来这么多次应答故意写坏 CRC（逐次递减，归零自动恢复）。</summary>
+    public int CorruptCrcNext { get; set; }
+
+    /// <summary>接下来这么多次应答只发去掉 CRC 的前半截——模拟帧烂尾
+    /// （现场抓到的那帧：数据全到了，就差 CRC 两字节）。</summary>
+    public int TruncateNext { get; set; }
+
     /// <summary>一次读最多答几个寄存器（0 = 不限）。现场那台 RD105 固件按参数长度答、不按请求个数答：
     /// 从 0x1002 要 6 个只给 TCADJTEMP 自己的 2 个——用它把这个脾气搬进测试。</summary>
     public int RegsPerReadCap { get; set; }
+
+    /// <summary>读这些起始地址时永远答一半就停（数据少最后一个字节、CRC 不来）——现场那台读
+    /// TC1:RESISTOR（0x1004）就是这样：01 03 08 00 00 00 00 06 9C 83，报 8 字节只来 7 个。</summary>
+    public HashSet<int> TruncateAlwaysAt { get; } = new();
 
     // ── ISerialTransport ─────────────────────────────────────────────
 
@@ -93,7 +108,9 @@ public sealed class FakeModbusSlave : ISerialTransport
         // CRC 坏的请求真从站不理（当线路噪声），这里也一样
         if (!ModbusCrc.Check(frame)) { Requests.Add("crc-bad"); return; }
         if (frame[0] != Station) { Requests.Add($"station-{frame[0]}"); return; }
-        if (Mute) { Requests.Add("muted"); return; }
+        var mute = Mute;
+        if (MuteNext > 0) { MuteNext--; mute = true; }
+        if (mute) { Requests.Add("muted"); return; }
 
         var fc = frame[1];
         if (RejectWith is { } code)
@@ -126,6 +143,14 @@ public sealed class FakeModbusSlave : ISerialTransport
                 var start = At(2);
                 var count = At(4);
                 Requests.Add($"读寄存器 {start}+{count}");
+                if (TruncateAlwaysAt.Contains(start))
+                {
+                    // 头 + 字节数 + 少一个字节的数据，CRC 不来
+                    foreach (var b in LeadingNoise) _tx.Enqueue(b);
+                    _tx.Enqueue(AnswerStation ?? Station); _tx.Enqueue(fc); _tx.Enqueue((byte)(count * 2));
+                    for (var i = 0; i < count * 2 - 1; i++) _tx.Enqueue(0);
+                    break;
+                }
                 if (RegsPerReadCap > 0) count = Math.Min(count, RegsPerReadCap);
                 var data = new byte[1 + count * 2];
                 data[0] = (byte)(count * 2);
@@ -188,9 +213,13 @@ public sealed class FakeModbusSlave : ISerialTransport
         frame[1] = fc;
         Array.Copy(data, 0, frame, 2, data.Length);
         ModbusCrc.Append(frame);
-        if (CorruptCrc) frame[^1] ^= 0xFF;
+        var corrupt = CorruptCrc;
+        if (CorruptCrcNext > 0) { CorruptCrcNext--; corrupt = true; }
+        if (corrupt) frame[^1] ^= 0xFF;
+        var tail = frame.Length;
+        if (TruncateNext > 0) { TruncateNext--; tail -= 2; }
         foreach (var b in LeadingNoise) _tx.Enqueue(b);
-        foreach (var b in frame) _tx.Enqueue(b);
+        for (var i = 0; i < tail; i++) _tx.Enqueue(frame[i]);
     }
 }
 

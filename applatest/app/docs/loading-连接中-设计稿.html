@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>连接中 Loading 设计稿 · 四工位合成平台</title>
+<style>
+  /* ══ 配色照 App.axaml 那张表，一个值都不许新造 ══ */
+  :root{
+    --ink:#303337;      /* 正文 */
+    --sub:#55595e;      /* 次级文字 */
+    --face:#f1f1f1;     /* 面色：不是画布的那一层 */
+    --card:#ffffff;     /* 卡片白 */
+    --indigo:#352d6a;   /* 标题栏靛 */
+    --blue:#2a6fe5;     /* 菜单选中蓝 */
+    --brand:#a41626;    /* 品牌红（SystemAccent） */
+    --deep:#333333;     /* 通用深色底 */
+    --green:#0e7a3e;    /* 在线 / 运行 / 通过 */
+    --alarm:#d93025;    /* 报警红（实底白字三角专用，loading 不用它） */
+    --line:#dddddd;     /* 输入框描边 */
+    --lane:#bfc9d7;     /* 泳道头卡片 */
+    --focus:#acc3df;    /* 聚焦淡蓝灰 */
+    --font:"Segoe UI","Microsoft YaHei UI","Microsoft YaHei",system-ui,Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--font);background:var(--face);color:var(--ink);font-size:12px;padding:28px 32px 60px}
+
+  h1{font-size:20px;font-weight:600;letter-spacing:.5px}
+  .rule{color:var(--sub);margin:6px 0 26px;line-height:1.8}
+  .rule b{color:var(--ink)}
+  h2{font-size:15px;margin:34px 0 4px}
+  .scene-note{color:var(--sub);margin-bottom:14px}
+  .variants{display:flex;gap:22px;flex-wrap:wrap}
+
+  .variant{width:520px}
+  .variant .tag{display:flex;align-items:baseline;gap:8px;margin-bottom:8px}
+  .variant .tag .letter{background:var(--deep);color:#fff;font-weight:600;font-size:12px;
+      padding:2px 8px;border-radius:4px}
+  .variant .tag .name{font-size:13px;font-weight:600}
+  .variant .cap{color:var(--sub);line-height:1.7;margin-top:8px}
+  .variant .cap em{font-style:normal;color:var(--ink)}
+
+  /* ══ 假台面：白画布 + 设备白卡片（真程序里设备格就是白的）══ */
+  .bench{position:relative;height:340px;background:#fff;border:1px solid var(--line);
+      border-radius:6px;overflow:hidden;
+      background-image:radial-gradient(#e3e6ea 1px,transparent 1px);background-size:22px 22px}
+  .dev{position:absolute;background:var(--card);border:1px solid #e0e3e7;border-radius:6px;
+      box-shadow:0 1px 3px rgba(0,0,0,.08);padding:8px 10px;width:150px}
+  .dev .dn{font-size:12px;font-weight:600}
+  .dev .ds{font-size:10.5px;color:var(--sub);margin-top:2px}
+  .dev .pill{display:inline-block;font-size:10.5px;border-radius:999px;padding:1px 8px;margin-top:6px}
+  .dev .ok{background:#e7f2ec;color:var(--green)}
+  .dev .off{background:#f0f1f3;color:var(--sub)}
+  .dev .ing{background:#eef0f6;color:var(--indigo)}
+
+  /* ══ 转环：外壳靛，不是信号色 ══ */
+  .spin{border-radius:50%;border:2.5px solid #d9dce3;border-top-color:var(--indigo);
+      animation:rot .8s linear infinite}
+  .spin.s18{width:18px;height:18px}
+  .spin.s22{width:22px;height:22px}
+  .spin.s30{width:30px;height:30px;border-width:3px}
+  @keyframes rot{to{transform:rotate(360deg)}}
+
+  /* pill 按钮：白底灰边 */
+  .pill-btn{display:inline-block;background:#fff;border:1px solid var(--line);color:var(--ink);
+      border-radius:999px;padding:5px 16px;font-size:12px;cursor:pointer;font-family:var(--font)}
+  .pill-btn:hover{border-color:var(--focus)}
+  .link-btn{background:none;border:none;color:var(--blue);font-size:12px;cursor:pointer;
+      font-family:var(--font);padding:2px 4px}
+  .link-btn:hover{text-decoration:underline}
+
+  /* ══ 方案 A：居中卡片（模态遮罩）══ */
+  .veil{position:absolute;inset:0;background:rgba(48,51,55,.28);display:flex;
+      align-items:center;justify-content:center}
+  .load-card{background:var(--card);border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,.18);
+      padding:26px 34px 22px;display:flex;flex-direction:column;align-items:center;gap:12px;min-width:280px}
+  .load-card .t{font-size:13px;font-weight:600}
+  .load-card .sub{color:var(--sub);font-size:11.5px}
+  .load-card .list{width:100%;margin-top:2px;border-top:1px solid #eee;padding-top:10px}
+  .load-card .row{display:flex;align-items:center;gap:8px;padding:3px 0;color:var(--sub);font-size:11.5px}
+  .load-card .row .st{margin-left:auto}
+  .load-card .row .st.ok{color:var(--green)}
+
+  /* ══ 方案 B：顶部横幅（非模态）══ */
+  .banner{position:absolute;top:0;left:0;right:0;background:var(--card);border-bottom:1px solid var(--line);
+      box-shadow:0 2px 8px rgba(0,0,0,.06);display:flex;align-items:center;gap:10px;padding:9px 14px}
+  .banner .txt{font-size:12px}
+  .banner .txt b{font-weight:600}
+  .banner .right{margin-left:auto;display:flex;align-items:center;gap:10px}
+  .banner .prog{color:var(--sub);font-size:11px}
+
+  /* ══ 方案 C：设备节点内嵌 ══ */
+  .dev-c{width:170px;height:86px;padding:0;overflow:hidden}
+  .dev-c .head{padding:8px 10px 0}
+  .dev-c .veil-c{position:absolute;inset:0;background:rgba(255,255,255,.72);
+      display:flex;align-items:center;justify-content:center}
+  .dev-c .foot{position:absolute;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid #eee;
+      display:flex;align-items:center;gap:7px;padding:6px 10px;font-size:11px;color:var(--indigo)}
+  .dev-c .foot .link-btn{margin-left:auto;font-size:11px;color:var(--sub)}
+  .dev-c .foot .link-btn:hover{color:var(--ink)}
+
+  /* ══ 方案 D：右下角浮窗 ══ */
+  .toast{position:absolute;right:14px;bottom:14px;background:var(--card);border:1px solid #e3e6ea;
+      border-radius:8px;box-shadow:0 6px 22px rgba(0,0,0,.14);padding:12px 14px;
+      display:flex;align-items:center;gap:10px;min-width:250px}
+  .toast .txt{font-size:12px}
+  .toast .txt .sub2{color:var(--sub);font-size:11px;margin-top:2px}
+
+  .cancelled{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+      background:var(--card);border:1px solid var(--line);border-radius:6px;padding:12px 20px;
+      color:var(--sub);display:none;flex-direction:column;align-items:center;gap:8px}
+  .hidden{display:none !important}
+</style>
+</head>
+<body>
+
+<h1>「连接中」Loading 设计稿</h1>
+<p class="rule">配色与字体照 <b>App.axaml</b> 那张色表（靛 #352d6a / 面 #f1f1f1 / 卡片白 / 绿 #0e7a3e 只表在线 / 红只表报警），
+转环用<b>标题靛</b>——它是外壳色不是信号色，不会读成报警。四个方案都可点「取消」看取消后的样子（再点「重新演示」复位）。<br>
+<b>已定稿（2026-10-22，用户选定）：场景一 = B（顶部横幅），场景二 = C（节点内嵌）</b>——已落进程序：
+横幅在 BenchView 画布上沿，节点菊花 + 底条「连接中… 取消」在设备节点模板上；取消 = 还没连的标成手动断开，点「连接」接回来。</p>
+
+<!-- ═══════════ 场景一：打开项目 ═══════════ -->
+<h2>场景一 · 打开项目（整台面连接）</h2>
+<p class="scene-note">先把台面摆出来，再进入连接；打开项目连的是好几台，文案带进度（2/3）。</p>
+<div class="variants">
+
+  <div class="variant">
+    <div class="tag"><span class="letter">A</span><span class="name">居中卡片 · 模态</span></div>
+    <div class="bench" id="benchA">
+      <div class="dev" style="left:36px;top:44px"><div class="dn">双工位反应主机</div><div class="ds">机 A · 2 通道</div><span class="pill off">未连接</span></div>
+      <div class="dev" style="left:230px;top:44px"><div class="dn">Tr 探头</div><div class="ds">绑 CH1</div><span class="pill off">未连接</span></div>
+      <div class="dev" style="left:36px;top:190px"><div class="dn">pH 电极</div><div class="ds">绑 CH2</div><span class="pill off">未连接</span></div>
+      <div class="veil" id="veilA">
+        <div class="load-card">
+          <div class="spin s30"></div>
+          <div class="t">正在连接设备（1/3）…</div>
+          <div class="sub">双工位反应主机 · COM7 @ 38400</div>
+          <div class="list">
+            <div class="row">双工位反应主机<span class="st">连接中…</span></div>
+            <div class="row">Tr 探头<span class="st">排队中</span></div>
+            <div class="row">pH 电极<span class="st">排队中</span></div>
+          </div>
+          <button class="pill-btn" onclick="cancel('A')">取消连接</button>
+        </div>
+      </div>
+      <div class="cancelled" id="cancelledA">
+        <div>已取消连接 —— 设备留在台面上，显示「未连接」</div>
+        <button class="link-btn" onclick="reset('A')">重新演示</button>
+      </div>
+    </div>
+    <p class="cap"><em>最有仪式感</em>：连接整台面时用户本来就在等，遮一下不算打扰；带逐台清单，哪台卡住了看得见。代价是画布被遮住，连上的瞬间数也看不到。</p>
+  </div>
+
+  <div class="variant">
+    <div class="tag"><span class="letter">B</span><span class="name">顶部横幅 · 非模态</span></div>
+    <div class="bench" id="benchB">
+      <div class="banner" id="bannerB">
+        <div class="spin s18"></div>
+        <div class="txt">正在连接 <b>双工位反应主机</b>…</div>
+        <div class="right"><span class="prog">1/3</span><button class="link-btn" onclick="cancel('B')">取消连接</button></div>
+      </div>
+      <div class="dev" style="left:36px;top:60px"><div class="dn">双工位反应主机</div><div class="ds">机 A · 2 通道</div><span class="pill ing">连接中…</span></div>
+      <div class="dev" style="left:230px;top:60px"><div class="dn">Tr 探头</div><div class="ds">绑 CH1</div><span class="pill off">排队中</span></div>
+      <div class="dev" style="left:36px;top:206px"><div class="dn">pH 电极</div><div class="ds">绑 CH2</div><span class="pill off">排队中</span></div>
+      <div class="cancelled" id="cancelledB">
+        <div>已取消连接 —— 横幅收起，设备停在「未连接」</div>
+        <button class="link-btn" onclick="reset('B')">重新演示</button>
+      </div>
+    </div>
+    <p class="cap"><em>最不打断</em>：画布全程可见可点，哪台连上了当场就翻绿出数，横幅只在顶部一条。文案短，放不下逐台清单，只报当前这台 + 进度。</p>
+  </div>
+
+</div>
+
+<!-- ═══════════ 场景二：拖入设备 ═══════════ -->
+<h2>场景二 · 拖一台设备上画布（单台连接）</h2>
+<p class="scene-note">设备先摆上画布（能挪、能选中、能配参数），连接在它自己身上/角落里表示，可取消。</p>
+<div class="variants">
+
+  <div class="variant">
+    <div class="tag"><span class="letter">C</span><span class="name">设备节点内嵌</span></div>
+    <div class="bench" id="benchC">
+      <div class="dev" style="left:36px;top:44px"><div class="dn">双工位反应主机</div><div class="ds">机 A · 2 通道</div><span class="pill ok">已连接</span></div>
+      <div class="dev dev-c" style="left:240px;top:60px">
+        <div class="head"><div class="dn">Tr 探头</div><div class="ds">绑 CH1</div></div>
+        <div class="veil-c" id="veilC"><div class="spin s22"></div></div>
+        <div class="foot" id="footC">连接中…<button class="link-btn" onclick="cancel('C')">取消</button></div>
+      </div>
+      <div class="cancelled" id="cancelledC" style="left:325px;top:110px">
+        <div>已取消 —— 这台停在「未连接」</div>
+        <button class="link-btn" onclick="reset('C')">重新演示</button>
+      </div>
+    </div>
+    <p class="cap"><em>最贴物</em>：状态长在被连接的设备自己身上，拖三台就是三个小菊花，互不挡。取消粒度天然是单台。属性栏的链路行同步显示「连接中…」。</p>
+  </div>
+
+  <div class="variant">
+    <div class="tag"><span class="letter">D</span><span class="name">右下角浮窗</span></div>
+    <div class="bench" id="benchD">
+      <div class="dev" style="left:36px;top:44px"><div class="dn">双工位反应主机</div><div class="ds">机 A · 2 通道</div><span class="pill ok">已连接</span></div>
+      <div class="dev" style="left:240px;top:60px"><div class="dn">Tr 探头</div><div class="ds">绑 CH1</div><span class="pill ing">连接中…</span></div>
+      <div class="toast" id="toastD">
+        <div class="spin s18"></div>
+        <div class="txt">正在连接 <b>Tr 探头</b><div class="sub2">COM8 · 宇电 19200</div></div>
+        <button class="link-btn" style="margin-left:auto" onclick="cancel('D')">取消</button>
+      </div>
+      <div class="cancelled" id="cancelledD">
+        <div>已取消 —— 浮窗收起，这台停在「未连接」</div>
+        <button class="link-btn" onclick="reset('D')">重新演示</button>
+      </div>
+    </div>
+    <p class="cap"><em>最轻</em>：节点本身只换个「连接中…」签，细节浮在角落。浮窗能带串口信息；拖多台时浮窗排队或合并成一条「2 台连接中」。</p>
+  </div>
+
+</div>
+
+<script>
+  function cancel(id){
+    document.getElementById('veil'+id)?.classList.add('hidden');
+    document.getElementById('banner'+id)?.classList.add('hidden');
+    document.getElementById('veilC')?.classList.add('hidden');
+    document.getElementById('footC')?.classList.add('hidden');
+    document.getElementById('toastD')?.classList.add('hidden');
+    document.getElementById('cancelled'+id).style.display='flex';
+  }
+  function reset(id){
+    document.getElementById('cancelled'+id).style.display='none';
+    document.getElementById('veil'+id)?.classList.remove('hidden');
+    document.getElementById('banner'+id)?.classList.remove('hidden');
+    document.getElementById('veilC')?.classList.remove('hidden');
+    document.getElementById('footC')?.classList.remove('hidden');
+    document.getElementById('toastD')?.classList.remove('hidden');
+  }
+</script>
+
+</body>
+</html>

@@ -108,7 +108,7 @@ public sealed class HmiViewModel : ViewModelBase
                  nameof(ZGraTab), nameof(ZSeqTab), nameof(ZSafTab), nameof(ZExpTab), nameof(ZPidTab),
                  nameof(ShowOvApp), nameof(ShowOvGra), nameof(ShowOvSeq), nameof(ShowZCtl),
                  nameof(ShowZGra), nameof(ShowZSeq), nameof(ShowZSaf), nameof(ShowZExp), nameof(ShowZPid),
-                 nameof(ShowFiles), nameof(ShowSys), nameof(ZStub), nameof(ShowStub));
+                 nameof(ShowFiles), nameof(ShowSys), nameof(ZStub), nameof(ShowStub), nameof(ShowWater));
         if (ShowZPid && Cur is { } zp) zp.Pid.Refresh();
         // 切页别等下一拍——空一秒的页面看着像坏了
         if (ShowZGra && Cur is { } z) z.RefreshGra();
@@ -876,6 +876,80 @@ public sealed class HmiViewModel : ViewModelBase
     public void AskPrimaryDo() { var a = _askPrimary; AskCancel(); a?.Invoke(); }
     public void AskSecondaryDo() { var a = _askSecondary; AskCancel(); a?.Invoke(); }
 
+    // ── 冷却水电磁阀（整机一只，装置总览页的开关）────────────────────────
+    //
+    // 阀挂在每个工位上都是同一只（ICoolingWaterValve），取第一个有的就行。
+    // 开关读的是驱动的影子（每拍读回核对过），不是面板自己记的——模块上人手扳了也照实显示
+
+    private ICoolingWaterValve? Water => Zones
+        .Select(z => _ws.ChannelOf(z.Number)?.Capabilities.Get<ICoolingWaterValve>())
+        .FirstOrDefault(v => v is not null);
+
+    /// <summary>
+    /// 台面上这台主机配了 IO8R（双工位主机、「电加热切换」= 有）：阀在接线上就存在。
+    /// 能力只有会话开着才挂上——设备没连接时光看能力开关就整个消失（用户踩到），
+    /// 所以按台面配置判「有没有这只阀」，按能力判「能不能动」。
+    /// </summary>
+    private bool WaterConfigured => Zones
+        .Select(z => _ws.ChannelOf(z.Number) is { } ch ? _ws.Bench.Device(ch.HostInstanceId) : null)
+        .Any(d => d is not null && d.DriverId == "tec.reactor.duo"
+                  && !string.Equals(d.Connection.Str("电加热切换", "有"), "无", StringComparison.Ordinal));
+
+    /// <summary>这台设备有没有冷却水阀（没配 IO8R 的没有）——没有就不显示开关。</summary>
+    public bool HasWater => Water is not null || WaterConfigured;
+    /// <summary>开关摆在顶栏右侧，所有页都在（阀是整机的，不归哪个工位）。</summary>
+    public bool ShowWater => HasWater;
+    /// <summary>开关按「要的」显示：关水挂着（冷水机在停、阀等它停稳）算关——再点一下是又要水。阀还开着由小字说。</summary>
+    public bool WaterOn => Water is { IsOpen: true, Closing: false };
+    /// <summary>开关旁边那句小字：开着 / 关着 / 为什么不能动。</summary>
+    public string WaterNote => Water switch
+    {
+        null => HasWater ? "设备未连接" : "",
+        { Available: false } => "IO8R 未连接",
+        // 跟冷水机联动时驱动给一句（「已开·冷水机正常运行」「冷水机延时停机·停稳后关阀」），照原话印
+        { Status: { } s } => s,
+        { IsOpen: true } => "已开",
+        _ => "已关"
+    };
+
+    private bool _waterBusy;
+
+    public void ToggleWater()
+    {
+        if (Water is not { } v)
+        {
+            Toast(HasWater ? "设备未连接，冷却水阀开关不了——先在台面上连接设备" : "这台设备没有冷却水阀");
+            return;
+        }
+        if (_waterBusy) return;
+        if (!v.Available) { Toast("IO8R 没打开，冷却水阀开关不了"); return; }
+        // 关水时有路在制冷，驱动会拒绝并说明哪一路（任一路制冷 DO4 保持打开，用户定的），toast 照原话印。
+        // 关水挂着时开关显示关：这一下是又要水（驱动撤销关水、冷水机重新开机）
+        SetWater(v, !WaterOn);
+    }
+
+    private void SetWater(ICoolingWaterValve v, bool open)
+    {
+        _waterBusy = true;
+        v.SetAsync(open, CancellationToken.None).ContinueWith(task =>
+        {
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                _waterBusy = false;
+                if (task.Exception?.GetBaseException() is { } ex) Toast(ex.Message);
+                else
+                {
+                    _ws.Log.Write("面板", $"HMI 面板冷却水阀{(open ? "打开" : "关闭")}", _ws.Operator);
+                    // 联动冷水机时关水要等冷水机停稳：返回时阀多半还开着，说清楚在等
+                    Toast(open ? "冷却水已打开" : v.IsOpen ? "冷水机停机中，停稳后自动关阀" : "冷却水已关闭");
+                }
+                RaiseWater();
+            });
+        }, TaskScheduler.Default);
+    }
+
+    private void RaiseWater() => RaiseAll(nameof(HasWater), nameof(ShowWater), nameof(WaterOn), nameof(WaterNote));
+
     // ── Toast（原型 hint）────────────────────────────────────────────
 
     public string ToastText { get => _toastText; private set => Set(ref _toastText, value); }
@@ -909,6 +983,7 @@ public sealed class HmiViewModel : ViewModelBase
         if (ShowFiles) FilesRefresh();
         if (ShowSys) SysRefresh();
         RefreshAlarm();
+        RaiseWater();
         if (_toastTtl > 0 && --_toastTtl == 0) Raise(nameof(ToastOpen));
         RaiseAll(nameof(AnyRun), nameof(RailState), nameof(OvRt), nameof(Cur));
     }
@@ -1000,6 +1075,11 @@ public sealed class HmiZoneViewModel : ViewModelBase
 
     public string Mode { get; private set; } = "Tr";
     public bool TempOn { get; private set; }
+
+    /// <summary>温控开关在途（下发 / 停控的业务没走完：开阀、冷水机、通水延时、热源切换那段）。
+    /// 开关上转菊花、对账不对它——不然降温开机那几秒回路还没开，对账会把开关打回关，
+    /// 业务走完回路开了又打回开（现场踩到：开关开→关→开弹跳）。</summary>
+    public bool TempBusy { get; private set; }
     public bool StirOn { get; private set; }
     public bool TrOn { get; private set; } = true;
     public bool PhOn { get; private set; }
@@ -1224,6 +1304,9 @@ public sealed class HmiZoneViewModel : ViewModelBase
     private void SyncWithLoop()
     {
         if (Temp is not ITemperatureStatus st) { _loopMismatch = 0; return; }
+        // 开关在途（冷水机 / 通水延时 / 热源切换那段还没走完）：别对账——
+        // 对了就弹跳（开→关→开，现场踩到）。菊花收了、任务落定，对账再管
+        if (TempBusy) return;
         if (EngineRunning) { _loopMismatch = 0; _loopSynced = true; return; }
         var running = st.Active && st.Setpoint is { } sp;
         if (running == TempOn) { _loopMismatch = 0; _loopSynced = true; return; }
@@ -1565,16 +1648,36 @@ public sealed class HmiZoneViewModel : ViewModelBase
     {
         if (GuardEngine()) return;
         if (Temp is not { } t) { _owner.Toast("该通道没有温度控制能力"); return; }
+        if (TempBusy) return;               // 在途不叠——菊花的功夫业务就走完了
         TempOn = !TempOn;
+        TempBusy = true;
         if (TempOn) IssueTemp();
-        else _ = t.StopAsync(CancellationToken.None);
+        else StopTemp(t);
         Log("开关", "温控" + (TempOn ? " 开" : " 关"));
         RaiseZone();
     }
 
+    /// <summary>停控：任务走完才收菊花。停不成照实说——回路还开着，对账会把开关打回开（那是实话）。</summary>
+    private void StopTemp(ITemperatureControl t)
+    {
+        t.StopAsync(CancellationToken.None).ContinueWith(task =>
+        {
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                TempBusy = false;
+                if (task.Exception?.GetBaseException() is { } ex)
+                {
+                    Log("拒绝", ex.Message);
+                    _owner.Toast(ex.Message);
+                }
+                RaiseZone();
+            });
+        }, TaskScheduler.Default);
+    }
+
     private void IssueTemp()
     {
-        if (Temp is not { } t) return;
+        if (Temp is not { } t) { TempBusy = false; return; }
         // 发出去的就是要记下的：温控开关 / 换模式 / 换到达方式这几条路都从这里下发，用的是
         // 「待下发优先」的 Pv()。发了却还留在待下发里，格子亮着琥珀色、釜上的牌子写着旧数，
         // 温控器已经在追新数（用户踩到）——温度这几项一并落成设定值
@@ -1598,6 +1701,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
         if (RampBy == "dur" && double.IsNaN(cur))
         {
             TempOn = false;
+            TempBusy = false;
             var what = Mode == "Tj" ? "夹套" : "釜内";
             Log("拒绝", $"{what}没有读数，「按时长」算不出速率");
             _owner.Toast($"{what}温度没有读数，「按时长」算不出速率——先把探头接好，或改「按速率」/「尽快」");
@@ -1624,12 +1728,15 @@ public sealed class HmiZoneViewModel : ViewModelBase
         // 实际一个字都没写进控制器，跟蒸回流那条路一样把它接住
         issue.ContinueWith(task =>
         {
-            if (task.Exception?.GetBaseException() is not { } ex) return;
             Avalonia.Threading.Dispatcher.UIThread.Post(() =>
             {
-                TempOn = false;
-                Log("拒绝", ex.Message);
-                _owner.Toast(ex.Message);
+                TempBusy = false;           // 业务走完了才收菊花、恢复对账
+                if (task.Exception?.GetBaseException() is { } ex)
+                {
+                    TempOn = false;
+                    Log("拒绝", ex.Message);
+                    _owner.Toast(ex.Message);
+                }
                 RaiseZone();
             });
         }, TaskScheduler.Default);
@@ -1647,12 +1754,15 @@ public sealed class HmiZoneViewModel : ViewModelBase
         var cap = t.Limits.Max;
         r.StartAsync(dt, cap, CancellationToken.None).ContinueWith(task =>
         {
-            if (task.Exception?.GetBaseException() is not { } ex) return;
             Avalonia.Threading.Dispatcher.UIThread.Post(() =>
             {
-                TempOn = false;
-                Log("拒绝", ex.Message);
-                _owner.Toast(ex.Message);
+                TempBusy = false;
+                if (task.Exception?.GetBaseException() is { } ex)
+                {
+                    TempOn = false;
+                    Log("拒绝", ex.Message);
+                    _owner.Toast(ex.Message);
+                }
                 RaiseZone();
             });
         }, TaskScheduler.Default);
@@ -2880,7 +2990,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
         nameof(HeatState), nameof(HasHeat), nameof(HeatHot), nameof(HeatText),
         nameof(Mode), nameof(ModeName), nameof(ModeTr), nameof(ModeTj), nameof(ModeFollow),
         nameof(CanReflux), nameof(ByDur),
-        nameof(TempOn), nameof(StirOn), nameof(TrOn), nameof(PhOn),
+        nameof(TempOn), nameof(TempBusy), nameof(StirOn), nameof(TrOn), nameof(PhOn),
         nameof(RampBy), nameof(ByRate), nameof(ByFast), nameof(FastNote), nameof(TargetLabel), nameof(TargetUnit), nameof(RampValLabel),
         nameof(VbTr), nameof(VbRate), nameof(VbDur), nameof(VbRpm), nameof(VbREnd), nameof(VbRDur),
         nameof(NowLine1), nameof(NowLine2), nameof(StirNow), nameof(PendCount), nameof(LimChipList),

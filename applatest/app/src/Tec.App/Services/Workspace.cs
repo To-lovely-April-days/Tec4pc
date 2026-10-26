@@ -53,6 +53,11 @@ public sealed class Workspace : IHmiHost
     /// HMI 头卡念的「未连接：……」就是它——打不开要说为什么，不能只写个「未连接」。</summary>
     private readonly Dictionary<string, string> _openFailures = new(StringComparer.Ordinal);
 
+    /// <summary>被手动断开的设备（运行时状态，不落盘）。默认全自动：拖上台面 / 开机 / 读盘
+    /// 都直接开会话起采集、实时出数；点「断开」才进这个集合（调试 / 暂离时停掉一台），
+    /// 点「连接」摘出来。重开程序一律回到自动连接。</summary>
+    private readonly HashSet<string> _disconnected = new(StringComparer.Ordinal);
+
     public Workspace()
     {
         Clock = new VirtualClock();
@@ -202,6 +207,34 @@ public sealed class Workspace : IHmiHost
     public event Action<int, string>? MarkRequested;
     public event EventHandler? BenchChanged;
 
+    // ── 连接进度（横幅 / 节点菊花）────────────────────────────────────
+    // 重建通道里逐台开会话时逐台推进：界面靠它把「正在连哪台、第几台、共几台」摆出来。
+    // 「取消连接」把还没连的标成手动断开（_disconnected），随时点「连接」接回来。
+
+    public event EventHandler? ConnectProgressChanged;
+
+    /// <summary>正在逐台开会话（横幅看这个）。</summary>
+    public bool IsConnecting { get; private set; }
+    /// <summary>正在连的这台的名字（横幅文案）与实例号（节点菊花看谁）。</summary>
+    public string ConnectDeviceName { get; private set; } = "";
+    public string? ConnectingInstanceId { get; private set; }
+    /// <summary>正在连的是第几台（0 起）/ 一共几台。</summary>
+    public int ConnectIndex { get; private set; }
+    public int ConnectTotal { get; private set; }
+
+    /// <summary>当前这次重建的取消闸。一次重建一把：队列里等着的下一次拿新的。</summary>
+    private CancellationTokenSource? _connectCts;
+
+    /// <summary>横幅 / 节点上的「取消连接」：还没连的（含正在连的这台）标成手动断开。</summary>
+    public void CancelConnect() => _connectCts?.Cancel();
+
+    /// <summary>跟 BenchChanged 一个做法：界面线程直接发，别的线程丢进 UI 队列（FIFO 保序）。</summary>
+    private void RaiseConnectProgress()
+    {
+        if (Dispatcher.UIThread.CheckAccess()) ConnectProgressChanged?.Invoke(this, EventArgs.Empty);
+        else Dispatcher.UIThread.Post(() => ConnectProgressChanged?.Invoke(this, EventArgs.Empty));
+    }
+
     public void Boot()
     {
         // 程序里只有真机驱动，没有仿真：双工位反应主机（RD105 + IO8R，见
@@ -287,7 +320,8 @@ public sealed class Workspace : IHmiHost
     }
 
     /// <summary>
-    /// 开机建通道。单独拎出来是因为它得 await——在界面线程上阻塞等驱动收尾，
+    /// 开机建通道并开会话（自动连接：拖入 / 读盘同此；手动断开的除外，见 _disconnected）。
+    /// 单独拎出来是因为它得 await——在界面线程上阻塞等驱动收尾，
     /// 会把界面线程和驱动互相锁死。窗口建好之后调它，界面靠 BenchChanged 自己刷新。
     /// </summary>
     public async Task StartAsync()
@@ -302,23 +336,36 @@ public sealed class Workspace : IHmiHost
     /// <summary>
     /// 台面变了就重建通道：拖一台双通道反应器进来 → 产生 2 个 Channel；
     /// 把 pH 探头绑到 CH2 → CH2 的能力集合多出 IScalarSensor（§5）。
+    /// 自动连接：每台设备照当前参数开会话起采集；手动断开的除外（_disconnected）。
+    /// 开不起来照实记「未连接：原因」，不拦别的设备。
     /// </summary>
-    public async Task RebuildChannelsAsync()
+    /// <param name="connect">false = 只建通道拓扑、不开会话（打开实验的第一步：先见设备，
+    /// 都还是「未连接」）；紧接着调默认的这一步才逐台连——横幅进度与取消只在第二步有。</param>
+    public async Task RebuildChannelsAsync(bool connect = true)
     {
         // 重建是串行的：属性栏一次操作可能连着触发两次（换绑定通道时下拉刷新又推一次），
         // 两次同时跑，一个正在 foreach 收会话、另一个已经在往 _sessions 里加——
         // 「Collection was modified」（现场踩到）。后来的等前一个做完再做，不合并：
         // 台面是它改完之后的样子，重做一遍拿到的就是最新状态
         await _rebuildGate.WaitAsync().ConfigureAwait(false);
-        try { await RebuildChannelsCoreAsync().ConfigureAwait(false); }
+        try { await RebuildChannelsCoreAsync(connect).ConfigureAwait(false); }
         finally { _rebuildGate.Release(); }
     }
 
-    private async Task RebuildChannelsCoreAsync()
+    private async Task RebuildChannelsCoreAsync(bool connect)
     {
-        await CloseSessionsAsync("台面改动，设备会话重开").ConfigureAwait(false);
+        // 取消闸建在收会话之前：收会话要花时间，这期间点的「取消连接」也作数
+        _connectCts = new CancellationTokenSource();
+        // 重建重开不是真断开：先记住谁开着——收的时候打 Reconnecting 标记（别停冷水机 / 关阀），
+        // 新会话的 DriverContext.Reconnecting 也按它给（开机复位按物理现状接手）
+        var hadSession = _sessions.Keys.ToHashSet(StringComparer.Ordinal);
+        await CloseSessionsAsync("台面改动，设备会话重开", rebuild: true).ConfigureAwait(false);
         _channels.Clear();
         Engine.ResetSafety("台面重建，限值已重设");
+
+        // 台面上已经没有的设备，断开标记一并摘掉——删设备 / 新建实验 / 换台面文件
+        // 都走这里，不摘的话标记就指着一台不存在的设备
+        _disconnected.RemoveWhere(id => Bench.Devices.All(d => d.InstanceId != id));
 
         // 1. 先按宿主设备开通道
         var number = 0;
@@ -337,56 +384,112 @@ public sealed class Workspace : IHmiHost
             hostWells[dev.InstanceId] = list;
         }
 
-        // 2. 打开会话并挂能力
-        foreach (var dev in Bench.Devices)
+        // 2. 打开会话并挂能力——自动连接：每台都开，手动断开（_disconnected）的除外，
+        //    那是调试 / 暂离时停掉的一台，界面上是个安静的「未连接」。
+        //    先排出要连的清单，再把台面先亮出来（节点、通道先就位，还是「未连接」）——
+        //    「先见设备、再见连接中」就是这个顺序；逐台开会话时横幅报进度、节点顶菊花。
+        //    connect = false（打开实验的第一步）只到上面为止：通道建好、会话一个不开
+        var plan = new List<(DeviceInstance Dev, List<int> Chs)>();
+        if (connect)
+            foreach (var dev in Bench.Devices)
+            {
+                if (Drivers.Driver(dev.DriverId) is null) continue;
+                if (_disconnected.Contains(dev.InstanceId)) continue;
+
+                // 宿主设备按自己的孔位开通道；探头/泵按绑定关系挂到别人的通道上
+                var chs = hostWells.TryGetValue(dev.InstanceId, out var hosted)
+                    ? hosted
+                    : Bench.Bindings.Where(b => b.DeviceId == dev.InstanceId)
+                                    .Select(b => b.ChannelNumber).Distinct().OrderBy(x => x).ToList();
+                if (chs.Count == 0) continue;
+                plan.Add((dev, chs));
+            }
+
+        IsConnecting = plan.Count > 0;
+        ConnectTotal = plan.Count;
+        if (IsConnecting)
         {
-            var driver = Drivers.Driver(dev.DriverId);
-            if (driver is null) continue;
+            ConnectIndex = 0;
+            ConnectingInstanceId = plan[0].Dev.InstanceId;
+            ConnectDeviceName = plan[0].Dev.Display;
+            await RaiseBenchChangedAsync().ConfigureAwait(false);   // 先见设备
+            RaiseConnectProgress();
+        }
 
-            // 宿主设备按自己的孔位开通道；探头/泵按绑定关系挂到别人的通道上
-            var chs = hostWells.TryGetValue(dev.InstanceId, out var hosted)
-                ? hosted
-                : Bench.Bindings.Where(b => b.DeviceId == dev.InstanceId)
-                                .Select(b => b.ChannelNumber).Distinct().OrderBy(x => x).ToList();
-            if (chs.Count == 0) continue;
+        // 取消：还没连的（含正在连的这台）标成手动断开——界面停在「未连接」，点「连接」接回来
+        void CancelRest(int from)
+        {
+            var rest = plan.Skip(from).ToList();
+            foreach (var p in rest) _disconnected.Add(p.Dev.InstanceId);
+            Log?.Write("设备", $"连接已取消：{string.Join("、", rest.Select(p => p.Dev.Display))} 未连（点「连接」可接回来）",
+                       Operator, LogLevel.Warn);
+        }
 
-            var ctx = new DriverContext
+        try
+        {
+            for (var i = 0; i < plan.Count; i++)
             {
-                InstanceId = dev.InstanceId,
-                ChannelNumbers = chs,
-                Config = dev.Config,
-                Simulated = false,
-                TimeScale = 1,
-                Clock = Clock.Func,
-                Log = (level, text) => Log?.Write("设备", text, Operator,
-                    level is "error" ? LogLevel.Error : level is "warn" ? LogLevel.Warn : LogLevel.Info)
-            };
+                if (_connectCts.IsCancellationRequested) { CancelRest(i); break; }
+                var (dev, chs) = plan[i];
+                ConnectIndex = i;
+                ConnectingInstanceId = dev.InstanceId;
+                ConnectDeviceName = dev.Display;
+                RaiseConnectProgress();
 
-            IDeviceSession session;
-            try
-            {
-                session = await driver.OpenAsync(dev.Connection, ctx, CancellationToken.None)
-                                      .ConfigureAwait(false);
-                await session.StartAsync(CancellationToken.None).ConfigureAwait(false);
+                var driver = Drivers.Driver(dev.DriverId)!;
+
+                var ctx = new DriverContext
+                {
+                    InstanceId = dev.InstanceId,
+                    ChannelNumbers = chs,
+                    Config = dev.Config,
+                    Simulated = false,
+                    TimeScale = 1,
+                    Clock = Clock.Func,
+                    Reconnecting = hadSession.Contains(dev.InstanceId),
+                    Log = (level, text) => Log?.Write("设备", text, Operator,
+                        level is "error" ? LogLevel.Error : level is "warn" ? LogLevel.Warn : LogLevel.Info)
+                };
+
+                IDeviceSession session;
+                try
+                {
+                    session = await driver.OpenAsync(dev.Connection, ctx, _connectCts.Token)
+                                          .ConfigureAwait(false);
+                    await session.StartAsync(_connectCts.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    CancelRest(i);
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    // 打不开照实记着继续：这一台在台面上显示「未连接：原因」，
+                    // 别的设备照常开——一台串口没插不该把整个台面拖死
+                    _openFailures[dev.InstanceId] = ex.Message;
+                    Log?.Write("设备", $"{dev.Display}（{dev.InstanceId}）打开失败：{ex.Message}", Operator, LogLevel.Error);
+                    continue;
+                }
+
+                Log?.Write("设备", $"{dev.Display}（{dev.InstanceId}）已连接", Operator);
+                _sessions[dev.InstanceId] = session;
+                Engine.Ingest(session);
+
+                for (var w = 0; w < chs.Count && w < Math.Max(1, session.WellCount); w++)
+                {
+                    var ch = _channels.FirstOrDefault(c => c.Number == chs[w]);
+                    ch?.Attach(session, w, hostWells.ContainsKey(dev.InstanceId));
+                }
             }
-            catch (Exception ex)
-            {
-                // 打不开照实记着继续：这一台在台面上显示「未连接：原因」，
-                // 别的设备照常开——一台串口没插不该把整个台面拖死
-                _openFailures[dev.InstanceId] = ex.Message;
-                Log?.Write("设备", $"{dev.Display}（{dev.InstanceId}）打开失败：{ex.Message}", Operator, LogLevel.Error);
-                continue;
-            }
-
-            Log?.Write("设备", $"{dev.Display}（{dev.InstanceId}）已连接", Operator);
-            _sessions[dev.InstanceId] = session;
-            Engine.Ingest(session);
-
-            for (var w = 0; w < chs.Count && w < Math.Max(1, session.WellCount); w++)
-            {
-                var ch = _channels.FirstOrDefault(c => c.Number == chs[w]);
-                ch?.Attach(session, w, hostWells.ContainsKey(dev.InstanceId));
-            }
+        }
+        finally
+        {
+            // 半路出幺蛾子也不能让横幅卡住：连接状态一定归位
+            _connectCts = null;
+            IsConnecting = false;
+            ConnectingInstanceId = null;
+            RaiseConnectProgress();
         }
 
         // 2.5 跨会话喂釜温：真机拆件后 Tr 由宇电探头会话发，而主机的控温
@@ -456,7 +559,10 @@ public sealed class Workspace : IHmiHost
     /// Dispose，让它「接着跑」只是对着空气下指令：界面上通道明明「运行中」，
     /// 釜温却一动不动，而且一声不吭。停下来至少在记录里写清了为什么停。
     /// </summary>
-    private async Task CloseSessionsAsync(string why)
+    /// <param name="rebuild">true = 台面重建 / 重连（马上重开）：设备还在台面上的会话
+    /// 打上 Reconnecting 标记再收——「走人前收拾」（停冷水机、关冷却水阀）跳过，
+    /// 物理状态交给新会话接手。false（默认）= 真断开，照常收拾。</param>
+    private async Task CloseSessionsAsync(string why, bool rebuild = false)
     {
         foreach (var r in Engine.Runners.ToList())
             if (r.State is ChannelRunState.Running or ChannelRunState.Paused)
@@ -467,11 +573,14 @@ public sealed class Workspace : IHmiHost
         }
 
         // 先把表摘空再逐个收：收会话要 await，这期间别让任何人再从表里读到一个正在死的会话
-        var closing = _sessions.Values.ToList();
+        var closing = _sessions.ToList();
         _sessions.Clear();
         _openFailures.Clear();
-        foreach (var s in closing)
+        foreach (var (id, s) in closing)
         {
+            // 设备被删的不算重开（它已经不在台面上了）——那是真断开，照常收拾
+            if (rebuild && s is IReconnectAwareSession rec && Bench.Devices.Any(d => d.InstanceId == id))
+                rec.Reconnecting = true;
             try { await s.DisposeAsync().ConfigureAwait(false); } catch { }
         }
     }
@@ -481,15 +590,18 @@ public sealed class Workspace : IHmiHost
         => Engine.Runners.Any(r => r.State is ChannelRunState.Running or ChannelRunState.Paused);
 
     /// <summary>
-    /// 「连接」：先测后开。测试要占串口，而这台设备的会话可能正拿着同一个口
-    /// （Windows 上一个串口只许开一次）——所以先把会话收掉、让驱动按**当前**
-    /// 连接参数探一遍（回显固件 / 序列号 / 路数），再把台面上的会话全部按当前
-    /// 参数重开。改了串口之后点它，改动才真正生效；之前会话一直拿着旧口子，
-    /// 属性栏上明明填了 COM7、面板里却什么都读不到。
+    /// 「连接」：先测后开（手动断开的设备从这里回到自动连接）。测试要占串口，而这台
+    /// 设备的会话可能正拿着同一个口（Windows 上一个串口只许开一次）——所以先把
+    /// 会话收掉、让驱动按**当前**连接参数探一遍（回显固件 / 序列号 / 路数），
+    /// 再把台面上的会话按当前参数重开。改了串口之后点它，改动才真正生效；
+    /// 之前会话一直拿着旧口子，属性栏上明明填了 COM7、面板里却什么都读不到。
+    ///
+    /// 探不通也照常重开（自动连接）：界面上是「未连接：原因」，下次台面改动顺带重试一次
+    /// （一次一抛，不成循环）；不想让它连就点「断开」。
     ///
     /// 有通道在跑就拒绝：重开会话必然要停它。
     /// </summary>
-    public async Task<ProbeResult> ReconnectAsync(string instanceId)
+    public async Task<ProbeResult> ConnectAsync(string instanceId)
     {
         var dev = Bench.Devices.FirstOrDefault(d => d.InstanceId == instanceId);
         if (dev is null) return new ProbeResult(false, "这台设备已不在台面上");
@@ -503,17 +615,44 @@ public sealed class Workspace : IHmiHost
         ProbeResult r;
         try
         {
-            await CloseSessionsAsync("重新连接设备，会话重开").ConfigureAwait(false);
+            _disconnected.Remove(instanceId);
+            await CloseSessionsAsync("重新连接设备，会话重开", rebuild: true).ConfigureAwait(false);
             try { r = await driver.ProbeAsync(dev.Connection, CancellationToken.None).ConfigureAwait(false); }
             catch (Exception ex) { r = new ProbeResult(false, ex.Message); }
             Log?.Write("设备", $"{dev.Display}（{dev.InstanceId}）连接测试：{(r.Success ? "成功" : "失败")}——{r.Message}",
                        Operator, r.Success ? LogLevel.Info : LogLevel.Warn);
 
-            await RebuildChannelsCoreAsync().ConfigureAwait(false);
+            await RebuildChannelsCoreAsync(true).ConfigureAwait(false);
         }
         finally { _rebuildGate.Release(); }
         return r;
     }
+
+    /// <summary>
+    /// 「断开」：把这台设备标成手动断开，重建时它不再开会话——采集停在这里，
+    /// 设备和连接参数都留在台面上，想再连点「连接」就是（调试 / 暂离时用）。
+    /// 有通道在跑同样拒绝：收会话必然要停它。
+    /// </summary>
+    public async Task<ProbeResult> DisconnectAsync(string instanceId)
+    {
+        var dev = Bench.Devices.FirstOrDefault(d => d.InstanceId == instanceId);
+        if (dev is null) return new ProbeResult(false, "这台设备已不在台面上");
+        if (AnyChannelRunning)
+            return new ProbeResult(false, "有通道正在运行——断开要停设备会话，先把通道停下来再断");
+
+        await _rebuildGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            _disconnected.Add(instanceId);
+            Log?.Write("设备", $"{dev.Display}（{dev.InstanceId}）已断开", Operator);
+            await RebuildChannelsCoreAsync(true).ConfigureAwait(false);
+        }
+        finally { _rebuildGate.Release(); }
+        return new ProbeResult(true, "已断开");
+    }
+
+    /// <summary>这台设备是不是被手动断开了——界面拿它区分「自动连接中 / 连不上」和「人停的」。</summary>
+    public bool IsDisconnected(string instanceId) => _disconnected.Contains(instanceId);
 
     public IDeviceSession? Session(string instanceId)
         => _sessions.TryGetValue(instanceId, out var s) ? s : null;

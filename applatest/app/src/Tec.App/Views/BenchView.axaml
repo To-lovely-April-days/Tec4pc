@@ -161,21 +161,42 @@
             <!-- 本地值会盖掉样式，所以底色与描边都交给 Style 定 -->
             <Border Classes="dev" Classes.sel="{Binding IsSelected}"
                     PointerPressed="OnDevicePressed">
-              <StackPanel>
-                <!-- Run1/Run2 点的是主机上两颗工位 LED：工位挂了配件就变绿（演示同款）。
-                     插进工位的探头（Inserted）不写名字——演示里插入件旁只有读数框，
-                     两行字会压在机器身上 -->
-                <ctl:DeviceArtView ArtKey="{Binding ArtKey}" ArtWidth="{Binding Width}"
-                                   Run1="{Binding Run1}" Run2="{Binding Run2}"
-                                   Spin="{Binding Spin}"
-                                   Therm1="{Binding Therm1}" Therm2="{Binding Therm2}"
-                                   Paddle1="{Binding Paddle1}" Paddle2="{Binding Paddle2}" />
-                <TextBlock Text="{Binding Title}" FontSize="11" Foreground="#383b3f"
-                           HorizontalAlignment="Center" Margin="0,2,0,0"
-                           IsVisible="{Binding !Inserted}" />
-                <TextBlock Text="{Binding ChannelText}" FontSize="10" Foreground="#959a9f"
-                           HorizontalAlignment="Center" IsVisible="{Binding !Inserted}" />
-              </StackPanel>
+              <Grid>
+                <StackPanel>
+                  <!-- Run1/Run2 点的是主机上两颗工位 LED：工位挂了配件就变绿（演示同款）。
+                       插进工位的探头（Inserted）不写名字——演示里插入件旁只有读数框，
+                       两行字会压在机器身上 -->
+                  <ctl:DeviceArtView ArtKey="{Binding ArtKey}" ArtWidth="{Binding Width}"
+                                     Run1="{Binding Run1}" Run2="{Binding Run2}"
+                                     Spin="{Binding Spin}"
+                                     Therm1="{Binding Therm1}" Therm2="{Binding Therm2}"
+                                     Paddle1="{Binding Paddle1}" Paddle2="{Binding Paddle2}" />
+                  <TextBlock Text="{Binding Title}" FontSize="11" Foreground="#383b3f"
+                             HorizontalAlignment="Center" Margin="0,2,0,0"
+                             IsVisible="{Binding !Inserted}" />
+                  <TextBlock Text="{Binding ChannelText}" FontSize="10" Foreground="#959a9f"
+                             HorizontalAlignment="Center" IsVisible="{Binding !Inserted}" />
+                </StackPanel>
+                <!-- 节点内嵌「连接中」（设计稿方案 C）：半透明盖 + 菊花 + 底条「连接中… 取消」。
+                     底条把指针事件吃掉，别落成选中 / 拖动 -->
+                <Border IsVisible="{Binding IsConnecting}" Background="#CCFFFFFF" CornerRadius="4">
+                  <Grid>
+                    <ctl:BusyRing Width="24" Height="24" HorizontalAlignment="Center"
+                                  VerticalAlignment="Center" Margin="0,0,0,18" />
+                    <Border VerticalAlignment="Bottom" Background="#F1F1F1" CornerRadius="0,0,4,4"
+                            Padding="8,3">
+                      <Grid>
+                        <TextBlock Text="连接中…" FontSize="10.5" Foreground="#352d6a"
+                                   VerticalAlignment="Center" HorizontalAlignment="Left" />
+                        <Button Content="取消" FontSize="10.5" HorizontalAlignment="Right"
+                                VerticalAlignment="Center" Background="Transparent" BorderThickness="0"
+                                Foreground="#55595e" Padding="4,1" Cursor="Hand"
+                                PointerPressed="OnNodeCancelPressed" Click="OnNodeCancelConnect" />
+                      </Grid>
+                    </Border>
+                  </Grid>
+                </Border>
+              </Grid>
             </Border>
           </DataTemplate>
         </ItemsControl.ItemTemplate>
@@ -356,6 +377,20 @@
 
       <TextBlock Text="{Binding BenchSummary}" FontSize="11" Foreground="#959a9f"
                  HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="14" />
+
+      <!-- 连接横幅（设计稿方案 B）：逐台开会话时顶在画布上沿——不遮画布，画布照常能点，
+           哪台连上了当场翻绿。「取消连接」把还没连的标成手动断开（点「连接」接回来） -->
+      <Border VerticalAlignment="Top" Background="#FFFFFF" BorderBrush="#DDDDDD" BorderThickness="0,0,0,1"
+              IsVisible="{Binding IsConnecting}">
+        <Grid ColumnDefinitions="Auto,Auto,*,Auto" Margin="14,8">
+          <ctl:BusyRing Grid.Column="0" Width="18" Height="18" VerticalAlignment="Center" />
+          <TextBlock Grid.Column="1" Text="{Binding ConnectText}" FontSize="12" Foreground="#303337"
+                     VerticalAlignment="Center" Margin="10,0,0,0" />
+          <TextBlock Grid.Column="2" Text="{Binding ConnectProgressText}" FontSize="11" Foreground="#959a9f"
+                     VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,10,0,0" />
+          <Button Grid.Column="3" Classes="pill" Content="取消连接" Command="{Binding CancelConnect}" />
+        </Grid>
+      </Border>
     </Panel>
 
     <!--
@@ -391,10 +426,14 @@
               <Button Classes="pill" Content="温控器参数" IsVisible="{Binding IsReactor}"
                       Click="OnOpenSettings"
                       ToolTip.Tip="温控器自己的寄存器：最大功率、两路电流、PID、自整定……读的是它此刻的值" />
-              <!-- 「连接」= 先测后开：按当前连接参数探一遍（固件 / 序列号 / 路数回显在上方），
-                   再把会话重开。改了串口之后点它改动才生效 -->
+              <!-- 「连接」= 先探一遍（固件 / 序列号 / 路数回显在上方）再按当前参数重开会话。
+                   改串口之后点它改动才生效；手动「断开」过的设备也靠它接回来。
+                   「断开」只在连着时出现：收会话、停采集（调试 / 暂离用），设备和参数留在台面上 -->
               <Button Classes="pill" Content="连接" Command="{Binding Probe}"
-                      ToolTip.Tip="按当前连接参数重新打开这台设备：先探一遍，再重开会话" />
+                      ToolTip.Tip="按当前连接参数重开这台设备：先探一遍，再重开会话；改串口后点它生效" />
+              <Button Classes="pill" Content="断开" Command="{Binding Disconnect}"
+                      IsVisible="{Binding IsConnected}"
+                      ToolTip.Tip="断开会话、停止采集；设备和连接参数留在台面上" />
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center">
               <Button Classes="tbtn foot" ToolTip.Tip="保存实验" Command="{Binding SaveExperiment}">
@@ -535,8 +574,9 @@
               </StackPanel>
 
               <!-- 链路状态：名字底下一行小字。「已连接」只在会话真开着时才说（绿）；
-                   打不开把驱动报的原因原话带出来（红）；连接参数改了还没点「连接」
-                   也如实标出来——会话还拿着旧口子，填了 COM7 面板里却读不到数，就是这一段 -->
+                   自动连接，拖上画布就开——开不起来把驱动报的原因原话带出来（红）；
+                   「断开」过的停在「未连接」。连接参数改了还没点「连接」也如实标出来——
+                   会话还拿着旧口子，填了 COM7 面板里却读不到数，就是这一段 -->
               <TextBlock Classes="link" Classes.ok="{Binding LinkOk}" Text="{Binding LinkText}"
                          IsVisible="{Binding !Renaming}" />
 

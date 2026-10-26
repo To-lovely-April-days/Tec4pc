@@ -94,6 +94,7 @@ public partial class HmiView : UserControl
     private void OnTogPh(object? s, PointerPressedEventArgs e) { Vm?.Cur?.TogglePhSensor(); e.Handled = true; }
     private void OnTogTemp(object? s, PointerPressedEventArgs e) { Vm?.Cur?.ToggleTemp(); e.Handled = true; }
     private void OnTogStir(object? s, PointerPressedEventArgs e) { Vm?.Cur?.ToggleStir(); e.Handled = true; }
+    private void OnTogWater(object? s, PointerPressedEventArgs e) { Vm?.ToggleWater(); e.Handled = true; }
 
     private void OnRadRate(object? s, PointerPressedEventArgs e) { Vm?.Cur?.SetRampBy("rate"); e.Handled = true; }
     private void OnRadDur(object? s, PointerPressedEventArgs e) { Vm?.Cur?.SetRampBy("dur"); e.Handled = true; }

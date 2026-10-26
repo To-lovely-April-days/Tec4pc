@@ -29,6 +29,14 @@ public sealed class DualStationDriver : IDeviceDriver
         public const string PortIo = "IO8R串口";
         public const string AddrIo = "IO8R站号";
         public const string BaudIo = "IO8R波特率";
+        /// <summary>
+        /// 冷水机（《主机触模屏通讯协议2023》，Modbus-RTU）跟冷却水阀联动（用户定的标准开关顺序）：开水先开阀、再开冷水机；
+        /// 关水先停冷水机，等它真停了（运行状态 = 空闲）再关阀。「有」且选了串口才联动，没选串口照旧只有阀。
+        /// </summary>
+        public const string HasChiller = "冷水机联动";
+        public const string PortChiller = "冷水机串口";
+        public const string AddrChiller = "冷水机站号";
+        public const string BaudChiller = "冷水机波特率";
         public const string Tick = "模块轮询周期";
 
         /// <summary>TEC 反向输出加热启不启用。「不启用」（默认）= 所有加热都走电加热棒。</summary>
@@ -48,7 +56,7 @@ public sealed class DualStationDriver : IDeviceDriver
         /// <summary>升降温死区（K）。只在「TEC 加热」不启用时用到：目标比当前温度低不到这个数不算降温（下发时先合加热棒；冷水机已关时定成升温挡）。</summary>
         public const string Band = "热源死区";
         /// <summary>
-        /// 冷水机开没开（手动开关，软件不能自动）：「已开」（默认，0334 用户定的——降温的时候冷水机一定开着；0336 起已开 = 双向挡：
+        /// 冷水机开没开（没连冷水机串口时是手动开关；连了的话接 TEC 前软件自己开，见 HasChiller）：「已开」（默认，0334 用户定的——降温的时候冷水机一定开着；0336 起已开 = 双向挡：
         /// 一个 PID 两边出力，继电器跟功率符号走）/「已关」（升温挡 / 降温挡：降温目标不接 TEC、光靠自然凉）。TEC 没有冷却水不能开。
         /// 属性栏上改了当拍生效：在控的路按新规矩重新定挡。
         /// </summary>
@@ -61,12 +69,16 @@ public sealed class DualStationDriver : IDeviceDriver
         public const string TecRelay = "TEC功率继电器";
         public const string TecDoA = "TEC功率DO·工位A";
         public const string TecDoB = "TEC功率DO·工位B";
+        /// <summary>冷却水电磁阀（整机一只）接 IO8R 的哪一路 DO。现场接在 DO4（从 0 数第五路），用户定的。</summary>
+        public const string WaterDo = "冷却水阀DO";
+        /// <summary>冷却水阀打开后等多久再接 TEC（让水先流起来，用户定的）。</summary>
+        public const string WaterLead = "通水延时";
     }
 
     /// <summary>
     /// 连接参数的缺省值——按现场那台机器填的（用户定的）：RD105 在 CH344 的 C 口（COM7）、
     /// IO8R 在 B 口（COM10），两条都走 RS485 = Modbus-RTU、站号 1；RD105 波特率 38400（用户定的，
-    /// 不是协议 §1 写的 485 口出厂 9600），IO8R 9600。
+    /// 不是协议 §1 写的 485 口出厂 9600），IO8R 9600；冷水机在 COM8（9600 8N1、站号 1）。
     /// COM 号是这台 PC 上的枚举结果，换台电脑可能变，属性栏里改就是了；这里只是少填几步。
     /// </summary>
     public static class Defaults
@@ -78,6 +90,11 @@ public sealed class DualStationDriver : IDeviceDriver
         public const string PortIo = "COM10";
         public const int BaudIo = 9600;
         public const int AddrIo = 1;
+        /// <summary>冷水机主板 485 口：现场在 COM8（用户定的），选上就跟冷却水阀联动；清空就不联动。</summary>
+        public const string PortChiller = "COM8";
+        /// <summary>协议 §1：9600 8N1、站号 1。</summary>
+        public const int BaudChiller = 9600;
+        public const int AddrChiller = 1;
     }
 
     /// <summary>测试用的链路工厂：两条串口全换成假设备，整机逻辑不插硬件就能回归。</summary>
@@ -106,6 +123,16 @@ public sealed class DualStationDriver : IDeviceDriver
         Field.Port(Fields.PortIo, "IO8R 串口", Defaults.PortIo, "艾莫迅 JY-MODBUS-IO8R。下拉里是当前检测到的串口（现场那台在 CH344 的 B 口）"),
         Field.Num(Fields.AddrIo, "IO8R 站号", Defaults.AddrIo, "", 1, 247, 1),
         Field.Sel(Fields.BaudIo, "IO8R 波特率", new[] { "4800", "9600", "19200", "38400", "57600", "115200" }, Defaults.BaudIo.ToString()),
+        // 冷水机跟冷却水阀联动（用户定的标准开关顺序）：开水先开阀再开冷水机；关水先停冷水机、等它真停了再关阀
+        Field.Sel(Fields.HasChiller, "冷水机联动", new[] { "有", "无" }, "有")
+            with { Tip = "冷却水阀跟冷水机联动：开水先开阀、再给冷水机发开机；关水先给冷水机发停机，等它真停了（运行状态 = 空闲，" +
+                         "延时停机那段也算没停）再关阀——冷水机还在转就关阀会憋泵。选上「冷水机串口」才联动；联动后冷水机连不上就确认不了它停没停，" +
+                         "阀宁可开着不关。没有冷水机通讯线选「无」" },
+        Field.Port(Fields.PortChiller, "冷水机串口", Defaults.PortChiller,
+            "冷水机主板的 485 口（协议：9600 8N1、站号 1）。没选就不联动，冷却水阀照旧单独开关。" +
+            "冷水机的「起停方式」要设成「本地+远程」，远程开关机它才理"),
+        Field.Num(Fields.AddrChiller, "冷水机站号", Defaults.AddrChiller, "", 1, 247, 1),
+        Field.Sel(Fields.BaudChiller, "冷水机波特率", new[] { "4800", "9600", "19200" }, Defaults.BaudChiller.ToString()),
         Field.Num(Rd105TecDriver.FieldPeriod, "控制周期", 500, "ms", 200, 5000, 100),
         Field.Num(Fields.Tick, "模块轮询周期", 1000, "ms", 100, 5000, 100),
         Field.Num(Rd105TecDriver.FieldTrGrace, "Tr 丢失宽限", 30, "s", 0, 120, 5)
@@ -145,7 +172,8 @@ public sealed class DualStationDriver : IDeviceDriver
         // 一个 PID 两边出力、继电器跟功率符号走。「已关」= 升温挡 / 降温挡：降温目标不接 TEC、光靠自然凉
         Field.Sel(Fields.Chiller, "冷水机", new[] { "已开", "已关" }, "已开")
             with { Tip = "缺省「已开」= 双向挡：一个 PID 两边出力，正给加热棒、负给 TEC 制冷（参数用加热棒那张表，TEC 那半轴按该行「加热比」放大），" +
-                         "IO8R 继电器跟着功率符号走（同号连续 3 s 才扳一次）——放热、吸热随时接得上。前提是你真把冷水机开了：TEC 没有冷却水会干烧，软件看不见水。" +
+                         "IO8R 继电器跟着功率符号走（同号连续 3 s 才扳一次）——放热、吸热随时接得上。前提是冷水机开着：TEC 没有冷却水会干烧。" +
+                         "连接参数里选了冷水机串口的话，接 TEC 前软件自己开（先开冷却水阀、再开冷水机）；没选就得你手动开。" +
                          "改成「已关」= 升温挡 / 降温挡：升温、保温只用加热棒，降温目标不接 TEC、只关加热棒自然凉，到了目标加热棒接手。" +
                          "属性栏上改了当拍生效，在控的路按新规矩重新定挡，不用断开重连" },
         // 上限 90 是死的（用户定的：只能比 90 小）——TEC 模块自身耐温的工程上限，等厂家给模块热端最高温度再定。
@@ -171,7 +199,17 @@ public sealed class DualStationDriver : IDeviceDriver
         Field.Sel(Fields.TecRelay, "TEC 功率继电器", new[] { "有", "无" }, "有")
             with { Tip = "TEC 的功率线经 IO8R 继电器接通（闭合 = TEC 有电）。默认断着；要制冷才合它、要加热合加热棒那只（双向挡跟功率符号走），两只从不同时合；停控 / 安全停机断开。功率线是硬线直连、不经继电器的机器选「无」" },
         Field.Num(Fields.TecDoA, "TEC 功率 DO·工位 A", 6, "", 0, 7, 1),
-        Field.Num(Fields.TecDoB, "TEC 功率 DO·工位 B", 7, "", 0, 7, 1)
+        Field.Num(Fields.TecDoB, "TEC 功率 DO·工位 B", 7, "", 0, 7, 1),
+        // 冷却水电磁阀：整机一只，现场接在 IO8R 的 DO4（代码索引 4 = 物理第五路，用户定的）。
+        // 跟着 TEC 自动走（用户定的）：真要接 TEC 才先开阀、等通水延时再接；回加热棒侧就停冷水机、停稳关阀——升温时冷水机与阀都关。
+        // 手动面板首页的开关保留；开机复位、断开会话跟着八路一起断
+        Field.Num(Fields.WaterDo, "冷却水阀 DO", 4, "", 0, 7, 1)
+            with { Tip = "冷却水电磁阀接 IO8R 的哪一路 DO（从 0 数，现场那台接 DO4 = 第五路）。" +
+                         "自动联动：真要接 TEC（往 TEC 侧扳）之前先开阀，等「通水延时」再接 TEC；TEC 断开（回加热棒侧）就停冷水机、停稳再关阀——升温时冷水机与阀都关着，降温才开。" +
+                         "连接参数里选了冷水机串口的话，阀跟冷水机一起走：开水先开阀再开冷水机，关水先停冷水机、等它停稳再关阀（面板开关、自动联动、安全停机、断开设备都一样）。" +
+                         "手动面板首页「冷却水」开关可以手动开关（手动开的不会被自动关）。不能与切换 DO / TEC 功率 DO 重号" },
+        Field.Num(Fields.WaterLead, "通水延时", 5, "s", 0, 60, 1)
+            with { Tip = "冷却水阀刚打开时，等这么多秒让水先流起来再接 TEC。阀已经开着就不等" }
     })
     {
         Tip = "超温上限就是电加热模式的最高温度——写进 RD105 自己的保护寄存器，断了通信照样生效，" +
@@ -200,6 +238,7 @@ public sealed class DualStationDriver : IDeviceDriver
         {
             links = LinksFactory(connection);
             links.OpenAll();
+            links.DisableRetriesForProbe();     // 探测本身就是换着试，链路层别再叠重试（慢）
 
             try
             {
@@ -221,6 +260,27 @@ public sealed class DualStationDriver : IDeviceDriver
             {
                 try { await io.ReadRelaysAsync(ct).ConfigureAwait(false); lines.Add("IO8R：已响应"); }
                 catch (Exception ex) { lines.Add($"IO8R：{ex.Message}{ioDown}"); }
+            }
+
+            // 冷水机（选了串口才有）：不通不拦开机，但冷却水阀跟它联动不起来——确认不了它停没停，阀只开不关
+            const string chDown = "（开机会照常，但冷却水阀跟冷水机联动不起来：确认不了冷水机停没停，阀只开不关）";
+            if (links.ChillerOpenError is { } chWhy)
+                lines.Add($"{chWhy}{chDown}");
+            else if (links.Chiller is { } chiller)
+            {
+                try
+                {
+                    var st = await chiller.ReadStateAsync(ct).ConfigureAwait(false);
+                    var mode = "";
+                    try
+                    {
+                        if (await chiller.ReadStartStopModeAsync(ct).ConfigureAwait(false) == 0)
+                            mode = "——但「起停方式」是「本地」，远程开关机它不理：冷水机面板上改成「本地+远程」";
+                    }
+                    catch { }
+                    lines.Add($"冷水机：已响应（{ChillerClient.StateName(st)}）{mode}");
+                }
+                catch (Exception ex) { lines.Add($"冷水机：{ex.Message}{chDown}"); }
             }
 
             lines.Add("Tr / pH 探头各有自己的串口，在探头设备上分别测试");
@@ -246,6 +306,7 @@ public sealed class DualStationDriver : IDeviceDriver
                 alt[Fields.ProtoRd105] = p;
                 alt[Fields.BaudRd105] = b.ToString();
                 var l = LinksFactory(alt);
+                l.DisableRetriesForProbe();     // 扫档一档一试，链路层重试只会让每档白等
                 return (l.Rd105, l);
             }, proto, baud, station, "RD105 协议", ct).ConfigureAwait(false);
             lines.Insert(0, $"{noReply}；{scan}");

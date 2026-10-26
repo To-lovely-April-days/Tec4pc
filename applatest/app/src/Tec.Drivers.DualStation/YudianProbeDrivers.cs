@@ -216,7 +216,8 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
             link = SerialFactory(connection);
             link.Open();
             var client = new YudianClient(new ModbusRtuClient(
-                link.Transport, (byte)connection.Num(FieldAddr, 1), busLock: link.BusLock));
+                link.Transport, (byte)connection.Num(FieldAddr, 1), busLock: link.BusLock)
+                { TimeoutRetries = 0, CorruptRetries = 0 });    // 探测本身一试一报，链路层别叠重试（慢）
             var id = await client.InitAsync(_kind, ct).ConfigureAwait(false);
 
             // 四路各是什么口、读数多少都摆出来：现场对「探头接在第几路」就靠这一眼，

@@ -13,15 +13,45 @@ public sealed class Rd105Link : IDisposable
 {
     private readonly ISerialTransport _transport;
 
+    /// <summary>
+    /// 通信异常的应答整帧丢掉、清缓冲、重发同一条，直到拿到校验通过的——最多这么久（ms，用户定的）。
+    /// 线真断了（拔线 / 掉电）也就卡这么久，之后照常报错、走断链处理。
+    /// </summary>
+    public const int RetryBudgetMs = 2000;
+
     public Rd105Link(ISerialTransport transport)
     {
         _transport = transport;
-        Client = new TecClient(transport);
+        Client = new TecClient(transport) { RetryBudgetMs = RetryBudgetMs };
         Controller = new TecController(Client);
+        // Modbus-RTU 口：坏帧在桥下那层就按帧重发（只重发坏的那一帧，不把整条指令重来）；
+        // 期限从同一时刻起算，桥下用完了上面 TecClient 也不会再叠一轮
+        if (Bridge is { } b) b.Modbus.RetryBudgetMs = RetryBudgetMs;
     }
 
     public TecClient Client { get; }
     public TecController Controller { get; }
+
+    /// <summary>串口上套的 Modbus 桥（协议选 Modbus-RTU 才有）；ASCII 直连时是 null。</summary>
+    public Rd105ModbusBridge? Bridge => _transport as Rd105ModbusBridge;
+
+    /// <summary>
+    /// 探测前把两层链路的自动重发都关掉（桥下的 Modbus 层 + 上面的 TecClient 层）：
+    /// 探测本身就是「换着试」的那层重试，底下再叠两层，每个不通的组合都要白等
+    /// 好几倍超时——点「连接」半天没反应的体感就是它。会话照常留着重试不动。
+    /// </summary>
+    public void DisableRetriesForProbe()
+    {
+        Client.TimeoutRetries = 0;
+        Client.CorruptRetries = 0;
+        Client.RetryBudgetMs = 0;           // 按时长重试也关：探测一试一报
+        if (Bridge is { } b)
+        {
+            b.Modbus.TimeoutRetries = 0;
+            b.Modbus.CorruptRetries = 0;
+            b.Modbus.RetryBudgetMs = 0;
+        }
+    }
 
     public bool IsOpen => _transport.IsOpen;
 

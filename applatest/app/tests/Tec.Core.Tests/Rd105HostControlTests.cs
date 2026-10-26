@@ -769,7 +769,7 @@ public class Rd105HostControlTests
         {
             InstanceId = "DUO1",
             ChannelNumbers = new[] { 1, 2 },
-            Config = cfg ?? new ParameterSet(),          // 主机缺省 = 上位机 PID、反向、加热棒负
+            Config = NoLead(cfg),                        // 主机缺省 = 上位机 PID、反向、加热棒负
             Simulated = false,
             TimeScale = 1,
             Clock = () => DateTimeOffset.Now,
@@ -777,6 +777,14 @@ public class Rd105HostControlTests
         };
 
         public static ParameterSet Conn() => ParameterSet.Of((Rd105TecDriver.FieldPeriod, 200d), (DualStationDriver.Fields.Tick, 200d));
+
+        /// <summary>接 TEC 前的通水延时缺省 5 s：这里的用例不验它，不等。</summary>
+        private static ParameterSet NoLead(ParameterSet? cfg)
+        {
+            cfg ??= new ParameterSet();
+            if (!cfg.Has(DualStationDriver.Fields.WaterLead)) cfg[DualStationDriver.Fields.WaterLead] = 0d;
+            return cfg;
+        }
 
         /// <summary>「冷水机」标为已开（0333：降温挡只有标成已开才合 TEC 功率线；0334 起这是缺省）。</summary>
         public static ParameterSet ChillerOn() => ParameterSet.Of((DualStationDriver.Fields.Chiller, "已开"));

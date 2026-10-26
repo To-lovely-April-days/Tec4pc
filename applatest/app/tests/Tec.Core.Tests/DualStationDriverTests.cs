@@ -33,6 +33,8 @@ public sealed class DualStationDriverTests
         {
             config ??= new ParameterSet();
             if (!config.Has(Rd105TecDriver.FieldControl)) config[Rd105TecDriver.FieldControl] = Rd105TecDriver.ControlDevice;
+            // 接 TEC 前的通水延时缺省 5 s：测试里不等（验延时的用例自己写明）
+            if (!config.Has(DualStationDriver.Fields.WaterLead)) config[DualStationDriver.Fields.WaterLead] = 0d;
             return new DriverContext
             {
                 InstanceId = "DUO1",
@@ -101,7 +103,7 @@ public sealed class DualStationDriverTests
     [Fact]
     public void 连接参数缺省照现场那台机器填()
     {
-        // 用户定的：RD105 在 CH344 的 C 口（COM7）、IO8R 在 B 口（COM10），
+        // 用户定的：RD105 在 CH344 的 C 口（COM7）、IO8R 在 B 口（COM10）、冷水机 COM8，
         // 两条都是 RS485 = Modbus-RTU、站号 1；RD105 38400（用户定的）、IO8R 9600。装好程序不改一项点「连接」就该通。
         var cn = new ParameterSet().FillDefaults(new DualStationDriver().ConnectionSchema);
 
@@ -114,6 +116,10 @@ public sealed class DualStationDriverTests
         Assert.Equal("COM10", cn.Str(DualStationDriver.Fields.PortIo));
         Assert.Equal(9600, cn.Num(DualStationDriver.Fields.BaudIo));
         Assert.Equal(1, cn.Int(DualStationDriver.Fields.AddrIo));
+
+        Assert.Equal("COM8", cn.Str(DualStationDriver.Fields.PortChiller));
+        Assert.Equal(9600, cn.Num(DualStationDriver.Fields.BaudChiller));
+        Assert.Equal(1, cn.Int(DualStationDriver.Fields.AddrChiller));
 
         // 单独的 RD105 温控器驱动跟主机里那条 RD105 链路指的是同一台机器，缺省不能各说各的
         Assert.Equal(Rd105TecDriver.DefaultPort, DualStationDriver.Defaults.PortRd105);
@@ -226,7 +232,8 @@ public sealed class DualStationDriverTests
         Assert.Equal(60_00000, b.Rd.Get(1, "TG"));
         Assert.False(b.Io.Coils[0]);                     // 加热棒那只没动
         Assert.True(b.Io.Coils[6]);                      // TEC 功率线（DO6 = A）合上——TEC 加热启用，60 ℃ 走 TEC
-        Assert.Equal(new[] { "写DO 6=闭" }, b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写")).ToList());
+        // 接 TEC 之前先开冷却水阀（DO4）
+        Assert.Equal(new[] { "写DO 4=闭", "写DO 6=闭" }, b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写")).ToList());
     }
 
     [Fact]
@@ -504,7 +511,7 @@ public sealed class DualStationDriverTests
         Assert.True(b.Io.Coils[0]);
         Assert.False(b.Io.Coils[6]);
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
-        Assert.Equal(new[] { "写DO 6=断", "写DO 0=闭" }, b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写DO")).ToList());
+        Assert.Equal(new[] { "写DO 6=断", "写DO 4=断", "写DO 0=闭" }, b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写DO")).ToList());
         // 日志里的功率按回路的约定说（正加热 / 负制冷），不按这台设备的符号
         lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("功率 +20.0 %") && l.Text.Contains("已连续 3 s 指向电加热") && l.Text.Contains("PID 不复位"));
 
@@ -525,7 +532,7 @@ public sealed class DualStationDriverTests
         await s.StopAsync(CancellationToken.None);
         Assert.True(b.Io.Coils[6]);
         Assert.False(b.Io.Coils[0]);
-        Assert.Equal(new[] { "写DO 0=断", "写DO 6=闭" }, b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写DO")).ToList());
+        Assert.Equal(new[] { "写DO 4=闭", "写DO 0=断", "写DO 6=闭" }, b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写DO")).ToList());
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
         lock (b.Logs) Assert.DoesNotContain(b.Logs, l => l.Text.Contains("降温挡") || l.Text.Contains("升温挡："));
     }
@@ -712,6 +719,7 @@ public sealed class DualStationDriverTests
         // 人把「冷水机」标成已开：该合 TEC 功率线了——可这一笔写继电器撞上总线不应答。
         // 切换序列在 ① 关输出之后抛出，输出停在关闭状态
         cfg[DualStationDriver.Fields.Chiller] = "已开";
+        await Water(s, 0).SetAsync(true, CancellationToken.None);   // 水已经开着：这一用例验的是写继电器那一笔失败
         b.Io.Mute = true;
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         Assert.Equal(0, b.Rd.Get(1, "ENABLE"));            // 输出确实被关掉了
@@ -1301,7 +1309,7 @@ public sealed class DualStationDriverTests
         Assert.False(b.Io.Coils[0]);
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
         Assert.Equal(10_00000, b.Rd.Get(1, "TG"));
-        Assert.Equal(new[] { "写DO 6=闭" }, b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写")).ToList());
+        Assert.Equal(new[] { "写DO 4=闭", "写DO 6=闭" }, b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写")).ToList());   // 先通水再接 TEC
 
         // 再跑一拍：还在降温，一只都不再动
         mark = b.Io.Requests.Count;
@@ -1333,6 +1341,7 @@ public sealed class DualStationDriverTests
         Assert.True(b.Io.Coils[0]);
         Assert.False(b.Io.Coils[6]);
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
+        // 0522（用户定的）：升温不开冷却水——只有真要接 TEC 才先通水；这里只合加热棒，阀不动
         Assert.Equal(new[] { "写DO 0=闭" }, b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写")).ToList());
     }
 
@@ -1379,7 +1388,7 @@ public sealed class DualStationDriverTests
         Assert.False(b.Io.Coils[6]);
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
         var seq = b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写DO")).ToList();
-        Assert.Equal(new[] { "写DO 6=断", "写DO 0=闭" }, seq);   // 先断 TEC 功率线，再合加热棒
+        Assert.Equal(new[] { "写DO 6=断", "写DO 4=断", "写DO 0=闭" }, seq);   // 先断 TEC 功率线，关冷却水（升温不开水），再合加热棒
 
         // 到温后下发更低的目标 = 降温挡 → TEC：先断加热棒，再合 TEC 功率线（夹套 63 在回切线以下）
         b.Rd.Set(1, "TCADJTEMP", 63_00000);
@@ -1392,7 +1401,7 @@ public sealed class DualStationDriverTests
         Assert.True(b.Io.Coils[6]);
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
         seq = b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写DO")).ToList();
-        Assert.Equal(new[] { "写DO 0=断", "写DO 6=闭" }, seq);
+        Assert.Equal(new[] { "写DO 4=闭", "写DO 0=断", "写DO 6=闭" }, seq);   // 先通水（开阀），再断加热棒，再合 TEC 功率线
         Assert.False(b.Io.Coils[7]);                       // B 没被牵连
         Assert.False(b.Io.Coils[1]);
     }
@@ -1431,7 +1440,9 @@ public sealed class DualStationDriverTests
         await t.SetTargetAsync(new TempTarget(10), CancellationToken.None);
         await s.StopAsync(CancellationToken.None);
 
-        Assert.All(b.Io.Coils, c => Assert.False(c));
+        // DO6 / DO7 一根不碰；冷却水阀（DO4）照样跟着 TEC 开——硬线直连的 TEC 一样要水
+        Assert.All(b.Io.Coils.Where((_, i) => i != 4), c => Assert.False(c));
+        Assert.True(b.Io.Coils[4]);
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
         Assert.Equal(10_00000, b.Rd.Get(1, "TG"));
     }
@@ -1605,6 +1616,233 @@ public sealed class DualStationDriverTests
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => b.Drv.OpenAsync(
             Conn(), b.Ctx(ParameterSet.Of((DualStationDriver.Fields.DoA, 6d))), CancellationToken.None));
         Assert.Contains("DO6", ex.Message);
+    }
+
+    // ── 冷却水电磁阀（整机一只，IO8R DO4，手动面板首页开关）────────────
+
+    private static ICoolingWaterValve Water(IDeviceSession s, int well)
+        => s.CapabilitiesOf(well).OfType<ICoolingWaterValve>().Single();
+
+    [Fact]
+    public async Task 冷却水阀_开机关着_开关走DO4_两个工位是同一只()
+    {
+        var b = Rig();
+        b.Io.Coils[4] = true;                            // 上一炉留着没关
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
+
+        var a = Water(s, 0);
+        Assert.True(a.Available);
+        Assert.False(a.IsOpen);
+        Assert.False(b.Io.Coils[4]);                     // 开机八路全断，阀跟着关
+
+        await a.SetAsync(true, CancellationToken.None);
+        Assert.True(b.Io.Coils[4]);
+        Assert.True(Water(s, 1).IsOpen);                 // 整机一只：B 工位看到的也是开着
+        Assert.All(new[] { 0, 1, 2, 3, 5, 6, 7 }, i => Assert.False(b.Io.Coils[i]));   // 别的继电器没被碰
+
+        await Water(s, 1).SetAsync(false, CancellationToken.None);
+        Assert.False(b.Io.Coils[4]);
+        Assert.False(a.IsOpen);
+    }
+
+    [Fact]
+    public async Task 冷却水阀_模块上被人扳了_读回按实际记()
+    {
+        var b = Rig();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
+        b.Io.Coils[4] = true;                            // 模块面板按键手动开了
+
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+
+        Assert.True(Water(s, 0).IsOpen);
+        Assert.Contains(b.Logs, l => l.Text.Contains("冷却水阀 DO4") && l.Text.Contains("不符"));
+    }
+
+    [Fact]
+    public async Task 冷却水阀_安全停机_另一路还在制冷就不关_两路都停了才关()
+    {
+        var b = Rig();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(TecOn()), CancellationToken.None);
+        await Water(s, 0).SetAsync(true, CancellationToken.None);       // 手动开的
+        await Temp(s, 1).SetTargetAsync(new TempTarget(60), CancellationToken.None);   // B 走 TEC（「TEC 加热」启用、不过阈值）
+        Assert.True(b.Io.Coils[7]);
+
+        var notes = await s.SafeStopAsync(0, CancellationToken.None);
+        Assert.True(b.Io.Coils[4]);                      // 断水 TEC 会干烧：B 还在制冷就不关
+        Assert.Contains(notes!, n => n.Contains("冷却水阀没关"));
+
+        notes = await s.SafeStopAsync(1, CancellationToken.None);
+        Assert.False(b.Io.Coils[4]);                     // 两路都停了：关阀（安全停机连手动开的也关）
+        Assert.Contains(notes!, n => n.Contains("冷却水阀（DO4）已关"));
+    }
+
+    // ── 冷却水阀跟 TEC 联动（用户定的顺序）────────────────────────────
+
+    /// <summary>IO8R 的写 DO 记录（「写DO 4=闭」这种），从 mark 往后数。</summary>
+    private static List<string> DoWrites(Bench b, int mark)
+        => b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写DO")).ToList();
+
+    [Fact]
+    public async Task 制冷_先开DO4通水_再接TEC()
+    {
+        var b = Rig();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(TecOn()), CancellationToken.None);
+        var mark = b.Io.Requests.Count;
+
+        await Temp(s, 0).SetTargetAsync(new TempTarget(60), CancellationToken.None);   // 不过阈值：走 TEC
+
+        Assert.True(b.Io.Coils[4]);
+        Assert.True(b.Io.Coils[6]);
+        var w = DoWrites(b, mark);
+        Assert.True(w.IndexOf("写DO 4=闭") is >= 0 and var i && i < w.IndexOf("写DO 6=闭"),
+            "先开阀再合 TEC 功率线：" + string.Join(" / ", w));
+    }
+
+    [Fact]
+    public async Task 制冷_阀刚打开要等通水延时才接TEC()
+    {
+        var b = Rig();
+        var cfg = TecOn();
+        cfg[DualStationDriver.Fields.WaterLead] = 1d;
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(cfg), CancellationToken.None);
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        await Temp(s, 0).SetTargetAsync(new TempTarget(60), CancellationToken.None);
+        Assert.True(sw.Elapsed >= TimeSpan.FromMilliseconds(950), $"等了 {sw.ElapsedMilliseconds} ms");
+        Assert.True(b.Io.Coils[6]);
+
+        // 阀已经开着：B 接 TEC 不再等
+        sw.Restart();
+        await Temp(s, 1).SetTargetAsync(new TempTarget(60), CancellationToken.None);
+        Assert.True(sw.Elapsed < TimeSpan.FromMilliseconds(900), $"阀已开着还等了 {sw.ElapsedMilliseconds} ms");
+    }
+
+    [Fact]
+    public async Task 加热_先断TEC_没别的路制冷就关DO4_再接加热棒()
+    {
+        var b = Rig();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(TecOn()), CancellationToken.None);
+        await Temp(s, 0).SetTargetAsync(new TempTarget(60), CancellationToken.None);
+        Assert.True(b.Io.Coils[4] && b.Io.Coils[6]);
+        var mark = b.Io.Requests.Count;
+
+        await Temp(s, 0).SetTargetAsync(new TempTarget(120), CancellationToken.None);   // 过阈值：切电加热
+
+        Assert.False(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[4]);
+        Assert.True(b.Io.Coils[0]);
+        var w = DoWrites(b, mark);
+        var off6 = w.IndexOf("写DO 6=断"); var off4 = w.IndexOf("写DO 4=断"); var on0 = w.IndexOf("写DO 0=闭");
+        Assert.True(off6 >= 0 && off6 < off4 && off4 < on0, "断 TEC → 关阀 → 接加热棒：" + string.Join(" / ", w));
+    }
+
+    [Fact]
+    public async Task 加热_另一路还在制冷_DO4保持打开()
+    {
+        var b = Rig();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(TecOn()), CancellationToken.None);
+        await Temp(s, 0).SetTargetAsync(new TempTarget(60), CancellationToken.None);
+        await Temp(s, 1).SetTargetAsync(new TempTarget(60), CancellationToken.None);
+
+        await Temp(s, 0).SetTargetAsync(new TempTarget(120), CancellationToken.None);
+        Assert.True(b.Io.Coils[0]);
+        Assert.True(b.Io.Coils[4]);                      // B 还在制冷：不关
+
+        await Temp(s, 1).StopAsync(CancellationToken.None);
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);   // 下一拍 B 断 TEC、两路都不制冷 → 关阀
+        Assert.False(b.Io.Coils[7]);
+        Assert.False(b.Io.Coils[4]);
+    }
+
+    [Fact]
+    public async Task 双向挡_冷却水跟着TEC走_升温关_降温开_停控关()
+    {
+        // 0522（用户定的）：升温时冷水机与冷却水阀都关；真要制冷（往 TEC 侧扳）才开阀、开冷水机
+        var b = Rig();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(ChillerOn()), CancellationToken.None);
+        await s.StartAsync(CancellationToken.None);
+        await WaitJacket(Temp(s, 0), 25.0);                // 定挡要读到夹套
+
+        await Temp(s, 0).SetTargetAsync(new TempTarget(60), CancellationToken.None);   // 双向挡起步合加热棒（升温）
+        Assert.True(b.Io.Coils[0]);
+        Assert.False(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[4]);                      // 升温：冷却水阀关着
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+        Assert.False(b.Io.Coils[4]);
+
+        await Temp(s, 0).SetTargetAsync(new TempTarget(10), CancellationToken.None);   // 转冷：先通水再接 TEC
+        Assert.True(b.Io.Coils[6]);
+        Assert.True(b.Io.Coils[4]);
+
+        await Temp(s, 0).StopAsync(CancellationToken.None);
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+        Assert.False(b.Io.Coils[4]);                      // 停控：阀照旧关
+    }
+
+    [Fact]
+    public async Task 有路在制冷_手动关阀被拒绝()
+    {
+        var b = Rig();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(TecOn()), CancellationToken.None);
+        await Temp(s, 0).SetTargetAsync(new TempTarget(60), CancellationToken.None);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => Water(s, 1).SetAsync(false, CancellationToken.None));
+        Assert.Contains("工位 A", ex.Message);
+        Assert.True(b.Io.Coils[4]);
+    }
+
+    [Fact]
+    public async Task 制冷中阀被人在模块上关了_下一拍补开()
+    {
+        var b = Rig();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(TecOn()), CancellationToken.None);
+        await Temp(s, 0).SetTargetAsync(new TempTarget(60), CancellationToken.None);
+        b.Io.Coils[4] = false;
+
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+
+        Assert.True(b.Io.Coils[4]);
+        Assert.Contains(b.Logs, l => l.Text.Contains("已补开"));
+    }
+
+    [Fact]
+    public async Task 手动开的阀_不制冷了也不自动关()
+    {
+        var b = Rig();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(TecOn()), CancellationToken.None);
+        await Water(s, 0).SetAsync(true, CancellationToken.None);
+        await Temp(s, 0).SetTargetAsync(new TempTarget(60), CancellationToken.None);
+
+        await Temp(s, 0).SetTargetAsync(new TempTarget(120), CancellationToken.None);
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+        Assert.True(b.Io.Coils[4]);
+    }
+
+    [Fact]
+    public async Task 冷却水阀_断开设备时关阀()
+    {
+        var b = Rig();
+        var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
+        await Water(s, 0).SetAsync(true, CancellationToken.None);
+        await s.DisposeAsync();
+        Assert.False(b.Io.Coils[4]);
+    }
+
+    [Fact]
+    public async Task 冷却水阀DO跟别的继电器撞号_开机就拒绝()
+    {
+        var b = Rig();
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => b.Drv.OpenAsync(
+            Conn(), b.Ctx(ParameterSet.Of((DualStationDriver.Fields.WaterDo, 6d))), CancellationToken.None));
+        Assert.Contains("冷却水阀", ex.Message);
+    }
+
+    [Fact]
+    public async Task 没配IO8R_没有冷却水阀能力()
+    {
+        var b = Rig(withIo: false);
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
+        Assert.Empty(s.CapabilitiesOf(0).OfType<ICoolingWaterValve>());
     }
 
     private sealed class Collect(Action<Sample> onNext) : IObserver<Sample>

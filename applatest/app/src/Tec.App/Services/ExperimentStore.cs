@@ -176,8 +176,10 @@ public sealed class ExperimentStore
         CurrentPath = path;
 
         // 台面变了通道就变了。RebuildChannels 会给新出现的通道补空配方，
-        // 但绝不会覆盖刚读进来的那几条——它只在缺的时候补
-        await _ws.RebuildChannelsAsync();
+        // 但绝不会覆盖刚读进来的那几条——它只在缺的时候补。
+        // 只建拓扑不开会话（connect: false）：「先打开、再见连接中」——连设备是
+        // 调用方把台面切出来之后的事（ConnectChannelsAsync：横幅进度、可取消）
+        await _ws.RebuildChannelsAsync(connect: false);
         Dirty = false;                 // 同上：重建之后再抹
 
         // 补了章的文件是**真的改了**：不标脏的话章只活在内存里，下次打开
@@ -263,6 +265,12 @@ public sealed class ExperimentStore
         return doc;
     }
 
+    /// <summary>
+    /// 打开实验的第二步：调用方已把台面切出来（第一步 OpenAsync 只建拓扑、设备都还是
+    /// 「未连接」），这里逐台开会话——横幅报进度、节点顶菊花、可取消（见 Workspace）。
+    /// </summary>
+    public Task ConnectChannelsAsync() => _ws.RebuildChannelsAsync();
+
     // ── 台面单独导入 / 导出 ─────────────────────────────────────────
 
     public void ExportBench(string path)
@@ -275,13 +283,15 @@ public sealed class ExperimentStore
     /// <summary>
     /// 导入台面：只换设备，配方留着。通道号对不上的泳道会空转——
     /// 这是操作人自己要的「换一套硬件跑同一套配方」，不该替他删配方。
+    /// 只建拓扑不开会话（connect: false）：连设备由调用方把台面切出来后走
+    /// ConnectChannelsAsync（跟打开实验同一个节奏：先见设备、再见连接中）。
     /// </summary>
     public async Task ImportBenchAsync(string path)
     {
         var notes = TecFiles.LoadBench(path).ApplyTo(_ws.Bench);
         foreach (var n in notes) _ws.Log.Write("台面", n, _ws.Operator, LogLevel.Warn);
         LastNotes = notes;
-        await _ws.RebuildChannelsAsync();
+        await _ws.RebuildChannelsAsync(connect: false);
         MarkDirty();
         Changed?.Invoke(this, EventArgs.Empty);
     }

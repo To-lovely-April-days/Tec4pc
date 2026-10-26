@@ -30,6 +30,47 @@ public static class DriverTime
 }
 
 /// <summary>
+/// 判到达（用户定的）：缺省允差 ±0.1 ℃，而且要**连续稳定**——读数擦进允差一拍不算，
+/// 要连续 settle 秒（每秒采一次）都在允差内；中途出界重新等。判据看控温对象：釜内看 Tr、夹套看 Tj。
+/// 允差收到 0.1 之后单次判据会被读数噪声骗，所以这两条要一起上。
+/// </summary>
+public static class TempReach
+{
+    public const double DefaultTolerance = 0.1;
+    public const double DefaultSettleSeconds = 60;
+
+    /// <summary>
+    /// 等到达并稳定。先让驱动判「进允差」（WaitReachedAsync），再每 1 s（虚拟时间）看一次读数，
+    /// 连续 settle 都在允差内才返回 true；出界就回去重新等进允差。budget 用完返回 false。
+    /// </summary>
+    public static async Task<bool> WaitStableAsync(CommandContext ctx, ITemperatureControl temp, double target,
+        double tolerance, TempChannelKind kind, TimeSpan settle, TimeSpan budget, CancellationToken ct)
+    {
+        tolerance = Math.Abs(tolerance);
+        var deadline = ctx.Now() + budget;
+        while (true)
+        {
+            var left = deadline - ctx.Now();
+            if (left <= TimeSpan.Zero) return false;
+            if (!await temp.WaitReachedAsync(target, tolerance, left, ct).ConfigureAwait(false)) return false;
+            if (settle <= TimeSpan.Zero) return true;
+
+            // 按拍数数（每拍 1 s 虚拟时间），不按墙钟比——仿真加速时墙钟跟虚拟时间对不上
+            var ticks = (int)Math.Ceiling(settle.TotalSeconds);
+            var stable = true;
+            for (var i = 0; i < ticks; i++)
+            {
+                await DriverTime.DelayAsync(TimeSpan.FromSeconds(1), ctx.TimeScale, ct).ConfigureAwait(false);
+                var pv = kind == TempChannelKind.Jacket ? temp.CurrentJacket : temp.CurrentReactor;
+                // 釜内读数断了（NaN）不算稳——跟驱动「Tr 断了不退回按夹套判」同一条
+                if (double.IsNaN(pv) || Math.Abs(pv - target) > tolerance) { stable = false; break; }
+            }
+            if (stable) return true;
+        }
+    }
+}
+
+/// <summary>
 /// 温度指令的**能力通用执行器**：只按 ITemperatureControl 说话，不认识任何具体
 /// 设备类，所以仿真会话与真机会话认领的是同一套——「仿真调好的配方插上真机
 /// 能跑」靠的就是这一份，不是两处各写各的「升温至」。
@@ -70,7 +111,7 @@ public sealed class TempControlHandler : ICommandHandler
     {
         var temp = CapabilityCommands.Temp(ctx);
         var target = p.Num("target");
-        var tol = p.Num("tol", 0.5);
+        var tol = p.Num("tol", TempReach.DefaultTolerance);
         var kind = p.Str("obj", "釜内 Tr").Contains("Tj") ? TempChannelKind.Jacket : TempChannelKind.Reactor;
         var began = ctx.Now();
 
@@ -90,14 +131,15 @@ public sealed class TempControlHandler : ICommandHandler
             await temp.RampAsync(target, rate, kind, ct).ConfigureAwait(false);
         // 到不了的目标不能把通道永远挂住：兜底超时按「温差 / 速率」的 3 倍给
         var budget = TimeSpan.FromMinutes(Math.Abs(target - temp.CurrentReactor) / rate * 3 + 10);
-        var reached = await temp.WaitReachedAsync(target, tol, budget, ct).ConfigureAwait(false);
-
-        if (reached && p.Flag("wait", true))
-            await DriverTime.DelayAsync(TimeSpan.FromMinutes(1), ctx.TimeScale, ct).ConfigureAwait(false);
+        // 勾了「等待稳定」= 连续 settle 秒都在允差内才算到达（从前是擦进允差就算、再盲等 1 min）
+        var settle = p.Flag("wait", true) ? TimeSpan.FromSeconds(Math.Max(0, p.Num("settle", TempReach.DefaultSettleSeconds))) : TimeSpan.Zero;
+        var reached = await TempReach.WaitStableAsync(ctx, temp, target, tol, kind, settle, budget, ct).ConfigureAwait(false);
 
         return new CommandOutcome(reached ? EndReason.Reached : EndReason.Timeout, ctx.Now() - began)
         {
-            Note = reached ? null : $"未在 {budget.TotalMinutes:F0} min 内到达 {target:F1} ℃"
+            Note = reached ? null
+                : $"未在 {budget.TotalMinutes:F0} min 内稳定到达 {target:F1} ℃（±{tol:0.##} ℃" +
+                  (settle > TimeSpan.Zero ? $"、连续 {settle.TotalSeconds:0} s" : "") + "）"
         };
     }
 }
@@ -118,7 +160,9 @@ public sealed class TempGradientHandler : ICommandHandler
                 var target = row.Num("t");
                 await temp.RampAsync(target, Math.Max(row.Num("r"), 0.01), TempChannelKind.Reactor, ct)
                           .ConfigureAwait(false);
-                await temp.WaitReachedAsync(target, 0.5, TimeSpan.FromHours(4), ct).ConfigureAwait(false);
+                // 每段同控温步的判据：±0.1 ℃、连续稳定才算到这一段
+                await TempReach.WaitStableAsync(ctx, temp, target, TempReach.DefaultTolerance, TempChannelKind.Reactor,
+                    TimeSpan.FromSeconds(TempReach.DefaultSettleSeconds), TimeSpan.FromHours(4), ct).ConfigureAwait(false);
                 await DriverTime.DelayAsync(TimeSpan.FromMinutes(row.Num("h")), ctx.TimeScale, ct).ConfigureAwait(false);
             }
 

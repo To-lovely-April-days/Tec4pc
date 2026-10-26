@@ -1,0 +1,1337 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HTLAB 双通道平行合成反应主机 · HMI 交互原型（1280×720）</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+    :root{
+  /* ══ 主题青 #4FB1B8 / 浅底 #E4F4F4 ══ */
+  --blue:#4FB1B8; --blue-l:#E4F4F4; --blue-d:#2F8189; --on-blue:#0D3236;
+  --brandhi:#6FC3C9; --brandlo:#215F65;
+  /* 状态色：品牌不再占红，报警红可退回更深更稳的 #C42B1C（白字 5.70:1） */
+  --green:#2F6B38; --green-l:#E6EEE7; --red:#C42B1C; --amber:#C88A00;
+  --rail:#F1F1F1; --rail-ln:#CCCCCC; --bg:#F1F1F1; --card:#FFFFFF;
+  --frame:#CCCCCC; --line:#DCDCDC; --line2:#ECECEC;
+  --dark:#3A3A3A; --vbox:#DCDCDC; --ink:#1A1A1A; --mut:#6F6F6F; --mut2:#C9C9C9;
+  --v-ln:#4A4A4A; --v-liq:#16EDFF; --v-shell:#ECECEC; --v-hi:#F9F9F9; --v-surf:#0C8E9E;
+  --pnh1:#FDFDFD; --pnh2:#F6F6F6; --tab:#F1F1F1; --tabh:#E6E6E6; --glass:#FFFFFF;
+  --s1:#2F8189; --s2:#4A4A4A; --s3:#8E8E8E; --s4:#C9C9C9;
+  --sans:"Noto Sans SC","PingFang SC","Microsoft YaHei",Arial,sans-serif;
+  --ez:cubic-bezier(.4,0,.2,1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:radial-gradient(ellipse at 50% 34%,#4C4C4C 0,#2E2E2E 62%,#242424 100%);font-family:var(--sans);color:var(--ink);-webkit-font-smoothing:antialiased;
+  margin:0;height:100vh;display:flex;align-items:center;justify-content:center;overflow:hidden;user-select:none}
+.fit{transform-origin:center center;flex:none}
+/* ══ 屏体外壳 ══ */
+.device{width:1372px;flex:none;position:relative;border-radius:16px;
+  background:linear-gradient(180deg,#4A4A4A 0,#2E2E2E 5%,#2B2B2B 52%,#242424 100%);
+  box-shadow:0 28px 70px rgba(0,0,0,.55), 0 2px 0 rgba(255,255,255,.07) inset,
+             0 -2px 0 rgba(0,0,0,.5) inset, 0 0 0 1px #171717;}
+.bz-top{height:46px;display:flex;align-items:center;padding:0 30px}
+.brand{display:flex;align-items:center;gap:10px;color:#EAEAEA;font-size:15px;font-weight:700;letter-spacing:3.4px}
+.brand i{width:13px;height:13px;background:var(--blue);display:block;border-radius:2px;
+  box-shadow:0 0 9px rgba(79,177,184,.75)}
+.model{margin-left:auto;color:#8E8E8E;font-size:11.5px;letter-spacing:.6px}
+.glass{margin:0 46px;padding:5px;border-radius:4px;background:#121212;position:relative;
+  box-shadow:inset 0 0 0 1px #000000, 0 0 0 1px rgba(255,255,255,.06), inset 0 3px 9px rgba(0,0,0,.65)}
+.glare{position:absolute;inset:5px;border-radius:2px;pointer-events:none;
+  background:linear-gradient(116deg,rgba(255,255,255,.10) 0 15%,rgba(255,255,255,.02) 30%,rgba(255,255,255,0) 46%)}
+.bz-bot{height:64px;display:flex;align-items:center;padding:0 30px;gap:24px}
+.leds{display:flex;align-items:center;gap:7px;color:#8E8E8E;font-size:11px;letter-spacing:.4px}
+.leds .led{width:9px;height:9px;border-radius:50%;background:#3D3D3D;display:block;
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.7)}
+.leds .led:not(:first-child){margin-left:11px}
+.led.pw{background:var(--blue);box-shadow:0 0 9px rgba(79,177,184,.95)}
+.led.run{background:#2E7D32;box-shadow:0 0 9px rgba(46,125,50,.9)}
+.cap{margin-left:auto;color:#6F6F6F;font-size:11px;letter-spacing:.4px}
+.ports{display:flex;gap:7px;margin-left:22px}
+.usb{width:17px;height:8px;border-radius:1.5px;background:#1C1C1C;display:block;
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.9), 0 1px 0 rgba(255,255,255,.05)}
+.scr{position:absolute;width:9px;height:9px;border-radius:50%;
+  background:radial-gradient(circle at 34% 30%,#6F6F6F,#3A3A3A 60%,#242424);
+  box-shadow:0 1px 1px rgba(255,255,255,.06)}
+.scr.tl{left:16px;top:16px}.scr.tr{right:16px;top:16px}
+.scr.bl{left:16px;bottom:16px}.scr.br{right:16px;bottom:16px}
+.device.bare{background:none;box-shadow:none;border-radius:0}
+.device.bare .bz-top,.device.bare .bz-bot,.device.bare .scr,.device.bare .glare{display:none}
+.device.bare .glass{margin:0;padding:0;background:none;box-shadow:none}
+.device.bare .pad0{border:1px solid #242424;box-shadow:0 14px 40px rgba(0,0,0,.4)}
+
+button{font-family:var(--sans);cursor:pointer;border:0;background:none;color:inherit}
+.pad0{width:1280px;height:720px;background:var(--card);flex:none;
+  display:grid;grid-template-columns:80px 1fr;transform-origin:top center;position:relative;overflow:hidden}
+
+
+/* ══ 侧栏（Mya） ══ */
+.rail{background:var(--rail);border-right:1px solid var(--rail-ln);display:flex;flex-direction:column;align-items:center}
+.rbtn{width:79px;height:72px;display:flex;align-items:center;justify-content:center;position:relative;--icbg:#F1F1F1}
+.rbtn:hover{background:#EAEAEA;--icbg:#EAEAEA}
+.rbtn.on{background:var(--blue);--icbg:var(--blue)}
+/* 图标液体:颜色即信息——默认中性灰,仅运行中的通道亮 --v-liq;选中态下待机为半透明白 */
+.liq{fill:var(--mut2)}
+.rbtn.run .liq{fill:var(--v-liq)}
+.rbtn.on .liq{fill:rgba(255,255,255,.5)}
+.rbtn.on.run .liq{fill:var(--v-liq)}
+svg rect[data-fedit]{transition:stroke .12s}
+svg rect[data-fedit]:hover{stroke:var(--blue)}
+.rbtn svg{width:25px;height:25px;fill:none;stroke:#4C4C4C;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+.rbtn.on svg{stroke:#FFF} .rbtn.on .n{color:#FFF}
+.rbtn .n{position:absolute;top:9px;right:12px;font-size:11px;font-weight:700;color:#4C4C4C;line-height:1}
+.rbtn.run::after{content:"";position:absolute;top:12px;left:13px;width:7px;height:7px;
+  border-radius:50%;background:var(--green)}
+.rbtn.on.run::after{background:#8FDC96;box-shadow:0 0 0 1.5px rgba(255,255,255,.4)}
+.rail{padding:8px 0;align-items:center;gap:0}
+.rsep{width:34px;height:1px;background:#DCDCDC;margin:5px 0;flex:none}
+
+.rspace{flex:1}
+.rstate{width:79px;padding:11px 0;background:var(--blue-d);color:#FFF;text-align:center;font-size:12px;font-weight:700;letter-spacing:1.1px}
+.rstate.idle{background:#C9C9C9;color:var(--ink)}
+
+/* ══ 屏幕（Mya） ══ */
+.screen{display:flex;flex-direction:column;padding:8px 10px 6px;min-width:0}
+.topbar{display:flex;align-items:flex-end;gap:4px;height:46px;flex:none;padding-left:8px}
+.tab{height:40px;padding:0 17px 0 9px;gap:9px;border:1px solid var(--frame);border-radius:3px 3px 0 0;background:var(--tab);
+  font-size:13.5px;color:#3D3D3D;display:flex;align-items:center}
+.tab:hover{background:var(--tabh)}
+.tab.on{background:var(--card);border-color:var(--frame);border-bottom-color:var(--card);margin-bottom:-1px;height:42px;
+  font-weight:500;box-shadow:inset 0 2px 0 var(--blue)}
+.tic{width:26px;height:26px;border:1px solid #C9C9C9;border-radius:3px;background:#FFF;--icbg:#FFF;
+  display:flex;align-items:center;justify-content:center;flex:none;transition:.15s var(--ez)}
+.tab.on .tic{background:var(--blue);border-color:var(--blue);--icbg:#4FB1B8;box-shadow:0 1px 4px rgba(79,177,184,.34)}
+.tab.on .tic svg{stroke:var(--on-blue)}
+.tic svg{width:16px;height:16px;fill:none;stroke:#4A4A4A;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;transition:stroke .15s}
+.topbar .rt{margin-left:auto;align-self:center;padding-bottom:4px;font-size:11.5px;color:var(--mut)}
+.stage{flex:1;border:1px solid var(--frame);border-radius:3px;padding:12px;min-height:0;
+  display:flex;flex-direction:column;gap:10px}
+
+/* ══ 总览通道卡（Mya） ══ */
+.zones{flex:1;display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:minmax(0,1fr);gap:34px;min-height:0}
+.zone{display:flex;flex-direction:column;min-width:0;min-height:0}
+.zhead{height:62px;border:1px solid #C9C9C9;border-radius:3px;background:#FFF;padding:9px 13px 11px;
+  display:flex;flex-direction:column;gap:2px;position:relative;overflow:hidden;flex:none}
+.zhead:hover{border-color:var(--blue)}
+.zhead .row1{display:flex;align-items:baseline;gap:9px;min-width:0;height:21px}
+.zhead .dot{width:7px;height:7px;border-radius:50%;background:#C9C9C9;flex:none;align-self:center}
+.zhead.run .dot{background:var(--green)}
+.zhead .ch{font-size:10.5px;color:var(--mut);flex:none;letter-spacing:.4px}
+.zhead .row1 b{font-size:15px;font-weight:700;line-height:21px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.zhead .row1 .rt{margin-left:auto;font-size:13.5px;font-weight:500;flex:none;letter-spacing:.3px}
+.zhead:not(.run) .row1 .rt{color:var(--mut);font-size:12px}
+.zhead .row2{display:flex;font-size:11px;line-height:16px;color:#6F6F6F;gap:9px;min-width:0;height:16px}
+.zhead .row2 span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.zhead .row2 .rt{margin-left:auto;flex:none}
+.zhead .pg{position:absolute;left:0;right:0;bottom:0;height:4px;background:#F1F1F1;display:block}
+.zhead .pg b{display:block;height:100%;background:var(--blue);transition:width .5s}
+.art{flex:1;min-height:0;position:relative;margin-top:10px;overflow:hidden}
+.art svg{position:absolute;inset:5% 0;width:100%;height:90%;overflow:visible}
+
+.pvl{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+.bub{position:absolute;border:2px solid #B4B4B4;border-radius:3px;background:#FFF;padding:4px 10px;line-height:1.18}
+.bub .l1{font-size:15px} .bub .tag{font-size:10.5px;color:var(--mut);margin-right:6px;vertical-align:1px}
+.bub .l2{font-size:10px;color:var(--mut);margin-top:2px}
+.bub.hi{border-color:var(--blue)} .bub.hi .tag{color:var(--blue-d)}
+.rpanel{height:156px;background:var(--dark);border-radius:3px;margin-top:10px;flex:none;
+  padding:12px 14px;display:grid;grid-template-columns:1fr 1fr;gap:10px 15px}
+.read{display:flex;align-items:center;gap:9px}
+.read .ic{width:22px;flex:none;display:flex;justify-content:center}
+.read .ic svg{width:20px;height:24px;fill:none;stroke:#FFF;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.vbx{flex:1;min-width:0;height:38px;border:1px solid #B4B4B4;border-radius:3px;background:var(--vbox);
+  padding:0 10px;font-size:15.5px;display:flex;align-items:center;gap:6px}
+.vbx .tag{font-size:11px;color:#6F6F6F;flex:none} .vbx .u{font-size:11.5px;color:#6F6F6F}
+.vbx .note{font-size:10.5px;color:#6F6F6F;margin-left:auto;flex:none}
+.vbx.hi{border:2px solid var(--blue);background:#FFF} .vbx.hi .tag{color:var(--blue-d)}
+.vbx.off{color:#6F6F6F;background:#A3A3A3}
+.vbx.off .tag,.vbx.off .u,.vbx.off .note{color:#6F6F6F}
+.tile,.grid2,.badge{display:none}
+
+/* ══ 通道控制（Mya） ══ */
+.hd{height:72px;border:1px solid #C9C9C9;border-radius:3px;background:#FFF;padding:9px 10px 12px 13px;
+  display:flex;flex-direction:column;gap:4px;position:relative;overflow:hidden;flex:none}
+.hd .row1{display:flex;align-items:center;gap:9px;min-width:0;height:28px}
+.hd .dot{width:7px;height:7px;border-radius:50%;background:#C9C9C9;flex:none}
+.hd.run .dot{background:var(--green)}
+.hd .ch{font-size:10.5px;color:var(--mut);flex:none;letter-spacing:.4px}
+.hd .row1 b{font-size:16px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hd .star{font-style:normal;color:var(--amber);margin-left:3px}
+.hd .row1 .rt{margin-left:auto;font-size:11.5px;color:#6F6F6F;flex:none}
+.hd .row1 .rt em{font-style:normal;font-size:13.5px;font-weight:500;color:var(--ink);letter-spacing:.3px}
+.hd .row2{display:flex;font-size:11px;line-height:16px;color:#6F6F6F;gap:9px;min-width:0;height:16px;padding-right:2px}
+.hd .row2 span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hd .row2 .rt{margin-left:auto;flex:none}
+.hd .pg{position:absolute;left:0;right:0;bottom:0;height:4px;background:#F1F1F1;display:block}
+.hd .pg b{display:block;height:100%;background:var(--blue);transition:width .5s}
+.hbtn{height:28px;padding:0 14px;border:1px solid #B4B4B4;background:#F1F1F1;border-radius:3px;
+  font-size:12.5px;color:#3A3A3A;flex:none;margin-left:10px}
+.hbtn:hover{background:#EAEAEA}
+.hbtn.danger{border-color:var(--red);background:#FBEBE9;color:#9B2115}
+.hbtn.go{border-color:var(--blue);background:var(--blue);color:var(--on-blue)}
+.main{flex:1;display:flex;gap:12px;min-height:0}
+.artpane{display:flex;flex:none;width:404px;min-width:0;transition:width .18s}
+.artpane.closed{width:28px}
+.ptab{width:28px;flex:none;background:#F1F1F1;border:1px solid #C9C9C9;border-right:0;border-radius:3px 0 0 3px;
+  display:flex;flex-direction:column;align-items:center;padding-top:8px;gap:10px;cursor:pointer}
+.ptab:hover{background:#EAEAEA}
+.artpane.closed .ptab{border-right:1px solid #C9C9C9;border-radius:3px}
+.ptab .pc{width:19px;height:19px;border:1.5px solid #6F6F6F;border-radius:50%;display:grid;place-items:center;
+  font-size:9px;color:#4C4C4C;flex:none}
+.ptab .pv{writing-mode:vertical-rl;font-size:12px;color:#4C4C4C;letter-spacing:1.5px}
+.artbox{flex:1;min-width:0;position:relative;border:1px solid var(--line);border-radius:0 3px 3px 0;background:#FBFBFB;overflow:hidden}
+.artpane.closed .artbox{display:none}
+.artbox svg{position:absolute;inset:6px;width:calc(100% - 12px);height:calc(100% - 12px);overflow:visible}
+.ctl{flex:1;display:flex;flex-direction:column;gap:9px;min-width:0}
+.modes{display:flex;height:46px;border:1px solid #B4B4B4;border-radius:3px;overflow:hidden;flex:none}
+.modes button{flex:1;border-right:1px solid #C9C9C9;background:#F1F1F1;font-size:13px;color:#3A3A3A;line-height:1.25}
+.modes button:last-child{border-right:0}
+.modes button:hover{background:#EAEAEA}
+.modes button.on{background:var(--blue);color:var(--on-blue);font-weight:500}
+.modes button[disabled]{opacity:.38;cursor:default}
+.modes small{display:block;font-size:9.5px;opacity:.7}
+.cd{border:1px solid #C9C9C9;border-radius:3px;padding:9px 12px 11px;flex:none}
+.ch{display:flex;align-items:center;gap:9px;margin-bottom:8px}
+.ch b{font-size:13px;font-weight:700;letter-spacing:.2px}
+.ch em{font-style:normal;font-size:10.5px;color:var(--mut)}
+.sw{margin-left:8px;display:flex;align-items:center;gap:7px;border:1px solid #B4B4B4;border-radius:3px;
+  background:#F1F1F1;padding:4px 6px 4px 11px;font-size:11.5px;color:#6F6F6F}
+.sw:first-of-type{margin-left:auto}
+.sw i{width:33px;height:19px;border-radius:10px;background:var(--mut2);position:relative;display:block;transition:.15s}
+.sw i::after{content:"";position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:#FFF;transition:left .15s}
+.sw.on{color:var(--ink)} .sw.on i{background:var(--blue)} .sw.on i::after{left:16px}
+.row{display:flex;align-items:flex-end;gap:11px;flex-wrap:wrap}
+.fd label{display:block;font-size:10.5px;color:var(--mut);margin-bottom:3px}
+.vb{height:44px;min-width:104px;border:2px solid #B4B4B4;border-radius:3px;background:#F1F1F1;
+  display:flex;align-items:center;justify-content:flex-end;gap:5px;padding:0 11px}
+.vb:hover{border-color:var(--blue)}
+.vb b{font-size:21px;font-weight:500} .vb u{text-decoration:none;font-size:11px;color:var(--mut)}
+.vb.sm{height:34px;min-width:72px} .vb.sm b{font-size:15px}
+.vb.edit{border-color:var(--amber);background:#FDF6EA} .vb.edit b{color:var(--amber)}
+.pend{font-size:9.5px;color:var(--amber);margin-top:3px;display:block}
+.rad{display:flex;gap:11px;font-size:11.5px;color:#6F6F6F;align-items:center;height:44px}
+.rad span{display:flex;align-items:center;gap:5px}
+.rad i{width:14px;height:14px;border:2px solid var(--mut2);border-radius:50%;display:block;position:relative}
+.rad i.on{border-color:var(--blue)}
+.rad i.on::after{content:"";position:absolute;inset:2px;border-radius:50%;background:var(--blue)}
+.now{margin-left:auto;text-align:right;font-size:11px;color:#6F6F6F;line-height:1.6}
+.now b{font-size:13.5px;color:var(--ink);font-weight:500}
+.acts{display:flex;gap:7px}
+.ab{flex:1;height:44px;border:1px solid #B4B4B4;background:#F1F1F1;border-radius:3px;font-size:12.5px;color:#2E2E2E;line-height:1.25}
+.ab:hover{background:#EAEAEA}
+.ab small{display:block;font-size:9.5px;color:var(--mut)}
+.ab.mark{border-color:var(--blue);color:var(--blue-d);background:var(--blue-l)}
+.lastlog{font-size:10.5px;color:var(--mut);margin-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.foot{height:54px;border:1px solid #C9C9C9;border-radius:3px;display:flex;align-items:center;gap:10px;
+  padding:0 12px;flex:none;background:#F9F9F9}
+.lim{display:flex;gap:6px;font-size:10.5px;color:#6F6F6F;flex-wrap:wrap}
+.lim span{border:1px solid #DEDEDE;border-radius:3px;padding:4px 9px;background:#FFF}
+.btns{margin-left:auto;display:flex;gap:8px}
+.bt{height:38px;padding:0 17px;border:1px solid #B4B4B4;background:#F1F1F1;border-radius:3px;font-size:13px;color:#3D3D3D}
+.bt:hover{background:#EAEAEA}
+.bt.pri{background:var(--blue);border-color:var(--blue);color:var(--on-blue);font-weight:500;padding:0 22px}
+.bt.pri:hover{background:var(--blue-d)}
+.bt[disabled]{color:var(--mut2);background:#F9F9F9;border-color:#DCDCDC;cursor:default}
+
+/* ══ 面板 / 列表 ══ */
+.tl{position:relative;padding:11px 13px 7px}
+.tlr{display:flex;align-items:center;gap:8px;margin-bottom:5px}
+.tlk{width:32px;flex:none;font-size:11px;color:var(--mut);text-align:right}
+.tlt{flex:1;display:flex;gap:1px;height:26px;min-width:0}
+.seg{position:relative;flex:none;display:flex;align-items:center;justify-content:flex-end;
+  padding:0 6px;font-size:11px;border-radius:2px;overflow:hidden;white-space:nowrap}
+.seg.tp{background:var(--blue-l);color:var(--blue-d)}
+.seg.rp{background:var(--line2);color:var(--ink)}
+.seg.past{opacity:.4}
+.seg.zip{padding:0}
+.seg.zip::after{content:"";position:absolute;inset:0;
+  background:repeating-linear-gradient(135deg,transparent 0 3px,rgba(142,142,142,.32) 3px 4px)}
+.tla{flex:1;position:relative;height:17px;min-width:0}
+.tla i{position:absolute;top:0;width:1px;height:4px;background:var(--mut2)}
+.tla b{position:absolute;top:5px;font-size:10px;font-weight:400;color:var(--mut);
+  transform:translateX(-50%);white-space:nowrap}
+.tlc{position:absolute;width:2px;background:var(--green);border-radius:1px}
+.tlnone{padding:22px 13px;text-align:center;font-size:12px;color:var(--mut)}
+.pnl{border:1px solid var(--frame);border-radius:3px;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.pnh{height:48px;letter-spacing:.2px;display:flex;align-items:center;gap:10px;padding:0 13px;border-bottom:1px solid var(--line);
+  font-size:12.5px;font-weight:500;flex:none}
+.pnh .sm{font-size:11px;color:var(--mut);font-weight:400}
+.pnh .rt{margin-left:auto;display:flex;gap:7px}
+.topbar .brand{margin-left:14px;font-size:11px;letter-spacing:.6px;color:var(--mut);white-space:nowrap;align-self:center}
+.topbar .rt+.brand,.topbar .sbis+.brand{padding-left:14px;border-left:1px solid var(--line)}
+.topbar>.brand:first-of-type{margin-left:auto}
+.lst{flex:1;overflow:auto}
+.lrow{display:flex;align-items:center;gap:11px;padding:9px 13px;border-bottom:1px solid var(--line2);font-size:12.5px}
+.lrow:hover{background:#F6F6F6}
+.lrow .k{width:150px;flex:none;color:#6F6F6F}
+.lrow .v{color:var(--ink);font-weight:500}
+.lrow .d{margin-left:auto;color:var(--mut);font-size:11.5px}
+.lrow.sel{background:var(--blue-l);box-shadow:inset 3px 0 0 var(--blue)}
+.sbis{display:flex;gap:6px;align-items:center;margin-left:10px;align-self:center;padding-bottom:2px}
+.sbi{font-size:10px;font-style:normal;color:#8E8E8E;border:1px solid #DCDCDC;border-radius:2px;padding:2px 6px;letter-spacing:.3px}
+.sbi.on{color:var(--blue-d);border-color:#BFE0E2;background:var(--blue-l)}
+.sbi.ex{color:var(--green);border-color:#B7CDBB;background:var(--green-l)}
+.sbi.rm{color:var(--blue-d);border-color:var(--blue);background:var(--blue-l);font-weight:700;cursor:pointer}
+.rtag{font-size:10.5px;padding:2px 8px;border-radius:3px;background:#FFF;color:#6F6F6F;
+  border:1px solid #C9C9C9;letter-spacing:.2px;flex:none;font-variant-numeric:tabular-nums}
+.rtag.live{background:var(--green-l);color:var(--green);border-color:#B7CDBB}
+.rtag.done{background:#F1F1F1;color:#6F6F6F}
+.rtag.draft{color:#A3A3A3;border-style:dashed;background:#FFF}
+.chip{font-size:10.5px;border:1px solid #DEDEDE;border-radius:3px;padding:2px 7px;color:#6F6F6F;background:#FFF}
+.chip.b{border-color:var(--blue);color:var(--blue-d);background:var(--blue-l)}
+
+/* ══ 曲线 ══ */
+.trends{display:flex;gap:6px;flex:none}
+.trend{flex:1;border:1px solid #C9C9C9;border-radius:3px;padding:7px 11px;background:#F1F1F1;text-align:left}
+.trend:hover{border-color:var(--blue)}
+.trend.off{opacity:.42}
+.trend .t{font-size:10.5px;color:var(--mut);display:flex;align-items:center;gap:6px}
+.trend .t i{width:14px;height:3px;display:block;border-radius:2px}
+.trend .v{font-size:18px;font-weight:500;margin-top:2px}
+.chartbox{flex:1;border:1px solid #C9C9C9;border-radius:3px;min-height:0;background:#FFF;padding:5px;overflow:hidden}
+.chartbox svg{width:100%;height:100%;display:block}
+.cbar{height:48px;border:1px solid #C9C9C9;border-radius:3px;display:flex;align-items:center;gap:8px;
+  padding:0 11px;flex:none;background:#F9F9F9;font-size:12px;color:#6F6F6F}
+
+/* ══ 序列 ══ */
+.steps{display:flex;gap:6px;flex:none}
+.step{flex:1;height:72px;border:1px solid #C9C9C9;border-radius:3px;background:#F1F1F1;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:12px;color:#3D3D3D}
+.step:hover{border-color:var(--blue)}
+.step .no{font-size:9.5px;color:var(--mut)}
+.step .ty{font-size:14px;font-weight:700}
+.step .pm{font-size:10px;color:var(--mut)}
+.step.empty .ty{color:var(--mut2);font-weight:400}
+.step.done{background:#EAEAEA;color:var(--mut)}
+.step.active{border:2px solid var(--blue);background:var(--blue-l)}
+.step.active .ty{color:var(--blue-d)}
+.step.err{border:2px solid var(--red);background:#FBEAE7}
+.step.err .ty{color:var(--red)}
+
+/* ══ 弹窗 ══ */
+.mask{position:absolute;inset:0;background:rgba(26,26,26,.42);display:flex;align-items:center;justify-content:center;z-index:50}
+.dlg{background:#FFF;border:1px solid #6F6F6F;border-radius:4px;box-shadow:0 8px 28px rgba(0,0,0,.3);min-width:360px;overflow:hidden}
+.dh{background:var(--blue-d);color:#FFF;padding:12px 16px;font-size:14.5px;font-weight:500}
+.dh .sm{font-size:11.5px;opacity:.7;font-weight:400;display:block;margin-top:2px}
+.db{padding:15px 18px}
+.df{padding:11px 18px 15px;display:flex;gap:9px;justify-content:flex-end;border-top:1px solid var(--line)}
+.kp{display:grid;grid-template-columns:repeat(3,66px);gap:7px}
+.kp button{height:47px;border:1px solid #C9C9C9;background:#F1F1F1;border-radius:3px;font-size:18px}
+.kp button:hover{background:#EAEAEA}
+.kdisp{height:54px;border:2px solid var(--blue);border-radius:3px;background:var(--blue-l);display:flex;
+  align-items:center;justify-content:flex-end;padding:0 14px;font-size:26px;font-weight:500;margin-bottom:9px;color:var(--blue-d)}
+.kdisp u{text-decoration:none;font-size:13px;color:#8E8E8E;margin-left:6px}
+.krange{font-size:11px;color:var(--mut);margin-bottom:11px}
+.frow{display:flex;align-items:center;gap:10px;margin-bottom:9px;font-size:13px}
+.frow label{width:96px;flex:none;color:#6F6F6F}
+.frow input,.frow select{flex:1;height:34px;border:1px solid #C9C9C9;border-radius:3px;padding:0 9px;
+  font-size:13px;font-family:var(--sans);background:#FFF}
+.frow em{font-style:normal;font-size:11.5px;color:var(--mut);width:56px;flex:none}
+.opt{border:1px solid #C9C9C9;border-radius:3px;padding:12px 14px;margin-bottom:9px;display:flex;
+  gap:11px;align-items:flex-start;font-size:13px;line-height:1.6;background:#F9F9F9;text-align:left;width:100%}
+.opt:hover{border-color:var(--blue);background:var(--blue-l)}
+.opt i{width:16px;height:16px;border:2px solid var(--mut2);border-radius:50%;flex:none;margin-top:2px;position:relative}
+.opt.on{border-color:var(--blue);background:var(--blue-l)}
+.opt.on i{border-color:var(--blue)} .opt.on i::after{content:"";position:absolute;inset:2px;border-radius:50%;background:var(--blue)}
+.opt small{display:block;font-size:11px;color:var(--mut)}
+.tygrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.tygrid button{height:56px;border:1px solid #C9C9C9;background:#F1F1F1;border-radius:3px;font-size:13.5px;line-height:1.3}
+.tygrid button:hover{border-color:var(--blue);background:var(--blue-l)}
+.tygrid button small{display:block;font-size:10px;color:var(--mut)}
+
+/* ══ 报警 ══ */
+.alarm{position:absolute;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;background:rgba(196,43,28,.32)}
+.abox{width:620px;background:#FFF;border:2px solid var(--red);border-radius:5px;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.36)}
+.abox .ah{background:var(--red);color:#FFF;padding:13px 18px;display:flex;align-items:center;gap:12px;
+  animation:blink 1.1s steps(2,start) infinite}
+@keyframes blink{50%{background:#9B2115}}
+.abox .ah b{font-size:18px;letter-spacing:.6px}
+.abox .ah span{margin-left:auto;font-size:12px;opacity:.86}
+.abox .ab2{padding:17px 18px}
+.abox h4{font-size:15px;margin-bottom:8px}
+.abox p{font-size:13px;color:#6F6F6F;line-height:1.75;margin-bottom:11px}
+.abox ol{margin-left:19px;font-size:12.5px;color:#6F6F6F;line-height:1.9}
+.abox .af{padding:0 18px 16px;display:flex;gap:9px;justify-content:flex-end}
+
+.hint{position:absolute;left:50%;bottom:15px;transform:translateX(-50%);background:rgba(26,26,26,.92);
+  color:#FFF;font-size:12px;padding:8px 17px;border-radius:16px;z-index:70;opacity:0;transition:opacity .25s;
+  pointer-events:none;white-space:nowrap}
+.hint.show{opacity:1}
+@keyframes sp{0%,100%{transform:scaleX(1)}50%{transform:scaleX(.2)}}
+.paddle{transform-origin:109.5px 233.5px;animation:sp 1.2s ease-in-out infinite}
+.paddle.stop{animation:none}
+
+/* ════════════════ 高度层级系统 ════════════════ */
+:root{
+  --e1:0 1px 2px rgba(36,36,36,.055), 0 1px 1px rgba(36,36,36,.04);
+  --e2:0 4px 14px rgba(36,36,36,.115), 0 1px 3px rgba(36,36,36,.075);
+  --e3:0 20px 50px rgba(21,21,21,.28), 0 6px 16px rgba(21,21,21,.15);
+  --inset:inset 0 1px 2px rgba(36,36,36,.10);
+  --ez:cubic-bezier(.22,.61,.36,1);
+}
+/* L1 · 面板浮于底板 */
+.zhead,.cd,.pnl,.foot,.artbox,.chartbox,.cbar,.modes,.step,.trend,.hd,.ptab{
+  box-shadow:var(--e1);
+  transition:box-shadow .16s var(--ez), transform .16s var(--ez), border-color .14s var(--ez);
+}
+/* L2 · 可点元素悬停上浮 */
+.zhead:hover,.step:hover,.trend:hover,.ab:hover,.ptab:hover{
+  transform:translateY(-1.5px); box-shadow:var(--e2); border-color:var(--blue);
+}
+.zhead:active,.step:active,.trend:active,.ab:active{transform:translateY(0);box-shadow:var(--e1)}
+.lrow{transition:box-shadow .16s var(--ez), transform .16s var(--ez), border-color .14s var(--ez)}
+.lrow:hover{transform:translateY(-1px);box-shadow:var(--e1)}
+/* 按钮 · 微渐变 + 上浮 + 按下回弹 */
+.bt,.hbtn,.tbn,.kp button,.tygrid button{
+  background-image:linear-gradient(180deg,rgba(255,255,255,.9),rgba(255,255,255,0));
+  box-shadow:var(--e1); transition:.15s var(--ez);
+}
+.bt:hover,.hbtn:hover,.kp button:hover,.tygrid button:hover{transform:translateY(-1px);box-shadow:var(--e2)}
+.bt:active,.hbtn:active,.kp button:active,.tygrid button:active{transform:translateY(1px);box-shadow:none;filter:brightness(.97)}
+.bt.pri,.hbtn.go{background-image:linear-gradient(180deg,#6FC3C9,var(--blue));
+  box-shadow:0 2px 6px rgba(79,177,184,.32), var(--e1)}
+.bt.pri:hover,.hbtn.go:hover{box-shadow:0 6px 16px rgba(79,177,184,.36)}
+.bt[disabled]{box-shadow:none;background-image:none;transform:none!important}
+/* 输入类 · 凹陷 */
+.vb,.frow input,.frow select,.ssel{box-shadow:var(--inset);transition:.15s var(--ez)}
+.vb:hover{box-shadow:var(--inset),0 0 0 3px rgba(79,177,184,.10);border-color:var(--blue);transform:none}
+.vb.edit{box-shadow:var(--inset),0 0 0 3px rgba(200,138,0,.14)}
+.kdisp{box-shadow:inset 0 2px 4px rgba(33,95,101,.14)}
+/* 深色读数面板 · 嵌入式仪表窗 */
+.rpanel{
+  background:linear-gradient(180deg,#4C4C4C 0,#4C4C4C 42%,#4A4A4A 100%);
+  box-shadow:inset 0 2px 6px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.07),
+             inset 0 -1px 0 rgba(0,0,0,.3), 0 1px 2px rgba(36,36,36,.10);
+}
+.vbx{background:linear-gradient(180deg,#C9C9C9,#C9C9C9);
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.26), 0 1px 0 rgba(255,255,255,.10)}
+.vbx.off{background:linear-gradient(180deg,#A3A3A3,#A3A3A3)}
+.vbx.hi{background:linear-gradient(180deg,#FFF,#F6F6F6);
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.10), 0 0 0 3px rgba(79,177,184,.28)}
+/* 装置窗 · 观察窗质感 */
+.artbox{background:linear-gradient(180deg,#FDFDFD,#F9F9F9);
+  box-shadow:inset 0 1px 3px rgba(36,36,36,.07), var(--e1)}
+.art{border-radius:3px}
+/* 标签页 · 选中页浮起并与内容框连通 */
+.tab{transition:.15s var(--ez)}
+.tab:hover{transform:translateY(-1px)}
+.tab.on{box-shadow:inset 0 2px 0 var(--blue), 0 -3px 8px rgba(36,36,36,.07);transform:none}
+/* 侧栏 */
+.rail{box-shadow:1px 0 3px rgba(36,36,36,.07)}
+.rbtn{transition:.14s var(--ez)}
+.rbtn.on{box-shadow:inset 0 0 0 1px rgba(255,255,255,.14), 0 2px 8px rgba(79,177,184,.34)}
+.rstate{box-shadow:0 2px 8px rgba(33,95,101,.28)}
+/* 气泡 · 浮在装置图之上 */
+.bub{box-shadow:var(--e1);transition:.16s var(--ez)}
+.bub.hi{box-shadow:0 2px 10px rgba(79,177,184,.20), var(--e1)}
+/* 开关 · 手柄投影 */
+.sw{box-shadow:var(--e1)} 
+.sw i{box-shadow:inset 0 1px 2px rgba(0,0,0,.22)}
+.sw i::after{box-shadow:0 1px 2px rgba(0,0,0,.3), 0 0 0 .5px rgba(0,0,0,.06)}
+/* 浮层 */
+.mask{backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
+.dlg{box-shadow:var(--e3)}
+.abox{box-shadow:0 24px 60px rgba(120,20,12,.34), 0 8px 20px rgba(0,0,0,.22)}
+.hint{box-shadow:0 6px 20px rgba(0,0,0,.3)}
+/* 进度条 · 内陷轨道 */
+.pg{box-shadow:inset 0 1px 2px rgba(36,36,36,.13)}
+.pg b{box-shadow:0 0 6px rgba(79,177,184,.4)}
+/* 当前步骤 */
+.step.active{box-shadow:0 0 0 3px rgba(79,177,184,.16), var(--e1)}
+
+
+/* ════ 精修 ════ */
+.rstate{margin-top:6px;letter-spacing:1.4px;font-size:11px;border-radius:3px}
+.tab{letter-spacing:.3px}
+.topbar{padding-left:6px}
+.zhead .row1 b,.hd .row1 b{letter-spacing:.2px}
+.vbx{letter-spacing:.3px}
+.vb b{font-variant-numeric:tabular-nums;letter-spacing:.4px}
+.vbx,.now b,.zhead .row1 .rt,.hd .row1 .rt em{font-variant-numeric:tabular-nums}
+.trend .v{font-variant-numeric:tabular-nums}
+.lim span{letter-spacing:.2px}
+.modes button.on{box-shadow:inset 0 1px 0 rgba(255,255,255,.18), 0 1px 3px rgba(79,177,184,.3)}
+.modes button{transition:.15s var(--ez)}
+.ptab .pc{transition:.15s var(--ez)}
+.ptab:hover .pc{border-color:var(--blue);color:var(--blue)}
+.foot{background:linear-gradient(180deg,var(--pnh1),var(--pnh2))}
+.cbar{background:linear-gradient(180deg,var(--pnh1),var(--pnh2))}
+.pnh{background:linear-gradient(180deg,var(--pnh1),var(--pnh2));letter-spacing:.3px}
+.dh{letter-spacing:.3px}
+.art{background:radial-gradient(ellipse at 50% 42%,#FFF 0,#F9F9F9 100%)}
+
+</style>
+</head>
+<body>
+<div class="fit"><div class="device bare" id="dev">
+  <div class="bz-top">
+    <span class="brand"><i></i>HTLAB</span>
+    <span class="model">双通道平行合成反应主机 · HT-RS2</span>
+  </div>
+  <div class="glass"><div class="pad0" id="app"></div><div class="glare"></div></div>
+  <div class="bz-bot">
+    <span class="leds"><i class="led pw"></i>电源<i class="led run"></i>运行<i class="led"></i>报警</span>
+    <span class="cap">10.1″ 工业电容触摸屏 · 1280 × 720 · IP65 前面板</span>
+    <span class="ports"><i class="usb"></i><i class="usb"></i></span>
+  </div>
+  <i class="scr tl"></i><i class="scr tr"></i><i class="scr bl"></i><i class="scr br"></i>
+</div></div>
+<script>
+/* ══════════ 状态 ══════════ */
+function mkZone(id,o){return Object.assign({
+  id, name:'', reactor:'250 mL 玻璃釜', running:false, mode:'Tr',
+  tr:21.4, tj:21.0, tc:18.6, ph:7.05, rpm:0, torque:0,
+  set:{tr:20,tj:20,rate:-0.5,dur:'0:10:00',exp:1,rampBy:'rate',rpm:200,rEnd:'—',rDur:'—',djt:10,tjEnd:20},
+  on:{temp:false,stir:false,trSensor:true,phSensor:false},
+  dose:{rate:0,total:0,phLink:false,phLow:4.5,phHigh:6.0},
+  safety:{tsafe:20,trmin:-40,trmax:180,tjmin:-40,tjmax:180,tdiff:60,rsafe:'保持',rmax:1000},
+  pending:{}, elapsed:0, t0:null, log:[], seq:[null,null,null,null,null,null], seqRun:false, seqIdx:-1,
+  hist:{tr:[],tj:[],ph:[],rpm:[]}, notes:[], trends:['tr','tj','dt']
+},o);}
+const S={artOpen:true,page:'ov',tab:{ov:'app',z:'ctl'},zi:0,modal:null,alarm:null,tick:0,
+  sys:{dhcp:false,ip:'192.168.1.42',mask:'255.255.255.0',dt:'2026-08-28 14:26',tz:'UTC+8 中国标准时间',
+    dfmt:'YYYY-MM-DD',tfmt:'24 小时',lang:'简体中文',kb:'QWERTY',usb:true,icontrol:true,icdc:false,exporting:0,expInt:2,remote:false,remoteIp:'192.168.1.20',remoteT0:0},
+  zones:[
+  mkZone(1,{name:'DDNP-结晶-0824',running:true,mode:'Tr',tr:65.2,tj:71.8,tc:18.6,ph:4.62,rpm:450,torque:18,
+    set:{tr:65,tj:70,rate:-0.5,dur:'0:45:00',exp:1,rampBy:'rate',rpm:450,rEnd:'—',rDur:'—',djt:10,tjEnd:20},
+    on:{temp:true,stir:true,trSensor:true,phSensor:true},
+    dose:{rate:1.20,total:18.4,phLink:true,phLow:4.5,phHigh:6.0}, elapsed:4358,t0:2465,
+    seq:[{t:'Tr',p:'65.0 ℃ · 12 min',      d:720,  ev:'65.0 ℃',rpm:450},
+         {t:'Wait',p:'0:45:00',            d:2700, ev:'65.0 ℃',rpm:450},
+         {t:'Tr',p:'20.0 ℃ · −0.50 ℃/min', d:5400, ev:'20.0 ℃',rpm:450},
+         {t:'Dose',p:'醋酸 1.20 mL/min · 3 min', d:180, ev:'20.0 ℃',rpm:450},
+         {t:'Wait',p:'1:00:00',            d:3600, ev:'20.0 ℃',rpm:450},null], seqRun:true,seqIdx:2,
+    log:[['14:12','加料','醋酸 10.000 g（一次加完）'],['14:05','取样','Sample-03'],
+         ['13:45','标记','首晶成核 → t=0'],['13:20','步骤','步骤 3 控速降温开始']]}),
+  mkZone(2,{name:'晶型筛选-低温-B3',reactor:'50 mL 玻璃釜',mode:'Tj',
+    set:{tr:20,tj:-18,rate:-0.2,dur:'0:30:00',exp:1,rampBy:'rate',rpm:200,rEnd:'—',rDur:'—',djt:10,tjEnd:20},
+    seq:[{t:'Tj',p:'−18.0 ℃ · −0.20 ℃/min',d:11400,ev:'−18.0 ℃',rpm:200},
+         {t:'Wait',p:'2:00:00',             d:7200, ev:'−18.0 ℃',rpm:200},
+         {t:'Tj',p:'10.0 ℃ · 0.30 ℃/min',   d:5600, ev:'10.0 ℃', rpm:200},null,null,null],
+    log:[['13:30','方案','已加载，等待启动']]})]};
+(function(){for(let i=0;i<200;i++){const t=i/200;
+  let tr=t<.12?22+(65-22)*(t/.12):t<.42?65+.35*Math.sin(t*60):65-(65-20)*Math.min(1,(t-.42)/.5);
+  S.zones[0].hist.tr.push(tr);S.zones[0].hist.tj.push(tr+(t<.42?6.6:-5.2));
+  S.zones[0].hist.ph.push(6.8-(6.8-4.6)*Math.min(1,Math.max(0,(t-.35)/.45)));S.zones[0].hist.rpm.push(450);
+  S.zones[1].hist.tr.push(21.4+.25*Math.sin(t*40));S.zones[1].hist.tj.push(21+.2*Math.sin(t*35));
+  S.zones[1].hist.ph.push(7.05);S.zones[1].hist.rpm.push(0);}})();
+const Z=()=>S.zones[S.zi];
+function seqPct(z){const n=z.seq.filter(Boolean).length;
+  return z.seqRun&&n?Math.min(100,Math.round((z.seqIdx+0.72)/n*100)):0;}
+function seqNote(z){const n=z.seq.filter(Boolean).length;
+  if(z.seqRun&&n) return `步骤 ${z.seqIdx+1}/${n} · 剩余 ${hhmmss(Math.max(0,(n-z.seqIdx-0.72)*1500|0))}`;
+  if(z.on.temp) return '手动控制 · 温控中';
+  return n?`方案已加载 · 共 ${n} 步`:'未编排方案';}
+function zhead(z){return `<div class="zhead${(z.seqRun||z.on.temp)?' run':''}">
+    <span class="row1"><i class="dot"></i><span class="ch">通道 ${z.id}</span><b>${z.name}</b>
+      <span class="rt">${z.seqRun?hhmmss(Math.max(0,z.elapsed-(z.seqT0||0))):(z.on.temp?'控温中':'待机')}</span></span>
+    <span class="row2"><span>${z.seqRun?'程序控制':'手动控制'} · ${modeName(z.mode)}</span>
+      <span class="rt">${seqNote(z)}</span></span>
+    <i class="pg"><b style="width:${seqPct(z)}%"></b></i></div>`;}
+const maxDT=()=>Math.abs(S.zones[0].tr-S.zones[1].tr).toFixed(1);
+function trRate(z){const h=z.hist.tr;if(h.length<31)return '0.00';
+  const r=(z.tr-h[h.length-31])*2;return (r<0?'−':'+')+Math.abs(r).toFixed(2);}
+const TREND=[{k:'tr',n:'Tr 釜内温度',c:'var(--s1)',u:'℃'},{k:'tj',n:'Tj 夹套温度',c:'var(--s2)',u:'℃'},
+             {k:'dt',n:'Tr−Tj 内外温差',c:'var(--s3)',u:'K'},
+             {k:'ph',n:'pH',c:'#6F6F6F',u:''},{k:'rpm',n:'R 转速',c:'var(--s4)',u:'rpm'}];
+const HD=(z,k)=>k==='dt'?z.hist.tr.map((v,i)=>v-z.hist.tj[i]):z.hist[k];
+const $=s=>document.querySelector(s);
+const hhmmss=s=>[s/3600|0,(s%3600)/60|0,s%60].map(v=>String(v|0).padStart(2,'0')).join(':');
+const f1=v=>(v<0?'−':'')+Math.abs(v).toFixed(1);
+const pv=(z,k)=>z.pending[k]!==undefined?z.pending[k]:z.set[k];
+const nPend=z=>Object.keys(z.pending).length;
+function toast(m){let h=$('.hint');if(!h){h=document.createElement('div');h.className='hint';$('#app').appendChild(h);}
+  h.textContent=m;h.classList.add('show');clearTimeout(h._t);h._t=setTimeout(()=>h.classList.remove('show'),1700);}
+
+/* ══════════ 反应釜（1:1 还原参考图 2）══════════ */
+function vessel(z){
+  const run=z.on.stir&&z.rpm>0;
+  const trTgt=z.mode!=='Tj';
+  const BD=c=>c?'var(--blue)':'var(--mut2)';
+  const s=(z.seqRun||z.on.temp)?190:203;                       // 液面（釜体外高 172→150，按比例重算）
+  const vt=z.rpm?Math.min(26,10+z.rpm/28):3;
+  const L='var(--v-ln)';
+  return `<svg viewBox="-26 -14 271 318" preserveAspectRatio="xMidYMid meet">
+  <defs><clipPath id="vin${z.id}"><path d="M49 123 V233 Q49 266 109.5 266 Q170 266 170 233 V123 Z"/></clipPath></defs>
+  <rect x="-700" y="221" width="1620" height="66" fill="var(--dark)"/>
+  <!-- 搅拌电机 + 联轴节：与法兰之间 45 的裸轴 -->
+  <rect x="92.5" y="2" width="34" height="45" rx="4.5" fill="var(--v-hi)" stroke="${L}" stroke-width="2.4"/>
+  <rect x="98" y="7.5" width="23" height="34" rx="2.5" fill="#FFF" stroke="${L}" stroke-width="1.1"/>
+  <rect x="101" y="47" width="17" height="11" rx="2" fill="var(--v-shell)" stroke="${L}" stroke-width="1.6"/>
+  <!-- 釜盖法兰 + 两端接管 -->
+  <rect x="40" y="92" width="16" height="11" fill="var(--v-shell)" stroke="${L}" stroke-width="1.6"/>
+  <path d="M37 92h22" stroke="${L}" stroke-width="1.8"/>
+  <rect x="164" y="92" width="16" height="11" fill="var(--v-shell)" stroke="${L}" stroke-width="1.6"/>
+  <path d="M161 92h22" stroke="${L}" stroke-width="1.8"/>
+  <rect x="33" y="103" width="153" height="20" rx="2" fill="var(--v-shell)" stroke="${L}" stroke-width="1.8"/>
+  <!-- 夹套与釜体 -->
+  <path d="M41 123 V236 Q41 273 109.5 273 Q178 273 178 236 V123 Z" fill="var(--v-shell)" stroke="${L}" stroke-width="1.9" stroke-linejoin="round"/>
+  <path d="M49 123 V233 Q49 266 109.5 266 Q170 266 170 233 V123 Z" fill="#FFF" stroke="${L}" stroke-width="1.7" stroke-linejoin="round"/>
+  <!-- 液体 -->
+  <g clip-path="url(#vin${z.id})">
+    <path d="M49 ${s} Q109.5 ${s+vt} 170 ${s} V278 H49 Z" fill="var(--v-liq)"/>
+    <path d="M49 ${s} Q109.5 ${s+vt} 170 ${s}" fill="none" stroke="var(--v-surf)" stroke-width="2"/></g>
+  <!-- 搅拌轴 + 桨 -->
+  <path d="M109.5 58 V239" stroke="${L}" stroke-width="3"/>
+  <g class="paddle${run?'':' stop'}">
+    <rect x="73" y="228" width="34" height="11" rx="5.5" fill="#FFF" stroke="${L}" stroke-width="1.8"/>
+    <rect x="112" y="228" width="34" height="11" rx="5.5" fill="#FFF" stroke="${L}" stroke-width="1.8"/></g>
+  <!-- Tr 温度探头（插入件）：手册 4.9 —— 足够浸入深度且不得触碰搅拌桨 -->
+  ${z.on.trSensor?`<g transform="rotate(-9.2 84 216)">
+    <rect x="77" y="16" width="14" height="36" rx="3.5" fill="var(--v-hi)" stroke="${L}" stroke-width="2"/>
+    <rect x="80.5" y="21" width="7" height="26" rx="1.5" fill="#FFF" stroke="${L}" stroke-width="1.1"/>
+    <rect x="78.5" y="52" width="11" height="11" rx="1.5" fill="var(--v-shell)" stroke="${L}" stroke-width="1.6"/>
+    <path d="M84 63 V213" stroke="${L}" stroke-width="2.5"/>
+    <circle cx="84" cy="215" r="2.8" fill="${L}"/></g>`:''}
+  <!-- pH 玻璃电极（插入件）：粗杆 + 球泡 -->
+  ${z.on.phSensor?`<g transform="rotate(9.2 138 216)">
+    <rect x="131" y="16" width="14" height="36" rx="3.5" fill="var(--v-hi)" stroke="${L}" stroke-width="2"/>
+    <rect x="134.5" y="21" width="7" height="26" rx="1.5" fill="#FFF" stroke="${L}" stroke-width="1.1"/>
+    <rect x="132.5" y="52" width="11" height="11" rx="1.5" fill="var(--v-shell)" stroke="${L}" stroke-width="1.6"/>
+    <path d="M138 63 V209" stroke="${L}" stroke-width="3.5"/>
+    <circle cx="138" cy="213" r="4.5" fill="#FFF" stroke="${L}" stroke-width="1.8"/></g>`:''}
+  <!-- 数值标签：锚在各自探头上 -->
+  ${z.on.trSensor?`<path d="M42 36 H47.5" stroke="${L}" stroke-width="1.5"/>
+    <rect x="-20" y="${trTgt?16:22}" width="62" height="${trTgt?40:28}" rx="3"
+      fill="var(--glass)" stroke="${BD(trTgt)}" stroke-width="2"/>
+    <text class="pvl" x="11" y="${trTgt?30:36}" font-size="15" fill="var(--ink)"
+      text-anchor="middle" dominant-baseline="central">${f1(z.tr)} ℃</text>
+    ${trTgt?`<text class="pvl" x="11" y="47" font-size="10" fill="var(--mut)"
+      text-anchor="middle" dominant-baseline="central">设定 ${f1(pv(z,'tr'))} ℃</text>`:''}`:''}
+  ${z.on.phSensor?`<path d="M174.5 36 H180" stroke="${L}" stroke-width="1.5"/>
+    <rect x="180" y="22" width="52" height="28" rx="3"
+      fill="var(--glass)" stroke="var(--mut2)" stroke-width="2"/>
+    <text class="pvl" x="206" y="36" font-size="15" fill="var(--ink)"
+      text-anchor="middle" dominant-baseline="central">${z.ph.toFixed(2)}</text>`:''}
+  <!-- 仪表位号 -->
+  <text x="56" y="180" font-size="9" fill="var(--mut)" font-family="var(--sans)">HT</text>
+  ${z.on.phSensor?`<path d="M161 85 H198" stroke="${L}" stroke-width="1.5"/>
+  <circle cx="206" cy="85" r="8" fill="var(--glass)" stroke="${L}" stroke-width="1.5"/>
+  <text x="206" y="85" font-size="7.5" fill="var(--mut)" text-anchor="middle" dominant-baseline="central">AT</text>`:''}
+  <rect x="29" y="200" width="12" height="11" fill="var(--v-shell)" stroke="${L}" stroke-width="1.5"/>
+  <path d="M29 205.5 H23" stroke="${L}" stroke-width="1.5"/>
+  <circle cx="15" cy="205.5" r="8" fill="var(--glass)" stroke="${L}" stroke-width="1.5"/>
+  <text x="15" y="205.5" font-size="7.5" fill="var(--mut)" text-anchor="middle" dominant-baseline="central">TT</text>
+  </svg>`;
+}
+const ICON={
+/* 反应釜：锥形瓶（口沿 + 瓶颈 + 锥体 + 液体），源自用户提供的 iconfont 字形，
+   重绘为 24 视窗描边风格；液体 class="liq" 由 CSS 按运行状态着色 */
+reactor:'<path d="M8.7 3.6h6.6"/>'+
+        '<path d="M10.1 3.6V10L5 17.7Q4.4 18.7 5.6 18.7H18.4Q19.6 18.7 19 17.7L13.9 10V3.6"/>'+
+        '<path d="M7.1 14.6Q12 15.5 16.9 14.6L19 17.7Q19.6 18.7 18.4 18.7H5.6Q4.4 18.7 5 17.7Z" class="liq"/>',
+/* 总览：两只锥形瓶叠放（后瓶右上偏移 +4.6,-2.6 完整绘制；
+   前瓶锥体填充 var(--icbg) 随按钮背景遮挡；液体 class="liq" 走状态色(总览无 .run 恒为灰)） */
+grid:'<path d="M10.8 4.8h5.1"/>'+
+     '<path d="M11.85 4.8V9.8L7.9 15.8Q7.4 16.6 8.35 16.6H18.3Q19.25 16.6 18.8 15.8L14.8 9.8V4.8"/>'+
+     '<path d="M9.5 13.4Q13.3 14.1 17.2 13.4L18.8 15.8Q19.25 16.6 18.3 16.6H8.35Q7.4 16.6 7.9 15.8Z" class="liq"/>'+
+     '<path d="M6.2 7.4h5.1"/>'+
+     '<path d="M7.25 7.4V12.4L3.3 18.4Q2.8 19.2 3.75 19.2H13.7Q14.65 19.2 14.2 18.4L10.2 12.4V7.4" fill="var(--icbg,#FFF)"/>'+
+     '<path d="M4.9 16Q8.7 16.7 12.6 16L14.2 18.4Q14.65 19.2 13.7 19.2H3.75Q2.8 19.2 3.3 18.4Z" class="liq"/>',
+/* 文件夹 */
+folder:'<path d="M3.2 6.9a1.9 1.9 0 0 1 1.9-1.9h3.7l1.9 2.5h8.2a1.9 1.9 0 0 1 1.9 1.9v8.4a1.9 1.9 0 0 1-1.9 1.9H5.1a1.9 1.9 0 0 1-1.9-1.9z"/>',
+/* 齿轮 */
+gear:'<path d="M10.55 2.81 L13.45 2.81 L13.79 5.03 L15.67 5.80 L17.47 4.48 L19.52 6.53 L18.20 8.33 L18.97 10.21 L21.19 10.55 L21.19 13.45 L18.97 13.79 L18.20 15.67 L19.52 17.47 L17.47 19.52 L15.67 18.20 L13.79 18.97 L13.45 21.19 L10.55 21.19 L10.21 18.97 L8.33 18.20 L6.53 19.52 L4.48 17.47 L5.80 15.67 L5.03 13.79 L2.81 13.45 L2.81 10.55 L5.03 10.21 L5.80 8.33 L4.48 6.53 L6.53 4.48 L8.33 5.80 L10.21 5.03 Z"/><circle cx="12" cy="12" r="3.3"/>',
+/* 控制：三条滑杆 */
+slider:'<path d="M3.6 7.4h16.8M3.6 12h16.8M3.6 16.6h16.8"/>'+
+       '<circle cx="9" cy="7.4" r="2.4" fill="var(--icbg,#FFF)"/>'+
+       '<circle cx="15.2" cy="12" r="2.4" fill="var(--icbg,#FFF)"/>'+
+       '<circle cx="7.6" cy="16.6" r="2.4" fill="var(--icbg,#FFF)"/>',
+/* 曲线：坐标轴 + 折线 */
+chart:'<path d="M4 4.2v15.6h16"/><path d="M6.4 15.8 10 10.4l3.6 3.2 5.4-7"/>',
+/* 温度程序：升温—保温—降温 */
+profile:'<path d="M2.8 18.4h3l3.6-9.2h4.8l3.2 5.6h3.8"/>'+
+        '<circle cx="9.4" cy="9.2" r="1.5" fill="var(--icbg,#FFF)"/>'+
+        '<circle cx="14.2" cy="9.2" r="1.5" fill="var(--icbg,#FFF)"/>',
+/* 任务序列：阶梯 */
+steps:'<path d="M3.4 19.4h4.4v-4.5h4.4v-4.5h4.4V5.4h3.6"/>',
+/* 安全：盾牌 + 勾 */
+shield:'<path d="M12 3.2 19.8 6.3v6.1c0 4.5-3.2 7.1-7.8 8.4-4.6-1.3-7.8-3.9-7.8-8.4V6.3z"/>'+
+       '<path d="M9.3 12.3 11.2 14.2 14.8 10.3"/>',
+/* 导出 */
+export:'<path d="M12 3.8v10.4"/><path d="M7.9 10.2 12 14.3l4.1-4.1"/><path d="M4.4 19.4h15.2"/>'};
+const IC={cool:'<path d="M11 3v18M4.5 7.5l13 9M17.5 7.5l-13 9"/>',rate:'<path d="M3.5 18 9 11l4 3.6L19 5"/><path d="M14.5 5H19v4.5"/>',therm:'<path d="M8.4 15V4.2a2.6 2.6 0 0 1 5.2 0V15a5 5 0 1 1-5.2 0z"/><circle cx="11" cy="19.2" r="2" fill="#4C4C4C" stroke="none"/>',
+ delta:'<path d="M2.6 8c2.1-2.8 4.7-2.8 6.9 0s4.8 2.8 6.9 0"/><path d="M2.6 14c2.1-2.8 4.7-2.8 6.9 0s4.8 2.8 6.9 0"/><path d="M2.6 20c2.1-2.8 4.7-2.8 6.9 0s4.8 2.8 6.9 0"/>',
+ stir:'<path d="M11 4v13"/><ellipse cx="6" cy="18" rx="4.4" ry="2.3"/><ellipse cx="16" cy="18" rx="4.4" ry="2.3"/>',
+ drop:'<path d="M11 4c3.6 4.6 5.7 7.6 5.7 10.2a5.7 5.7 0 1 1-11.4 0C5.3 11.6 7.4 8.6 11 4z"/>'};
+const ic=k=>`<span class="ic"><svg viewBox="0 0 22 24">${IC[k]}</svg></span>`;
+
+/* ══════════ 侧栏 ══════════ */
+function rail(){
+  const it=(p,k,zi)=>{const on=S.page===p, run=zi!==undefined&&(S.zones[zi].seqRun||S.zones[zi].on.temp);
+    return `<button class="rbtn${on?' on':''}${run?' run':''}" data-nav="${p}">
+      ${zi!==undefined?`<span class="n">${zi+1}</span>`:''}
+      <svg viewBox="0 0 24 24">${ICON[k]}</svg></button>`;};
+  const anyRun=S.zones.some(z=>z.seqRun||z.on.temp);
+  return `<aside class="rail">
+    ${it('ov','grid')}
+    <div class="rsep"></div>
+    ${it('z0','reactor',0)}${it('z1','reactor',1)}
+    <div class="rsep"></div>
+    ${it('files','folder')}
+    <div class="rspace"></div>
+    ${it('sys','gear')}
+    <div class="rstate${anyRun?'':' idle'}">${anyRun?'CONTROL':'READY'}</div></aside>`;
+}
+const TABIC={app:'reactor',seq:'profile',gra:'chart',ctl:'slider',
+  saf:'shield',exp:'export',f:'folder',s:'gear'};
+const tabs=(list,cur,grp,rt='')=>`<div class="topbar">${list.map(([k,n])=>
+  `<button class="tab${cur===k?' on':''}" data-tab="${grp}" data-k="${k}">
+     ${TABIC[k]?`<span class="tic"><svg viewBox="0 0 24 24">${ICON[TABIC[k]]}</svg></span>`:''}${n}</button>`).join('')}
+  ${rt?`<span class="rt">${rt}</span>`:''}<span class="sbis">${S.sys.exporting?'<i class="sbi ex">⇪ 导出中</i>':''}${S.sys.remote?'<i class="sbi rm" data-act="remoteInfo">⇅ 远程 '+S.sys.remoteIp+'</i>':''}${S.sys.icontrol?'<i class="sbi on">iControl</i>':''}${S.sys.icdc?'<i class="sbi">iC DC</i>':''}</span><span class="brand">上海霍桐实验仪器</span></div>`;
+
+/* ══════════ 总览 ══════════ */
+function pageOv(){
+  const t=S.tab.ov; let body='';
+  if(t==='app') body=`<div class="zones">${S.zones.map((z,i)=>zoneCard(z,i)).join('')}</div>`;
+  if(t==='seq') body=`<div style="flex:1;display:flex;flex-direction:column;gap:10px">${S.zones.map(seqOv).join('')}</div>`;
+  if(t==='gra') body=`<div class="chartbox" style="flex:1">${chart(
+      [{d:S.zones[0].hist.tr,c:'var(--s1)',n:'Tr 通道1'},{d:S.zones[0].hist.tj,c:'var(--s2)',n:'Tj 通道1'},
+       {d:S.zones[1].hist.tr,c:'var(--s4)',n:'Tr 通道2'}],-30,110,621)}</div>`;
+  return `<div class="screen">${tabs([['app','装置总览'],['seq','方案总览'],['gra','曲线总览']],t,'ov',
+    `主机 A · 2 通道 · 两釜温差 ${maxDT()} ℃`)}<div class="stage">${body}</div></div>`;
+}
+function zoneCard(z,i){
+  const tgt=z.mode==='Tj'?'tj':'tr', dT=z.tr-z.tj;
+  return `<section class="zone" data-nav="z${i}">
+    ${zhead(z)}
+    <div class="art">${vessel(z)}
+</div>
+    <div class="rpanel">
+      <div class="read">${ic('therm')}<div class="vbx${tgt==='tj'?' hi':''}"><span class="tag">Tj</span>${f1(z.tj)}<span class="u">℃</span><span class="note">${tgt==='tj'?'设定 '+f1(pv(z,'tj')):'上限 '+z.safety.tjmax}</span></div></div>
+      <div class="read">${ic('delta')}<div class="vbx"><span class="tag">Tr−Tj</span>${(dT>=0?'+':'−')+Math.abs(dT).toFixed(1)}<span class="u">K</span><span class="note">${z.on.temp?(dT<0?'放热中':'趋于平衡'):'温控关闭'}</span></div></div>
+      <div class="read">${ic('stir')}<div class="vbx${z.rpm?'':' off'}"><span class="tag">搅拌</span>${z.rpm}<span class="u">rpm</span><span class="note">扭矩 ${z.torque} mN·m</span></div></div>
+      <div class="read">${ic('drop')}<div class="vbx${z.dose.rate?'':' off'}"><span class="tag">加料</span>${z.dose.rate.toFixed(2)}<span class="u">mL/min</span><span class="note">累计 ${z.dose.total.toFixed(1)} mL</span></div></div>
+      <div class="read">${ic('cool')}<div class="vbx"><span class="tag">Tc</span>${f1(z.tc)}<span class="u">℃</span><span class="note">冷媒正常</span></div></div>
+      <div class="read">${ic('rate')}<div class="vbx${z.on.temp?'':' off'}"><span class="tag">变温</span>${trRate(z)}<span class="u">℃/min</span><span class="note">${z.on.temp?'实测':'停止'}</span></div></div>
+    </div></section>`;
+}
+const SEGMIN=26, TRACK=1084, TLPAD=53;
+function segLay(ds){
+  const tot=ds.reduce((a,b)=>a+b,0)||1, nat=ds.map(d=>d/tot*TRACK);
+  const zip=nat.map(v=>v<SEGMIN);
+  const fx=zip.reduce((a,c)=>a+(c?SEGMIN:0),0);
+  const rw=Math.max(0,TRACK-fx-(ds.length-1)), rn=nat.reduce((a,v,i)=>a+(zip[i]?0:v),0);
+  return nat.map((v,i)=>({w:zip[i]?SEGMIN:(rn?v/rn*rw:0),zip:zip[i]}));
+}
+function segX(L,ds,t){let a=0,x=0;
+  for(let i=0;i<ds.length;i++){
+    if(t<=a+ds[i]) return x+L[i].w*(ds[i]?(t-a)/ds[i]:0);
+    a+=ds[i]; x+=L[i].w+1;}
+  return x;}
+function tickStep(tot){for(const v of [300,600,900,1800,3600,7200,10800]) if(tot/v<=8) return v; return 21600;}
+const tkLbl=t=>t?(t<3600?(t/60|0)+' min':(t/3600).toFixed(t%3600?1:0)+' h'):'0';
+
+function seqOv(z){
+  const st=z.seq.filter(Boolean);
+  if(!st.length) return `<div class="pnl" style="flex:none"><div class="pnh">通道 ${z.id} · ${z.name}
+    <span class="sm">手动模式</span></div>
+    <div class="tlnone">未编排方案 · 手动模式下不显示时序</div></div>`;
+  const ds=st.map(x=>x.d), tot=ds.reduce((a,b)=>a+b,0), L=segLay(ds);
+  const cur=z.seqRun?Math.min(z.elapsed,tot):null;
+  const nz=L.filter(x=>x.zip).length;
+  const seg=(cls,txt,i)=>`<div class="seg ${cls}${L[i].zip?' zip':''}${z.seqRun&&i<z.seqIdx?' past':''}"
+      style="width:${L[i].w.toFixed(1)}px" title="步骤 ${i+1} · ${st[i].t} · ${st[i].p} · ${hhmmss(ds[i])}"
+      >${L[i].zip?'':txt}</div>`;
+  let ax='';
+  for(let t=0,ss=tickStep(tot);t<=tot;t+=ss){const x=segX(L,ds,t);
+    ax+=`<i style="left:${x.toFixed(1)}px"></i><b style="left:${x.toFixed(1)}px${x>TRACK-24?';transform:translateX(-92%)':''}">${tkLbl(t)}</b>`;}
+  return `<div class="pnl" style="flex:none"><div class="pnh">通道 ${z.id} · ${z.name}
+    <span class="sm">${st.length} 步 · 总时长 ${hhmmss(tot)}${nz?` · ${nz} 个短步骤已压缩`:''}</span>
+    <span class="rt"><span class="rtag ${z.seqRun?'live':'draft'}">${z.seqRun?`步骤 ${z.seqIdx+1}/${st.length}`:'未启动'}</span></span></div>
+  <div class="tl">
+    <div class="tlr"><span class="tlk">温度</span><div class="tlt">${st.map((x,i)=>seg('tp',x.ev,i)).join('')}</div></div>
+    <div class="tlr"><span class="tlk">搅拌</span><div class="tlt">${st.map((x,i)=>seg('rp',x.rpm+' rpm',i)).join('')}</div></div>
+    <div class="tlr"><span class="tlk"></span><div class="tla">${ax}</div></div>
+    ${cur!==null?`<b class="tlc" style="left:${(TLPAD+segX(L,ds,cur)).toFixed(1)}px;top:11px;height:57px"></b>`:''}
+  </div></div>`;
+}
+
+/* ══════════ 曲线 ══════════ */
+function chart(series,lo,hi,H=400,meta){
+  const W=1140,L=48,R=16,T=30,B=30;
+  const n=series[0].d.length, x=i=>L+i/(n-1)*(W-L-R), y=v=>H-B-(v-lo)/(hi-lo)*(H-T-B);
+  const s0=meta&&meta.s0||0, s0m=meta&&meta.startMin||0, sm=meta&&meta.spanMin!=null?meta.spanMin:180;
+  let g='';
+  for(let i=0;i<=6;i++){const yy=T+i*(H-T-B)/6;
+    g+=`<line x1="${L}" y1="${yy}" x2="${W-R}" y2="${yy}" stroke="#EEEEEE"/>
+      <text x="${L-8}" y="${yy}" text-anchor="end" dominant-baseline="central" font-size="10.5" fill="#A3A3A3">${(hi-(hi-lo)*i/6).toFixed(0)}</text>`;}
+  for(let i=0;i<=6;i++){const xx=L+i*(W-L-R)/6,tm=s0m+i*sm/6;
+    g+=`<text x="${xx}" y="${H-B+15}" text-anchor="middle" font-size="10.5" fill="#A3A3A3">${sm<36?tm.toFixed(1):Math.round(tm)} min</text>`;}
+  const ln=series.map(s=>`<polyline points="${s.d.map((v,i)=>x(i)+','+y(v)).join(' ')}" fill="none" stroke="${s.c}" stroke-width="2" stroke-linejoin="round"/>`).join('');
+  const leg=series.map((s,i)=>`<g transform="translate(${L+8+i*132},14)"><rect width="15" height="3" y="-2" rx="1.5" fill="${s.c}"/>
+    <text x="21" y="1" font-size="11" fill="#6F6F6F" dominant-baseline="central">${s.n}</text></g>`).join('');
+  const zc=Z();
+  const mk=(zc.notes||[]).map(m=>({ii:m.i-s0})).filter(m=>m.ii>0&&m.ii<n)
+    .map(m=>`<polygon points="${x(m.ii)},${H-B-7} ${x(m.ii)-5},${H-B+2} ${x(m.ii)+5},${H-B+2}" fill="#C42B1C"/>`).join('');
+  const F0=(zc.hist&&zc.hist.tr.length)||n;
+  const mrk=(zc.marks||[]).map((m,mi)=>({m,mi,ii:(F0-1-(zc.elapsed-m.t))-s0})).filter(o=>o.ii>0&&o.ii<n)
+    .map(o=>`<line x1="${x(o.ii)}" y1="${T}" x2="${x(o.ii)}" y2="${H-B}" stroke="#C42B1C" stroke-width="1.2" stroke-dasharray="3 3" opacity="${zc.mZero===o.mi?1:.5}"/>
+      <text x="${x(o.ii)+4}" y="${T+13}" font-size="10" fill="#C42B1C">${zc.mZero===o.mi?'⌖ ':''}${o.m.name}</text>`).join('');
+  return `<svg viewBox="0 0 ${W} ${H}"${meta&&meta.tap?' data-gchart="1"':''}>${g}${ln}${mrk}${mk}<line x1="${L}" y1="${H-B}" x2="${W-R}" y2="${H-B}" stroke="#DCDCDC"/>${leg}</svg>`;
+}
+
+/* ══════════ 通道页 ══════════ */
+const modeName=m=>({Tr:'釜内控温 Tr',Tj:'夹套控温 Tj',TrTj:'蒸回流 Tj−Tr'})[m];
+function pageZone(){const z=Z(),t=S.tab.z;
+  return `<div class="screen">${tabs([['ctl','控制'],['gra','趋势曲线'],['seq','任务序列'],['saf','反应釜与安全'],['exp','数据导出']],t,'z','采样周期 2 s · 全程记录')}
+    <div class="stage">${zHead(z)}${({ctl:zCtl,gra:zGraph,seq:zSeq,saf:zSafe,exp:zExp}[t]||zCtl)(z)}</div></div>`;}
+function zHead(z){return `<div class="hd${(z.seqRun||z.on.temp)?' run':''}">
+  <span class="row1"><i class="dot"></i><span class="ch">通道 ${z.id}</span>
+    <b>${z.name}${nPend(z)?'<i class="star">*</i>':''}</b>
+    <span class="rt">${z.seqRun?`序列 <em>${hhmmss(Math.max(0,z.elapsed-(z.seqT0||0)))}</em>　`:''}${z.mZero!=null&&z.marks[z.mZero]?`标记 ${z.marks[z.mZero].name} <em>+${hhmmss(Math.max(0,z.elapsed-z.marks[z.mZero].t))}</em>`:''}</span>
+    ${z.seqRun?`<button class="hbtn danger" data-act="stopSeq">■ 结束序列</button>`:''}</span>
+  <span class="row2"><span>${z.reactor} · Tc ${f1(z.tc)} ℃ · ${z.seqRun?'程序控制':'手动控制'} · ${modeName(z.mode)}</span>
+    <span class="rt">${seqNote(z)}</span></span>
+  <i class="pg"><b style="width:${seqPct(z)}%"></b></i></div>`;}
+function vb(z,k,unit,cls=''){const p=z.pending[k]!==undefined;
+  return `<div class="vb ${cls}${p?' edit':''}" data-key="${k}"><b>${typeof pv(z,k)==='number'?f1(pv(z,k)):pv(z,k)}</b>${unit?`<u>${unit}</u>`:''}</div>
+    ${p?`<span class="pend">待下发（原 ${typeof z.set[k]==='number'?f1(z.set[k]):z.set[k]}）</span>`:''}`;}
+function zCtl(z){const dT=z.tr-z.tj;
+  const tf = z.mode==='TrTj'
+    ? `<div class="fd"><label>Tj − Tr 温差</label>${vb(z,'djt','K')}</div>
+       <div class="fd"><label>Tj end 上限</label>${vb(z,'tjEnd','℃')}</div>
+       <div class="now">沸腾后 Tr、Tj 自动保持<br>达到 Tj end 即锁定终温</div>`
+    : `<div class="fd"><label>目标 ${z.mode}</label>${vb(z,z.mode==='Tr'?'tr':'tj','℃')}</div>
+       <div class="rad" data-rad="rampBy"><span data-v="rate"><i class="${z.set.rampBy==='rate'?'on':''}"></i>按速率</span>
+         <span data-v="dur"><i class="${z.set.rampBy==='dur'?'on':''}"></i>按时长</span></div>
+       <div class="fd"><label>${z.set.rampBy==='rate'?'速率':'时长'}</label>${vb(z,z.set.rampBy==='rate'?'rate':'dur',z.set.rampBy==='rate'?'℃/min':'','sm')}</div>
+       <div class="fd"><label>曲线指数</label>${vb(z,'exp','','sm')}</div>
+       <div class="now">Tj <b>${f1(z.tj)}</b> ℃　Tr−Tj <b>${(dT>=0?'+':'−')+Math.abs(dT).toFixed(1)}</b> K<br>Tc <b>${f1(z.tc)}</b> ℃ · 冷媒正常</div>`;
+  return `<div class="main">
+    <div class="artpane${S.artOpen?'':' closed'}">
+    <div class="ptab" data-act="toggleArt"><span class="pc">${S.artOpen?'❮':'❯'}</span><span class="pv">装置图</span></div>
+    <div class="artbox">${vessel(z)}
+</div></div>
+    <div class="ctl">
+      <div class="modes">
+        <button data-mode="Tr" class="${z.mode==='Tr'?'on':''}">釜内温度 Tr<small>反应热由夹套补偿</small></button>
+        <button data-mode="Tj" class="${z.mode==='Tj'?'on':''}">夹套温度 Tj<small>直接控恒温器</small></button>
+        <button data-mode="TrTj" class="${z.mode==='TrTj'?'on':''}" ${z.on.trSensor?'':'disabled'}>蒸回流 Tj−Tr<small>沸点未知时使用</small></button></div>
+      <div class="cd"><div class="ch"><b>温度控制</b><em>${modeName(z.mode)}</em>
+        <span class="sw${z.on.trSensor?' on':''}" data-tog="trSensor">Tr 传感器<i></i></span>
+        <span class="sw${z.on.phSensor?' on':''}" data-tog="phSensor">pH 电极<i></i></span>
+        <span class="sw${z.on.temp?' on':''}" data-tog="temp">温控<i></i></span></div><div class="row">${tf}</div></div>
+      <div class="cd"><div class="ch"><b>搅拌</b><em>磁耦合顶置 · 桨式 · 50–1000 rpm · 扭矩上限 59 mN·m</em>
+        <span class="sw${z.on.stir?' on':''}" data-tog="stir">搅拌<i></i></span></div>
+        <div class="row">
+          <div class="fd"><label>转速</label>${vb(z,'rpm','rpm','sm')}</div>
+          <div class="fd"><label>斜坡终值</label>${vb(z,'rEnd','rpm','sm')}</div>
+          <div class="fd"><label>斜坡时长</label>${vb(z,'rDur','','sm')}</div>
+          <div class="now">实测 <b>${z.rpm}</b> rpm　扭矩 <b>${z.torque}</b> mN·m</div></div></div>
+      <div class="cd"><div class="ch"><b>手动操作</b><em>记入实验记录并在曲线上标注</em></div>
+        <div class="acts">
+          <button class="ab" data-act="dose">加料 Dose / Charge<small>物质 · 批号 · 量 · 速率</small></button>
+          <button class="ab" data-act="sample">取样 Sample<small>命名 + 时间戳</small></button>
+          <button class="ab mark" data-act="marker">时间标记<small>把成核时刻设为 t = 0</small></button>
+          <button class="ab" data-act="note">备注 Notes<small>曲线上红三角</small></button></div>
+        <div class="lastlog">最近：${z.log.slice(0,3).map(l=>`${l[0]} ${l[1]} ${l[2]}`).join(' · ')||'暂无记录'}</div></div>
+    </div></div>
+  <div class="foot"><div class="lim">
+    <span>Tsafe ${z.safety.tsafe} ℃</span><span>Tr ${z.safety.trmin}…${z.safety.trmax} ℃</span>
+    <span>Tj ${z.safety.tjmin}…${z.safety.tjmax} ℃</span><span>Tdiff max ${z.safety.tdiff} K</span>
+    <span>Rsafe ${z.safety.rsafe}</span><span>Rmax ${z.safety.rmax} rpm</span></div>
+    <div class="btns"><button class="bt" data-act="discard" ${nPend(z)?'':'disabled'}>放弃修改</button>
+      <button class="bt pri" data-act="commit" ${nPend(z)?'':'disabled'}>下发设定值（${nPend(z)} 项）</button></div></div>`;
+}
+function zGraph(z){
+  const gv=z.gv||(z.gv={win:0,off:0});
+  const F=z.hist.tr.length, win=gv.win&&gv.win<F?gv.win:F, off=Math.min(gv.off||0,Math.max(0,F-win));
+  const s0=Math.max(0,F-win-off), sl=d=>d.slice(s0,s0+win);
+  const cur=TREND.filter(t=>z.trends.includes(t.k));
+  const ds=cur.map(t=>({d:sl(HD(z,t.k)),c:(z.tcolor&&z.tcolor[t.k])||t.c,n:t.n}));
+  const lo=Math.min(-30,...ds.map(o=>Math.min(...o.d))), hi=Math.max(...ds.map(o=>Math.max(...o.d)))*1.12+5;
+  return `<div class="trends">${TREND.map(t=>`<button class="trend${z.trends.includes(t.k)?'':' off'}" data-trend="${t.k}">
+      <span class="t"><i style="background:${(z.tcolor&&z.tcolor[t.k])||t.c}"></i>${t.n}</span>
+      <span class="v">${t.k==='ph'?(z.on.phSensor?z.ph.toFixed(2):'—'):t.k==='rpm'?z.rpm:t.k==='dt'?((z.tr-z.tj>=0?'+':'−')+Math.abs(z.tr-z.tj).toFixed(1)):f1(z[t.k])} <u style="text-decoration:none;font-size:11px;color:var(--mut)">${t.u}</u></span></button>`).join('')}</div>
+    <div class="chartbox">${chart(ds,lo,hi,415,{s0,startMin:180*s0/F,spanMin:180*win/F,tap:1})}</div>
+    <div class="cbar"><button class="bt" data-act="note">备注</button><button class="bt" data-act="marker">时间标记</button>
+      <button class="bt" data-act="sample">取样</button><button class="bt" data-act="tcolors">曲线颜色…</button>
+      <button class="bt" data-act="snap">拍快照</button><button class="bt" data-act="expSnap">导出快照</button>
+      <span style="margin-left:auto">窗口 ${Math.round(180*win/F)} min</span>
+      <button class="bt" data-act="panL">◀</button><button class="bt" data-act="panR">▶</button>
+      <button class="bt" data-act="zoomOut">−</button><button class="bt" data-act="zoomIn">＋</button>
+      <button class="bt" data-act="noZoom">复位</button><button class="bt" data-act="timeMode">实验时间 / 时钟</button></div>`;
+}
+function zSeq(z){const filled=z.seq.filter(Boolean).length;
+  return `<div class="pnl" style="flex:1"><div class="pnh">任务序列预览
+    <span class="sm">最多 6 步 · 可用操作 Tr / Tj / Tr−Tj / R / Wait / 加料</span>
+    <span class="rt"><button class="bt" data-act="newSeq">新建序列…</button><button class="bt" data-act="toFiles">从文件…</button></span></div>
+    <div style="flex:1;min-height:0;padding:0 10px 8px">${seqChart(z)}</div></div>
+    <div class="steps">${z.seq.map((s,i)=>`<button class="step ${s?'':'empty'} ${(z.seqRun&&i<z.seqIdx)||(z.seqErr!=null&&i<z.seqErr)?'done':''} ${z.seqRun&&i===z.seqIdx?'active':''} ${z.seqErr===i?'err':''}" data-step="${i}">
+      <span class="no">步骤 ${i+1}</span><span class="ty">${s?s.t:'＋'}</span><span class="pm">${s?s.p:'点击添加'}</span></button>`).join('')}</div>
+    <div class="foot"><div class="lim"><span>已开始的步骤不可编辑</span><span>序列启动后新增步骤仅能追加</span></div>
+      <div class="btns"><button class="bt" data-act="clearSteps">清除全部步骤</button>
+      ${z.seqRun?`<button class="bt" data-act="stopSeq">结束序列…</button>`
+                :`<button class="bt pri" data-act="startSeq" ${filled?'':'disabled'}>启动序列</button>`}</div></div>`;}
+/* ── 步骤字段模型：结构化 s.f，p/d/ev 由 regenSeq 派生 ── */
+function defFields(t,prev){const rpm=(prev&&prev.rpm)||450;
+  if(t==='Wait')return {hold:30,rpm};
+  if(t==='R')  return {tgt:300,mode:'time',val:5,rpm:300};
+  if(t==='Dose')return {tgt:10,mode:'rate',val:1.2,rpm};
+  if(t==='TrTj')return {tgt:10,mode:'time',val:30,rpm};
+  return {tgt:40,mode:'rate',val:0.5,rpm,expn:1};}
+function ensureF(s){ if(s.f)return; const n=t=>parseFloat(String(t).replace('−','-')),ps=(s.p||'').split(' · ');
+  if(s.t==='Wait')s.f={hold:Math.max(1,Math.round((s.d||1800)/60)),rpm:s.rpm};
+  else{const rate=/\/min/.test(ps[1]||'');s.f={tgt:isNaN(n(ps[0]))?40:n(ps[0]),mode:rate?'rate':'time',
+    val:isNaN(n(ps[1]))?(rate?0.5:30):Math.abs(n(ps[1])),rpm:s.rpm,expn:1};}}
+function regenSeq(z){let cur=22; const fm=v=>String(+(+v).toFixed(2)).replace('-','−');
+  z.seq.forEach(s=>{if(!s)return; ensureF(s); const f=s.f;
+    if(s.t==='Wait'){s.d=Math.max(60,f.hold*60);s.p=hhmmss(s.d);s.ev=fm(cur)+' ℃';}
+    else if(s.t==='Tr'||s.t==='Tj'){
+      s.d=f.mode==='rate'?Math.max(60,Math.abs(f.tgt-cur)/Math.max(.01,f.val)*60):Math.max(60,f.val*60);
+      s.p=fm(f.tgt)+' ℃ · '+(f.mode==='rate'?fm(f.val)+' ℃/min':fm(f.val)+' min');
+      s.ev=fm(f.tgt)+' ℃'; cur=f.tgt;}
+    else if(s.t==='R'){s.d=f.mode==='rate'?Math.max(60,300/Math.max(1,f.val)*60):Math.max(60,f.val*60);
+      s.p=fm(f.tgt)+' rpm · '+(f.mode==='rate'?fm(f.val)+' rpm/min':fm(f.val)+' min');s.ev=fm(f.tgt)+' rpm';}
+    else if(s.t==='TrTj'){s.d=Math.max(60,(f.mode==='time'?f.val:30)*60);
+      s.p='ΔT '+fm(f.tgt)+' K · '+(f.mode==='rate'?fm(f.val)+' K/min':fm(f.val)+' min');s.ev='ΔT '+fm(f.tgt)+' K';}
+    else{s.d=f.mode==='rate'?Math.max(60,f.tgt/Math.max(.01,f.val)*60):Math.max(60,f.val*60);
+      s.p=fm(f.tgt)+' mL · '+(f.mode==='rate'?fm(f.val)+' mL/min':fm(f.val)+' min');s.ev=fm(f.tgt)+' mL';}
+    if(f.rpm!==undefined)s.rpm=f.rpm;});}
+function seqChart(z){
+  const stRaw=z.seq.map((s,gi)=>s?{s,gi}:null).filter(Boolean);
+  if(!stRaw.length) return '<div style="padding:22px 4px;font-size:13px;color:var(--mut)">尚未编排步骤，点击下方任一步骤开始</div>';
+  /* 每步一列卡片：表头(点击换类型) / 温度轨迹带 / 属性明细(点击值直接修改) */
+  const W=1132,H=348,G=8,n=stRaw.length,cw=(W-4-G*(n-1))/n,cx=i=>2+i*(cw+G);
+  const mm=t=>String(t).replace('-','−'), TN={TrTj:'Tr−Tj',Dose:'加料'};
+  let cur=22; const segs=stRaw.map((o,ci)=>{const s=o.s; ensureF(s); let e=cur;
+    if(s.t==='Tr'||s.t==='Tj')e=s.f.tgt; const g={s,gi:o.gi,ci,t0:cur,t1:e}; cur=e; return g;});
+  const ts=segs.flatMap(g=>[g.t0,g.t1]); let lo=Math.min(...ts)-8,hi=Math.max(...ts)+8;
+  if(hi-lo<24){const c=(hi+lo)/2;lo=c-12;hi=c+12;}
+  const bT=52,bB=168,y=v=>bB-(v-lo)/(hi-lo)*(bB-bT);
+  const rows=g=>{const s=g.s,f=s.f,md=f.mode==='rate',R=[];
+    if(s.t==='Tr'||s.t==='Tj')R.push(['目标 '+s.t,mm(f1(f.tgt))+' ℃','tgt'],
+      ['到达方式',md?'按速率':'按时长','mode'],[md?'速率':'用时',mm(f.val)+(md?' ℃/min':' min'),'val'],
+      ['曲线指数',String(f.expn||1),'expn']);
+    else if(s.t==='Wait')R.push(['保持温度',mm(f1(g.t0))+' ℃',0],['保持时长',hhmmss(s.d),'hold']);
+    else if(s.t==='R')R.push(['目标转速',f.tgt+' rpm','tgt'],['到达方式',md?'按速率':'按时长','mode'],
+      [md?'斜率':'用时',mm(f.val)+(md?' rpm/min':' min'),'val']);
+    else if(s.t==='TrTj')R.push(['ΔT 目标',f.tgt+' K','tgt'],['到达方式',md?'按速率':'按时长','mode'],
+      [md?'速率':'用时',mm(f.val)+(md?' K/min':' min'),'val']);
+    else R.push(['加料总量',f.tgt+' mL','tgt'],['到达方式',md?'按速率':'按时长','mode'],
+      [md?'速率':'用时',mm(f.val)+(md?' mL/min':' min'),'val']);
+    if(s.t!=='Wait')R.push(['步时长',hhmmss(s.d),0]);
+    R.push(['搅拌',(f.rpm!==undefined?f.rpm:(s.rpm||300))+' rpm','rpm']);
+    return R;};
+  const run=z.seqRun, err=z.seqErr, ds=stRaw.map(o=>o.s.d); let acc=0; const pre=ds.map(d=>{const a=acc;acc+=d;return a;});
+  const ai=run?segs.findIndex(g=>g.gi===z.seqIdx):-1;
+  const af=ai>=0?Math.min(1,Math.max(0,(z.elapsed-(z.seqT0||0)-pre[ai])/ds[ai])):0;
+  const stOf=gi=>err!=null?(gi<err?'done':gi===err?'err':'pend'):run?(gi<z.seqIdx?'done':gi===z.seqIdx?'act':'pend'):'idle';
+  const cards=segs.map(g=>{const X=cx(g.ci),ST=stOf(g.gi),lock=run&&g.gi<=z.seqIdx;
+    const fill=ST==='act'?'var(--blue-l)':ST==='err'?'#FBEAE7':ST==='done'?'#F1F1F1':(g.ci%2?'#F6F6F6':'#FBFBFB');
+    const bd=ST==='act'?'var(--blue)':ST==='err'?'var(--red)':ST==='done'?'#DCDCDC':'#E3E3E3';
+    const bw2=(ST==='act'||ST==='err')?1.6:1;
+    const tag=ST==='act'?`<text x="${(X+cw-14).toFixed(1)}" y="26" text-anchor="end" font-size="10.5" fill="var(--blue-d)">进行中 ${Math.round(af*100)}%</text>`
+      :ST==='done'?`<text x="${(X+cw-14).toFixed(1)}" y="26" text-anchor="end" font-size="10.5" fill="var(--green)">✓ 已完成</text>`
+      :ST==='err'?`<text x="${(X+cw-14).toFixed(1)}" y="26" text-anchor="end" font-size="10.5" fill="var(--red)">⚠ 出错 · 已中止</text>`
+      :run?`<text x="${(X+cw-14).toFixed(1)}" y="26" text-anchor="end" font-size="10.5" fill="#B0B0B0">待执行</text>`:'';
+    const rw=rows(g).map(([k,v,fk],r)=>{const Y=198+r*26,ed=fk&&!lock,bx=X+62,bw=cw-76;
+      return `<text x="${(X+14).toFixed(1)}" y="${Y}" font-size="10.5" fill="#8E8E8E">${k}</text>`+
+      (ed?`<rect x="${bx.toFixed(1)}" y="${Y-16}" width="${bw.toFixed(1)}" height="22" rx="3" fill="var(--vbox)" stroke="#B4B4B4" data-fedit="${g.gi}:${fk}" style="cursor:pointer"/>`+
+        (fk==='mode'?`<path d="M${(bx+bw-18).toFixed(1)} ${Y-7}l4.5 5 4.5-5" fill="none" stroke="#6F6F6F" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>`:'')
+      :'')+
+      `<text x="${(X+71).toFixed(1)}" y="${Y}" font-size="12.5" font-weight="500" fill="var(--ink)" pointer-events="none">${v}</text>`;}).join('');
+    return `<g><rect x="${X.toFixed(1)}" y="2" width="${cw.toFixed(1)}" height="344" rx="3" fill="${fill}" stroke="${bd}" stroke-width="${bw2}"/>`+
+      `<text x="${(X+14).toFixed(1)}" y="26" font-size="11" fill="#6F6F6F">步骤 ${g.gi+1}</text>`+
+      `<text x="${(X+58).toFixed(1)}" y="27" font-size="15" font-weight="700" fill="${ST==='act'?'var(--blue-d)':ST==='err'?'var(--red)':'var(--ink)'}">${TN[g.s.t]||g.s.t}${lock?'':'<tspan font-size="9.5" fill="#8E8E8E" dy="-1"> ▾</tspan>'}</text>`+tag+
+      (lock?'':`<rect x="${X.toFixed(1)}" y="2" width="${cw.toFixed(1)}" height="38" fill="transparent" data-step="${g.gi}" style="cursor:pointer"/>`)+
+      `<line x1="${(X+1).toFixed(1)}" y1="40" x2="${(X+cw-1).toFixed(1)}" y2="40" stroke="${ST==='err'?'#F0CBC4':'#E3E3E3'}"/>`+
+      `<line x1="${(X+1).toFixed(1)}" y1="180" x2="${(X+cw-1).toFixed(1)}" y2="180" stroke="${ST==='err'?'#F0CBC4':'#ECECEC'}"/>${rw}</g>`;}).join('');
+  const pts=segs.flatMap(g=>[[cx(g.ci),y(g.t0)],[cx(g.ci)+cw,y(g.t1)]]);
+  const nodes=segs.map(g=>{const X=cx(g.ci)+cw,Y=y(g.t1);
+    return `<circle cx="${X.toFixed(1)}" cy="${Y.toFixed(1)}" r="3" fill="var(--s1)"/>`+
+      `<text x="${(X-6).toFixed(1)}" y="${(Y>110?Y-9:Y+16).toFixed(1)}" text-anchor="end" font-size="10.5" fill="#3A3A3A">${mm(f1(g.t1))} ℃</text>`;}).join('');
+  const Y0=y(segs[0].t0);
+  const p0=`<circle cx="2" cy="${Y0.toFixed(1)}" r="3" fill="var(--s1)"/><text x="10" y="${(Y0>110?Y0-9:Y0+16).toFixed(1)}" font-size="10.5" fill="#3A3A3A">${mm(f1(segs[0].t0))} ℃</text>`;
+  const prog=ai>=0?(()=>{const X=cx(ai)+af*cw;
+    return `<line x1="${X.toFixed(1)}" y1="${bT-6}" x2="${X.toFixed(1)}" y2="${bB+6}" stroke="#C42B1C" stroke-width="1.6" stroke-dasharray="4 3"/>`;})():'';
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:100%">${cards}`+
+    `<polyline points="${pts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ')}" fill="none" stroke="var(--s1)" stroke-width="2.4" stroke-linejoin="round"/>`+
+    `${p0}${nodes}${prog}</svg>`;}
+function zSafe(z){
+  const F=[['tsafe','T safe','℃','紧急程序 E 时冷却到的温度'],['tdiff','T diff max','K','Tj 与 Tr 允许的最大温差，取决于釜型'],
+    ['trmin','Tr min','℃','低于此值触发紧急程序 E'],['trmax','Tr max','℃','高于此值触发紧急程序 E'],
+    ['tjmin','Tj min','℃','恒温器下限'],['tjmax','Tj max','℃','恒温器上限'],
+    ['rsafe','R safe','','紧急时的转速：保持 或 自定义'],['rmax','R max','rpm','玻璃搅拌桨请降至 500 rpm']];
+  return `<div class="pnl" style="flex:none"><div class="pnh">反应釜
+    <span class="rt"><button class="bt" data-act="reactor">更换釜型…</button></span></div>
+    <div class="lst" style="flex:none"><div class="lrow"><span class="k">反应釜类型</span><span class="v">${z.reactor}</span>
+      <span class="d">可选 100 – 400 mL 不同大小与形状（FR-2.6）· 更换后需复核安全限值</span></div></div></div>
+  <div class="pnl" style="flex:1"><div class="pnh">安全限值 <span class="sm">序列运行中不可修改</span></div>
+    <div class="lst">${F.map(([k,n,u,d])=>`<div class="lrow" data-saf="${k}"><span class="k">${n}</span>
+      <span class="v">${z.safety[k]}${u?' '+u:''}</span><span class="d">${d}</span></div>`).join('')}</div></div>
+  <div class="foot"><div class="lim"><span>Tr max：Tsafe+3K … 180 ℃</span><span>Tr min：−40 ℃ … Tsafe−3K</span>
+    <span>Tr / 蒸回流模式下 Tj−Tr 硬限 60 K</span></div>
+    <div class="btns"><button class="bt" data-act="emRef">紧急程序说明…</button><button class="bt" data-act="alarmE">模拟紧急程序 E</button>
+      <button class="bt" data-act="alarmA">模拟紧急程序 A</button></div></div>`;}
+function zExp(z){const y=S.sys;
+  return `<div class="pnl" style="flex:none"><div class="pnh">导出</div><div class="lst" style="flex:none">
+    <div class="lrow" data-act="expPeriod" style="cursor:pointer"><span class="k">按时间段导出</span><span class="v">自定义起止时刻</span><span class="d">›</span></div>
+    <div class="lrow" data-act="cycInt" style="cursor:pointer"><span class="k">导出采样间隔</span><span class="v">${y.expInt} s</span><span class="d">点击在 2 / 10 / 60 s 间切换 · 间隔越大文件越小</span></div></div></div>
+  <div class="pnl" style="flex:1"><div class="pnh">本机数据记录 <span class="sm">${y.usb?'U 盘已插入 · 剩余 12.4 GB':'未检测到 U 盘'}</span>
+    <span class="rt"><button class="bt pri" data-act="doExport">导出所选</button></span></div>
+    <div class="lst">${[['DDNP-结晶-0824','通道 1','运行中','01:12:38','—'],['DDNP-结晶-0823','通道 1','已完成','06:20:00','2026-08-23'],
+      ['晶型筛选-低温-B2','通道 2','已完成','04:05:12','2026-08-22'],['溶解度曲线-乙醇','通道 2','已完成','09:44:30','2026-08-21']]
+      .map((r,i)=>`<div class="lrow${i===0?' sel':''}"><span class="k">${r[0]}</span><span class="rtag">${r[1]}</span>
+      <span class="rtag ${i===0?'live':'done'}">${r[2]}</span><span class="v">${r[3]}</span><span class="d">${r[4]}</span></div>`).join('')}</div></div>
+  <div class="foot"><div class="lim"><span>导出内容：.expc 配置 + .csv 数据 + 事件日志 + 快照</span><span>状态栏 ⇪ 表示导出进行中</span></div></div>`;}
+function pageFiles(){
+  const rows=[['DDNP-结晶-0824','通道 1','运行中'],['DDNP-结晶-0823','—','已保存'],['晶型筛选-低温-B3','通道 2','已加载'],
+    ['溶解度曲线-乙醇','—','已保存'],['介稳区测定-A1','—','已保存']];
+  return `<div class="screen">${tabs([['f','文件管理']],'f','files','运行中的通道不可接收方案')}
+    <div class="stage"><div class="pnl" style="flex:1"><div class="pnh">实验方案
+      <span class="rt"><button class="bt" data-act="toZ1">→ 通道 1</button><button class="bt" data-act="toZ2">→ 通道 2</button>
+      <button class="bt" data-act="del">删除</button></span></div>
+      <div class="lst">${rows.map((r,i)=>`<div class="lrow${i===1?' sel':''}"><span class="k">${r[0]}</span>
+        <span class="rtag">${r[1]}</span><span class="rtag ${['live','draft','done','draft','draft'][i]}">${r[2]}</span>
+        <span class="d">6 步 · 含安全限值</span></div>`).join('')}</div></div>
+      <div class="foot"><div class="lim"><span>复制时必须重新命名</span><span>安全限值随方案一起复制</span><span>已启动的方案不可复制</span></div>
+        <div class="btns"><button class="bt" data-act="usbIn">从 U 盘导入</button><button class="bt" data-act="export">导出到 U 盘</button></div></div></div></div>`;}
+function pageSys(){const y=S.sys;
+  const rows=[['net','网络',(y.dhcp?'DHCP 开':'DHCP 关')+' · '+y.ip+' / '+y.mask.split('.').filter(x=>x==='255').length*8,'用于连接上位机软件','›'],
+    ['time','时间',y.dt+' · '+y.tz.split(' ')[0],'修改时区或时间可能导致数据丢失','›'],
+    ['lang','语言与键盘',y.lang+' · '+y.kb,'语言支持中 / 英','›'],
+    ['usb','外部存储',y.usb?'U 盘已插入 · 剩余 12.4 GB':'未检测到 U 盘','点击模拟插拔（导出与日志需要 U 盘）',''],
+    ['cool','冷却','自来水 · Tc 18.6 ℃ · 流量正常','Tc 超限触发紧急程序 A',''],
+    ['purge','吹扫','干氮气 · 3 L/min','防止冷凝结露腐蚀',''],
+    ['led','LED 背景灯','两通道均开启','每釜 2 颗',''],
+    ['remote','远程连接',y.remote?'已连接 · '+y.remoteIp:'未连接 · 允许接入','客户端接入后顶栏显示 ⇅ 图标','›'],
+    ['info','系统信息','固件 1.4.2 · SN HT2-0007','版本 / 序列号 / 机器 ID / 日志 / 固件更新','›']];
+  return `<div class="screen">${tabs([['s','系统设置']],'s','sys','部分项目需要密码')}
+    <div class="stage" style="gap:10px;display:flex;flex-direction:column">
+      <div class="pnl" style="flex:1"><div class="pnh">设备设置</div>
+      <div class="lst">${rows.map(r=>`<div class="lrow"${['net','time','lang','info','usb','remote'].includes(r[0])?` data-sys="${r[0]}" style="cursor:pointer"`:''}><span class="k">${r[1]}</span><span class="v">${r[2]}</span>
+        <span class="d">${r[3]}${r[4]?' '+r[4]:''}</span></div>`).join('')}</div></div></div></div>`;}
+
+/* ══════════ 弹窗 ══════════ */
+const KEYS={tr:['目标 Tr','℃',-40,180],tj:['目标 Tj','℃',-40,180],rate:['变温速率','℃/min',-5,5],dur:['时长','hh:mm:ss',0,0],
+  exp:['曲线指数','',1,5],rpm:['搅拌转速','rpm',0,1000],rEnd:['斜坡终值','rpm',0,1000],rDur:['斜坡时长','',0,0],
+  djt:['Tj − Tr 温差','K',0,60],tjEnd:['Tj end 上限','℃',-40,180],tsafe:['T safe','℃',-40,180],tdiff:['T diff max','K',0,60],
+  trmin:['Tr min','℃',-40,177],trmax:['Tr max','℃',-37,180],tjmin:['Tj min','℃',-40,177],tjmax:['Tj max','℃',-37,180],
+  rsafe:['R safe','rpm',0,1000],rmax:['R max','rpm',0,1000],
+  rtgt:['目标转速','rpm',0,1000],rrate:['转速斜率','rpm/min',1,500],dK:['Tj − Tr 温差','K',0,60],krate:['ΔT 速率','K/min',0.1,10],
+  dtot:['加料总量','mL',0,500],drate:['加料速率','mL/min',0.1,50],stime:['用时','min',1,999],hold:['保持时长','min',1,999],srpm:['搅拌转速','rpm',0,1000]};
+function dlg(title,sub,body,foot,w='400px'){
+  return `<div class="mask" data-mask><div class="dlg" style="min-width:${w}">
+    <div class="dh">${title}${sub?`<span class="sm">${sub}</span>`:''}</div><div class="db">${body}</div><div class="df">${foot}</div></div></div>`;}
+function modal(){
+  if(!S.modal) return ''; const m=S.modal,z=Z();
+  if(m.t==='kp'){const [n,u,lo,hi]=KEYS[m.k]||[m.k,'',0,0];
+    return dlg('输入'+n,'',`<div class="kdisp">${m.buf||'0'}${u?`<u>${u}</u>`:''}</div>
+      <div class="krange">范围 ${lo} … ${hi} ${u}</div>
+      <div class="kp">${[1,2,3,4,5,6,7,8,9].map(d=>`<button data-kp="${d}">${d}</button>`).join('')}
+        <button data-kp="+/-">±</button><button data-kp="0">0</button><button data-kp=".">.</button></div>`,
+      `<button class="bt" data-act="kpBack">⌫</button>${m.k==='rsafe'?'<button class="bt" data-act="rsafeHold">保持转速</button>':''}<button class="bt" data-act="close">取消</button>
+       <button class="bt pri" data-act="kpOk">Apply</button>`,'330px');}
+  if(m.t==='dose') return dlg('加料 Dose / Charge','将记入实验记录并标注在曲线上',
+    '<div class="frow"><label>物质名称</label><input value="醋酸"></div><div class="frow"><label>批号</label><input value="LOT-2408-11"></div>'+
+    '<div class="frow"><label>加入量</label><input value="10.000"><em>g</em></div>'+
+    '<div class="frow"><label>方式</label><select><option>一次加完</option><option>按时长</option><option>按速率</option></select></div>'+
+    '<div class="frow"><label>速率</label><input value="1.20"><em>mL/min</em></div>',
+    '<button class="bt" data-act="close">取消</button><button class="bt pri" data-act="doDose">开始加料</button>','430px');
+  if(m.t==='sample'){const sp=z.samples||[];
+    return dlg('手动取样','记录名称与时间戳',
+    '<div class="frow"><label>样品名称</label><input value="Sample-0'+(sp.length+1)+'"></div>'+
+    (sp.length?'<div class="lst" style="max-height:200px;overflow:auto;margin-top:8px">'+sp.map(k=>
+      `<div class="lrow"><span class="k">${k.name}</span><span class="v">t + ${hhmmss(k.t)}</span></div>`).join('')+'</div>':'')+
+    '<p style="font-size:12px;color:var(--mut)">全部样品带时间戳保存，随实验数据一并导出。</p>',
+    '<button class="bt" data-act="close">取消</button><button class="bt pri" data-act="doSample">记录取样</button>','460px');}
+  if(m.t==='marker'){const ms=z.marks||[];
+    return dlg('时间标记',m.gt!=null?'在曲线所选时刻添加':'在当前时刻添加',
+    '<div class="frow"><label>标记名称</label><input value="标记 '+(ms.length+1)+'"></div>'+
+    (ms.length?'<div class="lst" style="max-height:180px;overflow:auto;margin-top:8px">'+ms.map((k,i)=>
+      `<div class="lrow" data-mzero="${i}"><span class="rtag ${z.mZero===i?'live':''}">${z.mZero===i?'⌖ t = 0':'设为零点'}</span>
+       <span class="k">${k.name}</span><span class="v">+${hhmmss(Math.max(0,z.elapsed-k.t))}</span></div>`).join('')+'</div>':'')+
+    '<p style="font-size:12px;color:var(--mut);line-height:1.75">可设置多个标记，点击列表行切换时间零点；也可直接点击趋势曲线上的位置来添加。</p>',
+    '<button class="bt" data-act="close">取消</button><button class="bt" data-act="doMarkAdd">仅添加</button><button class="bt pri" data-act="doMarker">添加并设为 t = 0</button>','480px');}
+  if(m.t==='note') return dlg('备注 Notes','','<div class="frow"><label>内容</label><input value="观察到明显浑浊，疑似成核"></div>'+
+    '<p style="font-size:12px;color:var(--mut)">备注会以红色三角标注在趋势曲线上。</p>',
+    '<button class="bt" data-act="close">取消</button><button class="bt pri" data-act="doNote">添加</button>','420px');
+  if(m.t==='stop') return dlg('结束序列？','请选择结束方式',
+    `<button class="opt ${m.opt!=='keep'?'on':''}" data-opt="safe"><i></i><span>中止所有任务，Tj 设为 T safe = ${z.safety.tsafe} ℃，搅拌关闭
+      <small>推荐。反应体系冷却到安全温度后停机。</small></span></button>
+     <button class="opt ${m.opt==='keep'?'on':''}" data-opt="keep"><i></i><span>保持当前设定继续运行
+      <small>仅结束程序，温控与搅拌维持当前设定值。</small></span></button>`,
+    '<button class="bt" data-act="close">取消</button><button class="bt pri" data-act="doStop">确定</button>','520px');
+  if(m.t==='step') return dlg(`步骤 ${m.i+1}`,'选择操作类型 · 参数在步骤卡片中直接点击修改',
+      `<div class="tygrid">${[['Tr','釜内温度'],['Tj','夹套温度'],['TrTj','蒸回流'],['R','搅拌转速'],['Wait','等待'],['Dose','加料']]
+        .map(([k,n])=>`<button data-ty="${k}">${k}<small>${n}</small></button>`).join('')}</div>`,
+      '<button class="bt" data-act="close">取消</button>'+(z.seq[m.i]?'<button class="bt" data-act="delStep">删除此步</button>':''),'430px');
+  if(m.t==='tcolors'){const cs=['#2F8189','#3A3A3A','#4FB1B8','#C97B2D','#7B5EA7','#2F6B38','#C42B1C'];
+    return dlg('曲线颜色','点击色块更换对应曲线的颜色',
+    TREND.filter(t=>z.trends.includes(t.k)).map(t=>`<div class="lrow"><span class="k">${t.n}</span>
+      <span class="v" style="display:flex;gap:8px">${cs.map(c=>`<i data-tcol="${t.k}¦${c}" style="width:22px;height:22px;border-radius:3px;background:${c};cursor:pointer;
+        outline:${((z.tcolor&&z.tcolor[t.k])||t.c)===c?'2px solid var(--ink)':'1px solid #DCDCDC'};outline-offset:2px"></i>`).join('')}</span></div>`).join(''),
+    '<button class="bt" data-act="close">关闭</button>','560px');}
+  if(m.t==='gtap') return dlg('在所选时刻添加','曲线位置 t + '+hhmmss(Math.max(0,m.gt)),
+    '<button class="opt" data-act="gtapMark"><i></i><span>时间标记<small>可切换为时间零点</small></span></button>'+
+    '<button class="opt" data-act="gtapNote"><i></i><span>备注<small>以红色三角标注在曲线上</small></span></button>',
+    '<button class="bt" data-act="close">取消</button>','400px');
+  if(m.t==='newseq') return dlg('新建实验序列','将替换当前方案名称并清空全部步骤',
+    '<div class="frow"><label>方案名称</label><input value="新实验-0828-A"></div>'+
+    '<p style="font-size:12px;color:var(--mut);line-height:1.75">创建后在步骤卡片中编排；也可通过「从文件…」载入已有方案。</p>',
+    '<button class="bt" data-act="close">取消</button><button class="bt pri" data-act="doNewSeq">创建</button>','430px');
+  if(m.t==='smode'){const sp=z.seq[m.si],md=sp&&sp.f&&sp.f.mode;
+    return dlg('到达方式','步骤 '+(m.si+1),
+      `<button class="opt ${md==='rate'?'on':''}" data-smode="rate"><i></i><span>按速率<small>以设定速率连续变化直至到达目标，步时长自动计算</small></span></button>
+       <button class="opt ${md==='time'?'on':''}" data-smode="time"><i></i><span>按时长<small>在设定时间内线性到达目标</small></span></button>`,
+      '<button class="bt" data-act="close">取消</button>','430px');}
+  if(m.t==='sysnet'){const y=S.sys,dh=m.dhcp!=null?m.dhcp:(y.dhcp?'on':'off');
+    return dlg('网络设置','连接上位机软件（iControl / iC Data Center）',
+    `<button class="opt ${dh==='off'?'on':''}" data-oset="dhcp¦off"><i></i><span>手动 IP<small>手动填写 IP 与子网掩码</small></span></button>
+     <button class="opt ${dh==='on'?'on':''}" data-oset="dhcp¦on"><i></i><span>DHCP 自动获取<small>由服务器分配地址</small></span></button>
+     <div class="frow"><label>IP 地址</label><input value="${y.ip}" ${dh==='on'?'disabled':''}></div>
+     <div class="frow"><label>子网掩码</label><input value="${y.mask}" ${dh==='on'?'disabled':''}></div>`,
+    '<button class="bt" data-act="close">取消</button><button class="bt pri" data-act="saveNet">保存</button>','460px');}
+  if(m.t==='systime'){const y=S.sys,tz=m.tz||y.tz,df=m.dfmt||y.dfmt,tf=m.tfmt||y.tfmt;
+    return dlg('时间设置','修改时区或日期时间可能导致数据丢失，请先导出',
+    `<div class="frow"><label>日期与时间</label><input value="${y.dt}"></div>
+     <div class="frow"><label>时区</label></div>
+     ${['UTC+8 中国标准时间','UTC+9 日本标准时间','UTC+0 协调世界时'].map(t=>`<button class="opt ${tz===t?'on':''}" data-oset="tz¦${t}"><i></i><span>${t}</span></button>`).join('')}
+     <div class="frow"><label>日期格式</label></div>
+     ${['YYYY-MM-DD','DD.MM.YYYY','MM/DD/YYYY'].map(t=>`<button class="opt ${df===t?'on':''}" data-oset="dfmt¦${t}"><i></i><span>${t}</span></button>`).join('')}
+     <div class="frow"><label>时间格式</label></div>
+     ${['24 小时','12 小时 AM/PM'].map(t=>`<button class="opt ${tf===t?'on':''}" data-oset="tfmt¦${t}"><i></i><span>${t}</span></button>`).join('')}`,
+    '<button class="bt" data-act="close">取消</button><button class="bt pri" data-act="saveTime">保存</button>','470px');}
+  if(m.t==='syslang'){const y=S.sys,lg=m.lang||y.lang,kb=m.kb||y.kb;
+    return dlg('语言与键盘','',
+    `<div class="frow"><label>界面语言</label></div>
+     ${['简体中文','English'].map(t=>`<button class="opt ${lg===t?'on':''}" data-oset="lang¦${t}"><i></i><span>${t}</span></button>`).join('')}
+     <div class="frow"><label>键盘布局</label></div>
+     ${['QWERTY','AZERTY','QWERTZ'].map(t=>`<button class="opt ${kb===t?'on':''}" data-oset="kb¦${t}"><i></i><span>${t}</span></button>`).join('')}`,
+    '<button class="bt" data-act="close">取消</button><button class="bt pri" data-act="saveLang">保存</button>','420px');}
+  if(m.t==='remote') return dlg('远程连接','⇅ 已建立',
+    `<div class="lst">
+      <div class="lrow"><span class="k">客户端</span><span class="v">${S.sys.remoteIp}</span><span class="d">MaxChemical Studio</span></div>
+      <div class="lrow"><span class="k">已连接</span><span class="v">${hhmmss(Math.max(0,S.tick-S.sys.remoteT0))}</span><span class="d"></span></div>
+      <div class="lrow"><span class="k">权限</span><span class="v">监视 + 控制</span><span class="d">本机操作不受限，远程写入记入日志</span></div>
+    </div>`,
+    '<button class="bt" data-act="remoteOff">断开连接</button><button class="bt pri" data-act="close">关闭</button>','460px');
+  if(m.t==='sysinfo') return dlg('系统信息','',
+    `<div class="lst">
+      <div class="lrow"><span class="k">固件版本</span><span class="v">1.4.2</span><span class="d">2026-08-12 构建</span></div>
+      <div class="lrow"><span class="k">序列号</span><span class="v">HT2-0007</span><span class="d"></span></div>
+      <div class="lrow"><span class="k">机器 ID</span><span class="v">EM102-3F7A2C</span><span class="d"></span></div>
+    </div>`,
+    '<button class="bt" data-act="expLogs">导出日志</button><button class="bt" data-act="fwCheck">检查固件更新</button><button class="bt" data-act="close">关闭</button>','460px');
+  if(m.t==='expperiod'){const y=S.sys,iv=m.iv||String(y.expInt);
+    return dlg('按时间段导出','自定义起止时刻，导出该区间内两通道数据',
+    `<div class="frow"><label>起始</label><input value="2026-08-24 08:00"></div>
+     <div class="frow"><label>结束</label><input value="2026-08-24 14:00"></div>
+     <div class="frow"><label>采样间隔</label></div>
+     ${['2','10','60'].map(t=>`<button class="opt ${iv===t?'on':''}" data-oset="iv¦${t}"><i></i><span>${t} s<small>${t==='2'?'原始精度':'压缩文件体积'}</small></span></button>`).join('')}`,
+    '<button class="bt" data-act="close">取消</button><button class="bt pri" data-act="doExport">开始导出</button>','460px');}
+  if(m.t==='emref') return dlg('紧急程序 · 原因与处理','A = 硬件类　E = 应用类（可复位）',
+    `<div class="lst" style="max-height:340px;overflow:auto">
+      ${[['E','Tr 传感器故障或未连接','连接或更换 Tr 传感器'],
+         ['E','Tr > Tr max','复位 → 等待 Tr 回落 → 继续'],
+         ['E','Tr < Tr min','复位 → 等待 Tr 回升 → 继续'],
+         ['E','Tj > Tj max','复位 → 等待 Tj 回落 → 继续'],
+         ['E','Tj < Tj min','复位 → 等待 Tj 回升 → 继续'],
+         ['A','Tc > Tc max（唯一可复位例外）','检查冷却流量 → Tc 回落后复位继续'],
+         ['A','无连接','断电重启'],
+         ['A','A/D 转换器 / 功率板故障','联系服务'],
+         ['A','Tj / Tc 传感器故障','联系服务']]
+        .map(r=>`<div class="lrow"><span class="rtag ${r[0]==='A'?'draft':'live'}">${r[0]}</span>
+          <span class="k">${r[1]}</span><span class="d">${r[2]}</span></div>`).join('')}</div>`,
+    '<button class="bt" data-act="close">关闭</button>','560px');
+  if(m.t==='reactor') return dlg('选择反应釜类型','FR-2.6：每通道可容纳 100–400 mL 不同大小与形状的反应釜',
+    ['100 mL 玻璃釜','150 mL 玻璃釜','250 mL 玻璃釜','400 mL 玻璃釜','250 mL 平底工艺釜','400 mL 带挡板釜']
+      .map(r=>`<button class="opt${z.reactor===r?' on':''}" data-react="${r}"><i></i><span>${r}</span></button>`).join(''),
+    '<button class="bt" data-act="close">关闭</button>','440px');
+  if(m.t==='info') return dlg(m.title,'',`<p style="font-size:13px;color:#6F6F6F;line-height:1.8">${m.body}</p>`,
+    '<button class="bt pri" data-act="close">知道了</button>','440px');
+  return '';}
+function alarmBox(){ if(!S.alarm) return ''; const A=S.alarm==='A';
+  return `<div class="alarm"><div class="abox"><div class="ah">⚠ <b>紧急程序 ${S.alarm}</b>
+    <span>通道 ${Z().id} · ${new Date().toLocaleTimeString('zh-CN')}</span></div>
+    <div class="ab2"><h4>${A?'Tc &gt; Tc max — 冷媒温度超过安全限值':'Tr &gt; Tr max — 釜内温度超过安全限值'}</h4>
+      <p>${A?'A 类中<b>唯一可复位</b>的例外。其余 A 类原因（无连接 / A/D 转换器 / 功率板 / Tj·Tc 传感器故障）为硬件故障，须断电并联系服务。'
+            :'该类故障多为应用层问题，<b>可复位</b>。已按 T safe 冷却、搅拌按 R safe 处理。'}</p>
+      <ol>${A?'<li>检查冷却介质流量与供水温度</li><li>等待 Tc 回落到 Tc max 以下</li><li>点击「复位并继续」恢复被中断的任务</li>'
+             :'<li>点击「复位」</li><li>等待 Tr 回落到 Tr max 以下</li><li>点击「复位并继续」恢复原任务</li>'}</ol></div>
+    <div class="af"><button class="bt" data-act="emRef">全部原因与处理…</button>
+      <button class="bt" data-act="closeAlarm">复位 Reset</button><button class="bt pri" data-act="closeAlarm">复位并继续</button></div>
+  </div></div>`;}
+
+S.zones.forEach(regenSeq);
+S.zones.forEach(z=>{z.marks=z.marks||[];z.samples=z.samples||[];
+  if(z.t0!=null){z.marks.push({name:'首晶成核',t:z.t0});z.mZero=0;z.t0=null;}});
+function render(){$('#app').innerHTML=rail()+{ov:pageOv,z0:pageZone,z1:pageZone,files:pageFiles,sys:pageSys}[S.page]()+modal()+alarmBox();}
+
+/* ══════════ 事件 ══════════ */
+let _gd=null;
+document.addEventListener('pointerdown',e=>{const sv=e.target.closest('svg[data-gchart]'); if(sv)_gd={sv,x:e.clientX};});
+document.addEventListener('pointerup',e=>{ if(!_gd)return; const {sv,x}=_gd; _gd=null;
+  const z=Z(), r=sv.getBoundingClientRect(), F=z.hist.tr.length;
+  const gv=z.gv||(z.gv={win:0,off:0}), win=gv.win&&gv.win<F?gv.win:F, off=Math.min(gv.off||0,Math.max(0,F-win)), s0=Math.max(0,F-win-off);
+  const L=48,R=16,W=1140, px=cx=>(cx-r.left)/r.width*W;
+  const a=px(Math.min(x,e.clientX)), b=px(Math.max(x,e.clientX));
+  const iOf=q=>Math.round(s0+(q-L)/(W-L-R)*(win-1||1));
+  if(b-a>26){ const i1=Math.max(0,iOf(a)), i2=Math.min(F-1,iOf(b));
+    if(i2-i1>=20){gv.win=i2-i1; gv.off=F-1-i2; return render();} return; }
+  const q=(a+b)/2; if(q<L||q>W-R)return;
+  const gi=Math.max(0,Math.min(F-1,iOf(q)));
+  S.modal={t:'gtap',gi,gt:z.elapsed-(F-1-gi)}; return render(); });
+document.addEventListener('click',e=>{
+  const c=s=>e.target.closest(s), z=Z();
+  const nav=c('[data-nav]'); if(nav){const p=nav.dataset.nav; if(p[0]==='z'){S.zi=+p[1];S.page=p;}else S.page=p; return render();}
+  const tb=c('[data-tab]'); if(tb){const g=tb.dataset.tab; if(g==='ov'||g==='z')S.tab[g]=tb.dataset.k; return render();}
+  if(e.target.classList.contains('mask')){S.modal=null;return render();}
+  const md=c('[data-mode]'); if(md&&!md.disabled){z.mode=md.dataset.mode;log(z,'模式','切换到 '+modeName(z.mode));return render();}
+  const tg=c('[data-tog]'); if(tg){const k=tg.dataset.tog;z.on[k]=!z.on[k];
+    if(k==='stir'){z.rpm=z.on.stir?pv(z,'rpm'):0;z.torque=z.on.stir?18:0;}
+    if(k==='trSensor'&&!z.on.trSensor&&z.mode==='TrTj')z.mode='Tj';
+    log(z,'开关',({temp:'温控',stir:'搅拌',trSensor:'Tr 传感器',phSensor:'pH 电极'})[k]+(z.on[k]?' 开':' 关'));return render();}
+  const rd=c('[data-rad] [data-v]'); if(rd){z.set.rampBy=rd.dataset.v; return render();}
+  const key=c('[data-key]'); if(key){S.modal={t:'kp',k:key.dataset.key,buf:'',tgt:'set'};return render();}
+  const saf=c('[data-saf]'); if(saf){if(z.seqRun)return toast('序列运行中不可修改安全限值');
+    S.modal={t:'kp',k:saf.dataset.saf,buf:'',tgt:'safety'};return render();}
+  const tr=c('[data-trend]'); if(tr){const k=tr.dataset.trend,i=z.trends.indexOf(k);
+    if(i>=0){if(z.trends.length>1)z.trends.splice(i,1);}else z.trends.push(k); return render();}
+  const st=c('[data-step]'); if(st){const i=+st.dataset.step;
+    if(z.seqRun&&i<=z.seqIdx)return toast('已开始的步骤不可编辑');
+    S.modal={t:'step',i,stage:'type'};return render();}
+  const ty=c('[data-ty]'); if(ty){const i=S.modal.i,t=ty.dataset.ty,prev=z.seq[i];
+    z.seq[i]={t,f:defFields(t,prev),d:0,p:'',ev:''}; regenSeq(z); S.modal=null;
+    log(z,'序列','步骤 '+(i+1)+' → '+t); toast('已设为 '+t+'，点击卡片中的属性值修改参数'); return render();}
+  const rc=c('[data-react]'); if(rc){z.reactor=rc.dataset.react;S.modal=null;toast('已更换釜型，请复核安全限值');
+    log(z,'设置','釜型 → '+z.reactor);return render();}
+  const sm=c('[data-smode]'); if(sm){const sp=z.seq[S.modal.si];
+    if(sp){ensureF(sp);sp.f.mode=sm.dataset.smode;regenSeq(z);log(z,'序列','步骤 '+(S.modal.si+1)+' 到达方式 → '+(sm.dataset.smode==='rate'?'按速率':'按时长'));}
+    S.modal=null;return render();}
+  const sy=c('[data-sys]'); if(sy){const k=sy.dataset.sys;
+    if(k==='usb'){S.sys.usb=!S.sys.usb;toast(S.sys.usb?'U 盘已插入':'U 盘已移除');return render();}
+    if(k==='remote'){ if(!S.sys.remote){S.sys.remote=true;S.sys.remoteT0=S.tick;toast('远程客户端已连接：'+S.sys.remoteIp);}
+      else S.modal={t:'remote'}; return render(); }
+    S.modal={t:'sys'+k};return render();}
+  const os=c('[data-oset]'); if(os){const [f,val]=os.dataset.oset.split('¦'); S.modal[f]=val; return render();}
+  const mz=c('[data-mzero]'); if(mz){z.mZero=+mz.dataset.mzero;log(z,'标记','时间零点 → '+z.marks[z.mZero].name);return render();}
+  const tc2=c('[data-tcol]'); if(tc2){const [k,col]=tc2.dataset.tcol.split('¦');(z.tcolor=z.tcolor||{})[k]=col;return render();}
+  const op=c('[data-opt]'); if(op){S.modal.opt=op.dataset.opt;return render();}
+  const kp=c('[data-kp]'); if(kp){const d=kp.dataset.kp,m=S.modal;
+    m.buf=d==='+/-'?(m.buf.startsWith('−')?m.buf.slice(1):'−'+m.buf):(m.buf==='0'?'':m.buf)+d; return render();}
+  const fe=c('[data-fedit]'); if(fe){const [si,fk]=fe.dataset.fedit.split(':'),i=+si,sp=z.seq[i];
+    if(!sp)return; if(z.seqRun&&i<=z.seqIdx)return toast('已开始的步骤不可编辑');
+    ensureF(sp); const f=sp.f;
+    if(fk==='mode'){S.modal={t:'smode',si:i};return render();}
+    const kk=fk==='hold'?'hold':fk==='rpm'?'srpm':fk==='expn'?'exp'
+      :fk==='tgt'?(sp.t==='Tr'?'tr':sp.t==='Tj'?'tj':sp.t==='R'?'rtgt':sp.t==='TrTj'?'dK':'dtot')
+      :(f.mode==='rate'?(sp.t==='Dose'?'drate':sp.t==='R'?'rrate':sp.t==='TrTj'?'krate':'rate'):'stime');
+    S.modal={t:'kp',k:kk,tgt:'step',si:i,fk,buf:String(f[fk]).replace('-','−')};return render();}
+  const a=c('[data-act]'); if(!a) return;
+  switch(a.dataset.act){
+    case 'close': S.modal=null;break;
+    case 'toggleArt': S.artOpen=!S.artOpen;break;
+    case 'kpBack': S.modal.buf=S.modal.buf.slice(0,-1);break;
+    case 'kpOk':{const m=S.modal;let v=parseFloat(m.buf.replace('−','-'));
+      const KY=KEYS[m.k];
+      if(!isNaN(v)&&KY&&KY[3]>KY[2]){ if(v<KY[2]){v=KY[2];toast('低于下限，已修正为 '+KY[2]+' '+KY[1]);}
+        else if(v>KY[3]){v=KY[3];toast('超出上限，已修正为 '+KY[3]+' '+KY[1]);} }
+      if(m.tgt==='safety'&&!isNaN(v)){const ts=parseFloat(z.safety.tsafe)||20;
+        if((m.k==='trmax'||m.k==='tjmax')&&v<ts+3){v=ts+3;toast('不得低于 Tsafe + 3 K，已修正');}
+        if((m.k==='trmin'||m.k==='tjmin')&&v>ts-3){v=ts-3;toast('不得高于 Tsafe − 3 K，已修正');}}
+      if(m.tgt==='step'){const sp=z.seq[m.si];
+        if(sp&&!isNaN(v)){ensureF(sp);sp.f[m.fk]=v;regenSeq(z);log(z,'序列','步骤 '+(m.si+1)+' '+KEYS[m.k][0]+' → '+v);}S.modal=null;break;}
+      if(m.tgt==='safety'){z.safety[m.k]=isNaN(v)?m.buf:v;log(z,'安全',KEYS[m.k][0]+' → '+z.safety[m.k]);}
+      else z.pending[m.k]=isNaN(v)?m.buf:v; S.modal=null;break;}
+    case 'commit':{const n=nPend(z);Object.assign(z.set,z.pending);
+      if(z.pending.rpm!==undefined&&z.on.stir)z.rpm=z.set.rpm;
+      z.pending={};log(z,'下发',n+' 项设定值已写入控制器');toast('已下发 '+n+' 项设定值');break;}
+    case 'discard': z.pending={};toast('已放弃全部未下发的修改');break;
+    case 'dose': case 'sample': case 'marker': case 'note': S.modal={t:a.dataset.act};break;
+    case 'doDose': z.dose.rate=1.20;z.dose.total+=10;log(z,'加料','醋酸 10.000 g · 1.20 mL/min');S.modal=null;toast('加料任务已启动');break;
+    case 'doSample':{const inp=document.querySelector('.dlg input'),nm=(inp&&inp.value.trim())||('Sample-0'+((z.samples||[]).length+1));
+      (z.samples=z.samples||[]).push({name:nm,t:z.elapsed});log(z,'取样',nm);S.modal=null;toast('已记录取样 '+nm);break;}
+    case 'doMarker': case 'doMarkAdd':{const inp=document.querySelector('.dlg input'),nm=(inp&&inp.value.trim())||('标记 '+((z.marks||[]).length+1));
+      const t=S.modal&&S.modal.gt!=null?S.modal.gt:z.elapsed;
+      (z.marks=z.marks||[]).push({name:nm,t});
+      if(a.dataset.act==='doMarker')z.mZero=z.marks.length-1;
+      log(z,'标记',nm+(a.dataset.act==='doMarker'?' → t=0':''));S.modal=null;toast('标记已添加');break;}
+    case 'doNote':{const inp=document.querySelector('.dlg input');
+      const i=S.modal&&S.modal.gi!=null?S.modal.gi:z.hist.tr.length-1;
+      z.notes.push({i,txt:inp&&inp.value});log(z,'备注',(inp&&inp.value)||'备注');S.modal=null;toast('备注已添加到曲线');break;}
+    case 'gtapMark': S.modal={t:'marker',gt:S.modal.gt};break;
+    case 'gtapNote': S.modal={t:'note',gi:S.modal.gi};break;
+    case 'stopSeq': S.modal={t:'stop',opt:'safe'};break;
+    case 'doStop':{const safe=S.modal.opt!=='keep';z.seqRun=false;z.seqErr=null;
+      if(safe){z.on.temp=false;z.on.stir=false;z.rpm=0;z.torque=0;z.set.tj=z.safety.tsafe;}
+      log(z,'序列',safe?'已结束，Tj → T safe，搅拌关闭':'已结束，装置保持当前设定');S.modal=null;toast('序列已结束');break;}
+    case 'startSeq': z.seqRun=true;z.seqIdx=0;z.seqErr=null;z.seqT0=z.elapsed;log(z,'序列','任务序列已启动');toast('任务序列已启动');break;
+    case 'newSeq': if(z.seqRun)return toast('请先结束当前序列'); S.modal={t:'newseq'};break;
+    case 'doNewSeq':{const inp=document.querySelector('.dlg input'),nm=(inp&&inp.value.trim())||'未命名实验';
+      z.name=nm; z.seq=[null,null,null,null,null,null]; z.seqErr=null;
+      log(z,'序列','新建实验序列 '+nm); S.modal=null; toast('已创建「'+nm+'」，请编排步骤');break;}
+    case 'toFiles': S.page='files';break;
+    case 'clearSteps': if(z.seqRun)return toast('请先结束序列');z.seq=[null,null,null,null,null,null];z.seqErr=null;toast('已清除全部步骤');break;
+    case 'delStep': z.seq[S.modal.i]=null;S.modal=null;toast('步骤已删除');break;
+    case 'reactor': if(z.on.temp||z.on.stir||z.seqRun)return toast('请先关闭温控与搅拌并结束序列');S.modal={t:'reactor'};break;
+    case 'saveNet':{const ins=document.querySelectorAll('.dlg input'),m=S.modal,y=S.sys;
+      y.dhcp=(m.dhcp!=null?m.dhcp:(y.dhcp?'on':'off'))==='on';
+      if(!y.dhcp&&ins[0]){y.ip=ins[0].value.trim()||y.ip;y.mask=ins[1].value.trim()||y.mask;}
+      S.modal=null;toast('网络设置已保存'+(y.dhcp?'（DHCP）':''));break;}
+    case 'saveTime':{const ins=document.querySelectorAll('.dlg input'),m=S.modal,y=S.sys;
+      if(ins[0])y.dt=ins[0].value.trim()||y.dt; y.tz=m.tz||y.tz;y.dfmt=m.dfmt||y.dfmt;y.tfmt=m.tfmt||y.tfmt;
+      S.modal=null;toast('时间设置已保存 · 请确认已导出历史数据');break;}
+    case 'saveLang':{const m=S.modal,y=S.sys;y.lang=m.lang||y.lang;y.kb=m.kb||y.kb;
+      S.modal=null;toast('已保存：'+y.lang+' · '+y.kb+'（原型内文案暂不切换）');break;}
+    case 'remoteInfo': S.modal={t:'remote'};break;
+    case 'remoteOff': S.sys.remote=false;S.modal=null;toast('远程连接已断开');break;
+    case 'expLogs': if(!S.sys.usb)return toast('未检测到 U 盘'); S.sys.exporting=4;S.modal=null;toast('日志导出中…');break;
+    case 'fwCheck': toast('固件 1.4.2 已是最新（离线包可经 U 盘升级）');break;
+    case 'expPeriod': S.modal={t:'expperiod'};break;
+    case 'cycInt': S.sys.expInt={2:10,10:60,60:2}[S.sys.expInt]||2;break;
+    case 'doExport':{if(!S.sys.usb)return toast('未检测到 U 盘');
+      if(S.modal&&S.modal.iv)S.sys.expInt=+S.modal.iv;
+      S.sys.exporting=6;S.modal=null;toast('开始导出（间隔 '+S.sys.expInt+' s）…');break;}
+    case 'rsafeHold': z.safety.rsafe='保持'; log(z,'安全','R safe → 保持当前转速'); S.modal=null; break;
+    case 'emRef': S.modal={t:'emref'};break;
+    case 'alarmA': case 'alarmE': S.alarm=a.dataset.act.slice(-1);
+      if(z.seqRun){z.seqErr=z.seqIdx;z.seqRun=false;log(z,'序列','步骤 '+(z.seqIdx+1)+' 因紧急程序 '+S.alarm+' 中止');}break;
+    case 'closeAlarm': S.alarm=null;toast('报警已确认');break;
+    case 'snap': S.modal={t:'info',title:'快照已保存',body:'当前趋势图已存为快照，可在「导出快照」中选择并写入 U 盘。若只想截取局部，先用缩放框选再拍。'};break;
+    case 'expSnap': case 'export': S.modal={t:'info',title:'导出',body:'导出内容包含 .expc 装置与方案配置、.csv 数据、事件日志。可在导出前调整采样间隔以缩小文件体积。'};break;
+    case 'zoomIn':{const gv=z.gv||(z.gv={win:0,off:0}),F=z.hist.tr.length;gv.win=Math.max(60,Math.floor((gv.win||F)/2));break;}
+    case 'zoomOut':{const gv=z.gv||(z.gv={win:0,off:0}),F=z.hist.tr.length;gv.win=Math.min(F,(gv.win||F)*2);if(gv.win>=F)gv.win=0;gv.off=Math.min(gv.off,Math.max(0,F-(gv.win||F)));break;}
+    case 'panL':{const gv=z.gv||(z.gv={win:0,off:0}),F=z.hist.tr.length,w=gv.win||F;gv.off=Math.min(Math.max(0,F-w),(gv.off||0)+Math.max(20,Math.floor(w/4)));break;}
+    case 'panR':{const gv=z.gv||(z.gv={win:0,off:0});gv.off=Math.max(0,(gv.off||0)-Math.max(20,Math.floor(((gv.win||z.hist.tr.length))/4)));break;}
+    case 'noZoom': z.gv={win:0,off:0};break;
+    case 'sample': S.modal={t:'sample'};break;
+    case 'tcolors': S.modal={t:'tcolors'};break;
+    case 'timeMode': toast('时间轴显示已切换（实验时间 / 时钟）');break;
+    default: S.modal={t:'info',title:'提示',body:'原型演示：此处会打开对应的命名 / 选择 / 确认流程。复制方案时必须重新命名，且运行中的通道不可接收。'};
+  }
+  render();
+});
+function log(z,k,v){const d=new Date();z.log.unshift([d.getHours()+':'+String(d.getMinutes()).padStart(2,'0'),k,v]);z.log=z.log.slice(0,20);}
+
+/* ══════════ 仿真 ══════════ */
+setInterval(()=>{ S.tick++;
+  if(S.sys.exporting>0&&!(--S.sys.exporting))toast('导出完成，已写入 U 盘');
+  S.zones.forEach(z=>{
+    z.elapsed++;
+    if(z.seqRun||z.on.temp){
+      const tgt=z.mode==='Tj'?z.set.tj:z.set.tr;
+      z.tr+=(tgt-z.tr)*.012+(Math.random()-.5)*.06;
+      z.tj+=((z.on.temp?tgt+(z.mode==='Tj'?0:(z.tr<tgt?6:-5)):z.tc)-z.tj)*.02+(Math.random()-.5)*.05;
+      if(z.dose.phLink&&z.dose.rate>0){z.dose.total+=z.dose.rate/60;z.ph+=.0009;} else z.ph+=(Math.random()-.5)*.004;
+      if(z.on.stir)z.torque=Math.round(16+Math.random()*5);
+      if(z.seqRun&&S.tick%25===0){const n=z.seq.filter(Boolean).length;z.seqIdx=(z.seqIdx+1)%n;}
+    } else { z.tr+=(z.tc+3-z.tr)*.004; z.tj+=(z.tc+2.5-z.tj)*.004; }
+    z.tc+=(Math.random()-.5)*.03;
+    z.hist.tr.push(z.tr);z.hist.tj.push(z.tj);z.hist.ph.push(z.ph);z.hist.rpm.push(z.rpm);
+    ['tr','tj','ph','rpm'].forEach(k=>{if(z.hist[k].length>200)z.hist[k].shift()});
+    z.notes.forEach(m=>m.i--); z.notes=z.notes.filter(m=>m.i>0);
+  });
+  if(!S.modal&&!S.alarm) render();
+},1000);
+function fit(){const el=document.querySelector('.fit');
+  const d=document.getElementById('dev'), bare=d&&d.classList.contains('bare');
+  const W=bare?1280:1372, H=bare?720:836;
+  el.style.transform='scale('+Math.min(1,(innerWidth-32)/W,(innerHeight-32)/H)+')';}
+addEventListener('keydown',e=>{if(e.key==='b'||e.key==='B'){document.getElementById('dev').classList.toggle('bare');fit();}});
+addEventListener('resize',fit); fit();
+render();
+</script>
+</body>
+</html>

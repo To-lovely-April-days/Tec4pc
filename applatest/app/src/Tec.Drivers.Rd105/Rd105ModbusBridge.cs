@@ -39,6 +39,9 @@ public sealed class Rd105ModbusBridge : ISerialTransport
 
     public byte Station => _station;
 
+    /// <summary>桥下发问用的 Modbus 主站——重试 / 帧间空当这些链路参数调它。</summary>
+    public ModbusRtuClient Modbus => _mb;
+
     // ── ISerialTransport ─────────────────────────────────────────────
 
     public bool IsOpen => _serial.IsOpen;
@@ -72,7 +75,11 @@ public sealed class Rd105ModbusBridge : ISerialTransport
             if (at < 0) return;
             var frame = s[..at].Trim('\r', '\n', ' ');
             _rx.Remove(0, at + 1);
-            if (frame.Length > 0) Handle(frame);
+            if (frame.Length == 0) continue;
+            // 按时长重试时，这一条 ASCII 指令拆出来的几帧共用一个期限（不是每帧各给一份）
+            _mb.CommandDeadline = _mb.RetryBudgetMs > 0 ? Environment.TickCount64 + _mb.RetryBudgetMs : null;
+            try { Handle(frame); }
+            finally { _mb.CommandDeadline = null; }
         }
     }
 
@@ -174,23 +181,41 @@ public sealed class Rd105ModbusBridge : ISerialTransport
         return sb.ToString();
     }
 
-    /// <summary>可缺的量：从站答了但答得不对（长度 / 地址 / 异常码）就当没有；**不答**（超时）照旧抛——那是链路的事。</summary>
+    /// <summary>
+    /// 可缺的量（RESISTOR / PWM，驱动不消费）答不对就从此不再问的地址。现场那台固件读 TC1:RESISTOR
+    /// 永远答坏帧（报 8 字节数据，只来 7 个字节就停了：01 03 08 00 00 00 00 06 9C 83）——重发多少遍
+    /// 都拿不到对的，每拍还白耗几百 ms、在调试器里报一串异常。问坏一次就记下，以后直接当没有
+    /// </summary>
+    private readonly HashSet<ushort> _optionalDead = new();
+
+    /// <summary>
+    /// 可缺的量：从站答了但答得不对（长度 / 地址 / 异常码 / 烂尾）就当没有，并且以后不再问；
+    /// **一声不吭**（超时、一个字节都没来）照旧抛——那是链路的事。
+    /// 这一读按次数重试、不按 2 s 时长：固件永远答不对的量按时长重发，就是每拍 DATADEMAND
+    /// 在它身上空打满 2 s，后面 TC2 的温度连期限都没了
+    /// </summary>
     private ushort[]? TryRead(ushort addr, int count)
     {
+        if (_optionalDead.Contains(addr)) return null;
+        var budget = _mb.RetryBudgetMs;
+        _mb.RetryBudgetMs = 0;
         try { return Read(addr, count); }
-        catch (TecProtocolException) { return null; }
+        catch (TecProtocolException) { _optionalDead.Add(addr); return null; }
+        // 烂尾 / 答了一半：从站活着，是它答不对这一项——跟答错长度同一回事，别让它拖垮整条 DATADEMAND
+        catch (TimeoutException) when (_mb.LastResponseBytes > 0) { _optionalDead.Add(addr); return null; }
+        finally { _mb.RetryBudgetMs = budget; }
     }
 
     private ushort[] Read(ushort addr, int count)
     {
-        try { return _mb.ReadHoldingRegistersAsync(addr, count).GetAwaiter().GetResult(); }
+        try { return _mb.ReadHoldingRegisters(addr, count); }
         catch (TimeoutException ex) { throw new TimeoutException($"Modbus-RTU 站号 {_station} 读 0x{addr:X4}：{ex.Message}", ex); }
         catch (ModbusException ex) { throw new TecProtocolException($"Modbus-RTU 站号 {_station} 读 0x{addr:X4}：{ex.Message}"); }
     }
 
     private void WriteRegs(ushort addr, ushort[] regs)
     {
-        try { _mb.WriteRegistersAsync(addr, regs).GetAwaiter().GetResult(); }
+        try { _mb.WriteRegisters(addr, regs); }
         catch (TimeoutException ex) { throw new TimeoutException($"Modbus-RTU 站号 {_station} 写 0x{addr:X4}：{ex.Message}", ex); }
         catch (ModbusException ex) { throw new TecProtocolException($"Modbus-RTU 站号 {_station} 写 0x{addr:X4}：{ex.Message}"); }
     }

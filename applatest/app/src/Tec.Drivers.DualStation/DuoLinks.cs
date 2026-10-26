@@ -19,6 +19,14 @@ public sealed class DuoLinks : IDisposable
     public ISerialTransport? IoPort { get; init; }
     public Io8rClient? Io { get; init; }
 
+    /// <summary>冷水机（跟冷却水阀联动）。没选串口 / 联动选了「无」就是 null——阀照旧单独开关。</summary>
+    public ISerialTransport? ChillerPort { get; init; }
+    public ChillerClient? Chiller { get; init; }
+    public string? ChillerPortName { get; init; }
+
+    /// <summary>冷水机那条串口没打开的原因；打开了 / 没配就是 null。打不开不拦开机（跟 IO8R 一样）。</summary>
+    public string? ChillerOpenError { get; private set; }
+
     /// <summary>只为报错时说得清是哪个口——假链路（测试）不填，报错就不带口名。</summary>
     public string? RdPortName { get; init; }
     public int RdBaud { get; init; }
@@ -55,6 +63,35 @@ public sealed class DuoLinks : IDisposable
                 IoOpenError = $"IO8R 串口{(IoPortName is null ? "" : " " + IoPortName)} 打不开：{Reason(ex, IoPortName)}";
             }
         }
+
+        ChillerOpenError = null;
+        if (ChillerPort is { IsOpen: false })
+        {
+            try { ChillerPort.Open(); }
+            catch (Exception ex)
+            {
+                ChillerOpenError = $"冷水机串口{(ChillerPortName is null ? "" : " " + ChillerPortName)} 打不开：{Reason(ex, ChillerPortName)}";
+            }
+        }
+    }
+
+    /// <summary>
+    /// 探测 / 扫档前把两条链路的自动重发关掉：探测本身就是「换着试」的那层重试，
+    /// 底下再叠重试，每个不通的组合都要白等好几倍超时——点「连接」的体感就是慢。
+    /// </summary>
+    public void DisableRetriesForProbe()
+    {
+        Rd105.DisableRetriesForProbe();
+        if (Io is not null)
+        {
+            Io.Bus.TimeoutRetries = 0;
+            Io.Bus.CorruptRetries = 0;
+        }
+        if (Chiller is not null)
+        {
+            Chiller.Bus.TimeoutRetries = 0;
+            Chiller.Bus.CorruptRetries = 0;
+        }
     }
 
     /// <summary>串口层的错翻成该怎么办（SerialFault），其余照原话。</summary>
@@ -65,6 +102,7 @@ public sealed class DuoLinks : IDisposable
     {
         Rd105.Dispose();
         IoPort?.Dispose();
+        ChillerPort?.Dispose();
     }
 
     /// <summary>
@@ -90,6 +128,15 @@ public sealed class DuoLinks : IDisposable
             io = new Io8rClient(new ModbusRtuClient(ioPort, (byte)cn.Num(F.AddrIo, DualStationDriver.Defaults.AddrIo)));
         }
 
+        // 冷水机：选了串口才联动（缺省不选——接在哪个口现场还没定）
+        ISerialTransport? chPort = null; ChillerClient? chiller = null;
+        var chPortName = cn.Str(F.PortChiller, DualStationDriver.Defaults.PortChiller).Trim();
+        if (cn.Str(F.HasChiller, "有") == "有" && chPortName.Length > 0)
+        {
+            chPort = new SerialPortTransport(chPortName, (int)cn.Num(F.BaudChiller, DualStationDriver.Defaults.BaudChiller));
+            chiller = new ChillerClient(new ModbusRtuClient(chPort, (byte)cn.Num(F.AddrChiller, DualStationDriver.Defaults.AddrChiller)));
+        }
+
         var rdPort = cn.Str(F.PortRd105, DualStationDriver.Defaults.PortRd105);
         var rdBaud = (int)cn.Num(F.BaudRd105, DualStationDriver.Defaults.BaudRd105);
         var rdProto = cn.Str(F.ProtoRd105, DualStationDriver.Defaults.ProtoRd105);
@@ -99,7 +146,8 @@ public sealed class DuoLinks : IDisposable
             // 「RD105 协议」选 Modbus-RTU 时串口上套一层桥（Rd105ModbusBridge），链路其余部分不变
             Rd105 = new Rd105Link(Rd105Protocol.Transport(rdPort, rdBaud, rdProto, rdStation)),
             RdPortName = rdPort, RdBaud = rdBaud, RdProtocol = rdProto, RdStation = rdStation,
-            IoPort = ioPort, Io = io, IoPortName = io is null ? null : ioPortName
+            IoPort = ioPort, Io = io, IoPortName = io is null ? null : ioPortName,
+            ChillerPort = chPort, Chiller = chiller, ChillerPortName = chiller is null ? null : chPortName
         };
     }
 }

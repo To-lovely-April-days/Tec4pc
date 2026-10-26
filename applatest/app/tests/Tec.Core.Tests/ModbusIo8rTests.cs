@@ -139,6 +139,71 @@ public class ModbusIo8rTests
         Assert.Contains("站号", ex.Message);
     }
 
+    // ── 重试：瞬时干扰自动救回，不惊动上层 ─────────────────────────
+
+    [Fact]
+    public async Task 瞬时丢帧_重发救回()
+    {
+        var (dev, io, _) = Rig(timeoutMs: 100);
+        dev.MuteNext = 1;                           // 第一问装没听见，第二问正常答
+        dev.Coils[2] = true;
+        var s = await io.ReadRelaysAsync();         // 不抛，重发拿到
+        Assert.True(s[2]);
+        Assert.Equal(new[] { "muted", "读DO 0+8" }, dev.Requests);
+    }
+
+    [Fact]
+    public async Task 应答烂尾_只差CRC两字节_重发救回()
+    {
+        // 现场抓到的那帧：站号/功能码/数据全对，就差 CRC 两字节没到 → 超时 → 重发即恢复
+        var (dev, _, bus) = Rig(timeoutMs: 100);
+        dev.Regs[1536] = 2500;
+        dev.TruncateNext = 1;
+        var v = await bus.ReadHoldingRegistersAsync(1536, 1);
+        Assert.Equal(new ushort[] { 2500 }, v);
+        Assert.Equal(2, dev.Raw.Count);             // 线上发了两问
+    }
+
+    [Fact]
+    public async Task 瞬时坏CRC_重发救回()
+    {
+        var (dev, io, _) = Rig();
+        dev.CorruptCrcNext = 1;
+        dev.Coils[5] = true;
+        var s = await io.ReadRelaysAsync();
+        Assert.True(s[5]);
+    }
+
+    [Fact]
+    public async Task 一直不答_重试次数用尽照抛超时()
+    {
+        var (dev, io, bus) = Rig(timeoutMs: 100);
+        dev.Mute = true;
+        await Assert.ThrowsAsync<TimeoutException>(() => io.ReadRelaysAsync());
+        Assert.Equal(1 + bus.TimeoutRetries, dev.Requests.Count(m => m == "muted"));   // 次数用尽才认输
+    }
+
+    [Fact]
+    public async Task 应答烂尾_字节间空闲判死_不等满总超时()
+    {
+        // 帧来了但被掐断（数据到了、尾巴没来）：超过 InterByteIdleMs 没有新字节就判死，
+        // 不干等满 500 ms 总超时。报错跟「整帧没来」区分开：一个说烂尾、一个说没等到
+        var (dev, _, bus) = Rig(timeoutMs: 500);
+        bus.TimeoutRetries = 0;
+        dev.TruncateNext = 1;
+        var ex = await Assert.ThrowsAsync<TimeoutException>(() => bus.ReadHoldingRegistersAsync(1536, 1));
+        Assert.Contains("烂尾", ex.Message);
+    }
+
+    [Fact]
+    public async Task 从站回异常码_不重试()
+    {
+        var (dev, io, _) = Rig();
+        dev.RejectWith = 0x02;                      // 语义错重发一百遍也一样
+        await Assert.ThrowsAsync<ModbusException>(() => io.ReadRelaysAsync());
+        Assert.Single(dev.Requests);
+    }
+
     [Fact]
     public async Task 点位越界_本地就拒_不上总线()
     {

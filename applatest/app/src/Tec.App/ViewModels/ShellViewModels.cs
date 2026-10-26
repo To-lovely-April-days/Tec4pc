@@ -161,12 +161,7 @@ public sealed class StartViewModel : ViewModelBase
         OpenRecent = new RelayCommand(p => Async(async () =>
         {
             if (p is not RecentCardViewModel card) return;
-            if (await GuardedAsync(() => _store.OpenAsync(card.Path), $"已打开 {card.Name}"))
-            {
-                Status += MigrationNote();
-                HasDoc = true;
-                shell.Tab = MainViewModel.TabBench;
-            }
+            await OpenAndConnectAsync(card.Path, card.Name);
         }));
 
         NewExperiment = new RelayCommand(() => Async(async () =>
@@ -179,13 +174,7 @@ public sealed class StartViewModel : ViewModelBase
         OpenExperiment = new RelayCommand(() => Async(async () =>
         {
             if (await FileDialogs.OpenExperiment() is not { } path) return;
-            if (await GuardedAsync(() => _store.OpenAsync(path),
-                                   $"已打开 {Path.GetFileNameWithoutExtension(path)}"))
-            {
-                Status += MigrationNote();
-                HasDoc = true;
-                shell.Tab = MainViewModel.TabBench;
-            }
+            await OpenAndConnectAsync(path, Path.GetFileNameWithoutExtension(path));
         }));
 
         SaveExperiment = new RelayCommand(() => Async(async () =>
@@ -202,6 +191,7 @@ public sealed class StartViewModel : ViewModelBase
             if (await FileDialogs.OpenBench() is not { } path) return;
             await GuardedAsync(() => _store.ImportBenchAsync(path), "台面已导入。配方按通道号对回去了。");
             shell.Tab = MainViewModel.TabBench;
+            await _store.ConnectChannelsAsync();    // 换了一套硬件：先见设备，再逐台连（导入保持标脏）
         }));
 
         ExportBench = new RelayCommand(() => Async(async () =>
@@ -261,6 +251,21 @@ public sealed class StartViewModel : ViewModelBase
         // 跟指令翻译分开说——把两件事串成一句，读起来像是配方库也被"转换"了
         foreach (var note in _store.LastNotes) text += "。" + note;
         return text;
+    }
+
+    /// <summary>
+    /// 打开实验的节奏（用户定的）：先读文件建拓扑（设备先摆出来、都还是「未连接」）→
+    /// 切到台面 → 再逐台连（横幅进度、节点菊花、可取消）→ 连完抹脏标记
+    /// （连接重建会触发 BenchChanged，不抹的话刚打开就显示「改过」）。
+    /// </summary>
+    private async Task OpenAndConnectAsync(string path, string name)
+    {
+        if (!await GuardedAsync(() => _store.OpenAsync(path), $"已打开 {name}")) return;
+        Status += MigrationNote();
+        HasDoc = true;
+        _shell.Tab = MainViewModel.TabBench;        // 先见台面
+        await _store.ConnectChannelsAsync();        // 再见连接中
+        _store.ResetDirty();
     }
 
     private bool Guarded(Action act, string okText)

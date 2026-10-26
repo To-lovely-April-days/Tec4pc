@@ -244,11 +244,11 @@
     </Border>
 
     <!-- ══ 屏幕区 ══ -->
-    <Grid Grid.Column="1" Margin="10,8,10,6" RowDefinitions="46,*">
+    <Grid Grid.Column="1" Margin="10,8,10,6" RowDefinitions="46,*" ColumnDefinitions="*,Auto">
 
-      <!-- 顶栏：总览三页签 -->
+      <!-- 顶栏：总览三页签（窄了裁末尾，别跟右列叠） -->
       <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="4" Margin="6,0,0,0"
-                  VerticalAlignment="Bottom" IsVisible="{Binding IsOv}">
+                  VerticalAlignment="Bottom" IsVisible="{Binding IsOv}" ClipToBounds="True">
         <Button Classes="htab" Classes.on="{Binding OvApp}" Click="OnTabOvApp">
           <Panel>
           <Rectangle Classes="htop" />
@@ -278,9 +278,9 @@
         </Button>
       </StackPanel>
 
-      <!-- 顶栏：通道五页签 -->
+      <!-- 顶栏：通道五页签（窗口太窄就裁掉末尾，别跟右列叠） -->
       <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="4" Margin="6,0,0,0"
-                  VerticalAlignment="Bottom" IsVisible="{Binding IsZone}">
+                  VerticalAlignment="Bottom" IsVisible="{Binding IsZone}" ClipToBounds="True">
         <Button Classes="htab" Classes.on="{Binding ZCtl}" Click="OnTabZCtl">
           <Panel>
           <Rectangle Classes="htop" />
@@ -340,7 +340,7 @@
 
       <!-- 文件 / 系统页的单页签 -->
       <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="4" Margin="6,0,0,0"
-                  VerticalAlignment="Bottom" IsVisible="{Binding IsFiles}">
+                  VerticalAlignment="Bottom" IsVisible="{Binding IsFiles}" ClipToBounds="True">
         <Button Classes="htab on">
           <Panel>
             <Rectangle Classes="htop" />
@@ -352,7 +352,7 @@
         </Button>
       </StackPanel>
       <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="4" Margin="6,0,0,0"
-                  VerticalAlignment="Bottom" IsVisible="{Binding IsSys}">
+                  VerticalAlignment="Bottom" IsVisible="{Binding IsSys}" ClipToBounds="True">
         <Button Classes="htab on">
           <Panel>
             <Rectangle Classes="htop" />
@@ -364,9 +364,22 @@
         </Button>
       </StackPanel>
 
-      <!-- 顶栏右侧：状态字 + 厂名（所有页共用）-->
-      <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="14"
+      <!-- 顶栏右侧：状态字 + 厂名（所有页共用）。独占右列（Grid 第 2 列）——
+           页签再宽也不跟左侧页签叠着（单通道六页签顶到「PID 整定」，现场踩到） -->
+      <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="14"
                   HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,6,0,0">
+        <!-- 冷却水电磁阀（整机一只，IO8R DO4）：首页一眼看得见、一点就开关。
+             跟 TEC 自动联动；有路在制冷时关不了（驱动拒绝并说明）。连了冷水机：开 = 先开阀再开冷水机，
+             关 = 先停冷水机、停稳了再关阀（关的过程中开关显示还开着，小字说在等什么） -->
+        <Border Classes="hsw" Classes.on="{Binding WaterOn}" PointerPressed="OnTogWater"
+                IsVisible="{Binding ShowWater}" VerticalAlignment="Center"
+                ToolTip.Tip="冷却水电磁阀（IO8R DO4）。接 TEC 前自动打开，两路都不制冷后自动关闭；制冷中关不了。手动打开的不会被自动关。连了冷水机时跟它联动：开水先开阀、再开冷水机；关水先停冷水机，等它停稳了再关阀">
+          <StackPanel Orientation="Horizontal" Spacing="7">
+            <TextBlock Text="冷却水" VerticalAlignment="Center" />
+            <TextBlock Text="{Binding WaterNote}" FontSize="10.5" VerticalAlignment="Center" />
+            <Border Classes="hswt"><Ellipse Classes="hswk" /></Border>
+          </StackPanel>
+        </Border>
         <TextBlock FontSize="11.5" Foreground="#6F6F6F" VerticalAlignment="Center"
                    Text="{Binding OvRt}" IsVisible="{Binding IsOv}" />
         <TextBlock FontSize="11.5" Foreground="#6F6F6F" VerticalAlignment="Center"
@@ -380,8 +393,8 @@
                    Text="上海霍桐实验仪器" />
       </StackPanel>
 
-      <!-- ══ stage ══ -->
-      <Border Grid.Row="1" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="3" Padding="12">
+      <!-- ══ stage ══（顶栏右侧那列不占它的宽度：顶栏两列分，内容横跨两列） -->
+      <Border Grid.Row="1" Grid.ColumnSpan="2" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="3" Padding="12">
         <Panel>
 
           <!-- 装置总览 -->
@@ -564,6 +577,10 @@
                         <Border Classes="hsw" Classes.on="{Binding Cur.TempOn}" PointerPressed="OnTogTemp">
                           <StackPanel Orientation="Horizontal" Spacing="7">
                             <TextBlock Text="温控" VerticalAlignment="Center" />
+                            <!-- 在途菊花：下发 / 停控的业务没走完（冷水机那段）时转，
+                                 走完了开关才定状态——不再开→关→开弹跳 -->
+                            <ctl:BusyRing Width="13" Height="13" Stroke="2"
+                                          IsVisible="{Binding Cur.TempBusy}" VerticalAlignment="Center" />
                             <Border Classes="hswt"><Ellipse Classes="hswk" /></Border>
                           </StackPanel>
                         </Border>

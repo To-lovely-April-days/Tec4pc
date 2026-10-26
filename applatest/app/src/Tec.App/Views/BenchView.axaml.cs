@@ -63,6 +63,16 @@ public partial class BenchView : UserControl
 
     private BenchViewModel? Vm => DataContext as BenchViewModel;
 
+    /// <summary>节点上「连接中…取消」：指针这一下先吃掉，别落成选中 / 拖动（OnDevicePressed 会抢）。</summary>
+    private void OnNodeCancelPressed(object? sender, PointerPressedEventArgs e) => e.Handled = true;
+
+    /// <summary>节点上「连接中…取消」：取消整个连接过程——还没连的标成手动断开，随时点「连接」接回来。</summary>
+    private void OnNodeCancelConnect(object? sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        Vm?.CancelConnect.Execute(null);
+    }
+
     // 按下先记着，指针挪开一段距离才算拖拽——单纯点一下只是选中，
     // 不该在画布上冒出一个跟手的幽灵设备
     private const double DragSlop = 4;

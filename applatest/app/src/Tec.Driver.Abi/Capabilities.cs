@@ -182,6 +182,35 @@ public interface IHeatSource : ICapability
     string? Regime => null;
 }
 
+/// <summary>
+/// 冷却水电磁阀（整机一只，双工位主机接在 IO8R 的一路 DO 上）。手动面板首页的开关走它。
+/// 整机的东西挂在每个工位上都是同一只阀——两个通道拿到的实例读写同一份状态，界面取到哪个都一样。
+/// 设备有这只阀才提供（§3.2），界面按 Has&lt;T&gt;() 判，没有就不显示开关。
+/// </summary>
+public interface ICoolingWaterValve : ICapability
+{
+    /// <summary>此刻能不能开关（驱动它的模块开着）。false 时 SetAsync 会被拒绝。</summary>
+    bool Available { get; }
+
+    /// <summary>阀现在开着没有（上位机命令的影子，驱动每拍读回核对）。</summary>
+    bool IsOpen { get; }
+
+    /// <summary>
+    /// 阀跟冷水机联动时的一句状态（「已开·冷水机正常运行」「冷水机延时停机·停稳后关阀」「冷水机读不到」……），
+    /// 面板照原话印在开关旁边；不联动就是 null。关水是「先停冷水机、等它停稳再关阀」——SetAsync(false)
+    /// 返回时阀可能还开着，IsOpen 照实说，这句告诉人在等什么。
+    /// </summary>
+    string? Status => null;
+
+    /// <summary>
+    /// 关水挂着：冷水机停机已发、阀等它停稳再关（这时 IsOpen 还是 true）。面板开关按「要的」显示成关，
+    /// 再点一下 = 又要水（撤销关水、冷水机重新开机）。不联动冷水机永远是 false。
+    /// </summary>
+    bool Closing => false;
+
+    Task SetAsync(bool open, CancellationToken ct);
+}
+
 public interface IStirrer : ICapability
 {
     SpeedLimits Limits { get; }

@@ -35,6 +35,12 @@ public sealed class FakeRd105Device : ISerialTransport
     /// <summary>置 true 后所有查询都不应答，用来验证超时路径。</summary>
     public bool Mute { get; set; }
 
+    /// <summary>接下来这么多条指令不应答（偶发丢帧）。</summary>
+    public int MuteNext { get; set; }
+
+    /// <summary>接下来这么多条应答被打坏（解析不了的坏帧，现场抓到过单比特翻转）。</summary>
+    public int GarbleNext { get; set; }
+
     /// <summary>
     /// 像现场那台一样按自己的规矩改写小占空比：非零、绝对值小于这个百分比的 PWMDUTY 存成这个百分比（带符号）并回显。
     /// 0 = 原样存、原样回显。现场看到：写 −4.41 % 回显 −6.43 %。
@@ -121,6 +127,7 @@ public sealed class FakeRd105Device : ISerialTransport
     {
         Commands.Add(frame.Trim());
         if (Mute) return;
+        if (MuteNext > 0) { MuteNext--; return; }
 
         // 形如 "TC1:TG=2500000@\n" 或 "TC1:TG=?@\n" 或 "DATADEMAND=2@\n"
         var body = frame.Trim().TrimEnd('@', '\n').TrimEnd('@');
@@ -181,6 +188,8 @@ public sealed class FakeRd105Device : ISerialTransport
 
     private void Send(string text)
     {
+        // 打坏：'=' 翻成 'P'，字段名跟值粘成一段，解析认不出这个字段
+        if (GarbleNext > 0) { GarbleNext--; text = text.Replace('=', 'P'); }
         foreach (var b in Encoding.ASCII.GetBytes(text)) _tx.Enqueue(b);
     }
 }

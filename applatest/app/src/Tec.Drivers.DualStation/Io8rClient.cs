@@ -22,6 +22,9 @@ public sealed class Io8rClient
 
     public Io8rClient(ModbusRtuClient bus) => _bus = bus;
 
+    /// <summary>底下的 Modbus 主站——重试 / 帧间空当这些链路参数调它（探测时把重试关掉）。</summary>
+    public ModbusRtuClient Bus => _bus;
+
     /// <summary>读回 8 路继电器的当前位置（FC 01）。跟自己发过的命令核对用——
     /// 模块面板上有按键，人手也能扳继电器，读回来对不上要报出来。</summary>
     public Task<bool[]> ReadRelaysAsync(CancellationToken ct = default)
@@ -37,6 +40,15 @@ public sealed class Io8rClient
         if (index is < 0 or >= Points)
             throw new ArgumentOutOfRangeException(nameof(index), $"IO8R 只有 DO0~DO7，要切的是 DO{index}");
         return _bus.WriteCoilAsync((ushort)index, closed, ct);
+    }
+
+    /// <summary>八路按给定位置一帧写完（FC 0F）。开机复位 / 走人时冷水机还没停稳，
+    /// 要「别的全断、冷却水阀留着」就用它——冷水机还在转就关阀会憋泵。</summary>
+    public Task WriteRelaysAsync(IReadOnlyList<bool> closed, CancellationToken ct = default)
+    {
+        if (closed.Count != Points)
+            throw new ArgumentException($"IO8R 一次写 {Points} 路，给了 {closed.Count} 路", nameof(closed));
+        return _bus.WriteCoilsAsync(0, closed, ct);
     }
 
     /// <summary>八路全断，一帧完成（FC 0F）。开机复位与走人都用它——

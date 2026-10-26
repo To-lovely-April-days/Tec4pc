@@ -47,6 +47,23 @@ public sealed class DriverContext
     /// </summary>
     public Func<DateTimeOffset> Clock { get; init; } = () => DateTimeOffset.Now;
     public Action<string, string>? Log { get; init; }
+
+    /// <summary>
+    /// 台面重建 / 重连导致的重开（区别于冷开机与真断开：程序退出、设备被删）。
+    /// true 时开机复位按物理现状接手——冷却水阀开着就留着、冷水机不动，
+    /// 不做冷开机那种全断（重建一次就把人开着的阀拍掉，现场踩到）。
+    /// </summary>
+    public bool Reconnecting { get; init; }
+}
+
+/// <summary>
+/// 台面重建重开（不是真断开）时，宿主收会话之前先给实现这个接口的会话打上标记：
+/// 「走人前收拾」（停冷水机、关冷却水阀）这类动作跳过，物理状态原样交给新会话。
+/// 真断开（程序退出、设备删了）不标，照常收拾。
+/// </summary>
+public interface IReconnectAwareSession
+{
+    bool Reconnecting { get; set; }
 }
 
 public interface IDeviceDriver

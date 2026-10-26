@@ -24,6 +24,8 @@ namespace Tec.Drivers.DualStation;
 ///    **继电器跟着 PID 输出的符号走**：同号连续 3 s（SignDwell）才扳（关输出 → 断一只 → 合一只 → 开输出），保温段要的
 ///    功率一直是正的（夹套往冷却水漏热）所以不抖，只在落地、放热起来 / 结束这种真要换方向的时候扳一次。
 ///    下发目标那一刻按方向先合一只（低于当前超过死区合 TEC，其余合加热棒），之后就看符号。
+///    **冷却水跟着 TEC 走（0522，用户定的）**：往 TEC 侧扳才先通水（阀 → 冷水机 → 通水延时 → 合功率线）；
+///    回加热棒侧（升温 / 保温）就停冷水机、停稳关阀——升温时冷水机与阀都关着。
 ///    夹套 &gt; 「TEC 接入上限」（90）：TEC 断开、只加热棒出力、功率下限钳回 0（不复位），凉到 上限 − 滞回（缺省 85）再放开；
 ///    定挡那一刻夹套已经高过那条线也先不接。
 ///  · **「冷水机」已关 = 升温挡 / 降温挡**（0333）：**下发目标时按方向定挡**——目标比当前温度低超过死区 = 降温挡，
@@ -37,7 +39,7 @@ namespace Tec.Drivers.DualStation;
 ///  · 每次切换都走全套序列：关输出 → 切继电器 → （核反馈）→ 重开输出；
 ///  · 电加热用不了（没配 IO8R / 打不开）时，需要加热的目标直接拒绝，理由写明。
 /// </summary>
-public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSettings
+public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSettings, IReconnectAwareSession
 {
     // ── IDeviceSettings：温控器参数面板归里面那台 RD105 ──
     public IReadOnlyList<SettingsGroup> Groups => _rd.Groups;
@@ -75,7 +77,60 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     private readonly int[] _tecDoIdx = new int[2];
     /// <summary>TEC 功率继电器的影子：闭合 = TEC 有电。与 _electric 一样，每拍读回核对。</summary>
     private readonly bool[] _tecOn = new bool[2];
+    /// <summary>冷却水电磁阀接哪一路 DO（整机一只，现场 DO4）。</summary>
+    private readonly int _waterDo;
+    /// <summary>冷却水阀的影子：true = 开着。与 _electric 一样，每拍读回核对。</summary>
+    private volatile bool _waterOn;
+    /// <summary>开关冷却水阀时占着：采集循环看见它被占就不拿读回快照跟影子比（同 _switchLock 那道守卫）。</summary>
+    private readonly SemaphoreSlim _waterLock = new(1, 1);
+    /// <summary>每个工位一份能力实例（ICapability 要带通道号），读写的是同一只阀。</summary>
+    private readonly CoolingWaterValve[] _water;
+    /// <summary>阀刚打开时等多久再接 TEC（让水先流起来，用户定的）。阀已经开着就不等。</summary>
+    private readonly TimeSpan _waterLead;
+    /// <summary>
+    /// 阀是人在面板上手动打开的：自动联动不去关它（两路都不制冷了也留着），人自己关或安全停机才关。
+    /// 自动打开的不立这个旗。
+    /// </summary>
+    private volatile bool _waterManual;
     private readonly TimeSpan _tick;
+
+    // ── 冷水机联动（用户定的标准开关顺序）────────────────────────────
+    // 开水：先开阀 → 再开冷水机；关水：先停冷水机 → 等它真停了（运行状态 = 空闲）→ 再关阀。
+    // 冷水机还在转（含延时停机那段）就关阀会憋泵；读不到它的状态 = 确认不了停没停，阀宁可开着。
+    // 「关水」是个要等的过程：发完停机就挂起（_waterClosing），之后每拍读状态，停稳了才关阀
+    /// <summary>冷水机最近一次读到的运行状态（_chillerStateKnown = false 时作废）。</summary>
+    private volatile int _chillerState = -1;
+    /// <summary>最近一次读冷水机读到了没有。读不到 = 确认不了它停没停。</summary>
+    private volatile bool _chillerStateKnown;
+    /// <summary>关水挂起：冷水机停机已发（或在发），等它停稳再关阀。阀这时还开着。</summary>
+    private volatile bool _waterClosing;
+    private DateTimeOffset _waterClosingSince;
+    /// <summary>停机指令发出去了没有、什么时候发的（没发出去 / 冷水机没理就隔 StopResend 再发）。</summary>
+    private bool _stopSent;
+    private DateTimeOffset _stopSentAt;
+    private bool _stopFailSaid;
+    private static readonly TimeSpan StopResend = TimeSpan.FromSeconds(10);
+    /// <summary>冷水机读不到连续几拍（只报第一次）。</summary>
+    private int _chillerFails;
+    /// <summary>挂起的关水等这么久冷水机还没停稳就报一次（不关阀，接着等）。</summary>
+    internal TimeSpan ChillerStopWarn { get; set; } = TimeSpan.FromMinutes(5);
+    private bool _closingSlowSaid;
+    /// <summary>冷水机开机指令发了之后多久还没转起来就报一次。</summary>
+    internal TimeSpan ChillerStartWarn { get; set; } = TimeSpan.FromSeconds(60);
+    private DateTimeOffset? _chillerStartAt;
+    private bool _chillerStartSlowSaid;
+    /// <summary>断开设备时等冷水机停稳最多等多久，等不到阀就留着开（转着关阀会憋泵）。程序退出也走这里，别等太久。</summary>
+    internal TimeSpan ChillerStopWaitOnDispose { get; set; } = TimeSpan.FromSeconds(15);
+    /// <summary>开机指令该发还没发成（发失败了）：下一拍补发。关水时清掉。</summary>
+    private bool _chillerStartPending;
+    private bool _startFailSaid;
+    /// <summary>冷水机读不到之后隔多久再试：一次读不到要等满超时，每拍都等会拖慢整个采集循环。</summary>
+    private static readonly TimeSpan ChillerRetryAfter = TimeSpan.FromSeconds(10);
+    private DateTimeOffset _chillerNextTry = DateTimeOffset.MinValue;
+    /// <summary>日志里最后报过的冷水机状态（状态变了记一句）。</summary>
+    private int? _chillerLogged;
+    /// <summary>「TEC 在制冷而冷水机停了」那一段报过没有（冷水机再转起来清掉）。</summary>
+    private bool _chillerDownSaid;
 
     private readonly bool[] _electric = new bool[2];
     /// <summary>电加热用不了那一段只报一次，别每拍刷屏。</summary>
@@ -222,6 +277,22 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
                     throw new InvalidOperationException(
                         $"设备配置冲突：工位 {AB(w)} 的「切换 DO」和「TEC 功率 DO」都填了 DO{_doIdx[w]}——" +
                         "一只继电器不能既接加热棒又接 TEC 功率线，改掉一个再连");
+        _waterDo = Math.Clamp((int)cfg.Num(F.WaterDo, 4), 0, 7);
+        if (links.Io is not null)
+            for (var w = 0; w < 2; w++)
+                if (_waterDo == _doIdx[w] || (_tecRelay && _waterDo == _tecDoIdx[w]))
+                    throw new InvalidOperationException(
+                        $"设备配置冲突：「冷却水阀 DO」填了 DO{_waterDo}，跟工位 {AB(w)} 的" +
+                        $"{(_waterDo == _doIdx[w] ? "「切换 DO」" : "「TEC 功率 DO」")}重号——一只继电器只能接一样东西，改掉一个再连");
+        // 冷水机要单独一路串口：跟 RD105 / IO8R 共一个口，开口时后开的那条就被占着打不开（报出来是「被占用」，看不出是自己占的）
+        if (links.ChillerPortName is { } chp)
+            foreach (var (name, label) in new[] { (links.RdPortName, "RD105 串口"), (links.IoPortName, "IO8R 串口") })
+                if (string.Equals(chp, name, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException(
+                        $"设备配置冲突：「冷水机串口」跟「{label}」都填了 {chp}——冷水机要单独一路串口，改掉一个再连" +
+                        "（不联动冷水机就把「冷水机联动」选成「无」）");
+        _water = new[] { new CoolingWaterValve(this, 0), new CoolingWaterValve(this, 1) };
+        _waterLead = TimeSpan.FromSeconds(Math.Clamp(cfg.Num(F.WaterLead, 5), 0, 60));
         _tick = TimeSpan.FromMilliseconds(Math.Clamp(connection.Num(F.Tick, 1000), 100, 5000));
 
         // 内层 RD105 会话：夹套控温 + Tj/Tset/duty/fault 采集，原样转发到本会话的流上
@@ -339,6 +410,10 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
 
     public string InstanceId => _ctx.InstanceId;
 
+    /// <summary>台面重建重开时宿主先把这个打上再 Dispose：「走人前收拾」（停冷水机、
+    /// 关冷却水阀）跳过，物理状态交给新会话（它的 DriverContext.Reconnecting 也是 true）。</summary>
+    public bool Reconnecting { get; set; }
+
     public DeviceState State
     {
         get => _state;
@@ -388,6 +463,8 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     public IReadOnlyList<ICapability> CapabilitiesOf(int well)
         => well is 0 or 1
             ? new ICapability[] { _temps[well] }
+                // 冷却水阀长在 IO8R 上：没配 IO8R 的机器没有这只阀，不给能力（面板就不显示开关）
+                .Concat(_links.Io is not null ? new ICapability[] { _water[well] } : Array.Empty<ICapability>())
                 .Concat(_rd.CapabilitiesOf(well).OfType<ITemperatureTuning>())
                 .Concat(_rd.CapabilitiesOf(well).OfType<IPidTuningBench>()).ToArray()
             : Array.Empty<ICapability>();
@@ -456,7 +533,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
             (_tecHeat
                 ? $"——目标高于 {_threshold:F0} ℃ 才切电加热；回切线 {_threshold - _hyst:F0} ℃（阈值 − 滞回）"
                 : $"——升温系统 = 加热棒、降温系统 = TEC 制冷；「冷水机」{(_chiller
-                    ? $"已开 = 双向挡：一个 PID 两边出力（正加热棒、负 TEC），继电器跟着功率符号走（同号连续 {SignDwell.TotalSeconds:0} s 才扳），冷水机得真开着"
+                    ? $"已开 = 双向挡：一个 PID 两边出力（正加热棒、负 TEC），继电器跟着功率符号走（同号连续 {SignDwell.TotalSeconds:0} s 才扳）；冷却水跟着 TEC 走：升温时冷水机与阀都关，往 TEC 侧扳才先通水"
                     : $"已关 = 升温挡或降温挡（下发目标时按方向定挡，死区 {_band:F1} K）：升温挡只用加热棒，降温挡没水不接 TEC 只自然凉；要 TEC 制冷把它改成已开")}" +
                   $"；TEC 接入上限 {_threshold:F0} ℃（夹套高过它 TEC 断开、只加热棒），凉到 {_threshold - _hyst:F0} ℃（上限 − 滞回 {_hyst:F0}）再接"));
 
@@ -467,13 +544,25 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
             {
                 // 串口都没开成就别去发 Modbus 了——原因是开口时记下的那句，照它说
                 if (_links.IoOpenError is { } why) throw new InvalidOperationException(why);
+                // 联动冷水机：先看它转没转。还在转（上一炉留着 / 人在冷水机上开的）就别把阀跟着八路一起断——
+                // 转着关阀会憋泵；读不到确认不了，同样留着阀（只在阀本来就开着时）
+                var keepWater = await ChillerKeepsWaterAsync(io, ct).ConfigureAwait(false);
                 // 一帧全断：加热棒继电器与 TEC 功率线都断着（用户定的：不控温就不合）。
                 // 打开温控后按升温 / 降温只合该合的那一只（EnsureSourceAsync / 采集循环）
-                await io.AllOffAsync(ct).ConfigureAwait(false);
+                if (keepWater)
+                {
+                    var relays = new bool[Io8rClient.Points];
+                    relays[_waterDo] = true;
+                    await io.WriteRelaysAsync(relays, ct).ConfigureAwait(false);
+                }
+                else await io.AllOffAsync(ct).ConfigureAwait(false);
                 _electric[0] = _electric[1] = false;
                 _tecOn[0] = _tecOn[1] = false;
+                _waterOn = keepWater;   // 冷却水阀（DO{_waterDo}）跟着断了：开机关阀，要接 TEC 时自动开（冷水机在转就留着）
+                _waterManual = keepWater;
                 _ioOk = true;
-                _ctx.Log?.Invoke("info", $"{InstanceId} IO8R 已复位：八路全断" +
+                _ctx.Log?.Invoke("info", $"{InstanceId} IO8R 已复位：" +
+                    (keepWater ? $"除冷却水阀（DO{_waterDo}，冷水机在转 / 确认不了停没停）外全断" : "八路全断") +
                     (_tecRelay
                         ? $"——加热棒继电器与 TEC 功率线（DO{_tecDoIdx[0]} = A、DO{_tecDoIdx[1]} = B）都断着，" +
                           (_tecHeat ? "打开温控后要降温合 TEC 功率线、要升温合加热棒"
@@ -606,6 +695,15 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
                     }
                     Push(_rd.TempOf(w).Channel, "tecpwr", tec ? 1 : 0, at, Quality.Good);
                 }
+                // 冷却水阀同样读回核对：模块面板上按键也能扳它。正在开关的那一下读回来的是旧快照，不比
+                var water = dos[_waterDo];
+                if (_waterLock.CurrentCount > 0 && water != _waterOn)
+                {
+                    _ctx.Log?.Invoke("warn", $"{InstanceId} 冷却水阀 DO{_waterDo} 实际{(water ? "开着" : "关着")}，" +
+                        "与上位机命令不符——已按实际状态记录" + (water ? "" : "（有路在制冷的话下面会补开）"));
+                    _waterOn = water;
+                    _waterManual = water;      // 人在模块上开的按手动算：自动联动不去关它
+                }
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
@@ -620,6 +718,13 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         // 真要扳继电器的时候它自己会看 ElectricReady
         for (var w = 0; w < 2; w++)
             await AutoSourceAsync(w, ct).ConfigureAwait(false);
+
+        // 冷却水阀对账：有路在制冷就得开着，都不制冷了（自动开的）就关
+        await SyncWaterAsync(ct).ConfigureAwait(false);
+        // 冷水机对账：关水挂着就看它停稳没有（停稳才关阀）；它在转而阀关着就先开阀
+        try { await TickChillerAsync(ct).ConfigureAwait(false); }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex) { _ctx.Log?.Invoke("warn", $"{InstanceId} 冷水机联动对账失败：{ex.Message}"); }
     }
 
     /// <summary>
@@ -721,9 +826,10 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         {
             // 别写「下拍再试」：反馈没核实上时 SwitchAsync 是把输出留在关闭状态退出的，
             // 下一拍这一路已经算「停控」，不会再自己切回来——这是要人去现场看的事
+            // 开冷却水那一步就失败了：还没关输出、继电器也没动，下一拍照常重试——别说成「输出已关」
             _ctx.Log?.Invoke("error", $"{InstanceId} 工位 {AB(well)} " +
                 $"自动切到{SideName(side)}失败：{ex.Message}" +
-                "——控温输出已关闭且不会自行恢复，请到现场检查");
+                (innerT.Enabled ? "——输出没动，下一拍再试" : "——控温输出已关闭且不会自行恢复，请到现场检查"));
         }
     }
 
@@ -1288,6 +1394,13 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         // 继电器写只在配了 IO8R 的机器上发生（_electric / _tecRelay 没有 IO8R 一律 false）；
         // 没配的机器走到这里只是对齐形态（关输出 → 换形态 → 开输出）
         var io = _links.Io;
+        // ⓪ 制冷先通水（用户定的）：真要接 TEC 才先开冷却水阀、等通水延时再动继电器——
+        //    继电器机 = 往 TEC 侧扳；硬线直连 = 进双向形态（它断不了 TEC 的电，形态就是通路）。
+        //    继电器机往加热棒侧扳不通水（0522：升温时冷水机与阀都关，降温才开）。
+        //    在拿切换锁**之前**等：等水那几秒不能把安全停机挡在锁外面；原来的热源这几秒照常出力。
+        //    等完了要是已经不该切了（被停 / 目标改了），阀由采集循环的对账收回去
+        if (to == Side.Tec || !_tecRelay && ModeOf(well, to) == ActuatorMode.HeaterTec)
+            await EnsureWaterAsync(well, ct).ConfigureAwait(false);
         await _switchLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
@@ -1299,6 +1412,10 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
             var mode = ModeOf(well, to);
             if (relaysOk && innerT.Actuator is { } cur && HostControlLoop.HeaterTable(cur) == HostControlLoop.HeaterTable(mode))
             {
+                // 换成「加热棒 + TEC 双向」且真要接 TEC（往 TEC 侧扳 / 硬线直连进双向形态）才通水；
+                // 继电器机留在加热棒侧不通水（0522：升温时冷水机与阀都关）
+                if (to == Side.Tec || !_tecRelay && mode == ActuatorMode.HeaterTec)
+                    await EnsureWaterAsync(well, ct).ConfigureAwait(false);
                 // 继电器在位、只是同一张表之内换形态（只加热 ⇄ 加热棒 + TEC：夹套过 / 回 TEC 接入线；TEC 双向 ⇄ 只制冷）：
                 // 只改输出限幅、PID 不复位，回路运行中也许改——不必为它关一秒输出
                 innerT.SetActuator(mode);
@@ -1306,6 +1423,10 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
                 return;
             }
             var toElectric = to == Side.Electric;
+            // 锁外开过阀了；等锁期间阀被关了（另一路断 TEC 时的收尾）就再开——这时等水照样要等。
+            // 同上面 ⓪：继电器机往加热棒侧不通水
+            if (to == Side.Tec || !_tecRelay && mode == ActuatorMode.HeaterTec)
+                await EnsureWaterAsync(well, ct).ConfigureAwait(false);
             // 切完要不要把输出重开，看的是**意图**不是设备上的 ENABLE：
             // 停控时 TG 还留着，光看 Setpoint 分不出「有没有人要控温」；而 ENABLE
             // 在切换序列里被我们自己关过，上一笔切换失败的话它会一直是 0
@@ -1327,6 +1448,8 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
                 await io!.SetRelayAsync(_tecDoIdx[well], false, ct).ConfigureAwait(false);
                 _tecOn[well] = false;
             }
+            // 加热：先断 TEC（上面），确认另一路没在制冷后关冷却水，再接加热棒（下面）——用户定的顺序
+            if (to != Side.Tec) await ReleaseWaterAsync(ct).ConfigureAwait(false);
             if (to == Side.Electric && !_electric[well])
             {
                 await io!.SetRelayAsync(_doIdx[well], true, ct).ConfigureAwait(false);
@@ -1433,8 +1556,489 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
             {
                 _switchLock.Release();
             }
+
+            // 冷却水阀跟着关（用户定的）——但阀是整机一只：另一路 TEC 还接着就不关，
+            // 断了水 TEC 会干烧。安全停机连手动开的也关。联动冷水机：先停冷水机，停稳了才关阀（采集循环接着看）
+            if (_waterOn && !_waterClosing)
+            {
+                var other = 1 - well;
+                if (NeedsWater(other))
+                    notes.Add($"冷却水阀没关：工位 {AB(other)} 还在制冷，断水 TEC 会干烧——那一路停了会自动关");
+                else
+                {
+                    try
+                    {
+                        await SetWaterAsync(false, ct).ConfigureAwait(false);
+                        _waterManual = false;
+                        notes.Add(_waterOn
+                            ? $"冷水机停机已发：冷却水阀（DO{_waterDo}）等冷水机停稳再关（冷水机还在转就关阀会憋泵）"
+                            : $"冷却水阀（DO{_waterDo}）已关");
+                    }
+                    catch (Exception ex)
+                    {
+                        notes.Add($"关冷却水阀（DO{_waterDo}）失败：{ex.Message}");
+                    }
+                }
+            }
         }
         return notes;
+    }
+
+    // ── 冷却水电磁阀（整机一只，IO8R 的 DO{_waterDo}）──────────────────
+
+    internal bool WaterAvailable => _links.Io is not null && _ioOk;
+    internal bool WaterOn => _waterOn;
+
+    /// <summary>冷水机最近读到的运行状态；没配 / 读不到是 null。</summary>
+    internal int? ChillerState => _links.Chiller is not null && _chillerStateKnown ? _chillerState : (int?)null;
+
+    /// <summary>关水挂着：冷水机停机已发，阀等它停稳再关（这时 WaterOn 还是 true）。</summary>
+    internal bool WaterClosing => _waterClosing;
+
+    /// <summary>面板开关旁边那句：联动冷水机时说冷水机在干什么、关水在等什么；不联动 null。</summary>
+    internal string? WaterStatus
+    {
+        get
+        {
+            if (_links.Chiller is null) return null;
+            var st = ChillerClient.StateName(ChillerState);
+            if (_waterClosing) return $"冷水机{st}·停稳后关阀";
+            return _waterOn ? $"已开·冷水机{st}" : $"已关·冷水机{st}";
+        }
+    }
+
+    /// <summary>
+    /// 开 / 关冷却水。IO8R 不通就拒绝（说清为什么），不留一个看着开了实际没动的开关。
+    /// 联动冷水机（用户定的标准开关顺序）：开 = 先开阀、再开冷水机；关 = 先停冷水机，**停稳了才关阀**——
+    /// 这里只发停机、把关水挂起，阀由 AdvanceWaterCloseAsync 每拍看冷水机状态再关（冷水机已经停着就当场关）。
+    /// 所以 open = false 返回时阀可能还开着：WaterOn 照实说，WaterStatus 说在等什么。
+    /// </summary>
+    internal async Task SetWaterAsync(bool open, CancellationToken ct)
+    {
+        if (_links.Io is null)
+            throw new InvalidOperationException("这台没配 IO8R 模块，冷却水阀没有去处");
+        if (!_ioOk)
+            throw new InvalidOperationException($"IO8R 没打开，冷却水阀（DO{_waterDo}）开关不了——先把 IO8R 弄通");
+        await _waterLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            if (open) await OpenWaterLockedAsync(ct).ConfigureAwait(false);
+            else await BeginCloseWaterLockedAsync(ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _waterLock.Release();
+        }
+    }
+
+    /// <summary>开水（拿着 _waterLock）：① 阀 → ② 冷水机。关水挂着的话撤销它——阀本来就开着，冷水机重新开起来。</summary>
+    private async Task OpenWaterLockedAsync(CancellationToken ct)
+    {
+        var cancelled = _waterClosing;
+        _waterClosing = false;
+        await RelayWaterAsync(true, ct).ConfigureAwait(false);
+        if (cancelled)
+            _ctx.Log?.Invoke("info", $"{InstanceId} 关水撤销：又要冷却水了，冷却水阀（DO{_waterDo}）留着开、冷水机重新开机");
+        if (_links.Chiller is null) return;
+        // 阀开了才开冷水机（用户定的顺序）。手里的状态可能是上一拍的（人刚在冷水机上停了它）：
+        // 照发不误，在转的冷水机收到开机什么都不变
+        _chillerStartPending = true;
+        await TryStartChillerLockedAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>发开机（拿着 _waterLock）。发不成不回滚阀——阀开着不危险——下一拍补发（TickChillerAsync）。</summary>
+    private async Task TryStartChillerLockedAsync(CancellationToken ct)
+    {
+        if (_links.Chiller is not { } ch || !_chillerStartPending) return;
+        try
+        {
+            await ch.StartAsync(ct).ConfigureAwait(false);
+            _chillerStartPending = false;
+            _startFailSaid = false;
+            _chillerStartAt = _ctx.Clock();
+            _chillerStartSlowSaid = false;
+            _ctx.Log?.Invoke("info", $"{InstanceId} 冷水机开机指令已发（冷却水阀 DO{_waterDo} 已先打开）");
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            if (!_startFailSaid)
+            {
+                _startFailSaid = true;
+                _ctx.Log?.Invoke("warn", $"{InstanceId} 冷水机开机指令没发出去：{ex.Message}——冷却水阀已开着，接着补发（连续失败只报第一次）");
+            }
+        }
+    }
+
+    /// <summary>
+    /// 关水（拿着 _waterLock）：不联动冷水机就直接关阀；联动的先停冷水机、挂起关水，停稳了 AdvanceWaterCloseAsync 再关阀。
+    /// </summary>
+    private async Task BeginCloseWaterLockedAsync(CancellationToken ct)
+    {
+        if (_links.Chiller is null)
+        {
+            await RelayWaterAsync(false, ct).ConfigureAwait(false);
+            return;
+        }
+        if (!_waterOn && !_waterClosing) return;
+        if (!_waterClosing)
+        {
+            _waterClosing = true;
+            _waterClosingSince = _ctx.Clock();
+            _stopSent = false;
+            _stopFailSaid = false;
+            _closingSlowSaid = false;
+            _chillerStartAt = null;
+            _chillerStartPending = false;
+            _ctx.Log?.Invoke("info", $"{InstanceId} 关冷却水：先停冷水机，等它停稳再关阀（DO{_waterDo}）");
+        }
+        await AdvanceCloseLockedAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 关水挂着时往前推一步（拿着 _waterLock）：停机没发成 / 冷水机没理就隔 StopResend 再发；读冷水机状态，
+    /// **空闲**才关阀（延时停机、准备启动、正常运行、故障、读不到都不关——故障时泵可能还在走，确认不了就别关）。
+    /// </summary>
+    private async Task AdvanceCloseLockedAsync(CancellationToken ct)
+    {
+        if (!_waterClosing || _links.Chiller is not { } ch) return;
+        var now = _ctx.Clock();
+        // 头一次照发不误（手里的状态可能是上一拍的：刚发过开机、它还没转起来也读成空闲）；
+        // 之后冷水机没理（还在转 / 故障）隔 StopResend 重发，延时停机是它正在按自己的规矩停，不催
+        if (!_stopSent
+            || now - _stopSentAt >= StopResend && !(_chillerStateKnown && _chillerState is 0 or 3))
+        {
+            try
+            {
+                await ch.StopAsync(ct).ConfigureAwait(false);
+                if (!_stopSent) _ctx.Log?.Invoke("info", $"{InstanceId} 冷水机停机指令已发");
+                _stopSent = true;
+                _stopSentAt = now;
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                _stopSentAt = now;
+                if (!_stopFailSaid)
+                {
+                    _stopFailSaid = true;
+                    _ctx.Log?.Invoke("warn", $"{InstanceId} 冷水机停机指令没发出去：{ex.Message}——冷却水阀先不关（冷水机可能还在转），接着重发");
+                }
+            }
+        }
+        await ReadChillerAsync(ch, ct).ConfigureAwait(false);
+        if (_chillerStateKnown && _chillerState == ChillerClient.Idle)
+        {
+            _waterClosing = false;
+            await RelayWaterAsync(false, ct).ConfigureAwait(false);
+            _ctx.Log?.Invoke("info", $"{InstanceId} 冷水机已停稳（空闲）：冷却水阀（DO{_waterDo}）已关" +
+                $"（等了 {(_ctx.Clock() - _waterClosingSince).TotalSeconds:0} s）");
+            return;
+        }
+        if (!_closingSlowSaid && now - _waterClosingSince >= ChillerStopWarn)
+        {
+            _closingSlowSaid = true;
+            _ctx.Log?.Invoke("warn", $"{InstanceId} 关水已等了 {ChillerStopWarn.TotalMinutes:0} 分钟，冷水机还是「{ChillerClient.StateName(ChillerState)}」——" +
+                "冷却水阀留着开（冷水机没停稳就关阀会憋泵）。查一下冷水机：起停方式是不是「本地+远程」、有没有故障");
+        }
+    }
+
+    /// <summary>
+    /// 读一次冷水机运行状态，记下来；状态变了记一句（故障按 warn）。读不到记成「不知道」（只报第一次），
+    /// 隔 ChillerRetryAfter 再试。
+    /// </summary>
+    private async Task ReadChillerAsync(ChillerClient ch, CancellationToken ct)
+    {
+        try
+        {
+            var st = await ch.ReadStateAsync(ct).ConfigureAwait(false);
+            _chillerState = st;
+            _chillerStateKnown = true;
+            _chillerNextTry = DateTimeOffset.MinValue;
+            if (_chillerFails > 0) { _ctx.Log?.Invoke("info", $"{InstanceId} 冷水机恢复（读失败 {_chillerFails} 次后）"); _chillerFails = 0; }
+            if (_chillerLogged != st)
+            {
+                _ctx.Log?.Invoke(st == ChillerClient.Fault ? "warn" : "info",
+                    $"{InstanceId} 冷水机：{(_chillerLogged is { } was ? ChillerClient.StateName(was) + " → " : "")}{ChillerClient.StateName(st)}" +
+                    (st == ChillerClient.Fault ? "——冷水机报故障，去冷水机面板上看故障信息；故障期间冷却水阀不动" : ""));
+                _chillerLogged = st;
+            }
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            _chillerStateKnown = false;
+            _chillerNextTry = _ctx.Clock() + ChillerRetryAfter;
+            if (_chillerFails++ == 0)
+                _ctx.Log?.Invoke("warn", $"{InstanceId} 冷水机读不到：{ex.Message}（连续失败只报第一次，隔 {ChillerRetryAfter.TotalSeconds:0} s 再试）" +
+                    (_waterOn ? "——确认不了它停没停，冷却水阀先不关" : ""));
+        }
+    }
+
+    /// <summary>
+    /// 冷水机每拍对账（联动冷水机才有，采集循环调）：读运行状态；关水挂着就往前推（停稳了才关阀）；
+    /// 冷水机在转而冷却水阀关着（人在冷水机面板上开了机 / 有人在模块上把阀关了）就先把阀打开——转着关阀会憋泵；
+    /// 开机指令没发出去的补发；发了 ChillerStartWarn 还没转起来报一次。读不到冷水机时隔 ChillerRetryAfter 再试。
+    /// </summary>
+    private async Task TickChillerAsync(CancellationToken ct)
+    {
+        if (_links.Chiller is not { } ch || _links.Io is null || !_ioOk) return;
+        if (_ctx.Clock() < _chillerNextTry) return;
+        await _waterLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            if (_waterClosing) await AdvanceCloseLockedAsync(ct).ConfigureAwait(false);
+            else await ReadChillerAsync(ch, ct).ConfigureAwait(false);
+            if (!_chillerStateKnown) return;
+            var st = _chillerState;
+            if (st is 1 or 2 or 3 && !_waterOn)
+            {
+                // 人在冷水机面板上开了机 / 有人在 IO8R 模块上把阀关了：冷水机转着阀关着会憋泵，先开阀
+                await RelayWaterAsync(true, ct).ConfigureAwait(false);
+                if (!_waterClosing) _waterManual = true;
+                _ctx.Log?.Invoke("warn", $"{InstanceId} 冷水机在转（{ChillerClient.StateName(st)}）而冷却水阀（DO{_waterDo}）关着——" +
+                    "已先把阀打开（冷水机转着阀关着会憋泵）" + (_waterClosing ? "，停稳了再关"
+                        : "。按手动开的算、不自动关；要关在面板上关：先停冷水机，停稳了再关阀"));
+                return;
+            }
+            if (_waterClosing || !_waterOn) return;
+            if (_chillerStartPending)
+            {
+                await TryStartChillerLockedAsync(ct).ConfigureAwait(false);
+                return;
+            }
+            if (ChillerClient.Running(st)) { _chillerStartAt = null; _chillerDownSaid = false; return; }
+            if (_chillerStartAt is { } t0)
+            {
+                if (!_chillerStartSlowSaid && _ctx.Clock() - t0 >= ChillerStartWarn)
+                {
+                    _chillerStartSlowSaid = true;
+                    _ctx.Log?.Invoke("warn", $"{InstanceId} 冷水机开机指令发了 {ChillerStartWarn.TotalSeconds:0} s，冷水机还是「{ChillerClient.StateName(st)}」——" +
+                        "冷却水阀开着、冷水机没转。查一下冷水机：「起停方式」是不是「本地+远程」、有没有故障");
+                }
+                return;
+            }
+            // 转起来过、现在停了 / 故障了，而有路在制冷：说一次（不替人重新开机——可能是人在冷水机上停的，有他的道理）
+            if (!_chillerDownSaid && (NeedsWater(0) || NeedsWater(1)))
+            {
+                _chillerDownSaid = true;
+                _ctx.Log?.Invoke("warn", $"{InstanceId} TEC 在制冷，冷水机却是「{ChillerClient.StateName(st)}」——没有冷却水 TEC 会干烧。" +
+                    "去冷水机面板上看是不是被停了 / 报了故障；要接着制冷就把冷水机开起来，不制冷就停掉那一路温控");
+            }
+        }
+        finally
+        {
+            _waterLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// 开机复位 IO8R 之前问冷水机：还在转（含延时停机）就留着阀——上一炉留着没停 / 人在冷水机上开的，
+    /// 八路一起断会把阀在它转着的时候关掉；读不到冷水机就看阀本来开没开，开着就留着（确认不了它停没停）。
+    /// 留下来的按手动开的算：自动联动不去关它，要关在面板上关（先停冷水机，停稳了再关阀）。
+    /// </summary>
+    private async Task<bool> ChillerKeepsWaterAsync(Io8rClient io, CancellationToken ct)
+    {
+        if (_links.Chiller is not { } ch) return false;
+        // 台面重建重开（不是冷开机）：阀的开合按物理现状接手——开着的留着
+        // （多半是人手动开的 / 重建前就在开），全断那一下不该把它拍掉
+        if (_ctx.Reconnecting)
+        {
+            var open = await WaterWasOpenAsync(io, ct).ConfigureAwait(false);
+            if (open) _ctx.Log?.Invoke("info", $"{InstanceId} 台面重建：冷却水阀（DO{_waterDo}）开着，保持");
+            return open;
+        }
+        if (_links.ChillerOpenError is { } why)
+        {
+            _ctx.Log?.Invoke("warn", $"{InstanceId} {why}——照常开机，但冷却水阀跟冷水机联动不起来：确认不了冷水机停没停，阀只开不关");
+            _chillerStateKnown = false;
+            _chillerFails = 1;
+            return await WaterWasOpenAsync(io, ct).ConfigureAwait(false);
+        }
+        await ReadChillerAsync(ch, ct).ConfigureAwait(false);
+        if (_chillerStateKnown)
+        {
+            try
+            {
+                if (await ch.ReadStartStopModeAsync(ct).ConfigureAwait(false) == 0)
+                    _ctx.Log?.Invoke("warn", $"{InstanceId} 冷水机「起停方式」是「本地」：远程开关机它不理——" +
+                        "冷水机面板上把「起停方式」改成「本地+远程」，冷却水阀才能跟它联动（开水先开阀再开冷水机，关水先停冷水机、停稳再关阀）");
+            }
+            catch (OperationCanceledException) { throw; }
+            catch { /* 读不出起停方式不影响联动，真不理开关机时会另报 */ }
+            if (_chillerState is 1 or 2 or 3)
+            {
+                _ctx.Log?.Invoke("warn", $"{InstanceId} 开机时冷水机在转（{ChillerClient.StateName(_chillerState)}）：冷却水阀（DO{_waterDo}）留着开，别的继电器照常全断。" +
+                    "按手动开的算、不自动关；要关在面板上关冷却水：先停冷水机，停稳了再关阀");
+                return true;
+            }
+            return false;
+        }
+        if (await WaterWasOpenAsync(io, ct).ConfigureAwait(false))
+        {
+            _ctx.Log?.Invoke("warn", $"{InstanceId} 开机时冷水机读不到、冷却水阀（DO{_waterDo}）开着：确认不了冷水机停没停，阀留着开");
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// 断开设备时停冷水机：发停机（拿 _waterLock，跟采集循环错开），每 0.5 s 读一次状态，空闲就返回 true（阀可以关）；
+    /// 等满 ChillerStopWaitOnDispose 还没停稳 / 读不到就返回 false（阀留着开），记一句为什么。
+    /// </summary>
+    private async Task<bool> StopChillerForDisposeAsync()
+    {
+        var ch = _links.Chiller!;
+        var deadline = _ctx.Clock() + ChillerStopWaitOnDispose;
+        var wall = Environment.TickCount64 + (long)ChillerStopWaitOnDispose.TotalMilliseconds;
+        await _waterLock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            try { await ch.StopAsync(CancellationToken.None).ConfigureAwait(false); }
+            catch (Exception ex) { _ctx.Log?.Invoke("warn", $"{InstanceId} 断开设备：冷水机停机指令没发出去（{ex.Message}），接着读它的状态"); }
+            while (true)
+            {
+                try
+                {
+                    _chillerState = await ch.ReadStateAsync(CancellationToken.None).ConfigureAwait(false);
+                    _chillerStateKnown = true;
+                }
+                catch { _chillerStateKnown = false; }
+                if (_chillerStateKnown && _chillerState == ChillerClient.Idle)
+                {
+                    _waterClosing = false;
+                    _ctx.Log?.Invoke("info", $"{InstanceId} 断开设备：冷水机已停稳，冷却水阀（DO{_waterDo}）跟着关");
+                    return true;
+                }
+                // 测试的钟是拨的：真时钟和测试钟哪个先到都算到了
+                if (_ctx.Clock() >= deadline || Environment.TickCount64 >= wall) break;
+                await Task.Delay(500).ConfigureAwait(false);
+            }
+            _ctx.Log?.Invoke("warn", $"{InstanceId} 断开设备：等了 {ChillerStopWaitOnDispose.TotalSeconds:0} s 冷水机还是「{ChillerClient.StateName(ChillerState)}」——" +
+                $"冷却水阀（DO{_waterDo}）留着开（冷水机转着关阀会憋泵），别的继电器全断。冷水机停了以后到 IO8R 模块上关 DO{_waterDo}，或重新连接设备再关");
+            return false;
+        }
+        finally
+        {
+            _waterLock.Release();
+        }
+    }
+
+    private async Task<bool> WaterWasOpenAsync(Io8rClient io, CancellationToken ct)
+    {
+        try { return (await io.ReadRelaysAsync(ct).ConfigureAwait(false))[_waterDo]; }
+        catch (OperationCanceledException) { throw; }
+        catch { return false; }        // IO8R 都读不了：下面全断那一帧多半也发不出去，照常走
+    }
+
+    /// <summary>只扳阀那只继电器、记影子（拿着 _waterLock）。</summary>
+    private async Task RelayWaterAsync(bool open, CancellationToken ct)
+    {
+        await _links.Io!.SetRelayAsync(_waterDo, open, ct).ConfigureAwait(false);
+        var was = _waterOn;
+        _waterOn = open;
+        if (was != open)
+            _ctx.Log?.Invoke("info", $"{InstanceId} 冷却水阀（DO{_waterDo}）已{(open ? "打开" : "关闭")}");
+    }
+
+    /// <summary>
+    /// 面板手动开关走这里：手动开的立旗（自动联动不关它），手动关的落旗。
+    /// 联动冷水机时关 = 先停冷水机、停稳了再关阀，返回时阀可能还开着（面板上那句状态说在等什么）。
+    /// </summary>
+    internal async Task SetWaterManualAsync(bool open, CancellationToken ct)
+    {
+        // 任一路制冷时 DO4 保持打开（用户定的）：手动关了下一拍也会被补开，不如当场说清楚
+        if (!open && (NeedsWater(0) || NeedsWater(1)))
+        {
+            var w = NeedsWater(0) ? 0 : 1;
+            throw new InvalidOperationException(
+                $"工位 {AB(w)} 的 TEC 在制冷{(_regime[w] == Regime.Both ? "（双向挡）" : "")}——断水 TEC 会干烧，冷却水关不了。先停那一路的温控");
+        }
+        // 旗子在序列起跑时就立（不是跑完才立）：序列里冷水机开机要等它答话，链路慢要数秒——
+        // 这期间采集拍会看到「阀开了、还没人认领」，从前的下场是阀被自动联动关掉（现场踩到）
+        var was = _waterManual;
+        _waterManual = open;
+        try { await SetWaterAsync(open, ct).ConfigureAwait(false); }
+        catch { _waterManual = was; throw; }
+    }
+
+    /// <summary>
+    /// 这一路此刻要不要冷却水：TEC 带电（功率线经继电器的机器看继电器；硬线直连断不了电，
+    /// 回路在 TEC 侧形态就要水）。**升温不要水**（继电器机在加热棒侧）：冷水机停、阀关——
+    /// 用户定的（0522）：升温时冷水机与阀都关，要降温了（往 TEC 侧接）才开阀、开冷水机，
+    /// 「先通水再接 TEC」在切换序列里（EnsureWaterAsync）。
+    /// </summary>
+    private bool NeedsWater(int well)
+        => TecDriving(well) && (_tecRelay ? _tecOn[well] : _wantEnabled[well]);
+
+    /// <summary>
+    /// 制冷先通水（用户定的）：阀没开就开，等通水延时再回去接 TEC。阀已经开着不等。
+    /// IO8R 不通时 TEC 那只继电器也扳不了，不在这里拦——下面写继电器会照常报错。
+    /// </summary>
+    private async Task EnsureWaterAsync(int well, CancellationToken ct)
+    {
+        if (_links.Io is null || !_ioOk) return;
+        // 阀开着、也没在关水：不等。关水挂着（冷水机停机已发、阀还开着）就撤销它，冷水机重新开起来——
+        // 那时冷水机多半已经在停，水不一定在流，照样等通水延时
+        if (_waterOn && !_waterClosing) return;
+        await SetWaterAsync(true, ct).ConfigureAwait(false);
+        _ctx.Log?.Invoke("info", $"{InstanceId} 工位 {AB(well)} 要接 TEC：冷却水阀（DO{_waterDo}）先打开" +
+            (_links.Chiller is null ? "" : "、再开冷水机") + $"，等 {_waterLead.TotalSeconds:0} s 让水流起来再接");
+        _rd.TempOf(well).Note($"冷却水阀 DO{_waterDo} 打开（接 TEC 前通水 {_waterLead.TotalSeconds:0} s）");
+        if (_waterLead > TimeSpan.Zero) await Task.Delay(_waterLead, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// TEC 断开之后：两路都不要水了才关（另一路 TEC 还在制冷 / 还在双向挡，断水会干烧）。
+    /// 人手动开的不关。关阀失败只记一笔——阀多开着不危险，不该为它把切换序列掐断。
+    /// </summary>
+    private async Task ReleaseWaterAsync(CancellationToken ct)
+    {
+        if (!_waterOn || _waterClosing || _waterManual || NeedsWater(0) || NeedsWater(1)) return;
+        try
+        {
+            await SetWaterAsync(false, ct).ConfigureAwait(false);
+            _ctx.Log?.Invoke("info", $"{InstanceId} 两路都不制冷了：" + (_waterOn
+                ? "冷水机停机已发，停稳了再关冷却水阀"
+                : $"冷却水阀（DO{_waterDo}）已关"));
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            _ctx.Log?.Invoke("warn", $"{InstanceId} 关冷却水阀（DO{_waterDo}）失败：{ex.Message}——阀还开着，下一拍再试");
+        }
+    }
+
+    /// <summary>
+    /// 采集循环每拍对一次账：有路要水阀却关着（被人在模块上扳了 / 开阀失败）就补开——
+    /// 这时 TEC 已经接着，不再等通水延时；谁都不要水了、阀是自动开的就关。
+    /// 正在切换（_switchLock 被占着）或正在开关水（_waterLock 被占着）不动：
+    /// 序列自己会开关阀——序列没跑完就插进来，会把「阀开了、标志还没立」当成没人认领
+    /// （手动开水被自动关掉，现场踩到）。
+    /// </summary>
+    private async Task SyncWaterAsync(CancellationToken ct)
+    {
+        if (_links.Io is null || !_ioOk || _switchLock.CurrentCount == 0 || _waterLock.CurrentCount == 0) return;
+        var need = NeedsWater(0) || NeedsWater(1);
+        try
+        {
+            if (need && (!_waterOn || _waterClosing))
+            {
+                var closing = _waterClosing;
+                await SetWaterAsync(true, ct).ConfigureAwait(false);
+                if (!closing)
+                    _ctx.Log?.Invoke("warn", $"{InstanceId} TEC 在制冷而冷却水阀（DO{_waterDo}）关着——已补开");
+            }
+            else if (!need && _waterOn && !_waterManual)
+            {
+                await ReleaseWaterAsync(ct).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            _ctx.Log?.Invoke("warn", $"{InstanceId} 冷却水阀（DO{_waterDo}）对账失败：{ex.Message}");
+        }
     }
 
     /// <summary>
@@ -1489,7 +2093,32 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         // 但能自己收拾就不劳驾兜底
         if (_links.Io is { } io && _ioOk)
         {
-            try { await io.AllOffAsync(CancellationToken.None).ConfigureAwait(false); } catch { }
+            // 联动冷水机：阀最后关——先停冷水机、等它停稳（最多 ChillerStopWaitOnDispose）；
+            // 等不到就别的全断、阀留着开（冷水机转着关阀会憋泵），说清楚
+            bool keepWater;
+            if (Reconnecting)
+            {
+                // 台面重建重开（不是真断开）：冷水机别停、阀别动——物理状态原样交给
+                // 新会话（它开机复位时按物理现状接手）。重建一次就把人开着的阀拍掉、
+                // 把在转的冷水机停了，现场踩到
+                keepWater = _waterOn || _waterClosing;
+                if (keepWater)
+                    _ctx.Log?.Invoke("info", $"{InstanceId} 台面重建：冷水机与冷却水阀保持原样（新会话接手）");
+            }
+            else if (_links.Chiller is not null && (_waterOn || _waterClosing))
+                keepWater = !await StopChillerForDisposeAsync().ConfigureAwait(false);
+            else keepWater = false;
+            try
+            {
+                if (keepWater)
+                {
+                    var relays = new bool[Io8rClient.Points];
+                    relays[_waterDo] = true;
+                    await io.WriteRelaysAsync(relays, CancellationToken.None).ConfigureAwait(false);
+                }
+                else await io.AllOffAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+            catch { }
         }
 
         _fwd.Dispose();
