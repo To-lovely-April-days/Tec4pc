@@ -77,6 +77,13 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     private readonly int[] _tecDoIdx = new int[2];
     /// <summary>TEC 功率继电器的影子：闭合 = TEC 有电。与 _electric 一样，每拍读回核对。</summary>
     private readonly bool[] _tecOn = new bool[2];
+    /// <summary>
+    /// TEC 使能线接哪一路 DO（现场电气定的：DO2 = 工位 A / 通道 1、DO3 = 工位 B / 通道 2）。用户定的：降温合、升温加热断——
+    /// 跟功率线一起走（_tecRelay 才动它）：功率线合上再给使能，先撤使能再断功率线。
+    /// </summary>
+    private readonly int[] _tecEnIdx = new int[2];
+    /// <summary>TEC 使能继电器的影子。每拍读回核对；对不上算没到位，自动换挡把它扳回去。</summary>
+    private readonly bool[] _tecEn = new bool[2];
     /// <summary>冷却水电磁阀接哪一路 DO（整机一只，现场 DO4）。</summary>
     private readonly int _waterDo;
     /// <summary>冷却水阀的影子：true = 开着。与 _electric 一样，每拍读回核对。</summary>
@@ -277,6 +284,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
             _doIdx[w] = Math.Clamp((int)cfg.Num(w == 0 ? F.DoA : F.DoB, w), 0, 7);
             _diIdx[w] = Math.Clamp((int)cfg.Num(w == 0 ? F.DiA : F.DiB, w), 0, 7);
             _tecDoIdx[w] = Math.Clamp((int)cfg.Num(w == 0 ? F.TecDoA : F.TecDoB, 6 + w), 0, 7);
+            _tecEnIdx[w] = Math.Clamp((int)cfg.Num(w == 0 ? F.TecEnDoA : F.TecEnDoB, 2 + w), 0, 7);
         }
         // TEC 功率线经 IO8R 继电器（现场电气定的：DO6 = A、DO7 = B）。没配 IO8R 的机器
         // 无所谓「经不经」——那台没有继电器可扳，只能当它是硬线接的
@@ -294,6 +302,23 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
                     throw new InvalidOperationException(
                         $"设备配置冲突：「冷却水阀 DO」填了 DO{_waterDo}，跟工位 {AB(w)} 的" +
                         $"{(_waterDo == _doIdx[w] ? "「切换 DO」" : "「TEC 功率 DO」")}重号——一只继电器只能接一样东西，改掉一个再连");
+        if (_tecRelay)
+        {
+            // 使能 DO 跟哪一只都不能重号：两个工位的切换 DO、TEC 功率 DO，冷却水阀 DO，另一路的使能
+            var used = new List<(int Do, string What)> { (_waterDo, "「冷却水阀 DO」") };
+            for (var w = 0; w < 2; w++)
+            {
+                used.Add((_doIdx[w], $"工位 {AB(w)} 的「切换 DO」"));
+                used.Add((_tecDoIdx[w], $"工位 {AB(w)} 的「TEC 功率 DO」"));
+            }
+            for (var w = 0; w < 2; w++)
+            {
+                if (used.FirstOrDefault(u => u.Do == _tecEnIdx[w]).What is { } clash)
+                    throw new InvalidOperationException(
+                        $"设备配置冲突：工位 {AB(w)} 的「TEC 使能 DO」填了 DO{_tecEnIdx[w]}，跟{clash}重号——一只继电器只能接一样东西，改掉一个再连");
+                used.Add((_tecEnIdx[w], $"工位 {AB(w)} 的「TEC 使能 DO」"));
+            }
+        }
         // 冷水机要单独一路串口：跟 RD105 / IO8R 共一个口，开口时后开的那条就被占着打不开（报出来是「被占用」，看不出是自己占的）
         if (links.ChillerPortName is { } chp)
             foreach (var (name, label) in new[] { (links.RdPortName, "RD105 串口"), (links.IoPortName, "IO8R 串口") })
@@ -568,6 +593,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
                 else await io.AllOffAsync(ct).ConfigureAwait(false);
                 _electric[0] = _electric[1] = false;
                 _tecOn[0] = _tecOn[1] = false;
+                _tecEn[0] = _tecEn[1] = false;
                 _waterOn = keepWater;   // 冷却水阀（DO{_waterDo}）跟着断了：开机关阀，要接 TEC 时自动开（冷水机在转就留着）
                 _waterManual = keepWater;
                 _ioOk = true;
@@ -704,6 +730,15 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
                         tec = _tecOn[w];
                     }
                     Push(_rd.TempOf(w).Channel, "tecpwr", tec ? 1 : 0, at, Quality.Good);
+
+                    // TEC 使能同样读回核对：对不上按实际记录——OnSide 连使能一起看，这一拍下面的自动换挡把它扳回该在的位置
+                    var en = dos[_tecEnIdx[w]];
+                    if (settled && en != _tecEn[w])
+                    {
+                        _ctx.Log?.Invoke("warn", $"{InstanceId} 工位 {AB(w)} TEC 使能 DO{_tecEnIdx[w]} 实际" +
+                            $"{(en ? "闭合" : "断开")}，与上位机命令不符——已按实际状态记录，会扳回该在的位置");
+                        _tecEn[w] = en;
+                    }
                 }
                 // 冷却水阀同样读回核对：模块面板上按键也能扳它。正在开关的那一下读回来的是旧快照，不比
                 var water = dos[_waterDo];
@@ -1094,9 +1129,9 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     /// <summary>这一路的继电器是不是已经完全在某个位置（两只一起看）。</summary>
     private bool OnSide(int well, Side s) => s switch
     {
-        Side.Electric => _electric[well] && !(_tecRelay && _tecOn[well]),
-        Side.Tec => !_electric[well] && (!_tecRelay || _tecOn[well]),
-        _ => !_electric[well] && !(_tecRelay && _tecOn[well])
+        Side.Electric => _electric[well] && !(_tecRelay && (_tecOn[well] || _tecEn[well])),
+        Side.Tec => !_electric[well] && (!_tecRelay || _tecOn[well] && _tecEn[well]),
+        _ => !_electric[well] && !(_tecRelay && (_tecOn[well] || _tecEn[well]))
     };
 
     /// <summary>继电器在位、回路的执行器形态也对（温控器 PID 方式没有形态，只看继电器）。</summary>
@@ -1469,6 +1504,11 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
                 await io!.SetRelayAsync(_doIdx[well], false, ct).ConfigureAwait(false);
                 _electric[well] = false;
             }
+            if (to != Side.Tec && _tecRelay && _tecEn[well])
+            {
+                await io!.SetRelayAsync(_tecEnIdx[well], false, ct).ConfigureAwait(false);   // 先撤使能，再断功率线
+                _tecEn[well] = false;
+            }
             if (to != Side.Tec && _tecRelay && _tecOn[well])
             {
                 await io!.SetRelayAsync(_tecDoIdx[well], false, ct).ConfigureAwait(false);
@@ -1485,6 +1525,11 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
             {
                 await io!.SetRelayAsync(_tecDoIdx[well], true, ct).ConfigureAwait(false);
                 _tecOn[well] = true;
+            }
+            if (to == Side.Tec && _tecRelay && !_tecEn[well])
+            {
+                await io!.SetRelayAsync(_tecEnIdx[well], true, ct).ConfigureAwait(false);    // 功率线合上了再给使能
+                _tecEn[well] = true;
             }
 
             if (_feedback && !relaysOk)                                             // ③ 接了反馈就必须核实
@@ -1523,9 +1568,9 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
                     (_tecRelay
                         ? to switch
                         {
-                            Side.Electric => "（TEC 功率线断开、加热棒继电器闭合）",
-                            Side.Tec => "（加热棒继电器断开、TEC 功率线闭合）",
-                            _ => "（加热棒继电器与 TEC 功率线都断开）"
+                            Side.Electric => $"（TEC 使能 DO{_tecEnIdx[well]} 与功率线断开、加热棒继电器闭合）",
+                            Side.Tec => $"（加热棒继电器断开、TEC 功率线与使能 DO{_tecEnIdx[well]} 闭合）",
+                            _ => $"（加热棒继电器、TEC 功率线与使能 DO{_tecEnIdx[well]} 都断开）"
                         }
                         : "") +
                     (_feedback ? "（反馈已核实）" : "（无反馈回路，未核实）"));
@@ -1563,6 +1608,12 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
             {
                 await io.SetRelayAsync(_doIdx[well], false, ct).ConfigureAwait(false);
                 _electric[well] = false;
+                if (_tecRelay)
+                {
+                    // 先撤使能、再断功率线（跟切换序列同一个顺序）。不看影子照断：安全停机宁可多写一帧
+                    await io.SetRelayAsync(_tecEnIdx[well], false, ct).ConfigureAwait(false);
+                    _tecEn[well] = false;
+                }
                 if (_tecRelay && _tecOn[well])
                 {
                     // 停控即全断（用户定的）。E 级程序接着要降温的话，
@@ -1571,7 +1622,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
                     _tecOn[well] = false;
                 }
                 notes.Add($"工位 {AB(well)} 热源切换继电器已断开（落回 TEC 侧）" +
-                          (_tecRelay ? "；TEC 功率线也已断开（停控即全断，再打开温控时按升温 / 降温接通）" : ""));
+                          (_tecRelay ? "；TEC 功率线也已断开、使能也已撤（停控即全断，再打开温控时按升温 / 降温接通）" : ""));
             }
             catch (Exception ex)
             {

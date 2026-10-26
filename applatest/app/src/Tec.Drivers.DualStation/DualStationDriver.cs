@@ -69,6 +69,12 @@ public sealed class DualStationDriver : IDeviceDriver
         public const string TecRelay = "TEC功率继电器";
         public const string TecDoA = "TEC功率DO·工位A";
         public const string TecDoB = "TEC功率DO·工位B";
+        /// <summary>
+        /// TEC 使能线也经 IO8R（现场电气定的：DO2 = 工位 A（通道 1）、DO3 = 工位 B（通道 2））。
+        /// 用户定的：降温时合、升温加热时断——跟 TEC 功率线一起走（功率线合上再给使能，先撤使能再断功率线）。
+        /// </summary>
+        public const string TecEnDoA = "TEC使能DO·工位A";
+        public const string TecEnDoB = "TEC使能DO·工位B";
         /// <summary>冷却水电磁阀（整机一只）接 IO8R 的哪一路 DO。现场接在 DO4（从 0 数第五路），用户定的。</summary>
         public const string WaterDo = "冷却水阀DO";
         /// <summary>冷却水阀打开后等多久再接 TEC（让水先流起来，用户定的）。</summary>
@@ -200,6 +206,14 @@ public sealed class DualStationDriver : IDeviceDriver
             with { Tip = "TEC 的功率线经 IO8R 继电器接通（闭合 = TEC 有电）。默认断着；要制冷才合它、要加热合加热棒那只（双向挡跟功率符号走），两只从不同时合；停控 / 安全停机断开。功率线是硬线直连、不经继电器的机器选「无」" },
         Field.Num(Fields.TecDoA, "TEC 功率 DO·工位 A", 6, "", 0, 7, 1),
         Field.Num(Fields.TecDoB, "TEC 功率 DO·工位 B", 7, "", 0, 7, 1),
+        // TEC 使能线（现场电气定的：DO2 = 工位 A / 通道 1、DO3 = 工位 B / 通道 2）。用户定的：降温合、升温加热断，
+        // 跟 TEC 功率线一起走；「TEC 功率继电器」选「无」的机器不动它
+        Field.Num(Fields.TecEnDoA, "TEC 使能 DO·工位 A", 2, "", 0, 7, 1)
+            with { Tip = "通道 1 的 TEC 使能接 IO8R 的哪一路 DO（从 0 数，现场那台接 DO2 = 第三路）。" +
+                         "跟 TEC 功率线一起走：要制冷先合功率线、再合使能；回加热棒侧 / 停控 / 安全停机先断使能、再断功率线——升温加热时使能断着。" +
+                         "不能与切换 DO / TEC 功率 DO / 冷却水阀 DO 重号" },
+        Field.Num(Fields.TecEnDoB, "TEC 使能 DO·工位 B", 3, "", 0, 7, 1)
+            with { Tip = "通道 2 的 TEC 使能接 IO8R 的哪一路 DO（从 0 数，现场那台接 DO3 = 第四路）。跟通道 1 一样随 TEC 功率线走" },
         // 冷却水电磁阀：整机一只，现场接在 IO8R 的 DO4（代码索引 4 = 物理第五路，用户定的）。
         // 跟着 TEC 自动走（用户定的）：真要接 TEC 才先开阀、等通水延时再接；回加热棒侧就停冷水机、停稳关阀——升温时冷水机与阀都关。
         // 手动面板首页的开关保留；开机复位、断开会话跟着八路一起断
