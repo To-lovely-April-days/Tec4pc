@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- IO8R 继电器测试：独立小程序，只连 IO8R、手动一路一路合 / 断继电器，读回核对。
+       温控器（RD105）不碰——TEC 由别的电脑控制、这台只管通断的那种测试用它。
+       串口只能一个程序占着：HMI / 工作站 / 极限测试工具连着这块 IO8R 时先在那边断开设备。 -->
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>Tec.Io8rTest</RootNamespace>
+    <AssemblyName>Tec.Io8rTest</AssemblyName>
+    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.2.3" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.2.3" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.3" />
+    <!-- 串口提示：问系统要这台机器真有的口 -->
+    <PackageReference Include="System.IO.Ports" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Io8rLink / Io8rClient（串口 → Modbus 主站 → IO8R）直接复用驱动里那条链路 -->
+    <ProjectReference Include="..\Tec.Drivers.DualStation\Tec.Drivers.DualStation.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Tec.Core.Tests" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,76 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Tec.Io8rTest.MainWindow"
+        Title="IO8R 继电器测试" Width="660" Height="760" MinWidth="560" MinHeight="620"
+        Background="White" FontSize="13">
+
+  <!-- 界面从简：串口一行、八路一行一个、全断、读回的 DI、日志。只动 IO8R，不碰温控器 -->
+
+  <Window.Styles>
+    <Style Selector="Border.row">
+      <Setter Property="BorderBrush" Value="#E2E2E2" /><Setter Property="BorderThickness" Value="0,0,0,1" />
+      <Setter Property="Padding" Value="8,3" />
+    </Style>
+    <Style Selector="Border.row.on"><Setter Property="Background" Value="#E4F4F4" /></Style>
+    <Style Selector="Border.row.on TextBlock.state"><Setter Property="Foreground" Value="#2F8189" />
+      <Setter Property="FontWeight" Value="Bold" /></Style>
+    <Style Selector="TextBlock.state"><Setter Property="Foreground" Value="#8E8E8E" /></Style>
+    <Style Selector="ListBox.log ListBoxItem"><Setter Property="Padding" Value="8,3" /><Setter Property="MinHeight" Value="0" /></Style>
+  </Window.Styles>
+
+  <DockPanel Margin="14">
+    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+      <TextBlock Text="{Binding Heading}" FontSize="18" FontWeight="Bold" VerticalAlignment="Center" />
+      <TextBlock Text="{Binding Status}" Margin="14,0,0,0" Foreground="#555555" VerticalAlignment="Center" />
+    </DockPanel>
+    <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Foreground="#777777" FontSize="11.5" Margin="0,0,0,8"
+               Text="只动 IO8R，温控器（RD105）不碰。HMI / 工作站 / 极限测试工具连着这块 IO8R 时，先在那边断开设备（串口只能一个程序占着）。断开或关掉本程序时八路全断。" />
+
+    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,4">
+      <TextBlock Text="串口" VerticalAlignment="Center" />
+      <TextBox Text="{Binding Port}" Width="90" IsEnabled="{Binding Disconnected}" />
+      <TextBlock Text="波特率" VerticalAlignment="Center" Margin="6,0,0,0" />
+      <TextBox Text="{Binding Baud}" Width="70" IsEnabled="{Binding Disconnected}" />
+      <TextBlock Text="站号" VerticalAlignment="Center" Margin="6,0,0,0" />
+      <TextBox Text="{Binding Station}" Width="44" IsEnabled="{Binding Disconnected}" />
+      <Button Content="连接" Command="{Binding Connect}" IsEnabled="{Binding Disconnected}" Margin="6,0,0,0" />
+      <Button Content="断开" Command="{Binding Disconnect}" IsEnabled="{Binding Connected}" />
+    </StackPanel>
+    <TextBlock DockPanel.Dock="Top" Text="{Binding PortsHint}" Foreground="#777777" FontSize="11" Margin="0,0,0,10"
+               TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding PortsHint}" />
+
+    <Border DockPanel.Dock="Top" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="3">
+      <ItemsControl ItemsSource="{Binding Rows}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <Border Classes="row" Classes.on="{Binding Closed}">
+              <Grid ColumnDefinitions="48,120,*,56,76">
+                <TextBlock Grid.Column="0" Text="{Binding Tag}" FontWeight="Bold" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="2" Text="{Binding Note}" Foreground="#8E8E8E" FontSize="11.5" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="3" Classes="state" Text="{Binding StateText}" VerticalAlignment="Center" />
+                <Button Grid.Column="4" Content="{Binding ButtonText}" Command="{Binding Toggle}"
+                        IsEnabled="{Binding $parent[Window].DataContext.Connected}"
+                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+              </Grid>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </Border>
+
+    <DockPanel DockPanel.Dock="Top" Margin="0,8,0,0">
+      <Button Content="八路全断" Command="{Binding AllOff}" IsEnabled="{Binding Connected}" />
+      <TextBlock Text="{Binding Inputs}" Foreground="#555555" FontSize="11.5" Margin="14,0,0,0" VerticalAlignment="Center" />
+    </DockPanel>
+    <Border DockPanel.Dock="Top" Background="#FDF6EA" BorderBrush="#C88A00" BorderThickness="1" CornerRadius="3"
+            Padding="8,6" Margin="0,8,0,0" IsVisible="{Binding HasWarning}">
+      <TextBlock Text="{Binding Warning}" Foreground="#8A5E00" TextWrapping="Wrap" />
+    </Border>
+
+    <TextBlock DockPanel.Dock="Top" Text="日志" FontWeight="Bold" Margin="0,10,0,4" />
+    <Border BorderBrush="#DDDDDD" BorderThickness="1">
+      <ListBox Classes="log" ItemsSource="{Binding Log}" FontSize="11.5" />
+    </Border>
+  </DockPanel>
+</Window>

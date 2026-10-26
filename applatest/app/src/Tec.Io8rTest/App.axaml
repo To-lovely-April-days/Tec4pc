@@ -1,0 +1,17 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Tec.Io8rTest.App"
+             RequestedThemeVariant="Light">
+
+  <!-- IO8R 继电器测试：Fluent 底座就够了，界面从简（跟极限测试工具一样）。 -->
+
+  <Application.Styles>
+    <FluentTheme>
+      <FluentTheme.Palettes>
+        <ColorPaletteResources x:Key="Light" Accent="#a41626" />
+        <ColorPaletteResources x:Key="Dark" Accent="#a41626" />
+      </FluentTheme.Palettes>
+    </FluentTheme>
+  </Application.Styles>
+
+</Application>
