@@ -802,18 +802,18 @@ public class Rd105HostControlTests
         await WaitUntil(() => !double.IsNaN(t.CurrentJacket), 3000, "夹套读数");
         Assert.True(St(t).HostLoop);                       // 组合会话那一层把「上位机回路」转发上来（面板「尽快」的说明按它换）
 
-        // 升温：加热棒继电器（DO0）合、TEC 功率线（DO6）断，占空比负（加热棒吃负）
+        // 升温：加热棒继电器（DO0）合、TEC 功率线（DO7）断，占空比负（加热棒吃负）
         await t.SetTargetAsync(new TempTarget(40, TempChannelKind.Jacket), CancellationToken.None);
         Assert.True(b.Io.Coils[0]);
-        Assert.False(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[7]);
         Assert.Equal(3, b.Rd.Get(1, "MODE"));
         await WaitUntil(() => b.Rd.Get(1, "PWMDUTY") < 0, 3000, "加热棒负占空比");
         await WaitUntil(() => t.CurrentJacket > 27, 10000, "夹套往 40 走");
         Assert.Contains(b.Logs, l => l.Contains("已切至电加热"));
 
-        // 降温：目标压到夹套之下 → 切 TEC（DO6 合、DO0 断），反向 → 要制冷写正
+        // 降温：目标压到夹套之下 → 切 TEC（DO7 合、DO0 断），反向 → 要制冷写正
         await t.SetTargetAsync(new TempTarget(10, TempChannelKind.Jacket), CancellationToken.None);
-        await WaitUntil(() => b.Io.Coils[6] && !b.Io.Coils[0], 5000, "切回 TEC");
+        await WaitUntil(() => b.Io.Coils[7] && !b.Io.Coils[0], 5000, "切回 TEC");
         await WaitUntil(() => b.Rd.Get(1, "PWMDUTY") > 0, 4000, "TEC 制冷正占空比");
     }
 
@@ -833,10 +833,10 @@ public class Rd105HostControlTests
         await t.SetTargetAsync(new TempTarget(30, TempChannelKind.Reactor), CancellationToken.None);
         Assert.True(b.Io.Coils[0]);
         await WaitUntil(() => St(t).CascadeInnerSetpoint is { } i && i > 35, 6000, "内环设定抬到 35 以上");
-        await WaitUntil(() => t.CurrentJacket > 33.5, 20000, () => $"夹套升过 33.5（{t.CurrentJacket:F1}，占空比 {b.Rd.Get(1, "PWMDUTY")}，DO0 {b.Io.Coils[0]} DO6 {b.Io.Coils[6]}）\n" + string.Join("\n", b.Logs.TakeLast(12)));
+        await WaitUntil(() => t.CurrentJacket > 33.5, 20000, () => $"夹套升过 33.5（{t.CurrentJacket:F1}，占空比 {b.Rd.Get(1, "PWMDUTY")}，DO0 {b.Io.Coils[0]} DO7 {b.Io.Coils[7]}）\n" + string.Join("\n", b.Logs.TakeLast(12)));
         await Task.Delay(1500);                            // 采集循环 200 ms 一拍，够它「想」换挡好几回
         Assert.True(b.Io.Coils[0], "加热棒继电器不该断：夹套还在追内环设定");
-        Assert.False(b.Io.Coils[6], "不该切到 TEC");
+        Assert.False(b.Io.Coils[7], "不该切到 TEC");
         Assert.DoesNotContain(b.Logs, l => l.Contains("已切至TEC"));
         Assert.True(St(t).Active);
     }
@@ -863,7 +863,7 @@ public class Rd105HostControlTests
         await WaitUntil(() => b.Rd.Get(1, "PWMDUTY") == 0, 8000, () => $"加热棒收到 0（占空比 {b.Rd.Get(1, "PWMDUTY")}）");
         await Task.Delay(1500);                            // 采集循环 200 ms 一拍：够它「想」换挡好几回
         Assert.True(b.Io.Coils[0], "加热棒继电器不该断");
-        Assert.False(b.Io.Coils[6], "升温挡里不许接 TEC");
+        Assert.False(b.Io.Coils[7], "升温挡里不许接 TEC");
         Assert.DoesNotContain(b.Logs, l => l.Contains("已切至TEC") || l.Contains("降温挡："));
         Assert.True(St(t).Active);
         Assert.Equal("升温挡（只用加热棒）", ((IHeatSource)t).Regime);
@@ -885,7 +885,7 @@ public class Rd105HostControlTests
 
         await t.SetTargetAsync(new TempTarget(30, TempChannelKind.Reactor), CancellationToken.None);
         Assert.True(b.Io.Coils[0]);
-        Assert.False(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[7]);
         Assert.Equal("双向挡（加热棒 ↔ TEC 跟功率符号走）", ((IHeatSource)t).Regime);
         await WaitUntil(() => b.Rd.Get(1, "PWMDUTY") < 0, 3000, "加热");
         // 在用参数：执行器算加热棒（参数按加热棒那张表），但是双向的
@@ -896,7 +896,7 @@ public class Rd105HostControlTests
 
         // 放热：釜温冲到 34（高过目标 4 K）——外环要夹套往下、内环功率转负；连续够驻留时间合 TEC、断加热棒，回路不复位
         Volatile.Write(ref feed.Value, 34.0);
-        await WaitUntil(() => b.Io.Coils[6] && !b.Io.Coils[0], 8000, () => $"接 TEC（DO0 {b.Io.Coils[0]} DO6 {b.Io.Coils[6]}，占空比 {b.Rd.Get(1, "PWMDUTY")}）\n" + string.Join("\n", b.Logs.TakeLast(8)));
+        await WaitUntil(() => b.Io.Coils[7] && !b.Io.Coils[0], 8000, () => $"接 TEC（DO0 {b.Io.Coils[0]} DO7 {b.Io.Coils[7]}，占空比 {b.Rd.Get(1, "PWMDUTY")}）\n" + string.Join("\n", b.Logs.TakeLast(8)));
         // 继电器合上到切换序列写完日志还差一步（重开输出）：等那句
         await WaitUntil(() => b.Logs.Any(l => l.Contains("已切至TEC")), 3000, () => string.Join("\n", b.Logs.TakeLast(8)));
         Assert.Contains(b.Logs, l => l.Contains("双向挡：功率") && l.Contains("指向TEC") && l.Contains("PID 不复位"));
@@ -911,7 +911,7 @@ public class Rd105HostControlTests
 
         // 放热结束、釜温回落到 26（低于目标 4 K）：功率转正，合回加热棒、断 TEC
         Volatile.Write(ref feed.Value, 26.0);
-        await WaitUntil(() => b.Io.Coils[0] && !b.Io.Coils[6], 8000, () => $"回加热棒（DO0 {b.Io.Coils[0]} DO6 {b.Io.Coils[6]}）\n" + string.Join("\n", b.Logs.TakeLast(8)));
+        await WaitUntil(() => b.Io.Coils[0] && !b.Io.Coils[7], 8000, () => $"回加热棒（DO0 {b.Io.Coils[0]} DO7 {b.Io.Coils[7]}）\n" + string.Join("\n", b.Logs.TakeLast(8)));
         await WaitUntil(() => b.Rd.Get(1, "PWMDUTY") < 0, 4000, "加热");
         await WaitUntil(() => b.Logs.Any(l => l.Contains("已切至电加热")), 3000, () => string.Join("\n", b.Logs.TakeLast(8)));
         Assert.True(St(t).Active);
@@ -929,19 +929,19 @@ public class Rd105HostControlTests
         await WaitUntil(() => !double.IsNaN(t.CurrentJacket), 3000, "夹套读数");
 
         await t.SetTargetAsync(new TempTarget(20, TempChannelKind.Jacket), CancellationToken.None);   // 25 → 20：起步合 TEC
-        Assert.True(b.Io.Coils[6]);
+        Assert.True(b.Io.Coils[7]);
         Assert.False(b.Io.Coils[0]);
         await WaitUntil(() => b.Rd.Get(1, "PWMDUTY") > 0, 3000, "制冷");
 
         // 夹套被冷却水拉到 15（低于目标 5 K）：要维持 20 ℃ 得加热——功率转正够驻留时间就合加热棒（0333 要等一分钟「交接」，现在不用）
         b.Rd.Set(1, "TCADJTEMP", 15_00000);
-        await WaitUntil(() => b.Io.Coils[0] && !b.Io.Coils[6], 6000, () => $"合加热棒（DO0 {b.Io.Coils[0]} DO6 {b.Io.Coils[6]}）\n" + string.Join("\n", b.Logs.TakeLast(8)));
+        await WaitUntil(() => b.Io.Coils[0] && !b.Io.Coils[7], 6000, () => $"合加热棒（DO0 {b.Io.Coils[0]} DO7 {b.Io.Coils[7]}）\n" + string.Join("\n", b.Logs.TakeLast(8)));
         await WaitUntil(() => b.Rd.Get(1, "PWMDUTY") < 0, 4000, "加热棒出力（负占空比）");
         Assert.True(St(t).Active);
 
         // 夹套又漂到 24（高过目标 4 K）：回 TEC——双向挡没有「不回头」
         b.Rd.Set(1, "TCADJTEMP", 24_00000);
-        await WaitUntil(() => b.Io.Coils[6] && !b.Io.Coils[0], 6000, () => $"回 TEC（DO0 {b.Io.Coils[0]} DO6 {b.Io.Coils[6]}）\n" + string.Join("\n", b.Logs.TakeLast(8)));
+        await WaitUntil(() => b.Io.Coils[7] && !b.Io.Coils[0], 6000, () => $"回 TEC（DO0 {b.Io.Coils[0]} DO7 {b.Io.Coils[7]}）\n" + string.Join("\n", b.Logs.TakeLast(8)));
         await WaitUntil(() => b.Rd.Get(1, "PWMDUTY") > 0, 4000, "制冷");
         await WaitUntil(() => b.Logs.Count(l => l.Contains("已切至TEC")) == 2, 3000, () => string.Join("\n", b.Logs.TakeLast(8)));
         Assert.True(St(t).Active);
@@ -975,18 +975,18 @@ public class Rd105HostControlTests
         await WaitUntil(() => b.Logs.Any(l => l.Contains("执行器形态对齐") && l.Contains("输出不关")), 3000, () => string.Join("\n", b.Logs.TakeLast(6)));
         Assert.DoesNotContain(b.Rd.Commands.Skip(n), c => c.Contains("TC1:ENABLE=0"));
         Assert.True(b.Io.Coils[0]);
-        Assert.False(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[7]);
         Assert.Single(b.Logs, l => l.StartsWith("warn") && l.Contains("高过 TEC 接入上限"));
         Assert.Contains("夹套 > TEC 接入上限", ((IHeatSource)t).Regime);
         await Task.Delay(1500);
         Assert.Equal(0, b.Rd.Get(1, "PWMDUTY"));               // 想制冷也只能出 0：一笔正的（TEC 那一极）都不写
-        Assert.False(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[7]);
 
         // 凉到 84（≤ 90 − 5）：放开——形态回加热棒 + TEC 双向，功率转负够驻留时间合 TEC
         b.Rd.Set(1, "TCADJTEMP", 84_00000);
         await WaitUntil(() => inner.Actuator == ActuatorMode.HeaterTec, 3000, "放开");
         Assert.Contains(b.Logs, l => l.Contains("放开 TEC"));
-        await WaitUntil(() => b.Io.Coils[6] && !b.Io.Coils[0], 6000, () => $"接 TEC（DO0 {b.Io.Coils[0]} DO6 {b.Io.Coils[6]}）\n" + string.Join("\n", b.Logs.TakeLast(8)));
+        await WaitUntil(() => b.Io.Coils[7] && !b.Io.Coils[0], 6000, () => $"接 TEC（DO0 {b.Io.Coils[0]} DO7 {b.Io.Coils[7]}）\n" + string.Join("\n", b.Logs.TakeLast(8)));
         await WaitUntil(() => b.Rd.Get(1, "PWMDUTY") > 0, 4000, "制冷");
         Assert.True(St(t).Active);
     }
@@ -1006,7 +1006,7 @@ public class Rd105HostControlTests
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(
             () => bench.StartAutoTuneAsync(new PidAutoTuneRequest(10, PidActuator.Tec, 20, 0.05), CancellationToken.None));
         Assert.Contains("冷水机", ex.Message);
-        Assert.False(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[7]);
 
         cfg[DualStationDriver.Fields.Chiller] = "已开";
         await Task.Delay(500);                             // 采集循环重读配置
@@ -1071,7 +1071,7 @@ public class Rd105HostControlTests
         var sw = System.Diagnostics.Stopwatch.StartNew();
         await WaitUntil(() => b.Logs.Any(l => l.Contains("控温已被回路停下")), 6000, "回路停控传到组合会话");
         Assert.True(sw.Elapsed.TotalSeconds < 4.5, $"停控太晚：{sw.Elapsed.TotalSeconds:F1} s");
-        await WaitUntil(() => !b.Io.Coils[0] && !b.Io.Coils[6], 4000, "继电器断开");
+        await WaitUntil(() => !b.Io.Coils[0] && !b.Io.Coils[7], 4000, "继电器断开");
         Assert.Equal(0, b.Rd.Get(1, "PWMDUTY"));
         Assert.False(St(t).Active);
         Assert.Null(St(t).Holding);
@@ -1103,12 +1103,12 @@ public class Rd105HostControlTests
         await WaitUntil(() => St(t).Holding is not null, 3000, "进保持");
         await Task.Delay(1500);
         Assert.True(b.Io.Coils[0]);
-        Assert.False(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[7]);
         Assert.DoesNotContain(b.Logs, l => l.Contains("已切至TEC"));
         Assert.Equal(0, b.Rd.Get(1, "PWMDUTY"));           // 夹套高过保持值：加热棒不出力，但继电器留着
 
         // 宽限 4 s 到期：停控、全断
-        await WaitUntil(() => !b.Io.Coils[0] && !b.Io.Coils[6], 8000, "宽限到期全断");
+        await WaitUntil(() => !b.Io.Coils[0] && !b.Io.Coils[7], 8000, "宽限到期全断");
         Assert.False(St(t).Active);
     }
 
@@ -1128,7 +1128,7 @@ public class Rd105HostControlTests
         Assert.False(St(t).Active);
         await Task.Delay(1000);                            // 采集循环 200 ms 一拍，几拍之后继电器该是全断的
         Assert.False(b.Io.Coils[0]);
-        Assert.False(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[7]);
     }
 
     [Fact]

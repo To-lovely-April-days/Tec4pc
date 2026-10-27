@@ -137,7 +137,7 @@ public sealed class DualStationDriverTests
 
         await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(cfg), CancellationToken.None);
 
-        // 八路全断：加热棒继电器与 TEC 功率线（DO6 = A、DO7 = B）都断着——不控温不合（用户定的）
+        // 八路全断：加热棒继电器与 TEC 功率线（DO7 = A、DO6 = B）都断着——不控温不合（用户定的）
         Assert.All(b.Io.Coils, c => Assert.False(c));
         Assert.Contains(b.Io.Requests, r => r.StartsWith("写多DO"));
         foreach (var tc in new[] { 1, 2 })
@@ -231,9 +231,9 @@ public sealed class DualStationDriverTests
 
         Assert.Equal(60_00000, b.Rd.Get(1, "TG"));
         Assert.False(b.Io.Coils[0]);                     // 加热棒那只没动
-        Assert.True(b.Io.Coils[6]);                      // TEC 功率线（DO6 = A）合上——TEC 加热启用，60 ℃ 走 TEC
+        Assert.True(b.Io.Coils[7]);                      // TEC 功率线（DO7 = A）合上——TEC 加热启用，60 ℃ 走 TEC
         // 接 TEC 之前先开冷却水阀（DO4）
-        Assert.Equal(new[] { "写DO 4=闭", "写DO 6=闭" }, b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写")).ToList());
+        Assert.Equal(new[] { "写DO 4=闭", "写DO 7=闭" }, b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写")).ToList());
     }
 
     [Fact]
@@ -438,7 +438,7 @@ public sealed class DualStationDriverTests
 
         await t.SetTargetAsync(new TempTarget(120), CancellationToken.None);   // 起步：目标高于夹套 → 加热棒
         Assert.True(b.Io.Coils[0]);
-        Assert.False(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[7]);
         lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("双向挡：目标 120.0"));
 
         // 夹套烧到 95：锁存立起——warn 一次，继电器不动（本来就在加热棒侧）
@@ -456,7 +456,7 @@ public sealed class DualStationDriverTests
         b.Now = b.Now.AddSeconds(5);
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         Assert.True(b.Io.Coils[0]);
-        Assert.False(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[7]);
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
         lock (b.Logs)
         {
@@ -475,7 +475,7 @@ public sealed class DualStationDriverTests
         await s.StopAsync(CancellationToken.None);
 
         Assert.False(b.Io.Coils[0]);
-        Assert.True(b.Io.Coils[6]);
+        Assert.True(b.Io.Coils[7]);
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));          // 切完输出照旧开着
         lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("已连续 3 s 指向TEC"));
     }
@@ -492,7 +492,7 @@ public sealed class DualStationDriverTests
         await WaitJacket(t, 25.0);
 
         await t.SetTargetAsync(new TempTarget(10), CancellationToken.None);    // 起步：比夹套低超过死区 → 先合 TEC
-        Assert.True(b.Io.Coils[6]);
+        Assert.True(b.Io.Coils[7]);
         Assert.False(b.Io.Coils[0]);
         Assert.Equal("双向挡（加热棒 ↔ TEC 跟功率符号走）", ((IHeatSource)t).Regime);
         lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("双向挡：目标 10.0") && l.Text.Contains("跟着功率符号走"));
@@ -503,15 +503,15 @@ public sealed class DualStationDriverTests
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         b.Now = b.Now.AddSeconds(2);
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
-        Assert.True(b.Io.Coils[6]);
+        Assert.True(b.Io.Coils[7]);
         Assert.False(b.Io.Coils[0]);
         Assert.Empty(b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写")));
         b.Now = b.Now.AddSeconds(1.5);
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         Assert.True(b.Io.Coils[0]);
-        Assert.False(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[7]);
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
-        Assert.Equal(new[] { "写DO 6=断", "写DO 4=断", "写DO 0=闭" }, b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写DO")).ToList());
+        Assert.Equal(new[] { "写DO 7=断", "写DO 4=断", "写DO 0=闭" }, b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写DO")).ToList());
         // 日志里的功率按回路的约定说（正加热 / 负制冷），不按这台设备的符号
         lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("功率 +20.0 %") && l.Text.Contains("已连续 3 s 指向电加热") && l.Text.Contains("PID 不复位"));
 
@@ -530,9 +530,9 @@ public sealed class DualStationDriverTests
         b.Now = b.Now.AddSeconds(3.5);
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         await s.StopAsync(CancellationToken.None);
-        Assert.True(b.Io.Coils[6]);
+        Assert.True(b.Io.Coils[7]);
         Assert.False(b.Io.Coils[0]);
-        Assert.Equal(new[] { "写DO 4=闭", "写DO 0=断", "写DO 6=闭" }, b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写DO")).ToList());
+        Assert.Equal(new[] { "写DO 4=闭", "写DO 0=断", "写DO 7=闭" }, b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写DO")).ToList());
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
         lock (b.Logs) Assert.DoesNotContain(b.Logs, l => l.Text.Contains("降温挡") || l.Text.Contains("升温挡："));
     }
@@ -548,15 +548,15 @@ public sealed class DualStationDriverTests
 
         await t.SetTargetAsync(new TempTarget(26.5), CancellationToken.None);   // 差 1.5 K < 死区 2 K：保温要的功率是正的，先合加热棒
         Assert.True(b.Io.Coils[0]);
-        Assert.False(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[7]);
         await t.SetTargetAsync(new TempTarget(24), CancellationToken.None);     // 低 1 K：还是加热棒
         Assert.True(b.Io.Coils[0]);
-        Assert.False(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[7]);
 
         await t.SetTargetAsync(new TempTarget(20), CancellationToken.None);     // 低 5 K：新目标按方向重来 → 先断加热棒再合 TEC
         await s.StopAsync(CancellationToken.None);
         Assert.False(b.Io.Coils[0]);
-        Assert.True(b.Io.Coils[6]);
+        Assert.True(b.Io.Coils[7]);
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
     }
 
@@ -574,7 +574,7 @@ public sealed class DualStationDriverTests
         await t.SetTargetAsync(new TempTarget(26.5), CancellationToken.None);   // 差 1.5 K < 死区 2 K
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         Assert.True(b.Io.Coils[0]);
-        Assert.False(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[7]);
         Assert.Equal(26_50000, b.Rd.Get(1, "TG"));
         lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("升温挡") && l.Text.Contains("目标 26.5"));
 
@@ -582,7 +582,7 @@ public sealed class DualStationDriverTests
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         await s.StopAsync(CancellationToken.None);
         Assert.True(b.Io.Coils[0]);
-        Assert.False(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[7]);
         lock (b.Logs) Assert.DoesNotContain(b.Logs, l => l.Text.Contains("降温挡："));
     }
 
@@ -619,9 +619,9 @@ public sealed class DualStationDriverTests
         var t = Temp(s, 0);
         await WaitJacket(t, 25.0);
 
-        await t.SetTargetAsync(new TempTarget(10), CancellationToken.None);    // 起步：比夹套低超过死区 → 合 TEC 功率线 DO6
+        await t.SetTargetAsync(new TempTarget(10), CancellationToken.None);    // 起步：比夹套低超过死区 → 合 TEC 功率线 DO7
         Assert.False(b.Io.Coils[0]);
-        Assert.True(b.Io.Coils[6]);
+        Assert.True(b.Io.Coils[7]);
         lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("双向挡：目标 10.0"));
 
         // 夹套凉到 5 ℃（低于目标 5 K）、又漂到 15（高过目标 5 K），输出一直是 0（假机 PWMDUTY 没人写）：一只都不动、一句交接都没有
@@ -636,7 +636,7 @@ public sealed class DualStationDriverTests
             await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         }
         await s.StopAsync(CancellationToken.None);
-        Assert.True(b.Io.Coils[6]);
+        Assert.True(b.Io.Coils[7]);
         Assert.False(b.Io.Coils[0]);
         Assert.Empty(b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写")));
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
@@ -663,7 +663,7 @@ public sealed class DualStationDriverTests
         await t.SetTargetAsync(new TempTarget(88), CancellationToken.None);
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         Assert.False(b.Io.Coils[0]);
-        Assert.False(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[7]);
         Assert.Equal(88_00000, b.Rd.Get(1, "TG"));         // 目标照常下发
         lock (b.Logs) Assert.Single(b.Logs, l => l.Level == "warn" && l.Text.Contains("「冷水机」标为已关") && l.Text.Contains("自然凉"));
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
@@ -674,7 +674,7 @@ public sealed class DualStationDriverTests
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         await s.StopAsync(CancellationToken.None);
         Assert.True(b.Io.Coils[0]);
-        Assert.False(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[7]);
         lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("降温挡 → 升温挡") && l.Text.Contains("自然凉到了目标"));
     }
 
@@ -731,7 +731,7 @@ public sealed class DualStationDriverTests
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         await s.StopAsync(CancellationToken.None);
 
-        Assert.True(b.Io.Coils[6]);                        // TEC 功率线合上了
+        Assert.True(b.Io.Coils[7]);                        // TEC 功率线合上了
         Assert.False(b.Io.Coils[0]);
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));            // 控温继续
         Assert.Equal(10_00000, b.Rd.Get(1, "TG"));
@@ -757,7 +757,7 @@ public sealed class DualStationDriverTests
         await s.StopAsync(CancellationToken.None);
 
         Assert.True(b.Io.Coils[0]);
-        Assert.False(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[7]);
         Assert.Equal(88_00000, b.Rd.Get(1, "TG"));         // 目标照常下发
         lock (b.Logs) Assert.DoesNotContain(b.Logs, l => l.Text.Contains("降温挡："));
     }
@@ -784,7 +784,7 @@ public sealed class DualStationDriverTests
         await WaitJacket(t, 60.0);
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         Assert.True(b.Io.Coils[0]);
-        Assert.False(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[7]);
 
         // Tr 抖上抖下：跟随目标跟着改，挡位不变、继电器一条都不写
         Feed(s, 1, 70.0);
@@ -817,20 +817,20 @@ public sealed class DualStationDriverTests
         await WaitJacket(t, 63.0);
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         Assert.True(b.Io.Coils[0]);
-        Assert.False(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[7]);
         lock (b.Logs) Assert.DoesNotContain(b.Logs, l => l.Text.Contains("已切至TEC"));
 
         // 明确下发更低的目标才是降温挡。冷水机标着已关：全断自然凉，warn 一次
         await t.SetTargetAsync(new TempTarget(10), CancellationToken.None);
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         Assert.False(b.Io.Coils[0]);
-        Assert.False(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[7]);
         lock (b.Logs) Assert.Single(b.Logs, l => l.Level == "warn" && l.Text.Contains("「冷水机」标为已关"));
 
         // 人开了冷水机、把属性栏改成已开：这一拍就接 TEC（夹套 63 在回切线 85 以下）
         cfg[DualStationDriver.Fields.Chiller] = "已开";
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
-        Assert.True(b.Io.Coils[6]);
+        Assert.True(b.Io.Coils[7]);
         Assert.False(b.Io.Coils[0]);
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
         lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("「冷水机」改为已开"));
@@ -839,7 +839,7 @@ public sealed class DualStationDriverTests
         cfg[DualStationDriver.Fields.Chiller] = "已关";
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         await s.StopAsync(CancellationToken.None);
-        Assert.False(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[7]);
         Assert.False(b.Io.Coils[0]);
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
         lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("「冷水机」改为已关"));
@@ -924,7 +924,7 @@ public sealed class DualStationDriverTests
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
 
         Assert.True(b.Io.Coils[0]);
-        Assert.False(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[7]);
         lock (b.Logs)
         {
             Assert.Single(b.Logs, l => l.Level == "warn" && l.Text.Contains("高过 TEC 接入上限"));
@@ -937,7 +937,7 @@ public sealed class DualStationDriverTests
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         Assert.False(b.Io.Coils[0]);
-        Assert.False(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[7]);
         lock (b.Logs)
         {
             Assert.Single(b.Logs, l => l.Level == "warn" && l.Text.Contains("「冷水机」标为已关"));
@@ -953,7 +953,7 @@ public sealed class DualStationDriverTests
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         await s.StopAsync(CancellationToken.None);
         Assert.False(b.Io.Coils[0]);
-        Assert.True(b.Io.Coils[6]);
+        Assert.True(b.Io.Coils[7]);
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
     }
 
@@ -1138,7 +1138,7 @@ public sealed class DualStationDriverTests
         Feed(s, 1, 80.0);
         await Reflux(s, 0).StartAsync(5, 120, CancellationToken.None);
         Assert.False(b.Io.Coils[0]);
-        Assert.True(b.Io.Coils[6]);                           // 阈值以内走 TEC：功率线合上
+        Assert.True(b.Io.Coils[7]);                           // 阈值以内走 TEC：功率线合上
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
         var mark = b.Rd.Commands.Count;
 
@@ -1286,7 +1286,7 @@ public sealed class DualStationDriverTests
         Assert.Equal(2, probe.DetectedChannels);
     }
 
-    // ── TEC 功率线：经 IO8R 的继电器（现场电气定的：DO6 = 工位 A、DO7 = 工位 B）──────
+    // ── TEC 功率线：经 IO8R 的继电器（现场电气定的：DO7 = 工位 A、DO6 = 工位 B）──────
     //    现场「降温没反应」：TEC 的功率线是经这两只接的，从前没人合它，TEC 根本没电。
     //    用户定的：不常合——不控温就断着，打开温控后按升温 / 降温只合该合的那一只
 
@@ -1300,16 +1300,16 @@ public sealed class DualStationDriverTests
         await WaitJacket(t, 25.0);
 
         Assert.All(b.Io.Coils, c => Assert.False(c));    // 不控温一只都不合
-        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("DO6 = A") && l.Text.Contains("DO7 = B") && l.Text.Contains("都断着"));
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("DO7 = A") && l.Text.Contains("DO6 = B") && l.Text.Contains("都断着"));
 
         var mark = b.Io.Requests.Count;
         await t.SetTargetAsync(new TempTarget(10), CancellationToken.None);    // 打开温控，要降温 → 合 TEC 功率线
-        Assert.True(b.Io.Coils[6]);
-        Assert.False(b.Io.Coils[7]);                       // B 没被牵连
+        Assert.True(b.Io.Coils[7]);
+        Assert.False(b.Io.Coils[6]);                       // B 没被牵连
         Assert.False(b.Io.Coils[0]);
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
         Assert.Equal(10_00000, b.Rd.Get(1, "TG"));
-        Assert.Equal(new[] { "写DO 4=闭", "写DO 6=闭" }, b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写")).ToList());   // 先通水再接 TEC
+        Assert.Equal(new[] { "写DO 4=闭", "写DO 7=闭" }, b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写")).ToList());   // 先通水再接 TEC
 
         // 再跑一拍：还在降温，一只都不再动
         mark = b.Io.Requests.Count;
@@ -1321,7 +1321,7 @@ public sealed class DualStationDriverTests
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         await s.StopAsync(CancellationToken.None);
         Assert.Equal(0, b.Rd.Get(1, "ENABLE"));
-        Assert.False(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[7]);
         lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("TEC → 全断"));
     }
 
@@ -1339,7 +1339,7 @@ public sealed class DualStationDriverTests
         await s.StopAsync(CancellationToken.None);
 
         Assert.True(b.Io.Coils[0]);
-        Assert.False(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[7]);
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
         // 0522（用户定的）：升温不开冷却水——只有真要接 TEC 才先通水；这里只合加热棒，阀不动
         Assert.Equal(new[] { "写DO 0=闭" }, b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写")).ToList());
@@ -1357,7 +1357,7 @@ public sealed class DualStationDriverTests
         await t.SetTargetAsync(new TempTarget(26), CancellationToken.None);    // 差 1 K < 死区 2 K：升温挡
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         Assert.True(b.Io.Coils[0]);
-        Assert.False(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[7]);
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
 
         // 漂到 29（目标 26 低一个死区以上）：0333 之前这里接 TEC；现在挡位下发时定，温度漂动不换挡——
@@ -1366,7 +1366,7 @@ public sealed class DualStationDriverTests
         await WaitJacket(t, 29.0);
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         await s.StopAsync(CancellationToken.None);
-        Assert.False(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[7]);
         Assert.True(b.Io.Coils[0]);
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
     }
@@ -1379,16 +1379,16 @@ public sealed class DualStationDriverTests
         await s.StartAsync(CancellationToken.None);
         var t = Temp(s, 0);
         await WaitJacket(t, 25.0);
-        await t.SetTargetAsync(new TempTarget(10), CancellationToken.None);    // 降温挡：DO6 合
-        Assert.True(b.Io.Coils[6]);
+        await t.SetTargetAsync(new TempTarget(10), CancellationToken.None);    // 降温挡：DO7 合
+        Assert.True(b.Io.Coils[7]);
         var mark = b.Io.Requests.Count;
 
         await t.SetTargetAsync(new TempTarget(60), CancellationToken.None);    // 改成升温挡 → 电加热
         Assert.True(b.Io.Coils[0]);
-        Assert.False(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[7]);
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
         var seq = b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写DO")).ToList();
-        Assert.Equal(new[] { "写DO 6=断", "写DO 4=断", "写DO 0=闭" }, seq);   // 先断 TEC 功率线，关冷却水（升温不开水），再合加热棒
+        Assert.Equal(new[] { "写DO 7=断", "写DO 4=断", "写DO 0=闭" }, seq);   // 先断 TEC 功率线，关冷却水（升温不开水），再合加热棒
 
         // 到温后下发更低的目标 = 降温挡 → TEC：先断加热棒，再合 TEC 功率线（夹套 63 在回切线以下）
         b.Rd.Set(1, "TCADJTEMP", 63_00000);
@@ -1398,11 +1398,11 @@ public sealed class DualStationDriverTests
         await s.StopAsync(CancellationToken.None);
 
         Assert.False(b.Io.Coils[0]);
-        Assert.True(b.Io.Coils[6]);
+        Assert.True(b.Io.Coils[7]);
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
         seq = b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写DO")).ToList();
-        Assert.Equal(new[] { "写DO 4=闭", "写DO 0=断", "写DO 6=闭" }, seq);   // 先通水（开阀），再断加热棒，再合 TEC 功率线
-        Assert.False(b.Io.Coils[7]);                       // B 没被牵连
+        Assert.Equal(new[] { "写DO 4=闭", "写DO 0=断", "写DO 7=闭" }, seq);   // 先通水（开阀），再断加热棒，再合 TEC 功率线
+        Assert.False(b.Io.Coils[6]);                       // B 没被牵连
         Assert.False(b.Io.Coils[1]);
     }
 
@@ -1421,7 +1421,7 @@ public sealed class DualStationDriverTests
             () => t.SetTargetAsync(new TempTarget(10), CancellationToken.None));
 
         Assert.Contains("TEC 功率线", ex.Message);
-        Assert.Contains("DO6", ex.Message);
+        Assert.Contains("DO7", ex.Message);
         Assert.NotEqual(10_00000, b.Rd.Get(1, "TG"));     // 拒绝了就不留下发痕迹
         await s.StopAsync(CancellationToken.None);
     }
@@ -1440,7 +1440,7 @@ public sealed class DualStationDriverTests
         await t.SetTargetAsync(new TempTarget(10), CancellationToken.None);
         await s.StopAsync(CancellationToken.None);
 
-        // DO6 / DO7 一根不碰；冷却水阀（DO4）照样跟着 TEC 开——硬线直连的 TEC 一样要水
+        // DO7 / DO6 一根不碰；冷却水阀（DO4）照样跟着 TEC 开——硬线直连的 TEC 一样要水
         Assert.All(b.Io.Coils.Where((_, i) => i != 4), c => Assert.False(c));
         Assert.True(b.Io.Coils[4]);
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
@@ -1456,22 +1456,22 @@ public sealed class DualStationDriverTests
         var t = Temp(s, 0);
         var tb = Temp(s, 1);
         await WaitJacket(t, 25.0);
-        await t.SetTargetAsync(new TempTarget(10), CancellationToken.None);    // A 降温：DO6 合
-        await tb.SetTargetAsync(new TempTarget(10), CancellationToken.None);   // B 降温：DO7 合
-        Assert.True(b.Io.Coils[6]);
+        await t.SetTargetAsync(new TempTarget(10), CancellationToken.None);    // A 降温：DO7 合
+        await tb.SetTargetAsync(new TempTarget(10), CancellationToken.None);   // B 降温：DO6 合
         Assert.True(b.Io.Coils[7]);
+        Assert.True(b.Io.Coils[6]);
 
         var notes = await s.SafeStopAsync(0, CancellationToken.None);
-        Assert.False(b.Io.Coils[6]);                       // 停控即全断
+        Assert.False(b.Io.Coils[7]);                       // 停控即全断
         Assert.False(b.Io.Coils[0]);
-        Assert.True(b.Io.Coils[7]);                        // B 没被牵连
+        Assert.True(b.Io.Coils[6]);                        // B 没被牵连
         Assert.Equal(0, b.Rd.Get(1, "ENABLE"));
         Assert.Contains(notes!, n => n.Contains("TEC 功率线也已断开"));
 
         // E 级程序接着要降温：下发目标把功率线重新合上，再开输出
         await t.SetTargetAsync(new TempTarget(5), CancellationToken.None);
         await s.StopAsync(CancellationToken.None);
-        Assert.True(b.Io.Coils[6]);
+        Assert.True(b.Io.Coils[7]);
         Assert.False(b.Io.Coils[0]);
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
         Assert.Equal(5_00000, b.Rd.Get(1, "TG"));
@@ -1486,18 +1486,18 @@ public sealed class DualStationDriverTests
         var t = Temp(s, 0);
         await WaitJacket(t, 25.0);
         await t.SetTargetAsync(new TempTarget(10), CancellationToken.None);    // 降温，TEC 侧
-        Assert.True(b.Io.Coils[6]);
+        Assert.True(b.Io.Coils[7]);
 
-        b.Io.Coils[6] = false;                             // 有人在模块面板上把它按断了
+        b.Io.Coils[7] = false;                             // 有人在模块面板上把它按断了
         var got = new List<Sample>();
         using var sub = s.Samples.Subscribe(new Collect(x => { lock (got) got.Add(x); }));
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         await s.StopAsync(CancellationToken.None);
 
-        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("TEC 功率继电器 DO6") && l.Text.Contains("不符"));
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("TEC 功率继电器 DO7") && l.Text.Contains("不符"));
         lock (got) Assert.Contains(got, x => x is { Tag: "tecpwr", Channel: 1 } && x.Value == 0);
         // 同一拍的自动换挡：这一路要降温、功率线却断着——接回来，输出重开
-        Assert.True(b.Io.Coils[6]);
+        Assert.True(b.Io.Coils[7]);
         Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
     }
 
@@ -1509,14 +1509,14 @@ public sealed class DualStationDriverTests
         await s.StartAsync(CancellationToken.None);
         var t = Temp(s, 0);
         await WaitJacket(t, 25.0);
-        Assert.False(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[7]);
 
-        b.Io.Coils[6] = true;                              // 没人要控温，却被按合了
+        b.Io.Coils[7] = true;                              // 没人要控温，却被按合了
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         await s.StopAsync(CancellationToken.None);
 
-        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("TEC 功率继电器 DO6") && l.Text.Contains("没在控温"));
-        Assert.False(b.Io.Coils[6]);                       // 不控温不合：扳回去
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("TEC 功率继电器 DO7") && l.Text.Contains("没在控温"));
+        Assert.False(b.Io.Coils[7]);                       // 不控温不合：扳回去
         Assert.Equal(0, b.Rd.Get(1, "ENABLE"));            // 没人要控温，输出照旧关着
     }
 
@@ -1614,8 +1614,8 @@ public sealed class DualStationDriverTests
     {
         var b = Rig();
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => b.Drv.OpenAsync(
-            Conn(), b.Ctx(ParameterSet.Of((DualStationDriver.Fields.DoA, 6d))), CancellationToken.None));
-        Assert.Contains("DO6", ex.Message);
+            Conn(), b.Ctx(ParameterSet.Of((DualStationDriver.Fields.DoA, 7d))), CancellationToken.None));
+        Assert.Contains("DO7", ex.Message);
     }
 
     // ── 冷却水电磁阀（整机一只，IO8R DO4，手动面板首页开关）────────────
@@ -1665,7 +1665,7 @@ public sealed class DualStationDriverTests
         await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(TecOn()), CancellationToken.None);
         await Water(s, 0).SetAsync(true, CancellationToken.None);       // 手动开的
         await Temp(s, 1).SetTargetAsync(new TempTarget(60), CancellationToken.None);   // B 走 TEC（「TEC 加热」启用、不过阈值）
-        Assert.True(b.Io.Coils[7]);
+        Assert.True(b.Io.Coils[6]);
 
         var notes = await s.SafeStopAsync(0, CancellationToken.None);
         Assert.True(b.Io.Coils[4]);                      // 断水 TEC 会干烧：B 还在制冷就不关
@@ -1686,7 +1686,7 @@ public sealed class DualStationDriverTests
     public async Task 使能DO2DO3_降温升温停控都不合()
     {
         // 用户定的（2026-10-27）：DO2 / DO3 接着通道 1 / 2 的使能，但程序永远不合它们——
-        // 降温只合制冷（DO6 / DO7）、升温只合加热棒，使能一直断着。开机 / 断开设备随八路全断
+        // 降温只合制冷（DO7 / DO6）、升温只合加热棒，使能一直断着。开机 / 断开设备随八路全断
         var b = Rig();
         await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(), CancellationToken.None);
         await s.StartAsync(CancellationToken.None);
@@ -1697,7 +1697,7 @@ public sealed class DualStationDriverTests
 
         await t.SetTargetAsync(new TempTarget(10), CancellationToken.None);     // 通道 1 降温
         await tb.SetTargetAsync(new TempTarget(10), CancellationToken.None);    // 通道 2 降温
-        Assert.True(b.Io.Coils[6] && b.Io.Coils[7]);
+        Assert.True(b.Io.Coils[7] && b.Io.Coils[6]);
         Assert.False(b.Io.Coils[2] || b.Io.Coils[3]);
 
         await t.SetTargetAsync(new TempTarget(60), CancellationToken.None);     // 通道 1 转升温
@@ -1720,9 +1720,9 @@ public sealed class DualStationDriverTests
         await Temp(s, 0).SetTargetAsync(new TempTarget(60), CancellationToken.None);   // 不过阈值：走 TEC
 
         Assert.True(b.Io.Coils[4]);
-        Assert.True(b.Io.Coils[6]);
+        Assert.True(b.Io.Coils[7]);
         var w = DoWrites(b, mark);
-        Assert.True(w.IndexOf("写DO 4=闭") is >= 0 and var i && i < w.IndexOf("写DO 6=闭"),
+        Assert.True(w.IndexOf("写DO 4=闭") is >= 0 and var i && i < w.IndexOf("写DO 7=闭"),
             "先开阀再合 TEC 功率线：" + string.Join(" / ", w));
     }
 
@@ -1737,7 +1737,7 @@ public sealed class DualStationDriverTests
         var sw = System.Diagnostics.Stopwatch.StartNew();
         await Temp(s, 0).SetTargetAsync(new TempTarget(60), CancellationToken.None);
         Assert.True(sw.Elapsed >= TimeSpan.FromMilliseconds(950), $"等了 {sw.ElapsedMilliseconds} ms");
-        Assert.True(b.Io.Coils[6]);
+        Assert.True(b.Io.Coils[7]);
 
         // 阀已经开着：B 接 TEC 不再等
         sw.Restart();
@@ -1751,17 +1751,17 @@ public sealed class DualStationDriverTests
         var b = Rig();
         await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(TecOn()), CancellationToken.None);
         await Temp(s, 0).SetTargetAsync(new TempTarget(60), CancellationToken.None);
-        Assert.True(b.Io.Coils[4] && b.Io.Coils[6]);
+        Assert.True(b.Io.Coils[4] && b.Io.Coils[7]);
         var mark = b.Io.Requests.Count;
 
         await Temp(s, 0).SetTargetAsync(new TempTarget(120), CancellationToken.None);   // 过阈值：切电加热
 
-        Assert.False(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[7]);
         Assert.False(b.Io.Coils[4]);
         Assert.True(b.Io.Coils[0]);
         var w = DoWrites(b, mark);
-        var off6 = w.IndexOf("写DO 6=断"); var off4 = w.IndexOf("写DO 4=断"); var on0 = w.IndexOf("写DO 0=闭");
-        Assert.True(off6 >= 0 && off6 < off4 && off4 < on0, "断 TEC → 关阀 → 接加热棒：" + string.Join(" / ", w));
+        var offTec = w.IndexOf("写DO 7=断"); var off4 = w.IndexOf("写DO 4=断"); var on0 = w.IndexOf("写DO 0=闭");
+        Assert.True(offTec >= 0 && offTec < off4 && off4 < on0, "断 TEC → 关阀 → 接加热棒：" + string.Join(" / ", w));
     }
 
     [Fact]
@@ -1778,7 +1778,7 @@ public sealed class DualStationDriverTests
 
         await Temp(s, 1).StopAsync(CancellationToken.None);
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);   // 下一拍 B 断 TEC、两路都不制冷 → 关阀
-        Assert.False(b.Io.Coils[7]);
+        Assert.False(b.Io.Coils[6]);
         Assert.False(b.Io.Coils[4]);
     }
 
@@ -1793,13 +1793,13 @@ public sealed class DualStationDriverTests
 
         await Temp(s, 0).SetTargetAsync(new TempTarget(60), CancellationToken.None);   // 双向挡起步合加热棒（升温）
         Assert.True(b.Io.Coils[0]);
-        Assert.False(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[7]);
         Assert.False(b.Io.Coils[4]);                      // 升温：冷却水阀关着
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         Assert.False(b.Io.Coils[4]);
 
         await Temp(s, 0).SetTargetAsync(new TempTarget(10), CancellationToken.None);   // 转冷：先通水再接 TEC
-        Assert.True(b.Io.Coils[6]);
+        Assert.True(b.Io.Coils[7]);
         Assert.True(b.Io.Coils[4]);
 
         await Temp(s, 0).StopAsync(CancellationToken.None);

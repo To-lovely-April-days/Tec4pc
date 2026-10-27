@@ -195,8 +195,8 @@ public sealed class ChillerInterlockTests
 
         await Temp(s, 0).SetTargetAsync(new TempTarget(60), CancellationToken.None);   // 不过阈值：走 TEC
 
-        Assert.True(b.Io.Coils[6]);
-        var i = b.Seq.IndexOf("阀开"); var j = b.Seq.IndexOf("开机"); var k = b.Seq.IndexOf("DO6闭");
+        Assert.True(b.Io.Coils[7]);
+        var i = b.Seq.IndexOf("阀开"); var j = b.Seq.IndexOf("开机"); var k = b.Seq.IndexOf("DO7闭");
         Assert.True(i >= 0 && i < j && j < k, string.Join(" / ", b.Seq));
     }
 
@@ -222,9 +222,9 @@ public sealed class ChillerInterlockTests
         await on;
 
         Assert.True(b.Io.Coils[4]);
-        Assert.True(b.Io.Coils[6]);
-        Assert.Equal(new[] { "阀开", "开机", "DO6闭" },
-            b.Seq.Where(x => x is "阀开" or "阀关" or "开机" or "关机" or "DO6闭"));
+        Assert.True(b.Io.Coils[7]);
+        Assert.Equal(new[] { "阀开", "开机", "DO7闭" },
+            b.Seq.Where(x => x is "阀开" or "阀关" or "开机" or "关机" or "DO7闭"));
         Assert.False(Water(s).Opening);                   // 冷水机转起来、通水延时过了：菊花收
     }
 
@@ -270,7 +270,7 @@ public sealed class ChillerInterlockTests
         await Tick(s);
         await Tick(s);
 
-        Assert.True(b.Io.Coils[6]);                       // TEC 接上了
+        Assert.True(b.Io.Coils[7]);                       // TEC 接上了
         Assert.False(b.Io.Coils[4]);                      // 阀没开
         Assert.Equal(0, b.Chiller.State);                 // 冷水机没开
         Assert.DoesNotContain(b.Seq, x => x is "阀开" or "开机");
@@ -393,7 +393,7 @@ public sealed class ChillerInterlockTests
         await Temp(s, 0).StopAsync(CancellationToken.None);
         await Tick(s);                                    // 这一拍 TEC 断开、发停机
 
-        Assert.False(b.Io.Coils[6]);
+        Assert.False(b.Io.Coils[7]);
         Assert.Contains("关机", b.Seq);
         Assert.True(b.Io.Coils[4]);                       // 冷水机在延时停机：阀不关
 
@@ -722,7 +722,7 @@ public sealed class ChillerInterlockTests
     }
 
     /// <summary>
-    /// 包一层：IO8R 写 DO4 / DO6 和冷水机开关机按先后记进 Bench.Seq，好验顺序。
+    /// 包一层：IO8R 写 DO4 / DO7 和冷水机开关机按先后记进 Bench.Seq，好验顺序。
     /// </summary>
     private sealed class SeqTransport(ISerialTransport inner, Bench b, bool isChiller) : TecControl.Core.Comm.ISerialTransport
     {

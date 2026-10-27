@@ -392,12 +392,12 @@ public class PidTuningBenchTests
         b.AutoTuneFinished += r => report = r;
         await b.StartAutoTuneAsync(new PidAutoTuneRequest(40, PidActuator.Heater, 20, 0.05), CancellationToken.None);
         Assert.True(d.Io.Coils[0]);                          // 加热棒继电器合
-        Assert.False(d.Io.Coils[6]);                         // TEC 功率线断
+        Assert.False(d.Io.Coils[7]);                         // TEC 功率线断
         Assert.Equal(PidActuator.Heater, b.CurrentActuator);
         await WaitUntil(() => d.Rd.Get(1, "PWMDUTY") < 0, 3000, "加热棒负占空比");
         await Task.Delay(1000);                              // 五拍采集循环：没在控温，但整定占着继电器，不许断
         Assert.True(d.Io.Coils[0]);
-        Assert.False(d.Io.Coils[6]);
+        Assert.False(d.Io.Coils[7]);
         // 加热棒只加热：一笔正占空比（这台机器上的加热棒符号是负）都没有
         Assert.All(d.Rd.Commands.Skip(n).Where(c => c.StartsWith("TC1:PWMDUTY=")), c => Assert.True(DutyOf(c) <= 0, c));
 
@@ -408,7 +408,7 @@ public class PidTuningBenchTests
 
         await b.CancelAutoTuneAsync(CancellationToken.None);
         Assert.Equal("操作人取消", report?.Reason);
-        await WaitUntil(() => !d.Io.Coils[0] && !d.Io.Coils[6], 3000, "取消后全断");
+        await WaitUntil(() => !d.Io.Coils[0] && !d.Io.Coils[7], 3000, "取消后全断");
         Assert.Equal(0, d.Rd.Get(1, "PWMDUTY"));
         Assert.Contains(d.Logs, l => l.Contains("自整定结束") && l.Contains("全断"));
     }
@@ -462,7 +462,7 @@ public class PidTuningBenchTests
         PidAutoTuneReport? report = null;
         b.AutoTuneFinished += r => report = r;
         await b.StartAutoTuneAsync(new PidAutoTuneRequest(20, PidActuator.Tec, 30, 0.05), CancellationToken.None);
-        Assert.True(d.Io.Coils[6]);                          // TEC 功率线合
+        Assert.True(d.Io.Coils[7]);                          // TEC 功率线合
         Assert.False(d.Io.Coils[0]);                         // 加热棒断
         Assert.Contains(d.Logs, l => l.Contains("只制冷继电"));
         await WaitUntil(() => d.Rd.Get(1, "PWMDUTY") > 0, 3000, "TEC 制冷（反向配置下制冷是正的）");
@@ -477,7 +477,7 @@ public class PidTuningBenchTests
         Assert.False(report!.Success);
         Assert.Contains("被停下", report.Reason);
         Assert.False(b.Tuning);
-        Assert.False(d.Io.Coils[6]);
+        Assert.False(d.Io.Coils[7]);
         Assert.False(d.Io.Coils[0]);
         // 之后下发照常（没被整定旗拦着）
         await t.SetTargetAsync(new TempTarget(15, TempChannelKind.Jacket), CancellationToken.None);

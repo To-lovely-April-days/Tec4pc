@@ -21,12 +21,12 @@ public sealed class Io8rTester : IAsyncDisposable
         new(3, "通道 2 使能", "接着线，温控程序从不合它"),
         new(4, "冷却水阀", "占的是「通道 1 辅助加热」那一路"),
         new(5, "（没接）", "「通道 2 辅助加热」那一路"),
-        new(6, "通道 1 制冷", "TEC 功率线·工位 A"),
-        new(7, "通道 2 制冷", "TEC 功率线·工位 B"),
+        new(6, "通道 2 制冷", "TEC 功率线·工位 B"),
+        new(7, "通道 1 制冷", "TEC 功率线·工位 A"),
     };
 
     /// <summary>同一通道不许同时合的两只：加热棒 ⇄ 制冷（TEC 功率线）。</summary>
-    private static readonly (int A, int B)[] Exclusive = { (0, 6), (1, 7) };
+    private static readonly (int A, int B)[] Exclusive = { (0, 7), (1, 6) };
 
     private readonly Io8rClient _io;
     private readonly IDisposable? _link;

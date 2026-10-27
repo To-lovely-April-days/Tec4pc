@@ -62,8 +62,9 @@ public sealed class DualStationDriver : IDeviceDriver
         /// </summary>
         public const string Chiller = "冷水机";
         /// <summary>
-        /// TEC 功率线经不经 IO8R 的继电器。现场电气定的（2026-09-21）：经——DO6 = 工位 A、
-        /// DO7 = 工位 B，闭合 TEC 才有电。从前这两只没人合，现场「降温没反应」就是它。
+        /// TEC 功率线经不经 IO8R 的继电器。现场电气定的（2026-09-21）：经——闭合 TEC 才有电。
+        /// 点位：DO7 = 工位 A（通道 1）、DO6 = 工位 B（通道 2）（2026-10-27 用户对调的，
+        /// 原先 DO6 = A、DO7 = B）。从前这两只没人合，现场「降温没反应」就是它。
         /// 用户定的：**不常合**——不控温就断着，打开温控后按升温 / 降温只合该合的那一只。
         /// </summary>
         public const string TecRelay = "TEC功率继电器";
@@ -193,13 +194,13 @@ public sealed class DualStationDriver : IDeviceDriver
         Field.Num(Fields.DoB, "切换 DO·工位 B", 1, "", 0, 7, 1),
         Field.Num(Fields.DiA, "反馈 DI·工位 A", 0, "", 0, 7, 1),
         Field.Num(Fields.DiB, "反馈 DI·工位 B", 1, "", 0, 7, 1),
-        // TEC 的功率线也经 IO8R 的继电器（现场电气定的：DO6 = 工位 A、DO7 = 工位 B）。
+        // TEC 的功率线也经 IO8R 的继电器（现场电气定的；点位 DO7 = 工位 A、DO6 = 工位 B，2026-10-27 用户对调）。
         // 不闭合 TEC 就没电——制冷、TEC 加热都不动。从前这两只没人管，现场「降温没反应」就是它。
         // 用户定的：不常合，不控温就断着；打开温控后要降温才合它、要升温合加热棒那只
         Field.Sel(Fields.TecRelay, "TEC 功率继电器", new[] { "有", "无" }, "有")
             with { Tip = "TEC 的功率线经 IO8R 继电器接通（闭合 = TEC 有电）。默认断着；要制冷才合它、要加热合加热棒那只（双向挡跟功率符号走），两只从不同时合；停控 / 安全停机断开。功率线是硬线直连、不经继电器的机器选「无」" },
-        Field.Num(Fields.TecDoA, "TEC 功率 DO·工位 A", 6, "", 0, 7, 1),
-        Field.Num(Fields.TecDoB, "TEC 功率 DO·工位 B", 7, "", 0, 7, 1),
+        Field.Num(Fields.TecDoA, "TEC 功率 DO·工位 A", 7, "", 0, 7, 1),
+        Field.Num(Fields.TecDoB, "TEC 功率 DO·工位 B", 6, "", 0, 7, 1),
         // 冷却水电磁阀：整机一只，现场接在 IO8R 的 DO4（代码索引 4 = 物理第五路，用户定的）。
         // 跟着 TEC 自动走（用户定的）：真要接 TEC 才先开阀、等通水延时再接；回加热棒侧就停冷水机、停稳关阀——升温时冷水机与阀都关。
         // 手动面板首页的开关保留；开机复位、断开会话跟着八路一起断
@@ -219,7 +220,7 @@ public sealed class DualStationDriver : IDeviceDriver
               "「TEC 接入上限」是 TEC 模块自身耐温：夹套高过它 TEC 断开、只加热棒，凉到 上限 − 接入滞回 再接；只能往下调（≤ 90 ℃）。" +
               "「TEC 加热」启用后才是「目标超过上限才切电加热」。「切换反馈」接了电加热" +
               "接触器辅助触点才选「有」——没接选「有」会让每次切换都等 2 秒然后报失败。" +
-              "TEC 功率线经 IO8R 的 DO6（A）/ DO7（B）（现场电气定的）：不控温就断着，停控 / 安全停机断开；" +
+              "TEC 功率线经 IO8R 的 DO7（A）/ DO6（B）（现场电气定的）：不控温就断着，停控 / 安全停机断开；" +
               "IO8R 打不开时这台既不能制冷也不能加热，控温目标会被拒绝。"
     };
 
