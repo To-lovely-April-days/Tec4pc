@@ -42,6 +42,8 @@ public sealed class DuoTempControl : ITemperatureControl, IRefluxControl, IHeatS
     public bool OnElectric => _s.OnElectric(_well);
     /// <summary>双向挡（0336）/ 升温挡 / 降温挡（0333）——界面印在热源牌子上；没在控 / 「TEC 加热」启用为 null。</summary>
     public string? Regime => _s.RegimeText(_well);
+    public bool WouldCool(double target, TempChannelKind kind) => _s.WouldCool(_well, target, kind);
+    public void SkipWaterNext() => _s.SkipWaterNext(_well);
 
     public double CurrentReactor => Inner.CurrentReactor;
     public double CurrentJacket => Inner.CurrentJacket;
@@ -52,6 +54,7 @@ public sealed class DuoTempControl : ITemperatureControl, IRefluxControl, IHeatS
         _s.GuardTuning(_well);  // 自整定占着继电器与回路：先拒绝，一个继电器都别动
         var wasOn = _s.WantEnabled(_well);
         _s.NoteStart(_well);    // 这一路要控温了（热源切换按意图判，不按设备上的 ENABLE）
+        _s.TakeWaterChoice(_well);  // HMI 降温弹窗选了「不开，直接制冷」就这次不开水；别的下发照常先通水
         _s.StopReflux(_well);   // 明确下发新目标 = 下一步接管，跟随环退位
         try
         {
@@ -72,6 +75,7 @@ public sealed class DuoTempControl : ITemperatureControl, IRefluxControl, IHeatS
         _s.GuardTuning(_well);
         var wasOn = _s.WantEnabled(_well);
         _s.NoteStart(_well);
+        _s.TakeWaterChoice(_well);
         _s.StopReflux(_well);
         try
         {

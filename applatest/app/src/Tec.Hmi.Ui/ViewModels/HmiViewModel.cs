@@ -840,7 +840,7 @@ public sealed class HmiViewModel : ViewModelBase
     // 三条路让人选——带着目标切 / 先停温控再切 / 不切。改到达方式只换斜率不换目标，
     // 不弹，切完 toast 一句说清做了什么
 
-    private Action? _askPrimary, _askSecondary;
+    private Action? _askPrimary, _askSecondary, _askCancel;
 
     public bool AskOpen { get; private set; }
     public string AskTitle { get; private set; } = "";
@@ -851,7 +851,7 @@ public sealed class HmiViewModel : ViewModelBase
     public bool AskHasSecondary => _askSecondary is not null;
 
     public void OpenAsk(string title, string sub, string body, string primary, Action onPrimary,
-                        string? secondary = null, Action? onSecondary = null)
+                        string? secondary = null, Action? onSecondary = null, Action? onCancel = null)
     {
         AskTitle = title;
         AskSub = sub;
@@ -860,21 +860,30 @@ public sealed class HmiViewModel : ViewModelBase
         AskSecondary = secondary ?? "";
         _askPrimary = onPrimary;
         _askSecondary = onSecondary;
+        _askCancel = onCancel;
         AskOpen = true;
         RaiseAll(nameof(AskOpen), nameof(AskTitle), nameof(AskSub), nameof(AskBody),
                  nameof(AskPrimary), nameof(AskSecondary), nameof(AskHasSecondary));
     }
 
+    /// <summary>点「取消」/ 点遮罩：关弹窗，有取消回调就调（让发起的那条路收拾自己的状态）。</summary>
     public void AskCancel()
     {
-        if (!AskOpen) return;
-        AskOpen = false;
-        _askPrimary = _askSecondary = null;
-        Raise(nameof(AskOpen));
+        var c = _askCancel;
+        if (CloseAsk()) c?.Invoke();
     }
 
-    public void AskPrimaryDo() { var a = _askPrimary; AskCancel(); a?.Invoke(); }
-    public void AskSecondaryDo() { var a = _askSecondary; AskCancel(); a?.Invoke(); }
+    private bool CloseAsk()
+    {
+        if (!AskOpen) return false;
+        AskOpen = false;
+        _askPrimary = _askSecondary = _askCancel = null;
+        Raise(nameof(AskOpen));
+        return true;
+    }
+
+    public void AskPrimaryDo() { var a = _askPrimary; CloseAsk(); a?.Invoke(); }
+    public void AskSecondaryDo() { var a = _askSecondary; CloseAsk(); a?.Invoke(); }
 
     // ── 冷却水电磁阀（整机一只，装置总览页的开关）────────────────────────
     //
@@ -1064,6 +1073,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
     private IDosing? Dose => Ch?.Capabilities.Get<IDosing>();
     private IRefluxControl? Reflux => Ch?.Capabilities.Get<IRefluxControl>();
     private IHeatSource? Heat => Ch?.Capabilities.Get<IHeatSource>();
+    private ICoolingWaterValve? WaterValve => Ch?.Capabilities.Get<ICoolingWaterValve>();
 
     /// <summary>上位机 PID 的整定台（「PID 整定」页背后那一层）；温控器 PID 方式 / 没连上是 null。</summary>
     internal IPidTuningBench? PidBench => Ch?.Capabilities.Get<IPidTuningBench>();
@@ -1710,6 +1720,66 @@ public sealed class HmiZoneViewModel : ViewModelBase
     private void IssueTemp()
     {
         if (Temp is not { } t) { TempBusy = false; return; }
+        // 判是降温、要接 TEC，而冷却水还没备好：先问开不开冷水机和冷却水阀（用户定的：只在 HMI 手动开温控这条路问，
+        // 配方 / 双向挡中途切到制冷照常自动开；阀开着、冷水机在转就不问）。目标按「待下发优先」的 Pv() 判，问完才落成设定值
+        if (Mode != "TrTj")
+        {
+            var kind = Mode == "Tj" ? TempChannelKind.Jacket : TempChannelKind.Reactor;
+            var target = Pv(Mode == "Tj" ? "tj" : "tr");
+            if (Heat is { } h && h.WouldCool(target, kind) && WaterValve is { Available: true, Ready: false })
+            {
+                AskCoolingWater(t, target, kind);
+                return;
+            }
+        }
+        IssueTempNow(t, skipWater: false);
+    }
+
+    private void AskCoolingWater(ITemperatureControl t, double target, TempChannelKind kind)
+    {
+        var cur = kind == TempChannelKind.Jacket ? t.CurrentJacket : t.CurrentReactor;
+        var running = LoopSetpoint;     // 回路已经在追一个目标 = 这一下是改目标重新下发；null = 这一下是打开温控
+        _owner.OpenAsk(
+            "降温要用 TEC 制冷",
+            $"通道 {Index} · 目标 {Txt.Fx(target)} ℃，{(kind == TempChannelKind.Jacket ? "夹套" : "釜内")}现在 {Txt.Fx(cur)} ℃",
+            "TEC 制冷要冷却水，冷却水阀 / 冷水机现在还没开好。\n" +
+            "「打开冷却水」：先开冷却水阀、再开冷水机，等通水后接 TEC 降温。\n" +
+            "「不开，直接制冷」：阀和冷水机都不动，直接接 TEC——确认已经有冷却水（手动开好 / 别的冷却），没有水 TEC 会干烧。",
+            "打开冷却水", () => IssueTempNow(t, skipWater: false),
+            "不开，直接制冷", () => IssueTempNow(t, skipWater: true),
+            onCancel: () => CancelCoolingAsk(running));
+    }
+
+    /// <summary>
+    /// 降温弹窗点了取消：这一下什么都不下发。打开温控的那一下 → 开关弹回关；回路本来在控（改目标重新下发）→
+    /// 接着追原来的目标，新目标放回待下发（格子亮琥珀色），不留一个「看着设了、其实没发」的数。
+    /// </summary>
+    private void CancelCoolingAsk(double? running)
+    {
+        TempBusy = false;
+        if (running is not { } old)
+        {
+            TempOn = false;
+            Log("开关", "降温：取消（没开冷却水也没直接制冷），温控没开");
+            _owner.Toast("已取消，温控没开");
+        }
+        else
+        {
+            var key = Mode == "Tj" ? "tj" : "tr";
+            if (!Pending.ContainsKey(key) && Math.Abs(Sets[key] - old) > 1e-9)
+            {
+                Pending[key] = Sets[key];
+                Sets[key] = old;
+            }
+            Log("下发", $"降温：取消，回路接着追 {Txt.Fx(old)} ℃");
+            _owner.Toast($"已取消，没下发——回路接着追 {Txt.Fx(old)} ℃，新目标留在待下发");
+        }
+        RaiseZone();
+    }
+
+    /// <summary>真下发。skipWater = 降温弹窗里人选了「不开，直接制冷」：这次接 TEC 不开冷却水。</summary>
+    private void IssueTempNow(ITemperatureControl t, bool skipWater)
+    {
         // 发出去的就是要记下的：温控开关 / 换模式 / 换到达方式这几条路都从这里下发，用的是
         // 「待下发优先」的 Pv()。发了却还留在待下发里，格子亮着琥珀色、釜上的牌子写着旧数，
         // 温控器已经在追新数（用户踩到）——温度这几项一并落成设定值
@@ -1739,6 +1809,11 @@ public sealed class HmiZoneViewModel : ViewModelBase
             _owner.Toast($"{what}温度没有读数，「按时长」算不出速率——先把探头接好，或改「按速率」/「尽快」");
             RaiseZone();
             return;
+        }
+        if (skipWater && Heat is { } hs)
+        {
+            hs.SkipWaterNext();
+            Log("下发", "降温：人选了不开冷却水，直接接 TEC 制冷");
         }
         // 「尽快」= 普通模式的升温（用户要的）：不按速率不按时长，目标一步写给温控器，
         // 它按自己的最大能力走（RD105：SPEED=0 不限斜率）——跟配方里「到达方式 = 尽快」同一个意思

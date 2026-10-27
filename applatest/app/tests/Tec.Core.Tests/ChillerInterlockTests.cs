@@ -228,6 +228,124 @@ public sealed class ChillerInterlockTests
         Assert.False(Water(s).Opening);                   // 冷水机转起来、通水延时过了：菊花收
     }
 
+    // ── HMI 降温弹窗（用户定的：判是降温、水没备好时问开不开冷水机和冷却水阀；选「不开」照样接 TEC 制冷）──
+
+    private static async Task<(IDeviceSession S, ITemperatureControl T)> Cooling(Bench b, ParameterSet? cfg = null)
+    {
+        var s = await Open(b, cfg);
+        await s.StartAsync(CancellationToken.None);
+        var t = Temp(s, 0);
+        await WaitJacket(t, 25.0);
+        b.Seq.Clear();
+        return (s, t);
+    }
+
+    [Fact]
+    public async Task 降温判断_比夹套低过死区且冷水机标已开才算()
+    {
+        var b = Rig();
+        var (s, t) = await Cooling(b);
+        await using var _ = s;
+        var h = (IHeatSource)t;
+        Assert.True(h.WouldCool(10, TempChannelKind.Jacket));
+        Assert.False(h.WouldCool(24, TempChannelKind.Jacket));    // 死区 2 K 以内：起步合加热棒，不接 TEC
+        Assert.False(h.WouldCool(60, TempChannelKind.Jacket));
+
+        var b2 = Rig();
+        var (s2, t2) = await Cooling(b2, ParameterSet.Of((DualStationDriver.Fields.Chiller, "已关")));
+        await using var __ = s2;
+        Assert.False(((IHeatSource)t2).WouldCool(10, TempChannelKind.Jacket));   // 冷水机标已关：降温挡只自然凉
+    }
+
+    [Fact]
+    public async Task 选不开冷却水_直接接TEC_阀和冷水机不动_对账也不补开()
+    {
+        var b = Rig();
+        var (s, t) = await Cooling(b);
+        await using var _ = s;
+        Assert.False(Water(s).Ready);
+
+        ((IHeatSource)t).SkipWaterNext();
+        await t.SetTargetAsync(new TempTarget(10), CancellationToken.None);
+        await Tick(s);
+        await Tick(s);
+
+        Assert.True(b.Io.Coils[6]);                       // TEC 接上了
+        Assert.False(b.Io.Coils[4]);                      // 阀没开
+        Assert.Equal(0, b.Chiller.State);                 // 冷水机没开
+        Assert.DoesNotContain(b.Seq, x => x is "阀开" or "开机");
+        lock (b.Logs) Assert.Single(b.Logs, l => l.Text.Contains("人选了不开冷却水"));
+
+        // 不开水的这一路在制冷：人在面板上关水 / 开水都由人
+        await Water(s).SetAsync(true, CancellationToken.None);
+        await Water(s).SetAsync(false, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task 选不开冷却水只管这一次_下次正常下发照常先通水_停控也清掉()
+    {
+        var b = Rig();
+        var (s, t) = await Cooling(b);
+        await using var _ = s;
+        ((IHeatSource)t).SkipWaterNext();
+        await t.SetTargetAsync(new TempTarget(10), CancellationToken.None);
+        Assert.False(b.Io.Coils[4]);
+
+        await t.SetTargetAsync(new TempTarget(8), CancellationToken.None);     // 配方 / 正常下发：没说不开
+        await Tick(s);
+        Assert.True(b.Io.Coils[4]);
+        Assert.Contains("开机", b.Seq);
+
+        // 停控把「下一次不开水」也清掉：说了不开、没下发就停了，下一次照常开水
+        var b2 = Rig();
+        var (s2, t2) = await Cooling(b2);
+        await using var __ = s2;
+        ((IHeatSource)t2).SkipWaterNext();
+        await t2.StopAsync(CancellationToken.None);
+        await t2.SetTargetAsync(new TempTarget(10), CancellationToken.None);
+        Assert.True(b2.Io.Coils[4]);
+    }
+
+    [Fact]
+    public async Task 选不开冷却水_阀本来开着就不碰_不替它关()
+    {
+        // 「不开」是不碰水，不是关水：先正常降温（自动开了水），再改目标选了不开——开着的阀和冷水机原样留着
+        var b = Rig();
+        var (s, t) = await Cooling(b);
+        await using var _ = s;
+        await t.SetTargetAsync(new TempTarget(10), CancellationToken.None);
+        await Tick(s);                                    // 读到冷水机在转才算备好
+        Assert.True(b.Io.Coils[4]);
+        Assert.True(Water(s).Ready);
+        b.Seq.Clear();
+
+        ((IHeatSource)t).SkipWaterNext();
+        await t.SetTargetAsync(new TempTarget(8), CancellationToken.None);
+        await Tick(s);
+        await Tick(s);
+
+        Assert.True(b.Io.Coils[4]);
+        Assert.Equal(2, b.Chiller.State);
+        Assert.DoesNotContain(b.Seq, x => x is "阀关" or "关机");
+    }
+
+    [Fact]
+    public async Task 冷却水Ready_阀开着且冷水机在转才算()
+    {
+        var b = Rig();
+        await using var s = await Open(b);
+        Assert.False(Water(s).Ready);
+        b.Chiller.StartsSlowly = true;
+
+        await Water(s).SetAsync(true, CancellationToken.None);
+        Assert.False(Water(s).Ready);                     // 开机发了，还没读到它在转
+        await Tick(s);
+        Assert.True(Water(s).Ready);                      // 准备启动也算在转
+
+        await Water(s).SetAsync(false, CancellationToken.None);
+        Assert.False(Water(s).Ready);                     // 关水挂着
+    }
+
     [Fact]
     public async Task 开冷却水_冷水机还没转起来时报Opening_转起来了收()
     {

@@ -180,6 +180,20 @@ public interface IHeatSource : ICapability
     /// 「降温挡·冷水机关（自然凉）」（0333）……没在控温、或这台机器不分挡（「TEC 加热」启用）就是 null。界面照原话印在热源牌子上。
     /// </summary>
     string? Regime => null;
+
+    /// <summary>
+    /// 这个目标下发下去会不会接 TEC 制冷（要冷却水）：比此刻被控量低超过死区、而且这台机器降温走 TEC。
+    /// 判不出方向（读不到温度）/ 降温不接 TEC（「冷水机」标已关，只自然凉）是 false。
+    /// HMI 手动开温控时拿它决定要不要先问「开不开冷水机和冷却水阀」。
+    /// </summary>
+    bool WouldCool(double target, TempChannelKind kind) => false;
+
+    /// <summary>
+    /// 下一次下发目标（SetTargetAsync / RampAsync）接 TEC 时**不开冷却水**：不开阀、不开冷水机、不等通水，直接接 TEC，
+    /// 这次控温里对账也不替它补开（用户定的：HMI 降温弹窗里人选「不开，直接制冷」）。下发时取用一次，
+    /// 之后正常下发（配方 / 不选它的下发）照常先通水；停控清掉。
+    /// </summary>
+    void SkipWaterNext() { }
 }
 
 /// <summary>
@@ -213,6 +227,9 @@ public interface ICoolingWaterValve : ICapability
     /// （最多等到开机告警时限，再久由告警说话）。面板开关在这段时间转菊花。不联动冷水机、没在通水延时里永远是 false。
     /// </summary>
     bool Opening => false;
+
+    /// <summary>冷却水已经备好：阀开着、没在关，联动冷水机的话冷水机在转（准备启动 / 正常运行）。HMI 降温前据此决定还问不问。</summary>
+    bool Ready => IsOpen && !Closing;
 
     /// <summary>联动的冷水机出毛病时的一个短词（「冷水机故障」「冷水机读不到」），面板状态签上照印、标红；一切正常 / 不联动是 null。</summary>
     string? Alert => null;

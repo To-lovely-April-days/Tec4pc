@@ -100,6 +100,15 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     private readonly int[] _waterClaim = new int[2];
     /// <summary>正在等通水延时的序列有几条（面板开关这段时间转菊花）。</summary>
     private int _waterLeading;
+    /// <summary>
+    /// 这一路这次控温人选了「不开冷却水，直接制冷」（HMI 降温弹窗，用户定的）：接 TEC 不先开阀 / 冷水机、不等通水，
+    /// 对账也不按这一路留水、补水。下一次下发按那次的选择重定；停控清掉。
+    /// </summary>
+    private readonly bool[] _waterDeclined = new bool[2];
+    /// <summary>HMI 下发前说的「下一次不开水」，下发时（TakeWaterChoice）取用一次。</summary>
+    private readonly bool[] _skipWaterNext = new bool[2];
+    /// <summary>「人选了不开冷却水，直接接 TEC」这次控温报过没有（双向挡来回扳不刷屏）。</summary>
+    private readonly bool[] _declinedSaid = new bool[2];
     /// <summary>这一次开水是什么时候开始的：联动冷水机时到「正常运行」为止算开水在途（最多 ChillerStartWarn）。转起来 / 关水时清掉。</summary>
     private DateTimeOffset? _waterOpenAt;
     private readonly TimeSpan _tick;
@@ -226,6 +235,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         _signSide[well] = null;
         _signSince[well] = null;
         _tecHot[well] = false;
+        _waterDeclined[well] = _skipWaterNext[well] = _declinedSaid[well] = false;
         System.Threading.Interlocked.Increment(ref _stopGen[well]);
     }
     /// <summary>反馈 DI 与继电器对不上的那一段只报一次，对上了再报一次「已对上」。</summary>
@@ -1363,6 +1373,30 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     }
 
     /// <summary>
+    /// 这个目标下发下去会不会接 TEC 制冷：比被控量（釜内串级看新鲜的 Tr，其余看夹套）低超过死区，而且这台机器降温走 TEC——
+    /// 「TEC 加热」启用时阈值以内都走 TEC；不启用时「冷水机」标已开（双向挡）才接 TEC，标已关的降温挡只自然凉。
+    /// 判不出方向（读不到温度）是 false。HMI 手动开温控时拿它决定要不要先问开不开冷却水。
+    /// </summary>
+    internal bool WouldCool(int well, double target, TempChannelKind kind)
+    {
+        var t = _rd.TempOf(well);
+        var cur = kind == TempChannelKind.Reactor && TrValid(well) ? t.CurrentReactor : t.CurrentJacket;
+        if (double.IsNaN(cur) || !(target < cur - _band)) return false;
+        return _tecHeat ? target <= _threshold : _chiller;
+    }
+
+    /// <summary>HMI 降温弹窗里人选了「不开，直接制冷」：下一次下发这一路接 TEC 不开冷却水。</summary>
+    internal void SkipWaterNext(int well) => _skipWaterNext[well] = true;
+
+    /// <summary>下发目标时取用「下一次不开水」：这次控温按它定，用过复位（配方 / 正常下发照常先通水）。</summary>
+    internal void TakeWaterChoice(int well)
+    {
+        _waterDeclined[well] = _skipWaterNext[well];
+        _skipWaterNext[well] = false;
+        _declinedSaid[well] = false;
+    }
+
+    /// <summary>
     /// 下发目标（打开温控）前定挡、把继电器合到对的一只上：双向挡按方向起步（低于被控量超过死区合 TEC 功率线，其余合加热棒），
     /// 之后继电器跟功率符号走；升温挡 → 加热棒；降温挡（冷水机已关）→ 全断自然凉。经继电器的机器：不控温时两只都断着（用户定的）——
     /// 不合上目标写进温控器也是空写，现场「降温没反应」就是它。夹套读不到（判不出方向）一只都不合，采集循环读到了再定。
@@ -1636,6 +1670,10 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
             return _ctx.Clock() - t0 < ChillerStartWarn;
         }
     }
+
+    /// <summary>冷却水已经备好：阀开着、没在关，联动冷水机的话读到它在转（准备启动 / 正常运行）。</summary>
+    internal bool WaterReady => _waterOn && !_waterClosing
+        && (_links.Chiller is null || _chillerStateKnown && ChillerClient.Running(_chillerState));
 
     /// <summary>冷水机出毛病时面板状态签上那个短词：读不到（联动不起来）/ 报故障；不联动、一切正常是 null。</summary>
     internal string? WaterAlert => _links.Chiller is null ? null
@@ -2020,10 +2058,12 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     /// 回路在 TEC 侧形态就要水）。**升温不要水**（继电器机在加热棒侧）：冷水机停、阀关——
     /// 用户定的（0522）：升温时冷水机与阀都关，要降温了（往 TEC 侧接）才开阀、开冷水机，
     /// 「先通水再接 TEC」在切换序列里（EnsureWaterAsync）——序列从开阀到合上继电器这一段也算要水（_waterClaim）。
+    /// 人在 HMI 降温弹窗里选了「不开，直接制冷」的那一路不算要水（_waterDeclined）：对账不替它补开、不为它留着。
     /// </summary>
     private bool NeedsWater(int well)
-        => Volatile.Read(ref _waterClaim[well]) > 0
-           || TecDriving(well) && (_tecRelay ? _tecOn[well] : _wantEnabled[well]);
+        => !_waterDeclined[well]
+           && (Volatile.Read(ref _waterClaim[well]) > 0
+               || TecDriving(well) && (_tecRelay ? _tecOn[well] : _wantEnabled[well]));
 
     /// <summary>
     /// 制冷先通水（用户定的）：阀没开就开，等通水延时再回去接 TEC。阀已经开着不等。
@@ -2032,6 +2072,18 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     private async Task EnsureWaterAsync(int well, CancellationToken ct)
     {
         if (_links.Io is null || !_ioOk) return;
+        if (_waterDeclined[well])
+        {
+            // 人在 HMI 降温弹窗里选了「不开，直接制冷」（用户定的）：不开阀、不开冷水机、不等通水，直接接 TEC
+            if (!_declinedSaid[well] && !(_waterOn && !_waterClosing))
+            {
+                _declinedSaid[well] = true;
+                var text = $"工位 {AB(well)} 要接 TEC：人选了不开冷却水，直接接（冷却水阀 DO{_waterDo} 与冷水机不动）——没有冷却水 TEC 会干烧";
+                _ctx.Log?.Invoke("warn", $"{InstanceId} {text}");
+                _rd.TempOf(well).Note(text);
+            }
+            return;
+        }
         // 阀开着、也没在关水：不等。关水挂着（冷水机停机已发、阀还开着）就撤销它，冷水机重新开起来——
         // 那时冷水机多半已经在停，水不一定在流，照样等通水延时
         if (_waterOn && !_waterClosing) return;
@@ -2052,6 +2104,8 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     private async Task ReleaseWaterAsync(CancellationToken ct)
     {
         if (!_waterOn || _waterClosing || _waterManual || NeedsWater(0) || NeedsWater(1)) return;
+        // 人选了「不开，直接制冷」的那一路正接着 TEC：「不开」是不碰水，不是关水——开着的阀别替它关了
+        if (_waterDeclined[0] && TecDriving(0) || _waterDeclined[1] && TecDriving(1)) return;
         try
         {
             await SetWaterAsync(false, ct).ConfigureAwait(false);
