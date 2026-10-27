@@ -1447,6 +1447,63 @@ public sealed class DualStationDriverTests
         Assert.Equal(10_00000, b.Rd.Get(1, "TG"));
     }
 
+    // 制冷点位 2026-10-27 对调（A = DO7、B = DO6）。台面里存着对调前的 6 / 7 就当旧缺省、按新的用（用户定的：不用现场改文件）
+
+    [Fact]
+    public async Task 台面存的是旧的6和7_按新点位用_通道1合DO7_通道2合DO6()
+    {
+        var b = Rig();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(ChillerOn(
+            (DualStationDriver.Fields.TecDoA, 6d), (DualStationDriver.Fields.TecDoB, 7d))), CancellationToken.None);
+        await s.StartAsync(CancellationToken.None);
+        var t = Temp(s, 0);
+        var tb = Temp(s, 1);
+        await WaitJacket(t, 25.0);
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("对调前的 6 / 7"));
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("DO7 = A") && l.Text.Contains("DO6 = B"));
+
+        await t.SetTargetAsync(new TempTarget(10), CancellationToken.None);
+        Assert.True(b.Io.Coils[7]);
+        Assert.False(b.Io.Coils[6]);
+        await tb.SetTargetAsync(new TempTarget(10), CancellationToken.None);
+        Assert.True(b.Io.Coils[6]);
+    }
+
+    [Fact]
+    public async Task 台面只存了一项旧值_另一项按旧缺省补齐_一样换过来()
+    {
+        var b = Rig();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(ChillerOn(
+            (DualStationDriver.Fields.TecDoA, 6d))), CancellationToken.None);
+        await s.StartAsync(CancellationToken.None);
+        var t = Temp(s, 0);
+        await WaitJacket(t, 25.0);
+
+        await t.SetTargetAsync(new TempTarget(10), CancellationToken.None);
+        Assert.True(b.Io.Coils[7]);                        // 不换的话 A、B 都落在 DO6 上
+        Assert.False(b.Io.Coils[6]);
+    }
+
+    [Fact]
+    public async Task 台面填的别的点位_照填的走_不换()
+    {
+        var b = Rig();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(ChillerOn(
+            (DualStationDriver.Fields.TecDoA, 5d), (DualStationDriver.Fields.TecDoB, 7d))), CancellationToken.None);
+        await s.StartAsync(CancellationToken.None);
+        var t = Temp(s, 0);
+        var tb = Temp(s, 1);
+        await WaitJacket(t, 25.0);
+        lock (b.Logs) Assert.DoesNotContain(b.Logs, l => l.Text.Contains("对调前"));
+
+        await t.SetTargetAsync(new TempTarget(10), CancellationToken.None);
+        Assert.True(b.Io.Coils[5]);
+        Assert.False(b.Io.Coils[7]);
+        await tb.SetTargetAsync(new TempTarget(10), CancellationToken.None);
+        Assert.True(b.Io.Coils[7]);
+        Assert.False(b.Io.Coils[6]);
+    }
+
     [Fact]
     public async Task SafeStop_本工位加热棒与TEC功率线全断_再下发降温目标时重新合上()
     {

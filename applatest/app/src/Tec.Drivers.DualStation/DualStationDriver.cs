@@ -147,6 +147,10 @@ public sealed class DualStationDriver : IDeviceDriver
               "部署前必须用厂家工具把 IO8R 的总线错误模式从「保持」改成「复位」（需求 §7）。"
     };
 
+    private const string TecDoTip =
+        "TEC 功率线（制冷）接 IO8R 的哪一路 DO（从 0 数）。现场：通道 1（A）= DO7、通道 2（B）= DO6（2026-10-27 对调）。" +
+        "存的是对调前的 A = 6、B = 7 时程序自动按 7 / 6 用（开机日志记一笔），别的填法照填的走";
+
     public ParameterSchema ConfigSchema { get; } = new(new[]
     {
         Field.Num(Rd105TecDriver.FieldOverUp, "超温上限", 180, "℃", -50, 300, 1),
@@ -199,8 +203,10 @@ public sealed class DualStationDriver : IDeviceDriver
         // 用户定的：不常合，不控温就断着；打开温控后要降温才合它、要升温合加热棒那只
         Field.Sel(Fields.TecRelay, "TEC 功率继电器", new[] { "有", "无" }, "有")
             with { Tip = "TEC 的功率线经 IO8R 继电器接通（闭合 = TEC 有电）。默认断着；要制冷才合它、要加热合加热棒那只（双向挡跟功率符号走），两只从不同时合；停控 / 安全停机断开。功率线是硬线直连、不经继电器的机器选「无」" },
-        Field.Num(Fields.TecDoA, "TEC 功率 DO·工位 A", 7, "", 0, 7, 1),
-        Field.Num(Fields.TecDoB, "TEC 功率 DO·工位 B", 6, "", 0, 7, 1),
+        Field.Num(Fields.TecDoA, "TEC 功率 DO·工位 A", 7, "", 0, 7, 1)
+            with { Tip = TecDoTip },
+        Field.Num(Fields.TecDoB, "TEC 功率 DO·工位 B", 6, "", 0, 7, 1)
+            with { Tip = TecDoTip },
         // 冷却水电磁阀：整机一只，现场接在 IO8R 的 DO4（代码索引 4 = 物理第五路，用户定的）。
         // 跟着 TEC 自动走（用户定的）：真要接 TEC 才先开阀、等通水延时再接；回加热棒侧就停冷水机、停稳关阀——升温时冷水机与阀都关。
         // 手动面板首页的开关保留；开机复位、断开会话跟着八路一起断

@@ -291,6 +291,19 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         // TEC 功率线经 IO8R 继电器（现场电气定的：DO7 = A、DO6 = B）。没配 IO8R 的机器
         // 无所谓「经不经」——那台没有继电器可扳，只能当它是硬线接的
         _tecRelay = links.Io is not null && cfg.Str(F.TecRelay, "有") == "有";
+        // 制冷点位 2026-10-27 对调成 A = DO7、B = DO6。台面里存的若还是对调前那一对（A = 6、B = 7，
+        // 只存了一项的按旧缺省补齐另一项再比——工作站属性栏一打开就把当时的缺省写进去了），
+        // 当旧缺省、按新的用（用户定的：不用现场去改文件）。别的填法照填的走
+        if ((cfg.Has(F.TecDoA) || cfg.Has(F.TecDoB))
+            && (cfg.Has(F.TecDoA) ? _tecDoIdx[0] : 6) == 6
+            && (cfg.Has(F.TecDoB) ? _tecDoIdx[1] : 7) == 7)
+        {
+            _tecDoIdx[0] = 7;
+            _tecDoIdx[1] = 6;
+            if (_tecRelay)
+                _ctx.Log?.Invoke("info", $"{InstanceId} 台面里「TEC 功率 DO·工位 A / B」存的是对调前的 6 / 7，" +
+                    "按现在的点位用：通道 1（A）制冷 = DO7、通道 2（B）制冷 = DO6");
+        }
         if (_tecRelay)
             for (var w = 0; w < 2; w++)
                 if (_tecDoIdx[w] == _doIdx[w])
