@@ -21,6 +21,7 @@ public sealed class DuoTempControl : ITemperatureControl, IRefluxControl, IHeatS
     double? ITemperatureStatus.CascadeInnerSetpoint => ((ITemperatureStatus)Inner).CascadeInnerSetpoint;
     string? ITemperatureStatus.Holding => ((ITemperatureStatus)Inner).Holding;
     string? ITemperatureStatus.LastStop => ((ITemperatureStatus)Inner).LastStop;
+    double? ITemperatureStatus.CascadePushC => ((ITemperatureStatus)Inner).CascadePushC;
 
     private readonly DuoSession _s;
     private readonly int _well;
@@ -44,6 +45,14 @@ public sealed class DuoTempControl : ITemperatureControl, IRefluxControl, IHeatS
     public string? Regime => _s.RegimeText(_well);
     public bool WouldCool(double target, TempChannelKind kind) => _s.WouldCool(_well, target, kind);
     public void SkipWaterNext() => _s.SkipWaterNext(_well);
+    public void AskWaterNext() => _s.AskWaterNext(_well);
+
+    /// <summary>自整定占着继电器与回路：先拒绝，一个继电器都别动；HMI 下发前立的水旗随之作废。</summary>
+    private void GuardTuning()
+    {
+        try { _s.GuardTuning(_well); }
+        catch { _s.DropWaterChoice(_well); throw; }
+    }
 
     public double CurrentReactor => Inner.CurrentReactor;
     public double CurrentJacket => Inner.CurrentJacket;
@@ -51,10 +60,12 @@ public sealed class DuoTempControl : ITemperatureControl, IRefluxControl, IHeatS
 
     public async Task SetTargetAsync(TempTarget target, CancellationToken ct)
     {
-        _s.GuardTuning(_well);  // 自整定占着继电器与回路：先拒绝，一个继电器都别动
+        // HMI 下发前立的旗（「不开，直接制冷」「中途先问我」）：整定中被拒时作废——既不能留给下一次（多半是配方的）下发，
+        // 也不能落成这一路的「不开水」（那样整定全程对账不替它留水，整定正在用的 TEC 会被关水）
+        GuardTuning();
+        _s.TakeWaterChoice(_well);
         var wasOn = _s.WantEnabled(_well);
         _s.NoteStart(_well);    // 这一路要控温了（热源切换按意图判，不按设备上的 ENABLE）
-        _s.TakeWaterChoice(_well);  // HMI 降温弹窗选了「不开，直接制冷」就这次不开水；别的下发照常先通水
         _s.StopReflux(_well);   // 明确下发新目标 = 下一步接管，跟随环退位
         try
         {
@@ -72,10 +83,10 @@ public sealed class DuoTempControl : ITemperatureControl, IRefluxControl, IHeatS
 
     public async Task RampAsync(double target, double ratePerMin, TempChannelKind kind, CancellationToken ct)
     {
-        _s.GuardTuning(_well);
+        GuardTuning();
+        _s.TakeWaterChoice(_well);
         var wasOn = _s.WantEnabled(_well);
         _s.NoteStart(_well);
-        _s.TakeWaterChoice(_well);
         _s.StopReflux(_well);
         try
         {

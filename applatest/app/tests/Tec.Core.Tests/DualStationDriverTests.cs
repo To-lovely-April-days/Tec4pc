@@ -609,10 +609,11 @@ public sealed class DualStationDriverTests
     }
 
     [Fact]
-    public async Task 双向挡_温度自己漂动不扳继电器_只有功率符号能扳()
+    public async Task 双向挡_温度一步跳动不扳继电器_只有功率符号能扳()
     {
-        // 0333 那条「TEC 收到 0、温度仍不高于目标够一分钟才交给加热棒」随 0336 撤掉：冷水机已开是双向挡，
-        // 夹套漂到哪里都不看温度，只看回路要的功率符号（温控器 PID 方式 = 读回的 PWMDUTY）
+        // 0333 那条「TEC 收到 0、温度仍不高于目标够一分钟才交给加热棒」随 0336 撤掉：冷水机已开是双向挡，只看回路要的功率符号
+        // （温控器 PID 方式 = 读回的 PWMDUTY）。2026-10-28 起被控量**在升 / 在降**也扳（提前判据，见下面那组用例）——
+        // 这里夹套是一步跳过去的（滑窗跨度 0、方向未知），提前判据不表态，照旧一只都不动
         var b = Rig();
         await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(ChillerOn()), CancellationToken.None);
         await s.StartAsync(CancellationToken.None);
@@ -624,15 +625,15 @@ public sealed class DualStationDriverTests
         Assert.True(b.Io.Coils[7]);
         lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("双向挡：目标 10.0"));
 
-        // 夹套凉到 5 ℃（低于目标 5 K）、又漂到 15（高过目标 5 K），输出一直是 0（假机 PWMDUTY 没人写）：一只都不动、一句交接都没有
+        // 夹套一步凉到 5 ℃（低于目标 5 K）、又一步漂到 15（高过目标 5 K），输出一直是 0（假机 PWMDUTY 没人写）：一只都不动、一句交接都没有
         var mark = b.Io.Requests.Count;
         foreach (var tj in new[] { 5.0, 15.0 })
         {
+            b.Now = b.Now.AddSeconds(61);                  // 旧点出窗：这一步跳动之后窗里只有一个值，判不出方向
             b.Rd.Set(1, "TCADJTEMP", (long)(tj * 1e5));
             await WaitJacket(t, tj);
             await Task.Delay(1200);                        // 让内层会话读一次 PWMDUTY（一秒一轮）
             await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
-            b.Now = b.Now.AddSeconds(61);
             await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
         }
         await s.StopAsync(CancellationToken.None);
@@ -645,6 +646,272 @@ public sealed class DualStationDriverTests
             Assert.DoesNotContain(b.Logs, l => l.Text.Contains("降温挡") || l.Text.Contains("升温挡："));
             Assert.Single(b.Logs, l => l.Text.Contains("已切至TEC"));   // 只有一开始那一次
         }
+    }
+
+    // ── 双向挡的提前判据与制冷段（用户定的，2026-10-28）──────────────────────────────
+    //
+    // 现场：釜内 50 ℃ 升温，釜内超调 0.3 K 时夹套目标还比釜内高 4.5 K、夹套环 +6 %，加热棒没停。
+    // 改成：被控量高过目标 δ（0.1 K）且在升就切 TEC，不等功率翻号、不等驻留；制冷段最短 N 秒内正号不扳回；
+    // 被控量低过目标 δ 且在降（可加超前）回加热棒。温控器 PID 假机：没有外环，只验继电器与段的规矩。
+
+    /// <summary>把夹套温度拨到 tj、钟拨过 dt 秒、推一拍（被控量进滑窗、判据跑一遍）。</summary>
+    private static async Task Drive(Bench b, IDeviceSession s, ITemperatureControl t, double tj, double dt)
+    {
+        b.Rd.Set(1, "TCADJTEMP", (long)Math.Round(tj * 1e5));
+        await WaitJacket(t, tj);
+        b.Now = b.Now.AddSeconds(dt);
+        await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
+    }
+
+    /// <summary>升温到 30 ℃（加热棒合着），把滑窗里 25 ℃ 的旧点甩掉，返回写指令的起点。</summary>
+    private static async Task<int> HeatingAt30(Bench b, IDeviceSession s, ITemperatureControl t)
+    {
+        await WaitJacket(t, 25.0);
+        await t.SetTargetAsync(new TempTarget(30), CancellationToken.None);
+        Assert.True(b.Io.Coils[0]);
+        Assert.False(b.Io.Coils[7]);
+        await DeviceDuty(b, s, -5);                        // 加热棒还在出力（这台加热棒吃负）：功率符号说的是加热
+        await Drive(b, s, t, 30.0, 31);                    // 旧点出窗
+        return b.Io.Requests.Count;
+    }
+
+    [Fact]
+    public async Task 双向挡_被控量高过目标加偏差且在升_不等功率翻号提前切TEC()
+    {
+        var b = Rig();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(ChillerOn()), CancellationToken.None);
+        await s.StartAsync(CancellationToken.None);
+        var t = Temp(s, 0);
+        var mark = await HeatingAt30(b, s, t);
+
+        // 30.06 / 30.12：高过 +0.1 但滑窗跨度不够 10 s（方向未知）→ 不动；30.18 @ 12 s：在升、高过 → 切 TEC
+        await Drive(b, s, t, 30.06, 4);
+        await Drive(b, s, t, 30.12, 4);
+        Assert.True(b.Io.Coils[0]);
+        Assert.Empty(b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写")));
+        await Drive(b, s, t, 30.18, 4);
+
+        Assert.True(b.Io.Coils[7]);
+        Assert.False(b.Io.Coils[0]);
+        Assert.Equal(new[] { "写DO 4=闭", "写DO 0=断", "写DO 7=闭" }, b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写DO")).ToList());
+        Assert.Equal(1, b.Rd.Get(1, "ENABLE"));
+        Assert.Contains("制冷段", ((IHeatSource)t).Regime);
+        lock (b.Logs)
+        {
+            Assert.Contains(b.Logs, l => l.Text.Contains("提前切 TEC，不等功率翻号") && l.Text.Contains("夹套 30.18 ℃ ≥ 目标 30.00 + 0.10"));
+            Assert.DoesNotContain(b.Logs, l => l.Text.Contains("已连续 3 s 指向TEC"));
+        }
+        await t.StopAsync(CancellationToken.None);
+        Assert.Null(((IHeatSource)t).Regime);
+    }
+
+    [Fact]
+    public async Task 双向挡_制冷段最短时间内功率转正不扳回_不停水_到点再按符号扳()
+    {
+        var b = Rig();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(ChillerOn()), CancellationToken.None);
+        await s.StartAsync(CancellationToken.None);
+        var t = Temp(s, 0);
+        await HeatingAt30(b, s, t);
+        foreach (var (tj, dt) in new[] { (30.06, 4.0), (30.12, 4.0), (30.18, 4.0) }) await Drive(b, s, t, tj, dt);
+        Assert.True(b.Io.Coils[7]);
+
+        // 段内功率转正（加热棒那一极 −20 % = 要加热 +20 %）：最短 60 s 内不扳、阀不关
+        await DeviceDuty(b, s, -20);
+        var mark = b.Io.Requests.Count;
+        foreach (var dt in new[] { 10.0, 20.0, 20.0 }) await Drive(b, s, t, 30.18, dt);
+        Assert.True(b.Io.Coils[7]);
+        Assert.True(b.Io.Coils[4]);
+        Assert.Empty(b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写")));
+        lock (b.Logs) Assert.Single(b.Logs, l => l.Text.Contains("先不扳、冷水机不停"));
+
+        // 满 60 s：驻留从头计——第一拍只开始计时，再 3.5 s 才扳回加热棒
+        await Drive(b, s, t, 30.18, 11);
+        Assert.True(b.Io.Coils[7]);
+        await Drive(b, s, t, 30.18, 3.5);
+        Assert.True(b.Io.Coils[0]);
+        Assert.False(b.Io.Coils[7]);
+        Assert.Equal(new[] { "写DO 7=断", "写DO 4=断", "写DO 0=闭" }, b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写DO")).ToList());
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("制冷段结束（功率已连续 3 s 指向电加热"));
+        Assert.DoesNotContain("制冷段", ((IHeatSource)t).Regime ?? "");
+        await s.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task 双向挡_被控量回落_段结束交还_回路不要冷了才回加热棒_还要冷留在TEC_超前提前结束段()
+    {
+        var b = Rig();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(ChillerOn()), CancellationToken.None);
+        await s.StartAsync(CancellationToken.None);
+        var t = Temp(s, 0);
+        var d = (DuoSession)s;
+        d.CoolMinDuration = TimeSpan.FromSeconds(20);
+        d.ExitLead = TimeSpan.Zero;                        // 先验不带超前的那条：被控量本身低过 目标 − δ
+        await HeatingAt30(b, s, t);
+        foreach (var (tj, dt) in new[] { (30.06, 4.0), (30.12, 4.0), (30.18, 4.0) }) await Drive(b, s, t, tj, dt);
+        Assert.True(b.Io.Coils[7]);
+        await DeviceDuty(b, s, 20);                        // TEC 在制冷（功率 −20 %：回路还要冷）
+
+        // 往下走：29.95 / 29.90 / 29.85——段龄 15 s < 20 s 不扳；29.80 @ 21 s：低过 29.9 且在降 → 段结束，
+        // 但回路还明确要冷（−20 %）：不跟它拗，继电器留在 TEC（低于环境温的目标就是这样，别来回启停冷水机）
+        var mark = b.Io.Requests.Count;
+        await Drive(b, s, t, 29.95, 5);
+        await Drive(b, s, t, 29.90, 5);
+        await Drive(b, s, t, 29.85, 5);
+        Assert.True(b.Io.Coils[7]);
+        Assert.Empty(b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写")));
+        await Drive(b, s, t, 29.80, 6);
+        Assert.True(b.Io.Coils[7]);
+        Assert.Empty(b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写")));
+        Assert.DoesNotContain("制冷段", ((IHeatSource)t).Regime ?? "");
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("回落到目标 30.00 − 0.10 ℃ 以下且在降") && l.Text.Contains("继电器交给回路"));
+
+        // 回路不要冷了（功率 +5 %，还没过符号驻留）、被控量仍低过目标且在降：立刻回加热棒，不等符号
+        await DeviceDuty(b, s, -5);
+        await Drive(b, s, t, 29.75, 2);
+        Assert.True(b.Io.Coils[0]);
+        Assert.False(b.Io.Coils[7]);
+        lock (b.Logs)
+        {
+            Assert.Contains(b.Logs, l => l.Text.Contains("低过目标 30.00 − 0.10 ℃ 且在降") && l.Text.Contains("回加热棒，不等功率翻号"));
+            Assert.DoesNotContain(b.Logs, l => l.Text.Contains("已连续 3 s 指向电加热"));
+        }
+
+        // 带超前：120 s × (−0.011 K/s) ≈ −1.3 K——夹套 30.24 看着还高，其实在往下掉：提前结束段、交还夹套目标；
+        // 继电器照旧交给回路——回路还要冷就留着，转成要加热（符号驻留满）才回加热棒
+        d.ExitLead = TimeSpan.FromSeconds(120);
+        await Drive(b, s, t, 30.0, 31);
+        foreach (var (tj, dt) in new[] { (30.06, 4.0), (30.12, 4.0), (30.18, 4.0) }) await Drive(b, s, t, tj, dt);
+        Assert.True(b.Io.Coils[7]);
+        Assert.Contains("制冷段", ((IHeatSource)t).Regime);
+        await DeviceDuty(b, s, 20);
+        await Drive(b, s, t, 30.40, 31);                   // 旧点出窗
+        await Drive(b, s, t, 30.35, 5);
+        await Drive(b, s, t, 30.30, 5);
+        await Drive(b, s, t, 30.24, 5);
+        Assert.DoesNotContain("制冷段", ((IHeatSource)t).Regime ?? "");
+        Assert.True(b.Io.Coils[7]);
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("超前 120 s") && l.Text.Contains("段结束"));
+        await DeviceDuty(b, s, -5);
+        await Drive(b, s, t, 30.22, 1);
+        await Drive(b, s, t, 30.20, 3.5);
+        Assert.True(b.Io.Coils[0]);
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("已连续 3 s 指向电加热"));
+        await s.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task 双向挡_已在TEC侧_被控量在升不立段不动_低过目标且在降就回加热棒()
+    {
+        var b = Rig();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(ChillerOn()), CancellationToken.None);
+        await s.StartAsync(CancellationToken.None);
+        var t = Temp(s, 0);
+        await WaitJacket(t, 25.0);
+        await t.SetTargetAsync(new TempTarget(10), CancellationToken.None);    // 起步按方向合 TEC（不算制冷段）
+        Assert.True(b.Io.Coils[7]);
+
+        // 夹套在 TEC 侧往上漂（制冷不够）：已经在制冷了，提前判据不立段、不动
+        var mark = b.Io.Requests.Count;
+        foreach (var (tj, dt) in new[] { (11.0, 31.0), (12.0, 5.0), (13.0, 5.0), (15.0, 5.0) })
+            await Drive(b, s, t, tj, dt);
+        Assert.True(b.Io.Coils[7]);
+        Assert.Empty(b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写")));
+        Assert.DoesNotContain("制冷段", ((IHeatSource)t).Regime ?? "");
+        lock (b.Logs) Assert.DoesNotContain(b.Logs, l => l.Text.Contains("提前切 TEC") || l.Text.Contains("制冷段"));
+
+        // 降过了头（9.8 < 10 − 0.1）且在降：回加热棒——不等功率翻号（用户定的：降温超调要开升温）。
+        // 没段时不带超前：还在目标上（10.0）不走，低过 δ 才走
+        foreach (var (tj, dt) in new[] { (10.4, 31.0), (10.2, 5.0), (10.0, 5.0) })
+            await Drive(b, s, t, tj, dt);
+        Assert.True(b.Io.Coils[7]);
+        await Drive(b, s, t, 9.8, 5);
+        Assert.True(b.Io.Coils[0]);
+        Assert.False(b.Io.Coils[7]);
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("低过目标 10.00 − 0.10 ℃ 且在降") && l.Text.Contains("回加热棒，不等功率翻号"));
+        await s.StopAsync(CancellationToken.None);
+    }
+
+
+    [Fact]
+    public async Task 双向挡_符号扳到TEC侧_符号又要加热但被控量还高过目标且在升_留在TEC_平了才走()
+    {
+        var b = Rig();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(ChillerOn()), CancellationToken.None);
+        await s.StartAsync(CancellationToken.None);
+        var t = Temp(s, 0);
+        var d = (DuoSession)s;
+        await WaitJacket(t, 25.0);
+        await t.SetTargetAsync(new TempTarget(30), CancellationToken.None);
+        await Drive(b, s, t, 30.0, 31);
+        // 温度平着、回路要冷（TEC 那一极 +15 %）：功率符号连续 3 s → 扳到 TEC（不立段）
+        await DeviceDuty(b, s, 15);
+        await Drive(b, s, t, 30.0, 1);
+        await Drive(b, s, t, 30.0, 3.5);
+        Assert.True(b.Io.Coils[7]);
+        Assert.DoesNotContain("制冷段", ((IHeatSource)t).Regime ?? "");
+
+        // 放热：夹套高过目标且在升，回路却转成要加热（+20 %）够 3 s——不交还加热棒，TEC 留着
+        await DeviceDuty(b, s, -20);
+        var mark = b.Io.Requests.Count;
+        foreach (var (tj, dt) in new[] { (30.06, 4.0), (30.12, 4.0), (30.18, 4.0), (30.24, 4.0) }) await Drive(b, s, t, tj, dt);
+        Assert.True(b.Io.Coils[7]);
+        Assert.Empty(b.Io.Requests.Skip(mark).Where(r => r.StartsWith("写")));
+
+        // 平了（不再升）：符号说了算，回加热棒
+        await Drive(b, s, t, 30.24, 31);
+        await Drive(b, s, t, 30.24, 3.5);
+        Assert.True(b.Io.Coils[0]);
+        Assert.False(b.Io.Coils[7]);
+        await s.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task 双向挡_新目标下发_制冷段清掉_停控也清()
+    {
+        var b = Rig();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(ChillerOn()), CancellationToken.None);
+        await s.StartAsync(CancellationToken.None);
+        var t = Temp(s, 0);
+        await HeatingAt30(b, s, t);
+        foreach (var (tj, dt) in new[] { (30.06, 4.0), (30.12, 4.0), (30.18, 4.0) }) await Drive(b, s, t, tj, dt);
+        Assert.Contains("制冷段", ((IHeatSource)t).Regime);
+
+        await t.SetTargetAsync(new TempTarget(60), CancellationToken.None);    // 新目标：段清掉、按方向起步（升温 → 加热棒）
+        Assert.True(b.Io.Coils[0]);
+        Assert.DoesNotContain("制冷段", ((IHeatSource)t).Regime ?? "");
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("制冷段结束（下发了新目标"));
+
+        await Drive(b, s, t, 60.0, 31);
+        foreach (var (tj, dt) in new[] { (60.06, 4.0), (60.12, 4.0), (60.18, 4.0) }) await Drive(b, s, t, tj, dt);
+        Assert.Contains("制冷段", ((IHeatSource)t).Regime);
+        await t.StopAsync(CancellationToken.None);
+        Assert.Null(((IHeatSource)t).Regime);
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("制冷段结束（停控"));
+    }
+
+    [Fact]
+    public async Task 双向挡配置字段_缺省与钳位_符号驻留可配()
+    {
+        var cfg = new ParameterSet().FillDefaults(new DualStationDriver().ConfigSchema);
+        Assert.Equal(0.1, cfg.Num(DualStationDriver.Fields.EarlyDelta));
+        Assert.Equal(2, cfg.Num(DualStationDriver.Fields.CoolPush));
+        Assert.Equal("釜内", cfg.Str(DualStationDriver.Fields.PushBase));
+        Assert.Equal(180, cfg.Num(DualStationDriver.Fields.ExitLead));
+        Assert.Equal(60, cfg.Num(DualStationDriver.Fields.CoolMin));
+        Assert.Equal(120, cfg.Num(DualStationDriver.Fields.ChillerGap));
+        Assert.Equal(60, cfg.Num(DualStationDriver.Fields.AskTimeout));
+        Assert.Equal(3, cfg.Num(DualStationDriver.Fields.SignDwellS));
+
+        var b = Rig();
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(ChillerOn(
+            (DualStationDriver.Fields.SignDwellS, 1d), (DualStationDriver.Fields.AskTimeout, 300d),
+            (DualStationDriver.Fields.CoolMin, 30d), (DualStationDriver.Fields.EarlyDelta, 0.5d))), CancellationToken.None);
+        var d = (DuoSession)s;
+        Assert.Equal(TimeSpan.FromSeconds(1), d.SignDwell);
+        Assert.Equal(TimeSpan.FromSeconds(120), d.AskTimeout);        // 钳到上限
+        Assert.Equal(TimeSpan.FromSeconds(30), d.CoolMinDuration);
+        Assert.Equal(0.5, d.EarlyDelta);
     }
 
     [Fact]

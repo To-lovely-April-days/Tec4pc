@@ -117,6 +117,29 @@ public sealed class Rd105TemperatureControl : ITemperatureControl, ITemperatureS
 
     string? ITemperatureStatus.LastStop => LastStop;
 
+    double? ITemperatureStatus.CascadePushC => JacketPushC;
+
+    /// <summary>
+    /// 制冷段：把夹套目标压到基准以下 belowC（fromEquilibrium = true 压到稳态偏置之下；false 压到釜内之下，按外环 P 算）。
+    /// 夹套单环 / 温控器 PID / 回路没在控 → false，调用方只扳继电器。不看 Enabled：切换序列中途输出临时关着那一两秒回路照样在控
+    /// （回路自己按「激活 + 串级 + 没在整定」判）。
+    /// </summary>
+    public bool PushJacketBelow(double belowC, bool fromEquilibrium = false)
+        => _loop is not null && Kind == TempChannelKind.Reactor && _loop.SetOuterPushDown(_tc, belowC, fromEquilibrium);
+
+    /// <summary>制冷段结束：夹套目标交还外环（从冻结的积分接着算、两枪放电重新武装）。没压着什么都不做。</summary>
+    public void ReleaseJacketPush() => _loop?.SetOuterPushDown(_tc, null);
+
+    /// <summary>此刻压着多少 K（null = 没压）：组合会话每拍对账用（回路 Stop / 换策略 / 重下目标会自己清）。</summary>
+    public double? JacketPushC => _loop?.GetOuterPushDown(_tc);
+
+    /// <summary>
+    /// 回路此刻真正在追的设定值：RampAsync 斜坡中是斜坡当前值（不是终点）；温控器 PID 方式退回 Setpoint。
+    /// 提前切换判据比的是它——升温斜坡被放热顶过当前设定就该切，不用等顶过终点。
+    /// </summary>
+    public double? ActiveSetpoint
+        => _loop is null ? Setpoint : _loop.GetChannelStatus(_tc) is { Active: true } st ? st.SetpointC : Setpoint;
+
     /// <summary>
     /// 本路输出开着没有（ENABLE 的影子）。热源切换要看它：**停着的通道不该被自动切换动**——
     /// 输出都关了，扳继电器没有意义，还会把安全停机落回 TEC 侧的继电器又扳回电加热。

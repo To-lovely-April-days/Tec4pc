@@ -20,6 +20,7 @@
     <ProjectReference Include="..\..\src\Tec.Hmi.Runtime\Tec.Hmi.Runtime.csproj" />
     <ProjectReference Include="..\..\src\Tec.LimitTest.Core\Tec.LimitTest.Core.csproj" />
     <ProjectReference Include="..\..\src\Tec.Io8rTest\Tec.Io8rTest.csproj" />
+    <ProjectReference Include="..\..\src\Tec.Hmi.Ui\Tec.Hmi.Ui.csproj" />
   </ItemGroup>
 
 </Project>

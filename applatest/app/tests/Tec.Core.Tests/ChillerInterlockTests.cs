@@ -281,6 +281,283 @@ public sealed class ChillerInterlockTests
         await Water(s).SetAsync(false, CancellationToken.None);
     }
 
+    // ── 中途切 TEC：弹窗问开不开冷却水、冷水机最短间隔（用户定的，2026-10-28）──────────
+    //
+    // 手动开的温控、开那一下没弹过（升温目标）：中途被控量冲过目标要切 TEC 而冷却水没开好 → 驱动挂询问、等人（到时按打开）；
+    // 等人期间加热棒继电器留着、不接 TEC。两次冷启动冷水机之间至少隔 M 秒。配方下发不问、照自动开水。
+
+    /// <summary>把夹套拨到 tj、钟拨过 dt 秒、推一拍。</summary>
+    private static async Task Drive(Bench b, IDeviceSession s, ITemperatureControl t, double tj, double dt)
+    {
+        b.Rd.Set(1, "TCADJTEMP", (long)Math.Round(tj * 1e5));
+        await WaitJacket(t, tj);
+        b.Now = b.Now.AddSeconds(dt);
+        await Tick(s);
+    }
+
+    /// <summary>夹套目标 30 ℃ 升温（加热棒合着），再把夹套顶过 30.1 且在升：提前判据要切 TEC。manual = 手动开的、开那一下没弹过。</summary>
+    private static async Task Overshoot(Bench b, IDeviceSession s, ITemperatureControl t, bool manual)
+    {
+        if (manual) ((IHeatSource)t).AskWaterNext();
+        await t.SetTargetAsync(new TempTarget(30), CancellationToken.None);
+        Assert.True(b.Io.Coils[0]);
+        await Drive(b, s, t, 30.0, 31);
+        b.Seq.Clear();
+        foreach (var (tj, dt) in new[] { (30.06, 4.0), (30.12, 4.0), (30.18, 4.0) }) await Drive(b, s, t, tj, dt);
+    }
+
+    private static int AskId(IDeviceSession s) => Water(s).Pending?.Id ?? throw new Xunit.Sdk.XunitException("没挂询问");
+
+    [Fact]
+    public async Task 手动下发_开那一下没弹窗_中途切TEC挂询问_等人期间加热棒留着不接TEC()
+    {
+        var b = Rig();
+        var (s, t) = await Cooling(b);
+        await using var _ = s;
+        await Overshoot(b, s, t, manual: true);
+
+        var q = Water(s).Pending;
+        Assert.NotNull(q);
+        Assert.Equal(1, q!.Channel);
+        Assert.Contains("工位 A 要切 TEC 制冷", q.Why);
+        Assert.Equal(b.Now + TimeSpan.FromSeconds(60), q.Deadline);
+        Assert.True(b.Io.Coils[0]);                       // 加热棒继电器留着（回路钳 0）
+        Assert.False(b.Io.Coils[7]);
+        Assert.False(b.Io.Coils[4]);
+        Assert.Equal(0, b.Chiller.State);
+        Assert.Contains("等人答开不开冷却水", ((IHeatSource)t).Regime);
+        lock (b.Logs) Assert.Single(b.Logs, l => l.Text.Contains("问操作人开不开冷却水"));
+
+        await Tick(s);
+        await Tick(s);
+        Assert.Equal(q.Id, Water(s).Pending?.Id);        // 不重复挂
+        Assert.False(b.Io.Coils[7]);
+    }
+
+    [Fact]
+    public async Task 挂询问_答打开_先开阀再开冷水机再接TEC_本次控温不再问()
+    {
+        var b = Rig();
+        var (s, t) = await Cooling(b);
+        await using var _ = s;
+        var d = (DuoSession)s;
+        d.ChillerMinGap = TimeSpan.Zero;
+        d.CoolMinDuration = TimeSpan.Zero;
+        d.ExitLead = TimeSpan.Zero;
+        await Overshoot(b, s, t, manual: true);
+        var id = AskId(s);
+
+        Assert.True(Water(s).Answer(id, true));
+        Assert.Null(Water(s).Pending);                    // 答过了就不再给（落地在下一拍）：面板别把刚答完的窗又弹一次
+        Assert.False(Water(s).Answer(id, true));          // 答过了
+        await Tick(s);
+        Assert.Null(Water(s).Pending);
+        Assert.True(b.Io.Coils[7]);
+        Assert.False(b.Io.Coils[0]);
+        Assert.Equal(new[] { "阀开", "开机", "DO0断", "DO7闭" }, b.Seq.Where(x => x is "阀开" or "开机" or "DO0断" or "DO7闭"));
+        Assert.Contains("制冷段", ((IHeatSource)t).Regime);
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("操作人选了打开冷却水"));
+
+        // 退段（夹套回落且在降）→ 回加热棒、停冷水机；再冲过去 → 这次控温不再问，直接自动开水
+        await Drive(b, s, t, 29.95, 5);
+        await Drive(b, s, t, 29.90, 5);
+        await Drive(b, s, t, 29.80, 5);
+        Assert.True(b.Io.Coils[0]);
+        Assert.Contains("关机", b.Seq);
+        b.Seq.Clear();
+        await Drive(b, s, t, 29.8, 31);
+        foreach (var (tj, dt) in new[] { (30.06, 4.0), (30.12, 4.0), (30.18, 4.0) }) await Drive(b, s, t, tj, dt);
+        Assert.Null(Water(s).Pending);
+        Assert.True(b.Io.Coils[7]);
+        Assert.Contains("开机", b.Seq);
+    }
+
+    [Fact]
+    public async Task 挂询问_答不开_直接接TEC_阀和冷水机不动()
+    {
+        var b = Rig();
+        var (s, t) = await Cooling(b);
+        await using var _ = s;
+        await Overshoot(b, s, t, manual: true);
+        var id = AskId(s);
+
+        Assert.True(Water(s).Answer(id, false));
+        await Tick(s);
+        await Tick(s);
+        Assert.Null(Water(s).Pending);
+        Assert.True(b.Io.Coils[7]);
+        Assert.False(b.Io.Coils[4]);
+        Assert.Equal(0, b.Chiller.State);
+        Assert.DoesNotContain(b.Seq, x => x is "阀开" or "开机");
+        lock (b.Logs) Assert.Single(b.Logs, l => l.Text.Contains("操作人选了不开冷却水"));
+    }
+
+    [Fact]
+    public async Task 挂询问_没人答超时按打开()
+    {
+        var b = Rig();
+        var (s, t) = await Cooling(b);
+        await using var _ = s;
+        await Overshoot(b, s, t, manual: true);
+        var id = AskId(s);
+
+        b.Now = b.Now.AddSeconds(30);
+        await Tick(s);
+        Assert.Equal(id, Water(s).Pending?.Id);
+        Assert.False(b.Io.Coils[7]);
+        b.Now = b.Now.AddSeconds(31);
+        await Tick(s);
+        Assert.Null(Water(s).Pending);
+        Assert.True(b.Io.Coils[7]);
+        Assert.True(b.Io.Coils[4]);
+        Assert.Equal(2, b.Chiller.State);
+        Assert.False(Water(s).Answer(id, false));         // 过期
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("60 s 没人答，按「打开冷却水」办"));
+    }
+
+    [Fact]
+    public async Task 挂询问_等人期间被控量自己凉回去_询问收回_留在加热棒_再冲过去再问()
+    {
+        var b = Rig();
+        var (s, t) = await Cooling(b);
+        await using var _ = s;
+        await Overshoot(b, s, t, manual: true);
+        var id = AskId(s);
+
+        await Drive(b, s, t, 30.0, 5);
+        await Drive(b, s, t, 29.9, 5);
+        await Drive(b, s, t, 29.8, 5);
+        Assert.Null(Water(s).Pending);
+        Assert.True(b.Io.Coils[0]);
+        Assert.False(b.Io.Coils[7]);
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("制冷段取消") && l.Text.Contains("等人答复"));
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("询问收回"));
+
+        await Drive(b, s, t, 29.8, 31);
+        foreach (var (tj, dt) in new[] { (30.06, 4.0), (30.12, 4.0), (30.18, 4.0) }) await Drive(b, s, t, tj, dt);
+        Assert.NotNull(Water(s).Pending);
+        Assert.True(Water(s).Pending!.Id > id);
+    }
+
+    [Fact]
+    public async Task 配方下发不问_照常自动开水接TEC()
+    {
+        var b = Rig();
+        var (s, t) = await Cooling(b);
+        await using var _ = s;
+        await Overshoot(b, s, t, manual: false);
+
+        Assert.Null(Water(s).Pending);
+        Assert.True(b.Io.Coils[7]);
+        Assert.Equal(new[] { "阀开", "开机", "DO0断", "DO7闭" }, b.Seq.Where(x => x is "阀开" or "开机" or "DO0断" or "DO7闭"));
+    }
+
+    [Fact]
+    public async Task 挂询问_停控收回()
+    {
+        var b = Rig();
+        var (s, t) = await Cooling(b);
+        await using var _ = s;
+        await Overshoot(b, s, t, manual: true);
+        Assert.NotNull(Water(s).Pending);
+        await t.StopAsync(CancellationToken.None);
+        Assert.Null(Water(s).Pending);
+        await Tick(s);
+        Assert.False(b.Io.Coils[7]);
+        Assert.False(b.Io.Coils[0]);
+    }
+
+    [Fact]
+    public async Task 冷水机延时停机中又要制冷_撤销关水不算冷启动_不等间隔()
+    {
+        var b = Rig();
+        var (s, t) = await Cooling(b);
+        await using var _ = s;
+        var d = (DuoSession)s;
+        d.CoolMinDuration = TimeSpan.Zero;
+        d.ExitLead = TimeSpan.Zero;
+        await Overshoot(b, s, t, manual: false);
+        Assert.True(b.Io.Coils[7]);
+
+        // 退段：冷水机停机已发、还在延时停机（没 Settle），阀开着
+        await Drive(b, s, t, 29.95, 5);
+        await Drive(b, s, t, 29.90, 5);
+        await Drive(b, s, t, 29.80, 5);
+        Assert.True(b.Io.Coils[0]);
+        Assert.Equal(3, b.Chiller.State);
+        b.Seq.Clear();
+
+        // 不到 120 s 又冲过去：冷水机还在转（延时停机）→ 撤销关水、重新开机，不算冷启动、不挂起
+        await Drive(b, s, t, 29.8, 31);
+        foreach (var (tj, dt) in new[] { (30.06, 4.0), (30.12, 4.0), (30.18, 4.0) }) await Drive(b, s, t, tj, dt);
+        Assert.True(b.Io.Coils[7]);
+        Assert.Contains("开机", b.Seq);
+        Assert.DoesNotContain("等冷水机最短间隔", ((IHeatSource)t).Regime ?? "");
+        lock (b.Logs) Assert.DoesNotContain(b.Logs, l => l.Text.Contains("刚开过（最短间隔"));
+    }
+
+    [Fact]
+    public async Task 面板手动开水也算一次冷启动_间隔内自动进段先不开()
+    {
+        var b = Rig();
+        var (s, t) = await Cooling(b);
+        await using var _ = s;
+        await Water(s).SetAsync(true, CancellationToken.None);     // 人在面板上开了一次（冷启动）
+        await Water(s).SetAsync(false, CancellationToken.None);
+        b.Chiller.Settle();
+        await Tick(s);
+        Assert.False(b.Io.Coils[4]);
+        b.Seq.Clear();
+
+        await Overshoot(b, s, t, manual: false);
+        Assert.True(b.Io.Coils[0]);
+        Assert.False(b.Io.Coils[7]);
+        Assert.DoesNotContain("开机", b.Seq);
+        Assert.Contains("等冷水机最短间隔", ((IHeatSource)t).Regime);
+    }
+
+    [Fact]
+    public async Task 冷水机最短间隔_间隔内自动进段先不开_到点再开()
+    {
+        var b = Rig();
+        var (s, t) = await Cooling(b);
+        await using var _ = s;
+        var d = (DuoSession)s;
+        d.CoolMinDuration = TimeSpan.Zero;
+        d.ExitLead = TimeSpan.Zero;
+        await Overshoot(b, s, t, manual: false);          // 自动开水：冷启动一次
+        Assert.True(b.Io.Coils[7]);
+        Assert.Equal(2, b.Chiller.State);
+
+        // 退段：停冷水机、停稳关阀
+        await Drive(b, s, t, 29.95, 5);
+        await Drive(b, s, t, 29.90, 5);
+        await Drive(b, s, t, 29.80, 5);
+        Assert.True(b.Io.Coils[0]);
+        Assert.Contains("关机", b.Seq);
+        b.Chiller.Settle();
+        await Tick(s);
+        Assert.False(b.Io.Coils[4]);
+        b.Seq.Clear();
+
+        // 不到 120 s 又冲过去：先不开，加热棒留着；到点再开
+        await Drive(b, s, t, 29.8, 31);
+        foreach (var (tj, dt) in new[] { (30.06, 4.0), (30.12, 4.0), (30.18, 4.0) }) await Drive(b, s, t, tj, dt);
+        Assert.True(b.Io.Coils[0]);
+        Assert.False(b.Io.Coils[7]);
+        Assert.DoesNotContain("开机", b.Seq);
+        Assert.Contains("等冷水机最短间隔", ((IHeatSource)t).Regime);
+        lock (b.Logs) Assert.Single(b.Logs, l => l.Level == "warn" && l.Text.Contains("刚开过（最短间隔 120 s）"));
+        await Drive(b, s, t, 30.20, 4);
+        Assert.False(b.Io.Coils[7]);
+
+        b.Now = b.Now.AddSeconds(120);
+        await Drive(b, s, t, 30.22, 1);
+        Assert.True(b.Io.Coils[7]);
+        Assert.Equal(new[] { "阀开", "开机", "DO0断", "DO7闭" }, b.Seq.Where(x => x is "阀开" or "开机" or "DO0断" or "DO7闭"));
+        Assert.Contains("制冷段", ((IHeatSource)t).Regime);
+    }
+
     [Fact]
     public async Task 选不开冷却水只管这一次_下次正常下发照常先通水_停控也清掉()
     {

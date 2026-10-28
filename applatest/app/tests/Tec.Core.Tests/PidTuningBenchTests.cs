@@ -401,16 +401,25 @@ public class PidTuningBenchTests
         // 加热棒只加热：一笔正占空比（这台机器上的加热棒符号是负）都没有
         Assert.All(d.Rd.Commands.Skip(n).Where(c => c.StartsWith("TC1:PWMDUTY=")), c => Assert.True(DutyOf(c) <= 0, c));
 
+        ((IHeatSource)t).SkipWaterNext();                     // HMI 降温弹窗里选了「不开，直接制冷」，下发却因整定被拒
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(
             () => t.SetTargetAsync(new TempTarget(20, TempChannelKind.Jacket), CancellationToken.None));
         Assert.Contains("正在自整定", ex.Message);
         Assert.True(d.Io.Coils[0]);                          // 拒绝了就一个继电器都没动
+        // 被拒的那次选择作废：不落成这一路的「不开水」（整定全程对账照样替它留水），也不留给下一次下发
+        lock (d.Logs) Assert.DoesNotContain(d.Logs, l => l.Contains("人选了不开冷却水"));
 
         await b.CancelAutoTuneAsync(CancellationToken.None);
         Assert.Equal("操作人取消", report?.Reason);
         await WaitUntil(() => !d.Io.Coils[0] && !d.Io.Coils[7], 3000, "取消后全断");
         Assert.Equal(0, d.Rd.Get(1, "PWMDUTY"));
         Assert.Contains(d.Logs, l => l.Contains("自整定结束") && l.Contains("全断"));
+
+        // 整定结束后的下一次下发（降温）照常先开冷却水：被拒那次的「不开」没留给它
+        await t.SetTargetAsync(new TempTarget(10, TempChannelKind.Jacket), CancellationToken.None);
+        Assert.True(d.Io.Coils[7]);
+        Assert.True(d.Io.Coils[4]);
+        await t.StopAsync(CancellationToken.None);
     }
 
     [Fact]

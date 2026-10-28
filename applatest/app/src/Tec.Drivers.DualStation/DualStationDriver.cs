@@ -74,6 +74,24 @@ public sealed class DualStationDriver : IDeviceDriver
         public const string WaterDo = "冷却水阀DO";
         /// <summary>冷却水阀打开后等多久再接 TEC（让水先流起来，用户定的）。</summary>
         public const string WaterLead = "通水延时";
+
+        // ── 双向挡的提前判据 / 制冷段 / 冷水机间隔 / 中途弹窗（用户定的，2026-10-28）──
+        /// <summary>被控量高过目标这么多 K 且在升就提前切 TEC；低过这么多且在降回加热棒。</summary>
+        public const string EarlyDelta = "提前切换偏差";
+        /// <summary>釜内模式提前切 TEC 时把夹套目标压到基准以下这么多 K。</summary>
+        public const string CoolPush = "制冷时夹套压低";
+        /// <summary>压低的基准：釜内（夹套目标 ≈ 釜内 − Δ）/ 稳态偏置（平衡偏置 − Δ，温和）。</summary>
+        public const string PushBase = "压低基准";
+        /// <summary>退出制冷段的超前量（s）：被控量 + 超前 × 斜率 ≤ 目标 − δ 就退。</summary>
+        public const string ExitLead = "退出超前";
+        /// <summary>提前判据进的制冷段至少持续多久（s）。</summary>
+        public const string CoolMin = "最短制冷时间";
+        /// <summary>两次冷启动冷水机的最短间隔（s）。</summary>
+        public const string ChillerGap = "冷水机最短间隔";
+        /// <summary>手动温控中途切 TEC 的弹窗等人多久（s），到了按打开。</summary>
+        public const string AskTimeout = "中途弹窗等答复";
+        /// <summary>双向挡功率符号连续指向另一侧多久（s）才扳继电器。</summary>
+        public const string SignDwellS = "符号驻留";
     }
 
     /// <summary>
@@ -216,7 +234,30 @@ public sealed class DualStationDriver : IDeviceDriver
                          "连接参数里选了冷水机串口的话，阀跟冷水机一起走：开水先开阀再开冷水机，关水先停冷水机、等它停稳再关阀（面板开关、自动联动、安全停机、断开设备都一样）。" +
                          "手动面板首页「冷却水」开关可以手动开关（手动开的不会被自动关）。不能与切换 DO / TEC 功率 DO 重号" },
         Field.Num(Fields.WaterLead, "通水延时", 5, "s", 0, 60, 1)
-            with { Tip = "冷却水阀刚打开时，等这么多秒让水先流起来再接 TEC。阀已经开着就不等" }
+            with { Tip = "冷却水阀刚打开时，等这么多秒让水先流起来再接 TEC。阀已经开着就不等" },
+        // 双向挡的提前判据 / 制冷段 / 冷水机间隔 / 中途弹窗（用户定的，2026-10-28：现场釜内超调 0.3 K 时加热棒还开着——
+        // 夹套目标比釜内高 4.5 K，夹套环要釜内超 2.2 K 才翻负）。除「冷水机」外都是开会话读一次，重新连接后生效
+        Field.Num(Fields.EarlyDelta, "提前切换偏差", 0.1, "K", 0.05, 2, 0.05)
+            with { Tip = "双向挡：被控量（釜内模式看釜内、夹套模式看夹套）高过目标这么多且在升（30 s 滑窗斜率）就提前切 TEC——不等功率翻号、不等符号驻留；" +
+                         "低过目标这么多且在降回加热棒。方向判不出（刚换目标头 10 s、读不到温度）时交给功率符号" },
+        Field.Num(Fields.CoolPush, "制冷时夹套压低", 2, "K", 0.5, 8, 0.5)
+            with { Tip = "釜内模式提前切 TEC 时把夹套目标压到「压低基准」以下这么多 K（外环积分冻结、按影子偏置算），TEC 接上就真的在制冷；" +
+                         "超过外环偏置限幅（缺省 ±8）只能压到限幅。夹套模式 / 温控器 PID 方式不压、只扳继电器" },
+        Field.Sel(Fields.PushBase, "压低基准", new[] { "釜内", "稳态偏置" }, "釜内")
+            with { Tip = "釜内 = 夹套目标 ≈ 釜内 − Δ（相对保温的 +5.5 K 偏置是 −7.5 K 的净驱动，釜壁滞后大的机器可能下冲）；" +
+                         "稳态偏置 = 平衡偏置 − Δ（夹套仍在釜内之上几度，温和）。现场跑一轮逐拍记录再定" },
+        Field.Num(Fields.ExitLead, "退出超前", 180, "s", 0, 600, 30)
+            with { Tip = "退出制冷段的判据用「被控量 + 超前 × 斜率」比目标 − δ：釜壁有几分钟滞后，看着还高其实已经在往下掉就该提前交还加热棒。0 = 只看被控量" },
+        Field.Num(Fields.CoolMin, "最短制冷时间", 60, "s", 0, 600, 10)
+            with { Tip = "提前判据进的制冷段至少持续这么久：段内 TEC 功率由 PID 调（可到 0），但不切回加热棒、不停冷水机——别让冷水机来回启停" },
+        Field.Num(Fields.ChillerGap, "冷水机最短间隔", 120, "s", 0, 900, 10)
+            with { Tip = "两次冷启动冷水机之间至少隔这么久（压缩机保护）：间隔内自动要切 TEC 先不开（加热棒 0 出力自然凉），到点再开；" +
+                         "撤销关水（冷水机还在转）不算冷启动；人 / 配方明确下发目标不受它拦。不联动冷水机不生效" },
+        Field.Num(Fields.AskTimeout, "中途弹窗等答复", 60, "s", 10, 120, 5)
+            with { Tip = "HMI 手动开的温控、开那一下没问过：中途要切 TEC 而冷却水没开好时弹窗问一次「开不开冷却水」，这么久没人答按打开。" +
+                         "等答复期间加热棒继电器留着、功率下限钳 0、不接 TEC。配方运行不弹" },
+        Field.Num(Fields.SignDwellS, "符号驻留", 3, "s", 0, 30, 1)
+            with { Tip = "双向挡功率符号连续指向另一侧多久才扳继电器（原来写死 3 s）。提前判据触发的切换不受它" }
     })
     {
         Tip = "超温上限就是电加热模式的最高温度——写进 RD105 自己的保护寄存器，断了通信照样生效，" +

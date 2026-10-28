@@ -870,6 +870,118 @@ public class Rd105HostControlTests
     }
 
     [Fact]
+    public async Task 双向挡_釜内串级_釜温刚过目标且在升_提前切TEC_夹套设定压到釜内以下_外环积分冻结_回落交还()
+    {
+        // 用户定的（2026-10-28）：现场釜内超调 0.3 K 时夹套目标还比釜内高 4.5 K、加热棒没停。改成被控量高过目标 δ 且在升就切 TEC，
+        // 釜内模式同时把夹套目标压到釜内以下 Δ（外环影子偏置、积分冻结），不等功率翻号
+        var b = new Duo();
+        await using var s = await b.Drv.OpenAsync(Duo.Conn(), b.Ctx(Duo.ChillerOn()), CancellationToken.None);
+        await s.StartAsync(CancellationToken.None);
+        var d = (DuoSession)s;
+        d.CoolMinDuration = TimeSpan.FromSeconds(2);
+        d.ExitLead = TimeSpan.Zero;
+        d.SignDwell = TimeSpan.FromHours(1);       // 假机夹套每秒走 1 K、几秒就压到压低后的目标以下：只验温度判据这条路，符号别来扳
+        var t = Temp(s, 0);
+        await WaitUntil(() => !double.IsNaN(t.CurrentJacket), 3000, "夹套读数");
+        using var feed = new TrFeeder(s, 1, 29.5);
+        await Task.Delay(100);
+
+        await t.SetTargetAsync(new TempTarget(30, TempChannelKind.Reactor), CancellationToken.None);
+        Assert.True(b.Io.Coils[0]);
+        await WaitUntil(() => St(t).CascadeInnerSetpoint is { } sp && sp > 30, 5000, "外环把夹套目标推到釜内目标之上");
+        Assert.Null(St(t).CascadePushC);
+
+        // 釜温刚过目标（30.12）并以 0.6 K/min 往上爬：功率还是正的（夹套目标 > 夹套），只有提前判据会动
+        using var ramp = new CancellationTokenSource();
+        var ramping = Task.Run(async () =>
+        {
+            var v = 30.12;
+            while (!ramp.IsCancellationRequested)
+            {
+                Volatile.Write(ref feed.Value, v);
+                v += 0.005;
+                try { await Task.Delay(500, ramp.Token); } catch (OperationCanceledException) { break; }
+            }
+        });
+        await WaitUntil(() => b.Io.Coils[7] && !b.Io.Coils[0], 25000,
+            () => $"提前切 TEC（DO0 {b.Io.Coils[0]} DO7 {b.Io.Coils[7]}，Tr {t.CurrentReactor:F2}，Tjset {St(t).CascadeInnerSetpoint}）\n" + string.Join("\n", b.Logs.TakeLast(8)));
+        Assert.Contains(b.Logs, l => l.Contains("提前切 TEC，不等功率翻号") && l.Contains("夹套目标压到釜内以下 2.0 K"));
+        Assert.DoesNotContain(b.Logs, l => l.Contains("指向TEC——合 TEC 功率线"));
+        Assert.Equal(2.0, St(t).CascadePushC);
+        Assert.Equal(2.0, d.InnerTemp(0).JacketPushC);
+        await WaitUntil(() => St(t).CascadeInnerSetpoint is { } sp && sp < t.CurrentReactor - 1.5, 6000,
+            () => $"夹套目标压到釜内以下（Tjset {St(t).CascadeInnerSetpoint}，Tr {t.CurrentReactor:F2}）");
+        Assert.Contains("制冷段", ((IHeatSource)t).Regime);
+        Assert.Contains(b.Logs, l => l.Contains("夹套压低 2.0 K") && l.Contains("外环积分冻结"));
+
+        // 放热结束、釜温回落到目标以下且在降：段满最短时间后回加热棒，夹套目标交还外环
+        ramp.Cancel();
+        await ramping;
+        using var fall = new CancellationTokenSource();
+        var falling = Task.Run(async () =>
+        {
+            var v = 29.95;
+            while (!fall.IsCancellationRequested)
+            {
+                Volatile.Write(ref feed.Value, v);
+                v -= 0.005;
+                try { await Task.Delay(500, fall.Token); } catch (OperationCanceledException) { break; }
+            }
+        });
+        await WaitUntil(() => b.Io.Coils[0] && !b.Io.Coils[7], 25000,
+            () => $"回加热棒（DO0 {b.Io.Coils[0]} DO7 {b.Io.Coils[7]}，Tr {t.CurrentReactor:F2}）\n" + string.Join("\n", b.Logs.TakeLast(8)));
+        fall.Cancel();
+        await falling;
+        Assert.Null(St(t).CascadePushC);
+        Assert.Contains(b.Logs, l => l.Contains("回落到目标 30.00 − 0.10 ℃ 以下且在降") && l.Contains("夹套目标交还外环"));
+        Assert.Contains(b.Logs, l => l.Contains("夹套压低解除"));
+        // 外环积分冻结：压低那一刻冻在多少，解除时就从多少接着算（两句日志里的数一致）
+        var frozen = double.Parse(System.Text.RegularExpressions.Regex.Match(
+            b.Logs.First(l => l.Contains("外环积分冻结在")), @"外环积分冻结在 (-?[\d.]+) ℃").Groups[1].Value);
+        var resumed = double.Parse(System.Text.RegularExpressions.Regex.Match(
+            b.Logs.First(l => l.Contains("夹套压低解除")), @"从积分 (-?[\d.]+) ℃").Groups[1].Value);
+        Assert.Equal(frozen, resumed, 2);
+        await WaitUntil(() => St(t).CascadeInnerSetpoint is { } sp && sp > 30, 5000, "交还之后夹套目标回到釜内目标之上");
+        Assert.True(St(t).Active);
+    }
+
+    [Fact]
+    public async Task 双向挡_釜内串级_降温斜坡跟得上_提前判据不表态_不刷日志不扳继电器()
+    {
+        // 审查发现（2026-10-28）：斜坡中目标在动，拿绝对温度的斜率比会在整个降温斜坡里每拍判「低过目标且在降」。
+        // 现在比的是偏差（Tr − 斜坡当前设定）的斜率：跟得上偏差就是平的，提前判据不表态
+        var b = new Duo();
+        await using var s = await b.Drv.OpenAsync(Duo.Conn(), b.Ctx(Duo.ChillerOn()), CancellationToken.None);
+        await s.StartAsync(CancellationToken.None);
+        var d = (DuoSession)s;
+        d.SignDwell = TimeSpan.FromHours(1);       // 只看提前判据这条路
+        var t = Temp(s, 0);
+        var inner = d.InnerTemp(0);
+        await WaitUntil(() => !double.IsNaN(t.CurrentJacket), 3000, "夹套读数");
+        using var feed = new TrFeeder(s, 1, 30.0);
+        await Task.Delay(100);
+
+        await t.RampAsync(20, 6, TempChannelKind.Reactor, CancellationToken.None);   // 30 → 20 @ 6 K/min：起步按方向合 TEC
+        Assert.True(b.Io.Coils[7]);
+        using var follow = new CancellationTokenSource();
+        var following = Task.Run(async () =>
+        {
+            while (!follow.IsCancellationRequested)
+            {
+                if (inner.ActiveSetpoint is { } sp) Volatile.Write(ref feed.Value, sp + 0.05);   // 釜内跟着斜坡、略高一点
+                try { await Task.Delay(200, follow.Token); } catch (OperationCanceledException) { break; }
+            }
+        });
+        await Task.Delay(15000);
+        follow.Cancel();
+        await following;
+        Assert.True(inner.ActiveSetpoint < 29, $"斜坡没在走：{inner.ActiveSetpoint}");
+        Assert.True(b.Io.Coils[7]);
+        Assert.False(b.Io.Coils[0]);
+        Assert.DoesNotContain(b.Logs, l => l.Contains("低过目标") || l.Contains("回加热棒") || l.Contains("提前切 TEC"));
+    }
+
+    [Fact]
     public async Task 双向挡_釜内串级_放热釜温冲过目标_功率转负够驻留时间合TEC_PID不复位_参数按加热棒表()
     {
         // 0336，用户定的：反应会放热也会吸热，控得住就得加热、制冷随时能出力——冷水机已开是双向挡，一个 PID 两边出力
@@ -877,6 +989,7 @@ public class Rd105HostControlTests
         await using var s = await b.Drv.OpenAsync(Duo.Conn(), b.Ctx(Duo.ChillerOn()), CancellationToken.None);
         await s.StartAsync(CancellationToken.None);
         ((DuoSession)s).SignDwell = TimeSpan.FromSeconds(1);
+        ((DuoSession)s).EarlyDelta = double.PositiveInfinity;    // 这条锁的是功率符号那条路：提前判据（被控量）关掉，别靠用例跑得比滑窗快才没被它抢先
         var t = Temp(s, 0);
         var bench = s.CapabilitiesOf(0).OfType<IPidTuningBench>().Single();
         await WaitUntil(() => !double.IsNaN(t.CurrentJacket), 3000, "夹套读数");
@@ -925,6 +1038,7 @@ public class Rd105HostControlTests
         await using var s = await b.Drv.OpenAsync(Duo.Conn(), b.Ctx(Duo.ChillerOn()), CancellationToken.None);
         await s.StartAsync(CancellationToken.None);
         ((DuoSession)s).SignDwell = TimeSpan.FromSeconds(1);
+        ((DuoSession)s).EarlyDelta = double.PositiveInfinity;    // 同上：只验功率符号
         var t = Temp(s, 0);
         await WaitUntil(() => !double.IsNaN(t.CurrentJacket), 3000, "夹套读数");
 

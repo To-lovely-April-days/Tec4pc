@@ -50,6 +50,9 @@ public sealed record ChannelCycleInfo(
     public double OuterP { get; init; } = double.NaN;
     public double OuterI { get; init; } = double.NaN;
     public double OuterD { get; init; } = double.NaN;
+
+    /// <summary>【本地改动】串级制冷段的夹套压低量（K，<see cref="HostControlLoop.SetOuterPushDown"/>）；没压 / 单环为 NaN。</summary>
+    public double OuterPushC { get; init; } = double.NaN;
 }
 
 /// <summary>一个完整控制周期的结果（后台线程发布）。电流每 4 个周期采样一次，其余周期为 null。</summary>
@@ -236,6 +239,13 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
 
         /// <summary>上一拍钳位是否实际约束了偏置（用于冻结外环积分）。</summary>
         public bool OuterClampBinding;
+
+        /// <summary>
+        /// 【本地改动】串级「夹套压低」（双工位主机制冷段，<see cref="SetOuterPushDown"/>）：压着的时候内环设定不按
+        /// 外环 PID 的输出走，按影子偏置 = clamp(P + D − BelowC, ±限幅)（FromEquilibrium 再加上冻结的 I）；
+        /// 外环积分冻结、两枪放电 / 落地钳位 / 扩程 / 稳态学习整段跳过。引用整体换（会话线程写、回路线程读）。
+        /// </summary>
+        public OuterPush? Push;
 
 
         /// <summary>外环算出的内环设定值（℃）。</summary>
@@ -574,15 +584,60 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         var s = State(ch);
         if (Math.Abs(celsius - s.SetpointC) > 1e-9)
         {
-            // 新目标意味着新一段趋近过程：重新武装两段积分放电
-            s.OuterApproachDischargeArmed = true;
-            s.OuterCrossingArmed = true;
-            s.OuterClampLatched = false;
-            s.OuterClampBinding = false;
-            s.LastOuterErrorC = double.NaN;
+            // 新目标意味着新一段趋近过程：重新武装两段积分放电；压着的夹套目标也随旧目标作废（【本地改动】）
+            s.Push = null;
+            RearmOuter(s);
         }
         s.SetpointC = celsius;
     }
+
+    /// <summary>新一段趋近：重新武装两枪积分放电、解开落地钳位、清过零历史（SetSetpoint 与解除压低共用）。</summary>
+    private static void RearmOuter(ChannelState s)
+    {
+        s.OuterApproachDischargeArmed = true;
+        s.OuterCrossingArmed = true;
+        s.OuterClampLatched = false;
+        s.OuterClampBinding = false;
+        s.LastOuterErrorC = double.NaN;
+    }
+
+    /// <summary>【本地改动】串级「夹套压低」的参数：压到基准以下多少 K；基准是釜内（false）还是稳态偏置（true）。</summary>
+    public sealed record OuterPush(double BelowC, bool FromEquilibrium);
+
+    /// <summary>
+    /// 【本地改动】串级外环「夹套压低」（双工位主机双向挡的制冷段：被控量冲过目标、提前切 TEC 时把夹套目标压到基准以下，
+    /// 不等外环慢慢把 +5 K 的保温偏置退掉）。压着的时候：内环设定 = 主设定 + clamp(外环 P + D − belowC, ±偏置限幅)
+    /// （fromEquilibrium = true 再加上冻结的 I，即压到稳态偏置之下 belowC）；外环积分冻结在压之前的值（不写假值），
+    /// 趋近 / 过零放电、落地钳位、限幅扩程、稳态偏置学习整段跳过（不然制冷段里 Tr 在 ±0.05 K 带内停上一分钟就把 −2 当稳态写进表）。
+    /// belowC = null 解除：从冻结的积分接着算，重新武装两枪放电（表里有稳态偏置的自动校回去）。
+    /// 只对串级、激活、没在自整定的通道生效；返回接没接受。偏置限幅不放宽（外环增益调度每次更新都重夹），超了只能压到限幅、warn 一次。
+    /// </summary>
+    public bool SetOuterPushDown(int ch, double? belowC, bool fromEquilibrium = false)
+    {
+        var s = State(ch);
+        if (belowC is null)
+        {
+            if (s.Push is null) return false;
+            s.Push = null;
+            RearmOuter(s);
+            ChannelNotice?.Invoke(ch, "info", $"通道{ch}夹套压低解除：外环从积分 {s.OuterPid.LastI:F2} ℃ 接着算，趋近 / 过零放电重新武装");
+            return true;
+        }
+        if (!s.Active || s.Strategy != ControlStrategy.Cascade || s.Tuner is not null) return false;
+        var below = Math.Abs(belowC.Value);
+        var limit = s.OuterPid.OutputMax;
+        if (!fromEquilibrium && below > limit)
+            ChannelNotice?.Invoke(ch, "warn", $"通道{ch}夹套压低 {below:F1} K 超过外环偏置限幅 ±{limit:F1} ℃，只能压到限幅");
+        s.Push = new OuterPush(below, fromEquilibrium);
+        s.OuterSteadyCycles = 0;
+        s.BiasGuard.Reset();
+        ChannelNotice?.Invoke(ch, "info", $"通道{ch}夹套压低 {below:F1} K（基准 {(fromEquilibrium ? "稳态偏置" : "釜内")}）：" +
+            $"外环积分冻结在 {s.OuterPid.LastI:F2} ℃，夹套设定 {s.InnerSetpointC:F2} ℃ → 下一拍按压低算");
+        return true;
+    }
+
+    /// <summary>【本地改动】此刻压着多少 K（null = 没压）。</summary>
+    public double? GetOuterPushDown(int ch) => State(ch).Push?.BelowC;
 
     /// <summary>
     /// 趋近放电带宽（℃）：外环误差首次缩到该值以内时执行第一段积分放电。
@@ -776,7 +831,12 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
     /// <summary>外环连续处于稳态多少次更新后才把稳态偏置写回增益表（默认约 1 分钟 @2s）。</summary>
     public int OuterSteadyCyclesToLearn { get; set; } = 30;
 
-    public void SetStrategy(int ch, ControlStrategy strategy) => State(ch).Strategy = strategy;
+    public void SetStrategy(int ch, ControlStrategy strategy)
+    {
+        var s = State(ch);
+        if (s.Strategy != strategy) s.Push = null;      // 换策略：压低随串级一起作废（【本地改动】）
+        s.Strategy = strategy;
+    }
 
     public ControlStrategy GetStrategy(int ch) => State(ch).Strategy;
 
@@ -843,6 +903,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
             s.LastOuterErrorC = double.NaN;
             s.OuterLostSince = null;                 // 【本地改动】
             s.ProfileHoldAt = null;
+            s.Push = null;                           // 【本地改动】新一轮串级：上一轮压着的夹套目标作废
             s.InnerSetpointC = setpointC;
             ApplyOuterTuning(s, setpointC);   // 先装限幅，预置才会按正确范围截断
             if (OuterSchedule(s, setpointC).SteadyBiasAt(setpointC) is { } bias)     // 【本地改动】外环按釜选表
@@ -916,6 +977,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         s.LastDutyPercent = 0;
         s.OuterLostSince = null;                     // 【本地改动】
         s.ProfileHoldAt = null;
+        s.Push = null;                               // 【本地改动】
         await controller.SetDutyPercentAsync(ch, 0, ct).ConfigureAwait(false);
         await controller.SetEnableAsync(ch, false, ct).ConfigureAwait(false);
         if (ch == 1 && SyncMode != ChannelSyncMode.Independent)     // 【本地改动】独立两路：停 A 不动 B
@@ -1220,13 +1282,16 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                 var freeze = (innerHigh && outerErr0 > 0 && s.OuterPid.LastI >= 0)
                              || (innerLow && outerErr0 < 0 && s.OuterPid.LastI <= 0)
                              || (!double.IsNaN(OuterIntegralBandC) && Math.Abs(outerErr0) > OuterIntegralBandC);   // 积分分离
+                // 【本地改动】夹套压低（制冷段）：这一拍整段按它来——积分冻结（现有饱和冻结判据不覆盖
+                // 「I = +5.5、内环贴下限、err < 0」这种，必须显式冻，不然 I 以 Ki·err 慢慢往下积）
+                var push = s.Push;
                 var bias = s.OuterPid.Update(s.SetpointC, outerPv, outerDt,
-                    freezeIntegral: freeze || s.OuterClampBinding);
+                    freezeIntegral: freeze || s.OuterClampBinding || push is not null);
 
                 // 腔体跟踪缺口前馈：腔体离它的目标还差多少，就按比例多推一把，
                 // 等效把腔体跟随加速 (1+k) 倍——趋近段提前归位消掉剩余下冲，
-                // 稳态缺口→0 自然退场（pv 即内环被控量=腔体实测）
-                var boost = OuterTrackingBoost <= 0
+                // 稳态缺口→0 自然退场（pv 即内环被控量=腔体实测）。压低期间不叠加
+                var boost = OuterTrackingBoost <= 0 || push is not null
                     ? 0
                     : Math.Clamp(OuterTrackingBoost * (s.SetpointC + bias - pv),
                         -OuterBoostClampC, OuterBoostClampC);
@@ -1236,7 +1301,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                 // 事件武装的静态界，无动态无回路；过零（武装标志落下）即退场。
                 var effBias = bias;
                 s.OuterClampBinding = false;
-                if (OuterBiasClampBandC > 0 && s.OuterCrossingArmed
+                if (push is null && OuterBiasClampBandC > 0 && s.OuterCrossingArmed
                     && OuterSchedule(s, s.SetpointC).SteadyBiasAt(s.SetpointC) is { } clampRef)     // 【本地改动】外环按釜选表
                 {
                     // 进带一次即锁存（带边按拍重判会被噪声来回触发，实测抖动 4 次）
@@ -1263,6 +1328,13 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                     }
                 }
 
+                if (push is not null)
+                {
+                    // 影子偏置：主设定 + P + D − 压低量（基准稳态偏置时再加冻结的 I），夹在偏置限幅内。
+                    // 用 P 而不是 Tr − Δ：Tr 刚过目标 0.1 K 时两者只差 0.15 K，釜内冲得越高 P 越负压得越深
+                    var baseBias = s.OuterPid.LastP + s.OuterPid.LastD + (push.FromEquilibrium ? s.OuterPid.LastI : 0);
+                    effBias = Math.Clamp(baseBias - push.BelowC, s.OuterPid.OutputMin, s.OuterPid.OutputMax);
+                }
                 s.InnerSetpointC = Math.Clamp(s.SetpointC + effBias + boost,
                     InnerSetpointMinC, InnerSetpointMaxC);
 
@@ -1276,8 +1348,8 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                 // 均为一次性触发；曲线运行中不适用；改设定值后重新武装；
                 // 积分从不冻结，稳态偏置过时最多偏一次、由正常积分接管收敛。
                 var outerErr = s.SetpointC - outerPv;
-                if (s.Profile is null
-                    && OuterSchedule(s, s.SetpointC).SteadyBiasAt(s.SetpointC) is { } steadyI)     // 【本地改动】外环按釜选表
+                if (push is null && s.Profile is null
+                    && OuterSchedule(s, s.SetpointC).SteadyBiasAt(s.SetpointC) is { } steadyI)     // 【本地改动】外环按釜选表；压低期间两枪都不打
                 {
                     if (s.OuterApproachDischargeArmed
                         && Math.Abs(outerErr) <= OuterDischargeApproachBandC)
@@ -1303,7 +1375,11 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                 // 说明瓶颈是这条人为限幅（维持低温需要的偏置随温差增大，低温段容易不够用）。
                 // 长距离降温时偏置顶限幅但误差持续缩小——那是限幅在正常限速，不会触发。
                 var oldLimit = s.OuterPid.OutputMax;
-                if (s.BiasGuard.Update(outerDt, bias, oldLimit, innerSaturated,
+                if (push is not null)
+                {
+                    s.BiasGuard.Reset();           // 压低期间不扩程：扩程会写进增益表
+                }
+                else if (s.BiasGuard.Update(outerDt, bias, oldLimit, innerSaturated,
                         outerErr) is { } widened)
                 {
                     s.OuterPid.SetOutputLimits(-widened, widened);
@@ -1321,7 +1397,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                 // 所需的腔体-内部温差，登记后供下次同温启动预置外环积分。
                 // 学习带必须比 SteadyBandC 窄：缓沉暂态（误差 0.05~0.2）时若开录，
                 // 会把暂态偏置当稳态写进表，反过来让放电比对失准（第四轮实测教训）。
-                if (!innerSaturated && s.Profile is null && Math.Abs(outerErr) <= OuterLearnBandC)
+                if (push is null && !innerSaturated && s.Profile is null && Math.Abs(outerErr) <= OuterLearnBandC)
                 {
                     s.LastSteadyBias = s.LastSteadyBias is { } prev
                         ? prev + 0.05 * (bias - prev)   // 低通，约 20 次外环更新的时间常数
@@ -1446,7 +1522,10 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         {
             s.SaturationWarned = true;
             var mins = s.Runaway.SaturatedSeconds / 60;
-            SaturationWarning?.Invoke(cascade
+            SaturationWarning?.Invoke(cascade && s.Push is not null
+                // 【本地改动】制冷段压着夹套目标：满幅是设计内的（夹套设定在釜内之下），TEC 接上后会退出
+                ? $"通道{ch}输出已连续满幅 {mins:F0} 分钟：制冷段夹套压低中（夹套设定 {innerSetpoint:F2} ℃ 低于釜内 {outerPv:F2} ℃），TEC 接上后会退出饱和"
+                : cascade
                 // 串级启动阶段外环通常会把内环设定推到偏置限幅以索取最大能力，属正常现象
                 ? $"通道{ch}输出已连续满幅 {mins:F0} 分钟：外环正要求最大能力" +
                   $"（内部 {(holding ? "Tr 丢失保持中" : $"{outerPv:F2}℃")} → 主设定 {s.SetpointC:F2}℃；腔体 {pv:F2}℃ → 外环要求 {innerSetpoint:F2}℃）。" +
@@ -1478,6 +1557,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
             OuterP = cascade ? s.OuterPid.LastP : double.NaN,
             OuterI = cascade ? s.OuterPid.LastI : double.NaN,
             OuterD = cascade ? s.OuterPid.LastD : double.NaN,
+            OuterPushC = cascade && s.Push is { } pushed ? pushed.BelowC : double.NaN,
         };
     }
 

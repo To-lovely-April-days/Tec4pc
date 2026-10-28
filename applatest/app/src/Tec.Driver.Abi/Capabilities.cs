@@ -87,6 +87,12 @@ public interface ITemperatureStatus : ICapability
     /// （缺省 null）。面板对账发现回路停了，拿它把「为什么停」说出来。
     /// </summary>
     string? LastStop => null;
+
+    /// <summary>
+    /// 串级制冷段里夹套目标此刻被压低了多少 K（双工位主机双向挡：被控量冲过目标提前切 TEC 时把夹套目标压到基准以下，
+    /// 外环积分冻结）。不是串级 / 没压就是 null（缺省 null）。系统页与热源牌子拿它说明「夹套目标为什么比釜内还低」。
+    /// </summary>
+    double? CascadePushC => null;
 }
 
 /// <summary>自整定当前的状态。</summary>
@@ -194,6 +200,29 @@ public interface IHeatSource : ICapability
     /// 之后正常下发（配方 / 不选它的下发）照常先通水；停控清掉。
     /// </summary>
     void SkipWaterNext() { }
+
+    /// <summary>
+    /// 下一次下发目标是 HMI 手动开的、而且开那一下没弹过降温弹窗：这次控温里中途要切 TEC 制冷而冷却水没开好时，
+    /// 先挂一个「开不开冷却水」的询问（<see cref="ICoolingWaterValve.Pending"/>）等人答，到时没人答按打开；本次控温只问一次。
+    /// 弹过选「打开」的不调（已经答过）；选「不开」的走 <see cref="SkipWaterNext"/>（它短路了问人）；配方 / 蒸回流不调（照常自动开水）。
+    /// 下发时取用一次，停控清掉。缺省什么都不做。
+    /// </summary>
+    void AskWaterNext() { }
+}
+
+/// <summary>
+/// 驱动中途要切 TEC 制冷、冷却水还没开好时挂出来的询问（整机一个：一只阀一台冷水机）。界面轮询
+/// <see cref="ICoolingWaterValve.Pending"/>，Id 变了就是新问题、变成 null 就是已收回（答了 / 超时按打开 / 水已开 / 不再制冷 / 停控）。
+/// </summary>
+/// <param name="Id">问题编号，每次新挂一个就加一。</param>
+/// <param name="Channel">要制冷的那一路的系统通道号。</param>
+/// <param name="Why">驱动的一句话：为什么要切 TEC（「工位 A 要切 TEC 制冷：釜内 50.12 ℃ 已高过目标 50.00 ℃」）。</param>
+/// <param name="AskedAt">挂出来的时刻。</param>
+/// <param name="Deadline">过了这一刻没人答就按「打开冷却水」办。</param>
+public sealed record WaterAsk(int Id, int Channel, string Why, DateTimeOffset AskedAt, DateTimeOffset Deadline)
+{
+    /// <summary>还剩多久没人答就按打开办（到了就是 0）。</summary>
+    public TimeSpan Left(DateTimeOffset now) => Deadline > now ? Deadline - now : TimeSpan.Zero;
 }
 
 /// <summary>
@@ -233,6 +262,18 @@ public interface ICoolingWaterValve : ICapability
 
     /// <summary>联动的冷水机出毛病时的一个短词（「冷水机故障」「冷水机读不到」），面板状态签上照印、标红；一切正常 / 不联动是 null。</summary>
     string? Alert => null;
+
+    /// <summary>
+    /// 驱动挂着的「开不开冷却水」询问（中途要切 TEC 制冷、冷却水没开好、这次控温是手动开的且开那一下没问过）；
+    /// 没有就是 null（缺省 null）。整机一个槽位：两个通道的实例读到同一份。界面每秒看它，有就弹窗、按 Id 判新旧。
+    /// </summary>
+    WaterAsk? Pending => null;
+
+    /// <summary>
+    /// 答复挂着的询问：open = true 先开阀 / 冷水机、通水后接 TEC；false 不开、直接接 TEC（阀和冷水机不动）。
+    /// 返回 false = 这个 Id 已经不是当前问题（超时按打开办了 / 已收回 / 已答过），什么都没做。缺省 false。
+    /// </summary>
+    bool Answer(int id, bool open) => false;
 
     Task SetAsync(bool open, CancellationToken ct);
 }

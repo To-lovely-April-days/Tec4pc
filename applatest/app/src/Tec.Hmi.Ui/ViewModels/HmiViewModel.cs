@@ -603,6 +603,27 @@ public sealed class HmiViewModel : ViewModelBase
         rows.Add(new SysRow("系统信息",
             $"TecStudio {appVer}" + (drv is null ? "" : $" · 驱动 {drv.Name} {drv.Version}"),
             drv is null ? "驱动未加载" : $"{drv.Vendor} · ABI {drv.Abi}"));
+        // 双向挡的配置与此刻挡位（用户定的 2026-10-28：现场找不到配置文件也能在这里看到「冷水机」是开是关、这一路在哪个挡）。
+        // 只对有冷却水阀的主机（双工位那台）印——别的主机没有这些配置，印一套缺省值是假话。
+        // 键按字符串读台面配置（HMI 不引用驱动工程），要跟 DualStationDriver.Fields 一字不差
+        if (dev is not null && HasWater)
+        {
+            var cfg = dev.Config;
+            rows.Add(new SysRow("冷水机", cfg.Str("冷水机", "已开"),
+                "已开 = 双向挡（加热棒 ↔ TEC 跟功率符号 / 提前判据走）；已关 = 升温挡 / 降温挡。在工作站台面属性栏或 bench.json 里改，当拍生效"));
+            foreach (var z in Zones)
+                rows.Add(new SysRow($"热源 · 通道 {z.Number}",
+                    (z.HeatRegime ?? "没在控温") + (z.CascadePushC is { } c ? $" · 夹套目标压低 {c:0.0} K" : ""),
+                    "此刻在哪个挡 / 制冷段 / 在等什么"));
+            rows.Add(new SysRow("双向挡参数",
+                $"提前 δ {cfg.Num("提前切换偏差", 0.1):0.00} K · 压低 Δ {cfg.Num("制冷时夹套压低", 2):0.0} K（基准 {cfg.Str("压低基准", "釜内")}）" +
+                $" · 退出超前 {cfg.Num("退出超前", 180):0} s · 最短制冷 {cfg.Num("最短制冷时间", 60):0} s · 冷水机间隔 {cfg.Num("冷水机最短间隔", 120):0} s" +
+                $" · 弹窗 {cfg.Num("中途弹窗等答复", 60):0} s · 驻留 {cfg.Num("符号驻留", 3):0} s · 通水 {cfg.Num("通水延时", 5):0} s",
+                "在工作站台面属性栏修改，重新连接设备后生效"));
+            rows.Add(new SysRow("冷却水询问",
+                Water?.Pending is { } q ? $"通道 {q.Channel} 等答复，{Math.Ceiling(q.Left(_ws.Clock.Now).TotalSeconds):0} s 后按打开" : "无",
+                "手动温控中途切 TEC 时驱动问开不开冷却水；没人答按打开"));
+        }
         SysRows = rows;
         Raise(nameof(SysRows));
     }
@@ -853,6 +874,7 @@ public sealed class HmiViewModel : ViewModelBase
     public void OpenAsk(string title, string sub, string body, string primary, Action onPrimary,
                         string? secondary = null, Action? onSecondary = null, Action? onCancel = null)
     {
+        _askIsWater = false;        // 任何一张窗开起来都先当不是冷却水的询问；那条路开完自己再标
         AskTitle = title;
         AskSub = sub;
         AskBody = body;
@@ -877,6 +899,7 @@ public sealed class HmiViewModel : ViewModelBase
     {
         if (!AskOpen) return false;
         AskOpen = false;
+        _askIsWater = false;
         _askPrimary = _askSecondary = _askCancel = null;
         Raise(nameof(AskOpen));
         return true;
@@ -884,6 +907,69 @@ public sealed class HmiViewModel : ViewModelBase
 
     public void AskPrimaryDo() { var a = _askPrimary; CloseAsk(); a?.Invoke(); }
     public void AskSecondaryDo() { var a = _askSecondary; CloseAsk(); a?.Invoke(); }
+
+    // ── 中途切 TEC 的「开不开冷却水」询问（驱动挂的，用户定的 2026-10-28）────────────
+    //
+    // 驱动在采集循环里判「要切 TEC 而冷却水没开好、这次控温是手动开的且开那一下没问过」时挂一个问题（ICoolingWaterValve.Pending），
+    // 自己按截止时刻倒计时；面板每秒看一眼：有就弹窗（复用确认弹窗那一张），答了交回驱动，收回了就关窗。
+    // 取消 = 先不答（这个 Id 不再弹），到时驱动按「打开冷却水」办。
+
+    private readonly WaterAskPrompter _waterAsk = new();
+    /// <summary>此刻开着的那张窗是不是冷却水询问（别的窗盖上来就不是了）。</summary>
+    private bool _askIsWater;
+
+    private void PollWaterAsk()
+    {
+        var p = Water?.Pending;
+        switch (_waterAsk.Step(p, AskOpen, _askIsWater))
+        {
+            case WaterAskPrompter.Action.Open:
+            {
+                var q = p!;
+                var zone = Zones.FirstOrDefault(z => z.Number == q.Channel);
+                OpenAsk("中途要用 TEC 制冷", WaterAskSub(q),
+                    q.Why + "\n" +
+                    "TEC 制冷要冷却水，冷却水阀 / 冷水机现在还没开好。\n" +
+                    "「打开冷却水」：先开冷却水阀、再开冷水机，等通水后接 TEC。\n" +
+                    "「不开，直接制冷」：阀和冷水机都不动，直接接 TEC——确认已经有冷却水（手动开好 / 别的冷却），没有水 TEC 会干烧。\n" +
+                    "点「取消」= 先不答：倒计时到了按「打开冷却水」办。",
+                    "打开冷却水", () => AnswerWater(q, true, zone),
+                    "不开，直接制冷", () => AnswerWater(q, false, zone),
+                    onCancel: () =>
+                    {
+                        _waterAsk.Dismiss(q.Id);
+                        var left = Math.Ceiling(q.Left(_ws.Clock.Now).TotalSeconds);
+                        zone?.NoteWater($"中途切 TEC 的询问没答（{left:0} s 后自动打开冷却水）");
+                        Toast($"没答复——{left:0} s 后自动打开冷却水");
+                    });
+                _askIsWater = true;
+                break;
+            }
+            case WaterAskPrompter.Action.RefreshSub:
+                AskSub = WaterAskSub(p!);
+                Raise(nameof(AskSub));
+                break;
+            case WaterAskPrompter.Action.Close:
+                CloseAsk();
+                Toast("冷却水的询问已收回（水已开 / 超时按打开 / 不再制冷 / 温控已停）");
+                break;
+        }
+    }
+
+    private string WaterAskSub(WaterAsk q)
+        => $"通道 {q.Channel} · {Math.Ceiling(q.Left(_ws.Clock.Now).TotalSeconds):0} s 后没人答按「打开冷却水」";
+
+    private void AnswerWater(WaterAsk q, bool open, HmiZoneViewModel? zone)
+    {
+        if (Water?.Answer(q.Id, open) != true)
+        {
+            Toast("这个询问已经过期（水已开 / 超时按打开 / 温控已停）");
+            return;
+        }
+        zone?.NoteWater(open ? "中途切 TEC：选了打开冷却水（先开阀、再开冷水机，通水后接）" : "中途切 TEC：选了不开冷却水，直接接 TEC");
+        Toast(open ? "冷却水阀和冷水机马上打开，通水后接 TEC" : "不开冷却水，直接接 TEC");
+        RaiseWater();
+    }
 
     // ── 冷却水电磁阀（整机一只，装置总览页的开关）────────────────────────
     //
@@ -1024,6 +1110,7 @@ public sealed class HmiViewModel : ViewModelBase
         if (ShowFiles) FilesRefresh();
         if (ShowSys) SysRefresh();
         RefreshAlarm();
+        PollWaterAsk();
         RaiseWater();
         if (_toastTtl > 0 && --_toastTtl == 0) Raise(nameof(ToastOpen));
         RaiseAll(nameof(AnyRun), nameof(RailState), nameof(OvRt), nameof(Cur));
@@ -1074,6 +1161,11 @@ public sealed class HmiZoneViewModel : ViewModelBase
     private IRefluxControl? Reflux => Ch?.Capabilities.Get<IRefluxControl>();
     private IHeatSource? Heat => Ch?.Capabilities.Get<IHeatSource>();
     private ICoolingWaterValve? WaterValve => Ch?.Capabilities.Get<ICoolingWaterValve>();
+    /// <summary>系统页：这一路此刻在哪个挡 / 制冷段 / 在等什么（没在控 null）。</summary>
+    internal string? HeatRegime => Heat?.Regime;
+    /// <summary>系统页：制冷段里夹套目标压低了多少 K（没压 null）。</summary>
+    internal double? CascadePushC => Temp is ITemperatureStatus st ? st.CascadePushC : null;
+    internal void NoteWater(string text) => Log("冷却水", text);
 
     /// <summary>上位机 PID 的整定台（「PID 整定」页背后那一层）；温控器 PID 方式 / 没连上是 null。</summary>
     internal IPidTuningBench? PidBench => Ch?.Capabilities.Get<IPidTuningBench>();
@@ -1732,7 +1824,8 @@ public sealed class HmiZoneViewModel : ViewModelBase
                 return;
             }
         }
-        IssueTempNow(t, skipWater: false);
+        // 开那一下没弹窗（不是降温 / 水本来就备好）：这次控温中途要切 TEC 而冷却水没开好时，驱动先挂询问再接（用户定的，2026-10-28）
+        IssueTempNow(t, skipWater: false, askLater: Mode != "TrTj");
     }
 
     private void AskCoolingWater(ITemperatureControl t, double target, TempChannelKind kind)
@@ -1745,8 +1838,8 @@ public sealed class HmiZoneViewModel : ViewModelBase
             "TEC 制冷要冷却水，冷却水阀 / 冷水机现在还没开好。\n" +
             "「打开冷却水」：先开冷却水阀、再开冷水机，等通水后接 TEC 降温。\n" +
             "「不开，直接制冷」：阀和冷水机都不动，直接接 TEC——确认已经有冷却水（手动开好 / 别的冷却），没有水 TEC 会干烧。",
-            "打开冷却水", () => IssueTempNow(t, skipWater: false),
-            "不开，直接制冷", () => IssueTempNow(t, skipWater: true),
+            "打开冷却水", () => IssueTempNow(t, skipWater: false, askLater: false),      // 已经答过：中途不再问
+            "不开，直接制冷", () => IssueTempNow(t, skipWater: true, askLater: false),
             onCancel: () => CancelCoolingAsk(running));
     }
 
@@ -1778,7 +1871,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
     }
 
     /// <summary>真下发。skipWater = 降温弹窗里人选了「不开，直接制冷」：这次接 TEC 不开冷却水。</summary>
-    private void IssueTempNow(ITemperatureControl t, bool skipWater)
+    private void IssueTempNow(ITemperatureControl t, bool skipWater, bool askLater = false)
     {
         // 发出去的就是要记下的：温控开关 / 换模式 / 换到达方式这几条路都从这里下发，用的是
         // 「待下发优先」的 Pv()。发了却还留在待下发里，格子亮着琥珀色、釜上的牌子写着旧数，
@@ -1814,6 +1907,11 @@ public sealed class HmiZoneViewModel : ViewModelBase
         {
             hs.SkipWaterNext();
             Log("下发", "降温：人选了不开冷却水，直接接 TEC 制冷");
+        }
+        else if (askLater && Heat is { } ha && WaterValve is { Available: true })
+        {
+            // 旗子紧贴真正下发那一行立（上面的 early return 之后）：立了却没下发会被下一次、可能是配方的下发吃掉
+            ha.AskWaterNext();
         }
         // 「尽快」= 普通模式的升温（用户要的）：不按速率不按时长，目标一步写给温控器，
         // 它按自己的最大能力走（RD105：SPEED=0 不限斜率）——跟配方里「到达方式 = 尽快」同一个意思
