@@ -37,7 +37,14 @@ public sealed record CalibrationRecord(
 
 public enum TempChannelKind { Reactor, Jacket }
 
-public sealed record TempTarget(double Value, TempChannelKind Kind = TempChannelKind.Reactor);
+public sealed record TempTarget(double Value, TempChannelKind Kind = TempChannelKind.Reactor)
+{
+    /// <summary>
+    /// E 级紧急程序摆到安全温度（Tsafe）用的下发：驱动不拿「没整定过」之类的调试条件拦它——出事时先控住，参数差点也比不控强。
+    /// 其余下发（HMI、配方步骤、蒸回流）都是 false。
+    /// </summary>
+    public bool Emergency { get; init; }
+}
 
 public interface ITemperatureControl : ICapability
 {
@@ -208,6 +215,13 @@ public interface IHeatSource : ICapability
     /// 下发时取用一次，停控清掉。缺省什么都不做。
     /// </summary>
     void AskWaterNext() { }
+
+    /// <summary>
+    /// 从 from 控到 to（定值下发 from = to 或此刻温度）这一段，增益表里有没有整定过：null = 整过了 / 不用查；
+    /// 否则是一句原话（「双向挡表里 35 ℃ 附近还没整定——先在「PID 整定」页整 25、50 ℃」）。
+    /// 驱动下发时自己也查（没整过直接拒绝）；HMI 先问一句，弹窗说清楚、不让人对着一条报错猜。缺省 null。
+    /// </summary>
+    string? UntunedReason(double from, double to, TempChannelKind kind) => null;
 }
 
 /// <summary>

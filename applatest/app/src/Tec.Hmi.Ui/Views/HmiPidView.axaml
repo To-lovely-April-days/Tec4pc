@@ -110,11 +110,13 @@
           <DockPanel>
             <Border DockPanel.Dock="Top" Classes="hpnh" Height="44">
               <DockPanel VerticalAlignment="Center">
-                <Grid DockPanel.Dock="Left" ColumnDefinitions="96,96" Height="30" Margin="0,0,12,0">
+                <Grid DockPanel.Dock="Left" ColumnDefinitions="96,96,96" Height="30" Margin="0,0,12,0">
                   <Button Grid.Column="0" Classes="hmode" Classes.on="{Binding TableTec}" Content="TEC 表"
                           Tag="tec" Click="OnTable" />
                   <Button Grid.Column="1" Classes="hmode" Classes.on="{Binding TableHeater}" Content="加热棒表"
                           Tag="heater" Click="OnTable" />
+                  <Button Grid.Column="2" Classes="hmode" Classes.on="{Binding TableBoth}" Content="双向挡表"
+                          Tag="both" Click="OnTable" />
                 </Grid>
                 <TextBlock Text="{Binding TableSummary}" Classes="sub" VerticalAlignment="Center" />
               </DockPanel>
@@ -278,15 +280,22 @@
                   <TextBlock Grid.Column="0" Text="温度" Classes="th" Margin="0,0,6,0" />
                   <TextBox Grid.Column="1" Classes="pm" Text="{Binding TuneT}" IsEnabled="{Binding NotTuning}" />
                   <TextBlock Grid.Column="2" Text="℃  执行器" Classes="th" Margin="6,0,6,0" />
-                  <Grid Grid.Column="3" ColumnDefinitions="*,*" Height="28">
+                  <Grid Grid.Column="3" ColumnDefinitions="*,*,*" Height="28">
                     <Button Grid.Column="0" Classes="hmode" Classes.on="{Binding TuneTec}" Content="TEC"
                             Tag="tec" Click="OnAct" IsEnabled="{Binding NotTuning}" />
                     <Button Grid.Column="1" Classes="hmode" Classes.on="{Binding TuneHeater}" Content="加热棒"
                             Tag="heater" Click="OnAct" IsEnabled="{Binding NotTuning}" />
+                    <Button Grid.Column="2" Classes="hmode" Classes.on="{Binding TuneBoth}" Content="双向挡"
+                            Tag="both" Click="OnAct" IsEnabled="{Binding NotTuning}" />
                   </Grid>
                   <StackPanel Grid.Row="1" Grid.ColumnSpan="4" Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
-                    <TextBlock Text="继电幅值" Classes="th" />
+                    <!-- 双向挡两半周各是一只执行器：加热半周加热棒、制冷半周 TEC，各填各的 -->
+                    <TextBlock Text="继电幅值" Classes="th" IsVisible="{Binding TuneSingle}" />
+                    <TextBlock Text="加热棒" Classes="th" IsVisible="{Binding TuneBoth}" />
                     <TextBox Classes="pm" Width="52" Text="{Binding TuneAmp}" IsEnabled="{Binding NotTuning}" />
+                    <TextBlock Text="%   TEC" Classes="th" IsVisible="{Binding TuneBoth}" />
+                    <TextBox Classes="pm" Width="52" Text="{Binding TuneTecAmp}" IsEnabled="{Binding NotTuning}"
+                             IsVisible="{Binding TuneBoth}" />
                     <TextBlock Text="%   回差" Classes="th" />
                     <TextBox Classes="pm" Width="60" Text="{Binding TuneHys}" IsEnabled="{Binding NotTuning}" />
                     <TextBlock Text="℃" Classes="th" />

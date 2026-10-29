@@ -30,8 +30,8 @@ public sealed class Rd105PidHooks
 /// 上位机 PID 的整定台（IPidTuningBench），每个工位一个，架在 HostControlLoop 上——
 /// 增益表、手动参数、继电器法自整定全是那边现成的，这里只做翻译、校验、落盘和收尾。
 ///
-/// 两张表按执行器分：TEC（&lt;实例&gt;-tc&lt;n&gt;.csv，跟 0325 起的那张是同一个文件）与加热棒
-/// （&lt;实例&gt;-tc&lt;n&gt;-heater.csv），格式都是 TecControl.App 的 gain-schedule.csv。
+/// 三张表：TEC（&lt;实例&gt;-tc&lt;n&gt;.csv，跟 0325 起的那张是同一个文件）、加热棒（&lt;实例&gt;-tc&lt;n&gt;-heater.csv）、
+/// 双向挡（&lt;实例&gt;-tc&lt;n&gt;-both.csv，加热棒 ↔ TEC 来回推整出来的），格式都是 TecControl.App 的 gain-schedule.csv。
 /// 表内不再按 100 ℃ 分段（SegmentBoundaryC = NaN）：这台机器上加热棒不只在高温段用，
 /// 段是按执行器分的，不是按温度。手动参数与这一路的调度开关存在 &lt;实例&gt;-tc&lt;n&gt;-pid.json。
 /// </summary>
@@ -44,7 +44,10 @@ public sealed class Rd105HostPid : IPidTuningBench
     private readonly Action<string, string> _log;
     private readonly string _tecPath;
     private readonly string _heaterPath;
+    private readonly string _bothPath;
     private readonly string _paramsPath;
+
+    private static readonly PidActuator[] AllTables = { PidActuator.Tec, PidActuator.Heater, PidActuator.Both };
 
     private volatile PidLive? _live;
     private volatile bool _tuning;
@@ -64,8 +67,9 @@ public sealed class Rd105HostPid : IPidTuningBench
         _log = log;
         _tecPath = Rd105HostControl.GainsPath(instanceId, tc);
         _heaterPath = Rd105HostControl.HeaterGainsPath(instanceId, tc);
+        _bothPath = Rd105HostControl.BothGainsPath(instanceId, tc);
         _paramsPath = Rd105HostControl.ParamsPath(instanceId, tc);
-        foreach (var a in new[] { PidActuator.Tec, PidActuator.Heater })
+        foreach (var a in AllTables)
             Schedule(a).SegmentBoundaryC = double.NaN;      // 段按执行器分，表内全温域插值
         _loop.AutoTuneFinished += OnAutoTuneFinished;
     }
@@ -93,29 +97,51 @@ public sealed class Rd105HostPid : IPidTuningBench
 
     private string Who => $"{_instanceId} TC{_tc}";
 
-    private static ActuatorMode Mode(PidActuator a) => a == PidActuator.Heater ? ActuatorMode.HeatOnly : ActuatorMode.Bidirectional;
+    private static GainTable TableOf(PidActuator a) => a switch
+    {
+        PidActuator.Heater => GainTable.Heater,
+        PidActuator.Both => GainTable.Both,
+        _ => GainTable.Tec
+    };
 
-    /// <summary>形态 → 表：只加热与「加热棒 + TEC 双向」（0336 双向挡）都是加热棒那张。</summary>
-    private static PidActuator Of(ActuatorMode m) => HostControlLoop.HeaterTable(m) ? PidActuator.Heater : PidActuator.Tec;
+    /// <summary>回路此刻查的表 → 执行器（双向挡里 TEC 暂时接不上按只加热算，表照样是双向挡那张）。</summary>
+    private static PidActuator Of(GainTable t) => t switch
+    {
+        GainTable.Heater => PidActuator.Heater,
+        GainTable.Both => PidActuator.Both,
+        _ => PidActuator.Tec
+    };
 
-    public static string ActuatorName(PidActuator a) => a == PidActuator.Heater ? "加热棒" : "TEC";
+    public static string ActuatorName(PidActuator a) => a switch
+    {
+        PidActuator.Heater => "加热棒",
+        PidActuator.Both => "双向挡",
+        _ => "TEC"
+    };
 
-    private PidGainSchedule Schedule(PidActuator a) => _loop.GetGainSchedule(_tc, Mode(a));
+    private PidGainSchedule Schedule(PidActuator a) => _loop.GetGainSchedule(_tc, TableOf(a));
 
     // ── 落盘 ─────────────────────────────────────────────────────────
 
-    public string TablePath(PidActuator actuator) => actuator == PidActuator.Heater ? _heaterPath : _tecPath;
+    public string TablePath(PidActuator actuator) => actuator switch
+    {
+        PidActuator.Heater => _heaterPath,
+        PidActuator.Both => _bothPath,
+        _ => _tecPath
+    };
 
-    /// <summary>开会话时读一次：两张表 + 手动参数 / 调度开关。返回给日志的一句话。</summary>
+    /// <summary>开会话时读一次：三张表 + 手动参数 / 调度开关。返回给日志的一句话。</summary>
     internal string Load()
     {
-        var nTec = Rd105HostControl.Load(Schedule(PidActuator.Tec), _tecPath);
-        var nHeat = Rd105HostControl.Load(Schedule(PidActuator.Heater), _heaterPath);
+        var n = AllTables.Sum(a => Rd105HostControl.Load(Schedule(a), TablePath(a)));
         var p = LoadParams();
-        return $"TEC 表 {Describe(PidActuator.Tec)}、加热棒表 {Describe(PidActuator.Heater)}" +
-               (nTec + nHeat == 0 ? "——表都空着，先用手动参数，请在常用温度点自整定" : "") +
+        return DescribeAll() +
+               (n == 0 ? "——表都空着，先用手动参数，请在常用温度点自整定" : "") +
                $"；手动内环 {Fmt(Manual.Inner)}{(p ? "（上次存的）" : "（缺省）")}；增益调度{(Scheduling ? "开" : "关")}";
     }
+
+    private string DescribeAll()
+        => $"TEC 表 {Describe(PidActuator.Tec)}、加热棒表 {Describe(PidActuator.Heater)}、双向挡表 {Describe(PidActuator.Both)}";
 
     private string Describe(PidActuator a)
     {
@@ -125,10 +151,10 @@ public sealed class Rd105HostPid : IPidTuningBench
             : string.Join("、", rows.Select(r => r.TemperatureC.ToString("0.#", CultureInfo.InvariantCulture) + " ℃"));
     }
 
-    /// <summary>回路登记 / 学到东西之后存两张表（会话收到 GainScheduleChanged 时调）。</summary>
+    /// <summary>回路登记 / 学到东西之后存三张表（会话收到 GainScheduleChanged 时调）。</summary>
     internal void SaveTables(bool quiet = false)
     {
-        foreach (var a in new[] { PidActuator.Tec, PidActuator.Heater })
+        foreach (var a in AllTables)
         {
             var path = TablePath(a);
             var sched = Schedule(a);
@@ -137,7 +163,7 @@ public sealed class Rd105HostPid : IPidTuningBench
             try { Rd105HostControl.Save(sched, path); }
             catch (Exception ex) { _log("error", $"{Who} {ActuatorName(a)}增益表保存失败：{ex.Message}（{path}）"); }
         }
-        if (!quiet) _log("info", $"{Who} 增益表已保存：TEC {Describe(PidActuator.Tec)}；加热棒 {Describe(PidActuator.Heater)}");
+        if (!quiet) _log("info", $"{Who} 增益表已保存：{DescribeAll()}");
         TablesChanged?.Invoke();
     }
 
@@ -240,7 +266,8 @@ public sealed class Rd105HostPid : IPidTuningBench
             outer = new PidGains(okp, oki, okd);
             bias = ob;
         }
-        // 加热比两张表都收（0336 起加热棒表那列给「加热棒 + TEC 双向」用：负半轴乘它）
+        // 加热比：TEC 表那列给 TEC 双向（正半轴除以它）；双向挡表那列给「加热棒 + TEC 双向」（负半轴乘它，整定时 = TEC % ÷ 加热棒 %）；
+        // 加热棒表留着旧数（只加热不用）
         double? heat = null;
         if (r.HeatRatio is { } hr)
         {
@@ -253,15 +280,78 @@ public sealed class Rd105HostPid : IPidTuningBench
 
     public void Reload()
     {
-        foreach (var a in new[] { PidActuator.Tec, PidActuator.Heater })
+        foreach (var a in AllTables)
         {
             var sched = Schedule(a);
             sched.Clear();
             Rd105HostControl.Load(sched, TablePath(a));
         }
         LoadParams();
-        _log("info", $"{Who} 增益表与手动参数已从盘上重读：TEC {Describe(PidActuator.Tec)}；加热棒 {Describe(PidActuator.Heater)}");
+        _log("info", $"{Who} 增益表与手动参数已从盘上重读：{DescribeAll()}");
         TablesChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// 双向挡那张表把 from ~ to 这一段盖住没有（用户定的：没整过的温度不让下发，先整定）：null = 盖住了 / 调度关着（固定手动参数，不查表）；
+    /// 否则一句原话，说哪一段没整、该先整哪几个建议点。只算自整定出来的行（Ku &gt; 0）——运行中学稳态偏置顺手建的行没整过。
+    /// 盖住 = 离某个整过的点 2 ℃ 以内，或夹在两个相距不超过 30 K 的整过的点之间（中间按插值）。
+    /// reactor：釜内（串级）目标——内环查表按的是夹套设定（釜内目标 + 稳态偏置），表里学到了这个温度的稳态偏置就把夹套那一头也算进来。
+    /// 建议点只列设备保护范围（超温上下限）之内的——范围外的点整不了。
+    /// </summary>
+    public string? BothCoverage(double from, double to, bool reactor = false)
+    {
+        if (!Scheduling || !double.IsFinite(from) || !double.IsFinite(to)) return null;
+        var lo = Math.Min(from, to);
+        var hi = Math.Max(from, to);
+        if (reactor && _loop.BothSteadyBias(_tc, to) is { } sb && double.IsFinite(sb))
+        {
+            lo = Math.Min(lo, to + sb);
+            hi = Math.Max(hi, to + sb);
+        }
+        var tuned = Rows(PidActuator.Both).Where(r => r.FromAutoTune).Select(r => r.TemperatureC).OrderBy(t => t).ToArray();
+
+        var covered = new List<(double A, double B)>();
+        foreach (var t in tuned) covered.Add((t - BothTablePoints.NearC, t + BothTablePoints.NearC));
+        for (var i = 0; i + 1 < tuned.Length; i++)
+            if (tuned[i + 1] - tuned[i] <= BothTablePoints.MaxGapK) covered.Add((tuned[i], tuned[i + 1]));
+        covered.Sort();
+
+        // [lo, hi] 减去盖住的部分，剩下的就是没整的几段
+        var holes = new List<(double A, double B)>();
+        var at = lo;
+        foreach (var (a, b) in covered)
+        {
+            if (b < at) continue;
+            if (a > hi) break;
+            if (a > at) holes.Add((at, a));
+            at = Math.Max(at, b);
+            if (at >= hi) break;
+        }
+        if (at < hi || (holes.Count == 0 && !covered.Any(c => c.A <= lo && lo <= c.B))) holes.Add((at, hi));
+        if (holes.Count == 0) return null;
+
+        // 该先整哪几个建议点：每个没整的段里的建议点，加上段两头外面最近的那个（凑成两头都有整过的点）；已经整过的不再列。
+        // 设备保护范围外的建议点整不了，不列（够不着就直接建议整那个温度本身）
+        bool done(double p) => tuned.Any(t => Math.Abs(t - p) <= BothTablePoints.NearC);
+        var lim = _temp.Limits;
+        var pts = BothTablePoints.Suggested.Where(p => p >= lim.Min && p <= lim.Max).ToArray();
+        var want = new SortedSet<double>();
+        foreach (var (a, b) in holes)
+        {
+            foreach (var p in pts.Where(p => p >= a && p <= b)) want.Add(p);
+            var below = pts.Where(p => p <= a).DefaultIfEmpty(double.NaN).Max();
+            var above = pts.Where(p => p >= b).DefaultIfEmpty(double.NaN).Min();
+            want.Add(double.IsNaN(below) ? Math.Round(Math.Clamp(a, lim.Min, lim.Max)) : below);
+            want.Add(double.IsNaN(above) ? Math.Round(Math.Clamp(b, lim.Min, lim.Max)) : above);
+        }
+        var todo = want.Where(p => !done(p)).ToList();
+        if (todo.Count == 0) todo.Add(Math.Round((holes[0].A + holes[0].B) / 2));
+
+        string T(double v) => v.ToString("0.#", CultureInfo.InvariantCulture);
+        var where = string.Join("、", holes.Select(h => h.B - h.A < 0.5 ? $"{T(h.A)} ℃" : $"{T(h.A)} ~ {T(h.B)} ℃"));
+        return $"双向挡表里 {where} 还没整定（已整：{(tuned.Length == 0 ? "无" : string.Join("、", tuned.Select(T)) + " ℃")}）——" +
+               $"先在「PID 整定」页按双向挡整 {string.Join("、", todo.Select(T))} ℃" +
+               $"（离自整定出来的点 {T(BothTablePoints.NearC)} ℃ 以内，或夹在两个相距不超过 {T(BothTablePoints.MaxGapK)} K 的这种点之间，才算整过；手填的行不算）";
     }
 
     // ── 开关与手动参数 ───────────────────────────────────────────────
@@ -306,7 +396,7 @@ public sealed class Rd105HostPid : IPidTuningBench
 
     // ── 在用参数与实时 ─────────────────────────────────────────────
 
-    public PidActuator CurrentActuator => Of(_loop.GetActuatorMode(_tc));
+    public PidActuator CurrentActuator => Of(_loop.GetTable(_tc));
 
     public PidLive? Live => _live;
 
@@ -326,12 +416,12 @@ public sealed class Rd105HostPid : IPidTuningBench
     /// <summary>
     /// 照回路的规矩算：内环按内环设定查此刻执行器那张表；外环 / 稳态偏置按主设定查——外环的对象是釜，跟执行器无关，
     /// 查的是两张表里离主设定最近的外环工作点所在那张（HostControlLoop.GetOuterSchedule）；表里没有或调度关了就是手动那组。
-    /// 加热比：TEC 表那行的给 TEC 双向用（正半轴除以它）；加热棒表那行的给「加热棒 + TEC 双向」用（负半轴乘它），只加热不用。
+    /// 双向挡只查双向挡那张（外环也是）。加热比：TEC 表那行的给 TEC 双向用（正半轴除以它）；双向挡那行的给 TEC 那半轴乘；只加热不用。
     /// </summary>
     private PidInUse Compose(PidActuator a, double innerAt, double outerAt, bool heaterTec)
     {
         var sched = Schedule(a);
-        var outerSched = _loop.GetOuterSchedule(_tc, outerAt);
+        var outerSched = a == PidActuator.Both ? sched : _loop.GetOuterSchedule(_tc, outerAt);
         var on = Scheduling;
         var m = Manual;
         var g = on ? sched.GainsAt(innerAt) : null;
@@ -370,10 +460,16 @@ public sealed class Rd105HostPid : IPidTuningBench
         get
         {
             if (!_tuning || _tuneReq is not { } r) return "";
-            var head = $"{ActuatorName(r.Actuator)}，{r.SetpointC:0.0} ℃，幅值 {r.RelayAmplitudePercent:0} %、回差 {r.HysteresisC:0.###} ℃";
-            // 输出是 0 = 单方向执行器的被动半周：加热棒关着等自然降温 / TEC 关着等自然回温
+            var both = r.Actuator == PidActuator.Both;
+            var head = both
+                ? $"双向挡，{r.SetpointC:0.0} ℃，加热棒 {r.RelayAmplitudePercent:0} % ↔ TEC {r.TecPercent ?? 0:0} %、回差 {r.HysteresisC:0.###} ℃"
+                : $"{ActuatorName(r.Actuator)}，{r.SetpointC:0.0} ℃，幅值 {r.RelayAmplitudePercent:0} %、回差 {r.HysteresisC:0.###} ℃";
+            // 输出是 0 = 单方向执行器的被动半周：加热棒关着等自然降温 / TEC 关着等自然回温。
+            // 双向挡两半周都有出力，输出 0 只会是切继电器那几秒，或要制冷而冷水机最短间隔没到（加热棒关着先自然凉）
             var idle = _live is { Tuning: true } l && Math.Abs(l.DutyPercent) < 1e-9
-                ? $"；这半周输出 0，等温度自己{(r.Actuator == PidActuator.Heater ? "降" : "升")}回设定值（靠自然散热，可能要十几分钟）"
+                ? both
+                    ? "；这一刻输出 0：在切继电器 / 开水，或等冷水机最短间隔到了再接 TEC（加热棒关着先自然凉）"
+                    : $"；这半周输出 0，等温度自己{(r.Actuator == PidActuator.Heater ? "降" : "升")}回设定值（靠自然散热，可能要十几分钟）"
                 : "";
             return (_tuneCycles <= 0
                 ? $"自整定中（{head}）：把温度推到设定值附近，等它来回穿越…"
@@ -395,9 +491,17 @@ public sealed class Rd105HostPid : IPidTuningBench
         if (!double.IsFinite(r.HysteresisC) || r.HysteresisC < 0.01 || r.HysteresisC > 5)
             return $"回差 {r.HysteresisC} ℃ 不在 0.01 ~ 5 ℃";
         if (double.IsNaN(_temp.CurrentJacket)) return "夹套温度没有读数——自整定靠它判穿越，读不到整不了";
-        if (r.Actuator == PidActuator.Heater && Hooks.Prepare is null)
+        if (r.Actuator != PidActuator.Tec && Hooks.Prepare is null)
             return "这台温控器单独使用、没有加热棒切换——只能用 TEC 整";
         if (r.Actuator == PidActuator.Heater && OneSidedAmplitudeCheck(r, "加热棒") is { } amp) return amp;
+        if (r.Actuator == PidActuator.Both)
+        {
+            // 双向挡：两半周各是一只执行器，各自最多出到 LIMITED
+            if (r.RelayAmplitudePercent > Limited)
+                return $"加热半周加热棒 {r.RelayAmplitudePercent:0} % 超过了最大输出 LIMITED {Limited:0} %";
+            if (r.TecPercent is not { } tec || !double.IsFinite(tec) || tec < 5 || tec > Limited)
+                return $"制冷半周 TEC 出力要填 5 ~ {Limited:0} %（{(r.TecPercent is { } t ? t.ToString("0.#", CultureInfo.InvariantCulture) + " %" : "没填")}）";
+        }
         return Hooks.Check?.Invoke(r);
     }
 
@@ -430,8 +534,13 @@ public sealed class Rd105HostPid : IPidTuningBench
             _loop.SetStrategy(_tc, ControlStrategy.Direct);
             _loop.SuspendOutput(_tc, false);
             if (!_loop.IsRunning) _loop.Start();
-            await _loop.StartAutoTuneAsync(_tc, r.SetpointC, r.RelayAmplitudePercent, r.HysteresisC, coolOnly, ct)
-                       .ConfigureAwait(false);
+            if (r.Actuator == PidActuator.Both)
+                // 双向挡：加热半周加热棒、制冷半周 TEC，继电器跟着整定器输出的符号扳（组合会话每拍做）
+                await _loop.StartAlternatingAutoTuneAsync(_tc, r.SetpointC, r.RelayAmplitudePercent, r.TecPercent ?? r.RelayAmplitudePercent,
+                                                          r.HysteresisC, ct).ConfigureAwait(false);
+            else
+                await _loop.StartAutoTuneAsync(_tc, r.SetpointC, r.RelayAmplitudePercent, r.HysteresisC, coolOnly, ct)
+                           .ConfigureAwait(false);
             _tuning = true;       // 回路里有整定器了，从这一拍起「没有整定器」才算被停下
         }
         catch
@@ -444,8 +553,11 @@ public sealed class Rd105HostPid : IPidTuningBench
         {
             _starting = false;
         }
-        _log("warn", $"{Who} 自整定开始：{ActuatorName(r.Actuator)}{(coolOnly ? "（只制冷）" : "")}，{r.SetpointC:0.0} ℃，" +
-                     $"继电幅值 {r.RelayAmplitudePercent:0} %、回差 {r.HysteresisC:0.###} ℃——会在设定值附近激起振荡，要有人在场");
+        _log("warn", $"{Who} 自整定开始：" + (r.Actuator == PidActuator.Both
+            ? $"双向挡，{r.SetpointC:0.0} ℃，加热半周加热棒 {r.RelayAmplitudePercent:0} %、制冷半周 TEC {r.TecPercent ?? r.RelayAmplitudePercent:0} %、" +
+              $"回差 {r.HysteresisC:0.###} ℃——冲过设定值切 TEC（先开冷却水），掉下来切回加热棒（关水），会在设定值附近激起振荡，要有人在场"
+            : $"{ActuatorName(r.Actuator)}{(coolOnly ? "（只制冷）" : "")}，{r.SetpointC:0.0} ℃，" +
+              $"继电幅值 {r.RelayAmplitudePercent:0} %、回差 {r.HysteresisC:0.###} ℃——会在设定值附近激起振荡，要有人在场"));
     }
 
     public async Task CancelAutoTuneAsync(CancellationToken ct)

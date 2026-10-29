@@ -330,8 +330,9 @@ public class PidTuningBenchTests
         public List<string> Logs = new();
         public DualStationDriver Drv;
 
-        public Duo()
+        public Duo(bool seedBoth = true)
         {
+            if (seedBoth) BothTableSeed.Seed("DUO1");    // 双向挡没整过不让下发：这里的用例不验那条，先摆一张整过的表
             Rd.Set(1, "LIMITED", 90); Rd.Set(2, "LIMITED", 90);
             Drv = new DualStationDriver
             {
@@ -380,11 +381,12 @@ public class PidTuningBenchTests
         var t = Temp(s, 0);
         await WaitUntil(() => !double.IsNaN(t.CurrentJacket), 3000, "夹套读数");
 
-        // 建议：阈值以上加热棒；「TEC 加热」不启用时比夹套低超过一个死区（要制冷才维持得住）才是 TEC，其余加热棒
-        Assert.Equal(PidActuator.Heater, b.SuggestActuator(95));
-        Assert.Equal(PidActuator.Heater, b.SuggestActuator(50));
-        Assert.Equal(PidActuator.Tec, b.SuggestActuator(5));
-        Assert.Contains("TEC 不接", b.CheckTune(new PidAutoTuneRequest(95, PidActuator.Tec)));
+        // 建议：冷水机已开 = 双向挡，整双向挡那张表、不分温度（2026-10-29）。TEC 只制冷时夹套多烫都能接，
+        // TEC 表 95 ℃ 也整得了（TEC 接入上限只管 TEC 加热）；加热棒表照样能整
+        Assert.Equal(PidActuator.Both, b.SuggestActuator(95));
+        Assert.Equal(PidActuator.Both, b.SuggestActuator(50));
+        Assert.Equal(PidActuator.Both, b.SuggestActuator(5));
+        Assert.Null(b.CheckTune(new PidAutoTuneRequest(95, PidActuator.Tec)));
         Assert.Null(b.CheckTune(new PidAutoTuneRequest(40, PidActuator.Heater)));
 
         var n = d.Rd.Commands.Count;

@@ -3,21 +3,43 @@ namespace Tec.Driver.Abi;
 // ── 上位机 PID 的整定台（面板「PID 整定」页用）──────────────────────────
 //
 // 跟 ITemperatureTuning 的区别：那个是「策略 + 一组参数 + 自整定」的最小契约，配方与引擎能懂；
-// 这个是把回路的整套调参面摆给人看、给人改：按执行器分的两张增益表（各温度段的 PID）、
+// 这个是把回路的整套调参面摆给人看、给人改：TEC / 加热棒 / 双向挡三张增益表（各温度段的 PID）、
 // 手动参数、此刻在用的参数、每拍的 P/I/D、继电器法自整定。只有「控温方式 = 上位机 PID」
 // 的会话才提供（温控器 PID 方式下 PID 在温控器里，面板说一句去参数窗）。
 //
 // 单位照 TecControl.App 的增益表：内环 Kp %/℃、Ki %/(℃·s)、Kd %·s/℃；
 // 外环 Kp ℃/℃、Ki 1/s、Kd s；偏置上限 ℃。
 
-/// <summary>执行器。增益表按它分两张：同一温度，TEC 和加热棒的过程增益差一个量级。</summary>
+/// <summary>执行器（增益表按它分）：同一温度，TEC 和加热棒的过程增益差一个量级，双向挡是两只一起。</summary>
 public enum PidActuator
 {
     /// <summary>TEC（双向；「TEC 加热」不启用的机器上只制冷）。</summary>
     Tec,
 
     /// <summary>电加热棒（PWM 固态继电器，只加热）。</summary>
-    Heater
+    Heater,
+
+    /// <summary>
+    /// 双向挡（双工位主机「冷水机」已开）：加热棒 ↔ TEC 一起，一个 PID 正给加热棒、负给 TEC 制冷。
+    /// 单独一张表（用户定的），整定时全程加热棒 ↔ TEC 来回推：冲过设定值切 TEC、开水往下拉，掉下来切回加热棒、关水往上推。
+    /// </summary>
+    Both
+}
+
+/// <summary>
+/// 双向挡那张表的建议整定点与「整过没有」的规矩（用户定的）。温度按夹套（整定整的是夹套那一路）。
+/// 低温 10 K 一个点（TEC 两头温差越大效率越低，参数变得快）；室温附近 25 ℃（稳态出力在这附近换号）；
+/// 中高温 25~30 K 一个点。两个整过的点之间按温度线性插值。
+/// </summary>
+public static class BothTablePoints
+{
+    public static readonly double[] Suggested = { -20, -10, 0, 10, 25, 50, 80, 110, 140, 170, 200 };
+
+    /// <summary>离某个整过的点这么近（℃）就算整过——跟增益表「2 ℃ 以内算同一个工作点」一致。</summary>
+    public const double NearC = 2;
+
+    /// <summary>两个相邻的整过的点相距不超过这么多（K），中间按插值就算整过；再远中间缺点，先补整。</summary>
+    public const double MaxGapK = 30;
 }
 
 /// <summary>增益表里的一行：某温度下的内环 PID、串级外环、加热比，外加自整定与运行中学到的只读量。</summary>
@@ -30,7 +52,7 @@ public sealed record PidGainRow(double TemperatureC, double Kp, double Ki, doubl
     public double? OuterMaxBiasC { get; init; }
     /// <summary>
     /// 加热比 = 加热 / 制冷有效度之比；空 = 用全局值。TEC 表那行的给 TEC 双向用（正半轴除以它）；
-    /// 加热棒表那行的给「加热棒 + TEC 双向」（0336 双向挡）用——PID 按加热棒整，负半轴给 TEC 时乘它。只加热不用。
+    /// 双向挡表那行的给「加热棒 + TEC 双向」用：负半轴乘它再给 TEC——整定时自动登记成 TEC % ÷ 加热棒 %，整定和控温同一个映射。只加热不用。
     /// </summary>
     public double? HeatRatio { get; init; }
 
@@ -60,8 +82,7 @@ public sealed record PidInUse(
     double HeatRatio)
 {
     /// <summary>
-    /// 此刻是「加热棒 + TEC 双向」（0336 双向挡）：执行器算加热棒（参数按加热棒那张表），但负半轴也出力（TEC 制冷，乘加热比）。
-    /// 预览（Preview）永远是 false。
+    /// 此刻是「加热棒 + TEC 双向」：正半轴加热棒、负半轴 TEC 制冷（双向挡那张表）。预览（Preview）永远是 false。
     /// </summary>
     public bool Bidirectional { get; init; }
 }
@@ -86,13 +107,17 @@ public sealed record PidLive(
 /// <summary>发起一次继电器法自整定。</summary>
 /// <param name="SetpointC">整定温度（℃）：在它附近激起振荡，结果登记为这一温度的工作点。</param>
 /// <param name="Actuator">用哪个执行器整（结果登记进哪张表）。</param>
-/// <param name="RelayAmplitudePercent">继电幅值 %（5~100）。</param>
+/// <param name="RelayAmplitudePercent">继电幅值 %（5~100）。双向挡：加热半周加热棒出多少 %。</param>
 /// <param name="HysteresisC">回差 ℃（0.01~5）；比读数噪声大一点。</param>
 public sealed record PidAutoTuneRequest(
     double SetpointC,
     PidActuator Actuator,
     double RelayAmplitudePercent = 30,
-    double HysteresisC = 0.05);
+    double HysteresisC = 0.05)
+{
+    /// <summary>双向挡：制冷半周 TEC 出多少 %（5~LIMITED）。其余执行器不用。</summary>
+    public double? TecPercent { get; init; }
+}
 
 /// <summary>自整定结束（成功 / 失败 / 取消 / 被停下）。</summary>
 public sealed record PidAutoTuneReport(bool Success, string? Reason, double SetpointC, PidActuator Actuator)
@@ -128,7 +153,7 @@ public interface IPidTuningBench : ICapability
     /// </summary>
     void ApplyRows(PidActuator actuator, IReadOnlyList<PidGainRow> rows);
 
-    /// <summary>两张表和手动参数都从盘上重读（丢掉没应用的改动、拿回别处改过的）。</summary>
+    /// <summary>几张表和手动参数都从盘上重读（丢掉没应用的改动、拿回别处改过的）。</summary>
     void Reload();
 
     /// <summary>这一路按不按增益表走（关了就固定用手动参数）。</summary>

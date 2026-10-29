@@ -334,6 +334,26 @@ public sealed class Rd105TemperatureControl : ITemperatureControl, ITemperatureS
     /// </summary>
     public void SetActuator(ActuatorMode mode) => _loop?.SetActuatorMode(_tc, mode);
 
+    /// <summary>
+    /// 【本地改动】只把输出重新打开、回路解除挂起，不改 Enabled（不算「在控温」）。双向挡整定中切完继电器用：
+    /// 切换序列关输出时把回路挂起了，挂着的回路不算整定器那一拍——不放开的话整定就停在那儿，直到 4 h 超时。
+    /// </summary>
+    public async Task ResumeOutputAsync(CancellationToken ct)
+    {
+        if (_loop is null) return;
+        await _link.Controller.SetEnableAsync(_tc, true, ct).ConfigureAwait(false);
+        _loop.SuspendOutput(_tc, false);
+    }
+
+    /// <summary>【本地改动】形态连同查哪张表一起定（双向挡：加热棒 + TEC 双向 / TEC 暂时接不上的只加热，都查双向挡那张）。</summary>
+    public void SetActuator(ActuatorMode mode, GainTable table) => _loop?.SetActuatorMode(_tc, mode, table);
+
+    /// <summary>【本地改动】此刻查哪张增益表；温控器 PID 方式下没有表，null。</summary>
+    public GainTable? Table => _loop?.GetTable(_tc);
+
+    /// <summary>【本地改动】整定器此刻要的输出（正 = 加热、负 = 制冷）；没在整定是 null。双向挡整定时会话按它的符号扳继电器。</summary>
+    public double? TuningOutput => _loop?.GetTuningOutput(_tc);
+
     /// <summary>回路把这一路停了（会话收到 ChannelTripped 时调）。</summary>
     internal void OnTripped(string reason)
     {

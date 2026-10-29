@@ -533,7 +533,7 @@ public sealed class ChannelRunner
         {
             if (caps.Get<ITemperatureControl>() is { } tc)
                 await Try($"紧急程序：控温到安全温度 {Fmt.Num(t)} ℃（Tsafe）",
-                          ct => tc.SetTargetAsync(new TempTarget(t), ct)).ConfigureAwait(false);
+                          ct => tc.SetTargetAsync(new TempTarget(t) { Emergency = true }, ct)).ConfigureAwait(false);
             else Log(EventKind.SafeStop, "紧急程序：这一路没有控温设备，安全温度没处下发", null);
         }
         if (plan.SafeRpm is { } r)

@@ -1748,8 +1748,17 @@ public sealed class HmiZoneViewModel : ViewModelBase
                 Pending.Remove(key);
                 Log("模式", $"目标 {Txt.Fx(c)} ℃ 带到 {ModeName}");
             }
+            var keep = carry is not null ? (Key: m == "Tj" ? "tj" : "tr", Old: Sets[m == "Tj" ? "tj" : "tr"]) : default;
             IssueTemp();
-            _owner.Toast($"已切到{ModeName}，温控继续" + (carry is { } cc ? $"，目标 {Txt.Fx(cc)} ℃" : ""));
+            if (_tuneAsked)
+            {
+                // 「先整定」拦下了：回路还在按原来的模式追原来的目标，面板也退回去，别显示一个没切过去的模式
+                Mode = from;
+                if (carry is not null) Sets[keep.Key] = keep.Old;
+                Log("模式", $"双向挡没整定，没切到{NameOf(m)}——还是{ModeName}");
+            }
+            else
+                _owner.Toast($"已切到{ModeName}，温控继续" + (carry is { } cc ? $"，目标 {Txt.Fx(cc)} ℃" : ""));
         }
         else if (stopFirst)
         {
@@ -1768,7 +1777,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
         if (TempOn)
         {
             IssueTemp();
-            _owner.Toast(v switch
+            if (!_tuneAsked) _owner.Toast(v switch
             {
                 "fast" => "到达方式改为尽快：斜率已撤，目标不变，温控继续",
                 "dur" => $"到达方式改为按时长 {Txt.Fx(Pv("dur"))} min：已按新斜率重新下发，目标不变",
@@ -1809,8 +1818,12 @@ public sealed class HmiZoneViewModel : ViewModelBase
         }, TaskScheduler.Default);
     }
 
+    /// <summary>上一次 IssueTemp 被「先整定」弹窗拦下了（没下发）：换模式 / 换到达方式 / 下发那几条路据此不报「温控继续」。</summary>
+    private bool _tuneAsked;
+
     private void IssueTemp()
     {
+        _tuneAsked = false;
         if (Temp is not { } t) { TempBusy = false; return; }
         // 判是降温、要接 TEC，而冷却水还没备好：先问开不开冷水机和冷却水阀（用户定的：只在 HMI 手动开温控这条路问，
         // 配方 / 双向挡中途切到制冷照常自动开；阀开着、冷水机在转就不问）。目标按「待下发优先」的 Pv() 判，问完才落成设定值
@@ -1818,14 +1831,72 @@ public sealed class HmiZoneViewModel : ViewModelBase
         {
             var kind = Mode == "Tj" ? TempChannelKind.Jacket : TempChannelKind.Reactor;
             var target = Pv(Mode == "Tj" ? "tj" : "tr");
+            // 双向挡那张表没整过这个温度（用户定的：先整定）：先弹窗说清楚该整哪几个点，不下发（驱动那一层只记警告——配方中途不能拦）。
+            // 斜坡查此刻到目标整段，「尽快」只查目标（回路按设定值查表）。回路本来就在追这个目标（换到达方式 / 只改了搅拌）不再问
+            var from = RampBy == "fast" ? target : Mode == "Tj" ? t.CurrentJacket : t.CurrentReactor;
+            if (!(LoopSetpoint is { } now && Math.Abs(now - target) < 1e-6)
+                && Heat is { } hu && hu.UntunedReason(double.IsNaN(from) ? target : from, target, kind) is { } untuned)
+            {
+                AskTuneFirst(target, untuned);
+                return;
+            }
             if (Heat is { } h && h.WouldCool(target, kind) && WaterValve is { Available: true, Ready: false })
             {
                 AskCoolingWater(t, target, kind);
                 return;
             }
         }
+        else if (Reflux is not { Active: true } && Heat is { } hr && !double.IsNaN(t.CurrentJacket)
+                 && hr.UntunedReason(t.CurrentJacket, t.CurrentJacket, TempChannelKind.Jacket) is { } untunedReflux)
+        {
+            // 蒸回流：夹套跟着釜内走，终点不知道——此刻夹套这一点双向挡那张表要整过
+            AskTuneFirst(t.CurrentJacket, untunedReflux);
+            return;
+        }
         // 开那一下没弹窗（不是降温 / 水本来就备好）：这次控温中途要切 TEC 而冷却水没开好时，驱动先挂询问再接（用户定的，2026-10-28）
         IssueTempNow(t, skipWater: false, askLater: Mode != "TrTj");
+    }
+
+    /// <summary>
+    /// 双向挡表没盖住这个目标：不下发，弹窗说哪一段没整、先整哪几个点，可以直接跳到 PID 整定页。
+    /// 打开温控的那一下 → 开关弹回关；回路本来在控（改目标重新下发）→ 接着追原来的目标，新目标留在待下发。
+    /// </summary>
+    private void AskTuneFirst(double target, string why)
+    {
+        _tuneAsked = true;
+        var running = LoopSetpoint;
+        var reflux = Mode == "TrTj";
+        void back()
+        {
+            TempBusy = false;
+            if (running is not { } old)
+            {
+                TempOn = false;
+                Log("拒绝", $"目标 {Txt.Fx(target)} ℃：双向挡还没整定，温控没开");
+            }
+            else if (reflux)
+            {
+                // 蒸回流的目标是跟随算出来的，面板上没有一格要退回去
+                Log("拒绝", $"蒸回流：夹套 {Txt.Fx(target)} ℃ 双向挡还没整定，没切过去——回路接着追 {Txt.Fx(old)} ℃");
+            }
+            else
+            {
+                var key = Mode == "Tj" ? "tj" : "tr";
+                if (!Pending.ContainsKey(key) && Math.Abs(Sets[key] - old) > 1e-9)
+                {
+                    Pending[key] = Sets[key];
+                    Sets[key] = old;
+                }
+                Log("拒绝", $"目标 {Txt.Fx(target)} ℃：双向挡还没整定，没下发——回路接着追 {Txt.Fx(old)} ℃");
+            }
+            RaiseZone();
+        }
+        _owner.OpenAsk(
+            "先整定",
+            $"通道 {Index} · 目标 {Txt.Fx(target)} ℃ · 双向挡（冷水机已开）",
+            why + "\n没整过的温度用的参数不对，控不准，所以先不下发。整完回来再开温控。",
+            "去 PID 整定页", () => { back(); _owner.ZTab = "pid"; },
+            onCancel: back);
     }
 
     private void AskCoolingWater(ITemperatureControl t, double target, TempChannelKind kind)
@@ -2044,6 +2115,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
         if (StirOn) IssueStir();
 
         var held = new List<string>();
+        if (tempPending && TempOn && _tuneAsked) held.Add("温度目标落在双向挡没整定的温度，没下发——先整定");
         if (tempPending && !TempOn) held.Add("「温控」开关是关的，温度目标没有下发到温控器——把右上角「温控」打开才会写进去");
         if (stirPending && !StirOn && HasStir) held.Add("「搅拌」开关是关的，转速没有下发");
         if (held.Count == 0)

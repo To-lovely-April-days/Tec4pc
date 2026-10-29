@@ -193,11 +193,21 @@ public sealed class HmiPidViewModel : ViewModelBase
 
     public bool TableTec => _table == PidActuator.Tec;
     public bool TableHeater => _table == PidActuator.Heater;
-    /// <summary>「加热比」两张表都有（0336 起加热棒表那列给双向挡用：TEC 那半轴乘它）；列头提示按表说。</summary>
-    public bool HeatColumn => true;
-    public string HeatColumnTip => _table == PidActuator.Tec
-        ? "加热 / 制冷有效度之比（TEC 双向、「TEC 加热」启用时用）：正半轴除以它。空 = 1"
-        : "加热棒 / TEC 制冷有效度之比，给双向挡（冷水机已开）用：PID 按加热棒整，负半轴给 TEC 时乘它——加热棒比 TEC 强 2 倍就填 2。空 = 1（只加热不用）";
+    public bool TableBoth => _table == PidActuator.Both;
+    /// <summary>
+    /// 「加热比」TEC 表（TEC 双向：正半轴除以它）和双向挡表（TEC 那半轴乘它，整定时自动登记成 TEC % ÷ 加热棒 %）用；加热棒表只加热用不上。
+    /// </summary>
+    public bool HeatColumn => _table != PidActuator.Heater;
+    public string HeatColumnTip => _table == PidActuator.Both
+        ? "TEC 那半轴乘的比值：PID 负的那一半乘它再给 TEC。整定时自动登记成 TEC % ÷ 加热棒 %（整定和控温同一个映射），一般别手改。空 = 1"
+        : "加热 / 制冷有效度之比（TEC 双向、「TEC 加热」启用时用）：正半轴除以它。空 = 1";
+
+    internal static string Name(PidActuator a) => a switch
+    {
+        PidActuator.Heater => "加热棒",
+        PidActuator.Both => "双向挡",
+        _ => "TEC"
+    };
 
     public ObservableCollection<HmiPidRow> Rows { get; } = new();
 
@@ -216,7 +226,15 @@ public sealed class HmiPidViewModel : ViewModelBase
         {
             if (Bench is not { } b) return "";
             var rows = b.Rows(_table);
-            var name = _table == PidActuator.Heater ? "加热棒表" : "TEC 表";
+            var name = Name(_table) + "表";
+            if (_table == PidActuator.Both)
+            {
+                // 双向挡没整过的温度不让下发（用户定的），这里把规矩说在明处
+                var tuned = rows.Where(r => r.FromAutoTune).Select(r => r.TemperatureC.ToString("0.#", CultureInfo.InvariantCulture)).ToList();
+                return tuned.Count == 0
+                    ? $"{name}还没整过——冷水机已开（双向挡）时下发目标会被拒，先在右边按双向挡整建议点"
+                    : $"{name}：整过 {string.Join("、", tuned)} ℃；两点之间（相距 ≤ {BothTablePoints.MaxGapK:0} K）插值，没盖住的温度下发会被拒、提示先整";
+            }
             return rows.Count == 0
                 ? $"{name}空着——这一路用{(_table == PidActuator.Heater ? "加热棒" : " TEC ")}时回路用手动参数。在常用温度点自整定一次就会自动建行"
                 : $"{name}：{rows.Count} 个温度点，{rows[0].TemperatureC:0.#} ~ {rows[^1].TemperatureC:0.#} ℃ 之间线性插值、两头之外取最近那行";
@@ -236,7 +254,7 @@ public sealed class HmiPidViewModel : ViewModelBase
         Rows.Clear();
         if (Bench is { } b)
             foreach (var r in b.Rows(_table))
-                Rows.Add(new HmiPidRow(this, r, heatEditable: true));
+                Rows.Add(new HmiPidRow(this, r, heatEditable: HeatColumn));
         TableDirty = false;
         TableNote = "";
         RaiseAll(nameof(TablePath), nameof(TableSummary), nameof(TableEmpty));
@@ -247,13 +265,13 @@ public sealed class HmiPidViewModel : ViewModelBase
 
     public void SelectTable(string which)
     {
-        var a = which == "heater" ? PidActuator.Heater : PidActuator.Tec;
+        var a = which switch { "heater" => PidActuator.Heater, "both" => PidActuator.Both, _ => PidActuator.Tec };
         if (a == _table) return;
         void go()
         {
             _table = a;
             LoadRows();
-            RaiseAll(nameof(TableTec), nameof(TableHeater), nameof(HeatColumn), nameof(HeatColumnTip));
+            RaiseAll(nameof(TableTec), nameof(TableHeater), nameof(TableBoth), nameof(HeatColumn), nameof(HeatColumnTip));
         }
         if (TableDirty)
             _owner.OpenAsk("换表", "当前这张表有改动还没应用", "换到另一张表会丢掉这些改动。", "丢掉改动并换表", go);
@@ -268,7 +286,7 @@ public sealed class HmiPidViewModel : ViewModelBase
             : Rows.Select(r => double.TryParse(r.T, NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : double.NaN)
                   .Where(double.IsFinite).DefaultIfEmpty(5).Max() + 20;
         var p = b.Preview(_table, t);
-        var row = new HmiPidRow(this, null, heatEditable: true)
+        var row = new HmiPidRow(this, null, heatEditable: HeatColumn)
         {
             T = t.ToString("0.#", CultureInfo.InvariantCulture),
             Kp = p.Inner.Kp.ToString("0.####", CultureInfo.InvariantCulture),
@@ -299,7 +317,7 @@ public sealed class HmiPidViewModel : ViewModelBase
         catch (ArgumentException ex) { Fail(ex.Message); return; }
         try { b.ApplyRows(_table, rows); }
         catch (Exception ex) { Fail(ex.Message); return; }
-        var name = _table == PidActuator.Heater ? "加热棒" : "TEC";
+        var name = Name(_table);
         Log($"{name}增益表应用（{b.Rows(_table).Count} 个温度点）：" +
             string.Join("；", b.Rows(_table).Select(r => $"{r.TemperatureC:0.#} ℃ Kp {r.Kp:0.###} Ki {r.Ki:0.#####} Kd {r.Kd:0.##}")));
         _owner.Toast($"{name}增益表已写进回路并存盘");
@@ -333,7 +351,7 @@ public sealed class HmiPidViewModel : ViewModelBase
     public void ClearTable()
     {
         if (Bench is not { } b) return;
-        var name = _table == PidActuator.Heater ? "加热棒" : "TEC";
+        var name = Name(_table);
         _owner.OpenAsk($"清空{name}增益表", $"{Who} · {b.Rows(_table).Count} 个温度点",
             $"清空后这一路用{name}时回路改用手动参数，直到重新自整定或手工填表。文件里的内容一并清掉。",
             "清空", () =>
@@ -349,7 +367,7 @@ public sealed class HmiPidViewModel : ViewModelBase
     {
         if (Bench is not { } b) return;
         var other = _owner.Zones.FirstOrDefault(z => !ReferenceEquals(z, _zone))?.PidBench;
-        var name = _table == PidActuator.Heater ? "加热棒" : "TEC";
+        var name = Name(_table);
         if (other is null) { Fail($"工位 {OtherWell} 没有上位机 PID 整定台（没连上 / 温控器 PID 方式）"); return; }
         if (TableDirty) { Fail("这张表有改动还没应用——先应用或放弃，再复制（复制的是回路里此刻的表）"); return; }
         var rows = b.Rows(_table);
@@ -417,7 +435,7 @@ public sealed class HmiPidViewModel : ViewModelBase
         if (Bench is { } b && double.TryParse(_previewT.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var t) && double.IsFinite(t))
         {
             var p = b.Preview(_table, t);
-            PreviewText = $"{(_table == PidActuator.Heater ? "加热棒" : "TEC")} {t:0.#} ℃ → 内环 {Fmt(p.Inner)}（{(p.InnerFromTable ? "表" : "手动")}）；" +
+            PreviewText = $"{Name(_table)} {t:0.#} ℃ → 内环 {Fmt(p.Inner)}（{(p.InnerFromTable ? "表" : "手动")}）；" +
                           $"外环 {Fmt(p.Outer)} ±{p.OuterMaxBiasC:0.#} ℃（{(p.OuterFromTable ? "表" : "手动")}）";
         }
         Raise(nameof(PreviewText));
@@ -438,10 +456,13 @@ public sealed class HmiPidViewModel : ViewModelBase
     {
         var use = b.InUse;
         var live = b.Live;
-        // 双向挡（0336）：执行器算加热棒（参数按加热棒表），负半轴也出力（TEC）
-        var act = use.Actuator == PidActuator.Heater
-            ? (use.Bidirectional ? "加热棒 + TEC（双向挡，参数按加热棒表）" : "加热棒（只加热）")
-            : "TEC";
+        // 双向挡：加热棒 ↔ TEC 一起，参数按双向挡那张表；TEC 暂时接不上（制冷段挂起）时按只加热算，表不换
+        var act = use.Actuator switch
+        {
+            PidActuator.Both => use.Bidirectional ? "加热棒 + TEC（双向挡表）" : "加热棒 + TEC（双向挡表，TEC 暂时接不上、只加热）",
+            PidActuator.Heater => "加热棒（只加热）",
+            _ => "TEC"
+        };
         UseHead = live is { Tuning: true } ? $"执行器 {act} · 正在自整定"
             : live is { Active: true } l
                 ? $"执行器 {act} · 设定 {F2(l.SetpointC)} ℃" + (l.Cascade ? $" · 内环设定 {F2(l.InnerSetpointC)} ℃（串级）" : "（单环）")
@@ -449,9 +470,12 @@ public sealed class HmiPidViewModel : ViewModelBase
         UseInner = $"内环 {Fmt(use.Inner)}　{(use.InnerFromTable ? "← 增益表插值" : "← 手动参数")}";
         UseOuter = $"外环 {Fmt(use.Outer)}　偏置 ±{use.OuterMaxBiasC:0.#} ℃　{(use.OuterFromTable ? "← 增益表插值" : "← 手动参数")}";
         UseExtra = (use.SteadyBiasC is { } sb ? $"稳态偏置 {sb:+0.00;−0.00} ℃（串级启动时预置）　" : "") +
-                   (use.Actuator == PidActuator.Tec ? $"加热比 {use.HeatRatio:0.##}"
-                    : use.Bidirectional ? $"加热比 {use.HeatRatio:0.##}（TEC 那半轴乘它）"
-                    : $"加热比 {use.HeatRatio:0.##}（只加热不归一；双向挡里给 TEC 那半轴用）");
+                   (use.Actuator switch
+                   {
+                       PidActuator.Tec => $"加热比 {use.HeatRatio:0.##}",
+                       PidActuator.Both => $"加热比 {use.HeatRatio:0.##}（TEC 那半轴乘它，整定时登记的 TEC % ÷ 加热棒 %）",
+                       _ => "只加热不归一"
+                   });
 
         if (live is null)
         {
@@ -562,15 +586,20 @@ public sealed class HmiPidViewModel : ViewModelBase
 
     // ── 自整定 ─────────────────────────────────────────────────────
 
-    private string _tuneT = "", _tuneAmp = "20", _tuneHys = "0.05";
+    private string _tuneT = "", _tuneAmp = "20", _tuneTecAmp = "20", _tuneHys = "0.05";
     private PidActuator _tuneAct = PidActuator.Tec;
     private bool _tuneActPicked;
 
     public string TuneT { get => _tuneT; set { if (Set(ref _tuneT, value)) { _tuneActPicked = false; RefreshTune(Bench); } } }
+    /// <summary>继电幅值；双向挡是加热半周加热棒出多少 %。</summary>
     public string TuneAmp { get => _tuneAmp; set { if (Set(ref _tuneAmp, value)) RefreshTune(Bench); } }
+    /// <summary>双向挡：制冷半周 TEC 出多少 %。</summary>
+    public string TuneTecAmp { get => _tuneTecAmp; set { if (Set(ref _tuneTecAmp, value)) RefreshTune(Bench); } }
     public string TuneHys { get => _tuneHys; set { if (Set(ref _tuneHys, value)) RefreshTune(Bench); } }
     public bool TuneTec => _tuneAct == PidActuator.Tec;
     public bool TuneHeater => _tuneAct == PidActuator.Heater;
+    public bool TuneBoth => _tuneAct == PidActuator.Both;
+    public bool TuneSingle => !TuneBoth;
 
     public bool Tuning => Bench?.Tuning == true;
     public bool NotTuning => !Tuning;
@@ -583,22 +612,20 @@ public sealed class HmiPidViewModel : ViewModelBase
 
     /// <summary>
     /// 建议点位（用户定的）：−20 / 0 / 25 / 50 / 80 / 110 / 140 ℃。用哪个执行器整按设备的热源策略给（0328）：
-    /// 「TEC 加热」启用时阈值以下是 TEC、以上是加热棒；不启用时 TEC 只制冷，比夹套此刻高的点（放着不管时夹套
-    /// 停在冷却水 / 室温附近，所以一般是 25 ℃ 以上）用加热棒——只制冷的 TEC 整不了比自然平衡温度高的点。
+    /// 「TEC 加热」启用时阈值以下是 TEC、以上是加热棒；冷水机已关（升温挡）是加热棒。
+    /// 冷水机已开（双向挡）整双向挡那张表，点位换成 BothTablePoints.Suggested（−20 ~ 200 ℃ 十一个点，用户定的）。
     /// </summary>
     private static readonly double[] Suggested = { -20, 0, 25, 50, 80, 110, 140 };
 
     private void RefreshPoints()
     {
         if (Bench is not { } b) { Points = Array.Empty<HmiPidPoint>(); Raise(nameof(Points)); return; }
-        var tec = b.Rows(PidActuator.Tec);
-        var heat = b.Rows(PidActuator.Heater);
-        Points = Suggested.Select(t =>
+        var both = b.SuggestActuator(25) == PidActuator.Both;
+        Points = (both ? BothTablePoints.Suggested : Suggested).Select(t =>
         {
             var a = b.SuggestActuator(t);
-            var rows = a == PidActuator.Heater ? heat : tec;
-            var done = rows.Any(r => Math.Abs(r.TemperatureC - t) <= 2 && r.FromAutoTune);
-            return new HmiPidPoint(t, $"{(done ? "✓ " : "")}{t:0} ℃ {(a == PidActuator.Heater ? "加热棒" : "TEC")}", done, a);
+            var done = b.Rows(a).Any(r => Math.Abs(r.TemperatureC - t) <= BothTablePoints.NearC && r.FromAutoTune);
+            return new HmiPidPoint(t, $"{(done ? "✓ " : "")}{t:0} ℃ {Name(a)}", done, a);
         }).ToList();
         Raise(nameof(Points));
     }
@@ -613,7 +640,7 @@ public sealed class HmiPidViewModel : ViewModelBase
 
     public void PickActuator(string which)
     {
-        _tuneAct = which == "heater" ? PidActuator.Heater : PidActuator.Tec;
+        _tuneAct = which switch { "heater" => PidActuator.Heater, "both" => PidActuator.Both, _ => PidActuator.Tec };
         _tuneActPicked = true;
         RefreshTune(Bench);
     }
@@ -625,7 +652,9 @@ public sealed class HmiPidViewModel : ViewModelBase
         if (!P(_tuneT, out var t)) { error = "整定温度填的不是数"; return null; }
         if (!P(_tuneAmp, out var amp)) { error = "继电幅值填的不是数"; return null; }
         if (!P(_tuneHys, out var hys)) { error = "回差填的不是数"; return null; }
-        return new PidAutoTuneRequest(t, _tuneAct, amp, hys);
+        if (_tuneAct != PidActuator.Both) return new PidAutoTuneRequest(t, _tuneAct, amp, hys);
+        if (!P(_tuneTecAmp, out var tec)) { error = "TEC 出力填的不是数"; return null; }
+        return new PidAutoTuneRequest(t, PidActuator.Both, amp, hys) { TecPercent = tec };
     }
 
     private void RefreshTune(IPidTuningBench? b)
@@ -638,7 +667,11 @@ public sealed class HmiPidViewModel : ViewModelBase
         var check = err ?? (req is null ? null : b.CheckTune(req));
         TuneCheck = check ?? "";
         CanStartTune = !b.Tuning && check is null;
-        TuneSuggest = req is null ? "" : _tuneAct == PidActuator.Heater
+        TuneSuggest = req is null ? "" : _tuneAct == PidActuator.Both
+            ? "双向挡：冲过设定值切 TEC 制冷（先开冷却水和冷水机），掉下来切回加热棒（停冷水机、关阀），全程两只来回推。" +
+              "两边力度填到冲上去和拉下来快慢差不多：TEC ÷ 加热棒这个比值会登记成「加热比」，控温时 TEC 那半轴乘它。" +
+              "高温时 TEC 往冷却水拉热快，TEC 填小些；低温时 TEC 要扛住漏进来的热，填大些；一般各 15 ~ 30 %"
+            : _tuneAct == PidActuator.Heater
             ? "加热棒只加热：继电在 0 ~ 2×幅值 之间摆（幅值最多 LIMITED 的一半，一般 15 ~ 25 %；离室温近、维持它用不了多少功率的" +
               "温度取小些，5 ~ 10 %），关着的那半周靠自然散热降温——整定温度比不加热时夹套会停的温度高得越多越快，太近了整不出振荡"
             : b.SuggestActuator(req.SetpointC) == PidActuator.Heater
@@ -646,7 +679,7 @@ public sealed class HmiPidViewModel : ViewModelBase
                 : "TEC：继电在设定值两边推；「TEC 加热」没启用时只在制冷一侧摆（强制冷 / 弱制冷，幅值最多 LIMITED 的一半），" +
                   "弱的那半周靠自然回温——只能整比不制冷时夹套会停的温度（冷却水 / 室温附近）低不少的温度";
         TuneNote = b.Tuning ? b.TuneNote : "";
-        RaiseAll(nameof(TuneTec), nameof(TuneHeater), nameof(Tuning), nameof(NotTuning), nameof(TuneNote),
+        RaiseAll(nameof(TuneTec), nameof(TuneHeater), nameof(TuneBoth), nameof(TuneSingle), nameof(Tuning), nameof(NotTuning), nameof(TuneNote),
                  nameof(TuneCheck), nameof(TuneSuggest), nameof(CanStartTune));
     }
 
@@ -656,9 +689,22 @@ public sealed class HmiPidViewModel : ViewModelBase
         var req = Request(out var err);
         if (req is null) { Fail(err!); return; }
         if (b.CheckTune(req) is { } why) { Fail(why); return; }
-        var act = req.Actuator == PidActuator.Heater ? "加热棒" : "TEC";
+        var act = Name(req.Actuator);
         var running = _zone.TempOn || _zone.EngineRunning;
         if (_zone.EngineRunning) { Fail("这一路在跑程序（配方 / 面板序列）——先结束程序再整定"); return; }
+        if (req.Actuator == PidActuator.Both)
+        {
+            // 双向挡整定开始前问一次冷却水（用户定的：整定中途不弹窗，切 TEC 就自动开水、切回加热棒就自动关）
+            _owner.OpenAsk("开始自整定 · 双向挡", $"{Who} · 双向挡 · {req.SetpointC:0.#} ℃",
+                $"继电器法，全程加热棒 ↔ TEC 来回推（加热棒 {req.RelayAmplitudePercent:0} %、TEC {req.TecPercent:0} %、回差 {req.HysteresisC:0.###} ℃）：" +
+                "冲过设定值就断加热棒、开冷却水阀和冷水机、接 TEC 往下拉；掉下来就断 TEC、停冷水机关阀、接加热棒往上推。" +
+                "\n冷却水和冷水机跟着自动开关，整定中途不再问；冷水机每个周期启停一次（一般 5 ~ 6 个周期，最多 10 个），离上次开机不到最短间隔会先自然凉、到点再接 TEC。" +
+                "\n温度会在设定值附近振荡几个周期，要有人在场（最长 4 h 自动放弃）。" +
+                (running ? "\n这一路正在控温——开始整定会先把控温停掉。" : "") +
+                "\n整完输出关掉、继电器断开、冷水机停；成功时平稳型参数自动登记进双向挡那张表。",
+                "开水并开始整定", () => _ = StartTuneAsync(b, req));
+            return;
+        }
         _owner.OpenAsk("开始自整定", $"{Who} · {act} · {req.SetpointC:0.#} ℃",
             $"继电器法：输出在设定值两边来回推（幅值 {req.RelayAmplitudePercent:0} %、回差 {req.HysteresisC:0.###} ℃），" +
             "温度会在设定值附近振荡几个周期。要有人在场。" +
@@ -686,8 +732,10 @@ public sealed class HmiPidViewModel : ViewModelBase
         Avalonia.Threading.Dispatcher.UIThread.Post(() =>
         {
             _zone.NoteTempStoppedForTuning();
-            Log($"开始自整定：{(req.Actuator == PidActuator.Heater ? "加热棒" : "TEC")} {req.SetpointC:0.#} ℃，" +
-                $"幅值 {req.RelayAmplitudePercent:0} %、回差 {req.HysteresisC:0.###} ℃");
+            Log($"开始自整定：{Name(req.Actuator)} {req.SetpointC:0.#} ℃，" +
+                (req.Actuator == PidActuator.Both
+                    ? $"加热棒 {req.RelayAmplitudePercent:0} % ↔ TEC {req.TecPercent:0} %"
+                    : $"幅值 {req.RelayAmplitudePercent:0} %") + $"、回差 {req.HysteresisC:0.###} ℃");
             ResultText = "";
             ResultTitle = "";
             RaiseAll(nameof(ResultText), nameof(ResultTitle), nameof(HasResult));
@@ -712,12 +760,12 @@ public sealed class HmiPidViewModel : ViewModelBase
 
     private void ShowReport(PidAutoTuneReport r)
     {
-        var act = r.Actuator == PidActuator.Heater ? "加热棒" : "TEC";
+        var act = Name(r.Actuator);
         ResultOk = r.Success;
         if (r.Success)
         {
             ResultTitle = $"自整定完成 · {act} {r.SetpointC:0.#} ℃";
-            ResultText = $"Ku {r.Ku:0.###}　Tu {r.TuSeconds:0.#} s　振幅 {r.OscillationC:0.###} ℃　继电幅值 {r.RelayAmplitudePercent:0} %\n" +
+            ResultText = $"Ku {r.Ku:0.###}　Tu {r.TuSeconds:0.#} s　振幅 {r.OscillationC:0.###} ℃　{(r.Actuator == PidActuator.Both ? "加热棒幅值" : "继电幅值")} {r.RelayAmplitudePercent:0} %\n" +
                          $"平稳型（已登记进{act}表）：{(r.Conservative is { } c ? Fmt(c) : "—")}\n" +
                          $"快速型（可能超调，只供参考）：{(r.Fast is { } f ? Fmt(f) : "—")}";
             Log($"自整定完成：{act} {r.SetpointC:0.#} ℃，Ku {r.Ku:0.###}、Tu {r.TuSeconds:0.#} s，平稳型 {(r.Conservative is { } c2 ? Fmt(c2) : "—")} 已登记");

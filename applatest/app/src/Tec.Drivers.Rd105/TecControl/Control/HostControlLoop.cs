@@ -104,10 +104,23 @@ public enum ActuatorMode
     /// 【本地改动】（0336）加热棒 + TEC 双向：**一个 PID，正半轴给加热棒、负半轴给 TEC 制冷**，占空比 ±上限。
     /// 双工位主机「冷水机」标已开时用它（双向挡）——反应会放热也会吸热，控得住就得两边随时能出力；
     /// 哪只继电器合着由组合会话按 PID 输出的符号扳（连续 3 s 同号才扳），回路本身不管继电器。
-    /// 参数按**加热棒那张表**（PID 是在加热棒上整的，正半轴原样给加热棒），负半轴乘该行的「加热比」
-    /// （加热棒比 TEC 强几倍，TEC 就要多出几倍功率）再给 TEC。加热棒 ⇄ 加热棒 + TEC 是同一组参数，换形态只改下限、不复位。
+    /// 参数按**双向挡那张表**（GainTable.Both：整定时就是加热棒 ↔ TEC 来回推），负半轴乘该行「加热比」再给 TEC——
+    /// 整定时那个比值就是 TEC % ÷ 加热棒 %，整定和控温看到的是同一个对象。
+    /// 双向挡里 TEC 暂时接不上（制冷段挂起）时形态换成只加热、表不换——同一组参数，只改下限、不复位。
     /// </summary>
     HeaterTec,
+}
+
+/// <summary>
+/// 【本地改动】增益表：TEC、加热棒、双向挡各一张。同一温度三者的对象不一样——TEC 与加热棒的过程增益差一个量级，
+/// 双向挡是两只一起（整定时冲过头切 TEC、掉下来切加热棒）。表跟着热源策略走，不跟着形态走：
+/// 双向挡里 TEC 暂时接不上按只加热算，照样查双向挡那张。换表才是换对象（PID 复位、按前馈预置）。
+/// </summary>
+public enum GainTable
+{
+    Tec,
+    Heater,
+    Both,
 }
 
 /// <summary>四片 TEC（两路输出）的同步方式。</summary>
@@ -151,20 +164,35 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         /// 不是一个量纲，切换时拿另一个执行器的数预置只会错。</summary>
         public double? LastSteadyOutput
         {
-            get => HeaterSide ? HeaterSteadyOutput : TecSteadyOutput;
-            set { if (HeaterSide) HeaterSteadyOutput = value; else TecSteadyOutput = value; }
+            get => Table switch { GainTable.Heater => HeaterSteadyOutput, GainTable.Both => BothSteadyOutput, _ => TecSteadyOutput };
+            set
+            {
+                switch (Table)
+                {
+                    case GainTable.Heater: HeaterSteadyOutput = value; break;
+                    case GainTable.Both: BothSteadyOutput = value; break;
+                    default: TecSteadyOutput = value; break;
+                }
+            }
         }
         public double? TecSteadyOutput;
         public double? HeaterSteadyOutput;
+        public double? BothSteadyOutput;
 
-        /// <summary>【本地改动】（0336）PID 是按加热棒整的那两种形态：只加热、加热棒 + TEC 双向。表 / 前馈 / 稳态输出都走加热棒那份。</summary>
-        public bool HeaterSide => HeaterTable(Actuator);
+        /// <summary>【本地改动】此刻查哪张增益表（表 / 前馈 / 稳态输出都按它分），由 SetActuatorMode 跟形态一起定。</summary>
+        public GainTable Table = GainTable.Tec;
 
-        /// <summary>跨设定值的稳态前馈模型（自动学习"任意温度需要多少输出"）。【本地改动】按执行器各一份、不按 100 ℃ 分段
-        /// （段按执行器分，不按温度）——切换时拿另一个执行器学到的稳态输出去预置只会错。</summary>
+        /// <summary>跨设定值的稳态前馈模型（自动学习"任意温度需要多少输出"）。【本地改动】按表各一份、不按 100 ℃ 分段
+        /// （段按执行器分，不按温度）——切换时拿另一个对象学到的稳态输出去预置只会错。</summary>
         public readonly SteadyStateFeedforward TecFeedforward = new() { SegmentBoundaryC = double.NaN };
         public readonly SteadyStateFeedforward HeaterFeedforward = new() { SegmentBoundaryC = double.NaN };
-        public SteadyStateFeedforward Feedforward => HeaterSide ? HeaterFeedforward : TecFeedforward;
+        public readonly SteadyStateFeedforward BothFeedforward = new() { SegmentBoundaryC = double.NaN };
+        public SteadyStateFeedforward Feedforward => Table switch
+        {
+            GainTable.Heater => HeaterFeedforward,
+            GainTable.Both => BothFeedforward,
+            _ => TecFeedforward
+        };
 
         /// <summary>增益调度表（自整定结果按温度登记，运行时插值）。</summary>
         public readonly PidGainSchedule GainSchedule = new();
@@ -174,8 +202,18 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         /// 按温度分段（SegmentBoundaryC）分不开，只能按执行器分两张表。</summary>
         public readonly PidGainSchedule HeaterSchedule = new();
 
-        /// <summary>【本地改动】此刻执行器对应的那张表：查参数、学稳态偏置、登记自整定结果都走它（0336：加热棒 + TEC 双向也是加热棒那张）。</summary>
-        public PidGainSchedule ActiveSchedule => HeaterSide ? HeaterSchedule : GainSchedule;
+        /// <summary>【本地改动】双向挡那张表（加热棒 ↔ TEC 来回推整出来的）。</summary>
+        public readonly PidGainSchedule BothSchedule = new();
+
+        /// <summary>【本地改动】此刻那张表：查参数、学稳态偏置、登记自整定结果都走它。</summary>
+        public PidGainSchedule ActiveSchedule => ScheduleOf(Table);
+
+        public PidGainSchedule ScheduleOf(GainTable t) => t switch
+        {
+            GainTable.Heater => HeaterSchedule,
+            GainTable.Both => BothSchedule,
+            _ => GainSchedule
+        };
 
         /// <summary>【本地改动】这一路单独关掉增益调度（固定用手动参数）。全局开关 GainSchedulingEnabled 照旧。</summary>
         public bool SchedulingOff;
@@ -281,6 +319,12 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         public RelayAutoTuner? Tuner;
         public DateTime TuneStartTime;
 
+        /// <summary>【本地改动】整定器最近一拍算出的输出（PID 那一侧：正 = 加热、负 = 制冷），双向挡整定时会话按它的符号扳继电器。</summary>
+        public double? LastTuneOutput;
+
+        /// <summary>【本地改动】双向挡整定时 TEC 那半周乘的比值（TEC % ÷ 加热棒 %），整完登记成那一行的「加热比」。</summary>
+        public double TuneCoolRatio = 1;
+
         /// <summary>反馈传感器：0 = 用本通道传感器（默认）；1/2 = 指定 TC1/TC2。
         /// 执行器与探头位置解耦（如 CONTMODE=2 单环控制时主环用 TC2 腔体探头做反馈）。</summary>
         public int FeedbackSensor;
@@ -296,6 +340,9 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         /// <summary>【本地改动】输出挂起：热源切换序列「关输出 → 扳继电器 → 开输出」那两秒里，
         /// 回路不算也不写（算了也执行不了，积分只会攒债）；恢复时 dt 从头计。</summary>
         public volatile bool Suspended;
+
+        /// <summary>【本地改动】从什么时候起挂着（整定中挂太久就判失败，别让整定器空等到超时）。</summary>
+        public DateTime? SuspendedSince;
 
         /// <summary>【本地改动】只加热执行器（电加热棒）的占空比符号。固件把哪个符号路由到
         /// 加热棒那只 SSR 的引脚，由现场接线决定——这台机器实测是负的（温控器自己的 PID
@@ -417,6 +464,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         var s = State(ch);
         if (s.Suspended == suspend) return;
         s.Suspended = suspend;
+        s.SuspendedSince = suspend ? DateTime.Now : null;
         if (!suspend)
         {
             s.LastUpdateTime = default;      // dt 从恢复那一拍重新计，别把挂起的几秒算进积分
@@ -503,12 +551,16 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
     }
 
     /// <summary>
-    /// 【本地改动】（0336）PID 是按加热棒那张表整的形态：只加热、加热棒 + TEC 双向。另外两种（TEC 双向 / 只制冷）按 TEC 那张表。
-    /// 同一张表之内换形态只是改限幅（不换对象、不复位）；跨表才是换对象（加热棒 ⇄ TEC 的增益差一个量级，积分清零、按前馈预置）。
+    /// 【本地改动】形态默认查哪张表：只加热 = 加热棒表，加热棒 + TEC 双向 = 双向挡表，TEC 双向 / 只制冷 = TEC 表。
+    /// 双向挡里 TEC 暂时接不上时会话明说「只加热、双向挡表」（SetActuatorMode 第三个参数）。
+    /// 同一张表之内换形态只是改限幅（不换对象、不复位）；跨表才是换对象（积分清零、按前馈预置）。
     /// </summary>
-    public static bool HeaterTable(ActuatorMode m) => m is ActuatorMode.HeatOnly or ActuatorMode.HeaterTec;
-
-    private static bool SameTable(ActuatorMode a, ActuatorMode b) => HeaterTable(a) == HeaterTable(b);
+    public static GainTable DefaultTable(ActuatorMode m) => m switch
+    {
+        ActuatorMode.HeatOnly => GainTable.Heater,
+        ActuatorMode.HeaterTec => GainTable.Both,
+        _ => GainTable.Tec
+    };
 
     /// <summary>
     /// 设置执行器形态（手动换线过渡方案）。运行/整定中禁止切换——形态必须与当时的
@@ -516,24 +568,30 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
     /// 负输出不存在（固件会把负占空比路由到制冷 PWM 引脚，而 TEC 线已断开），
     /// PID 若被允许算出负值只会白积负积分。
     /// </summary>
-    public void SetActuatorMode(int ch, ActuatorMode mode)
+    public void SetActuatorMode(int ch, ActuatorMode mode, GainTable? table = null)
     {
         var s = State(ch);
+        var t = table ?? DefaultTable(mode);
+        if (t == GainTable.Both && mode is not (ActuatorMode.HeaterTec or ActuatorMode.HeatOnly))
+            throw new InvalidOperationException($"通道{ch}：双向挡那张表只配「加热棒 + TEC 双向」或（TEC 暂时接不上时的）只加热，不配{mode}");
         // 【本地改动】双工位主机的继电器由程序自己扳：挂起输出 → 扳继电器 → 换形态 → 恢复，
         // 这时候通道是「运行中但挂起」，允许切；没挂起的运行中照旧不许（形态必须跟接线一致）
-        // 【本地改动】同一张表之内换形态（TEC 双向 ⇄ 只制冷：「TEC 加热」开关翻了；只加热 ⇄ 加热棒 + TEC：夹套过 / 回 TEC 接入线）
+        // 【本地改动】同一张表之内换形态（TEC 双向 ⇄ 只制冷：「TEC 加热」开关翻了；双向挡里只加热 ⇄ 加热棒 + TEC：制冷段挂起 / 放开）
         // 只是改限幅，不换对象，运行中也许改
-        if (s.Busy && s.Actuator != mode && !s.Suspended && !SameTable(s.Actuator, mode))
+        if (s.Busy && !s.Suspended && s.Table != t)
             throw new InvalidOperationException($"通道{ch}正在运行，请先停止再切换执行器形态（并确认接线已相应改好）");
-        var swapped = !SameTable(s.Actuator, mode);      // 换了对象（加热棒 ⇄ TEC）才复位
+        if (s.Tuner is not null && s.Table != t)
+            throw new InvalidOperationException($"通道{ch}正在自整定（{s.Table} 那张表）——整定中不能换表，结果会登记错地方");
+        var swapped = s.Table != t;      // 换了表（换了对象）才复位
         s.Actuator = mode;
+        s.Table = t;
         s.Pid.SetOutputLimits(OutputFloor(s), OutputCeiling(s));
         if (swapped && s.Active)
         {
             // 换了执行器就是换了对象（加热棒和 TEC 的增益差一个量级）：积分清零、按前馈预置，
             // 跑飞检测重新给宽限期——不然刚换上的那一拍还背着上一个执行器攒的积分
             s.Pid.Reset();
-            if (s.Feedforward.Predict(s.InnerSetpointC) is { } preset) s.Pid.PresetIntegral(preset);
+            if (PresetFor(s, s.InnerSetpointC) is { } preset) s.Pid.PresetIntegral(preset);
             s.Runaway.Start(DateTime.Now);
             s.SaturationWarned = false;
             s.SteadyCycles = 0;
@@ -542,15 +600,20 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
 
     public ActuatorMode GetActuatorMode(int ch) => State(ch).Actuator;
 
+    /// <summary>【本地改动】此刻查的是哪张增益表。</summary>
+    public GainTable GetTable(int ch) => State(ch).Table;
+
     /// <summary>该通道的增益调度表（自整定成功后自动登记工作点）。</summary>
     public PidGainSchedule GetGainSchedule(int ch) => State(ch).GainSchedule;
 
     /// <summary>启用增益调度：表内有点时按设定值插值覆盖手动参数。</summary>
     public bool GainSchedulingEnabled { get; set; } = true;
 
-    /// <summary>【本地改动】某路某执行器那张增益表（TEC 双向 / 加热棒只加热各一张，见 ChannelState.HeaterSchedule；加热棒 + TEC 双向用加热棒那张）。</summary>
-    public PidGainSchedule GetGainSchedule(int ch, ActuatorMode mode)
-        => HeaterTable(mode) ? State(ch).HeaterSchedule : State(ch).GainSchedule;
+    /// <summary>【本地改动】某路某形态默认查的那张增益表（见 DefaultTable）。</summary>
+    public PidGainSchedule GetGainSchedule(int ch, ActuatorMode mode) => State(ch).ScheduleOf(DefaultTable(mode));
+
+    /// <summary>【本地改动】某路的某张增益表。</summary>
+    public PidGainSchedule GetGainSchedule(int ch, GainTable table) => State(ch).ScheduleOf(table);
 
     /// <summary>【本地改动】按路开关增益调度（两个工位各有各的表，开关也各管各的）。</summary>
     public void SetGainScheduling(int ch, bool on) => State(ch).SchedulingOff = !on;
@@ -800,12 +863,24 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
     /// </summary>
     /// <summary>
     /// 【本地改动】外环（釜内 → 夹套）的参数与稳态偏置该查哪张表：外环的对象是釜，跟此刻是加热棒还是 TEC 在出力无关，
-    /// 不能随继电器换来换去（换一次外环增益和限幅就跳一次）。取两张表里离设定值最近的那个外环工作点所在的表；
+    /// 不能随继电器换来换去（换一次外环增益和限幅就跳一次）。取 TEC / 加热棒两张表里离设定值最近的那个外环工作点所在的表；
     /// 都没登记外环的就用此刻执行器那张（让手动参数兜底）。
+    /// 双向挡只查双向挡那张：继电器怎么扳都是那一张，外环本来就不跳；也不借另外两张（没整过的温度要先整，不拿别的对象凑）。
     /// </summary>
     public PidGainSchedule GetOuterSchedule(int ch, double setpointC) => OuterSchedule(State(ch), setpointC);
 
     private static PidGainSchedule OuterSchedule(ChannelState s, double setpointC)
+        => s.Table == GainTable.Both ? s.BothSchedule : NearestOuterSchedule(s, setpointC);
+
+    /// <summary>
+    /// 【本地改动】稳态偏置（夹套 − 釜内）是釜的热平衡，跟哪只执行器在出力无关：双向挡那张表还没学到这个温度的，
+    /// 借 TEC / 加热棒两张表里最近的那个（只读）——不然第一次跑双向挡外环积分从 0 起、两枪放电也打不了。学到的照样记进双向挡那张。
+    /// </summary>
+    private static double? SteadyBiasFor(ChannelState s, double setpointC)
+        => OuterSchedule(s, setpointC).SteadyBiasAt(setpointC)
+           ?? (s.Table == GainTable.Both ? NearestOuterSchedule(s, setpointC).SteadyBiasAt(setpointC) : null);
+
+    private static PidGainSchedule NearestOuterSchedule(ChannelState s, double setpointC)
     {
         var tec = s.GainSchedule.NearestOuterDistance(setpointC);
         var heater = s.HeaterSchedule.NearestOuterDistance(setpointC);
@@ -863,8 +938,15 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
     public ITemperatureProfile? GetProfile(int ch) => State(ch).Profile;
 
     /// <summary>预测维持指定设定值所需的稳态输出（PID 内部符号）；无数据返回 null。</summary>
-    public double? PredictSteadyOutput(int ch, double setpointC) =>
-        State(ch).Feedforward.Predict(setpointC);
+    public double? PredictSteadyOutput(int ch, double setpointC) => PresetFor(State(ch), setpointC);
+
+    /// <summary>
+    /// 【本地改动】积分预置用的稳态输出：这张表那份前馈；双向挡那份还没学到时借加热棒那份正的（PID 正半轴原样给加热棒，两份单位一样）——
+    /// 第一次在这个温度跑双向挡也不从 0 起（从 0 起就是下冲 0.8 ℃、五十分钟才收回来的那个坑）。
+    /// </summary>
+    private static double? PresetFor(ChannelState s, double setpointC)
+        => s.Feedforward.Predict(setpointC)
+           ?? (s.Table == GainTable.Both && s.HeaterFeedforward.Predict(setpointC) is { } h && h > 0 ? h : null);
 
     /// <summary>
     /// 激活某通道的闭环控温：切输出模式为通信设定（MODE=3）、打开使能、复位 PID。
@@ -883,7 +965,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         s.ManualDutyPercent = null;
         await PrepareOutputAsync(ch, ct).ConfigureAwait(false);
         s.Pid.Reset();
-        if ((integralPreset ?? s.Feedforward.Predict(setpointC) ?? s.LastSteadyOutput) is { } preset)
+        if ((integralPreset ?? PresetFor(s, setpointC) ?? s.LastSteadyOutput) is { } preset)
             s.Pid.PresetIntegral(preset);
 
         // 串级：外环也从干净状态起步，但把积分预置到该温度已学到的稳态偏置上。
@@ -906,7 +988,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
             s.Push = null;                           // 【本地改动】新一轮串级：上一轮压着的夹套目标作废
             s.InnerSetpointC = setpointC;
             ApplyOuterTuning(s, setpointC);   // 先装限幅，预置才会按正确范围截断
-            if (OuterSchedule(s, setpointC).SteadyBiasAt(setpointC) is { } bias)     // 【本地改动】外环按釜选表
+            if (SteadyBiasFor(s, setpointC) is { } bias)     // 【本地改动】外环按釜选表
             {
                 s.OuterPid.PresetIntegral(bias);
                 s.InnerSetpointC = Math.Clamp(setpointC + bias, InnerSetpointMinC, InnerSetpointMaxC);
@@ -935,7 +1017,9 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         double relayAmplitudePercent, double hysteresisC, bool coolOnly, CancellationToken ct = default)
     {
         var s = State(ch);
-        if (coolOnly && HeaterTable(s.Actuator))
+        if (s.Table == GainTable.Both)
+            throw new InvalidOperationException($"通道{ch}查的是双向挡那张表——那张表只能按加热棒 ↔ TEC 来回推整（StartAlternatingAutoTuneAsync）");
+        if (coolOnly && s.Actuator is ActuatorMode.HeatOnly or ActuatorMode.HeaterTec)
             throw new InvalidOperationException($"通道{ch}执行器是加热棒（{(s.Actuator == ActuatorMode.HeatOnly ? "只加热" : "加热棒 + TEC 双向")}），不能按只制冷整定");
         coolOnly |= s.Actuator == ActuatorMode.CoolOnly;     // 【本地改动】形态本身就是只制冷
         if (s.Active)
@@ -967,12 +1051,69 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         s.TuneStartTime = DateTime.Now;
     }
 
+    /// <summary>
+    /// 【本地改动】双向挡整定：掉下来那半周加热棒 heaterPercent、冲过设定值那半周 TEC tecPercent（用户定的：全程加热棒 ↔ TEC 来回推，
+    /// 跟双向挡控温同一个对象）。整定器在 PID 那一侧按 ±heaterPercent 摆（中心从稳态输出起、可以自寻），TEC 那半周再乘
+    /// 比值 r = tecPercent ÷ heaterPercent 写给 TEC——跟控温时「负半轴乘加热比」同一个映射，整完 r 就登记成那一行的加热比。
+    /// 中心再怎么挪两半周也永远一正一负：哪一半都不许变 0（变成靠自然凉）或换成另一只执行器。
+    /// 此刻要查双向挡那张表（会话已经把形态扳到加热棒 + TEC 双向，或冷水机最短间隔没到时的只加热）；
+    /// 继电器跟着整定器输出的符号扳由组合会话做（GetTuningOutput），回路不管继电器。
+    /// </summary>
+    public async Task StartAlternatingAutoTuneAsync(int ch, double setpointC,
+        double heaterPercent, double tecPercent, double hysteresisC, CancellationToken ct = default)
+    {
+        var s = State(ch);
+        if (s.Table != GainTable.Both || s.Actuator is not (ActuatorMode.HeaterTec or ActuatorMode.HeatOnly))
+            throw new InvalidOperationException($"通道{ch}没在双向挡那张表上（{s.Actuator} / {s.Table}）——先把热源扳到双向挡再整");
+        if (s.Active)
+            throw new InvalidOperationException($"通道{ch}正在闭环控温，请先停止再自整定");
+        s.SetpointC = setpointC;
+        s.ManualDutyPercent = null;
+        await PrepareOutputAsync(ch, ct).ConfigureAwait(false);
+        s.LastDutyPercent = 0;
+        s.LastTuneOutput = null;
+
+        var ceiling = Math.Max(1, s.MaxDutyMagnitude);
+        var heat = Math.Clamp(Math.Abs(heaterPercent), 1, ceiling);
+        var cool = Math.Clamp(Math.Abs(tecPercent), 1, ceiling);
+        s.TuneCoolRatio = cool / heat;
+        // 中心从「维持这个温度要的输出」起（双向挡那份稳态输出 / 前馈，PID 那一侧），没有就 0；整定器自寻中会挪到位
+        var bias = s.LastSteadyOutput ?? PresetFor(s, setpointC) ?? 0;
+        s.Tuner = new RelayAutoTuner(setpointC, heat, hysteresisC, bias,
+            outputCeilingPercent: ceiling,
+            outputFloorPercent: -ceiling / Math.Max(1, s.TuneCoolRatio),      // 乘了比值也不超过上限
+            alternateMinPercent: Math.Min(AlternateMinPercent, heat))
+        { CoolScale = s.TuneCoolRatio };
+        s.TuneStartTime = DateTime.Now;
+    }
+
+    /// <summary>【本地改动】整定中输出最多挂多久（切热源：关输出 → 扳继电器 → 核反馈 → 开水 / 关水，正常十来秒）。</summary>
+    public TimeSpan TuningSuspendLimit { get; set; } = TimeSpan.FromSeconds(60);
+
+    /// <summary>【本地改动】双向挡整定里每半周至少留多少出力（%）：自寻中挪得再多，加热半周也还是加热棒、制冷半周也还是 TEC。</summary>
+    public const double AlternateMinPercent = 3;
+
+    /// <summary>【本地改动】双向挡那张表在这个温度的稳态偏置（夹套 − 釜内）：自己没学到借另两张最近的——跟控温时预置外环用的同一个数。</summary>
+    public double? BothSteadyBias(int ch, double setpointC)
+    {
+        var s = State(ch);
+        return s.BothSchedule.SteadyBiasAt(setpointC) ?? NearestOuterSchedule(s, setpointC).SteadyBiasAt(setpointC);
+    }
+
+    /// <summary>【本地改动】整定器此刻要的输出（PID 那一侧：正 = 加热、负 = 制冷）；没在整定或还没算过一拍是 null。</summary>
+    public double? GetTuningOutput(int ch)
+    {
+        var s = State(ch);
+        return s.Tuner is null ? null : s.LastTuneOutput;
+    }
+
     /// <summary>停止某通道的一切输出活动（闭环/自整定/手动）：输出归零并关闭使能。</summary>
     public async Task StopChannelAsync(int ch, CancellationToken ct = default)
     {
         var s = State(ch);
         s.Active = false;
         s.Tuner = null;
+        s.LastTuneOutput = null;                     // 【本地改动】
         s.ManualDutyPercent = null;
         s.LastDutyPercent = 0;
         s.OuterLostSince = null;                     // 【本地改动】
@@ -1114,9 +1255,20 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
             var s = State(ch);
             var pv = Pv(s, ch, snapshot);
 
-            if (s.Suspended)
+            if (s.Suspended && s.Tuner is { } held
+                && DateTime.Now - (s.SuspendedSince ?? DateTime.Now) > TuningSuspendLimit)
             {
-                // 【本地改动】热源切换那两秒：不算不写，也不重写手动输出（输出本来就关着）
+                // 【本地改动】整定中输出挂着太久（双向挡整定切热源卡住了 / 切换失败没人放开）：判失败收尾——
+                // 挂着的回路不算整定器那一拍，不收尾的话整定器空等到 4 h 超时，界面一直写着「整定中」
+                await FinishTuningAsync(ch, s, success: false,
+                    reason: $"整定中切热源后输出 {TuningSuspendLimit.TotalSeconds:0} s 都没重新打开（切换卡住了 / 失败了），整定停掉").ConfigureAwait(false);
+                infos[ch - 1] = new ChannelCycleInfo(false, false, held.CompletedCycles, s.SetpointC, pv, 0, 0, 0, 0);
+            }
+            else if (s.Suspended)
+            {
+                // 【本地改动】热源切换那两秒：不算不写，也不重写手动输出（输出本来就关着）。
+                // 在整定的话温度照样记给整定器（极值别漏，刚换向那一下往往就是峰）
+                s.Tuner?.Observe(snapshot.Timestamp, pv);
                 infos[ch - 1] = new ChannelCycleInfo(s.Active, s.Tuner is not null, s.Tuner?.CompletedCycles ?? 0,
                     s.SetpointC, pv, 0, 0, 0, 0)
                 {
@@ -1302,7 +1454,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                 var effBias = bias;
                 s.OuterClampBinding = false;
                 if (push is null && OuterBiasClampBandC > 0 && s.OuterCrossingArmed
-                    && OuterSchedule(s, s.SetpointC).SteadyBiasAt(s.SetpointC) is { } clampRef)     // 【本地改动】外环按釜选表
+                    && SteadyBiasFor(s, s.SetpointC) is { } clampRef)     // 【本地改动】外环按釜选表
                 {
                     // 进带一次即锁存（带边按拍重判会被噪声来回触发，实测抖动 4 次）
                     if (!s.OuterClampLatched
@@ -1349,7 +1501,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                 // 积分从不冻结，稳态偏置过时最多偏一次、由正常积分接管收敛。
                 var outerErr = s.SetpointC - outerPv;
                 if (push is null && s.Profile is null
-                    && OuterSchedule(s, s.SetpointC).SteadyBiasAt(s.SetpointC) is { } steadyI)     // 【本地改动】外环按釜选表；压低期间两枪都不打
+                    && SteadyBiasFor(s, s.SetpointC) is { } steadyI)     // 【本地改动】外环按釜选表；压低期间两枪都不打
                 {
                     if (s.OuterApproachDischargeArmed
                         && Math.Abs(outerErr) <= OuterDischargeApproachBandC)
@@ -1427,6 +1579,15 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         else if (s.ManualGains is { } manual)
             s.Pid.SetGains(manual.Kp, manual.Ki, manual.Kd);
 
+        // 【本地改动】加热棒 + TEC 双向：负半轴乘加热比再给 TEC，比值大于 1 时 PID 输出到 −上限 ÷ 比值 TEC 就满了——
+        // 下限跟着缩（跟整定时一样），不然 TEC 早顶住了积分还往下攒，放热一停 TEC 半天退不下来，饱和判据也看不见 TEC 顶住
+        if (s.Actuator == ActuatorMode.HeaterTec)
+        {
+            var r = (Scheduling(s) ? s.ActiveSchedule.HeatRatioAt(innerSetpoint) : null) ?? HeatingEffectivenessRatio;
+            var floor = -s.MaxDutyMagnitude / Math.Max(1, r > 0 ? r : 1);
+            if (Math.Abs(s.Pid.OutputMin - floor) > 1e-9) s.Pid.SetOutputLimits(floor, s.MaxDutyMagnitude);
+        }
+
         var pidOut = s.Pid.Update(innerSetpoint, pv, dt);
 
         // 执行器不对称归一化：加热侧更有效时按比例缩小，使 PID 面对的执行器左右对称。
@@ -1442,10 +1603,8 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
             : pidOut;
         if (s.Actuator == ActuatorMode.HeaterTec)
         {
-            // 【本地改动】（0336）加热棒 + TEC 双向：PID 是按加热棒那张表整的，正半轴原样给加热棒（不除加热比）；
-            // 负半轴给 TEC 要**乘**加热比（加热棒比 TEC 强几倍，TEC 就得多出几倍功率才是同一份出力）——
-            // 跟 TEC 双向那条「正半轴除以加热比」是同一个比值、反过来用（那边 PID 是按 TEC 整的）。
-            // 写到设备上：正半轴按加热棒的接线符号，负半轴按「TEC 输出反向」
+            // 【本地改动】（0336）加热棒 + TEC 双向：正半轴原样给加热棒；负半轴给 TEC 乘加热比（双向挡那张表里这个比值是整定时的
+            // TEC % ÷ 加热棒 %——整定和控温同一个映射）。写到设备上：正半轴按加热棒的接线符号，负半轴按「TEC 输出反向」
             duty = pidOut < 0 && heatRatio > 0 ? pidOut * heatRatio : pidOut;
             duty = ToDevice(s, Math.Clamp(duty, -s.MaxDutyMagnitude, s.MaxDutyMagnitude));
         }
@@ -1580,10 +1739,20 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
             return new ChannelCycleInfo(false, false, 0, s.SetpointC, pv, 0, 0, 0, 0);
         }
 
+        // 【本地改动】双向挡整定里要制冷、TEC 却被扣着（等冷水机最短间隔，形态只加热）：告诉整定器这一周不算数
+        if (s.Table == GainTable.Both)
+            tuner.SetWithheld(snapshot.Timestamp, s.Actuator == ActuatorMode.HeatOnly && tuner.CoolingHalf);
         var duty = tuner.Process(snapshot.Timestamp, pv);
+        s.LastTuneOutput = duty;        // 【本地改动】PID 那一侧的量：双向挡整定时会话按它的符号扳继电器
         // 只加热执行器：引脚路由固件固定，反向无意义（反向会把正摆动送成负、加热棒不动作）；符号按接线【本地改动】
-        if (s.Actuator == ActuatorMode.HeatOnly) duty = s.HeaterSign * duty;
-        else if (s.Actuator == ActuatorMode.HeaterTec) duty = ToDevice(s, duty);      // 【本地改动】
+        // 【本地改动】双向挡整定里 TEC 暂时接不上（等冷水机最短间隔）也是只加热：负的那半周钳到 0（加热棒关着自然凉），不许送到 TEC 引脚
+        if (s.Actuator == ActuatorMode.HeatOnly) duty = s.HeaterSign * Math.Max(0, duty);
+        else if (s.Actuator == ActuatorMode.HeaterTec)
+        {
+            // 【本地改动】双向挡整定：TEC 那半周乘比值（TEC % ÷ 加热棒 %），跟控温时负半轴乘加热比同一个映射
+            if (s.Table == GainTable.Both && duty < 0) duty = Math.Max(duty * s.TuneCoolRatio, -s.MaxDutyMagnitude);
+            duty = ToDevice(s, duty);
+        }
         else if (s.InvertOutput) duty = -duty;
 
         await WriteDutyAsync(ch, duty, ct).ConfigureAwait(false);
@@ -1614,9 +1783,10 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         if (success && result is not null)
         {
             var outer = PidGainSchedule.SuggestOuter(result.UltimatePeriodTuSeconds);
-            s.ActiveSchedule.Learn(new GainPoint(     // 【本地改动】登记进整定时那个执行器的表
+            s.ActiveSchedule.Learn(new GainPoint(     // 【本地改动】登记进整定时那张表（双向挡整定里形态会在只加热 ⇄ 双向间换，表不换）
                 s.SetpointC, result.Conservative, result.UltimateGainKu, result.UltimatePeriodTuSeconds,
-                outer.Gains, outer.MaxBiasC));
+                outer.Gains, outer.MaxBiasC,
+                HeatRatio: s.Table == GainTable.Both ? s.TuneCoolRatio : null));   // 双向挡：整定时 TEC 那半周乘的比值，控温照样乘它
             GainScheduleChanged?.Invoke(ch);
         }
 

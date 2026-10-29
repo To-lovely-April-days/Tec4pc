@@ -113,6 +113,7 @@ public static class RecipeValidator
                     $"CH{channel.Number} 缺少能力：{Friendly(t)}") { Channel = channel.Number });
 
             ValidateDoseVolume(issues, recipe, catalog, channel);
+            ValidateTuned(issues, recipe, channel);
         }
 
         if (charge is not null) ValidateCharge(issues, recipe, catalog, charge, schedule);
@@ -626,6 +627,58 @@ public static class RecipeValidator
                 issues.Add(new ValidationIssue(IssueLevel.Warning, "calibration",
                     $"第 {i + 1} 步用到加料，泵的标定已于 {Fmt.Stamp(dosing.Calibration.ExpiresAt!.Value)} 过期")
                 { StepId = s.StepId, Channel = channel.Number });
+        }
+    }
+
+    /// <summary>
+    /// 双向挡没整过的温度不让下发（用户定的，2026-10-29）。配方跑到一半被拒会整段中止、加热制冷全断——放热反应反而没人管，
+    /// 所以在开跑前查：会下发控温目标的步（控温、梯度每一段、起始初温、结束降温），目标或斜坡那一段落在双向挡表没整过的温度就报错，
+    /// 说清先整哪几个点。恒温保持（保持此刻釜温）、蒸回流（跟着釜温走）事先不知道温度，不查。
+    /// 设备不分双向挡（冷水机已关 / 「TEC 加热」启用 / 温控器 PID）时 UntunedReason 是 null，一条都不报。
+    /// </summary>
+    private static void ValidateTuned(List<ValidationIssue> issues, Recipe recipe, Channel channel)
+    {
+        if (channel.Capabilities.Get<IHeatSource>() is not { } heat) return;
+        var said = new HashSet<string>();
+        double? last = null;          // 上一个控温目标：按速率 / 按时长 / 起始初温都是从那儿斜坡过来的，整段都要整过
+        for (var i = 0; i < recipe.Steps.Count; i++)
+        {
+            var s = recipe.Steps[i];
+            if (!s.Enabled) continue;
+            var p = s.Parameters;
+            var spans = new List<(double From, double To, TempChannelKind Kind)>();
+            switch (s.CommandId)
+            {
+                case CommandSpecs.Control:
+                {
+                    var target = p.Num("target");
+                    var ramp = p.Str("task", "按速率") != "尽快";       // 同 CommandSpecs.TempTaskOf
+                    spans.Add((ramp ? last ?? target : target, target,
+                               p.Str("obj", "釜内 Tr").Contains("Tj") ? TempChannelKind.Jacket : TempChannelKind.Reactor));
+                    last = target;
+                    break;
+                }
+                case CommandSpecs.Gradient:
+                    foreach (var row in s.Rows ?? new List<ParameterSet>())
+                    {
+                        var t = row.Num("t");
+                        spans.Add((last ?? t, t, TempChannelKind.Reactor));      // 段与段之间是斜坡：整段都要整过
+                        last = t;
+                    }
+                    break;
+                case BuiltinCommands.FirstFill when p.Flag("tempOn"):
+                    spans.Add((p.Num("temp", 25), p.Num("temp", 25), TempChannelKind.Reactor));
+                    last = p.Num("temp", 25);
+                    break;
+                case BuiltinCommands.Finish when p.Flag("cool", true):
+                    spans.Add((last ?? p.Num("safe", 30), p.Num("safe", 30), TempChannelKind.Reactor));
+                    break;
+            }
+            foreach (var (from, to, kind) in spans)
+                if (heat.UntunedReason(from, to, kind) is { } why && said.Add($"{i}|{why}"))
+                    issues.Add(new ValidationIssue(IssueLevel.Error, "untuned",
+                        $"第 {i + 1} 步：{why}——没整过的温度控不准，配方中途被拒会整段中止，先整定再跑")
+                    { StepId = s.StepId, Channel = channel.Number });
         }
     }
 

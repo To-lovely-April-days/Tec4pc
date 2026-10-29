@@ -82,6 +82,9 @@ public static class Rd105HostControl
     /// <summary>加热棒那张表（0327 起按执行器分两张）。</summary>
     public static string HeaterGainsPath(string instanceId, int tc) => Path.Combine(GainsDir, $"{Safe(instanceId)}-tc{tc}-heater.csv");
 
+    /// <summary>双向挡那张表（加热棒 ↔ TEC 来回推整出来的，用户定的单独一张）。</summary>
+    public static string BothGainsPath(string instanceId, int tc) => Path.Combine(GainsDir, $"{Safe(instanceId)}-tc{tc}-both.csv");
+
     /// <summary>手动 PID 参数与这一路的调度开关。</summary>
     public static string ParamsPath(string instanceId, int tc) => Path.Combine(GainsDir, $"{Safe(instanceId)}-tc{tc}-pid.json");
 

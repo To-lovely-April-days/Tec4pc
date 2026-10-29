@@ -46,6 +46,18 @@ public sealed class DuoTempControl : ITemperatureControl, IRefluxControl, IHeatS
     public bool WouldCool(double target, TempChannelKind kind) => _s.WouldCool(_well, target, kind);
     public void SkipWaterNext() => _s.SkipWaterNext(_well);
     public void AskWaterNext() => _s.AskWaterNext(_well);
+    public string? UntunedReason(double from, double to, TempChannelKind kind) => _s.UntunedReason(_well, from, to, kind);
+
+    /// <summary>
+    /// 双向挡那张表没盖住这一段：驱动这一层只记一条警告、照常下发——「先整定」在下发之前提示（用户定的）：
+    /// HMI 手动开温控先弹窗、配方开跑前校验报错。驱动在这儿拒的话，配方跑到一半被拒会整段中止、加热制冷全断，
+    /// 放热反应反而没人管；紧急程序摆安全温度（Emergency）更不能拦。斜坡查起点到终点整段，定值只查目标。
+    /// </summary>
+    private void NoteCoverage(double from, double to, TempChannelKind kind, bool emergency)
+    {
+        if (emergency || _s.UntunedReason(_well, from, to, kind) is not { } why) return;
+        _s.WarnUntuned(_well, why);
+    }
 
     /// <summary>自整定占着继电器与回路：先拒绝，一个继电器都别动；HMI 下发前立的水旗随之作废。</summary>
     private void GuardTuning()
@@ -63,6 +75,7 @@ public sealed class DuoTempControl : ITemperatureControl, IRefluxControl, IHeatS
         // HMI 下发前立的旗（「不开，直接制冷」「中途先问我」）：整定中被拒时作废——既不能留给下一次（多半是配方的）下发，
         // 也不能落成这一路的「不开水」（那样整定全程对账不替它留水，整定正在用的 TEC 会被关水）
         GuardTuning();
+        NoteCoverage(target.Value, target.Value, target.Kind, target.Emergency);
         _s.TakeWaterChoice(_well);
         var wasOn = _s.WantEnabled(_well);
         _s.NoteStart(_well);    // 这一路要控温了（热源切换按意图判，不按设备上的 ENABLE）
@@ -84,6 +97,8 @@ public sealed class DuoTempControl : ITemperatureControl, IRefluxControl, IHeatS
     public async Task RampAsync(double target, double ratePerMin, TempChannelKind kind, CancellationToken ct)
     {
         GuardTuning();
+        var from = _s.ControlledFor(_well, kind);
+        NoteCoverage(double.IsNaN(from) ? target : from, target, kind, emergency: false);
         _s.TakeWaterChoice(_well);
         var wasOn = _s.WantEnabled(_well);
         _s.NoteStart(_well);
@@ -118,6 +133,10 @@ public sealed class DuoTempControl : ITemperatureControl, IRefluxControl, IHeatS
     Task IRefluxControl.StartAsync(double deltaT, double maxTj, CancellationToken ct)
     {
         _s.GuardTuning(_well);
+        // 跟随的终点不知道（夹套跟着釜内走，maxTj 只是保护上限）：此刻夹套这一点双向挡那张表没整过就记一笔（HMI 开之前已经问过）
+        var tj = Inner.CurrentJacket;
+        if (!double.IsNaN(tj) && _s.UntunedReason(_well, tj, tj, TempChannelKind.Jacket) is { } why)
+            _s.WarnUntuned(_well, "蒸回流：" + why);
         return _s.StartRefluxAsync(_well, deltaT, maxTj, ct);
     }
 

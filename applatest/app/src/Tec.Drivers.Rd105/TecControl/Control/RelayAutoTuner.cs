@@ -57,8 +57,11 @@ public sealed class RelayAutoTuner(
     double passiveHalfTimeoutSeconds = 3600,
     double passiveStallSeconds = 300,
     double passiveStallDeltaC = 0.05,
-    double passiveOutwardSeconds = 900)
+    double passiveOutwardSeconds = 900,
+    double alternateMinPercent = double.NaN)
 {
+    // 【本地改动】alternateMinPercent：两半周必须一正一负（双向挡整定：加热半周是加热棒、制冷半周是 TEC，用户定的）——
+    // 继电中心只许在 [−幅值 + m, 幅值 − m] 里挪，哪一半都不会变 0（变成靠自然凉）或换到另一只执行器。NaN = 不管。
     // 【本地改动】最后三个参数：单方向执行器（只加热的加热棒 / 只制冷的 TEC）的「被动半周」——
     // 那半周输出已经是 0、偏置也挪不动了，温度只能靠自然散热 / 自然回温漂回设定值。
     // 不能拿主动半周的尺子（2 min 内 0.3 ℃、半周 10 min）量它：只要还在往回走（5 min 内往回 0.05 ℃）
@@ -74,7 +77,7 @@ public sealed class RelayAutoTuner(
     /// 幅值大到可行域为空时偏置收缩到量程中点（等效告知幅值应减小）。
     /// </summary>
     private static (double Floor, double Ceiling, double BiasMin, double BiasMax) Bounds(
-        double amplitude, double ceilingPercent, double floorPercent)
+        double amplitude, double ceilingPercent, double floorPercent, double alternateMin)
     {
         var h = Math.Clamp(Math.Abs(amplitude), 1, 100);
         var ceiling = Math.Min(100, Math.Abs(ceilingPercent));
@@ -83,12 +86,22 @@ public sealed class RelayAutoTuner(
             : Math.Clamp(floorPercent, -100, ceiling);
         var biasMin = floor + h;
         var biasMax = ceiling - h;
+        if (!double.IsNaN(alternateMin))
+        {
+            // 【本地改动】两半周一正一负：中心离 0 不能超过 幅值 − m
+            var m = Math.Clamp(Math.Abs(alternateMin), 0, h);
+            biasMin = Math.Max(biasMin, -h + m);
+            biasMax = Math.Min(biasMax, h - m);
+        }
         if (biasMin > biasMax) biasMin = biasMax = (floor + ceiling) / 2;
         return (floor, ceiling, biasMin, biasMax);
     }
 
     private readonly (double Floor, double Ceiling, double BiasMin, double BiasMax) _bounds =
-        Bounds(relayAmplitudePercent, outputCeilingPercent, outputFloorPercent);
+        Bounds(relayAmplitudePercent, outputCeilingPercent, outputFloorPercent, alternateMinPercent);
+
+    /// <summary>【本地改动】两半周一正一负的整定（双向挡：加热棒 ↔ TEC）。</summary>
+    public bool Alternating { get; } = !double.IsNaN(alternateMinPercent);
 
     private int _sign;                    // +1 加热半周期，-1 制冷半周期
     private bool _started;
@@ -125,8 +138,8 @@ public sealed class RelayAutoTuner(
     /// </summary>
     public double BiasPercent { get; private set; } = Math.Clamp(
         biasPercent,
-        Bounds(relayAmplitudePercent, outputCeilingPercent, outputFloorPercent).BiasMin,
-        Bounds(relayAmplitudePercent, outputCeilingPercent, outputFloorPercent).BiasMax);
+        Bounds(relayAmplitudePercent, outputCeilingPercent, outputFloorPercent, alternateMinPercent).BiasMin,
+        Bounds(relayAmplitudePercent, outputCeilingPercent, outputFloorPercent, alternateMinPercent).BiasMax);
 
     // 上下都按边界截：正常情况下偏置可行域已保证 偏置±幅值 在 [下限,上限] 内，
     // 只有幅值大到可行域塌缩（偏置被收到量程中点）时这里才真正咬合——
@@ -150,7 +163,12 @@ public sealed class RelayAutoTuner(
 
     /// <summary>【本地改动】「够不着」的原话按方向说：要加热却升不上去 → 设定值改到极限温度之下，反之之上。</summary>
     private string StuckReason(double pv)
-        => $"继电幅值 ±{RelayAmplitudePercent:F0}%（偏置已推到{(_sign > 0 ? "上" : "下")}限 {BiasPercent:F0}%）" +
+        => Alternating
+            // 【本地改动】双向挡整定：说两只执行器各出了多少
+            ? $"加热半周加热棒 {Math.Max(0, BiasPercent + RelayAmplitudePercent):F0} %、制冷半周 TEC {Math.Max(0, RelayAmplitudePercent - BiasPercent) * CoolScale:F0} %，" +
+              $"中心已经挪到头，还是{(_sign > 0 ? "推不上" : "拉不下")} {SetpointC:F2}℃：温度停在 {pv:F2}℃ 附近。" +
+              $"请加大{(_sign > 0 ? "加热棒" : "TEC")}那一侧的力度，或把整定温度改到{(_sign > 0 ? "低" : "高")}一点"
+            : $"继电幅值 ±{RelayAmplitudePercent:F0}%（偏置已推到{(_sign > 0 ? "上" : "下")}限 {BiasPercent:F0}%）" +
            $"仍不足以使温度到达设定值 {SetpointC:F2}℃：温度停在 {pv:F2}℃ 附近。" +
            $"请提高继电幅值，或把设定值改到该极限温度之{(_sign > 0 ? "下" : "上")}（建议留 5℃ 余量）";
 
@@ -168,6 +186,53 @@ public sealed class RelayAutoTuner(
                : "只制冷的 TEC 只能整比不制冷时夹套会停的温度（冷却水 / 室温附近）低得多的温度，高过它的用加热棒整") +
            "；提高继电幅值没有用";
 
+    // 【本地改动】双向挡整定里 TEC 那半周被扣着（等冷水机最短间隔：加热棒关着自然凉）的那段——这一周量到的不是继电器的样子
+    private bool _withheld;
+    private bool _cycleWithheld;
+    private int _withheldCycles;
+    private double _lastPv = double.NaN;
+
+    /// <summary>
+    /// 【本地改动】这一拍输出被外面扣着没送出去（双向挡整定：要制冷但冷水机最短间隔没到，TEC 接不上、加热棒关着自然凉）。
+    /// 扣着的这一周不算数（周期被拉长、振幅被放大，Ku / Tu 会偏）；连着两周都被扣，说明振荡周期比冷水机最短间隔还短，
+    /// 每一周都会这样——判失败、说清楚。Seeking 段扣着的时候不算「推不动」（那是没推，不是推不动），放开那一刻重新量进展。
+    /// </summary>
+    public void SetWithheld(DateTime time, bool withheld)
+    {
+        if (withheld) _cycleWithheld = true;           // 跨过周期边界还扣着的，新一周也记上
+        if (withheld == _withheld) return;
+        _withheld = withheld;
+        if (withheld) return;
+        // 放开：进展窗口从这一刻重新量
+        if (State == AutoTuneState.Seeking && _stallWindowValid && !double.IsNaN(_lastPv))
+        {
+            _stallWindowStart = time;
+            _stallWindowPv = _lastPv;
+        }
+        _lastSwitchTime = time > _lastSwitchTime ? time : _lastSwitchTime;
+    }
+
+    /// <summary>
+    /// 【本地改动】输出挂着（切继电器那几秒，回路不算这一拍）的时候也记一下温度：极值别漏——刚换向那一下往往就是峰。
+    /// 不切换、不判进展、不出输出。
+    /// </summary>
+    public void Observe(DateTime time, double pv)
+    {
+        if (double.IsNaN(pv) || State is AutoTuneState.Succeeded or AutoTuneState.Failed || !_started) return;
+        _lastPv = pv;
+        if (_cycleStartTime is not null)
+        {
+            _cycleMax = Math.Max(_cycleMax, pv);
+            _cycleMin = Math.Min(_cycleMin, pv);
+        }
+    }
+
+    /// <summary>【本地改动】制冷半周写给 TEC 时乘的比值（双向挡整定：TEC % ÷ 加热棒 %），只用于说人话。</summary>
+    public double CoolScale { get; init; } = 1;
+
+    /// <summary>【本地改动】此刻在制冷那半周（继电器往下推）。</summary>
+    public bool CoolingHalf => _started && _sign < 0;
+
     public AutoTuneState State { get; private set; } = AutoTuneState.Seeking;
     public string? FailReason { get; private set; }
     public AutoTuneResult? Result { get; private set; }
@@ -181,6 +246,7 @@ public sealed class RelayAutoTuner(
     public double Process(DateTime time, double pv)
     {
         if (State is AutoTuneState.Succeeded or AutoTuneState.Failed) return 0;
+        _lastPv = pv;
 
         if (!_started)
         {
@@ -259,7 +325,7 @@ public sealed class RelayAutoTuner(
                 return 0;
             }
         }
-        else if (State == AutoTuneState.Seeking && _stallWindowValid)
+        else if (State == AutoTuneState.Seeking && _stallWindowValid && !_withheld)
         {
             var progress = _sign * (pv - _stallWindowPv);   // 期望方向：加热半周应升温，制冷半周应降温
             if (progress >= stallDeltaC)
@@ -332,8 +398,19 @@ public sealed class RelayAutoTuner(
             State = AutoTuneState.Oscillating;
             _stallWindowValid = false;
         }
+        else if (_cycleWithheld)
+        {
+            // 【本地改动】这一周 TEC 那半周被扣过：不算数。连着两周都这样，每一周都会这样，量不准
+            if (++_withheldCycles >= 2)
+            {
+                Fail("连着两个周期要制冷时都在等冷水机最短间隔（加热棒关着自然凉），振荡周期比冷水机最短间隔还短，" +
+                     "每一周都量不准——把设备属性「冷水机最短间隔」调小，或加大回差 / 减小两边力度让周期变长，再整");
+                return;
+            }
+        }
         else
         {
+            _withheldCycles = 0;
             var period = (time - _cycleStartTime.Value).TotalSeconds;
             var amplitude = (_cycleMax - _cycleMin) / 2.0;
             _periods.Add(period);
@@ -341,6 +418,7 @@ public sealed class RelayAutoTuner(
             TryFinish();
         }
 
+        _cycleWithheld = false;            // 新一周从加热半周起，加热半周不会被扣；真还扣着下一拍 SetWithheld 会记上
         _cycleStartTime = time;
         _cycleMax = _cycleMin = pv;
     }
