@@ -877,7 +877,7 @@ public sealed class DualStationDriverTests
         Assert.Equal("釜内", cfg.Str(DualStationDriver.Fields.PushBase));
         Assert.Equal(180, cfg.Num(DualStationDriver.Fields.ExitLead));
         Assert.Equal(60, cfg.Num(DualStationDriver.Fields.CoolMin));
-        Assert.Equal(120, cfg.Num(DualStationDriver.Fields.ChillerGap));
+        Assert.Equal(60, cfg.Num(DualStationDriver.Fields.ChillerGap));
         Assert.Equal(60, cfg.Num(DualStationDriver.Fields.AskTimeout));
         Assert.Equal(3, cfg.Num(DualStationDriver.Fields.SignDwellS));
 

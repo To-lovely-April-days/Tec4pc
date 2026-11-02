@@ -615,9 +615,11 @@ public sealed class HmiViewModel : ViewModelBase
                 rows.Add(new SysRow($"热源 · 通道 {z.Number}",
                     (z.HeatRegime ?? "没在控温") + (z.CascadePushC is { } c ? $" · 夹套目标压低 {c:0.0} K" : ""),
                     "此刻在哪个挡 / 制冷段 / 在等什么"));
+            var chillerGap = cfg.Num("冷水机最短间隔", 60);      // 存着旧缺省 120 的驱动按 60 用（DuoSession），这里照实显示
+            if (chillerGap == 120) chillerGap = 60;
             rows.Add(new SysRow("双向挡参数",
                 $"提前 δ {cfg.Num("提前切换偏差", 0.1):0.00} K · 压低 Δ {cfg.Num("制冷时夹套压低", 2):0.0} K（基准 {cfg.Str("压低基准", "釜内")}）" +
-                $" · 退出超前 {cfg.Num("退出超前", 180):0} s · 最短制冷 {cfg.Num("最短制冷时间", 60):0} s · 冷水机间隔 {cfg.Num("冷水机最短间隔", 120):0} s" +
+                $" · 退出超前 {cfg.Num("退出超前", 180):0} s · 最短制冷 {cfg.Num("最短制冷时间", 60):0} s · 冷水机间隔 {chillerGap:0} s" +
                 $" · 弹窗 {cfg.Num("中途弹窗等答复", 60):0} s · 驻留 {cfg.Num("符号驻留", 3):0} s · 通水 {cfg.Num("通水延时", 5):0} s",
                 "在工作站台面属性栏修改，重新连接设备后生效"));
             rows.Add(new SysRow("冷却水询问",

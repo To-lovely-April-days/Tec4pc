@@ -516,6 +516,21 @@ public sealed class ChillerInterlockTests
         Assert.Contains("等冷水机最短间隔", ((IHeatSource)t).Regime);
     }
 
+    [Theory]
+    [InlineData(null, 60)]     // 没存：缺省 60 s
+    [InlineData(120d, 60)]     // 存的是旧缺省 120：按 60 用（用户定的：不用现场去改文件）
+    [InlineData(90d, 90)]      // 别的填法照填的走
+    [InlineData(0d, 0)]
+    public async Task 冷水机最短间隔_缺省60_存着旧缺省120按60用_别的照填(double? stored, double expected)
+    {
+        var b = Rig();
+        var cfg = new ParameterSet();
+        if (stored is { } v) cfg[DualStationDriver.Fields.ChillerGap] = v;
+        await using var s = await b.Drv.OpenAsync(Conn(), b.Ctx(cfg), CancellationToken.None);
+        Assert.Equal(expected, ((DuoSession)s).ChillerMinGap.TotalSeconds);
+        lock (b.Logs) Assert.Equal(stored == 120d, b.Logs.Any(l => l.Text.Contains("旧缺省 120 s")));
+    }
+
     [Fact]
     public async Task 冷水机最短间隔_间隔内自动进段先不开_到点再开()
     {
@@ -525,6 +540,7 @@ public sealed class ChillerInterlockTests
         var d = (DuoSession)s;
         d.CoolMinDuration = TimeSpan.Zero;
         d.ExitLead = TimeSpan.Zero;
+        d.ChillerMinGap = TimeSpan.FromSeconds(120);      // 这条的时间线按 120 s 排（缺省 60 s）
         await Overshoot(b, s, t, manual: false);          // 自动开水：冷启动一次
         Assert.True(b.Io.Coils[7]);
         Assert.Equal(2, b.Chiller.State);

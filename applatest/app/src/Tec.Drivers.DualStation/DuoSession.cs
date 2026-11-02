@@ -403,7 +403,15 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         _pushFromEquilibrium = cfg.Str(F.PushBase, "釜内") == "稳态偏置";
         ExitLead = TimeSpan.FromSeconds(Math.Clamp(cfg.Num(F.ExitLead, 180), 0, 600));
         CoolMinDuration = TimeSpan.FromSeconds(Math.Clamp(cfg.Num(F.CoolMin, 60), 0, 600));
-        ChillerMinGap = TimeSpan.FromSeconds(Math.Clamp(cfg.Num(F.ChillerGap, 120), 0, 900));
+        // 缺省 60 s（用户定的，2026-11-02：原来 120 s，双向挡整定周期比它短，每周都被扣）。台面里存的 120 是旧缺省
+        // （工作站属性栏打开过就写进去）：当旧缺省、按 60 用（用户定的：不用现场去改文件，同 DO6 / DO7 那条）。别的填法照填的走
+        var chillerGap = cfg.Num(F.ChillerGap, 60);
+        if (chillerGap == 120)
+        {
+            chillerGap = 60;
+            _ctx.Log?.Invoke("info", $"{InstanceId} 台面里「冷水机最短间隔」存的是旧缺省 120 s，按现在的缺省 60 s 用");
+        }
+        ChillerMinGap = TimeSpan.FromSeconds(Math.Clamp(chillerGap, 0, 900));
         AskTimeout = TimeSpan.FromSeconds(Math.Clamp(cfg.Num(F.AskTimeout, 60), 10, 120));
         SignDwell = TimeSpan.FromSeconds(Math.Clamp(cfg.Num(F.SignDwellS, 3), 0, 30));
         _tick = TimeSpan.FromMilliseconds(Math.Clamp(connection.Num(F.Tick, 1000), 100, 5000));
