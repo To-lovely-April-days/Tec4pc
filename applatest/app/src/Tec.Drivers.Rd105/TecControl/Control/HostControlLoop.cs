@@ -264,6 +264,56 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         /// <summary>上一拍外环误差（过零检测用）；NaN 表示尚无历史。</summary>
         public double LastOuterErrorC = double.NaN;
 
+        /// <summary>【本地改动】外环误差历史：最近 <see cref="OuterApproachWindow"/> 里每次外环更新的 (时刻, 误差)，
+        /// 「趋近不积分」量误差缩小得多快用。新一段趋近（改设定 / 起步 / 解除压低）和 Tr 丢失恢复时清。只在回路线程读写
+        /// （会话线程那边只立 <see cref="OuterRearmedFlag"/>）。</summary>
+        public readonly Queue<(DateTime At, double ErrC)> OuterErrHistory = new();
+
+        // 【本地改动】会话线程（SetSetpoint / 解除压低 / 起步）立的标志，回路线程下一次外环更新开头 Interlocked.Exchange 收走再落实——
+        // 会话线程碰回路线程正在用的队列会撞；先读后清会把两次之间又立的那一下吞掉。
+        /// <summary>新一段趋近：清误差历史。</summary>
+        public int OuterRearmedFlag;
+        /// <summary>SetSetpoint 直接给了新目标：坡上攒的放掉、积分还在起步预置上时按新方向重摆刹车。</summary>
+        public int OuterTargetChangedFlag;
+        /// <summary>重新起步：丢掉记着的坡起点。</summary>
+        public int RampCancelledFlag;
+
+        /// <summary>【本地改动】外环积分里的偏置算不算摸清了：起步用了学到的 / 估出来的稳态偏置、放电预置到学到的，或者这一场已经稳住过一分钟
+        /// （<see cref="OuterSteadyCyclesToLearn"/>）。</summary>
+        public bool OuterBiasKnown;
+
+        /// <summary>【本地改动】外环积分还停在起步预置（或重摆刹车后的值）上、一下都没积过。只有这时候积分里那份刹车是完整的、
+        /// 改目标可以原样拿掉换方向；积过一下刹车就算被吸收了（<see cref="OuterBrakeC"/> 清 0），不再单算。</summary>
+        public bool OuterIntegralPristine;
+
+        /// <summary>【本地改动】积分还没动过时里面那份刹车（K，降温趋近 +、升温趋近 −、0 = 没加）。</summary>
+        public double OuterBrakeC;
+
+        /// <summary>【本地改动】外环积分的参照值——信得过的那个偏置：起步预置、重摆刹车、放电预置、坡尾回基、这一场稳住时的积分。
+        /// 改目标 / 解除压低不动它。「趋近不积分」「夹套跟不上不积分」只拦积分往参照值外面、往外环正推的方向走；
+        /// 往参照值那边回（退债）两条都不拦。</summary>
+        public double OuterIntegralRef;
+
+        /// <summary>【本地改动】曲线斜坡起步那一拍的外环积分；不在坡上为 null。坡停下来（走完 / 进保温段）或中途直接改目标时
+        /// 积分回到它（或这个温度学到的稳态偏置），只往「停在目标前面」那一侧回。坡中途重下一条坡（重规划）不换起点。</summary>
+        public double? RampBaseI;
+
+        /// <summary>【本地改动】这段斜坡起步时的主设定值（坡停下来时定方向）。</summary>
+        public double RampStartSpC;
+
+        /// <summary>【本地改动】曲线是回路自己走完的（不是被 StopProfile 停的）：下一次外环更新按坡走完回基。只在回路线程读写。
+        /// 被外面停掉的坡不在这儿回基——SetTargetAsync 是「停曲线 → 给新目标」两步，中间回路可能插一拍，按坡的方向放会放反；
+        /// 留着坡起点等新目标那一拍按釜内在新目标哪一边放。</summary>
+        public bool ProfileFinished;
+
+        /// <summary>【本地改动】上一次外环更新时的主设定值（判断曲线还在不在走）；NaN = 还没更新过。</summary>
+        public double LastOuterSetpointC = double.NaN;
+
+        /// <summary>【本地改动】每拍（控没控都记）的 (时刻, 釜内 / 外环被控量, 夹套 / 内环被控量)，保留
+        /// <see cref="OuterStartQuietWindow"/> 多一点。起步时没学到稳态偏置就看这段稳不稳、稳就拿「夹套 − 釜内」当外环积分起点。
+        /// 回路线程写、StartChannelAsync（会话线程）读：锁它自己。</summary>
+        public readonly Queue<(DateTime At, double OuterC, double InnerC)> History = new();
+
         /// <summary>落地偏置钳位已锁存（进交接带一次即锁，至首次过零由武装标志一并解除）。
         /// 必须锁存：按拍重判会在带边被 ±10mK 噪声来回触发，实测出现 4 次咬合-松开抖动。</summary>
         public bool OuterClampLatched;
@@ -645,16 +695,24 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
     public void SetSetpoint(int ch, double celsius)
     {
         var s = State(ch);
-        if (Math.Abs(celsius - s.SetpointC) > 1e-9)
+        var changed = Math.Abs(celsius - s.SetpointC) > 1e-9;
+        if (changed)
         {
             // 新目标意味着新一段趋近过程：重新武装两段积分放电；压着的夹套目标也随旧目标作废（【本地改动】）
             s.Push = null;
             RearmOuter(s);
         }
         s.SetpointC = celsius;
+        if (changed)
+        {
+            // 【本地改动】标志在新设定值写进去之后立：回路线程收标志时看到的一定是新目标
+            Volatile.Write(ref s.OuterTargetChangedFlag, 1);
+            Volatile.Write(ref s.OuterRearmedFlag, 1);
+        }
     }
 
-    /// <summary>新一段趋近：重新武装两枪积分放电、解开落地钳位、清过零历史（SetSetpoint 与解除压低共用）。</summary>
+    /// <summary>新一段趋近：重新武装两枪积分放电、解开落地钳位、清过零历史（SetSetpoint 与解除压低共用）。
+    /// 【本地改动】也让回路线程下一次外环更新清趋近判据的误差历史（跨新旧目标算误差变化没意义）、积分参照落到此刻的积分（立标志）。</summary>
     private static void RearmOuter(ChannelState s)
     {
         s.OuterApproachDischargeArmed = true;
@@ -662,6 +720,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         s.OuterClampLatched = false;
         s.OuterClampBinding = false;
         s.LastOuterErrorC = double.NaN;
+        Volatile.Write(ref s.OuterRearmedFlag, 1);
     }
 
     /// <summary>【本地改动】串级「夹套压低」的参数：压到基准以下多少 K；基准是釜内（false）还是稳态偏置（true）。</summary>
@@ -837,6 +896,57 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
     /// </summary>
     public double OuterIntegralBandC { get; set; } = 3;
 
+    /// <summary>
+    /// 【本地改动】趋近不积分：外环误差在 <see cref="OuterApproachWindow"/> 里缩小得比这个快（K/min）——釜内正往目标走——
+    /// 外环积分就不动；停住了 / 往外漂了才积。积分在参照值（信得过的那个偏置）另一边、往回退的不拦。≤0 或 NaN = 关。
+    /// 现场（2026-11-02，双向挡釜内 32 → 20 ℃）：带内三分多钟的趋近里积分攒到 −4.06 K，Tr 到 20 时夹套目标还压在 16 ℃，
+    /// 积分要等 Tr 掉到 20 以下才往回退、退了六分多钟——Tr 一路掉到 18.94 ℃、十二分钟才回来。用这一场拟合的釜
+    /// （时间常数 ≈ 675 s、稳态偏置 +1.3 K、夹套跟随 ≈ 35 s）回放：趋近时冻住积分，这一段攒出来的过冲就没了。
+    /// 用误差的变化（不是 Tr 的）：曲线斜坡上设定值和 Tr 一起走、误差不缩，积分照常跟坡；坡停了 Tr 追上来才算趋近。
+    /// </summary>
+    public double OuterApproachFreezeCPerMin { get; set; } = 0.05;
+
+    /// <summary>【本地改动】趋近判据量误差变化的时间窗（宇电 Tr 0.01 K 分辨率下 60 s 窗的量化噪声约 0.01 K/min，比门槛小一截）。</summary>
+    public TimeSpan OuterApproachWindow { get; set; } = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// 【本地改动】内环跟不上不积分（K）：夹套离它的目标（外环上一拍算的内环设定）还差这么多、且差在外环正要推的那一边时，
+    /// 外环积分不往那个方向攒（往回退不拦）。≤0 或 NaN = 关。
+    /// 小台阶（20 → 22 ℃）时比例项不饱和，改设定后头一两分钟夹套还在追、Tr 还没动——「趋近」判据看不出来，
+    /// 积分照攒，回放过冲 0.2 K；加上这条 0.02 K。双向挡 TEC 等冷水机 / 等驻留没出力时也是同一回事：执行不了的需求别记账。
+    /// </summary>
+    public double OuterInnerLagFreezeC { get; set; } = 0.5;
+
+    /// <summary>
+    /// 【本地改动】起步时外环积分从哪儿起：表里这个温度学到过稳态偏置就用它（原来就这样）；没学到时看起步前这么长一段
+    /// 釜内和夹套稳不稳，稳就拿最后 <see cref="OuterStartAverage"/> 里「夹套 − 釜内」的平均当起点——那就是起步那个温度
+    /// 维持住要的偏置。散热型的偏置随温度单调变（温度越高越大），拿起点的估终点：降温估大了（夹套给得偏高）、升温估小了
+    /// （偏低），两边都是「停在目标前面再靠过去」那一侧，不会冲过去。都不成（起步前温度还在变）就从 0 起、往来的方向加
+    /// <see cref="OuterBrakeBiasC"/> 刹车。≤0 = 不估。
+    /// 现场那一场起步前夹套 33.34、釜内 32.03：估出 +1.31，拟合出的稳态偏置正是 +1.3。回放过冲 1.04 → 0.03 K。
+    /// </summary>
+    public TimeSpan OuterStartQuietWindow { get; set; } = TimeSpan.FromSeconds(120);
+
+    /// <summary>【本地改动】起步估偏置取「夹套 − 釜内」平均的那最后一段。</summary>
+    public TimeSpan OuterStartAverage { get; set; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>【本地改动】起步前算「稳」：时间窗里釜内最高最低差不超过它（K）。</summary>
+    public double OuterStartQuietOuterC { get; set; } = 0.2;
+
+    /// <summary>【本地改动】起步前算「稳」：时间窗里夹套最高最低差不超过它（K）。</summary>
+    public double OuterStartQuietInnerC { get; set; } = 0.6;
+
+    /// <summary>
+    /// 【本地改动】没学到稳态偏置、起步前又不稳时外环积分的刹车起点（K）：釜内在目标上方（降温趋近）给 +，下方给 −——
+    /// 比例项单独把釜内停在目标前面一点，积分再慢慢靠过去。釜内离目标不到 <see cref="OuterBrakeMinDistanceC"/> 不加；
+    /// 离得近时按 (1 + 外环 Kp) × 距离 ÷ 2 封顶（比例项先走一半路）。偏置还没摸清时直接改目标，按新方向重摆。
+    /// 回放（稳态偏置 −1.3 ~ +1.3 K）过冲 ≤ 0.03 K；偏置大到 +2.5 K 时还会冲 0.2 K——那种温度跑过一次学到偏置就好了。
+    /// </summary>
+    public double OuterBrakeBiasC { get; set; } = 1.5;
+
+    /// <summary>【本地改动】起步时釜内离目标多远（K）才加刹车。</summary>
+    public double OuterBrakeMinDistanceC { get; set; } = 0.5;
+
     /// <summary>内环设定值安全限幅（℃），防止外环把腔体温度推到极端值。</summary>
     public double InnerSetpointMinC { get; set; } = -50;
     public double InnerSetpointMaxC { get; set; } = 200;
@@ -931,6 +1041,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         s.ProfileStart = DateTime.Now;
         s.ProfileStartC = s.SetpointC;
         s.ProfileHoldAt = s.OuterLostSince is null ? null : s.ProfileStart;   // 【本地改动】保持期里起的曲线从头就暂停
+        // 【本地改动】坡起点不在这儿清：坡中途重下一条坡（重规划）还用最早那个起点——那时的积分才是没带跟坡电荷的值
     }
 
     public void StopProfile(int ch) => State(ch).Profile = null;
@@ -987,12 +1098,21 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
             s.ProfileHoldAt = null;
             s.Push = null;                           // 【本地改动】新一轮串级：上一轮压着的夹套目标作废
             s.InnerSetpointC = setpointC;
+            Volatile.Write(ref s.RampCancelledFlag, 1);        // 【本地改动】坡尾回基 / 趋近判据从头来（回路线程清）
+            Volatile.Write(ref s.OuterTargetChangedFlag, 0);
+            s.LastOuterSetpointC = double.NaN;
             ApplyOuterTuning(s, setpointC);   // 先装限幅，预置才会按正确范围截断
-            if (SteadyBiasFor(s, setpointC) is { } bias)     // 【本地改动】外环按釜选表
-            {
-                s.OuterPid.PresetIntegral(bias);
-                s.InnerSetpointC = Math.Clamp(setpointC + bias, InnerSetpointMinC, InnerSetpointMaxC);
-            }
+            // 【本地改动】积分起点：学到的稳态偏置 → 起步前稳着时的「夹套 − 釜内」→ 往来的方向刹车（OuterStartBias）
+            var (start, brake, known, why) = OuterStartBias(s, setpointC);
+            s.OuterPid.PresetIntegral(start);
+            s.OuterBrakeC = brake;
+            s.OuterBiasKnown = known;
+            s.OuterIntegralPristine = true;
+            s.OuterIntegralRef = s.OuterPid.LastI;
+            Volatile.Write(ref s.OuterRearmedFlag, 1);
+            if (Math.Abs(s.OuterPid.LastI) > 1e-12)
+                s.InnerSetpointC = Math.Clamp(setpointC + s.OuterPid.LastI, InnerSetpointMinC, InnerSetpointMaxC);
+            ChannelNotice?.Invoke(ch, "info", $"通道{ch}串级外环积分起点 {s.OuterPid.LastI:+0.00;-0.00;0} ℃：{why}");
         }
 
         s.SteadyCycles = 0;
@@ -1208,6 +1328,148 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         _loopTask = null;
     }
 
+    /// <summary>
+    /// 【本地改动】串级起步时外环积分从哪儿起（见 <see cref="OuterStartQuietWindow"/>）：
+    /// ① 这个温度学到的稳态偏置；② 起步前一段釜内、夹套都稳 → 最后一小段「夹套 − 釜内」的平均；
+    /// ③ 都没有：釜内离目标够远就往来的方向加刹车（降温趋近 +、升温趋近 −），不然 0。返回值还没按偏置限幅夹（PresetIntegral 夹）。
+    /// </summary>
+    private (double Bias, double Brake, bool Known, string Why) OuterStartBias(ChannelState s, double setpointC)
+    {
+        if (SteadyBiasFor(s, setpointC) is { } learned)
+            return (learned, 0, true, "这个温度学到的稳态偏置");
+        var q = QuietStartBias(s);
+        if (q.Bias is { } est)
+            return (est, 0, true, $"这个温度没学到稳态偏置；起步前 {OuterStartQuietWindow.TotalSeconds:0} s 釜内 / 夹套都稳" +
+                                  $"（波动 {q.OuterSpanC:F2} / {q.InnerSpanC:F2} K），按「夹套 − 釜内」估");
+        var tr = q.LastOuterC;
+        var brake = BrakeToward(s, tr, setpointC);
+        if (brake != 0)
+            return (brake, brake, false, $"这个温度没学到稳态偏置、{q.Reason}：釜内 {tr:F2} ℃ 在目标{(tr > setpointC ? "上" : "下")}方，" +
+                                         $"往来的方向加 {brake:+0.0;-0.0} K 刹车——先停在目标前面，积分再慢慢靠过去");
+        return (0, 0, false, $"这个温度没学到稳态偏置、{q.Reason}，釜内离目标不到 {OuterBrakeMinDistanceC:0.#} K：从 0 起");
+    }
+
+    /// <summary>
+    /// 【本地改动】往来的方向的刹车：釜内在目标上方（降温趋近）+、下方（升温趋近）−；离得不够远 / 读不到 / 关了给 0。
+    /// 不超过 (1 + 外环 Kp) × 距离 ÷ 2：比例项单独停住的地方离目标 = 刹车 ÷ (1 + Kp)，这样至少先走一半路——
+    /// 离目标 0.5 K 的小台阶不至于一上来就被 1.5 K 的刹车按住、全靠积分慢慢爬。
+    /// </summary>
+    private double BrakeToward(ChannelState s, double outerC, double setpointC)
+    {
+        if (!(OuterBrakeBiasC > 0) || !double.IsFinite(outerC)) return 0;
+        var d = Math.Abs(outerC - setpointC);
+        if (d < OuterBrakeMinDistanceC) return 0;
+        var brake = Math.Min(OuterBrakeBiasC, (1 + Math.Max(0, s.OuterPid.Kp)) * d / 2);
+        return outerC > setpointC ? brake : -brake;
+    }
+
+    /// <summary>【本地改动】看起步前那段历史稳不稳；稳就给「夹套 − 釜内」的平均，不稳给原因。LastOuterC = 最近一个釜内读数（刹车定方向用）。</summary>
+    private (double? Bias, double OuterSpanC, double InnerSpanC, double LastOuterC, string Reason) QuietStartBias(ChannelState s)
+    {
+        (DateTime At, double OuterC, double InnerC)[] h;
+        lock (s.History) h = s.History.ToArray();
+        var lastOuter = double.NaN;
+        for (var i = h.Length - 1; i >= 0; i--)
+            if (double.IsFinite(h[i].OuterC)) { lastOuter = h[i].OuterC; break; }
+        if (double.IsNaN(lastOuter) && s.OuterSource is { } src)
+        {
+            try { lastOuter = src(); } catch { /* 读不到就不定方向 */ }
+        }
+
+        if (OuterStartQuietWindow <= TimeSpan.Zero) return (null, 0, 0, lastOuter, "起步估偏置关着");
+        if (h.Length == 0 || DateTime.Now - h[^1].At > TimeSpan.FromSeconds(10))
+            return (null, 0, 0, lastOuter, "起步前没有最近的温度记录");
+        var end = h[^1].At;
+        var from = end - OuterStartQuietWindow;
+        if (h[0].At > from + TimeSpan.FromSeconds(Math.Min(10, OuterStartQuietWindow.TotalSeconds / 10)))
+            return (null, 0, 0, lastOuter, $"起步前的温度记录不满 {OuterStartQuietWindow.TotalSeconds:0} s");
+        double oMin = double.MaxValue, oMax = double.MinValue, iMin = double.MaxValue, iMax = double.MinValue, sum = 0;
+        var n = 0;
+        foreach (var (at, o, inner) in h)
+        {
+            if (at < from) continue;
+            if (!double.IsFinite(o) || !double.IsFinite(inner))
+                return (null, 0, 0, lastOuter, "起步前釜内 / 夹套有读不到的时候");
+            oMin = Math.Min(oMin, o); oMax = Math.Max(oMax, o);
+            iMin = Math.Min(iMin, inner); iMax = Math.Max(iMax, inner);
+            if (at >= end - OuterStartAverage) { sum += inner - o; n++; }
+        }
+        if (n == 0) return (null, 0, 0, lastOuter, "起步前的温度记录不够");
+        var oSpan = oMax - oMin;
+        var iSpan = iMax - iMin;
+        if (oSpan > OuterStartQuietOuterC || iSpan > OuterStartQuietInnerC)
+            return (null, oSpan, iSpan, lastOuter,
+                $"起步前 {OuterStartQuietWindow.TotalSeconds:0} s 温度还在变（釜内波动 {oSpan:F2} K、夹套 {iSpan:F2} K，" +
+                $"稳要 ≤ {OuterStartQuietOuterC:0.##} / {OuterStartQuietInnerC:0.##} K）");
+        return (sum / n, oSpan, iSpan, lastOuter, "");
+    }
+
+    /// <summary>【本地改动】两枪放电把积分预置到学到的稳态偏置：偏置摸清了，参照落到它、刹车不再单算。</summary>
+    private static void OnOuterPresetToLearned(ChannelState s)
+    {
+        s.OuterBiasKnown = true;
+        s.OuterIntegralPristine = false;
+        s.OuterBrakeC = 0;
+        s.OuterIntegralRef = s.OuterPid.LastI;
+    }
+
+    /// <summary>
+    /// 【本地改动】坡上攒的那份放掉：积分回到起坡时的值（这个温度学到过稳态偏置就回到它），但只往「停在目标前面」那一侧回——
+    /// side &gt; 0 = 从上面往下趋近（降温坡 / 釜内在目标上方），积分只许往上回（夹套给高点）；&lt; 0 反过来；0 不限。
+    /// 起坡点不一定是稳着的（趋近半路上起的坡、带着刹车、重规划前那条坡的电荷……），限了方向它再不准也只会让釜停在前面、慢点到，不会推过头。
+    /// </summary>
+    private void DischargeRamp(int ch, ChannelState s, int side, string what)
+    {
+        var rampBase = s.RampBaseI!.Value;
+        s.RampBaseI = null;
+        var carried = s.OuterPid.LastI;
+        var learned = SteadyBiasFor(s, s.SetpointC);
+        var back = learned ?? rampBase;
+        if (side > 0) back = Math.Max(back, carried);
+        else if (side < 0) back = Math.Min(back, carried);
+        if (Math.Abs(carried - back) > OuterDischargeMinGapC)
+        {
+            s.OuterPid.PresetIntegral(back);
+            ChannelNotice?.Invoke(ch, "info",
+                $"通道{ch}{what}：外环积分 {carried:F2} → {s.OuterPid.LastI:F2} ℃" +
+                $"（{(learned is null ? "回到起坡时的值" : "这个温度学到的稳态偏置")}——跟坡多攒的那部分放掉，别带着它冲过头）");
+        }
+        if (learned is not null) s.OuterBiasKnown = true;
+        s.OuterIntegralPristine = false;
+        s.OuterBrakeC = 0;
+        s.OuterIntegralRef = s.OuterPid.LastI;
+    }
+
+    /// <summary>【本地改动】记一笔外环误差并判断「正在趋近」：时间窗里误差在缩小、缩得比 OuterApproachFreezeCPerMin 快。
+    /// 窗里不到 20 s（或窗长的 1/3）的历史不下判断（改设定 / 起步刚清过）。</summary>
+    private bool ApproachingSetpoint(ChannelState s, DateTime now, double err)
+    {
+        var q = s.OuterErrHistory;
+        q.Enqueue((now, err));
+        while (q.Count > 0 && now - q.Peek().At > OuterApproachWindow) q.Dequeue();
+        if (!(OuterApproachFreezeCPerMin > 0) || q.Count < 2) return false;
+        var (at0, e0) = q.Peek();
+        var span = (now - at0).TotalSeconds;
+        if (span < Math.Min(20, OuterApproachWindow.TotalSeconds / 3)) return false;
+        var rate = (err - e0) / span;
+        return err * rate < 0 && Math.Abs(rate) * 60 > OuterApproachFreezeCPerMin;
+    }
+
+    /// <summary>【本地改动】每拍记一笔 (釜内 / 外环被控量, 夹套 / 内环被控量)，控没控都记——起步估偏置要看起步「前」稳不稳。</summary>
+    private void RecordHistory(ChannelState s, TecSnapshot snapshot, double pv)
+    {
+        if (OuterStartQuietWindow <= TimeSpan.Zero) return;
+        double outer;
+        try { outer = s.OuterSource is { } src ? src() : s.OuterFeedbackSensor == 1 ? snapshot.Temp1C : snapshot.Temp2C; }
+        catch { outer = double.NaN; }
+        var keep = OuterStartQuietWindow + TimeSpan.FromSeconds(10);
+        lock (s.History)
+        {
+            s.History.Enqueue((snapshot.Timestamp, outer, pv));
+            while (s.History.Count > 0 && snapshot.Timestamp - s.History.Peek().At > keep) s.History.Dequeue();
+        }
+    }
+
     // ---------- 主循环 ----------
 
     private async Task RunAsync(CancellationToken ct)
@@ -1254,6 +1516,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         {
             var s = State(ch);
             var pv = Pv(s, ch, snapshot);
+            RecordHistory(s, snapshot, pv);          // 【本地改动】
 
             if (s.Suspended && s.Tuner is { } held
                 && DateTime.Now - (s.SuspendedSince ?? DateTime.Now) > TuningSuspendLimit)
@@ -1374,6 +1637,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                 var lostFor = (snapshot.Timestamp - since).TotalSeconds;
                 s.OuterLostSince = null;
                 s.OuterPid.ResetDerivative();
+                s.OuterErrHistory.Clear();                // 【本地改动】趋近判据别跨盲区算误差变化
                 s.LastOuterUpdate = default;              // 下一拍外环 dt = OuterPeriod，别把断掉的几十秒一口气积进去
                 s.BiasGuard.Reset();
                 var resumed = "";
@@ -1403,6 +1667,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
             else
             {
                 s.Profile = null;
+                s.ProfileFinished = true;            // 【本地改动】坡尾回基认这个，不认外面 StopProfile
                 profileProgress = 1;
                 ProfileCompleted?.Invoke(ch, profile.Name);
             }
@@ -1430,15 +1695,90 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                 var innerHigh = s.LastDutyPercent >= s.Pid.OutputMax - 1e-6;
                 var innerLow = s.LastDutyPercent <= s.Pid.OutputMin + 1e-6;
                 var innerSaturated = innerHigh || innerLow;
+                // 【本地改动】会话线程立的标志先收走、在这儿（回路线程）落实，再按（可能刚换的）目标算误差
+                if (Interlocked.Exchange(ref s.RampCancelledFlag, 0) != 0)
+                {
+                    s.RampBaseI = null;
+                    s.ProfileFinished = false;
+                }
+                if (Interlocked.Exchange(ref s.OuterRearmedFlag, 0) != 0) s.OuterErrHistory.Clear();
+                if (Interlocked.Exchange(ref s.OuterTargetChangedFlag, 0) != 0)
+                {
+                    // 坡中途直接给了新目标（StopProfile + SetSetpoint）：坡上攒的那份先放掉，按釜内在新目标哪一边定方向
+                    if (s.RampBaseI is not null && s.Profile is null)
+                    {
+                        s.ProfileFinished = false;
+                        var side = outerPv - s.SetpointC;
+                        DischargeRamp(ch, s, Math.Abs(side) >= 0.05 ? Math.Sign(side) : Math.Sign(s.RampStartSpC - s.SetpointC),
+                            $"斜坡中途改目标 {s.SetpointC:F2} ℃");
+                    }
+                    // 偏置没摸清、积分还停在起步预置上（刹车完整在里面）：按新方向重摆刹车
+                    if (s.OuterIntegralPristine && !s.OuterBiasKnown && s.Push is null && SteadyBiasFor(s, s.SetpointC) is null)
+                    {
+                        var brake = BrakeToward(s, outerPv, s.SetpointC);
+                        if (Math.Abs(brake - s.OuterBrakeC) > 1e-9)
+                        {
+                            var carried = s.OuterPid.LastI;
+                            s.OuterPid.PresetIntegral(carried - s.OuterBrakeC + brake);
+                            ChannelNotice?.Invoke(ch, "info",
+                                $"通道{ch}新目标 {s.SetpointC:F2} ℃（釜内 {outerPv:F2} ℃）、偏置还没摸清：外环刹车 {s.OuterBrakeC:+0.0;-0.0;0} → {brake:+0.0;-0.0;0} K，" +
+                                $"积分 {carried:F2} → {s.OuterPid.LastI:F2} ℃");
+                            s.OuterBrakeC = brake;
+                            s.OuterIntegralRef = s.OuterPid.LastI;
+                        }
+                    }
+                }
                 var outerErr0 = s.SetpointC - outerPv;
+
+                // 【本地改动】坡尾回基：曲线斜坡上主设定值每次外环更新都在动——动起来那一拍记下积分（坡起点），
+                // 停下来（坡走完进保温段 / 曲线走完）那一拍把积分放回坡起点（这个温度学到过稳态偏置就放到它），只往停在目标前面那一侧放
+                // （DischargeRamp）。跟坡时积分里多出来的那部分是夹套为带着釜走多拉开的 τ·速率，坡一停就是过冲的电荷（同趋近积分的道理）。
+                // 坡起点的积分是起坡那个温度的稳态偏置：散热型偏置随温度单调，拿它当终点的，降温偏高、升温偏低——停在目标前面那一侧。
+                // 回放（釜 τ ≈ 675 s）：32 → 20 ℃ 0.5 K/min 坡尾过冲 1.2 → 0.3 K 以内、20 → 60 ℃ 1 K/min 0.8 → 0.03 K。
+                // 坡中途直接给新目标在上面收标志那儿放；坡中途重下一条坡不换起点。
+                var spMoving = !double.IsNaN(s.LastOuterSetpointC) && Math.Abs(s.SetpointC - s.LastOuterSetpointC) > 1e-9;
+                if (spMoving && s.Profile is not null)
+                {
+                    if (s.RampBaseI is null)
+                    {
+                        s.RampBaseI = s.OuterPid.LastI;
+                        s.RampStartSpC = s.LastOuterSetpointC;
+                    }
+                }
+                else if (!spMoving && s.RampBaseI is not null && (s.Profile is not null || s.ProfileFinished))
+                {
+                    // 进了保温段（曲线还在）或曲线是回路自己走完的；被外面停掉的等新目标那一拍（上面）按新目标放
+                    s.ProfileFinished = false;
+                    DischargeRamp(ch, s, Math.Sign(s.RampStartSpC - s.SetpointC), $"斜坡走到 {s.SetpointC:F2} ℃ 停了");
+                }
+                s.LastOuterSetpointC = s.SetpointC;
+
+                // 【本地改动】趋近不积分（OuterApproachFreezeCPerMin）与内环跟不上不积分（OuterInnerLagFreezeC）：
+                // 前者 Tr 正往目标走时不攒（攒了到站就是过冲）；后者夹套还没追上外环上一拍要的需求时不攒——执行不了 / 还没执行到的
+                // 需求别记账。两条都只拦积分往参照值（信得过的偏置）外面、往外环正推的方向走；积分在参照值另一边、往回退（退债）不拦——
+                // 冲过头以后 Tr 往回走那一段要靠它把攒反了的积分退回来
+                var outward = (s.OuterPid.LastI - s.OuterIntegralRef) * outerErr0 >= 0;
+                var approaching = ApproachingSetpoint(s, snapshot.Timestamp, outerErr0) && outward;
+                var innerLag = s.InnerSetpointC - pv;
+                var innerBehind = OuterInnerLagFreezeC > 0 && Math.Abs(innerLag) > OuterInnerLagFreezeC
+                                  && innerLag * outerErr0 > 0 && outward;
+
                 var freeze = (innerHigh && outerErr0 > 0 && s.OuterPid.LastI >= 0)
                              || (innerLow && outerErr0 < 0 && s.OuterPid.LastI <= 0)
-                             || (!double.IsNaN(OuterIntegralBandC) && Math.Abs(outerErr0) > OuterIntegralBandC);   // 积分分离
+                             || (!double.IsNaN(OuterIntegralBandC) && Math.Abs(outerErr0) > OuterIntegralBandC)   // 积分分离
+                             || approaching || innerBehind;
                 // 【本地改动】夹套压低（制冷段）：这一拍整段按它来——积分冻结（现有饱和冻结判据不覆盖
                 // 「I = +5.5、内环贴下限、err < 0」这种，必须显式冻，不然 I 以 Ki·err 慢慢往下积）
                 var push = s.Push;
+                var integralBefore = s.OuterPid.LastI;
                 var bias = s.OuterPid.Update(s.SetpointC, outerPv, outerDt,
                     freezeIntegral: freeze || s.OuterClampBinding || push is not null);
+                if (Math.Abs(s.OuterPid.LastI - integralBefore) > 1e-12)
+                {
+                    // 【本地改动】积过一下：起步那份刹车被吸收进去了，不再单算（改目标不再按它重摆）
+                    s.OuterIntegralPristine = false;
+                    s.OuterBrakeC = 0;
+                }
 
                 // 腔体跟踪缺口前馈：腔体离它的目标还差多少，就按比例多推一把，
                 // 等效把腔体跟随加速 (1+k) 倍——趋近段提前归位消掉剩余下冲，
@@ -1508,7 +1848,10 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                     {
                         s.OuterApproachDischargeArmed = false;
                         if (Math.Abs(s.OuterPid.LastI - steadyI) > OuterDischargeMinGapC)
+                        {
                             s.OuterPid.PresetIntegral(steadyI);
+                            OnOuterPresetToLearned(s);     // 【本地改动】
+                        }
                     }
                     // 过零判据用 <=0 且前值非零：严格 <0 会被"恰好等于零"的采样吞掉
                     // （TC1 量化 1mK，实测撞上 e=+0.000 → 乘积为零 → 第二枪未开，下冲 0.115）
@@ -1518,7 +1861,10 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                     {
                         s.OuterCrossingArmed = false;
                         if (Math.Abs(s.OuterPid.LastI - steadyI) > OuterDischargeMinGapC)
+                        {
                             s.OuterPid.PresetIntegral(steadyI);
+                            OnOuterPresetToLearned(s);     // 【本地改动】
+                        }
                     }
                 }
                 s.LastOuterErrorC = outerErr;
@@ -1559,6 +1905,14 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                     if (++s.OuterSteadyCycles >= OuterSteadyCyclesToLearn
                         && OuterSchedule(s, s.SetpointC).LearnSteadyBias(s.SetpointC, s.LastSteadyBias.Value, createIfMissing: true))
                         GainScheduleChanged?.Invoke(ch);
+                    // 【本地改动】这一场已经稳住过：积分里就是维持这个温度要的偏置，刹车那份不再单算（改方向 / 坡走完不重摆）
+                    if (s.OuterSteadyCycles >= OuterSteadyCyclesToLearn)
+                    {
+                        s.OuterBiasKnown = true;
+                        s.OuterIntegralPristine = false;
+                        s.OuterBrakeC = 0;
+                        s.OuterIntegralRef = s.OuterPid.LastI;
+                    }
                 }
                 else
                 {

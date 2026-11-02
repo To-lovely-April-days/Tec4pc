@@ -13,6 +13,8 @@ public sealed class FakeRd105Device : ISerialTransport
     private readonly StringBuilder _rx = new();          // 主机发来的字节，攒到 '\n' 才算一条
     private readonly Queue<byte> _tx = new();            // 待读回主机的应答
     private readonly Dictionary<string, long> _regs = new(StringComparer.Ordinal);
+    // 回路线程（应答 / 推温度）和测试线程（Set 摆夹套温度）都碰寄存器：一把锁（可重入，Handle 里套 Get / Set 不碍事）
+    private readonly object _gate = new();
 
     public FakeRd105Device()
     {
@@ -69,6 +71,11 @@ public sealed class FakeRd105Device : ISerialTransport
 
     private void Step()
     {
+        lock (_gate) StepCore();
+    }
+
+    private void StepCore()
+    {
         if (!Thermal) return;
         var now = _clock.Elapsed.TotalSeconds;
         var dt = now - _lastStep;
@@ -83,8 +90,8 @@ public sealed class FakeRd105Device : ISerialTransport
         }
     }
 
-    public long Get(int? ch, string name) => _regs.TryGetValue(Key(ch, name), out var v) ? v : 0;
-    public void Set(int? ch, string name, long value) => _regs[Key(ch, name)] = value;
+    public long Get(int? ch, string name) { lock (_gate) return _regs.TryGetValue(Key(ch, name), out var v) ? v : 0; }
+    public void Set(int? ch, string name, long value) { lock (_gate) _regs[Key(ch, name)] = value; }
 
     private static string Key(int? ch, string name) => ch is null ? name : $"TC{ch}:{name}";
 
@@ -124,6 +131,11 @@ public sealed class FakeRd105Device : ISerialTransport
     // ── 协议 ─────────────────────────────────────────────────────────
 
     private void Handle(string frame)
+    {
+        lock (_gate) HandleCore(frame);
+    }
+
+    private void HandleCore(string frame)
     {
         Commands.Add(frame.Trim());
         if (Mute) return;

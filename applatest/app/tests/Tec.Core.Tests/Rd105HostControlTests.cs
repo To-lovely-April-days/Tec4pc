@@ -470,10 +470,13 @@ public class Rd105HostControlTests
         await WaitUntil(() => !double.IsNaN(t.CurrentJacket), 3000, "夹套读数");
         bench.SetManual(new PidManual(new PidTuning(8, 0.02, 0), new PidTuning(2.5, 0.5, 0), 8));
         using var feed = new TrFeeder(s, 1, 29.0);           // 釜内 29、目标 30：外环 P = 2.5，积分从这里往上攒
+        // 夹套先摆在 39（比夹套目标高）：「内环跟不上不积分」下夹套落在后面时积分不往前攒，这条要的是「积分已经攒到顶」那个局面。
+        // 起步没学到偏置、离目标 1 K：积分从 −1.5 的刹车起，要多攒几拍
+        b.Rd.Set(1, "TCADJTEMP", 39_00000);
         await Task.Delay(100);
         await t.SetTargetAsync(new TempTarget(30, TempChannelKind.Reactor), CancellationToken.None);
         Assert.True(b.Io.Coils[0]);
-        await WaitUntil(() => St(t).CascadeInnerSetpoint is { } i && i > 37, 15000, () => $"外环积分攒到顶（内环设定 {St(t).CascadeInnerSetpoint}）");
+        await WaitUntil(() => St(t).CascadeInnerSetpoint is { } i && i > 37, 25000, () => $"外环积分攒到顶（内环设定 {St(t).CascadeInnerSetpoint}）");
 
         // 釜内过头到 31（e = −1）、夹套被拉到 40（高过内环设定）：加热棒 0、贴着下限。原来这时外环积分双向冻结，
         // 内环设定停在 30 + 8 − 2.5 = 35.5 不动；现在正向欠账能退：几秒内落到 30 以下
@@ -532,13 +535,20 @@ public class Rd105HostControlTests
         using var feed = new TrFeeder(s, 1, 25.0);           // e = 5：带（3 ℃）外
         await Task.Delay(100);
         await t.SetTargetAsync(new TempTarget(30, TempChannelKind.Reactor), CancellationToken.None);
-        await WaitUntil(() => St(t).CascadeInnerSetpoint is { } i && i > 42, 6000, () => $"P 顶起来（{St(t).CascadeInnerSetpoint}）");
+        // 没学到偏置、起步前也没稳够两分钟：积分从往下 1.5 的刹车起（升温趋近），30 + 2.5 × 5 − 1.5 = 41
+        await WaitUntil(() => St(t).CascadeInnerSetpoint is { } i && i > 40.5, 6000, () => $"P 顶起来（{St(t).CascadeInnerSetpoint}）");
         await Task.Delay(6000);                            // 3 个外环周期：老规矩下 I 每周期涨 0.5 × 5 × 2 = 5 ℃
         var far = St(t).CascadeInnerSetpoint!.Value;
-        Assert.True(far < 43.5, $"带外还在积分：内环设定 {far:F2}（该是 30 + 2.5 × 5 = 42.5）");
+        Assert.True(far < 42, $"带外还在积分：内环设定 {far:F2}（该是 30 + 2.5 × 5 − 1.5 = 41）");
 
-        feed.Value = 28.0;                                 // e = 2：进带，积分开始攒
-        await WaitUntil(() => St(t).CascadeInnerSetpoint is { } i && i > 30 + 5 + 1.5, 8000, () => $"进带没积分：{St(t).CascadeInnerSetpoint}");
+        // 进带（e = 2）积分开始攒。Tr 从 25 跳到 28 在外环看是「正往目标走」，趋近不积分照规矩不动——那条另有用例；
+        // 这里停了重新下发，从 28 起步（Tr 不动）。夹套先摆到 40（高过夹套目标）：内环跟不上不积分也不拦
+        await t.StopAsync(CancellationToken.None);
+        feed.Value = 28.0;
+        b.Rd.Set(1, "TCADJTEMP", 40_00000);
+        await Task.Delay(600);
+        await t.SetTargetAsync(new TempTarget(30, TempChannelKind.Reactor), CancellationToken.None);
+        await WaitUntil(() => St(t).CascadeInnerSetpoint is { } i && i > 30 + 5 + 1.5, 12000, () => $"进带没积分：{St(t).CascadeInnerSetpoint}");
     }
 
     [Fact]
@@ -890,7 +900,8 @@ public class Rd105HostControlTests
         d.SignDwell = TimeSpan.FromHours(1);       // 假机夹套每秒走 1 K、几秒就压到压低后的目标以下：只验温度判据这条路，符号别来扳
         var t = Temp(s, 0);
         await WaitUntil(() => !double.IsNaN(t.CurrentJacket), 3000, "夹套读数");
-        using var feed = new TrFeeder(s, 1, 29.5);
+        // 离目标 0.2 K 起步：不到 0.5 K 不加刹车（没学到偏置时起步会往来的方向刹一把），这条只验提前切 TEC
+        using var feed = new TrFeeder(s, 1, 29.8);
         await Task.Delay(100);
 
         await t.SetTargetAsync(new TempTarget(30, TempChannelKind.Reactor), CancellationToken.None);
