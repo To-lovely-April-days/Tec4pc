@@ -142,6 +142,7 @@ public sealed class HmiViewModel : ViewModelBase
     // ── 曲线总览（原型 ov-gra：通道1 的 Tr/Tj + 通道2 的 Tr，一张图）────
 
     public HmiChartModel? OvChart { get; private set; }
+    private (double Lo, double Hi, string Format)? _ovAxis;   // 上一拍的纵轴（数据小动不跳）
     public bool OvChartEmpty => OvChart is null;
 
     internal void RefreshOvChart()
@@ -170,7 +171,7 @@ public sealed class HmiViewModel : ViewModelBase
             if (t0 is null || pts[0].WallClock < t0) t0 = pts[0].WallClock;
             if (tEnd is null || pts[^1].WallClock > tEnd) tEnd = pts[^1].WallClock;
         }
-        if (t0 is null || tEnd is null) return null;
+        if (t0 is null || tEnd is null) { _ovAxis = null; return null; }
         var span = Math.Max(1, (tEnd.Value - t0.Value).TotalSeconds);
 
         double dLo = double.MaxValue, dHi = double.MinValue;
@@ -181,15 +182,15 @@ public sealed class HmiViewModel : ViewModelBase
             foreach (var s in pts)
             {
                 pl.Add(new Avalonia.Point((s.WallClock - t0.Value).TotalSeconds, s.Value));
+                if (!double.IsFinite(s.Value)) continue;
                 if (s.Value < dLo) dLo = s.Value;
                 if (s.Value > dHi) dHi = s.Value;
             }
             traces.Add(new HmiChartTrace
             { Name = name, Color = Avalonia.Media.Color.Parse(color), Points = pl });
         }
-        // 原型定死 −30…110；真数据出界时把界扩出去——图不许把点裁没了
-        var lo = Math.Min(-30.0, dLo);
-        var hi = Math.Max(110.0, dHi * 1.12 + 5);
+        // 纵轴跟着数据缩放（从前照原型定死 −30…110），跟通道趋势页一个算法
+        var (lo, hi, yFmt) = (_ovAxis = HmiChartAxis.Fit(dLo, dHi, _ovAxis)).Value;
         var labels = new List<string>(7);
         for (var i = 0; i <= 6; i++)
         {
@@ -197,7 +198,7 @@ public sealed class HmiViewModel : ViewModelBase
             labels.Add(span / 60 < 36 ? $"{sec / 60:0.0} min" : $"{Math.Round(sec / 60)} min");
         }
         return new HmiChartModel
-        { Traces = traces, XStart = 0, XSpan = span, YLo = lo, YHi = hi, XLabels = labels };
+        { Traces = traces, XStart = 0, XSpan = span, YLo = lo, YHi = hi, YFormat = yFmt, XLabels = labels };
     }
 
     // ── 点图弹窗（原型 gtap：在所选时刻加标记 / 备注）────────────────
@@ -1499,9 +1500,12 @@ public sealed class HmiZoneViewModel : ViewModelBase
     // ── 显示文本 ────────────────────────────────────────────────────
 
     // NaN 也是「没读到」：釜内探头没绑 / 没数时 CurrentReactor 就是 NaN，印「—」不印「NaN」
-    private static string F1(double? v) => v is { } x && !double.IsNaN(x)
-        ? (x < 0 ? "−" : "") + Math.Abs(x).ToString("0.0") : "—";
-    private static string Sg(double v) => double.IsNaN(v) ? "—" : (v >= 0 ? "+" : "−") + Math.Abs(v).ToString("0.0");
+    private static string F1(double? v) => HmiNum.Fixed(v, 1);
+    // 实测的 Tr / Tj 念两位（探头本来就是 0.01）：一位小数时 Tr 在 −10.05 / −10.06 待着，
+    // 屏上就在 −10.0 和 −10.1 之间来回跳（2026-11-03 现场 −10 ℃ 那次跳了八十来回），
+    // 看着像在来回 0.1 浮动，其实只动了 0.01。设定值、内环、温差这些还是一位
+    private static string F2(double? v) => HmiNum.Fixed(v, 2);
+    private static string Sg(double v) => HmiNum.Signed(v, 1);
 
     public string ModeName => Mode switch
     { "Tj" => "夹套控温 Tj", "TrTj" => "蒸回流 Tj−Tr", _ => "釜内控温 Tr" };
@@ -1533,7 +1537,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
     public bool ModeFollow => Mode == "TrTj";
     public bool ByDur => RampBy == "dur" && !ModeFollow;
 
-    public string TrText => F1(TrVal) + (TrVal is null ? "" : " ℃");
+    public string TrText => F2(TrVal) + (TrVal is null ? "" : " ℃");
     // 釜上的「设定」牌念**回路真正在追的值**：回路开着就读温控器此刻的设定值（ITemperatureStatus），
     // 关着才念面板记的那个数。待下发的改动只亮在输入格的琥珀色里，别让图上的数抢在「下发设定值」
     // 之前变。从前念的是面板按模式各记一份的数：在 Tj 模式下发了 −10、切到 Tr 模式牌子写「设定 20」，
@@ -1557,14 +1561,14 @@ public sealed class HmiZoneViewModel : ViewModelBase
 
     // 夹套气泡（用户要的：夹套温度实时在图上）。夹套是控温对象时多一行设定 / 跟随；
     // 串级时夹套是内环的被控量，多一行「内环 X ℃」——外环此刻要夹套到多少（用户要的）
-    public string TjText => F1(TjVal) + (TjVal is null ? "" : " ℃");
+    public string TjText => F2(TjVal) + (TjVal is null ? "" : " ℃");
     public string? TjSetText => Mode == "Tj" ? $"设定 {F1(LoopSetpoint ?? Sets["tj"])} ℃"
         : ModeFollow ? $"跟随 Tr+{F1(Sets["dt"])} K"
         : CascadeInner is { } inner ? $"内环 {F1(inner)} ℃" : null;
     public string PhText => PhVal is { } p ? p.ToString("0.00") : "—";
     public bool VesselRunning => TempOn || EngineRunning;
 
-    public string TjBox => F1(TjVal);
+    public string TjBox => F2(TjVal);
     public string TjNote => Mode == "Tj" ? $"设定 {F1(Pv("tj"))}"
         : ModeFollow ? $"跟随 Tr+{F1(Sets["dt"])}"
         : CascadeInner is { } inner ? $"内环 {F1(inner)}"
@@ -1597,7 +1601,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
     public bool RateOff => !(TempOn || EngineRunning);
     public string RateNote => TempOn || EngineRunning ? "实测" : "停止";
 
-    public string NowLine1 => $"Tj {F1(TjVal)} ℃　Tr−Tj {(TrVal is { } a && TjVal is { } b ? Sg(a - b) : "—")} K";
+    public string NowLine1 => $"Tj {F2(TjVal)} ℃　Tr−Tj {(TrVal is { } a && TjVal is { } b ? Sg(a - b) : "—")} K";
     public string NowLine2 => $"Tc {F1(TcVal)} ℃ · {(TcVal is null ? "无信号" : "冷媒正常")}";
     public string StirNow => HasStir
         ? $"实测 {RpmVal:0} rpm　扭矩 {(TorqueVal is { } q ? q.ToString("0") : "—")} mN·m"
@@ -2191,12 +2195,16 @@ public sealed class HmiZoneViewModel : ViewModelBase
         ("rpm", "R 转速", "rpm", "#C9C9C9"),
     };
 
-    private readonly HashSet<string> _trends = new(StringComparer.Ordinal) { "tr", "tj", "tjset", "dt" };
+    // 「Tr−Tj」默认不画：纵轴跟着数据缩放以后，一条 −1.5 K 的温差线跟 15 ℃ 的 Tr 摆在一根轴上，
+    // 纵轴得从 −5 拉到 25，Tr 的 0.1 又看不见了。卡片上照样念数，要看曲线点一下
+    private readonly HashSet<string> _trends = new(StringComparer.Ordinal) { "tr", "tj", "tjset" };
     private readonly Dictionary<string, string> _traceColor = new(StringComparer.Ordinal);
     private double _winSec;          // 0 = 全程
     private double _offSec;          // 距最新点往回退的秒数
     private double _lastWin, _lastFull;
     private bool _clockAxis;
+    // 上一拍的纵轴：每秒重画时带进去，数据小动不跳；人一缩放 / 平移 / 开关曲线就清掉、重新取最合适的
+    private (double Lo, double Hi, string Format)? _yAxis;
     private DateTimeOffset? _axis0;  // 本轮图的时间原点（最早样点）
 
     /// <summary>标记（红虚线）与备注（红三角）。时间戳全是真时刻。</summary>
@@ -2220,8 +2228,8 @@ public sealed class HmiZoneViewModel : ViewModelBase
         d.Key, d.Name, d.Unit, ColorOf(d.Key),
         d.Key switch
         {
-            "tr" => F1(TrVal),
-            "tj" => F1(TjVal),
+            "tr" => F2(TrVal),
+            "tj" => F2(TjVal),
             "tjset" => F1(TempOn || EngineRunning ? Tag("Tjset") : null),
             "dt" => TrVal is { } a && TjVal is { } b ? Sg(a - b) : "—",
             "ph" => PhText,
@@ -2239,6 +2247,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
     {
         if (!_trends.Remove(key)) _trends.Add(key);
         if (_trends.Count == 0) _trends.Add(key);   // 全关没意义，至少留一条
+        _yAxis = null;
         RefreshGra();
     }
 
@@ -2254,6 +2263,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
         if (full <= 0) return;
         var win = _winSec > 0 ? _winSec : full;
         _winSec = Math.Clamp(win * factor, 120, full);
+        _yAxis = null;
         if (_winSec >= full - 1) _winSec = 0;
         RefreshGra();
     }
@@ -2265,10 +2275,11 @@ public sealed class HmiZoneViewModel : ViewModelBase
         var win = _winSec > 0 ? _winSec : full;
         // ◀ = 往历史退（off 增大），▶ = 往最新走
         _offSec = Math.Clamp(_offSec - dir * win / 4, 0, Math.Max(0, full - win));
+        _yAxis = null;
         RefreshGra();
     }
 
-    public void GraReset() { _winSec = 0; _offSec = 0; RefreshGra(); }
+    public void GraReset() { _winSec = 0; _offSec = 0; _yAxis = null; RefreshGra(); }
     public void GraAxisToggle() { _clockAxis = !_clockAxis; RefreshGra(); }
 
     internal void RefreshGra()
@@ -2381,7 +2392,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
             if (t0 is null || pts[0].T < t0) t0 = pts[0].T;
             if (tEnd is null || pts[^1].T > tEnd) tEnd = pts[^1].T;
         }
-        if (t0 is null || tEnd is null) { _axis0 = null; _lastFull = 0; return null; }
+        if (t0 is null || tEnd is null) { _axis0 = null; _lastFull = 0; _yAxis = null; return null; }
         _axis0 = t0;
 
         var full = Math.Max(1, (tEnd.Value - t0.Value).TotalSeconds);
@@ -2397,7 +2408,13 @@ public sealed class HmiZoneViewModel : ViewModelBase
         {
             var dec = Decimate(pts, t0.Value, xStart, xEnd);
             if (dec.Count < 2) continue;
-            foreach (var p in dec) { if (p.Y < lo) lo = p.Y; if (p.Y > hi) hi = p.Y; }
+            // 只量窗口里的点（抽稀每桶留了最小 / 最大，尖峰量得到）
+            foreach (var p in dec)
+            {
+                if (!double.IsFinite(p.Y)) continue;
+                if (p.Y < lo) lo = p.Y;
+                if (p.Y > hi) hi = p.Y;
+            }
             var def = TrendDefs.First(d => d.Key == key);
             traces.Add(new HmiChartTrace
             {
@@ -2406,11 +2423,10 @@ public sealed class HmiZoneViewModel : ViewModelBase
                 Points = dec,
             });
         }
-        if (traces.Count == 0) return null;
-        // 纵轴界照原型：下界不高于 −30，上界给 12% 余量再加 5
-        lo = Math.Min(-30, lo);
-        hi = hi * 1.12 + 5;
-        if (hi <= lo + 1) hi = lo + 20;
+        if (traces.Count == 0) { _yAxis = null; return null; }
+        // 纵轴跟着窗口里的数据缩放（从前照原型定死 −30 起、上界 ×1.12+5，0.1 ℃ 看不见）。
+        // Tj、ΔT 跟 Tr 画在同一根轴上、差着一两度：要看清 Tr 的 0.1，点上面的卡片把别的线关了
+        var (yLo, yHi, yFmt) = (_yAxis = HmiChartAxis.Fit(lo, hi, _yAxis)).Value;
 
         var labels = new List<string>(7);
         for (var i = 0; i <= 6; i++)
@@ -2426,8 +2442,9 @@ public sealed class HmiZoneViewModel : ViewModelBase
             Traces = traces,
             XStart = xStart,
             XSpan = win,
-            YLo = lo,
-            YHi = hi,
+            YLo = yLo,
+            YHi = yHi,
+            YFormat = yFmt,
             XLabels = labels,
             Marks = _marks.Select((m, i) => new HmiChartMark(
                         (m.At - t0.Value).TotalSeconds, m.Name, i == _markZero)).ToList(),

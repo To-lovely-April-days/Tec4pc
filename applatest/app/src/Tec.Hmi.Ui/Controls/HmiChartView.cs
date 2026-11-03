@@ -28,6 +28,8 @@ public sealed class HmiChartModel
     public required double XSpan { get; init; }
     public required double YLo { get; init; }
     public required double YHi { get; init; }
+    /// <summary>纵轴数字的格式。纵轴按数据自动缩放后格距可能是 0.05 / 0.1，得带小数才念得出来。</summary>
+    public string YFormat { get; init; } = "0";
     /// <summary>横轴 7 个刻度的文字（视图模型按「实验时间 / 时钟」算好）。</summary>
     public required IReadOnlyList<string> XLabels { get; init; }
     public IReadOnlyList<HmiChartMark> Marks { get; init; } = Array.Empty<HmiChartMark>();
@@ -103,8 +105,7 @@ public sealed class HmiChartView : Control
         {
             var yy = T + i * plotH / 6;
             ctx.DrawLine(grid, new Point(L, yy), new Point(w - R, yy));
-            var val = m.YHi - (m.YHi - m.YLo) * i / 6;
-            var ft = Text(val.ToString("0").Replace('-', '−'), 10.5, mut);
+            var ft = Text(HmiChartAxis.Tick(m.YLo, m.YHi, i, m.YFormat), 10.5, mut);
             ctx.DrawText(ft, new Point(L - 8 - ft.Width, yy - ft.Height / 2));
         }
 
@@ -181,4 +182,88 @@ public sealed class HmiChartView : Control
     private static FormattedText Text(string s, double size, IBrush brush)
         => new(s, System.Globalization.CultureInfo.InvariantCulture,
                FlowDirection.LeftToRight, Face, size, brush);
+}
+
+/// <summary>
+/// 纵轴按画面里的数据自动缩放（2026-11-03 用户要的：稳住以后要看得出 0.1 ℃ 的起伏）。
+/// 从前照原型定死「下界不高于 −30、上界 ×1.12+5」，15 ℃ 时一张图从 −30 画到 29，
+/// 0.1 ℃ 不到一个像素。现在：6 格，格距取 1 / 2 / 2.5 / 5 × 10ⁿ、**只看数据跨度**——数据（上下各留
+/// 半成余量）塞进 5 格就够，第 6 格留给对齐，下界落在格距整数倍上、数据大致居中，刻度数字是整的。
+/// 数据跨度不到 <see cref="MinSpan"/> 按它算（一般成了 0.1 一格、整张 0.6 ℃），免得一条 ±0.01 的平线放大成满屏噪声。
+/// 每秒重画时把上一张的界带进来（<c>prev</c>）：数据还在界里、格距没比现在该用的粗过一档、跨度离换档不到一成半，
+/// 就照旧不动——数据小动、窗口里进出一个点，纵轴不跟着跳。
+/// </summary>
+public static class HmiChartAxis
+{
+    /// <summary>数据跨度下限（℃）。</summary>
+    public const double MinSpan = 0.4;
+
+    /// <summary>格数，跟控件画的横网格一致。</summary>
+    public const int Cells = 6;
+
+    /// <summary>
+    /// 给数据最小 / 最大值，回纵轴上下界和刻度数字格式。<paramref name="prev"/> 是上一拍这张图用的界
+    /// （用户缩放 / 平移 / 开关曲线后传 null，重新取最合适的）。数不是有限值（一条线全是 NaN）、
+    /// 上下颠倒、或大到算不出格子时回 0…6——图上反正没东西可画。
+    /// </summary>
+    public static (double Lo, double Hi, string Format) Fit(double dataLo, double dataHi,
+        (double Lo, double Hi, string Format)? prev = null)
+    {
+        var none = (0.0, (double)Cells, "0");
+        if (!double.IsFinite(dataLo) || !double.IsFinite(dataHi) || dataHi < dataLo) return none;
+        var span = Math.Max(dataHi - dataLo, MinSpan);
+        var mid = dataLo / 2 + dataHi / 2;
+        if (!double.IsFinite(span) || !double.IsFinite(mid)) return none;
+        var need = span * 1.1 / (Cells - 1);          // 5 格装下数据 + 上下各半成
+        var step = Nice(need);
+
+        if (prev is { } p && p.Hi > p.Lo)
+        {
+            var ps = (p.Hi - p.Lo) / Cells;
+            // 上一张的格距还够用、也没粗过「跨度再大一成半时该用的那档」——不换档。
+            // 「再大一成半」拿真跨度算再套下限：拿套过下限的算，平在 0.4 以下的线永远落在 0.2 那档的宽限里，
+            // 收窄到底也回不到 0.1 一格（评审复查翻出来的：四场保温全程卡在 0.2）
+            var coarsest = Nice(Math.Max((dataHi - dataLo) * 1.15, MinSpan) * 1.1 / (Cells - 1));
+            if (ps >= need * (1 - 1e-9) && ps <= coarsest * (1 + 1e-9))
+            {
+                // 数据离上下边都还有一成格：界也不动
+                if (dataLo >= p.Lo + ps * 0.1 && dataHi <= p.Hi - ps * 0.1) return p;
+                step = ps;
+            }
+        }
+
+        var lo = Math.Floor(mid / step - Cells / 2.0 + 0.5) * step;
+        var hi = lo + Cells * step;
+        if (!double.IsFinite(lo) || !(hi > lo)) return none;
+        return (lo, hi, FormatOf(step));
+    }
+
+    /// <summary>从上往下第 i 根横线（0…6）的数字。</summary>
+    public static string Tick(double lo, double hi, int i, string format)
+    {
+        var val = hi - (hi - lo) * i / Cells;
+        // 跨零那一格的浮点零头（−1e-17）别印成「−0.0」
+        if (Math.Abs(val) < (hi - lo) * 1e-9) val = 0;
+        return val.ToString(format).Replace('-', '−');
+    }
+
+    /// <summary>不小于 x 的 1 / 2 / 2.5 / 5 × 10ⁿ（x 是正的有限数）。</summary>
+    private static double Nice(double x)
+    {
+        var p = Math.Pow(10, Math.Floor(Math.Log10(x)));
+        var f = x / p;
+        return (f <= 1 + 1e-9 ? 1 : f <= 2 + 1e-9 ? 2 : f <= 2.5 + 1e-9 ? 2.5 : f <= 5 + 1e-9 ? 5 : 10) * p;
+    }
+
+    /// <summary>格距要几位小数才写得全：25 → "0"、2.5 / 0.5 → "0.0"、0.25 → "0.00"。</summary>
+    private static string FormatOf(double step)
+    {
+        for (var d = 0; d < 6; d++)
+        {
+            var x = step * Math.Pow(10, d);
+            if (Math.Abs(x - Math.Round(x)) < 1e-6 * Math.Max(1, x))
+                return d == 0 ? "0" : "0." + new string('0', d);
+        }
+        return "0.000000";
+    }
 }

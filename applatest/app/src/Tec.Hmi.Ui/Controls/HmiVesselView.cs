@@ -196,10 +196,13 @@ public sealed class HmiVesselView : Control
         {
             var tgt = TrSetText is not null;
             ctx.DrawLine(ln15, new Point(42, 36), new Point(47.5, 36));
+            // 实测念两位小数以后「−10.05 ℃」比原来长一截：气泡往左（viewBox 左缘 −26 以内）放宽 5，
+            // 右缘不动（连着探头的那截短线），字还长就缩字号塞进去。字号按最宽的「−00.00 ℃」定死，
+            // 不按眼前这串字量——不然 Tr 在 −9.99 / −10.00 之间跳一个字，字号就跟着一大一小
             ctx.DrawRectangle(Brushes.White, P(tgt ? Blue : Mut2, 2),
-                new RoundedRect(new Rect(-20, tgt ? 16 : 22, 62, tgt ? 40 : 28), 3));
-            Text(ctx, TrText, 11, tgt ? 30 : 36, 15, Ink);
-            if (tgt) Text(ctx, TrSetText!, 11, 47, 10, Mut);
+                new RoundedRect(new Rect(-25, tgt ? 16 : 22, 67, tgt ? 40 : 28), 3));
+            Text(ctx, TrText, 8.5, tgt ? 30 : 36, 15, Ink, maxWidth: 61, fitTemplate: WidestReading);
+            if (tgt) Text(ctx, TrSetText!, 8.5, 47, 10, Mut, maxWidth: 61);
         }
         if (ShowPh)
         {
@@ -229,10 +232,10 @@ public sealed class HmiVesselView : Control
             double top = tjTgt ? 150 : 162;
             ctx.DrawLine(ln15, new Point(15, 196), new Point(15, 197.5));
             ctx.DrawRectangle(Brushes.White, P(tjTgt ? Blue : Mut2, 2),
-                new RoundedRect(new Rect(-20, top, 60, 196 - top), 3));
-            Text(ctx, "夹套 Tj", 10, top + 8, 8, Mut);
-            Text(ctx, TjText, 10, top + 22, 13, Ink);
-            if (tjTgt) Text(ctx, TjSetText!, 10, top + 37, 8.5, Mut);   // 「跟随 Tr+5.0 K」这一行最长，留点边
+                new RoundedRect(new Rect(-25, top, 65, 196 - top), 3));   // 两位小数，同 Tr 气泡往左放宽 5
+            Text(ctx, "夹套 Tj", 7.5, top + 8, 8, Mut);
+            Text(ctx, TjText, 7.5, top + 22, 13, Ink, maxWidth: 59, fitTemplate: WidestReading);
+            if (tjTgt) Text(ctx, TjSetText!, 7.5, top + 37, 8.5, Mut, maxWidth: 59);   // 「跟随 Tr+5.0 K」这一行最长，留点边
         }
 
         // ── 台面带上的大号状态图标（原型 v60：translate(194,230) scale(2)，
@@ -253,12 +256,26 @@ public sealed class HmiVesselView : Control
            * Matrix.CreateRotation(deg * Math.PI / 180)
            * Matrix.CreateTranslation(cx, cy);
 
-    /// <summary>SVG 的 text-anchor=middle + dominant-baseline=central：按量出来的尺寸手动居中。</summary>
+    /// <summary>气泡里实测读数（两位小数）最宽的样子，定字号用。</summary>
+    private const string WidestReading = "−00.00 ℃";
+
+    /// <summary>
+    /// SVG 的 text-anchor=middle + dominant-baseline=central：按量出来的尺寸手动居中。
+    /// 给了 maxWidth 时字太长就按比例缩字号，塞进气泡里；再给了 fitTemplate 就按它和眼前这串里宽的那个缩，
+    /// 读数一位一位变的时候字号不跟着变。
+    /// </summary>
     private static void Text(DrawingContext ctx, string s, double x, double y, double size,
-                             string color, bool center = true)
+                             string color, bool center = true, double maxWidth = 0, string? fitTemplate = null)
     {
         var ft = new FormattedText(s, System.Globalization.CultureInfo.CurrentCulture,
             FlowDirection.LeftToRight, Face, size, B(color));
+        var w = ft.Width;
+        if (fitTemplate is not null)
+            w = Math.Max(w, new FormattedText(fitTemplate, System.Globalization.CultureInfo.CurrentCulture,
+                FlowDirection.LeftToRight, Face, size, B(color)).Width);
+        if (maxWidth > 0 && w > maxWidth)
+            ft = new FormattedText(s, System.Globalization.CultureInfo.CurrentCulture,
+                FlowDirection.LeftToRight, Face, size * maxWidth / w, B(color));
         ctx.DrawText(ft, new Point(center ? x - ft.Width / 2 : x, y - ft.Height / 2));
     }
 }
