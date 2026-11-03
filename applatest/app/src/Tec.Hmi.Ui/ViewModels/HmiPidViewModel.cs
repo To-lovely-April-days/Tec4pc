@@ -52,7 +52,7 @@ public sealed class HmiPidRow : ViewModelBase
     public string Bias { get => _bias; set => Edit(ref _bias, value, nameof(Bias)); }
     public string Heat { get => _heat; set => Edit(ref _heat, value, nameof(Heat)); }
     /// <summary>
-    /// 稳态偏置（夹套设定 − 釜内目标，℃）：串级下发时预置外环积分、两枪放电的参照。回路到温后自己学（±0.05 ℃ 里待满 60 s）；
+    /// 稳态偏置（夹套设定 − 釜内目标，℃）：串级下发时预置外环积分、两枪放电的参照。回路到温后自己学（±0.05 ℃ 里、一分钟里走动不过 0.02 K，待满 60 s）；
     /// 0335 起也能手填——釜内稳住时看夹套比釜内高多少（现场 50 ℃ 是 5.5）。空 = 没有，回路只能从 0 攒。
     /// </summary>
     public string Steady { get => _steady; set => Edit(ref _steady, value, nameof(Steady)); }

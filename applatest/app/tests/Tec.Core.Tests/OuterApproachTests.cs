@@ -96,6 +96,8 @@ public class OuterApproachTests(ITestOutputHelper output)
                 ManagePwmFrequency = false,
                 OuterApproachWindow = TimeSpan.FromSeconds(60 / K),
                 OuterApproachFreezeCPerMin = rules ? 0.05 * K : 0,
+                OuterApproachHorizon = TimeSpan.FromSeconds(15 * 60 / K),
+                OuterApproachMinCPerMin = 0.015 * K,
                 OuterInnerLagFreezeC = rules ? 0.5 : 0,
                 OuterBrakeBiasC = rules ? 1.5 : 0,
                 OuterStartQuietWindow = rules && quiet ? TimeSpan.FromSeconds(120 / K) : TimeSpan.Zero,
@@ -287,10 +289,11 @@ public class OuterApproachTests(ITestOutputHelper output)
     [Fact]
     public async Task 趋近不积分_釜内往目标走时积分不动_停住了才积()
     {
-        // 只看趋近这一条：内环跟不上那条关了、不刹车
+        // 只看趋近的速度门槛这一条：内环跟不上那条关了、不刹车、按到站时间算的那条关了（它单独在下面那条验）
         await using var r = new Rig(22.5, 22.5, thermal: true);
         r.Loop.OuterInnerLagFreezeC = 0;
         r.Loop.OuterBrakeBiasC = 0;
+        r.Loop.OuterApproachHorizon = TimeSpan.Zero;
         await r.Loop.StartChannelAsync(1, 20);
         // Tr 按回路的时间每秒往下 0.4 K（24 K/min，门槛 3 K/min），到 20.6 停住
         DateTime? t0 = null;
@@ -304,6 +307,116 @@ public class OuterApproachTests(ITestOutputHelper output)
         await WaitUntil(() => r.Tr <= 20.6, 10000, () => $"Tr 没走到 20.6：{r.Tr}");   // 停在 20.6（e = −0.6）
         await Task.Delay(2500);                                  // 窗里不再缩小
         Assert.True(r.I < i1 - 0.3, $"停住了积分该往下攒：{i1:F2} → {r.I:F2}");
+    }
+
+    [Fact]
+    public async Task 爬得慢但照这速度一会儿就到也算趋近_积分不往外攒_停住了照积()
+    {
+        // 2026-11-03 现场那段：釜内每分钟只靠近 0.02–0.05 K（低于 0.05 的速度门槛），但剩下的几分钟就走完——积分不该往外漂。
+        // 这里 Tr 每分钟靠近 2.4 K（压缩后的门槛 3 K/min、最低 0.9 K/min），从 e = −0.30 起照这速度 7.5 s 到（到站时限 15 s），走到 20.15 停住。
+        // Tr 在回路读外环被控量那一刻按墙钟算（不经回调慢一拍）：回路卡一下，量出来的斜率也不失真
+        async Task<Rig> Crawl(bool horizon)
+        {
+            var r = new Rig(20.3, 20.3, thermal: true);
+            r.Loop.OuterInnerLagFreezeC = 0;
+            r.Loop.OuterBrakeBiasC = 0;
+            if (!horizon) r.Loop.OuterApproachHorizon = TimeSpan.Zero;
+            var t0 = DateTime.Now;
+            r.Loop.SetOuterSource(1, () =>
+            {
+                var tr = Math.Max(20.15, 20.3 - 0.04 * (DateTime.Now - t0).TotalSeconds);
+                r.Tr = tr;
+                return tr;
+            });
+            await r.Loop.StartChannelAsync(1, 20);
+            return r;
+        }
+        // 各看各的 Tr：20.24 → 20.18 这 1.5 s 里（窗早满了）积分动了多少
+        static async Task<(double Before, double After)> CrawlSpan(Rig r)
+        {
+            await WaitUntil(() => r.Tr <= 20.24, 10000, () => $"Tr 没走到 20.24：{r.Tr}");
+            var a = r.I;
+            await WaitUntil(() => r.Tr <= 20.18, 10000, () => $"Tr 没走到 20.18：{r.Tr}");
+            return (a, r.I);
+        }
+        await using var on = await Crawl(horizon: true);
+        await using var off = await Crawl(horizon: false);
+        var spans = await Task.WhenAll(CrawlSpan(on), CrawlSpan(off));
+        var (i1, i2) = spans[0];
+        var (j1, j2) = spans[1];
+        Assert.True(Math.Abs(i2 - i1) < 0.05, $"爬行时积分动了：{i1:F3} → {i2:F3}");
+        Assert.True(j2 < j1 - 0.12, $"只看速度门槛时这段积分该往下攒（对照）：{j1:F3} → {j2:F3}");
+
+        await WaitUntil(() => on.Tr <= 20.15, 10000, () => $"Tr 没走到 20.15：{on.Tr}");
+        await Task.Delay(1300);                                  // 窗里只剩停住以后的
+        var i3 = on.I;
+        await Task.Delay(1000);
+        Assert.True(on.I < i3 - 0.06, $"停住了积分该往下攒：{i3:F2} → {on.I:F2}");
+    }
+
+    [Fact]
+    public async Task 读数只跳一个字不算往目标走_积分照积()
+    {
+        // 离目标 0.1 K 时 Tr 跳一个字（20.11 → 20.10）：照「这速度多久到」它也算趋近（1 s 窗跳 0.01 = 0.6 K/min，0.1 K 十秒就到），
+        // 只有最低速度（0.9 K/min、窗里至少走过 0.015 K）把它挡掉。对照把最低速度关了：那一阵积分就被冻住
+        async Task<Rig> Make(bool floor)
+        {
+            var r = new Rig(20.11, 20.11, thermal: true);
+            r.Loop.OuterInnerLagFreezeC = 0;
+            r.Loop.OuterBrakeBiasC = 0;
+            if (!floor) r.Loop.OuterApproachMinCPerMin = 0;
+            await r.Loop.StartChannelAsync(1, 20);
+            return r;
+        }
+        await using var on = await Make(floor: true);
+        await using var off = await Make(floor: false);
+        await Task.Delay(1500);                                  // 窗里只剩 20.11
+        on.Tr = 20.10;
+        off.Tr = 20.10;
+        // 回路读到 20.10 以后再记起点：之前那几拍按 e = −0.11 停着照积，两边一样
+        static async Task<double> Seen(Rig r)
+        {
+            await WaitUntil(() => r.Last is { } l && l.OuterMeasuredC <= 20.105, 3000, () => "回路没读到 20.10");
+            return r.I;
+        }
+        var starts = await Task.WhenAll(Seen(on), Seen(off));
+        await Task.Delay(500);                                   // 窗（1 s）里那个 20.11 还没出去（再晚两边都照积，比差值不怕晚）
+        var onDrop = starts[0] - on.I;
+        var offDrop = starts[1] - off.I;
+        Assert.True(onDrop > 0.02, $"跳一个字被当成往目标走了，积分没积：{starts[0]:F3} → {on.I:F3}");
+        Assert.True(offDrop < 0.03 && onDrop - offDrop > 0.02, $"对照（没有最低速度）该冻住：{starts[1]:F3} → {off.I:F3}（有最低速度那边积了 {onDrop:F3}）");
+    }
+
+    [Fact]
+    public async Task 慢慢穿过目标那一阵不学稳态偏置_真稳住才学()
+    {
+        // 2026-11-03 现场：釜内每分钟 0.05 K 从 15.05 穿到 14.95，在 ±0.05 带里待满一分钟，就把还在漂的偏置记成了稳态偏置。
+        // 这里学习要 10 拍（2 s）、带放宽到 ±0.1；Tr 每秒走 0.035 K 穿过 20（带里待 5.7 s，1 s 窗里走 0.026 以上 > 0.02）
+        async Task<(Rig R, PidGainSchedule Table)> Make(bool still)
+        {
+            var r = new Rig(20.2, 21.5, thermal: true);
+            r.Loop.OuterSteadyCyclesToLearn = 10;
+            r.Loop.OuterLearnBandC = 0.1;
+            if (!still) r.Loop.OuterLearnStillC = 0;
+            var table = r.Loop.GetGainSchedule(1, ActuatorMode.Bidirectional);
+            table.SegmentBoundaryC = double.NaN;
+            table.Learn(new GainPoint(20, new PidGains(20, 0.05, 0), 0, 0, new PidGains(2.5, 0.013 * K, 0), 8));
+            await r.Loop.StartChannelAsync(1, 20);
+            DateTime? t0 = null;
+            r.OnCycle = at => { t0 ??= at; r.Tr = Math.Max(19.8, 20.2 - 0.035 * (at - t0.Value).TotalSeconds); };
+            return (r, table);
+        }
+        var (on, onTable) = await Make(still: true);
+        var (off, offTable) = await Make(still: false);
+        await using var _ = on;
+        await using var __ = off;
+        await WaitUntil(() => on.Tr <= 19.8 && off.Tr <= 19.8, 20000, () => $"Tr 没穿过去：{on.Tr} / {off.Tr}");
+        Assert.Null(onTable.SteadyBiasAt(20));
+        Assert.NotNull(offTable.SteadyBiasAt(20));               // 对照：不查动没动时，穿过去那一阵就记了
+
+        on.OnCycle = null;
+        on.Tr = 20.01;                                           // 真稳在带里
+        await WaitUntil(() => onTable.SteadyBiasAt(20) is not null, 8000, () => "稳在带里也没学");
     }
 
     [Fact]
@@ -354,7 +467,10 @@ public class OuterApproachTests(ITestOutputHelper output)
         up.Loop.StopProfile(1);
         up.Loop.SetSetpoint(1, 21);
         await WaitUntil(() => up.Notes().Any(n => n.Contains("斜坡中途改目标 21.00 ℃")), 3000, () => string.Join("\n", up.Notes()));
-        Assert.True(Math.Abs(up.I) < 0.3, $"没放回起坡值：{up.I:F2}");
+        // 放到多少看通知里的「→」那个数：通知在那一拍中途发，这时读回调里的积分可能还是上一拍的
+        var line = up.Notes().First(n => n.Contains("斜坡中途改目标 21.00 ℃"));
+        var back = double.Parse(Regex.Match(line, @"外环积分 [+-]?[\d.]+ → ([+-]?[\d.]+) ℃").Groups[1].Value);
+        Assert.True(Math.Abs(back) < 0.3, $"没放回起坡值：{back:F2}");
 
         // 同样攒起来之后改成 19（釜内在目标上方、从上面趋近）：回起坡值等于往下放、是往冲过去那边推——不放，积分留着
         await using var down = new Rig(20, 20, thermal: true);
@@ -368,6 +484,7 @@ public class OuterApproachTests(ITestOutputHelper output)
         var kept = down.I;
         await Task.Delay(800);
         Assert.DoesNotContain(down.Notes(), n => n.Contains("斜坡中途改目标"));
-        Assert.True(down.I > kept - 0.2, $"往冲过去那边放了：{kept:F2} → {down.I:F2}");
+        // 真放了是一下掉 0.8 以上；改目标后头一拍没东西冻（e = −1、夹套还没落后）照常积 0.78 × dt，回路慢一点就过 0.2——门槛放到 0.5
+        Assert.True(down.I > kept - 0.5, $"往冲过去那边放了：{kept:F2} → {down.I:F2}");
     }
 }

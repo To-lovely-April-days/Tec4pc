@@ -783,6 +783,13 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
     public double OuterLearnBandC { get; set; } = 0.05;
 
     /// <summary>
+    /// 【本地改动】学稳态偏置还要釜内真不动：<see cref="OuterApproachWindow"/> 里外环误差最高最低差不超过它（K），这一拍才算稳。≤0 或 NaN = 不查。
+    /// 现场（2026-11-03）：釜内每分钟 0.05 K 从 15.05 穿到 14.95，在 ±0.05 带里待满了一分钟，就把当时还在漂的 +0.7 当成 15 ℃ 的稳态偏置记进了表
+    /// （那一场维持 15 ℃ 实际要 +1.3 到 +1.9）——下次起步预置、两枪放电都拿它当准。
+    /// </summary>
+    public double OuterLearnStillC { get; set; } = 0.02;
+
+    /// <summary>
     /// 腔体跟踪缺口前馈增益（0 关闭）。剩余到温下冲的物理来源：外环偏置收拢时腔体
     /// 滞后跟随，核心到站时腔体还欠位 ~0.7℃，存量冷量把核心多压 0.05~0.08℃。
     /// 补偿项 = 增益 × (腔体目标 − 腔体实测)，等效把腔体跟随加速 (1+k) 倍，
@@ -908,6 +915,20 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
 
     /// <summary>【本地改动】趋近判据量误差变化的时间窗（宇电 Tr 0.01 K 分辨率下 60 s 窗的量化噪声约 0.01 K/min，比门槛小一截）。</summary>
     public TimeSpan OuterApproachWindow { get; set; } = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// 【本地改动】趋近的第二条判据：误差缩得没 <see cref="OuterApproachFreezeCPerMin"/> 快，但照眼下的速度这么长时间内走得完剩下的误差，
+    /// 也算在趋近，积分照样不往外攒。≤0 = 只看速度门槛。
+    /// 现场（2026-11-03，双向挡釜内 22 → 15 ℃）：釜内 15.26 → 15.07 那几分钟每分钟只靠近 0.02–0.05 K（照那个速度剩下 5–8 分钟就到），
+    /// 速度门槛当它停住了，外环积分从 +1.5 一路退到 +0.69；到站时夹套偏冷，釜内掉到 14.86，停控时（32 分钟）还在 14.97。
+    /// 用这一场拟合的釜（一阶、带壁热容两种都试了）回放：积分不漂了，冲过 0.07–0.11 → 0.01–0.07 K；代价是积分起点偏在「停在前面」那一侧时
+    /// 要等爬得更慢积分才开始补，到站平均晚约 2 分钟。
+    /// </summary>
+    public TimeSpan OuterApproachHorizon { get; set; } = TimeSpan.FromMinutes(15);
+
+    /// <summary>【本地改动】按到站时间算趋近时，误差至少得缩得这么快（K/min）、窗里至少缩过这个速度 × 窗长（60 s 窗 = 0.015 K）才算在动——
+    /// 60 s 窗里 Tr 跳一个字（0.01 K）就是 0.01 K/min，读数来回跳一下不算往目标走。</summary>
+    public double OuterApproachMinCPerMin { get; set; } = 0.015;
 
     /// <summary>
     /// 【本地改动】内环跟不上不积分（K）：夹套离它的目标（外环上一拍算的内环设定）还差这么多、且差在外环正要推的那一边时，
@@ -1440,7 +1461,8 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         s.OuterIntegralRef = s.OuterPid.LastI;
     }
 
-    /// <summary>【本地改动】记一笔外环误差并判断「正在趋近」：时间窗里误差在缩小、缩得比 OuterApproachFreezeCPerMin 快。
+    /// <summary>【本地改动】记一笔外环误差并判断「正在趋近」：时间窗里误差在缩小，缩得比 OuterApproachFreezeCPerMin 快，
+    /// 或者照这个速度 OuterApproachHorizon 之内走得完（速度至少 OuterApproachMinCPerMin）。
     /// 窗里不到 20 s（或窗长的 1/3）的历史不下判断（改设定 / 起步刚清过）。</summary>
     private bool ApproachingSetpoint(ChannelState s, DateTime now, double err)
     {
@@ -1452,7 +1474,28 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         var span = (now - at0).TotalSeconds;
         if (span < Math.Min(20, OuterApproachWindow.TotalSeconds / 3)) return false;
         var rate = (err - e0) / span;
-        return err * rate < 0 && Math.Abs(rate) * 60 > OuterApproachFreezeCPerMin;
+        if (err * rate >= 0) return false;
+        var perMin = Math.Abs(rate) * 60;
+        if (perMin > OuterApproachFreezeCPerMin) return true;
+        // 爬得慢，但照这个速度一会儿就到——也是在趋近。窗里还得真走过「最低速度 × 窗长」那么多：清过历史、窗还没满时
+        // 跨度只有 20 多秒，Tr 跳一个字折成的速度就过了最低速度
+        return OuterApproachHorizon > TimeSpan.Zero && perMin > OuterApproachMinCPerMin
+               && Math.Abs(err - e0) > OuterApproachMinCPerMin * OuterApproachWindow.TotalMinutes
+               && Math.Abs(err) / perMin <= OuterApproachHorizon.TotalMinutes;
+    }
+
+    /// <summary>【本地改动】釜内这一阵动没动：趋近判据那个时间窗里外环误差最高最低差不超过 <see cref="OuterLearnStillC"/>。
+    /// 本拍的误差已经由 ApproachingSetpoint 记进去了。</summary>
+    private bool OuterStill(ChannelState s)
+    {
+        if (!(OuterLearnStillC > 0)) return true;
+        double lo = double.MaxValue, hi = double.MinValue;
+        foreach (var (_, e) in s.OuterErrHistory)
+        {
+            lo = Math.Min(lo, e);
+            hi = Math.Max(hi, e);
+        }
+        return hi - lo <= OuterLearnStillC + 1e-9;
     }
 
     /// <summary>【本地改动】每拍记一笔 (釜内 / 外环被控量, 夹套 / 内环被控量)，控没控都记——起步估偏置要看起步「前」稳不稳。</summary>
@@ -1895,7 +1938,8 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                 // 所需的腔体-内部温差，登记后供下次同温启动预置外环积分。
                 // 学习带必须比 SteadyBandC 窄：缓沉暂态（误差 0.05~0.2）时若开录，
                 // 会把暂态偏置当稳态写进表，反过来让放电比对失准（第四轮实测教训）。
-                if (push is null && !innerSaturated && s.Profile is null && Math.Abs(outerErr) <= OuterLearnBandC)
+                // 【本地改动】还要釜内这一阵真不动（OuterLearnStillC）：慢慢穿过目标的那一分钟也在带里，那时的偏置是漂着的
+                if (push is null && !innerSaturated && s.Profile is null && Math.Abs(outerErr) <= OuterLearnBandC && OuterStill(s))
                 {
                     s.LastSteadyBias = s.LastSteadyBias is { } prev
                         ? prev + 0.05 * (bias - prev)   // 低通，约 20 次外环更新的时间常数
