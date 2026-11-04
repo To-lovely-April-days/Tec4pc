@@ -147,6 +147,7 @@ public partial class HmiView : UserControl
     private void OnGraZoomOut(object? s, RoutedEventArgs e) => Vm?.Cur?.GraZoom(2);
     private void OnGraReset(object? s, RoutedEventArgs e) => Vm?.Cur?.GraReset();
     private void OnGraAxis(object? s, RoutedEventArgs e) => Vm?.Cur?.GraAxisToggle();
+    private void OnGraYMode(object? s, RoutedEventArgs e) => Vm?.Cur?.GraYToggle();
 
     private void OnTColOpen(object? s, RoutedEventArgs e) => Vm?.OpenTCol();
     private void OnTColClose(object? s, RoutedEventArgs e) => Vm?.TColClose();

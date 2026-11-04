@@ -35,6 +35,8 @@ public sealed class HmiChartModel
     public IReadOnlyList<HmiChartMark> Marks { get; init; } = Array.Empty<HmiChartMark>();
     /// <summary>备注的红三角位置（秒）。</summary>
     public IReadOnlyList<double> Notes { get; init; } = Array.Empty<double>();
+    /// <summary>右上角一句提示（纵轴「设定值附近」时被控量跑出纵轴了就说一声）；null = 不画。</summary>
+    public string? Hint { get; init; }
 }
 
 /// <summary>
@@ -177,6 +179,13 @@ public sealed class HmiChartView : Control
             ctx.DrawText(ft, new Point(lx + 21, 14 - ft.Height / 2));
             lx += Math.Max(132, 21 + ft.Width + 24);
         }
+
+        // 右上角提示（跟图例一行，右对齐）
+        if (!string.IsNullOrEmpty(m.Hint))
+        {
+            var ft = Text(m.Hint, 11, leg);
+            ctx.DrawText(ft, new Point(Math.Max(lx, w - R - ft.Width), 14 - ft.Height / 2));
+        }
     }
 
     private static FormattedText Text(string s, double size, IBrush brush)
@@ -236,6 +245,22 @@ public static class HmiChartAxis
         var hi = lo + Cells * step;
         if (!double.IsFinite(lo) || !(hi > lo)) return none;
         return (lo, hi, FormatOf(step));
+    }
+
+    /// <summary>「设定值附近」那一档的半宽（℃）：设定值 ±0.3、一格 0.1。</summary>
+    public const double NearHalfSpan = 0.3;
+
+    /// <summary>
+    /// 纵轴「设定值附近」（2026-11-03 用户要的：全程那张图降温段一摆进来又是 −40…20，稳住以后的 0.1 看不见）：
+    /// 以 <paramref name="center"/>（设定值）为中、上下各 <see cref="NearHalfSpan"/>、一格 0.1，不跟数据缩放——
+    /// 降温段那一大截从上边进来，到了设定值附近每 0.1 一格。中心取到最近的 0.1，刻度都是整 0.1
+    /// （设定值 15.05 时中线是 15.1）。不是有限数回 null（调用方退回按数据缩放）。
+    /// </summary>
+    public static (double Lo, double Hi, string Format)? Near(double center)
+    {
+        if (!double.IsFinite(center) || Math.Abs(center) > 1e6) return null;
+        var mid = Math.Round(center * 10, MidpointRounding.AwayFromZero) / 10;
+        return (mid - NearHalfSpan, mid + NearHalfSpan, "0.0");
     }
 
     /// <summary>从上往下第 i 根横线（0…6）的数字。</summary>

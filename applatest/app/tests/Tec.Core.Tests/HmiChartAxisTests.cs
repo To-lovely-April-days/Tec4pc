@@ -197,6 +197,31 @@ public sealed class HmiChartAxisTests
         Assert.True(edgeChanges <= 1, $"换了 {edgeChanges} 回");
     }
 
+    [Theory]
+    [InlineData(-15.0, "−14.7", "−15.0", "−15.3")]
+    [InlineData(15.0, "15.3", "15.0", "14.7")]
+    [InlineData(15.05, "15.4", "15.1", "14.8")]     // 设定值不在 0.1 上：中线取最近的 0.1，刻度照样整
+    [InlineData(-10.04, "−9.7", "−10.0", "−10.3")]
+    [InlineData(0.0, "0.3", "0.0", "−0.3")]          // 跨零那根不印「−0.0」
+    [InlineData(0.04, "0.3", "0.0", "−0.3")]
+    public void 设定值附近_正负零点三_一格零点一(double sp, string top, string mid, string bottom)
+    {
+        var (lo, hi, fmt) = HmiChartAxis.Near(sp)!.Value;
+        Assert.Equal(0.6, hi - lo, 9);
+        Assert.Equal(top, HmiChartAxis.Tick(lo, hi, 0, fmt));
+        Assert.Equal(mid, HmiChartAxis.Tick(lo, hi, 3, fmt));
+        Assert.Equal(bottom, HmiChartAxis.Tick(lo, hi, 6, fmt));
+        Assert.True(sp >= lo + 0.25 - Eps && sp <= hi - 0.25 + Eps, $"设定值 {sp} 不在中间那一格附近：{lo}..{hi}");
+    }
+
+    [Fact]
+    public void 设定值附近_没有数退回按数据缩放()
+    {
+        Assert.Null(HmiChartAxis.Near(double.NaN));
+        Assert.Null(HmiChartAxis.Near(double.PositiveInfinity));
+        Assert.Null(HmiChartAxis.Near(1e300));
+    }
+
     [Fact]
     public void 大到算不动的数不卡死()
     {

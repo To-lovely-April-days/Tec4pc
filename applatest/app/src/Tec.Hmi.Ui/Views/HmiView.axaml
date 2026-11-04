@@ -818,6 +818,8 @@
                     <Button Classes="hbt" Content="复位" Click="OnGraReset" />
                     <Button Classes="hbt" Content="{Binding Cur.AxisModeText}" Click="OnGraAxis"
                             ToolTip.Tip="横轴：实验时间 / 时钟" />
+                    <Button Classes="hbt" Content="{Binding Cur.YModeText}" Click="OnGraYMode"
+                            ToolTip.Tip="纵轴：全部（跟着曲线缩放）/ 设定值附近（设定值 ±0.3 ℃、一格 0.1；没在控温时以当前读数为中）" />
                   </StackPanel>
                   <StackPanel Orientation="Horizontal" Spacing="8">
                     <Button Classes="hbt" Content="备注" Click="OnActNote" />

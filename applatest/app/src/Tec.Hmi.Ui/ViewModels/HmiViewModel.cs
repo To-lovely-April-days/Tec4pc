@@ -2205,6 +2205,9 @@ public sealed class HmiZoneViewModel : ViewModelBase
     private bool _clockAxis;
     // 上一拍的纵轴：每秒重画时带进去，数据小动不跳；人一缩放 / 平移 / 开关曲线就清掉、重新取最合适的
     private (double Lo, double Hi, string Format)? _yAxis;
+    // 纵轴「设定值附近」：设定值 ±0.3 ℃、一格 0.1，不跟数据缩放（用户 2026-11-03：全程图降温段一摆进来纵轴又是 −40…20，
+    // 得缩时间窗、关别的线才看得见 0.1——要一个按钮直接切）。false = 「全部」，跟着窗口里的数据缩放
+    private bool _yNear;
     private DateTimeOffset? _axis0;  // 本轮图的时间原点（最早样点）
 
     /// <summary>标记（红虚线）与备注（红三角）。时间戳全是真时刻。</summary>
@@ -2256,6 +2259,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
     public string WindowLabel => _lastFull <= 0 ? "窗口 —"
         : $"窗口 {Math.Max(1, Math.Round(_lastWin / 60))} min";
     public string AxisModeText => _clockAxis ? "时钟" : "实验时间";
+    public string YModeText => _yNear ? "设定值附近" : "纵轴全部";
 
     public void GraZoom(double factor)
     {
@@ -2281,13 +2285,25 @@ public sealed class HmiZoneViewModel : ViewModelBase
 
     public void GraReset() { _winSec = 0; _offSec = 0; _yAxis = null; RefreshGra(); }
     public void GraAxisToggle() { _clockAxis = !_clockAxis; RefreshGra(); }
+    public void GraYToggle() { _yNear = !_yNear; _yAxis = null; RefreshGra(); }
 
     internal void RefreshGra()
     {
         GraModel = BuildChart();
         RaiseAll(nameof(GraModel), nameof(GraEmpty), nameof(TrendRows),
-                 nameof(WindowLabel), nameof(AxisModeText));
+                 nameof(WindowLabel), nameof(AxisModeText), nameof(YModeText));
     }
+
+    /// <summary>
+    /// 纵轴「设定值附近」以谁为中、念哪个读数：釜内控温 = 回路在追的 Tr 设定；夹套控温 = 夹套设定；
+    /// 蒸回流没有固定目标（Tr 由沸点定）、回路没开时也没有设定——都以那个被控量此刻的读数为中。
+    /// </summary>
+    private (double? Center, string Name, double? Val) NearAxisRef => Mode switch
+    {
+        "Tj" => (LoopSetpoint ?? TjVal, "Tj", TjVal),
+        "TrTj" => (TrVal, "Tr", TrVal),
+        _ => (LoopSetpoint ?? TrVal, "Tr", TrVal),
+    };
 
     /// <summary>图上点一下的位置换回真时刻（gtap 弹窗要用）。</summary>
     internal DateTimeOffset? TimeAtSec(double sec) => _axis0?.AddSeconds(sec);
@@ -2424,9 +2440,21 @@ public sealed class HmiZoneViewModel : ViewModelBase
             });
         }
         if (traces.Count == 0) { _yAxis = null; return null; }
-        // 纵轴跟着窗口里的数据缩放（从前照原型定死 −30 起、上界 ×1.12+5，0.1 ℃ 看不见）。
-        // Tj、ΔT 跟 Tr 画在同一根轴上、差着一两度：要看清 Tr 的 0.1，点上面的卡片把别的线关了
-        var (yLo, yHi, yFmt) = (_yAxis = HmiChartAxis.Fit(lo, hi, _yAxis)).Value;
+        // 纵轴「全部」：跟着窗口里的数据缩放（从前照原型定死 −30 起、上界 ×1.12+5，0.1 ℃ 看不见）。
+        // Tj、ΔT 跟 Tr 画在同一根轴上、差着一两度，降温段也在窗口里时纵轴拉得很开——
+        // 「设定值附近」直接把纵轴钉在设定值 ±0.3（一格 0.1），出界的线从上下边进出（控件裁掉）
+        (double Lo, double Hi, string Format) yAxis;
+        string? hint = null;
+        if (_yNear && NearAxisRef is { Center: { } center } near && HmiChartAxis.Near(center) is { } fixedAxis)
+        {
+            yAxis = fixedAxis;
+            _yAxis = null;
+            if (near.Val is { } v && (v < yAxis.Lo || v > yAxis.Hi))
+                hint = $"{near.Name} {F2(v)} ℃ 在纵轴外";
+        }
+        else
+            yAxis = (_yAxis = HmiChartAxis.Fit(lo, hi, _yAxis)).Value;
+        var (yLo, yHi, yFmt) = yAxis;
 
         var labels = new List<string>(7);
         for (var i = 0; i <= 6; i++)
@@ -2449,6 +2477,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
             Marks = _marks.Select((m, i) => new HmiChartMark(
                         (m.At - t0.Value).TotalSeconds, m.Name, i == _markZero)).ToList(),
             Notes = _noteTimes.Select(n => (n - t0.Value).TotalSeconds).ToList(),
+            Hint = hint,
         };
     }
 
