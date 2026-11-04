@@ -954,13 +954,14 @@ public sealed class HmiViewModel : ViewModelBase
                 break;
             case WaterAskPrompter.Action.Close:
                 CloseAsk();
-                Toast("冷却水的询问已收回（水已开 / 超时按打开 / 不再制冷 / 温控已停）");
+                Toast("冷却水的询问已收回（水已开 / 超时按打开 / 改了目标 / 温控已停）");
                 break;
         }
     }
 
     private string WaterAskSub(WaterAsk q)
-        => $"通道 {q.Channel} · {Math.Ceiling(q.Left(_ws.Clock.Now).TotalSeconds):0} s 后没人答按「打开冷却水」";
+        => $"通道 {q.Channel} · {Math.Ceiling(q.Left(_ws.Clock.Now).TotalSeconds):0} s 后没人答按「打开冷却水」" +
+           (q.Waiting ? "" : " · 此刻又不要制冷了：答了先记下，这次控温之后再要 TEC 照答复办");
 
     private void AnswerWater(WaterAsk q, bool open, HmiZoneViewModel? zone)
     {
@@ -969,8 +970,11 @@ public sealed class HmiViewModel : ViewModelBase
             Toast("这个询问已经过期（水已开 / 超时按打开 / 温控已停）");
             return;
         }
-        zone?.NoteWater(open ? "中途切 TEC：选了打开冷却水（先开阀、再开冷水机，通水后接）" : "中途切 TEC：选了不开冷却水，直接接 TEC");
-        Toast(open ? "冷却水阀和冷水机马上打开，通水后接 TEC" : "不开冷却水，直接接 TEC");
+        // 说「选了什么、要接 TEC 时怎么办」，不说「马上」：答的那一刻回路可能已经不要制冷了（问题留着记答复），也可能还要等冷水机间隔——
+        // 真接没接由驱动的逐拍说明说
+        zone?.NoteWater(open ? "中途切 TEC 的询问：选了打开冷却水（要接 TEC 时先开阀、再开冷水机，通水后接）"
+                             : "中途切 TEC 的询问：选了不开冷却水（要接 TEC 时直接接，阀与冷水机不动）");
+        Toast(open ? "已选打开冷却水：要接 TEC 时先开阀、开冷水机，通水后再接" : "已选不开冷却水：要接 TEC 时直接接，阀与冷水机不动");
         RaiseWater();
     }
 

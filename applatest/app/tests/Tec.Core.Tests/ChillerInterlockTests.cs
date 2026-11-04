@@ -356,7 +356,8 @@ public sealed class ChillerInterlockTests
         Assert.False(b.Io.Coils[0]);
         Assert.Equal(new[] { "阀开", "开机", "DO0断", "DO7闭" }, b.Seq.Where(x => x is "阀开" or "开机" or "DO0断" or "DO7闭"));
         Assert.Contains("制冷段", ((IHeatSource)t).Regime);
-        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("操作人选了打开冷却水"));
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("中途切 TEC：操作人选了打开冷却水"));        // 由挂起落地
+        lock (b.Logs) Assert.DoesNotContain(b.Logs, l => l.Text.Contains("询问有了结果") || l.Text.Contains("询问已收回"));
 
         // 退段（夹套回落且在降）→ 回加热棒、停冷水机；再冲过去 → 这次控温不再问，直接自动开水
         await Drive(b, s, t, 29.95, 5);
@@ -389,7 +390,9 @@ public sealed class ChillerInterlockTests
         Assert.False(b.Io.Coils[4]);
         Assert.Equal(0, b.Chiller.State);
         Assert.DoesNotContain(b.Seq, x => x is "阀开" or "开机");
-        lock (b.Logs) Assert.Single(b.Logs, l => l.Text.Contains("操作人选了不开冷却水"));
+        // 由挂起落地（ResolveHold）：日志说「直接接」，不说开水；不走没人等的那条（SettleIdleAsk）
+        lock (b.Logs) Assert.Single(b.Logs, l => l.Text.Contains("中途切 TEC：操作人选了不开冷却水"));
+        lock (b.Logs) Assert.DoesNotContain(b.Logs, l => l.Text.Contains("询问有了结果") || l.Text.Contains("询问已收回") || l.Text.Contains("通水后接 TEC"));
     }
 
     [Fact]
@@ -412,12 +415,15 @@ public sealed class ChillerInterlockTests
         Assert.True(b.Io.Coils[4]);
         Assert.Equal(2, b.Chiller.State);
         Assert.False(Water(s).Answer(id, false));         // 过期
-        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("60 s 没人答，按「打开冷却水」办"));
+        lock (b.Logs) Assert.Single(b.Logs, l => l.Text.Contains("中途切 TEC：60 s 没人答，按「打开冷却水」办"));
+        lock (b.Logs) Assert.DoesNotContain(b.Logs, l => l.Text.Contains("询问有了结果") || l.Text.Contains("询问已收回"));
     }
 
     [Fact]
-    public async Task 挂询问_等人期间被控量自己凉回去_询问收回_留在加热棒_再冲过去再问()
+    public async Task 挂询问_等人期间被控量自己凉回去_留在加热棒_询问不收回_再冲过去等同一个_到时按打开()
     {
+        // 2026-11-04 起：本次控温只问一次。等人期间不要制冷了只撤挂起段（留在加热棒），问题留着；再要 TEC 接着等同一个，不重问
+        // （原来撤段就收回、再要再问——要冷 ⇄ 不要冷来回一次就问一次，现场升温 80 s 问了 15 次）
         var b = Rig();
         var (s, t) = await Cooling(b);
         await using var _ = s;
@@ -427,16 +433,580 @@ public sealed class ChillerInterlockTests
         await Drive(b, s, t, 30.0, 5);
         await Drive(b, s, t, 29.9, 5);
         await Drive(b, s, t, 29.8, 5);
-        Assert.Null(Water(s).Pending);
+        Assert.Equal(id, Water(s).Pending?.Id);           // 问题留着
         Assert.True(b.Io.Coils[0]);
         Assert.False(b.Io.Coils[7]);
-        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("制冷段取消") && l.Text.Contains("等人答复"));
-        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("询问收回"));
+        Assert.Contains("询问挂着", ((IHeatSource)t).Regime);
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("制冷段取消") && l.Text.Contains("等人答复") && l.Text.Contains("询问留着"));
+        lock (b.Logs) Assert.DoesNotContain(b.Logs, l => l.Text.Contains("询问收回"));
 
         await Drive(b, s, t, 29.8, 31);
         foreach (var (tj, dt) in new[] { (30.06, 4.0), (30.12, 4.0), (30.18, 4.0) }) await Drive(b, s, t, tj, dt);
+        Assert.Equal(id, Water(s).Pending?.Id);           // 同一个问题，不重问；截止时刻不变
+        Assert.False(b.Io.Coils[7]);
+        Assert.Contains("等人答开不开冷却水", ((IHeatSource)t).Regime);
+        lock (b.Logs) Assert.Single(b.Logs, l => l.Text.Contains("问操作人开不开冷却水"));
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("询问还挂着（同一个，不重问）"));
+
+        b.Now = b.Now.AddSeconds(3);                      // 第一次挂出来满 60 s：按打开办
+        await Tick(s);
+        Assert.Null(Water(s).Pending);
+        Assert.True(b.Io.Coils[7]);
+        Assert.True(b.Io.Coils[4]);
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("60 s 没人答，按「打开冷却水」办"));
+    }
+
+    // ── 功率符号进的挂起（2026-11-04 现场 R1-tc1-20261104-104405）────────────────────
+    //
+    // 釜内 −2 → 20 升温，夹套冲到 28 后外环开始往回收：釜内 17.6 还在目标下面、回路要把夹套往下拉（功率翻负）——功率符号要 TEC。
+    // 原来挂起段一律「被控量低过目标就撤」，符号进法当拍就撤、收回询问、3 s 后又问：80 s 问了 15 次，TEC 一次没接上。
+
+    /// <summary>温控器 PID 方式下「回路要的功率」是从设备读回的 PWMDUTY（这台加热棒吃负、TEC 制冷是正）：写进假机、等内层读到。</summary>
+    private static async Task DeviceDuty(Bench b, IDeviceSession s, double percent)
+    {
+        b.Rd.Set(1, "PWMDUTY", (long)Math.Round(percent * 20_000));
+        var inner = ((DuoSession)s).InnerTemp(0);
+        var deadline = DateTime.UtcNow.AddSeconds(4);
+        while (DateTime.UtcNow < deadline && !(Math.Abs(inner.LastDuty - percent) <= 0.01)) await Task.Delay(50);
+        Assert.Equal(percent, inner.LastDuty, 2);
+    }
+
+    /// <summary>手动开的 30 ℃ 升温（加热棒合着），夹套 28（目标下面）；回路转成要冷（TEC 那一极 +15 %）连续 3 s：符号要 TEC → 挂询问。</summary>
+    private static async Task<int> SignWantsTecBelowTarget(Bench b, IDeviceSession s, ITemperatureControl t)
+    {
+        ((IHeatSource)t).AskWaterNext();
+        await t.SetTargetAsync(new TempTarget(30), CancellationToken.None);
+        Assert.True(b.Io.Coils[0]);
+        await Drive(b, s, t, 28.0, 31);
+        b.Seq.Clear();
+        await DeviceDuty(b, s, 15);
+        await Drive(b, s, t, 28.0, 1);
+        await Drive(b, s, t, 28.0, 3.5);
+        var q = Water(s).Pending;
+        Assert.NotNull(q);
+        // 被控量在目标下面，别说成冲过了；夹套控温不重复写两遍夹套
+        Assert.Equal("工位 A 要切 TEC 制冷：回路要把夹套往下拉（功率连续 3 s 指向 TEC；夹套 28.00 ℃，目标 30.00 ℃）", q!.Why);
+        Assert.True(q.Waiting);
+        Assert.True(b.Io.Coils[0]);
+        Assert.False(b.Io.Coils[7]);
+        return q.Id;
+    }
+
+    [Fact]
+    public async Task 功率符号进的挂起_被控量在目标下面不撤_一直等到答复或到时_不来回问()
+    {
+        var b = Rig();
+        var (s, t) = await Cooling(b);
+        await using var _ = s;
+        var id = await SignWantsTecBelowTarget(b, s, t);
+
+        await DeviceDuty(b, s, 0);                         // 挂起期间回路钳 0（只加热）
+        foreach (var tj in new[] { 28.02, 28.05, 28.08, 28.1 }) await Drive(b, s, t, tj, 10);   // 夹套在目标下面慢慢升：+40 s
+        Assert.Equal(id, Water(s).Pending?.Id);
+        Assert.True(b.Io.Coils[0]);
+        Assert.False(b.Io.Coils[7]);
+        Assert.Contains("等人答开不开冷却水", ((IHeatSource)t).Regime);
+        lock (b.Logs) Assert.Single(b.Logs, l => l.Text.Contains("问操作人开不开冷却水"));
+        lock (b.Logs) Assert.DoesNotContain(b.Logs, l => l.Text.Contains("询问收回") || l.Text.Contains("制冷段取消"));
+
+        b.Now = b.Now.AddSeconds(21);                      // 挂出来满 60 s：按打开办——先开阀、开冷水机，再断加热棒、合 TEC
+        await Tick(s);
+        Assert.Null(Water(s).Pending);
+        Assert.True(b.Io.Coils[7]);
+        Assert.False(b.Io.Coils[0]);
+        Assert.Equal(new[] { "阀开", "开机", "DO0断", "DO7闭" }, b.Seq.Where(x => x is "阀开" or "开机" or "DO0断" or "DO7闭"));
+        Assert.Contains("制冷段", ((IHeatSource)t).Regime);
+    }
+
+    [Fact]
+    public async Task 功率符号进的挂起_回路又要加热满3s才撤_问题留着_再要TEC等同一个_答打开就接()
+    {
+        var b = Rig();
+        var (s, t) = await Cooling(b);
+        await using var _ = s;
+        var d = (DuoSession)s;
+        d.ChillerMinGap = TimeSpan.Zero;
+        var id = await SignWantsTecBelowTarget(b, s, t);
+
+        // 回路要加热（加热棒那一极 −5 % = 回路 +5 %）：不到 3 s 不撤
+        await DeviceDuty(b, s, -5);
+        await Drive(b, s, t, 28.0, 1);
+        await Drive(b, s, t, 28.0, 1);
+        Assert.Contains("等人答开不开冷却水", ((IHeatSource)t).Regime);
+        await Drive(b, s, t, 28.0, 2.5);
+        Assert.Equal("双向挡（加热棒 ↔ TEC 跟功率符号走）·开不开冷却水的询问挂着", ((IHeatSource)t).Regime);
+        Assert.Equal(id, Water(s).Pending?.Id);
+        Assert.False(Water(s).Pending!.Waiting);           // 面板副标题据此说「此刻又不要制冷了」
+        Assert.True(b.Io.Coils[0]);
+        Assert.False(b.Io.Coils[7]);
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("制冷段取消") && l.Text.Contains("回路又要加热了") && l.Text.Contains("询问留着"));
+        lock (b.Logs) Assert.DoesNotContain(b.Logs, l => l.Text.Contains("询问收回"));
+
+        // 又要冷：接着等同一个问题，不重问
+        await DeviceDuty(b, s, 15);
+        await Drive(b, s, t, 28.0, 1);
+        await Drive(b, s, t, 28.0, 3.5);
+        Assert.Equal(id, Water(s).Pending?.Id);
+        Assert.True(Water(s).Pending!.Waiting);
+        Assert.Contains("等人答开不开冷却水", ((IHeatSource)t).Regime);
+        Assert.False(b.Io.Coils[7]);
+        lock (b.Logs) Assert.Single(b.Logs, l => l.Text.Contains("问操作人开不开冷却水"));
+
+        Assert.True(Water(s).Answer(id, true));
+        await Tick(s);
+        Assert.Null(Water(s).Pending);
+        Assert.True(b.Io.Coils[7]);
+        Assert.Equal(new[] { "阀开", "开机", "DO0断", "DO7闭" }, b.Seq.Where(x => x is "阀开" or "开机" or "DO0断" or "DO7闭"));
+        Assert.Equal("双向挡·制冷段（功率符号切 TEC）", ((IHeatSource)t).Regime);
+        lock (b.Logs) Assert.Single(b.Logs, l => l.Text.Contains("中途切 TEC：操作人选了打开冷却水"));   // 由挂起落地，不走没人等的那条
+        lock (b.Logs) Assert.DoesNotContain(b.Logs, l => l.Text.Contains("询问有了结果") || l.Text.Contains("询问已收回"));
+    }
+
+    [Fact]
+    public async Task 问题挂着没人在等_答了或到时就记下_之后再要TEC照答复办不再问()
+    {
+        // 答「不开」：记下，之后要 TEC 直接接、阀和冷水机不动
+        var b = Rig();
+        var (s, t) = await Cooling(b);
+        await using (s)
+        {
+            var id = await SignWantsTecBelowTarget(b, s, t);
+            await DeviceDuty(b, s, -5);
+            await Drive(b, s, t, 28.0, 1);
+            await Drive(b, s, t, 28.0, 3.5);                   // 撤段，问题留着
+            Assert.Equal(id, Water(s).Pending?.Id);
+            Assert.True(Water(s).Answer(id, false));
+            await Tick(s);
+            Assert.Null(Water(s).Pending);
+            Assert.Equal("双向挡（加热棒 ↔ TEC 跟功率符号走）", ((IHeatSource)t).Regime);
+            Assert.True(b.Io.Coils[0]);                         // 此刻不要制冷：不扳
+            lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("询问有了结果：操作人选了不开冷却水"));
+
+            await DeviceDuty(b, s, 15);
+            await Drive(b, s, t, 28.0, 1);
+            await Drive(b, s, t, 28.0, 3.5);
+            Assert.Null(Water(s).Pending);
+            Assert.True(b.Io.Coils[7]);
+            Assert.False(b.Io.Coils[4]);
+            Assert.Equal(0, b.Chiller.State);
+            lock (b.Logs) Assert.Single(b.Logs, l => l.Text.Contains("问操作人开不开冷却水"));
+        }
+
+        // 没人答、到时：按打开记下，之后要 TEC 先通水再接
+        var b2 = Rig();
+        var (s2, t2) = await Cooling(b2);
+        await using (s2)
+        {
+            var d2 = (DuoSession)s2;
+            d2.ChillerMinGap = TimeSpan.Zero;
+            var id2 = await SignWantsTecBelowTarget(b2, s2, t2);
+            await DeviceDuty(b2, s2, -5);
+            await Drive(b2, s2, t2, 28.0, 1);
+            await Drive(b2, s2, t2, 28.0, 3.5);
+            Assert.Equal(id2, Water(s2).Pending?.Id);
+            b2.Now = b2.Now.AddSeconds(60);
+            await Tick(s2);
+            Assert.Null(Water(s2).Pending);
+            Assert.True(b2.Io.Coils[0]);
+            Assert.False(Water(s2).Answer(id2, false));         // 过期
+            lock (b2.Logs) Assert.Contains(b2.Logs, l => l.Text.Contains("询问有了结果：60 s 没人答，按「打开冷却水」办"));
+
+            b2.Seq.Clear();
+            await DeviceDuty(b2, s2, 15);
+            await Drive(b2, s2, t2, 28.0, 1);
+            await Drive(b2, s2, t2, 28.0, 3.5);
+            Assert.Null(Water(s2).Pending);
+            Assert.True(b2.Io.Coils[7]);
+            Assert.Equal(new[] { "阀开", "开机", "DO0断", "DO7闭" }, b2.Seq.Where(x => x is "阀开" or "开机" or "DO0断" or "DO7闭"));
+            lock (b2.Logs) Assert.Single(b2.Logs, l => l.Text.Contains("问操作人开不开冷却水"));
+        }
+    }
+
+    [Fact]
+    public async Task 功率符号进的挂起_回路钳0_被控量低过目标且在降_撤段_到时也不接TEC()
+    {
+        // 挂起期间回路钳 0（PWMDUTY = 0：想冷也出不来），夹套自己往下掉、低过目标且在降 = 真不要冷了
+        var b = Rig();
+        var (s, t) = await Cooling(b);
+        await using var _ = s;
+        ((DuoSession)s).ChillerMinGap = TimeSpan.Zero;
+        await SignWantsTecBelowTarget(b, s, t);
+        var askAt = b.Now;
+        await DeviceDuty(b, s, 0);
+        foreach (var tj in new[] { 27.9, 27.8, 27.7, 27.6, 27.5, 27.4, 27.3, 27.2, 27.1, 27.0, 26.9, 26.8 }) await Drive(b, s, t, tj, 5);
+        b.Now = askAt.AddSeconds(61);                      // 问出来满 60 s
+        await Tick(s);
+        lock (b.Logs) Assert.Single(b.Logs, l => l.Text.Contains("制冷段取消") && l.Text.Contains("等水期间被控量已回落") && l.Text.Contains("询问留着"));
+        Assert.True(b.Io.Coils[0]);                        // 到时只记下「打开」，此刻不接 TEC
+        Assert.False(b.Io.Coils[7]);
+        Assert.False(b.Io.Coils[4]);
+        Assert.Equal(0, b.Chiller.State);
+        Assert.Null(Water(s).Pending);
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("询问有了结果：60 s 没人答，按「打开冷却水」办"));
+        lock (b.Logs) Assert.Single(b.Logs, l => l.Text.Contains("问操作人开不开冷却水"));
+    }
+
+    [Fact]
+    public async Task 功率符号进的挂起_要加热断断续续不累计_得连续3s才撤()
+    {
+        var b = Rig();
+        var (s, t) = await Cooling(b);
+        await using var _ = s;
+        var id = await SignWantsTecBelowTarget(b, s, t);
+        // 在死区边上抖（要加热 1 s ⇄ 不表态 1 s）：每回到死区就重新计，一直不撤
+        for (var i = 0; i < 5; i++)
+        {
+            await DeviceDuty(b, s, -5);
+            await Drive(b, s, t, 28.0, 1);
+            await DeviceDuty(b, s, 0);
+            await Drive(b, s, t, 28.0, 1);
+        }
+        Assert.Contains("等人答开不开冷却水", ((IHeatSource)t).Regime);
+        lock (b.Logs) Assert.DoesNotContain(b.Logs, l => l.Text.Contains("制冷段取消"));
+        Assert.Equal(id, Water(s).Pending?.Id);
+        // 断一次之后再连续满 3 s（从头一拍看到要加热算起）：照常撤
+        await DeviceDuty(b, s, -5);
+        await Drive(b, s, t, 28.0, 1);
+        await Drive(b, s, t, 28.0, 3.5);
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("回路又要加热了"));
+        Assert.Equal(id, Water(s).Pending?.Id);
+    }
+
+    /// <summary>面板开过一次又关了：冷水机刚冷启动过，最短间隔（缺省 60 s）内自动要 TEC 得挂起等。</summary>
+    private static async Task ChillerJustStarted(Bench b, IDeviceSession s)
+    {
+        Assert.Equal(60, ((DuoSession)s).ChillerMinGap.TotalSeconds);
+        await Water(s).SetAsync(true, CancellationToken.None);
+        await Water(s).SetAsync(false, CancellationToken.None);
+        b.Chiller.Settle();
+        await Tick(s);
+        Assert.False(b.Io.Coils[4]);
+    }
+
+    [Fact]
+    public async Task 功率符号进的间隔挂起_在目标下面不撤不刷日志_到点按顺序接TEC()
+    {
+        // 原来同一个「低过目标就撤」也管着间隔挂起：60 s 里撤了立、立了撤，「刚开过（最短间隔…）」刷 13 次
+        var b = Rig();
+        var (s, t) = await Cooling(b);
+        await using var _ = s;
+        await ChillerJustStarted(b, s);
+        await t.SetTargetAsync(new TempTarget(30), CancellationToken.None);   // 正常下发：不问人
+        Assert.True(b.Io.Coils[0]);
+        await Drive(b, s, t, 28.0, 5);
+        b.Seq.Clear();
+        await DeviceDuty(b, s, 15);
+        await Drive(b, s, t, 28.0, 1);
+        await Drive(b, s, t, 28.0, 3.5);
+        Assert.Null(Water(s).Pending);
+        Assert.Contains("等冷水机最短间隔", ((IHeatSource)t).Regime);
+        for (var i = 0; i < 15; i++)
+        {
+            await Drive(b, s, t, 28.0, 2);
+            Assert.Contains("等冷水机最短间隔", ((IHeatSource)t).Regime);
+        }
+        lock (b.Logs) Assert.DoesNotContain(b.Logs, l => l.Text.Contains("制冷段取消"));
+        lock (b.Logs) Assert.Single(b.Logs, l => l.Text.Contains("刚开过（最短间隔"));
+        Assert.False(b.Io.Coils[7]);
+        Assert.DoesNotContain("开机", b.Seq);
+
+        b.Now = b.Now.AddSeconds(30);                      // 间隔到点
+        await Drive(b, s, t, 28.0, 1);
+        Assert.True(b.Io.Coils[7]);
+        Assert.False(b.Io.Coils[0]);
+        Assert.Equal(new[] { "阀开", "开机", "DO0断", "DO7闭" }, b.Seq.Where(x => x is "阀开" or "开机" or "DO0断" or "DO7闭"));
+        Assert.Equal("双向挡·制冷段（功率符号切 TEC）", ((IHeatSource)t).Regime);
+    }
+
+    [Fact]
+    public async Task 功率符号进的间隔挂起_回路又要加热满3s才撤_不碰询问()
+    {
+        var b = Rig();
+        var (s, t) = await Cooling(b);
+        await using var _ = s;
+        await ChillerJustStarted(b, s);
+        await t.SetTargetAsync(new TempTarget(30), CancellationToken.None);
+        await Drive(b, s, t, 28.0, 5);
+        await DeviceDuty(b, s, 15);
+        await Drive(b, s, t, 28.0, 1);
+        await Drive(b, s, t, 28.0, 3.5);
+        Assert.Contains("等冷水机最短间隔", ((IHeatSource)t).Regime);
+
+        await DeviceDuty(b, s, -5);
+        await Drive(b, s, t, 28.0, 1);
+        await Drive(b, s, t, 28.0, 1);
+        Assert.Contains("等冷水机最短间隔", ((IHeatSource)t).Regime);   // 不到 3 s 不撤
+        await Drive(b, s, t, 28.0, 2.5);
+        Assert.Equal("双向挡（加热棒 ↔ TEC 跟功率符号走）", ((IHeatSource)t).Regime);
+        Assert.Null(Water(s).Pending);
+        List<string> texts;
+        lock (b.Logs) texts = b.Logs.Where(l => l.Text.Contains("制冷段取消")).Select(l => l.Text).ToList();
+        Assert.Single(texts);
+        Assert.Contains("等冷水机间隔期间回路又要加热了", texts[0]);
+        Assert.DoesNotContain("询问留着", texts[0]);
+        Assert.True(b.Io.Coils[0]);
+        Assert.False(b.Io.Coils[7]);
+    }
+
+    [Fact]
+    public async Task 问题挂着没人等_面板把水开了_落地为问过_之后要TEC不再问()
+    {
+        var b = Rig();
+        var (s, t) = await Cooling(b);
+        await using var _ = s;
+        ((DuoSession)s).ChillerMinGap = TimeSpan.Zero;
+        var id = await SignWantsTecBelowTarget(b, s, t);
+        await DeviceDuty(b, s, -5);
+        await Drive(b, s, t, 28.0, 1);
+        await Drive(b, s, t, 28.0, 3.5);                   // 撤段，问题留着
+        Assert.Equal(id, Water(s).Pending?.Id);
+
+        await Water(s).SetAsync(true, CancellationToken.None);     // 人在面板上把水开了
+        await Tick(s);
+        Assert.Null(Water(s).Pending);
+        Assert.False(Water(s).Answer(id, false));
+        Assert.True(b.Io.Coils[0]);
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("询问有了结果：冷却水已经开了"));
+
+        await Water(s).SetAsync(false, CancellationToken.None);    // 又关了：再要 TEC 不问，先通水再接
+        b.Chiller.Settle();
+        await Tick(s);
+        Assert.False(b.Io.Coils[4]);
+        b.Seq.Clear();
+        await DeviceDuty(b, s, 15);
+        await Drive(b, s, t, 28.0, 1);
+        await Drive(b, s, t, 28.0, 3.5);
+        Assert.Null(Water(s).Pending);
+        Assert.True(b.Io.Coils[7]);
+        Assert.Equal(new[] { "阀开", "开机", "DO0断", "DO7闭" }, b.Seq.Where(x => x is "阀开" or "开机" or "DO0断" or "DO7闭"));
+    }
+
+    [Fact]
+    public async Task 问题挂着没人等_另一路正常下发降温把水开了_落地为问过()
+    {
+        var b = Rig();
+        var (s, t) = await Cooling(b);
+        await using var _ = s;
+        ((DuoSession)s).ChillerMinGap = TimeSpan.Zero;
+        var tB = Temp(s, 1);
+        b.Rd.Set(2, "TCADJTEMP", 28_00000);
+        await WaitJacket(tB, 28.0);
+        var id = await SignWantsTecBelowTarget(b, s, t);
+        await DeviceDuty(b, s, -5);
+        await Drive(b, s, t, 28.0, 1);
+        await Drive(b, s, t, 28.0, 3.5);
+        Assert.Equal(id, Water(s).Pending?.Id);
+
+        await tB.SetTargetAsync(new TempTarget(10), CancellationToken.None);   // B 正常下发降温：不问，自动开水接 TEC
+        Assert.True(b.Io.Coils[4]);
+        await Tick(s);
+        Assert.Null(Water(s).Pending);
+        Assert.True(b.Io.Coils[0]);
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("工位 A 开不开冷却水的询问有了结果：冷却水已经开了"));
+    }
+
+    [Fact]
+    public async Task 问题挂着没人等_对着过时的窗点了不开_同一拍水已开_按水已开落地_不记不开()
+    {
+        var b = Rig();
+        var (s, t) = await Cooling(b);
+        await using var _ = s;
+        ((DuoSession)s).ChillerMinGap = TimeSpan.Zero;
+        var id = await SignWantsTecBelowTarget(b, s, t);
+        await DeviceDuty(b, s, -5);
+        await Drive(b, s, t, 28.0, 1);
+        await Drive(b, s, t, 28.0, 3.5);
+
+        await Water(s).SetAsync(true, CancellationToken.None);     // 水先被开了，窗还没来得及收
+        Assert.True(Water(s).Answer(id, false));
+        await Tick(s);
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("询问有了结果：冷却水已经开了"));
+        lock (b.Logs) Assert.DoesNotContain(b.Logs, l => l.Text.Contains("操作人选了不开冷却水"));
+
+        await Water(s).SetAsync(false, CancellationToken.None);
+        b.Chiller.Settle();
+        await Tick(s);
+        b.Seq.Clear();
+        await DeviceDuty(b, s, 15);
+        await Drive(b, s, t, 28.0, 1);
+        await Drive(b, s, t, 28.0, 3.5);
+        Assert.True(b.Io.Coils[7]);
+        Assert.True(b.Io.Coils[4]);                         // 没被记成「不开」：接 TEC 前照样通水
+        Assert.Equal(new[] { "阀开", "开机", "DO0断", "DO7闭" }, b.Seq.Where(x => x is "阀开" or "开机" or "DO0断" or "DO7闭"));
+    }
+
+    [Fact]
+    public async Task 问题挂着没人等_冷水机改成已关_问题收回_改回已开再要TEC重问()
+    {
+        var b = Rig();
+        var cfg = new ParameterSet();
+        var (s, t) = await Cooling(b, cfg);
+        await using var _ = s;
+        ((DuoSession)s).ChillerMinGap = TimeSpan.Zero;
+        var id = await SignWantsTecBelowTarget(b, s, t);
+        await DeviceDuty(b, s, -5);
+        await Drive(b, s, t, 28.0, 1);
+        await Drive(b, s, t, 28.0, 3.5);
+        Assert.Equal(id, Water(s).Pending?.Id);
+        cfg[DualStationDriver.Fields.Chiller] = "已关";
+        await Drive(b, s, t, 28.0, 1);
+        Assert.Null(Water(s).Pending);
+        Assert.False(Water(s).Answer(id, false));
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("询问收回（规矩变了"));
+        cfg[DualStationDriver.Fields.Chiller] = "已开";
+        await Drive(b, s, t, 28.0, 1);
+        await DeviceDuty(b, s, 15);
+        await Drive(b, s, t, 28.0, 1);
+        await Drive(b, s, t, 28.0, 3.5);
         Assert.NotNull(Water(s).Pending);
         Assert.True(Water(s).Pending!.Id > id);
+        Assert.False(b.Io.Coils[7]);
+    }
+
+    // ── 两路共用一个询问槽位（一只阀一台冷水机）────────────────────────────
+
+    private static async Task DutyOf(Bench b, IDeviceSession s, int well, double percent)
+    {
+        b.Rd.Set(well + 1, "PWMDUTY", (long)Math.Round(percent * 20_000));
+        var inner = ((DuoSession)s).InnerTemp(well);
+        var deadline = DateTime.UtcNow.AddSeconds(4);
+        while (DateTime.UtcNow < deadline && !(Math.Abs(inner.LastDuty - percent) <= 0.01)) await Task.Delay(50);
+        Assert.Equal(percent, inner.LastDuty, 2);
+    }
+
+    private static async Task Step(Bench b, IDeviceSession s, double dt) { b.Now = b.Now.AddSeconds(dt); await Tick(s); }
+
+    /// <summary>两路都是手动开的 30 ℃ 升温、夹套 28：B 先要 TEC 挂了问题，又要加热撤段（问题留着没人等）；接着 A 要 TEC。</summary>
+    private static async Task<(Bench B, IDeviceSession S, ITemperatureControl TA, ITemperatureControl TB, WaterAsk QB, DateTimeOffset AWants)> TwoWells(bool bLeavesIdle = true)
+    {
+        var b = Rig();
+        var (s, tA) = await Cooling(b);
+        ((DuoSession)s).ChillerMinGap = TimeSpan.Zero;
+        var tB = Temp(s, 1);
+        b.Rd.Set(1, "TCADJTEMP", 28_00000);
+        b.Rd.Set(2, "TCADJTEMP", 28_00000);
+        await WaitJacket(tA, 28);
+        await WaitJacket(tB, 28);
+        ((IHeatSource)tA).AskWaterNext();
+        await tA.SetTargetAsync(new TempTarget(30), CancellationToken.None);
+        ((IHeatSource)tB).AskWaterNext();
+        await tB.SetTargetAsync(new TempTarget(30), CancellationToken.None);
+        await Step(b, s, 31);
+        await DutyOf(b, s, 1, 15);                         // B 要冷
+        await Step(b, s, 1);
+        await Step(b, s, 3.5);
+        var qB = Water(s).Pending!;
+        Assert.Contains("工位 B", qB.Why);
+        if (bLeavesIdle)
+        {
+            await DutyOf(b, s, 1, -5);                     // B 又要加热满 3 s：撤段，问题留着没人等
+            await Step(b, s, 1);
+            await Step(b, s, 3.5);
+            Assert.False(Water(s).Pending!.Waiting);
+        }
+        await DutyOf(b, s, 0, 15);                         // A 要冷：槽位被 B 的问题占着，排在后面等
+        await Step(b, s, 1);
+        var aWants = b.Now;
+        await Step(b, s, 3.5);
+        Assert.Equal(qB.Id, Water(s).Pending?.Id);
+        Assert.True(Water(s).Pending!.Waiting);            // A 在等它
+        Assert.Contains("等人答开不开冷却水", ((IHeatSource)tA).Regime);
+        Assert.False(b.Io.Coils[7]);
+        return (b, s, tA, tB, qB, aWants);
+    }
+
+    [Fact]
+    public async Task 两路_B的问题挂着没人等_A排在后面_答打开就开水接A_只问一次()
+    {
+        var (b, s, tA, tB, qB, _) = await TwoWells();
+        await using var _s = s;
+        Assert.True(Water(s).Answer(qB.Id, true));
+        await Step(b, s, 1);
+        await Step(b, s, 1);
+        Assert.Null(Water(s).Pending);
+        Assert.True(b.Io.Coils[4]);
+        Assert.True(b.Io.Coils[7]);
+        for (var k = 0; k < 5; k++) { await Step(b, s, 1); Assert.Null(Water(s).Pending); }   // 没有第二个问题
+        Assert.Equal("双向挡（加热棒 ↔ TEC 跟功率符号走）", ((IHeatSource)tB).Regime);         // B 此刻不要冷：不扳
+        lock (b.Logs) Assert.Contains(b.Logs, l => l.Text.Contains("一只阀，本路照办、不再另问"));
+    }
+
+    [Fact]
+    public async Task 两路_B的问题挂着没人等_没人答_A在B的截止时刻接上_只问一次()
+    {
+        var (b, s, _, _, qB, aWants) = await TwoWells();
+        await using var _s = s;
+        b.Now = qB.Deadline;
+        await Tick(s);
+        await Step(b, s, 1);
+        Assert.True((b.Now - aWants).TotalSeconds <= 60);  // 不超过 B 那个问题剩下的倒计时
+        Assert.True(b.Io.Coils[7]);
+        Assert.True(b.Io.Coils[4]);
+        Assert.Null(Water(s).Pending);
+        for (var k = 0; k < 5; k++) { await Step(b, s, 1); Assert.Null(Water(s).Pending); }
+    }
+
+    [Fact]
+    public async Task 两路_B的问题挂着没人等_答不开只算B_A再挂自己的()
+    {
+        var (b, s, _, _, qB, _) = await TwoWells();
+        await using var _s = s;
+        Assert.True(Water(s).Answer(qB.Id, false));        // 「不开」不带过去：没水 TEC 会干烧，各路自己认
+        await Step(b, s, 1);
+        await Step(b, s, 1);
+        var qA = Water(s).Pending;
+        Assert.NotNull(qA);
+        Assert.Contains("工位 A", qA!.Why);
+        Assert.False(b.Io.Coils[7]);
+        Assert.False(b.Io.Coils[4]);
+    }
+
+    [Fact]
+    public async Task 两路都在等_B答打开_A不再问_一起开水接上()
+    {
+        var (b, s, _, _, qB, _) = await TwoWells(bLeavesIdle: false);
+        await using var _s = s;
+        Assert.True(Water(s).Answer(qB.Id, true));
+        await Step(b, s, 1);
+        await Step(b, s, 1);
+        await Step(b, s, 1);
+        Assert.Null(Water(s).Pending);
+        Assert.True(b.Io.Coils[4]);
+        Assert.True(b.Io.Coils[6]);                        // B 的 TEC（DO6）
+        Assert.True(b.Io.Coils[7]);                        // A 的 TEC（DO7）
+        lock (b.Logs) Assert.Single(b.Logs, l => l.Text.Contains("要切 TEC 制冷，这次控温是手动开的") && l.Text.Contains("工位 B"));
+    }
+
+    [Fact]
+    public async Task 功率符号进_釜内目标_询问文字写釜内和夹套()
+    {
+        // 现场那种：釜内串级、釜内 17.6 还在目标 20 下面、夹套 28 要往下拉
+        var b = Rig();
+        var (s, t) = await Cooling(b);
+        await using var _ = s;
+        async Task DriveTr(double tj, double tr, double dt)
+        {
+            b.Rd.Set(1, "TCADJTEMP", (long)Math.Round(tj * 1e5));
+            await WaitJacket(t, tj);
+            b.Now = b.Now.AddSeconds(dt);
+            ((IExternalReactorTemp)s).FeedReactor(1, tr, Quality.Good);
+            await Tick(s);
+        }
+        ((IHeatSource)t).AskWaterNext();
+        await DriveTr(-2.0, -2.0, 1);
+        await t.SetTargetAsync(new TempTarget(20, TempChannelKind.Reactor), CancellationToken.None);
+        for (var i = 0; i < 4; i++) await DriveTr(10.0 + 4 * i, 5.0 + 3 * i, 8);
+        for (var i = 0; i < 4; i++) await DriveTr(28.0, 17.6, 8);
+        await DeviceDuty(b, s, 15);
+        await DriveTr(28.0, 17.6, 1);
+        await DriveTr(28.0, 17.6, 3.5);
+        var q = Water(s).Pending;
+        Assert.NotNull(q);
+        Assert.Equal("工位 A 要切 TEC 制冷：回路要把夹套往下拉（功率连续 3 s 指向 TEC；夹套 28.00 ℃，釜内 17.60 ℃，目标 20.00 ℃）", q!.Why);
+        for (var i = 0; i < 6; i++) await DriveTr(28.0, 17.6 + 0.02 * i, 5);   // 釜内一直在目标下面慢慢升：不撤、不重问
+        Assert.Equal(q.Id, Water(s).Pending?.Id);
+        Assert.Contains("等人答开不开冷却水", ((IHeatSource)t).Regime);
+        lock (b.Logs) Assert.DoesNotContain(b.Logs, l => l.Text.Contains("制冷段取消") || l.Text.Contains("询问收回"));
     }
 
     [Fact]

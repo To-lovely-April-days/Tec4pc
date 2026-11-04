@@ -226,7 +226,8 @@ public interface IHeatSource : ICapability
 
 /// <summary>
 /// 驱动中途要切 TEC 制冷、冷却水还没开好时挂出来的询问（整机一个：一只阀一台冷水机）。界面轮询
-/// <see cref="ICoolingWaterValve.Pending"/>，Id 变了就是新问题、变成 null 就是已收回（答了 / 超时按打开 / 水已开 / 不再制冷 / 停控）。
+/// <see cref="ICoolingWaterValve.Pending"/>，Id 变了就是新问题、变成 null 就是已收回（答了 / 超时按打开 / 水已开 / 改了目标 / 停控）。
+/// 本次控温只问一次：等答复期间回路又不要制冷了，问题照样挂着（<see cref="Waiting"/> = false），答了 / 到时记下，之后再要 TEC 照答复办。
 /// </summary>
 /// <param name="Id">问题编号，每次新挂一个就加一。</param>
 /// <param name="Channel">要制冷的那一路的系统通道号。</param>
@@ -235,6 +236,9 @@ public interface IHeatSource : ICapability
 /// <param name="Deadline">过了这一刻没人答就按「打开冷却水」办。</param>
 public sealed record WaterAsk(int Id, int Channel, string Why, DateTimeOffset AskedAt, DateTimeOffset Deadline)
 {
+    /// <summary>此刻有没有哪一路正等着这个答复才接 TEC。false = 回路这会儿又不要制冷了：答了先记下，这次控温之后再要 TEC 照答复办。</summary>
+    public bool Waiting { get; init; } = true;
+
     /// <summary>还剩多久没人答就按打开办（到了就是 0）。</summary>
     public TimeSpan Left(DateTimeOffset now) => Deadline > now ? Deadline - now : TimeSpan.Zero;
 }

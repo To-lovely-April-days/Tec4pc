@@ -131,9 +131,15 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     /// 提前判据进的那一段制冷（按方向起步 / 功率符号扳到 TEC 的不算——那两种进法 PID 已经翻负，没有「夹套目标还比釜内高」要补的）。
     /// 不可变记录整体换引用：采集线程写，下发线程读 / 清。Hold：等什么才接 TEC——"ask" 等人答开不开冷却水、"gap" 等冷水机最短间隔、
     /// null 已接 / 正在接；挂起期间加热棒继电器留着、回路按只加热（功率下限钳 0）。
+    /// HeatSince：【本地改动】功率符号进的挂起段里，回路从哪一刻起连续要加热（正过死区）——满 SignDwell 才算「不要制冷了」撤段。
     /// </summary>
     private sealed record CoolEpisode(DateTimeOffset Since, double Target, string Why, bool BiasPushed,
-                                      string? Hold, DateTimeOffset? HoldSince, bool SignIgnoredSaid);
+                                      string? Hold, DateTimeOffset? HoldSince, bool SignIgnoredSaid,
+                                      DateTimeOffset? HeatSince = null);
+
+    /// <summary>功率符号扳过来的（回路要把夹套往下拉），不是被控量冲过目标的提前判据。</summary>
+    private const string BySignWhy = "功率符号";
+    private static bool EnteredBySign(CoolEpisode ep) => ep.Why == BySignWhy;
     private readonly CoolEpisode?[] _coolEp = new CoolEpisode?[2];
     /// <summary>这一拍的换向是提前判据定的（不是功率符号）：采集循环那句「功率 … 已连续 N s 指向 …」就别打了。</summary>
     private readonly bool[] _earlyDecided = new bool[2];
@@ -1026,6 +1032,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         }
         else
         {
+            SettleIdleAsk(well);                    // 挂着却没人在等的询问：答了 / 到时就落地（不管下面这一拍要不要换挡）
             if (innerT.Setpoint is not { } sp) return;
             // 串级丢了釜内 Tr、回路在保持（夹套设定钳到釜内设定）：升温挡 / 降温挡不换挡，等 Tr 回来或回路停控。
             // 双向挡不设这个例外——一个 PID 的规矩就是继电器跟符号，保持期夹套设定钳到釜内设定、回路要制冷就接 TEC，
@@ -1302,6 +1309,9 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         _signSince[well] = null;
         // 「冷水机」改成已关变升温挡时压着的夹套目标一定要交还，不然加热棒拿着「夹套目标 = 釜内 − 2」维持，Tr 慢慢沉下去
         EndEpisode(well, "规矩变了（「TEC 加热」/「冷水机」翻了）");
+        // 【本地改动】挂起撤了、问题还挂着没人等（没段，EndEpisode 不管）：跟挂起段在时一样收回，下次再要 TEC 再问。
+        // 不挂在 EndEpisode 的「没段」分支里——「夹套读不到」之类每拍都可能调一次没段的 EndEpisode，那样会把问题来回收
+        WithdrawAsk(well, "规矩变了（「TEC 加热」/「冷水机」翻了）", rearm: true);
     }
 
     /// <summary>电加热通路可不可用：配了切换模块而且开起来了。</summary>
@@ -1352,7 +1362,9 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
             {
                 { Hold: "ask" } => "双向挡·要制冷，等人答开不开冷却水",
                 { Hold: "gap" } => "双向挡·要制冷，等冷水机最短间隔",
+                { } ep when EnteredBySign(ep) => "双向挡·制冷段（功率符号切 TEC）",
                 { } ep => $"双向挡·制冷段（提前切 TEC{(ep.BiasPushed ? "、夹套目标压低" : "")}）",
+                _ when _askWater[well] == AskState.Pending => "双向挡（加热棒 ↔ TEC 跟功率符号走）·开不开冷却水的询问挂着",
                 _ => "双向挡（加热棒 ↔ TEC 跟功率符号走）"
             },
             _ => "待定挡（夹套读不到）"
@@ -1585,19 +1597,22 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
                     if (act) _earlyDecided[well] = false;
                     if (ep is { Hold: not null })
                     {
-                        // 挂起：TEC 还没接，加热棒继电器留着、回路只加热钳 0。符号这时说不出 TEC，释放只能看温度——
-                        // 被控量自己凉回去了就撤段（答复 / 间隔到了也别接一个已经不需要的 TEC）
-                        if (v.Below || v.LeadExit || ControlledBelow(well, target))
+                        // 挂起：TEC 还没接，加热棒继电器留着、回路只加热钳 0。不要制冷了就撤段（答复 / 间隔到了也别接一个已经不需要的 TEC），
+                        // 怎么算「不要了」看段是怎么进来的（HoldNoLongerNeeded）。撤段不收回询问：本次控温只问一次，
+                        // 问题留着等答复 / 到时，结果记下给之后再要 TEC 时用——不然要冷 ⇄ 不要冷来回一次就重问一次
+                        if (HoldNoLongerNeeded(well, target, ep, v, act) is { } gone)
                         {
-                            if (act) EndEpisode(well, "等水期间被控量已回落");
+                            if (act) EndEpisode(well, gone, keepAsk: true);
                             return Side.Electric;
                         }
                         return act ? ResolveHold(well, target, out blocked) : Side.Electric;
                     }
                     if (ep is not null)
                     {
-                        // 段里先补一次压低：进段那一拍回路恰好没接受（下发线程正在走切换序列之类）就这一拍再试
-                        if (act && !ep.BiasPushed && _rd.TempOf(well).PushJacketBelow(_coolPush, _pushFromEquilibrium))
+                        // 段里先补一次压低：进段那一拍回路恰好没接受（下发线程正在走切换序列之类）就这一拍再试。
+                        // 【本地改动】只补提前判据进的——功率符号进的段（经挂起接通）PID 已经翻负、被控量多半还在目标下面
+                        // （升温冲高后夹套回落），再把夹套目标压到釜内 − 2、冻外环积分就是往反方向推
+                        if (act && !ep.BiasPushed && !EnteredBySign(ep) && _rd.TempOf(well).PushJacketBelow(_coolPush, _pushFromEquilibrium))
                             _coolEp[well] = ep = ep with { BiasPushed = true };
                         var age = _ctx.Clock() - ep.Since;
                         // 最短制冷时间内：正号不扳、不停水（TEC 功率由 PID 调、可到 0）。每拍清驻留计时——不然时间一满、驻留早已计满，
@@ -1666,7 +1681,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
                         if (bySign == Side.Electric && tecNow && v.Enter) return Side.Tec;
                         // 符号说要 TEC（不立段：不受最短制冷时间、不压偏置），但中途开冷水机同样要过「问人」「最短间隔」两道门
                         if (bySign == Side.Tec && !tecNow)
-                            return act ? GateTec(well, target, "功率符号", out blocked) : Side.Tec;
+                            return act ? GateTec(well, target, BySignWhy, out blocked) : Side.Tec;
                         return bySign;
                     }
                     var now = SideNow(well);
@@ -1728,6 +1743,34 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     private bool ControlledBelow(int well, double target)
         => Controlled(well) is var cur && !double.IsNaN(cur) && cur <= target - EarlyDelta;
 
+    /// <summary>
+    /// 【本地改动】挂起段（等人答 / 等冷水机间隔）该不该撤——不要制冷了返回撤的原因，还要冷返回 null。act 才记计时。
+    /// · 提前判据进的（被控量冲过了目标）：被控量凉回去了就撤（低过目标且在降 / 超前回落 / 低过目标）——原样。
+    /// · 功率符号进的（回路要把夹套往下拉）：被控量可能一直在目标下面——升温冲高后夹套要回落就是这样（釜内 17.6、目标 20、
+    ///   夹套 28 要往 21.6 落），「低过目标」不算数。挂起期间回路钳 0，输出只能 ≥ 0：重新要加热（正过死区）连续 SignDwell 才撤；
+    ///   被控量低过目标且在降（真不要冷了）也撤。原来一律看「低过目标」，符号进法当拍就撤、3 s 后又问，现场 80 s 问了 15 次、
+    ///   TEC 一次没接上（R1-tc1-20261104-104405）。
+    /// </summary>
+    private string? HoldNoLongerNeeded(int well, double target, CoolEpisode ep, Early v, bool act)
+    {
+        var during = ep.Hold == "gap" ? "等冷水机间隔期间" : "等水期间";
+        if (!EnteredBySign(ep))
+            return v.Below || v.LeadExit || ControlledBelow(well, target) ? $"{during}被控量已回落" : null;
+        if (v.Below) return $"{during}被控量已回落";
+        var now = _ctx.Clock();
+        var d = Demand(well);
+        if (!double.IsNaN(d) && d > SignDeadbandPercent)
+        {
+            var since = ep.HeatSince ?? now;
+            if (act && ep.HeatSince is null) Interlocked.CompareExchange(ref _coolEp[well], ep with { HeatSince = now }, ep);
+            return now - since >= SignDwell
+                ? $"{during}回路又要加热了（功率 {d:+0.0} % 连续 {SignDwell.TotalSeconds:0} s）"
+                : null;
+        }
+        if (act && ep.HeatSince is not null) Interlocked.CompareExchange(ref _coolEp[well], ep with { HeatSince = null }, ep);
+        return null;
+    }
+
     private string Ctl(int well)
         => _rd.TempOf(well) is { Kind: TempChannelKind.Reactor } && TrValid(well) ? "釜内" : "夹套";
 
@@ -1775,8 +1818,14 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
             {
                 if (_ask is null)
                 {
-                    _ask = new WaterAsk(++_askSeq, _rd.TempOf(well).Channel,
-                        $"工位 {AB(well)} 要切 TEC 制冷：{Ctl(well)} {Controlled(well):F2} ℃ 已高过目标 {target:F2} ℃", now, now + AskTimeout);
+                    // 【本地改动】为什么要制冷按进法说：符号进的被控量多半还在目标下面（升温冲高后夹套回落），别说成「已高过目标」
+                    var ctl = Ctl(well);
+                    var cur = Controlled(well);
+                    var reason = why == BySignWhy
+                        ? $"回路要把夹套往下拉（功率连续 {SignDwell.TotalSeconds:0} s 指向 TEC；夹套 {_rd.TempOf(well).CurrentJacket:F2} ℃，" +
+                          (ctl == "夹套" ? "" : $"{ctl} {cur:F2} ℃，") + $"目标 {target:F2} ℃）"
+                        : $"{ctl} {cur:F2} ℃ 已高过目标 {target:F2} ℃";
+                    _ask = new WaterAsk(++_askSeq, _rd.TempOf(well).Channel, $"工位 {AB(well)} 要切 TEC 制冷：{reason}", now, now + AskTimeout);
                     _askAnswer = null;
                     _askWell = well;
                     _askWater[well] = AskState.Pending;
@@ -1786,6 +1835,14 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
             Hold(well, target, why, "ask", now);
             blocked = new Blocked("ask", "info", $"工位 {AB(well)} 双向挡：要切 TEC 制冷，这次控温是手动开的、开温控时没问过——" +
                 $"问操作人开不开冷却水，{AskTimeout.TotalSeconds:0} s 没人答按打开；等答复期间不接 TEC（加热棒继电器留着、功率下限钳 0）");
+            return Side.Electric;
+        }
+        if (needOpen && _askWater[well] == AskState.Pending && !RefluxActive(well))
+        {
+            // 【本地改动】上一段挂起撤了、问题还挂着没答（本次控温只问一次）：又要 TEC 就接着等同一个问题，不重问
+            Hold(well, target, why, "ask", now);
+            blocked = new Blocked("ask-again", "info", $"工位 {AB(well)} 双向挡：又要切 TEC 制冷——开不开冷却水的询问还挂着（同一个，不重问），" +
+                "等答复期间不接 TEC（加热棒继电器留着、功率下限钳 0）");
             return Side.Electric;
         }
         if (ColdStartNeeded() && _chillerLastStartAt is { } last && now - last < ChillerMinGap)
@@ -1835,6 +1892,14 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
                 {
                     othersAsking = _ask is not null;
                 }
+                else if (_askWater[well] == AskState.Done)
+                {
+                    // 【本地改动】排在另一路问题后面等，那个问题按「打开」落地了（LandOpenForWaiters：一只阀，本路照办）——
+                    // 或者别处已经落地过：照 _waterDeclined 说，跟 GateTec 接下来的做法一致，别一律说成开水
+                    open = !_waterDeclined[well];
+                    how = _sharedHow[well] ?? "开不开冷却水的询问已在别处有了结果";
+                    _sharedHow[well] = null;
+                }
                 else
                 {
                     open = true;                                 // 问题被收回了（停控 / 重下发）又还在挂起：当答过，按打开办
@@ -1859,6 +1924,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
             }
             _askWater[well] = AskState.Done;                     // 本次控温只问一次
             if (open == false) { _waterDeclined[well] = true; _declinedSaid[well] = false; }   // = 开温控弹窗选「不开」的同一份状态
+            else LandOpenForWaiters(well, how);
             var text = $"工位 {AB(well)} 中途切 TEC：{how}" +
                        (open == true ? "——先开阀 / 冷水机、通水后接 TEC" : "——直接接 TEC，阀与冷水机不动（没有冷却水 TEC 会干烧）");
             _ctx.Log?.Invoke(open == true ? "info" : "warn", $"{InstanceId} {text}");
@@ -1883,18 +1949,22 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     private Side CommitEnter(int well)
     {
         var ep = _coolEp[well]!;
-        _coolEp[well] = ep with { Since = _ctx.Clock() };
-        if (ep.Why == "功率符号")
+        _coolEp[well] = ep with { Since = _ctx.Clock(), HeatSince = null };
+        if (EnteredBySign(ep))
             _ctx.Log?.Invoke("info", $"{InstanceId} 工位 {AB(well)} 双向挡：符号进法经挂起接通——立制冷段（最短 {CoolMinDuration.TotalSeconds:0} s）");
         return Side.Tec;
     }
 
-    /// <summary>段结束（回落 / 符号退 / 新目标 / 夹套烫 / 停控 / 规矩变了）：交还夹套目标、撤回没答的询问、记一句。没段什么都不做。</summary>
-    private void EndEpisode(int well, string why)
+    /// <summary>
+    /// 段结束（回落 / 符号退 / 新目标 / 夹套烫 / 停控 / 规矩变了）：交还夹套目标、撤回没答的询问、记一句。没段什么都不做。
+    /// keepAsk：【本地改动】挂起期间不要制冷了——问题不收回，留着等答复 / 到时（SettleIdleAsk 落地），本次控温只问一次。
+    /// </summary>
+    private void EndEpisode(int well, string why, bool keepAsk = false)
     {
         var ep = Interlocked.Exchange(ref _coolEp[well], null);
         if (ep is null) return;
-        WithdrawAsk(well, why, rearm: true);                      // 没答过 = 没问过，下次再要再问（停控随后会置 None）
+        if (!keepAsk) WithdrawAsk(well, why, rearm: true);       // 没答过 = 没问过，下次再要再问（停控随后会置 None）
+        var askKept = keepAsk && ep.Hold == "ask" && _askWater[well] == AskState.Pending;
         var t = _rd.TempOf(well);
         var restored = "";
         if (ep.BiasPushed)
@@ -1906,7 +1976,8 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         var dur = now - ep.Since;
         var text = ep.Hold is not null
             ? $"工位 {AB(well)} 双向挡：制冷段取消（{why}；TEC 没接上，{(ep.Hold == "ask" ? "等人答复" : "等冷水机间隔")} " +
-              $"{(now - ep.HoldSince!.Value).TotalSeconds:0} s）——留在加热棒{restored}"
+              $"{(now - ep.HoldSince!.Value).TotalSeconds:0} s）——留在加热棒{restored}" +
+              (askKept ? "；开不开冷却水的询问留着，答了 / 到时就记下，这次控温之后再要接 TEC 照答复办、不再问" : "")
             : why == "被控量回落"
                 ? $"工位 {AB(well)} 双向挡：{Ctl(well)} {Controlled(well):F2} ℃ 回落到目标 {ep.Target:F2} − {EarlyDelta:F2} ℃ 以下且在降" +
                   $"（{SlopePerMin(well):+0.00;−0.00} K/min{(ExitLead > TimeSpan.Zero ? $"，超前 {ExitLead.TotalSeconds:0} s" : "")}），" +
@@ -1919,8 +1990,14 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     /// <summary>逐拍记录 extra 列后面追加的段落说明（没段为空）。</summary>
     private string EpisodeExtra(int well)
     {
-        if (_tecHeat || _coolEp[well] is not { } ep) return "";
+        if (_tecHeat) return "";
         var now = _ctx.Clock();
+        if (_coolEp[well] is not { } ep)
+        {
+            if (_askWater[well] != AskState.Pending) return "";
+            lock (_askGate)
+                return _ask is { } a && _askWell == well ? $"·冷却水询问挂着（还剩 {Math.Max(0, (a.Deadline - now).TotalSeconds):0} s）" : "";
+        }
         return ep.Hold switch
         {
             "ask" => $"·等人答复 {(now - ep.HoldSince!.Value).TotalSeconds:0} s",
@@ -2059,6 +2136,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     internal void TakeWaterChoice(int well)
     {
         WithdrawAsk(well, "重新下发目标", rearm: false);
+        _sharedHow[well] = null;
         _waterDeclined[well] = _skipWaterNext[well];
         _skipWaterNext[well] = false;
         _declinedSaid[well] = false;
@@ -2070,7 +2148,19 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     /// 挂着的「开不开冷却水」询问（整机一个槽位）；没有 null。答过了（落地在下一拍）就不再给——不然面板下一秒轮询
     /// 看到同一个 Id 还在，会把刚答完的窗又弹一次。
     /// </summary>
-    internal WaterAsk? PendingAsk { get { lock (_askGate) return _askAnswer is null ? _ask : null; } }
+    internal WaterAsk? PendingAsk
+    {
+        get
+        {
+            lock (_askGate)
+            {
+                if (_askAnswer is not null || _ask is not { } a) return null;
+                // 【本地改动】有没有哪一路正等着它（主人挂着 ask 段，或另一路排在后面等）：没有 = 回路又不要制冷了，面板副标题说一句
+                var waiting = _coolEp[0] is { Hold: "ask" } || _coolEp[1] is { Hold: "ask" };
+                return waiting == a.Waiting ? a : a with { Waiting = waiting };
+            }
+        }
+    }
 
     /// <summary>答复：Id 对不上（已超时按打开 / 已收回 / 已答）返回 false。UI 线程只写答复，落地在下一拍（状态转移都在采集线程）。</summary>
     internal bool AnswerAsk(int id, bool open)
@@ -2097,6 +2187,57 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
             text = $"工位 {AB(well)} 「开不开冷却水」的询问收回（{why}）" + (rearm ? "——下次再要接 TEC 再问" : "");
         }
         _ctx.Log?.Invoke("info", $"{InstanceId} {text}");      // 日志放锁外（宿主委托）
+        _rd.TempOf(well).Note(text);
+    }
+
+    /// <summary>另一路排在本路问题后面等、本路问题按「打开」落地时，带给它的那句（它落地时印出来）。</summary>
+    private readonly string?[] _sharedHow = new string?[2];
+
+    /// <summary>
+    /// 【本地改动】一只阀一台冷水机：槽位里的问题按「打开」落地（答开 / 到时 / 水已开）时，另一路此刻正排在后面等的
+    /// （Armed、挂着 "ask" 段）也照办——记 Done，它下一拍 ResolveHold 接着过 GateTec（开水 → 接 TEC），不再另挂一个问题。
+    /// 「不开」只算本路（没有冷却水 TEC 会干烧，各路自己认）：它下一拍照旧挂自己的。
+    /// 原来撤段就收回问题、另一路马上问自己的；现在问题留着，不这样带过去的话另一路要等这个问题到时、再等自己的 60 s，答了「开」还要再弹一次。
+    /// </summary>
+    private void LandOpenForWaiters(int owner, string how)
+    {
+        var o = 1 - owner;
+        lock (_askGate)
+        {
+            if (_askWater[o] != AskState.Armed || _coolEp[o] is not { Hold: "ask" }) return;
+            _askWater[o] = AskState.Done;
+            _sharedHow[o] = $"工位 {AB(owner)} 的冷却水询问有了结果（{how}）——一只阀，本路照办、不再另问";
+        }
+    }
+
+    /// <summary>
+    /// 【本地改动】问题挂着、这一路此刻却没在等它（挂起段撤了：等人期间不要制冷了）：答复到了 / 到时了 / 水被别人开了就在这里落地，
+    /// 跟挂起里落地（ResolveHold）一样记成「本次控温问过了」——之后再要 TEC 照答复办、不再问；不扳继电器（此刻不要制冷）。
+    /// 每拍在采集循环里看一眼；在等它的那一路由 ResolveHold 管。
+    /// </summary>
+    private void SettleIdleAsk(int well)
+    {
+        if (_askWater[well] != AskState.Pending || _coolEp[well] is { Hold: "ask" }) return;
+        var now = _ctx.Clock();
+        bool? open = null;
+        var how = "";
+        lock (_askGate)
+        {
+            if (_ask is not { } a || _askWell != well) return;
+            if (_waterOn && !_waterClosing) (open, how) = (true, "冷却水已经开了（面板开关 / 另一路）——不用问了");
+            else if (_askAnswer is { } ans) (open, how) = (ans, ans ? "操作人选了打开冷却水" : "操作人选了不开冷却水");
+            else if (now >= a.Deadline) (open, how) = (true, $"{AskTimeout.TotalSeconds:0} s 没人答，按「打开冷却水」办");
+            if (open is null) return;
+            _ask = null;
+            _askAnswer = null;
+            _askWell = -1;
+        }
+        _askWater[well] = AskState.Done;                         // 本次控温只问一次
+        if (open == false) { _waterDeclined[well] = true; _declinedSaid[well] = false; }
+        else LandOpenForWaiters(well, how);
+        var text = $"工位 {AB(well)} 开不开冷却水的询问有了结果：{how}——此刻不要制冷，先记下；这次控温之后再要接 TEC " +
+                   (open == true ? "先开阀 / 冷水机、通水后接，不再问" : "直接接，阀与冷水机不动（没有冷却水 TEC 会干烧），不再问");
+        _ctx.Log?.Invoke(open == true ? "info" : "warn", $"{InstanceId} {text}");
         _rd.TempOf(well).Note(text);
     }
 
