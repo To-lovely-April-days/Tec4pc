@@ -146,7 +146,10 @@ public sealed class PidGainSchedule
                           || Math.Abs(prev - biasC) > changeThresholdC
                           || newLimit > old.OuterMaxBiasC;
 
-            _points[idx] = old with { SteadyBiasC = biasC, OuterMaxBiasC = newLimit };
+            // 【本地改动】只在报「变了」（会话据此存盘）的时候才改表里那格。原来每拍都覆盖、却只跟上一拍比：学习是低通，
+            // 一拍挪不了 0.05，第一次存盘之后表里（内存）一路收敛、盘上却一直是第一次学到的那个数，下次开机读回来的就是它。
+            // 现在表里那格每次挪过 0.05 才动，动了就存——内存和盘上一致
+            if (changed) _points[idx] = old with { SteadyBiasC = biasC, OuterMaxBiasC = newLimit };
             return changed;
         }
     }

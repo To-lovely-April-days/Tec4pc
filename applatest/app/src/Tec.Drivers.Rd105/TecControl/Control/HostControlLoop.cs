@@ -53,6 +53,10 @@ public sealed record ChannelCycleInfo(
 
     /// <summary>【本地改动】串级制冷段的夹套压低量（K，<see cref="HostControlLoop.SetOuterPushDown"/>）；没压 / 单环为 NaN。</summary>
     public double OuterPushC { get; init; } = double.NaN;
+
+    /// <summary>【本地改动】大降温收尾这一拍在外环 P / I / D 之外多给的偏置（K，<see cref="HostControlLoop.OuterFinishGain"/>）；
+    /// 内环设定 = 主设定 + P + I + D + 它（再夹限幅）。单环 / Tr 丢失保持中为 NaN。</summary>
+    public double OuterFinishC { get; init; } = double.NaN;
 }
 
 /// <summary>一个完整控制周期的结果（后台线程发布）。电流每 4 个周期采样一次，其余周期为 null。</summary>
@@ -288,6 +292,36 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
 
         /// <summary>【本地改动】积分还没动过时里面那份刹车（K，降温趋近 +、升温趋近 −、0 = 没加）。</summary>
         public double OuterBrakeC;
+
+        // 【本地改动】大降温收尾（OuterFinishGain）：这一段趋近的状态。新一段趋近（收 OuterRearmedFlag）、不适用（曲线 / 压低 / 别的表）时清。只在回路线程读写
+        /// <summary>这一段趋近起步时的釜内（走过多远从它算）。</summary>
+        public double FinStartPv = double.NaN;
+        /// <summary>内环连续顶在满制冷多少秒；够了 <see cref="FinSatOk"/> 锁存。</summary>
+        public double FinSatSeconds;
+        public bool FinSatOk;
+        /// <summary>武装了：满制冷顶够了、走过够远、目标够低。这一段趋近里一直武装着。</summary>
+        public bool FinArmed;
+        /// <summary>到站（进 ±0.1 或过了零）：g 不再往上加。</summary>
+        public bool FinArrived;
+        public DateTime FinArrivedAt;
+        /// <summary>稳住了（或到站后顶够了时长）：g 往下退、这一段不再加。</summary>
+        public bool FinEnded;
+        /// <summary>爬行程度 g ∈ [0, 1]：多给的比例 = OuterFinishGain × g × 外环 P。</summary>
+        public double FinGain;
+        public double FinSettledSeconds;
+        public double FinLastErr = double.NaN;
+        /// <summary>这一拍收尾规则多给的偏置（K）。</summary>
+        public double FinExtraC;
+        /// <summary>改目标时带过来、正在线性退的那份（K）和起点时刻；0 = 没有。新一段趋近不清它（改目标时就是它接手），
+        /// 起步 / 解除压低 / 不适用时清。</summary>
+        public double FinCarryC;
+        public DateTime FinCarryAt;
+        /// <summary>这一拍在外环 P / I / D 之外一共加了多少（收尾 + 带着退的），逐拍记录用。</summary>
+        public double FinAppliedC;
+        /// <summary>武装后起过一次「爬」（提示只发一次）。</summary>
+        public bool FinCrawlNoted;
+        /// <summary>最近 <see cref="OuterFinishShotWindow"/> 的 (时刻, 外环误差)：过零那一枪按过零速度封顶用。</summary>
+        public readonly Queue<(DateTime At, double ErrC)> FinErrHistory = new();
 
         /// <summary>【本地改动】外环积分的参照值——信得过的那个偏置：起步预置、重摆刹车、放电预置、坡尾回基、这一场稳住时的积分。
         /// 改目标 / 解除压低不动它。「趋近不积分」「夹套跟不上不积分」只拦积分往参照值外面、往外环正推的方向走；
@@ -939,6 +973,80 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
     public double OuterInnerLagFreezeC { get; set; } = 0.5;
 
     /// <summary>
+    /// 【本地改动】大降温收尾：釜内满幅降温到低温目标、最后一段爬的时候，外环临时多给比例——多给 外环 P × 这个倍数 × g，
+    /// g 是爬行程度（0 → 1）。≤0 = 关（下面几条一起关）。只在双向挡那张表上、不在曲线 / 压低里。
+    /// 现场（2026-11-03，双向挡釜内 8 → −15 ℃）：满幅降温 20 分钟，然后 −14.3 → −15.0 爬了 25 分钟，47 分钟才进 ±0.1，
+    /// 到站后又往下偏到 −15.06。拿逐拍数据拟合（<c>CascadeFieldTwinTests</c>）：降温后釜壁 / 盖那份慢热容还落在釜内后面 2–3 K、
+    /// 往釜里漏热，维持目标要的夹套比长期稳态再冷一截、二三十分钟才退；「趋近不积分」让外环积分在这段不攒，只剩比例推，
+    /// 越近推得越轻——就是爬。放开积分去补又会冲过（攒的到站要还）。多给比例不留电荷：误差到 0 它自己就没了。
+    /// g 只在「爬」时升：|误差| ≤ 0.8 K、照 60 s 里的速度 <see cref="OuterFinishCrawlHorizon"/> 内到不了；
+    /// <see cref="OuterFinishRamp"/> 升满；到站后锁住不再加；60 s 平均误差在 ±<see cref="OuterLearnBandC"/> 里待够
+    /// <see cref="OuterFinishSettleTime"/>（或到站后过了 <see cref="OuterFinishMaxHold"/>）算稳住，<see cref="OuterFinishRelease"/> 退完。
+    /// 武装另要：目标 ≤ <see cref="OuterFinishMaxSetpointC"/>、内环连续顶在满制冷 ≥ <see cref="OuterFinishSaturation"/>、釜内走过 ≥ 2 K——
+    /// 中温段（0–10 ℃）、换一台釜、夹套再慢一点时孪生里这一下会把釜推得来回摆，先只放在现场验证过的低温段。
+    /// 武装期间两件事跟着改：过零那一枪按过零速度封顶（<see cref="OuterFinishShotTau"/>）、到 g 退完之前不学稳态偏置——
+    /// 这段里积分加多给的那份是「漏热还没退」的偏置，不是这个温度的稳态，记进表下次起步就按它偏。
+    /// 倍数取 0.5（外环 Kp 2.5 时最多 3.75）、总的不超过 <see cref="OuterFinishMaxKp"/>：1.0 时现场那场还能再快 3–4 分钟，
+    /// 但孪生里夹套再慢一截（滞后 150 s）、釜壁更慢、改个冷点的夹套时都会到站后再出 ±0.1 一两回——以前「腔体跟踪缺口前馈」就是仿真说行、
+    /// 现场纯滞后一大就自激（<see cref="OuterTrackingBoost"/>），这回先取一半，看过现场数据再说。
+    /// 孪生回放（现场那场）：进 ±0.1 47 → 43 min、±0.05 50 → 48 min、冲过 0.025 → 0.010，到站后不再往下偏；
+    /// 升温、小台阶、中温段不武装，逐点同现状。
+    /// </summary>
+    public double OuterFinishGain { get; set; } = 0.5;
+
+    /// <summary>【本地改动】大降温收尾加上多给的那份以后外环总比例不超过它：表里外环 Kp 本来就大的（≥ 它）不再多给。
+    /// 孪生里外环 Kp 6 的 −25 → −28 多给以后合计到 9，冲过 0.03 → 0.09。</summary>
+    public double OuterFinishMaxKp { get; set; } = 5;
+
+    /// <summary>【本地改动】大降温收尾多给着的时候改目标、新目标离釜内不到 <see cref="OuterFinishCarryNearC"/>：多给的那份不一下撤掉，
+    /// 在这么长时间里线性退完。一下撤掉夹套目标跳几 K（漏热的补偿全在那份里），孪生里爬着改到釜内附近的上下冲 0.2 → 0.3 K；
+    /// 带着退：35 种里只剩 3 种比不收尾时多（≤ 0.03 K）。离得远的改目标照旧一下撤掉（新的一段趋近，带着反而拖慢）。≤0 = 不带。</summary>
+    public TimeSpan OuterFinishCarry { get; set; } = TimeSpan.FromMinutes(20);
+
+    public double OuterFinishCarryNearC { get; set; } = 1.0;
+
+    /// <summary>【本地改动】大降温收尾只在目标不高于它（℃）时武装。</summary>
+    public double OuterFinishMaxSetpointC { get; set; } = -10;
+
+    /// <summary>【本地改动】大降温收尾武装要内环连续顶在满制冷这么久（双向挡 TEC 接着时才算；TEC 被扣着时不算、也不清）。</summary>
+    public TimeSpan OuterFinishSaturation { get; set; } = TimeSpan.FromSeconds(300);
+
+    /// <summary>【本地改动】算「爬」：照 60 s 里的趋近速度这么长时间内走不完剩下的误差（或不动 / 往外走）。</summary>
+    public TimeSpan OuterFinishCrawlHorizon { get; set; } = TimeSpan.FromMinutes(3);
+
+    /// <summary>【本地改动】g 从 0 升到 1（爬）、或误差出了 0.8 K 时从 1 退到 0 用的时间。</summary>
+    public TimeSpan OuterFinishRamp { get; set; } = TimeSpan.FromSeconds(120);
+
+    /// <summary>【本地改动】60 s 平均误差连续在 ±<see cref="OuterLearnBandC"/> 里这么久算稳住。</summary>
+    public TimeSpan OuterFinishSettleTime { get; set; } = TimeSpan.FromSeconds(300);
+
+    /// <summary>【本地改动】到站后最多锁这么久，没稳住也当稳住（小幅慢摆、Tr 噪声大时 g 别一直挂着、偏置一直不学）。</summary>
+    public TimeSpan OuterFinishMaxHold { get; set; } = TimeSpan.FromMinutes(20);
+
+    /// <summary>【本地改动】稳住后 g 从 1 退到 0 用的时间（慢退，让积分接得住）。</summary>
+    public TimeSpan OuterFinishRelease { get; set; } = TimeSpan.FromMinutes(20);
+
+    /// <summary>【本地改动】防摆：g &gt; 0 时釜内以快于这个速度（K/min）离开目标——多给的比例带出来的摆——当到站，g 按 <see cref="OuterFinishAwayRelease"/> 退。</summary>
+    public double OuterFinishAwayCPerMin { get; set; } = 0.05;
+
+    public TimeSpan OuterFinishAwayRelease { get; set; } = TimeSpan.FromSeconds(600);
+
+    /// <summary>【本地改动】武装时过零那一枪的封顶：积分最多往学到的偏置挪 过零速度（K/min）× 这么久 ÷ 60，只往挡住去势的方向挪。
+    /// 爬着穿过去的（速度慢）几乎不挪——这时积分里是漏热那份偏置，一枪打回表里的长期值就把釜内推回去（现场到站后往下偏的那一下）。</summary>
+    public TimeSpan OuterFinishShotTau { get; set; } = TimeSpan.FromSeconds(400);
+
+    /// <summary>【本地改动】过零速度按最近这么长的外环误差做最小二乘。</summary>
+    public TimeSpan OuterFinishShotWindow { get; set; } = TimeSpan.FromSeconds(120);
+
+    /// <summary>【本地改动】过零速度的那段误差历史至少得跨这么久，不够（刚改过目标 / Tr 刚恢复）就不挪——几个点算斜率，跳一个字就算成快穿。</summary>
+    public TimeSpan OuterFinishShotMinSpan { get; set; } = TimeSpan.FromSeconds(60);
+
+    private const double FinishMinTravelC = 2.0;
+    private const double FinishBandC = 0.8;
+    private const double FinishArrivedC = 0.1;
+    private const double FinishShotMinGapC = 0.05;
+
+    /// <summary>
     /// 【本地改动】起步时外环积分从哪儿起：表里这个温度学到过稳态偏置就用它（原来就这样）；没学到时看起步前这么长一段
     /// 釜内和夹套稳不稳，稳就拿最后 <see cref="OuterStartAverage"/> 里「夹套 − 釜内」的平均当起点——那就是起步那个温度
     /// 维持住要的偏置。散热型的偏置随温度单调变（温度越高越大），拿起点的估终点：降温估大了（夹套给得偏高）、升温估小了
@@ -1498,6 +1606,174 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         return hi - lo <= OuterLearnStillC + 1e-9;
     }
 
+    /// <summary>【本地改动】大降温收尾从头来：新一段趋近、或此刻不适用。</summary>
+    private static void ResetFinish(ChannelState s, double pv)
+    {
+        s.FinStartPv = pv;
+        s.FinSatSeconds = 0;
+        s.FinSatOk = s.FinArmed = s.FinArrived = s.FinEnded = s.FinCrawlNoted = false;
+        s.FinGain = s.FinSettledSeconds = s.FinExtraC = 0;
+        s.FinLastErr = double.NaN;
+        s.FinErrHistory.Clear();
+    }
+
+    /// <summary>
+    /// 【本地改动】大降温收尾（<see cref="OuterFinishGain"/>）这一拍在外环偏置上多给多少（K）；不适用 / 没武装 = 0。
+    /// 只在回路线程、外环那一拍调；本拍误差已经由 ApproachingSetpoint 记进 OuterErrHistory。dt 已封顶（挂起恢复那一拍别一口气跳）。
+    /// </summary>
+    private double OuterFinish(int ch, ChannelState s, DateTime now, double pv, double err, double dt, bool innerLow, OuterPush? push)
+    {
+        if (!(OuterFinishGain > 0) || push is not null || s.Profile is not null || s.Table != GainTable.Both
+            || OuterBiasClampBandC > 0)      // 落地钳位会把往下多给的那份整个钳掉，两个不一起开
+        {
+            ResetFinish(s, pv);
+            s.FinCarryC = 0;
+            return 0;
+        }
+        var q = s.FinErrHistory;
+        q.Enqueue((now, err));
+        while (q.Count > 0 && now - q.Peek().At > OuterFinishShotWindow) q.Dequeue();
+
+        // 双向挡 TEC 被扣着（等冷水机最短间隔、问冷却水）时形态是只加热、下限是 0：那不是满制冷，不算、也不清，g 也不往上加
+        var tecOn = s.Actuator == ActuatorMode.HeaterTec;
+        if (tecOn) s.FinSatSeconds = innerLow ? s.FinSatSeconds + dt : 0;
+        if (s.FinSatSeconds >= OuterFinishSaturation.TotalSeconds) s.FinSatOk = true;
+        if (!s.FinArmed && s.FinSatOk && Math.Abs(pv - s.FinStartPv) >= FinishMinTravelC && s.SetpointC <= OuterFinishMaxSetpointC)
+        {
+            s.FinArmed = true;
+            ChannelNotice?.Invoke(ch, "info",
+                $"通道{ch}大降温收尾已武装（满制冷顶了 {s.FinSatSeconds / 60:F0} 分钟、釜内 {s.FinStartPv:F2} → {pv:F2} ℃）：" +
+                $"最后一段爬的时候外环临时多给比例，到站后锁住、稳住后 {OuterFinishRelease.TotalMinutes:0} 分钟退完；这期间不学稳态偏置");
+        }
+        if (!s.FinArmed)
+        {
+            s.FinExtraC = 0;
+            return 0;
+        }
+
+        // 60 s 窗（趋近判据那个）：趋近速度（K/min，往目标走为正；窗不够 2/3 不算）、平均误差
+        double? v = null;
+        var mean = err;
+        var h = s.OuterErrHistory;
+        if (h.Count >= 2)
+        {
+            var (at0, e0) = h.Peek();
+            var span = (now - at0).TotalSeconds;
+            if (span >= OuterApproachWindow.TotalSeconds * 0.66) v = (Math.Abs(e0) - Math.Abs(err)) / span * 60;
+            mean = 0;
+            foreach (var (_, e) in h) mean += e;
+            mean /= h.Count;
+        }
+
+        // 到站：进 ±0.1 或过了零，锁住
+        if (!s.FinArrived && (Math.Abs(err) <= FinishArrivedC
+                              || (!double.IsNaN(s.FinLastErr) && Math.Abs(s.FinLastErr) > 1e-12 && s.FinLastErr * err <= 0)))
+        {
+            s.FinArrived = true;
+            s.FinArrivedAt = now;
+        }
+        s.FinLastErr = err;
+
+        var crawl = tecOn && !s.FinEnded && !s.FinArrived && Math.Abs(err) <= FinishBandC && v is { } vv
+                    && (vv <= 1e-9 || Math.Abs(err) / vv > OuterFinishCrawlHorizon.TotalMinutes);
+        // 防摆：多给着的时候釜内往外走得快——是它带出来的摆，当到站、慢慢退
+        var away = s.FinGain > 0 && v < -OuterFinishAwayCPerMin;
+        if (away && !s.FinArrived)
+        {
+            s.FinArrived = true;
+            s.FinArrivedAt = now;
+        }
+
+        var g = s.FinGain;
+        if (away) g -= dt / OuterFinishAwayRelease.TotalSeconds;
+        else if (s.FinEnded) g -= dt / OuterFinishRelease.TotalSeconds;
+        else if (crawl) g += dt / OuterFinishRamp.TotalSeconds;
+        else if (Math.Abs(err) > FinishBandC) g -= dt / OuterFinishRamp.TotalSeconds;
+        s.FinGain = Math.Clamp(g, 0, 1);
+        if (crawl && !s.FinCrawlNoted)
+        {
+            s.FinCrawlNoted = true;
+            ChannelNotice?.Invoke(ch, "info",
+                $"通道{ch}釜内 {pv:F2} ℃ 离目标 {err:+0.00;-0.00} K 在爬：外环比例临时加大（最多 {1 + FinishGainFor(s):0.##} 倍）");
+        }
+
+        // 稳住：60 s 平均误差在学习带里待够；到站后锁太久也当稳住
+        if (!s.FinEnded)
+        {
+            s.FinSettledSeconds = Math.Abs(mean) <= OuterLearnBandC ? s.FinSettledSeconds + dt : 0;
+            var held = s.FinArrived && now - s.FinArrivedAt >= OuterFinishMaxHold;
+            if (s.FinSettledSeconds >= OuterFinishSettleTime.TotalSeconds || held)
+            {
+                s.FinEnded = true;
+                if (s.FinGain > 0)
+                    ChannelNotice?.Invoke(ch, "info",
+                        $"通道{ch}大降温收尾{(held ? $"到站已 {OuterFinishMaxHold.TotalMinutes:0} 分钟" : "稳住了")}：" +
+                        $"多给的比例 {OuterFinishRelease.TotalMinutes:0} 分钟退完，退完后接着学稳态偏置");
+            }
+        }
+
+        s.FinExtraC = FinishGainFor(s) * s.FinGain * s.OuterPid.LastP;
+        return s.FinExtraC;
+    }
+
+    /// <summary>【本地改动】大降温收尾此刻的倍数：<see cref="OuterFinishGain"/>，加上以后外环总比例不超过 <see cref="OuterFinishMaxKp"/>。</summary>
+    private double FinishGainFor(ChannelState s)
+    {
+        var kp = s.OuterPid.Kp;
+        return kp > 0 ? Math.Min(OuterFinishGain, Math.Max(0, OuterFinishMaxKp / kp - 1)) : 0;
+    }
+
+    /// <summary>【本地改动】改目标时带过来的那份这一拍还剩多少（线性退，退完清掉）。</summary>
+    private double FinishCarry(ChannelState s, DateTime now)
+    {
+        if (s.FinCarryC == 0) return 0;
+        var left = OuterFinishCarry > TimeSpan.Zero ? 1 - (now - s.FinCarryAt) / OuterFinishCarry : 0;
+        if (left > 0) return s.FinCarryC * Math.Min(left, 1);
+        s.FinCarryC = 0;
+        return 0;
+    }
+
+    /// <summary>
+    /// 【本地改动】大降温收尾武装时过零那一枪：积分往学到的偏置挪，最多挪 过零速度 × <see cref="OuterFinishShotTau"/>，只往挡住去势的方向挪。
+    /// 爬着穿过去的（速度慢）几乎不挪；过零速度的误差历史不够 <see cref="OuterFinishShotMinSpan"/> 就不挪。积分参照照样落到挪完的值上。
+    /// </summary>
+    private void FinishCrossingShot(int ch, ChannelState s, double steadyI, DateTime now)
+    {
+        var before = s.OuterPid.LastI;
+        var gap = steadyI - before;
+        if (Math.Abs(gap) <= FinishShotMinGapC) return;
+        double? rate = null;                 // 外环误差（主设定 − 釜内）对时间的斜率，K/min
+        var q = s.FinErrHistory;
+        if (q.Count >= 2 && (now - q.Peek().At) >= OuterFinishShotMinSpan)
+        {
+            var t0 = q.Peek().At;
+            double n = q.Count, mt = 0, me = 0;
+            foreach (var (at, e) in q) { mt += (at - t0).TotalSeconds; me += e; }
+            mt /= n;
+            me /= n;
+            double num = 0, den = 0;
+            foreach (var (at, e) in q)
+            {
+                var dt = (at - t0).TotalSeconds - mt;
+                num += dt * (e - me);
+                den += dt * dt;
+            }
+            if (den > 0) rate = num / den * 60;
+        }
+        var step = 0.0;
+        if (rate is { } r)
+        {
+            var cap = OuterFinishShotTau.TotalSeconds * Math.Abs(r) / 60;
+            step = Math.Clamp(gap, -cap, cap);
+            if (step * r < 0) step = 0;
+        }
+        if (step != 0) s.OuterPid.PresetIntegral(before + step);
+        OnOuterPresetToLearned(s);
+        ChannelNotice?.Invoke(ch, "info",
+            $"通道{ch}过零（大降温收尾）：过零速度 {(rate is { } rr ? $"{rr:F3} K/min" : "不明")}，外环积分 {before:F2} → {s.OuterPid.LastI:F2} ℃" +
+            $"（学到的 {steadyI:F2}；爬着穿过去的不一枪打回表值）");
+    }
+
     /// <summary>【本地改动】每拍记一笔 (釜内 / 外环被控量, 夹套 / 内环被控量)，控没控都记——起步估偏置要看起步「前」稳不稳。</summary>
     private void RecordHistory(ChannelState s, TecSnapshot snapshot, double pv)
     {
@@ -1681,6 +1957,10 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                 s.OuterLostSince = null;
                 s.OuterPid.ResetDerivative();
                 s.OuterErrHistory.Clear();                // 【本地改动】趋近判据别跨盲区算误差变化
+                s.FinErrHistory.Clear();
+                // 【本地改动】大降温收尾还没到站：多给的那份从 0 重新爬，夹套设定别从「钳在主设定」一步跳回去。到站以后不清——
+                // 那时 |误差| ≤ 0.1、多给的不到 0.25 K，没什么可跳的；g 还管着「退完之前不学偏置」，清了就提前学进漏热那一截
+                if (!s.FinArrived) s.FinGain = 0;
                 s.LastOuterUpdate = default;              // 下一拍外环 dt = OuterPeriod，别把断掉的几十秒一口气积进去
                 s.BiasGuard.Reset();
                 var resumed = "";
@@ -1744,8 +2024,28 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                     s.RampBaseI = null;
                     s.ProfileFinished = false;
                 }
-                if (Interlocked.Exchange(ref s.OuterRearmedFlag, 0) != 0) s.OuterErrHistory.Clear();
-                if (Interlocked.Exchange(ref s.OuterTargetChangedFlag, 0) != 0)
+                var rearmed = Interlocked.Exchange(ref s.OuterRearmedFlag, 0) != 0;
+                var targetChanged = Interlocked.Exchange(ref s.OuterTargetChangedFlag, 0) != 0;
+                if (rearmed)
+                {
+                    s.OuterErrHistory.Clear();
+                    // 【本地改动】大降温收尾多给着的时候直接改目标、新目标就在釜内附近：多给的那份带过去慢慢退（OuterFinishCarry）。
+                    // 起步 / 解除压低（只立了新一段趋近）、或改得离釜内远（新的一段趋近，带着反而拖慢）：清掉，连上一回近处改目标还在退的那份一起；
+                    // 近处改目标且这一拍还多给着：从它起退；近处改目标但没在多给（上一回带过来的还在退）：接着退
+                    var lastExtra = s.FinExtraC;
+                    var nearTarget = Math.Abs(s.SetpointC - outerPv) <= OuterFinishCarryNearC;
+                    if (!targetChanged || !nearTarget || OuterFinishCarry <= TimeSpan.Zero) s.FinCarryC = 0;
+                    else if (lastExtra != 0)
+                    {
+                        s.FinCarryC = lastExtra;
+                        s.FinCarryAt = snapshot.Timestamp;
+                        ChannelNotice?.Invoke(ch, "info",
+                            $"通道{ch}大降温收尾中改目标 {s.SetpointC:F2} ℃（釜内 {outerPv:F2} ℃）：多给的 {lastExtra:+0.00;-0.00} K 不一下撤掉，" +
+                            $"{OuterFinishCarry.TotalMinutes:0} 分钟线性退完");
+                    }
+                    ResetFinish(s, outerPv);
+                }
+                if (targetChanged)
                 {
                     // 坡中途直接给了新目标（StopProfile + SetSetpoint）：坡上攒的那份先放掉，按釜内在新目标哪一边定方向
                     if (s.RampBaseI is not null && s.Profile is null)
@@ -1822,6 +2122,13 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                     s.OuterIntegralPristine = false;
                     s.OuterBrakeC = 0;
                 }
+                // 【本地改动】大降温收尾：爬的时候多给比例（加在 PID 之后，PID 自己的条件积分看不到它；近处偏置离限幅远，没影响）
+                var finish = OuterFinish(ch, s, snapshot.Timestamp, outerPv, outerErr0,
+                    Math.Min(outerDt, OuterPeriod.TotalSeconds * 2.5), innerLow, push)
+                             + FinishCarry(s, snapshot.Timestamp);
+                s.FinAppliedC = finish;
+                if (finish != 0)
+                    bias = Math.Clamp(bias + finish, s.OuterPid.OutputMin, s.OuterPid.OutputMax);
 
                 // 腔体跟踪缺口前馈：腔体离它的目标还差多少，就按比例多推一把，
                 // 等效把腔体跟随加速 (1+k) 倍——趋近段提前归位消掉剩余下冲，
@@ -1903,7 +2210,9 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                         && s.LastOuterErrorC * outerErr <= 0)
                     {
                         s.OuterCrossingArmed = false;
-                        if (Math.Abs(s.OuterPid.LastI - steadyI) > OuterDischargeMinGapC)
+                        if (s.FinArmed)
+                            FinishCrossingShot(ch, s, steadyI, snapshot.Timestamp);     // 【本地改动】大降温收尾：按过零速度封顶
+                        else if (Math.Abs(s.OuterPid.LastI - steadyI) > OuterDischargeMinGapC)
                         {
                             s.OuterPid.PresetIntegral(steadyI);
                             OnOuterPresetToLearned(s);     // 【本地改动】
@@ -1938,8 +2247,10 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                 // 所需的腔体-内部温差，登记后供下次同温启动预置外环积分。
                 // 学习带必须比 SteadyBandC 窄：缓沉暂态（误差 0.05~0.2）时若开录，
                 // 会把暂态偏置当稳态写进表，反过来让放电比对失准（第四轮实测教训）。
-                // 【本地改动】还要釜内这一阵真不动（OuterLearnStillC）：慢慢穿过目标的那一分钟也在带里，那时的偏置是漂着的
-                if (push is null && !innerSaturated && s.Profile is null && Math.Abs(outerErr) <= OuterLearnBandC && OuterStill(s))
+                // 【本地改动】还要釜内这一阵真不动（OuterLearnStillC）：慢慢穿过目标的那一分钟也在带里，那时的偏置是漂着的。
+                // 大降温收尾武装着、多给的那份还没退完时也不学：那时的偏置里有漏热还没退的那一截
+                if (push is null && !innerSaturated && s.Profile is null && Math.Abs(outerErr) <= OuterLearnBandC && OuterStill(s)
+                    && !(s.FinArmed && (!s.FinEnded || s.FinGain > 0)))
                 {
                     s.LastSteadyBias = s.LastSteadyBias is { } prev
                         ? prev + 0.05 * (bias - prev)   // 低通，约 20 次外环更新的时间常数
@@ -2115,6 +2426,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
             OuterI = cascade ? s.OuterPid.LastI : double.NaN,
             OuterD = cascade ? s.OuterPid.LastD : double.NaN,
             OuterPushC = cascade && s.Push is { } pushed ? pushed.BelowC : double.NaN,
+            OuterFinishC = cascade && !holding ? s.FinAppliedC : double.NaN,
         };
     }
 

@@ -110,4 +110,24 @@ public class HostControlLoopUnitTests
         Assert.True(sch.LearnSteadyBias(60.5, 2.5, createIfMissing: true));
         Assert.Equal(2, sch.Points.Count);
     }
+
+    [Fact]
+    public void 稳态偏置一拍一拍慢慢挪_挪过门槛才改表_改了才报变了()
+    {
+        // 回路每拍拿低通后的偏置来学：一拍只挪一点点。表里那格要跟盘上一致——没报「变了」（不存盘）就不许动
+        var sch = new PidGainSchedule { SegmentBoundaryC = double.NaN };
+        sch.Learn(new GainPoint(-15, Inner, 20, 300, Outer, 8, SteadyBiasC: 1.219));
+        Assert.True(sch.LearnSteadyBias(-15, 0.77));                 // 第一拍离表值远：改、报
+        Assert.Equal(0.77, sch.SteadyBiasAt(-15));
+        var reported = new List<double>();
+        for (var b = 0.77; b <= 0.98; b += 0.005)                     // 之后一路慢慢收敛到 0.98
+        {
+            if (sch.LearnSteadyBias(-15, b)) reported.Add(b);
+            var stored = sch.SteadyBiasAt(-15)!.Value;
+            Assert.Equal(reported.Count > 0 ? reported[^1] : 0.77, stored, 9);   // 表里 = 最后一次报的（= 盘上）
+        }
+        Assert.NotEmpty(reported);
+        Assert.True(sch.SteadyBiasAt(-15) >= 0.98 - 0.05 - 1e-9, $"表里停在 {sch.SteadyBiasAt(-15)}，没跟上收敛");
+        Assert.All(reported.Zip(reported.Skip(1)), p => Assert.True(p.Second - p.First > 0.05 - 1e-9));
+    }
 }
