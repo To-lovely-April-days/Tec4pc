@@ -310,6 +310,10 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         WithdrawAsk(well, "停控", rearm: false);
         _askWater[well] = AskState.None;
         _askWaterNext[well] = false;
+        Volatile.Write(ref _boostClaim[well], false);    // 【本地改动】升温加速不再认领冷却水（对账按别的路要不要水关）
+        Volatile.Write(ref _boostWanted[well], false);
+        _boostAsk[well] = _boostWaterSaid[well] = false;
+        try { _rd.TempOf(well).SetHeatBoost(_boost, _boostMaxDt, false); } catch { /* 停控路上尽力而为 */ }
         _slope[well].Clear();
         Interlocked.Increment(ref _issueGen[well]);
         System.Threading.Interlocked.Increment(ref _stopGen[well]);
@@ -436,7 +440,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         _fwd = _rd.Samples.Subscribe(new Fwd(_out));
         // 逐拍记录里带上热源在哪一侧、哪个挡、冷水机标的开还是关（事后看「那一炉为什么没制冷」就靠它）
         _rd.LoopExtra = w => _tecHeat ? SideName(SideNow(w))
-            : $"{SideName(SideNow(w))}·{RegimeName(_regime[w])}·冷水机{(_chiller ? "开" : "关")}" + EpisodeExtra(w);
+            : $"{SideName(SideNow(w))}·{RegimeName(_regime[w])}·冷水机{(_chiller ? "开" : "关")}" + EpisodeExtra(w) + BoostSuffix(w);
         _rd.StateChanged += (_, st) => { if (st != DeviceState.Disposed) State = st; };
         // 上位机回路把某一路停了（Tr 丢失 / 跑飞 / 连续通信失败）：这一路就算不控了，
         // 下一拍采集循环把它的两只继电器都断开（不控温不合，用户定的）
@@ -985,6 +989,10 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         for (var w = 0; w < 2; w++)
             await AutoSourceAsync(w, ct).ConfigureAwait(false);
 
+        // 【本地改动】升温加速：判 TEC 接不接得上推给回路、要加速就提前备水（在水阀对账之前：认领了的对账不关）
+        for (var w = 0; w < 2; w++)
+            await HeatBoostTickAsync(w, ct).ConfigureAwait(false);
+
         // 冷却水阀对账：有路在制冷就得开着，都不制冷了（自动开的）就关
         await SyncWaterAsync(ct).ConfigureAwait(false);
         // 冷水机对账：关水挂着就看它停稳没有（停稳才关阀）；它在转而阀关着就先开阀
@@ -1294,11 +1302,130 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
                 }
             }
             _band = Math.Clamp(_ctx.Config.Num(F.Band, 2), 0.5, 10);
+            // 【本地改动】升温加速：当拍生效（加速中改成关，回路这一拍交回外环）
+            _boost = _ctx.Config.Str(F.HeatBoost, "关") switch
+            {
+                "正常" => HeatBoostLevel.Normal,
+                "保守" => HeatBoostLevel.Conservative,
+                _ => HeatBoostLevel.Off
+            };
+            _boostMaxDt = Math.Clamp(_ctx.Config.Num(F.HeatBoostMaxDt, 30), 5, 80);
         }
         catch
         {
             // 撞上界面线程在写这一份配置。保持上一拍的值，下一拍再读
         }
+    }
+
+    // ── 【本地改动】升温加速（HostControlLoop.HeatBoost，2026-11-04）的会话一侧 ─────────────────────────
+    //
+    // 回路靠 TEC 刹车：釜内升得比「这个距离允许的速度」快就提前把夹套往下拉，那一下要 TEC 接得上。这一路此刻接不接得上由会话判、
+    // 每拍推给回路（接不上回路不进、进了就退回外环）。原来「升温不要水」（0522：升温时冷水机与阀都关），开了升温加速就得改：
+    // 加速一开始就要备好水，加速期间刹车那段加热棒 ↔ TEC 来回换十来次，换到加热棒侧也不能关水——不然每次再接 TEC 都要冷启动冷水机、
+    // 等最短间隔，刹车晚一两分钟就冲过（孪生：TEC 晚 2–3 分钟小台阶冲 0.2 K，TEC 根本接不上比现在更糟）。
+
+    private volatile HeatBoostLevel _boost = HeatBoostLevel.Off;
+    private double _boostMaxDt = 30;
+
+    /// <summary>升温加速认领着冷却水（加速中 / 等水接加速）：<see cref="NeedsWater"/> 算它——换到加热棒侧也不关水、对账补开。</summary>
+    private readonly bool[] _boostClaim = new bool[2];
+
+    /// <summary>槽位里那个问题是升温加速提前问的（面板副标题按「正等着」说、落地那句按加速说）。</summary>
+    private readonly bool[] _boostAsk = new bool[2];
+
+    /// <summary>「升温加速先开冷却水」那句一次加速只说一次。</summary>
+    private readonly bool[] _boostWaterSaid = new bool[2];
+
+    /// <summary>这一路此刻还要升温加速（在等 TEC / 在加速）：提前问的那个问题有没有人等、落地按不按加速说，看它。</summary>
+    private readonly bool[] _boostWanted = new bool[2];
+
+    /// <summary>
+    /// 每拍（换挡之后、水阀对账之前）：判这一路此刻 TEC 接不接得上推给回路；回路在等 TEC（别的条件都齐了）就提前备水——
+    /// 这次控温手动开、开的时候没问过（Armed）→ 提前问开不开冷却水（不立挂起段、不扳继电器）；不用问 → 认领冷却水、先开阀开冷水机，
+    /// 等通水延时、冷水机转起来再放行。答「不开」= TEC 直接接（跟中途问的同一个意思），放行。
+    /// </summary>
+    private async Task HeatBoostTickAsync(int well, CancellationToken ct)
+    {
+        var t = _rd.TempOf(well);
+        if (_askWater[well] != AskState.Pending) _boostAsk[well] = false;
+        var level = _boost;
+        var eligible = level != HeatBoostLevel.Off && !_tecHeat && _chiller && _regime[well] == Regime.Both && _wantEnabled[well]
+                       && !Tuning(well) && !RefluxActive(well) && t.Kind == TempChannelKind.Reactor && _links.Io is not null && _ioOk;
+        var boosting = eligible && t.HeatBoosting;
+        var waiting = eligible && !boosting && t.HeatBoostWaitingForTec;
+        Volatile.Write(ref _boostWanted[well], boosting || waiting);
+        var waterUp = _waterOn && !_waterClosing;
+        var asking = _askWater[well] == AskState.Pending;
+
+        // 手动开的、开那一下没问过、水也没开着：先问（水已经开着就不用问了——同 GateTec）
+        var mustAsk = !_waterDeclined[well] && !waterUp && _askWater[well] == AskState.Armed;
+        if (waiting && mustAsk)
+        {
+            AskWaterForBoost(well);                // 另一路正问着就等它
+            asking = _askWater[well] == AskState.Pending;
+        }
+        // 要冷启动冷水机、离上次冷启动不到最短间隔（压缩机保护，同 GateTec）：先不认领、不开水，到点再开——这期间照原来的外环升
+        var claim = (boosting || waiting) && !_waterDeclined[well] && !asking && !mustAsk && ChillerGapLeft() is null;
+        Volatile.Write(ref _boostClaim[well], claim);
+        if (!boosting && !waiting) _boostWaterSaid[well] = false;
+
+        if (claim && !waterUp && _switchLock.CurrentCount > 0 && _waterLock.CurrentCount > 0)
+        {
+            // 通水从阀打开那一刻算（同 EnsureWaterAsync）：在开阀之前记
+            _leadUntilMs = Environment.TickCount64 + (long)_waterLead.TotalMilliseconds;
+            try
+            {
+                await SetWaterAsync(true, ct).ConfigureAwait(false);
+                if (!_boostWaterSaid[well])
+                {
+                    _boostWaterSaid[well] = true;
+                    var text = $"工位 {AB(well)} 升温加速要用 TEC 刹车：冷却水阀（DO{_waterDo}）先打开" +
+                               (_links.Chiller is null ? "" : "、开冷水机") + $"，通水 {_waterLead.TotalSeconds:0} s" +
+                               (_links.Chiller is null ? "" : "、冷水机转起来") + "再接着加速；这之前照原来的外环升。加速期间换到加热棒侧也不关水";
+                    _ctx.Log?.Invoke("info", $"{InstanceId} {text}");
+                    t.Note(text);
+                }
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                _ctx.Log?.Invoke("warn", $"{InstanceId} 工位 {AB(well)} 升温加速开冷却水阀（DO{_waterDo}）失败：{ex.Message}——下一拍再试，这之前不加速");
+            }
+            waterUp = _waterOn && !_waterClosing;
+        }
+
+        // 放行只给已经在等 / 在加速、而且这一拍认领已经立起来的（或人选了不开水）：先立认领再放行，切换序列 / 水阀对账就关不掉这只阀。
+        // 不在等的一律不放行——改目标那一拍回路要是抢在下一拍之前算，看到的是「不放行」（进等水），不是上一段剩下的放行
+        var tecReady = _waterDeclined[well]
+                       || claim && waterUp && WaterReady && Environment.TickCount64 >= _leadUntilMs;
+        var allowed = (boosting || waiting) && !TecWithheld(well) && !asking && tecReady;
+        t.SetHeatBoost(level, _boostMaxDt, allowed);
+    }
+
+    /// <summary>
+    /// 升温加速提前问开不开冷却水：同中途那个问题（整机一个槽位、本次控温只问一次），只是不立挂起段、不扳继电器——此刻加热棒照常升。
+    /// 另一路正问着就等它（它答「开」<see cref="LandOpenForWaiters"/> 不带本路——本路不在挂起里——下一拍水开着就不用问了）。
+    /// 落地走 <see cref="SettleIdleAsk"/>。
+    /// </summary>
+    private void AskWaterForBoost(int well)
+    {
+        var now = _ctx.Clock();
+        string? text = null;
+        lock (_askGate)
+        {
+            if (_ask is not null) return;
+            var target = _rd.TempOf(well).ActiveSetpoint ?? double.NaN;
+            _ask = new WaterAsk(++_askSeq, _rd.TempOf(well).Channel,
+                $"工位 {AB(well)} 升温加速要用 TEC 刹车：{Ctl(well)} {Controlled(well):F2} → 目标 {target:F2} ℃，先开冷却水", now, now + AskTimeout);
+            _askAnswer = null;
+            _askWell = well;
+            _askWater[well] = AskState.Pending;
+            _boostAsk[well] = true;
+            text = $"工位 {AB(well)} 升温加速要用 TEC 刹车，这次控温是手动开的、开温控时没问过——提前问操作人开不开冷却水，" +
+                   $"{AskTimeout.TotalSeconds:0} s 没人答按打开；答之前照原来的外环升（不加速）";
+        }
+        _ctx.Log?.Invoke("info", $"{InstanceId} {text}");
+        _rd.TempOf(well).Note(text);
     }
 
     /// <summary>规矩变了（「TEC 加热」/「冷水机」翻了）：在控的路下一拍按此刻温度重新定挡，符号计时一并清掉。</summary>
@@ -1366,9 +1493,17 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
                 { } ep => $"双向挡·制冷段（提前切 TEC{(ep.BiasPushed ? "、夹套目标压低" : "")}）",
                 _ when _askWater[well] == AskState.Pending => "双向挡（加热棒 ↔ TEC 跟功率符号走）·开不开冷却水的询问挂着",
                 _ => "双向挡（加热棒 ↔ TEC 跟功率符号走）"
-            },
+            } + BoostSuffix(well),
             _ => "待定挡（夹套读不到）"
         };
+    }
+
+    /// <summary>【本地改动】升温加速状态的后缀（关着 / 不相干时为空，原来的挡位文字一字不变）。</summary>
+    private string BoostSuffix(int well)
+    {
+        if (_boost == HeatBoostLevel.Off || _regime[well] != Regime.Both) return "";
+        var t = _rd.TempOf(well);
+        return t.HeatBoosting ? "·升温加速" : t.HeatBoostWaitingForTec ? "·升温加速等冷却水 / TEC" : "";
     }
 
     private static string RegimeName(Regime r) => r switch
@@ -2156,7 +2291,8 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
             {
                 if (_askAnswer is not null || _ask is not { } a) return null;
                 // 【本地改动】有没有哪一路正等着它（主人挂着 ask 段，或另一路排在后面等）：没有 = 回路又不要制冷了，面板副标题说一句
-                var waiting = _coolEp[0] is { Hold: "ask" } || _coolEp[1] is { Hold: "ask" };
+                var waiting = _coolEp[0] is { Hold: "ask" } || _coolEp[1] is { Hold: "ask" }
+                              || _askWell is 0 or 1 && _boostAsk[_askWell] && Volatile.Read(ref _boostWanted[_askWell]);     // 【本地改动】升温加速提前问的、还在等它开水接着加速
                 return waiting == a.Waiting ? a : a with { Waiting = waiting };
             }
         }
@@ -2235,8 +2371,14 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         _askWater[well] = AskState.Done;                         // 本次控温只问一次
         if (open == false) { _waterDeclined[well] = true; _declinedSaid[well] = false; }
         else LandOpenForWaiters(well, how);
-        var text = $"工位 {AB(well)} 开不开冷却水的询问有了结果：{how}——此刻不要制冷，先记下；这次控温之后再要接 TEC " +
-                   (open == true ? "先开阀 / 冷水机、通水后接，不再问" : "直接接，阀与冷水机不动（没有冷却水 TEC 会干烧），不再问");
+        var boost = _boostAsk[well] && Volatile.Read(ref _boostWanted[well]);     // 【本地改动】升温加速提前问的、加速还要它
+        _boostAsk[well] = false;
+        var text = boost
+            ? $"工位 {AB(well)} 开不开冷却水的询问有了结果：{how}——升温加速" +
+              (open == true ? "先开阀 / 冷水机，通水后接着加速；这次控温之后再要接 TEC 不再问"
+                            : "：TEC 直接接、阀与冷水机不动（没有冷却水 TEC 会干烧），接着加速；这次控温不再问")
+            : $"工位 {AB(well)} 开不开冷却水的询问有了结果：{how}——此刻不要制冷，先记下；这次控温之后再要接 TEC " +
+              (open == true ? "先开阀 / 冷水机、通水后接，不再问" : "直接接，阀与冷水机不动（没有冷却水 TEC 会干烧），不再问");
         _ctx.Log?.Invoke(open == true ? "info" : "warn", $"{InstanceId} {text}");
         _rd.TempOf(well).Note(text);
     }
@@ -2919,6 +3061,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     private bool NeedsWater(int well)
         => !_waterDeclined[well]
            && (Volatile.Read(ref _waterClaim[well]) > 0
+               || Volatile.Read(ref _boostClaim[well])          // 【本地改动】升温加速：刹车要 TEC，加速期间一直要水
                || TecDriving(well) && (_tecRelay ? _tecOn[well] : _wantEnabled[well] || Tuning(well)));
 
     /// <summary>

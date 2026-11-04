@@ -583,12 +583,14 @@ public class Rd105HostControlTests
         Assert.Contains("开始：夹套 30 ℃（尽快）", lines[1]);
         Assert.Contains(lines, l => l.Contains("目标改为 32 ℃"));
         Assert.EndsWith("停止：操作人停控", lines[^1]);
-        // 每行 21 列：时间、秒、模式、设定、内环设定、Tr、Tj、写入、回显、P、I、D、外环 P/I/D、收尾多给、执行器、保持、耗时、extra、note
+        // 每行 25 列：时间、秒、模式、设定、内环设定、Tr、Tj、写入、回显、P、I、D、外环 P/I/D、收尾多给、升温加速（boost / v_m / v_star / brake_f）、执行器、保持、耗时、extra、note
         var cols = lines[2].Split(',');
-        Assert.Equal(21, cols.Length);
+        Assert.Equal(25, cols.Length);
         Assert.Equal("Tj", cols[2]);
         Assert.Equal("30", cols[3]);
-        Assert.Equal("TEC双向", cols[16]);
+        Assert.Equal("", cols[16]);                      // 没在升温加速：空
+        Assert.Equal("TEC双向", cols[20]);
+        Assert.Equal(25, lines[^1].Split(',').Length);   // 「停止」那行列数跟表头走
 
         // 再下发：新文件
         await t.SetTargetAsync(new TempTarget(28, TempChannelKind.Jacket), CancellationToken.None);
@@ -617,8 +619,8 @@ public class Rd105HostControlTests
         await t.StopAsync(CancellationToken.None);
         var lines = File.ReadAllLines(path!);
         // 热源侧·挡位·冷水机（0333 / 0336）：事后看「那一炉为什么没制冷」就靠这一列。缺省冷水机已开 = 双向挡，形态是「加热棒+TEC双向」
-        Assert.Contains(lines.Skip(1), l => l.Split(',')[19] == "电加热·双向挡·冷水机开" && l.Split(',')[16] == "加热棒+TEC双向");
-        Assert.Contains(lines.Skip(1), l => l.Split(',')[20].Contains("双向挡"));        // 定挡那句跟在「开始」后面
+        Assert.Contains(lines.Skip(1), l => l.Split(',')[23] == "电加热·双向挡·冷水机开" && l.Split(',')[20] == "加热棒+TEC双向");
+        Assert.Contains(lines.Skip(1), l => l.Split(',')[24].Contains("双向挡"));        // 定挡那句跟在「开始」后面
 
         var (drv, dev) = Standalone();
         dev.Set(null, "FPWM", 2);

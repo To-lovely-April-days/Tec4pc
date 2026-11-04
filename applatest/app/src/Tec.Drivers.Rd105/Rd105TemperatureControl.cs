@@ -134,6 +134,24 @@ public sealed class Rd105TemperatureControl : ITemperatureControl, ITemperatureS
     public double? JacketPushC => _loop?.GetOuterPushDown(_tc);
 
     /// <summary>
+    /// 【本地改动】升温加速（HostControlLoop.HeatBoost）：组合会话每拍推档位、温差限和「这一路此刻 TEC 接不接得上」。
+    /// 档位和温差限是回路全局的（两路一份）；放行按路。温控器 PID 方式 / 控夹套时什么都不做（不放行）。
+    /// </summary>
+    public void SetHeatBoost(HeatBoostLevel level, double maxDeltaC, bool tecReady)
+    {
+        if (_loop is null) return;
+        _loop.HeatBoost = level;
+        _loop.HeatBoostMaxDeltaC = maxDeltaC;
+        _loop.SetHeatBoostAllowed(_tc, tecReady && Kind == TempChannelKind.Reactor);
+    }
+
+    /// <summary>【本地改动】这一路此刻夹套目标归升温加速管。</summary>
+    public bool HeatBoosting => _loop is not null && Kind == TempChannelKind.Reactor && _loop.IsHeatBoosting(_tc);
+
+    /// <summary>【本地改动】这一路别的条件都齐了、只等 TEC 接得上就升温加速：会话据此提前备水 / 提前问。</summary>
+    public bool HeatBoostWaitingForTec => _loop is not null && Kind == TempChannelKind.Reactor && _loop.HeatBoostWaitingForTec(_tc);
+
+    /// <summary>
     /// 回路此刻真正在追的设定值：RampAsync 斜坡中是斜坡当前值（不是终点）；温控器 PID 方式退回 Setpoint。
     /// 提前切换判据比的是它——升温斜坡被放热顶过当前设定就该切，不用等顶过终点。
     /// </summary>

@@ -623,6 +623,10 @@ public sealed class HmiViewModel : ViewModelBase
                 $" · 退出超前 {cfg.Num("退出超前", 180):0} s · 最短制冷 {cfg.Num("最短制冷时间", 60):0} s · 冷水机间隔 {chillerGap:0} s" +
                 $" · 弹窗 {cfg.Num("中途弹窗等答复", 60):0} s · 驻留 {cfg.Num("符号驻留", 3):0} s · 通水 {cfg.Num("通水延时", 5):0} s",
                 "在工作站台面属性栏修改，重新连接设备后生效"));
+            // 【本地改动】升温加速（2026-11-04）
+            rows.Add(new SysRow("升温加速",
+                $"{cfg.Str("升温加速", "关")} · 最大温差 {Math.Clamp(cfg.Num("升温加速最大温差", 30), 5, 80):0} K",
+                "双向挡串级控釜内往上升：夹套先顶高、按升温速度提前收、TEC 刹车（一开始就要冷却水）。在工作站台面属性栏修改，当拍生效"));
             rows.Add(new SysRow("冷却水询问",
                 Water?.Pending is { } q ? $"通道 {q.Channel} 等答复，{Math.Ceiling(q.Left(_ws.Clock.Now).TotalSeconds):0} s 后按打开" : "无",
                 "手动温控中途切 TEC 时驱动问开不开冷却水；没人答按打开"));

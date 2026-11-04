@@ -8,14 +8,15 @@ namespace Tec.Drivers.Rd105;
 /// 一次控温的逐拍记录（用户要的：每次启动控温把数据记到一个 CSV，好排查）。一路一个文件、一次控温一个文件：
 /// %AppData%\TecDrivers\loops\&lt;实例&gt;-tc&lt;n&gt;-&lt;yyyyMMdd-HHmmss&gt;.csv（环境变量 TEC_LOOPLOG_DIR 可改），
 /// 下发目标时开、停控 / 回路自己停了时关；控着的时候再下发目标只记一行「目标改为」，不另开文件。
-/// 每拍一行：设定、内环设定、Tr、Tj、写入 / 回显的占空比、内环 P/I/D、外环 P/I/D、大降温收尾多给的偏置、执行器形态、Tr 丢失保持秒数、
+/// 每拍一行：设定、内环设定、Tr、Tj、写入 / 回显的占空比、内环 P/I/D、外环 P/I/D、大降温收尾多给的偏置、
+/// 升温加速（boost = 1 时夹套目标归速度环管；v_m 釜内实测升温速度、v_star 刹车曲线允许的速度，K/min；brake_f 刹车偏置分数）、执行器形态、Tr 丢失保持秒数、
 /// 串口耗时、热源侧（组合会话喂）、事件（开始 / 停止原因 / 回路的提示）。
 /// 回路线程写、控制线程开关：一把锁。每 10 行 flush 一次（掉电最多丢 5 s）。记录开不了文件不影响控温。
 /// </summary>
 public sealed class Rd105LoopRecorder : IDisposable
 {
     public const string Header =
-        "time,elapsed_s,kind,setpoint,inner_sp,tr,tj,duty_written,duty_applied,p,i,d,outer_p,outer_i,outer_d,outer_fin,actuator,hold_s,cycle_ms,extra,note";
+        "time,elapsed_s,kind,setpoint,inner_sp,tr,tj,duty_written,duty_applied,p,i,d,outer_p,outer_i,outer_d,outer_fin,boost,v_m,v_star,brake_f,actuator,hold_s,cycle_ms,extra,note";
 
     private readonly string _instanceId;
     private readonly int _tc;
@@ -104,6 +105,10 @@ public sealed class Rd105LoopRecorder : IDisposable
             Num(sb, info.OuterI);
             Num(sb, info.OuterD);
             Num(sb, info.OuterFinishC);
+            Num(sb, info.HeatBoosting ? 1 : double.NaN);         // 【本地改动】升温加速
+            Num(sb, info.HeatBoostVmCPerMin);
+            Num(sb, info.HeatBoostVstarCPerMin);
+            Num(sb, info.HeatBoostBrake);
             sb.Append(actuator).Append(',');
             Num(sb, info.OuterHoldSeconds ?? double.NaN);
             Num(sb, cycleMs);
@@ -136,7 +141,7 @@ public sealed class Rd105LoopRecorder : IDisposable
                 _pendingNote = null;
                 _w.WriteLine($"{now.ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture)}," +
                              $"{(now - _startedAt).TotalSeconds.ToString("0.0", CultureInfo.InvariantCulture)}" +
-                             new string(',', 19) + Csv(note));
+                             new string(',', Header.Count(c => c == ',') - 1) + Csv(note));     // 【本地改动】列数跟着表头走
                 _w.Flush();
             }
             catch { /* 收尾尽力而为 */ }

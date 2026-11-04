@@ -92,6 +92,10 @@ public sealed class DualStationDriver : IDeviceDriver
         public const string AskTimeout = "中途弹窗等答复";
         /// <summary>双向挡功率符号连续指向另一侧多久（s）才扳继电器。</summary>
         public const string SignDwellS = "符号驻留";
+        /// <summary>【本地改动】升温加速：关 / 保守 / 正常（HostControlLoop.HeatBoost）。当拍生效。</summary>
+        public const string HeatBoost = "升温加速";
+        /// <summary>【本地改动】升温加速时夹套最多比釜内高多少（K）。当拍生效。</summary>
+        public const string HeatBoostMaxDt = "升温加速最大温差";
     }
 
     /// <summary>
@@ -258,7 +262,16 @@ public sealed class DualStationDriver : IDeviceDriver
             with { Tip = "HMI 手动开的温控、开那一下没问过：中途要切 TEC 而冷却水没开好时弹窗问一次「开不开冷却水」，这么久没人答按打开。" +
                          "等答复期间加热棒继电器留着、功率下限钳 0、不接 TEC。配方运行不弹" },
         Field.Num(Fields.SignDwellS, "符号驻留", 3, "s", 0, 30, 1)
-            with { Tip = "双向挡功率符号连续指向另一侧多久才扳继电器（原来写死 3 s）。提前判据触发的切换不受它" }
+            with { Tip = "双向挡功率符号连续指向另一侧多久才扳继电器（原来写死 3 s）。提前判据触发的切换不受它" },
+        // 【本地改动】升温加速（2026-11-04）：当拍生效
+        Field.Sel(Fields.HeatBoost, "升温加速", new[] { "关", "保守", "正常" }, "关")
+            with { Tip = "双向挡、上位机串级控釜内往上升时：夹套先顶高把釜往上推，按釜内升温速度提前收、用 TEC 刹车，到站稳住后交回外环。" +
+                         "要这个温度学到过稳态偏置（跑过一次稳住）。要 TEC 刹车，所以升温一开始就要冷却水：配方 / 问过「打开」→ 先开阀开冷水机，" +
+                         "手动开的没问过 → 提前弹窗问；答「不开」→ TEC 直接接（不开水）。水没好之前照原来的外环升，好了再接上。" +
+                         "孪生（−2 → 20 ℃）：稳进 ±0.05 46 → 30 分钟、冲过 0.07 → 0.01 K；继电器每场多切十来次。" +
+                         "保守 = 刹车更早、夹套最多高出目标 15 K（第一次上现场用）；正常 = 夹套最多高出目标 19 K。当拍生效，加速中改成关立即交回外环" },
+        Field.Num(Fields.HeatBoostMaxDt, "升温加速最大温差", 30, "K", 5, 80, 1)
+            with { Tip = "升温加速时夹套目标最多比釜内高这么多（玻璃釜怕温差太大，查釜的说明书）。限 30 K 那场慢 1 分钟、限 25 K 慢 3 分钟，冲过不变。当拍生效" }
     })
     {
         Tip = "超温上限就是电加热模式的最高温度——写进 RD105 自己的保护寄存器，断了通信照样生效，" +

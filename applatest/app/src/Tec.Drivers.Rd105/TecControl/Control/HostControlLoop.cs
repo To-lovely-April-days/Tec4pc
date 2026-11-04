@@ -57,6 +57,14 @@ public sealed record ChannelCycleInfo(
     /// <summary>【本地改动】大降温收尾这一拍在外环 P / I / D 之外多给的偏置（K，<see cref="HostControlLoop.OuterFinishGain"/>）；
     /// 内环设定 = 主设定 + P + I + D + 它（再夹限幅）。单环 / Tr 丢失保持中为 NaN。</summary>
     public double OuterFinishC { get; init; } = double.NaN;
+
+    /// <summary>【本地改动】升温加速：这一拍夹套目标归速度环管。</summary>
+    public bool HeatBoosting { get; init; }
+
+    /// <summary>【本地改动】升温加速：釜内实测升温速度（K/min，最近 40 s 最小二乘）、刹车曲线允许的速度（K/min）、刹车偏置分数（0–1）；不在速度环 NaN。</summary>
+    public double HeatBoostVmCPerMin { get; init; } = double.NaN;
+    public double HeatBoostVstarCPerMin { get; init; } = double.NaN;
+    public double HeatBoostBrake { get; init; } = double.NaN;
 }
 
 /// <summary>一个完整控制周期的结果（后台线程发布）。电流每 4 个周期采样一次，其余周期为 null。</summary>
@@ -153,6 +161,17 @@ public enum ChannelSyncMode
 ///   3. 连续通信失败达到阈值时尝试全部归零并停控（设备端 LIMITED/SETCURRENT/过温保护作硬件兜底）；
 ///   4. 自整定超时自动终止并归零。
 /// </summary>
+/// <summary>【本地改动】升温加速档位（见 <see cref="HostControlLoop.HeatBoost"/>）。</summary>
+public enum HeatBoostLevel
+{
+    /// <summary>不加速：升温照现在的外环。</summary>
+    Off,
+    /// <summary>保守：刹车曲线 Tb 250 s、夹套最多高出目标 15 K——第一次上现场用。</summary>
+    Conservative,
+    /// <summary>正常：Tb 200 s、夹套最多高出目标 19 K。</summary>
+    Normal,
+}
+
 public sealed class HostControlLoop(TecController controller) : IDisposable
 {
     private sealed class ChannelState
@@ -322,6 +341,33 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         public bool FinCrawlNoted;
         /// <summary>最近 <see cref="OuterFinishShotWindow"/> 的 (时刻, 外环误差)：过零那一枪按过零速度封顶用。</summary>
         public readonly Queue<(DateTime At, double ErrC)> FinErrHistory = new();
+
+        // ---- 【本地改动】升温加速（速度环 + 刹车曲线，见 HostControlLoop.HeatBoost） ----
+        /// <summary>这一段趋近还能进速度环：起步 / 改目标时立；进了、交还 / 中止、釜内进了 <see cref="HostControlLoop.HeatBoostEnterC"/> 以内时落。</summary>
+        public bool VelEligible;
+        /// <summary>此刻夹套目标归速度环管（回路线程写，会话线程读状态）。</summary>
+        public volatile bool VelMode;
+        public DateTime VelSince;
+        /// <summary>进速度环时这个目标学到的稳态偏置（夹套 − 釜内，K）。</summary>
+        public double VelB;
+        public DateTime? VelOkSince;
+        public double VelVmCPerMin = double.NaN;
+        public double VelVstarCPerMin = double.NaN;
+        public double VelBrake = double.NaN;
+        /// <summary>外环每拍记一笔釜内（不在速度环也记：中途接入时测速要有历史），留 <see cref="HostControlLoop.HeatBoostStallWindow"/> 多一点。</summary>
+        public readonly Queue<(DateTime At, double TrC)> VelTrHistory = new();
+        /// <summary>速度环里每拍的 (夹套目标 − 主设定 − 外环 Kp·误差, 夹套目标 − 釜内)，留 <see cref="HostControlLoop.HeatBoostHandAverage"/>：交还时积分从它们的平均接。</summary>
+        public readonly Queue<(DateTime At, double PiBias, double OverTr)> VelBiasHistory = new();
+        /// <summary>会话说 TEC 此刻接得上（冷却水已通 / 人选了不开 / 不用水）：速度环要靠 TEC 刹车，接不上不进、进了就退。</summary>
+        public volatile bool HeatBoostAllowed;
+        /// <summary>上一拍没进速度环的原因（同一个原因只说一次）。</summary>
+        public string? VelBlockedSaid;
+        /// <summary>别的条件都齐了、只差会话放行（TEC 接得上）：会话可以借它提前问冷却水。</summary>
+        public volatile bool VelWantsTec;
+        /// <summary>加速中 TEC 接不上 / 被扣着从什么时候起（宽限 HeatBoostDenyGrace）。</summary>
+        public DateTime? VelDeniedSince;
+        /// <summary>速度环上一拍的夹套目标（温差限之前）：中止时判「在不在刹车」用——被温差限压着的是在往上推、不是在刹。</summary>
+        public double VelIspUncapped = double.NaN;
 
         /// <summary>【本地改动】外环积分的参照值——信得过的那个偏置：起步预置、重摆刹车、放电预置、坡尾回基、这一场稳住时的积分。
         /// 改目标 / 解除压低不动它。「趋近不积分」「夹套跟不上不积分」只拦积分往参照值外面、往外环正推的方向走；
@@ -1081,6 +1127,114 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
     public double InnerSetpointMaxC { get; set; } = 200;
 
     /// <summary>
+    /// 【本地改动】升温加速（速度环 + 刹车曲线）。现在的外环只看「还差多远」、不看「升得多快」：夹套最多给到 主设定 + 偏置限幅（8 K），
+    /// 光把上限放高，收手一定晚、一定冲过。速度环看釜内升得多快：离得远时夹套顶高把釜往上推，釜内升得比「这个距离允许的速度」快就提前
+    /// 把夹套往下拉（必要时 TEC 刹车），到站时速度正好收到 0，再交回现在的外环收尾。
+    /// 夹套目标 = 釜内 + 稳态偏置 B + (τ̂ + T̂w)·v* − T̂w·τ̂·a·f + Kv·(v* − v_m)，Kv 项只在 v_m &gt; v*（升得太快）时有；
+    /// 夹在 [主设定 − 偏置限幅, 主设定 + 余量（保守 15 K / 正常 19 K）] 里，再不超过 釜内 + <see cref="HeatBoostMaxDeltaC"/>。
+    /// v_m = 最近 <see cref="HeatBoostWindow"/> 釜内的最小二乘斜率；v*(e) 是刹车曲线：离目标 e ≤ <see cref="HeatBoostLinearC"/> 时 e / Tb（保守 250 s / 正常 200 s），
+    /// 再远按恒减速 <see cref="HeatBoostDecel"/>：√((e1/Tb)² + 2a(e − e1))；f = 刹车偏置分数（e 过 e1 后 <see cref="HeatBoostFadeC"/> 内渐入，再乘 v_m / v*）。
+    /// 只在：双向挡那张表、串级控釜内、起步 / 改目标时釜内在目标下面 ≥ <see cref="HeatBoostEnterC"/>、没在曲线 / 压低里、这个目标学到过稳态偏置、
+    /// 会话说 TEC 接得上（<see cref="SetHeatBoostAllowed"/>）。条件不齐先照现在的外环升，趋近途中齐了再接（中途接入孪生里验过）。
+    /// 交还：|e| ≤ <see cref="HeatBoostHandBandC"/> 且速度 ≤ <see cref="HeatBoostHandStillCPerMin"/> 连续 <see cref="HeatBoostHandHold"/>
+    /// （积分 = 最近 <see cref="HeatBoostHandAverage"/>「夹套目标 − 主设定 − Kp·e」的平均，钳在 B ± <see cref="HeatBoostHandBiasC"/>）；
+    /// 或卡住（离目标 ≤ <see cref="HeatBoostStallBandC"/>、<see cref="HeatBoostStallWindow"/> 里釜内动了不到 <see cref="HeatBoostStallC"/>：
+    /// 积分 = 平均「夹套目标 − 釜内」− Kp·e，不钳——学到的偏置偏低得多时速度环只有比例、停在目标前面）。交还 / 中止时两枪放电都撤防（积分已经接好了）。
+    /// 中止回现在的外环：改目标（按新目标重判）、曲线、压低、Tr 丢失、换表、关了加速、TEC 接不上 / 被扣着连续 <see cref="HeatBoostDenyGrace"/>、
+    /// 釜内冲过目标 <see cref="HeatBoostAbortOverC"/>（最后一道网）。中止时积分 = B，但正在刹车（现在的外环拿 B 会把夹套目标往上抬）时
+    /// 接成「跟速度环此刻的夹套目标一样」，最多比 B 低 <see cref="HeatBoostAbortBiasFloorC"/>——不然壁里存的热把釜推过头。
+    /// 速度环期间外环积分不动、不学稳态偏置、不扩程、不打两枪、不算大降温收尾。
+    /// 孪生（2026-11-04 现场 −2 → 20 ℃ 拟合的釜，正常档）：首进 ±0.1 30.1 → 26.6 min、稳进 ±0.05 46.5 → 29.1 min、冲过 0.071 → 0.008 K；
+    /// 15 → 25 稳进 37.9 → 23.1、20 → 21 稳进 28.6 → 9.4、20 → 50 首进 35.5 → 31.0。12 种失配（釜快 30 %、壁慢一倍、多 60 s 纯滞后、
+    /// 偏置偏 0.5、TEC 一半、内环慢……）每格都不比现在冲得多。代价：TEC 早接（那场 9.7 min 就要），继电器每场切 9–15 次（原来 1 次）；
+    /// TEC 根本接不上时比现在更糟（11.5 对 7.6 K）——所以要会话放行。
+    /// </summary>
+    public HeatBoostLevel HeatBoost { get; set; } = HeatBoostLevel.Off;
+
+    /// <summary>【本地改动】升温加速时夹套目标最多比釜内高多少（K）：玻璃釜怕温差太大。≤0 = 不限。
+    /// 孪生：−2 → 20 不限时温差到 37 K；限 30 K 首进 26.6 → 27.7 min、限 25 K → 29.5 min，冲过都不变。</summary>
+    public double HeatBoostMaxDeltaC { get; set; } = 30;
+
+    /// <summary>【本地改动】升温加速：起步 / 改目标时釜内至少在目标下面这么多（K）才进；趋近途中进了这个距离就不再进。</summary>
+    public double HeatBoostEnterC { get; set; } = 0.5;
+
+    /// <summary>【本地改动】升温加速前馈：釜内每升 1 K/s 夹套要比釜内多高（s，约等于釜的时间常数；现场拟合 1030 s，取小一点偏保守）。</summary>
+    public double HeatBoostTauHat { get; set; } = 800;
+
+    /// <summary>【本地改动】升温加速前馈：夹套 → 釜壁那一段的滞后（s，现场拟合 140 s）。</summary>
+    public double HeatBoostWallHat { get; set; } = 250;
+
+    /// <summary>【本地改动】升温加速刹车曲线的恒减速（K/s²）。真正限速的是它（壁里存的热放得多快）：再大孪生里纯滞后 +60 s、壁慢一倍就冲过 0.1。</summary>
+    public double HeatBoostDecel { get; set; } = 6e-5;
+
+    /// <summary>【本地改动】升温加速刹车曲线：离目标这么近（K）以内按 e / Tb 线性收。</summary>
+    public double HeatBoostLinearC { get; set; } = 0.6;
+
+    /// <summary>【本地改动】升温加速刹车偏置过了线性段以后在这么多 K 里渐入。</summary>
+    public double HeatBoostFadeC { get; set; } = 0.5;
+
+    /// <summary>【本地改动】升温加速速度反馈（s）：升得比刹车曲线快时每快 1 K/s 夹套多降这么多 K；慢了不加（只管刹车）。</summary>
+    public double HeatBoostKv { get; set; } = 1500;
+
+    /// <summary>【本地改动】升温加速测速窗：釜内最小二乘斜率（宇电 0.01 K 分辨率下 40 s 窗相邻两拍抖 0.003 K/min）。不到一半窗长记 0。</summary>
+    public TimeSpan HeatBoostWindow { get; set; } = TimeSpan.FromSeconds(40);
+
+    public double HeatBoostHandBandC { get; set; } = 0.1;
+    public double HeatBoostHandStillCPerMin { get; set; } = 0.03;
+    public TimeSpan HeatBoostHandHold { get; set; } = TimeSpan.FromSeconds(240);
+    public TimeSpan HeatBoostHandAverage { get; set; } = TimeSpan.FromSeconds(120);
+    public double HeatBoostHandBiasC { get; set; } = 0.3;
+    /// <summary>【本地改动】卡住兜底的带（K）：学到的偏置偏低 2.5 K 以上时速度环（只有比例）会停在离目标 0.5–0.7 K 处一直不动——带要盖住它。
+    /// 孪生：偏低 2.8 / 4 / 6 K 都在 40 分钟上下交还、冲过 ≤ 0.03 K；带 0.5 时停在 19.4 ℃ 四个钟头。</summary>
+    public double HeatBoostStallBandC { get; set; } = 2.0;
+    public TimeSpan HeatBoostStallWindow { get; set; } = TimeSpan.FromSeconds(300);
+    public double HeatBoostStallC { get; set; } = 0.02;
+
+    /// <summary>
+    /// 【本地改动】升温加速最后一道网：速度环里釜内冲过目标这么多（K）交回现在的外环。只管「冲得离谱、两条交还都够不着」那种。
+    /// 别设小：过了目标速度环刹得比现在的外环狠（夹套目标 ≈ 釜内 + B + 5.25·e，外环是 3.5·e），评审时 0.05 在纯滞后 +60 s 的 20 → 21
+    /// 把冲过从 0.076 推到 0.127 K，0.10 也有几格变坏；0.5 在孪生全部失配里一次都不触发。
+    /// </summary>
+    public double HeatBoostAbortOverC { get; set; } = 0.5;
+
+    /// <summary>【本地改动】升温加速：会话说 TEC 接不上 / TEC 被扣着要连续这么久才中止（读一次冷水机失败、IO 闪一下别把整段加速丢了；孪生里 TEC 晚 60 s 照样不冲）。</summary>
+    public TimeSpan HeatBoostDenyGrace { get; set; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>【本地改动】升温加速刹车中途中止：交给现在的外环的积分最多比学到的偏置低这么多（K）。</summary>
+    public double HeatBoostAbortBiasFloorC { get; set; } = 2;
+
+    /// <summary>【本地改动】升温加速刹车曲线线性段的时间常数 Tb（正常档；保守档 × 1.25 = 250 s）。</summary>
+    public TimeSpan HeatBoostBrakeTime { get; set; } = TimeSpan.FromSeconds(200);
+
+    /// <summary>【本地改动】升温加速夹套最多高出主设定多少（K，正常档；保守档 15 K）。不低于外环偏置限幅。</summary>
+    public double HeatBoostHeadroomC { get; set; } = 19;
+
+    public double HeatBoostConservativeHeadroomC { get; set; } = 15;
+
+    /// <summary>【本地改动】升温加速此刻的刹车曲线时间常数（s）和夹套最多高出主设定的余量（K）。</summary>
+    private (double Tb, double HeadroomC) HeatBoostCurve()
+        => HeatBoost == HeatBoostLevel.Conservative
+            ? (HeatBoostBrakeTime.TotalSeconds * 1.25, HeatBoostConservativeHeadroomC)
+            : (HeatBoostBrakeTime.TotalSeconds, HeatBoostHeadroomC);
+
+    /// <summary>【本地改动】会话每拍告诉回路这一路此刻 TEC 接不接得上（冷却水已通 / 人选了不开 / 不用水）：升温加速靠 TEC 刹车，接不上不进、进了就退。</summary>
+    public void SetHeatBoostAllowed(int ch, bool allowed) => State(ch).HeatBoostAllowed = allowed;
+
+    /// <summary>【本地改动】这一路此刻夹套目标归升温加速管。</summary>
+    public bool IsHeatBoosting(int ch)
+    {
+        var s = State(ch);
+        return s.VelMode && s.Active && s.Strategy == ControlStrategy.Cascade;
+    }
+
+    /// <summary>【本地改动】这一路在等 TEC 接得上才能升温加速（别的条件都齐了，只差会话放行）：会话可以借这个提前问冷却水。</summary>
+    public bool HeatBoostWaitingForTec(int ch)
+    {
+        var s = State(ch);
+        return s.VelWantsTec && !s.VelMode && s.Active && s.Strategy == ControlStrategy.Cascade;
+    }
+
+    /// <summary>
     /// 配置串级：外环以 outerSensor（默认 TC1 内部）为被控量，输出内环设定值偏置。
     /// 外环增益单位：Kp 为 ℃/℃（无量纲），Ki 为 1/s，Kd 为 s。
     /// </summary>
@@ -1226,6 +1380,14 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
             s.OuterLostSince = null;                 // 【本地改动】
             s.ProfileHoldAt = null;
             s.Push = null;                           // 【本地改动】新一轮串级：上一轮压着的夹套目标作废
+            s.VelMode = false;                       // 【本地改动】升温加速从头判（重新武装标志让回路线程立 VelEligible）
+            s.VelEligible = false;
+            s.VelWantsTec = false;
+            s.VelOkSince = null;
+            s.VelBlockedSaid = null;
+            s.VelTrHistory.Clear();
+            s.VelBiasHistory.Clear();
+            ClearVelReadout(s);
             s.InnerSetpointC = setpointC;
             Volatile.Write(ref s.RampCancelledFlag, 1);        // 【本地改动】坡尾回基 / 趋近判据从头来（回路线程清）
             Volatile.Write(ref s.OuterTargetChangedFlag, 0);
@@ -1368,6 +1530,9 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         s.OuterLostSince = null;                     // 【本地改动】
         s.ProfileHoldAt = null;
         s.Push = null;                               // 【本地改动】
+        s.VelMode = false;                           // 【本地改动】
+        s.VelEligible = false;
+        s.VelWantsTec = false;
         await controller.SetDutyPercentAsync(ch, 0, ct).ConfigureAwait(false);
         await controller.SetEnableAsync(ch, false, ct).ConfigureAwait(false);
         if (ch == 1 && SyncMode != ChannelSyncMode.Independent)     // 【本地改动】独立两路：停 A 不动 B
@@ -1774,6 +1939,254 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
             $"（学到的 {steadyI:F2}；爬着穿过去的不一枪打回表值）");
     }
 
+    /// <summary>
+    /// 【本地改动】升温加速这一拍（<see cref="HeatBoost"/>）：归速度环管就返回夹套目标（还没按内环设定安全限幅夹），不归返回 null（照现在的外环算）。
+    /// 进、交还、中止都在这儿判。只在回路线程、外环那一拍、Tr 没丢的时候调；err = 主设定 − 釜内。
+    /// </summary>
+    private double? HeatBoostStep(int ch, ChannelState s, DateTime now, double tr, double err, OuterPush? push)
+    {
+        var hist = s.VelTrHistory;
+        hist.Enqueue((now, tr));
+        var keep = (HeatBoostStallWindow > HeatBoostWindow ? HeatBoostStallWindow : HeatBoostWindow) + OuterPeriod + OuterPeriod;
+        while (hist.Count > 0 && now - hist.Peek().At > keep) hist.Dequeue();
+
+        var learned = SteadyBiasFor(s, s.SetpointC);
+        var blocked = HeatBoost == HeatBoostLevel.Off ? "升温加速关着"
+            : push is not null ? "夹套压着（制冷段）"
+            : s.Profile is not null ? "在走温度曲线"
+            : s.Table != GainTable.Both ? "不是双向挡"
+            : s.Actuator != ActuatorMode.HeaterTec ? "TEC 被扣着（等人答冷却水 / 等冷水机，只加热）"
+            : learned is null ? $"{s.SetpointC:F1} ℃ 还没学到稳态偏置（先跑一次稳住了才知道）"
+            : !s.HeatBoostAllowed ? "TEC 此刻接不上（冷却水没通 / 等冷水机 / 只加热）"
+            : null;
+
+        // TEC 接不上 / 被扣着：加速中先等 HeatBoostDenyGrace 再中止（别的原因当拍中止）
+        var denied = blocked is not null && (!s.HeatBoostAllowed || s.Actuator != ActuatorMode.HeaterTec)
+                     && HeatBoost != HeatBoostLevel.Off && push is null && s.Profile is null && s.Table == GainTable.Both && learned is not null;
+        if (!denied || !s.VelMode) s.VelDeniedSince = null;
+        else
+        {
+            s.VelDeniedSince ??= now;
+            if (now - s.VelDeniedSince.Value < HeatBoostDenyGrace) blocked = null;
+        }
+
+        if (!s.VelMode)
+        {
+            ClearVelReadout(s);
+            s.VelWantsTec = false;
+            if (!s.VelEligible) return null;
+            if (err < HeatBoostEnterC)
+            {
+                s.VelEligible = false;            // 降温、离得太近、或照现在的外环已经升到跟前了：这一段不再进
+                return null;
+            }
+            if (blocked is not null)
+            {
+                s.VelWantsTec = learned is not null && HeatBoost != HeatBoostLevel.Off && push is null && s.Profile is null
+                                && s.Table == GainTable.Both;
+                if (HeatBoost != HeatBoostLevel.Off && s.VelBlockedSaid != blocked)
+                {
+                    s.VelBlockedSaid = blocked;
+                    ChannelNotice?.Invoke(ch, "info",
+                        $"通道{ch}升温到 {s.SetpointC:F2} ℃（釜内 {tr:F2} ℃）先不加速：{blocked}——照现在的外环升，条件齐了再接");
+                }
+                return null;
+            }
+            s.VelMode = true;
+            s.VelEligible = false;
+            s.VelSince = now;
+            s.VelB = learned!.Value;
+            s.VelOkSince = null;
+            s.VelBiasHistory.Clear();
+            s.VelBlockedSaid = null;
+            var (tb0, head0) = HeatBoostCurve();
+            ChannelNotice?.Invoke(ch, "info",
+                $"通道{ch}升温加速：釜内 {tr:F2} → {s.SetpointC:F2} ℃。夹套先顶高（最多 {s.SetpointC + Math.Max(head0, s.OuterPid.OutputMax):F1} ℃" +
+                $"{(HeatBoostMaxDeltaC > 0 ? $"、比釜内高不过 {HeatBoostMaxDeltaC:0.#} K" : "")}），按釜内升温速度提前收、TEC 刹车，到站稳住后交回外环；" +
+                $"稳态偏置 {s.VelB:+0.00;-0.00} K、刹车曲线 Tb {tb0:0} s（{(HeatBoost == HeatBoostLevel.Conservative ? "保守" : "正常")}档）");
+        }
+        else if (blocked is not null)
+        {
+            EndHeatBoost(ch, s, denied ? $"{blocked}已 {HeatBoostDenyGrace.TotalSeconds:0} s" : blocked, rearming: false, err);
+            return null;
+        }
+        else if (tr - s.SetpointC > HeatBoostAbortOverC)
+        {
+            EndHeatBoost(ch, s, $"釜内 {tr:F2} ℃ 冲过目标 {tr - s.SetpointC:F2} K", rearming: false, err);
+            return null;
+        }
+
+        var (tb, headroom) = HeatBoostCurve();
+        var sp = s.SetpointC;
+
+        // 测速：窗里釜内的最小二乘斜率（K/s）；不到半个窗记 0
+        var vm = 0.0;
+        {
+            var win = HeatBoostWindow + TimeSpan.FromTicks(OuterPeriod.Ticks / 4);
+            DateTime? t0 = null;
+            double n = 0, mt = 0, my = 0;
+            foreach (var (at, v) in hist)
+            {
+                if (now - at > win) continue;
+                t0 ??= at;
+                n++;
+                mt += (at - t0.Value).TotalSeconds;
+                my += v;
+            }
+            if (t0 is { } first && n >= 2 && (now - first).TotalSeconds >= HeatBoostWindow.TotalSeconds / 2)
+            {
+                mt /= n;
+                my /= n;
+                double num = 0, den = 0;
+                foreach (var (at, v) in hist)
+                {
+                    if (now - at > win) continue;
+                    var dx = (at - first).TotalSeconds - mt;
+                    num += dx * (v - my);
+                    den += dx * dx;
+                }
+                if (den > 0) vm = num / den;
+            }
+        }
+
+        var vs = HeatBoostVStar(err, tb);
+        var kv = vs <= vm ? HeatBoostKv : 0;                 // 只管刹车：升得慢了不加
+        var fr = err <= HeatBoostLinearC ? 0
+            : HeatBoostFadeC > 0 ? Math.Clamp((err - HeatBoostLinearC) / HeatBoostFadeC, 0, 1) : 1;
+        if (vs > 0) fr *= Math.Clamp(vm / vs, 0, 1);
+        var raw = tr + s.VelB + (HeatBoostTauHat + HeatBoostWallHat) * vs
+                  - HeatBoostWallHat * HeatBoostTauHat * HeatBoostDecel * fr
+                  + kv * (vs - vm);
+        var hi = sp + Math.Max(headroom, s.OuterPid.OutputMax);
+        var lo = sp + s.OuterPid.OutputMin;
+        var isp = Math.Max(lo, Math.Min(hi, raw));
+        s.VelIspUncapped = isp;
+        if (HeatBoostMaxDeltaC > 0) isp = Math.Min(isp, tr + HeatBoostMaxDeltaC);     // 玻璃釜温差最后夹：安全优先
+        s.VelVmCPerMin = vm * 60;
+        s.VelVstarCPerMin = vs * 60;
+        s.VelBrake = fr;
+
+        var kp = s.OuterPid.Kp;
+        var bh = s.VelBiasHistory;
+        bh.Enqueue((now, isp - sp - kp * err, isp - tr));
+        while (bh.Count > 0 && now - bh.Peek().At > HeatBoostHandAverage) bh.Dequeue();
+
+        // 交还：到站稳住 240 s；或卡在带外不动（学到的偏置偏低得多，速度环没积分补不上）
+        if (Math.Abs(err) <= HeatBoostHandBandC && Math.Abs(vm) * 60 <= HeatBoostHandStillCPerMin) s.VelOkSince ??= now;
+        else s.VelOkSince = null;
+        var settled = s.VelOkSince is { } okAt && now - okAt >= HeatBoostHandHold;
+        var stalled = false;
+        if (Math.Abs(err) <= HeatBoostStallBandC && now - s.VelSince >= HeatBoostStallWindow)
+        {
+            double tlo = double.MaxValue, thi = double.MinValue;
+            var far = false;
+            foreach (var (at, v) in hist)
+            {
+                if (now - at > HeatBoostStallWindow) continue;
+                if (Math.Abs(sp - v) > HeatBoostStallBandC) far = true;
+                tlo = Math.Min(tlo, v);
+                thi = Math.Max(thi, v);
+            }
+            stalled = !far && thi - tlo <= HeatBoostStallC + 1e-9;
+        }
+        if (!settled && !stalled) return isp;
+
+        double handI;
+        string how;
+        if (stalled)
+        {
+            var over = 0.0;
+            foreach (var (_, _, o) in bh) over += o;
+            handI = Math.Clamp(over / bh.Count - kp * err, s.OuterPid.OutputMin, s.OuterPid.OutputMax);
+            how = $"离目标 {err:+0.00;-0.00} K 卡了 {HeatBoostStallWindow.TotalMinutes:0} 分钟不动（学到的偏置 {s.VelB:+0.00;-0.00} 多半偏了）：" +
+                  $"积分按这几分钟实际的「夹套 − 釜内」接";
+        }
+        else
+        {
+            var pi = 0.0;
+            foreach (var (_, p, _) in bh) pi += p;
+            handI = Math.Clamp(pi / bh.Count, s.OuterPid.OutputMin, s.OuterPid.OutputMax);
+            handI = Math.Clamp(handI, s.VelB - HeatBoostHandBiasC, s.VelB + HeatBoostHandBiasC);
+            how = $"釜内 {tr:F2} ℃ 稳在目标 ±{HeatBoostHandBandC:0.##} K 里 {HeatBoostHandHold.TotalMinutes:0} 分钟：积分无扰接上";
+        }
+        var before = s.OuterPid.LastI;
+        HeatBoostHandOver(s, handI);
+        ChannelNotice?.Invoke(ch, "info",
+            $"通道{ch}升温加速交回外环（加速了 {(now - s.VelSince).TotalMinutes:F1} 分钟）：{how}，外环积分 {before:F2} → {s.OuterPid.LastI:F2} ℃；两枪放电撤防");
+        return null;
+    }
+
+    /// <summary>【本地改动】升温加速刹车曲线：离目标 e（K）时允许的升温速度（K/s）。e ≤ e1 线性 e / Tb；再远恒减速 a。</summary>
+    private double HeatBoostVStar(double e, double tb)
+    {
+        if (e <= HeatBoostLinearC || !(HeatBoostDecel > 0)) return e / tb;
+        var v1 = HeatBoostLinearC / tb;
+        return Math.Sqrt(v1 * v1 + 2 * HeatBoostDecel * (e - HeatBoostLinearC));
+    }
+
+    /// <summary>【本地改动】升温加速中途退出（不是到站交还）：积分回学到的偏置（rearming = 改目标 / 重新武装时取新目标学到的，两枪照新目标武装着），
+    /// 不是重新武装的两枪撤防（这一段的趋近已经被速度环走过了）。
+    /// 刹车中途退（err 给了）：现在的外环拿 B 算出的夹套目标比速度环此刻的（温差限之前的）高——那就是把刹车撤了，壁里存的热会把釜推过头
+    /// （评审孪生：−2 → 20 在 11–17 分钟退，冲过 0.07 → 0.11 K）。这时积分接成「跟速度环此刻的夹套目标一样」，最多比 B 低
+    /// <see cref="HeatBoostAbortBiasFloorC"/>，1 K 那一枪重新武装（进 1 K 放回 B，不然停在目标前面爬）；还在往上推照旧 B、两枪撤防。</summary>
+    private void EndHeatBoost(int ch, ChannelState s, string why, bool rearming, double err = double.NaN)
+    {
+        var before = s.OuterPid.LastI;
+        var learned = rearming ? SteadyBiasFor(s, s.SetpointC) : null;
+        var i = learned ?? s.VelB;
+        var braking = false;
+        if (!rearming && double.IsFinite(err) && double.IsFinite(s.InnerSetpointC) && double.IsFinite(s.VelIspUncapped))
+        {
+            var kp = s.OuterPid.Kp;
+            var withB = s.SetpointC + Math.Clamp(kp * err + i, s.OuterPid.OutputMin, s.OuterPid.OutputMax);
+            if (withB > s.VelIspUncapped + 1e-9)
+            {
+                braking = true;
+                i = Math.Max(i - HeatBoostAbortBiasFloorC, Math.Min(i, s.InnerSetpointC - s.SetpointC - kp * err));
+            }
+        }
+        var armA = s.OuterApproachDischargeArmed;
+        var armX = s.OuterCrossingArmed;
+        HeatBoostHandOver(s, i);
+        if (rearming)
+        {
+            s.OuterApproachDischargeArmed = armA;
+            s.OuterCrossingArmed = armX;
+            s.OuterBiasKnown = learned is not null;
+        }
+        else if (braking)
+            s.OuterApproachDischargeArmed = true;     // 压低的积分只管眼下这一刹：进 1 K 那一枪把它放回学到的偏置，不然停在目标前面爬几十分钟
+        ChannelNotice?.Invoke(ch, rearming ? "info" : "warn",
+            $"通道{ch}升温加速退出：{why}——交回现在的外环，积分 {before:F2} → {s.OuterPid.LastI:F2} ℃" +
+            $"{(braking ? $"（正在刹车：接住速度环此刻的夹套目标 {s.InnerSetpointC:F2} ℃，不撤刹车）" : "")}" +
+            $"{(rearming ? "" : "、两枪放电撤防")}");
+    }
+
+    /// <summary>【本地改动】速度环 → 现在的外环：积分接到 i，参照落到它、刹车不再单算，两枪撤防，速度环状态清掉。</summary>
+    private static void HeatBoostHandOver(ChannelState s, double i)
+    {
+        s.VelMode = false;
+        s.VelEligible = false;
+        s.VelOkSince = null;
+        s.VelWantsTec = false;
+        s.VelDeniedSince = null;
+        s.VelIspUncapped = double.NaN;
+        ClearVelReadout(s);
+        s.OuterPid.PresetIntegral(i);
+        s.OuterPid.ResetDerivative();
+        s.OuterIntegralRef = s.OuterPid.LastI;
+        s.OuterIntegralPristine = false;
+        s.OuterBrakeC = 0;
+        s.OuterBiasKnown = true;
+        s.OuterApproachDischargeArmed = false;
+        s.OuterCrossingArmed = false;
+    }
+
+    private static void ClearVelReadout(ChannelState s)
+    {
+        s.VelVmCPerMin = s.VelVstarCPerMin = s.VelBrake = double.NaN;
+    }
+
     /// <summary>【本地改动】每拍记一笔 (釜内 / 外环被控量, 夹套 / 内环被控量)，控没控都记——起步估偏置要看起步「前」稳不稳。</summary>
     private void RecordHistory(ChannelState s, TecSnapshot snapshot, double pv)
     {
@@ -1937,6 +2350,9 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                     s.OuterLostSince = snapshot.Timestamp;
                     s.ProfileHoldAt ??= snapshot.Timestamp;
                     s.OuterSteadyCycles = 0;
+                    if (s.VelMode) EndHeatBoost(ch, s, "釜内 Tr 读数丢失", rearming: false, s.LastOuterErrorC);     // 【本地改动】测不了速度就不按速度刹（刹车中的接住刹车）
+                    s.VelEligible = false;
+                    s.VelWantsTec = false;                // 这一段不会再加速了：别让会话接着备水
                     ChannelNotice?.Invoke(ch, "warn",
                         $"通道{ch}串级外环的釜内 Tr 读数丢失：外环冻结，夹套设定从 {s.InnerSetpointC:F1} ℃ 收到 {held:F1} ℃" +
                         $"（不高于、不低于釜内设定）；{OuterLossGrace.TotalSeconds:0} s 内 Tr 回来就接着串级，回不来就停控");
@@ -1958,6 +2374,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                 s.OuterPid.ResetDerivative();
                 s.OuterErrHistory.Clear();                // 【本地改动】趋近判据别跨盲区算误差变化
                 s.FinErrHistory.Clear();
+                s.VelTrHistory.Clear();                   // 【本地改动】升温加速测速也别跨盲区
                 // 【本地改动】大降温收尾还没到站：多给的那份从 0 重新爬，夹套设定别从「钳在主设定」一步跳回去。到站以后不清——
                 // 那时 |误差| ≤ 0.1、多给的不到 0.25 K，没什么可跳的；g 还管着「退完之前不学偏置」，清了就提前学进漏热那一截
                 if (!s.FinArrived) s.FinGain = 0;
@@ -2029,6 +2446,11 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                 if (rearmed)
                 {
                     s.OuterErrHistory.Clear();
+                    // 【本地改动】升温加速：新一段趋近可以再进速度环；正在速度环里改了目标 / 重新武装——先交回现在的控法，下面按新目标重判
+                    if (s.VelMode)
+                        EndHeatBoost(ch, s, targetChanged ? $"改了目标 {s.SetpointC:F2} ℃" : "外环重新武装", rearming: true);
+                    s.VelEligible = true;
+                    s.VelBlockedSaid = null;
                     // 【本地改动】大降温收尾多给着的时候直接改目标、新目标就在釜内附近：多给的那份带过去慢慢退（OuterFinishCarry）。
                     // 起步 / 解除压低（只立了新一段趋近）、或改得离釜内远（新的一段趋近，带着反而拖慢）：清掉，连上一回近处改目标还在退的那份一起；
                     // 近处改目标且这一拍还多给着：从它起退；近处改目标但没在多给（上一回带过来的还在退）：接着退
@@ -2096,182 +2518,198 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                 }
                 s.LastOuterSetpointC = s.SetpointC;
 
-                // 【本地改动】趋近不积分（OuterApproachFreezeCPerMin）与内环跟不上不积分（OuterInnerLagFreezeC）：
-                // 前者 Tr 正往目标走时不攒（攒了到站就是过冲）；后者夹套还没追上外环上一拍要的需求时不攒——执行不了 / 还没执行到的
-                // 需求别记账。两条都只拦积分往参照值（信得过的偏置）外面、往外环正推的方向走；积分在参照值另一边、往回退（退债）不拦——
-                // 冲过头以后 Tr 往回走那一段要靠它把攒反了的积分退回来
-                var outward = (s.OuterPid.LastI - s.OuterIntegralRef) * outerErr0 >= 0;
-                var approaching = ApproachingSetpoint(s, snapshot.Timestamp, outerErr0) && outward;
-                var innerLag = s.InnerSetpointC - pv;
-                var innerBehind = OuterInnerLagFreezeC > 0 && Math.Abs(innerLag) > OuterInnerLagFreezeC
-                                  && innerLag * outerErr0 > 0 && outward;
-
-                var freeze = (innerHigh && outerErr0 > 0 && s.OuterPid.LastI >= 0)
-                             || (innerLow && outerErr0 < 0 && s.OuterPid.LastI <= 0)
-                             || (!double.IsNaN(OuterIntegralBandC) && Math.Abs(outerErr0) > OuterIntegralBandC)   // 积分分离
-                             || approaching || innerBehind;
-                // 【本地改动】夹套压低（制冷段）：这一拍整段按它来——积分冻结（现有饱和冻结判据不覆盖
-                // 「I = +5.5、内环贴下限、err < 0」这种，必须显式冻，不然 I 以 Ki·err 慢慢往下积）
-                var push = s.Push;
-                var integralBefore = s.OuterPid.LastI;
-                var bias = s.OuterPid.Update(s.SetpointC, outerPv, outerDt,
-                    freezeIntegral: freeze || s.OuterClampBinding || push is not null);
-                if (Math.Abs(s.OuterPid.LastI - integralBefore) > 1e-12)
+                // 【本地改动】升温加速（速度环 + 刹车曲线，HeatBoost）：这一拍归它管就整段按它来——夹套目标由「釜内升得多快、
+                // 还差多远」直接算，外环 PID 不算不积分；趋近判据的误差历史照记（交还以后接着用），两枪放电、限幅扩程、稳态偏置学习、
+                // 大降温收尾都跳过（交还 / 中止时两枪撤防、积分无扰接上）
+                if (HeatBoostStep(ch, s, snapshot.Timestamp, outerPv, outerErr0, s.Push) is { } boostIsp)
                 {
-                    // 【本地改动】积过一下：起步那份刹车被吸收进去了，不再单算（改目标不再按它重摆）
-                    s.OuterIntegralPristine = false;
-                    s.OuterBrakeC = 0;
-                }
-                // 【本地改动】大降温收尾：爬的时候多给比例（加在 PID 之后，PID 自己的条件积分看不到它；近处偏置离限幅远，没影响）
-                var finish = OuterFinish(ch, s, snapshot.Timestamp, outerPv, outerErr0,
-                    Math.Min(outerDt, OuterPeriod.TotalSeconds * 2.5), innerLow, push)
-                             + FinishCarry(s, snapshot.Timestamp);
-                s.FinAppliedC = finish;
-                if (finish != 0)
-                    bias = Math.Clamp(bias + finish, s.OuterPid.OutputMin, s.OuterPid.OutputMax);
-
-                // 腔体跟踪缺口前馈：腔体离它的目标还差多少，就按比例多推一把，
-                // 等效把腔体跟随加速 (1+k) 倍——趋近段提前归位消掉剩余下冲，
-                // 稳态缺口→0 自然退场（pv 即内环被控量=腔体实测）。压低期间不叠加
-                var boost = OuterTrackingBoost <= 0 || push is not null
-                    ? 0
-                    : Math.Clamp(OuterTrackingBoost * (s.SetpointC + bias - pv),
-                        -OuterBoostClampC, OuterBoostClampC);
-
-                // 落地偏置钳位（第三枪）：交接带内、首次过零前，偏置不许比
-                // 稳态偏置深出超过余量——腔体提前归位，压掉到温欠账。
-                // 事件武装的静态界，无动态无回路；过零（武装标志落下）即退场。
-                var effBias = bias;
-                s.OuterClampBinding = false;
-                if (push is null && OuterBiasClampBandC > 0 && s.OuterCrossingArmed
-                    && SteadyBiasFor(s, s.SetpointC) is { } clampRef)     // 【本地改动】外环按釜选表
-                {
-                    // 进带一次即锁存（带边按拍重判会被噪声来回触发，实测抖动 4 次）
-                    if (!s.OuterClampLatched
-                        && Math.Abs(s.SetpointC - outerPv) <= OuterBiasClampBandC)
-                    {
-                        s.OuterClampLatched = true;
-                        s.ClampFromAbove = s.SetpointC - outerPv < 0;
-                        s.ClampFloorSlewC = bias;   // 地板从当时偏置起步，斜坡抬向目标
-                    }
-                    if (s.OuterClampLatched)
-                    {
-                        var target = s.ClampFromAbove
-                            ? clampRef - OuterBiasClampMarginC
-                            : clampRef + OuterBiasClampMarginC;
-                        var step = OuterClampSlewCPerMin / 60.0 * outerDt;
-                        s.ClampFloorSlewC = s.ClampFromAbove
-                            ? Math.Min(target, s.ClampFloorSlewC + step)
-                            : Math.Max(target, s.ClampFloorSlewC - step);
-                        effBias = s.ClampFromAbove
-                            ? Math.Max(bias, s.ClampFloorSlewC)   // 自上而下趋近：限深
-                            : Math.Min(bias, s.ClampFloorSlewC);  // 自下而上趋近：限高
-                        s.OuterClampBinding = Math.Abs(effBias - bias) > 1e-9;
-                    }
-                }
-
-                if (push is not null)
-                {
-                    // 影子偏置：主设定 + P + D − 压低量（基准稳态偏置时再加冻结的 I），夹在偏置限幅内。
-                    // 用 P 而不是 Tr − Δ：Tr 刚过目标 0.1 K 时两者只差 0.15 K，釜内冲得越高 P 越负压得越深
-                    var baseBias = s.OuterPid.LastP + s.OuterPid.LastD + (push.FromEquilibrium ? s.OuterPid.LastI : 0);
-                    effBias = Math.Clamp(baseBias - push.BelowC, s.OuterPid.OutputMin, s.OuterPid.OutputMax);
-                }
-                s.InnerSetpointC = Math.Clamp(s.SetpointC + effBias + boost,
-                    InnerSetpointMinC, InnerSetpointMaxC);
-
-                // 两段式积分放电：趋近段沿途多攒的积分（远超稳态所需）若不处理，
-                // 只能靠温度越过设定值反向积分慢慢放掉——即串级下冲的主因。
-                // 第一枪（趋近放电）：误差首次缩进趋近带内即放。从这里起比例项已足够
-                //   推进，僵尸积分只会把腔体设定值多压两分钟，让腔体在核心到站时
-                //   还欠着几℃ 才到稳态位置——实测剩余下冲全部来自这段腔体欠账。
-                // 第二枪（过零放电）：第一枪之后最后一段趋近重新累积的小额积分，
-                //   过零瞬间再清一次。
-                // 均为一次性触发；曲线运行中不适用；改设定值后重新武装；
-                // 积分从不冻结，稳态偏置过时最多偏一次、由正常积分接管收敛。
-                var outerErr = s.SetpointC - outerPv;
-                if (push is null && s.Profile is null
-                    && SteadyBiasFor(s, s.SetpointC) is { } steadyI)     // 【本地改动】外环按釜选表；压低期间两枪都不打
-                {
-                    if (s.OuterApproachDischargeArmed
-                        && Math.Abs(outerErr) <= OuterDischargeApproachBandC)
-                    {
-                        s.OuterApproachDischargeArmed = false;
-                        if (Math.Abs(s.OuterPid.LastI - steadyI) > OuterDischargeMinGapC)
-                        {
-                            s.OuterPid.PresetIntegral(steadyI);
-                            OnOuterPresetToLearned(s);     // 【本地改动】
-                        }
-                    }
-                    // 过零判据用 <=0 且前值非零：严格 <0 会被"恰好等于零"的采样吞掉
-                    // （TC1 量化 1mK，实测撞上 e=+0.000 → 乘积为零 → 第二枪未开，下冲 0.115）
-                    if (s.OuterCrossingArmed
-                        && !double.IsNaN(s.LastOuterErrorC) && Math.Abs(s.LastOuterErrorC) > 1e-12
-                        && s.LastOuterErrorC * outerErr <= 0)
-                    {
-                        s.OuterCrossingArmed = false;
-                        if (s.FinArmed)
-                            FinishCrossingShot(ch, s, steadyI, snapshot.Timestamp);     // 【本地改动】大降温收尾：按过零速度封顶
-                        else if (Math.Abs(s.OuterPid.LastI - steadyI) > OuterDischargeMinGapC)
-                        {
-                            s.OuterPid.PresetIntegral(steadyI);
-                            OnOuterPresetToLearned(s);     // 【本地改动】
-                        }
-                    }
-                }
-                s.LastOuterErrorC = outerErr;
-
-                // 偏置限幅自动扩程：偏置顶在限幅上、内环未饱和、且误差已停止缩小，
-                // 说明瓶颈是这条人为限幅（维持低温需要的偏置随温差增大，低温段容易不够用）。
-                // 长距离降温时偏置顶限幅但误差持续缩小——那是限幅在正常限速，不会触发。
-                var oldLimit = s.OuterPid.OutputMax;
-                if (push is not null)
-                {
-                    s.BiasGuard.Reset();           // 压低期间不扩程：扩程会写进增益表
-                }
-                else if (s.BiasGuard.Update(outerDt, bias, oldLimit, innerSaturated,
-                        outerErr) is { } widened)
-                {
-                    s.OuterPid.SetOutputLimits(-widened, widened);
-                    if (OuterSchedule(s, s.SetpointC).WidenOuterBiasLimit(s.SetpointC, widened))     // 【本地改动】外环按釜选表
-                        GainScheduleChanged?.Invoke(ch);
-                    else
-                        s.ManualOuterMaxBiasC = widened;   // 表里没有该温度点时至少本次运行生效
-                    SaturationWarning?.Invoke(
-                        $"通道{ch}外环偏置已顶在 ±{oldLimit:F0}℃ 限幅上 " +
-                        $"{s.BiasGuard.PinnedSecondsToWiden / 60:F0} 分钟、误差停止缩小而内环尚有余力：" +
-                        $"维持 {s.SetpointC:F1}℃ 需要的腔体-内部温差超出限幅，已自动放宽到 ±{widened:F0}℃");
-                }
-
-                // 稳态偏置学习：内部温度已稳在主设定值上时，当前偏置就是该温度维持平衡
-                // 所需的腔体-内部温差，登记后供下次同温启动预置外环积分。
-                // 学习带必须比 SteadyBandC 窄：缓沉暂态（误差 0.05~0.2）时若开录，
-                // 会把暂态偏置当稳态写进表，反过来让放电比对失准（第四轮实测教训）。
-                // 【本地改动】还要釜内这一阵真不动（OuterLearnStillC）：慢慢穿过目标的那一分钟也在带里，那时的偏置是漂着的。
-                // 大降温收尾武装着、多给的那份还没退完时也不学：那时的偏置里有漏热还没退的那一截
-                if (push is null && !innerSaturated && s.Profile is null && Math.Abs(outerErr) <= OuterLearnBandC && OuterStill(s)
-                    && !(s.FinArmed && (!s.FinEnded || s.FinGain > 0)))
-                {
-                    s.LastSteadyBias = s.LastSteadyBias is { } prev
-                        ? prev + 0.05 * (bias - prev)   // 低通，约 20 次外环更新的时间常数
-                        : bias;
-                    // 【本地改动】学到的稳态偏置记进外环那张表；表里没有这个温度的行就按插值参数新建一行带着它——
-                    // 自整定只在几个点整过，中间的温度第一次跑到稳态也该记下来，下次启动才有预置、两枪放电才开得了
-                    if (++s.OuterSteadyCycles >= OuterSteadyCyclesToLearn
-                        && OuterSchedule(s, s.SetpointC).LearnSteadyBias(s.SetpointC, s.LastSteadyBias.Value, createIfMissing: true))
-                        GainScheduleChanged?.Invoke(ch);
-                    // 【本地改动】这一场已经稳住过：积分里就是维持这个温度要的偏置，刹车那份不再单算（改方向 / 坡走完不重摆）
-                    if (s.OuterSteadyCycles >= OuterSteadyCyclesToLearn)
-                    {
-                        s.OuterBiasKnown = true;
-                        s.OuterIntegralPristine = false;
-                        s.OuterBrakeC = 0;
-                        s.OuterIntegralRef = s.OuterPid.LastI;
-                    }
+                    ApproachingSetpoint(s, snapshot.Timestamp, outerErr0);
+                    s.LastOuterErrorC = outerErr0;
+                    s.OuterSteadyCycles = 0;
+                    s.BiasGuard.Reset();
+                    s.FinAppliedC = 0;
+                    s.OuterClampBinding = false;
+                    s.InnerSetpointC = Math.Clamp(boostIsp, InnerSetpointMinC, InnerSetpointMaxC);
                 }
                 else
                 {
-                    s.OuterSteadyCycles = 0;
+                    // 【本地改动】趋近不积分（OuterApproachFreezeCPerMin）与内环跟不上不积分（OuterInnerLagFreezeC）：
+                    // 前者 Tr 正往目标走时不攒（攒了到站就是过冲）；后者夹套还没追上外环上一拍要的需求时不攒——执行不了 / 还没执行到的
+                    // 需求别记账。两条都只拦积分往参照值（信得过的偏置）外面、往外环正推的方向走；积分在参照值另一边、往回退（退债）不拦——
+                    // 冲过头以后 Tr 往回走那一段要靠它把攒反了的积分退回来
+                    var outward = (s.OuterPid.LastI - s.OuterIntegralRef) * outerErr0 >= 0;
+                    var approaching = ApproachingSetpoint(s, snapshot.Timestamp, outerErr0) && outward;
+                    var innerLag = s.InnerSetpointC - pv;
+                    var innerBehind = OuterInnerLagFreezeC > 0 && Math.Abs(innerLag) > OuterInnerLagFreezeC
+                                      && innerLag * outerErr0 > 0 && outward;
+
+                    var freeze = (innerHigh && outerErr0 > 0 && s.OuterPid.LastI >= 0)
+                                 || (innerLow && outerErr0 < 0 && s.OuterPid.LastI <= 0)
+                                 || (!double.IsNaN(OuterIntegralBandC) && Math.Abs(outerErr0) > OuterIntegralBandC)   // 积分分离
+                                 || approaching || innerBehind;
+                    // 【本地改动】夹套压低（制冷段）：这一拍整段按它来——积分冻结（现有饱和冻结判据不覆盖
+                    // 「I = +5.5、内环贴下限、err < 0」这种，必须显式冻，不然 I 以 Ki·err 慢慢往下积）
+                    var push = s.Push;
+                    var integralBefore = s.OuterPid.LastI;
+                    var bias = s.OuterPid.Update(s.SetpointC, outerPv, outerDt,
+                        freezeIntegral: freeze || s.OuterClampBinding || push is not null);
+                    if (Math.Abs(s.OuterPid.LastI - integralBefore) > 1e-12)
+                    {
+                        // 【本地改动】积过一下：起步那份刹车被吸收进去了，不再单算（改目标不再按它重摆）
+                        s.OuterIntegralPristine = false;
+                        s.OuterBrakeC = 0;
+                    }
+                    // 【本地改动】大降温收尾：爬的时候多给比例（加在 PID 之后，PID 自己的条件积分看不到它；近处偏置离限幅远，没影响）
+                    var finish = OuterFinish(ch, s, snapshot.Timestamp, outerPv, outerErr0,
+                        Math.Min(outerDt, OuterPeriod.TotalSeconds * 2.5), innerLow, push)
+                                 + FinishCarry(s, snapshot.Timestamp);
+                    s.FinAppliedC = finish;
+                    if (finish != 0)
+                        bias = Math.Clamp(bias + finish, s.OuterPid.OutputMin, s.OuterPid.OutputMax);
+
+                    // 腔体跟踪缺口前馈：腔体离它的目标还差多少，就按比例多推一把，
+                    // 等效把腔体跟随加速 (1+k) 倍——趋近段提前归位消掉剩余下冲，
+                    // 稳态缺口→0 自然退场（pv 即内环被控量=腔体实测）。压低期间不叠加
+                    var boost = OuterTrackingBoost <= 0 || push is not null
+                        ? 0
+                        : Math.Clamp(OuterTrackingBoost * (s.SetpointC + bias - pv),
+                            -OuterBoostClampC, OuterBoostClampC);
+
+                    // 落地偏置钳位（第三枪）：交接带内、首次过零前，偏置不许比
+                    // 稳态偏置深出超过余量——腔体提前归位，压掉到温欠账。
+                    // 事件武装的静态界，无动态无回路；过零（武装标志落下）即退场。
+                    var effBias = bias;
+                    s.OuterClampBinding = false;
+                    if (push is null && OuterBiasClampBandC > 0 && s.OuterCrossingArmed
+                        && SteadyBiasFor(s, s.SetpointC) is { } clampRef)     // 【本地改动】外环按釜选表
+                    {
+                        // 进带一次即锁存（带边按拍重判会被噪声来回触发，实测抖动 4 次）
+                        if (!s.OuterClampLatched
+                            && Math.Abs(s.SetpointC - outerPv) <= OuterBiasClampBandC)
+                        {
+                            s.OuterClampLatched = true;
+                            s.ClampFromAbove = s.SetpointC - outerPv < 0;
+                            s.ClampFloorSlewC = bias;   // 地板从当时偏置起步，斜坡抬向目标
+                        }
+                        if (s.OuterClampLatched)
+                        {
+                            var target = s.ClampFromAbove
+                                ? clampRef - OuterBiasClampMarginC
+                                : clampRef + OuterBiasClampMarginC;
+                            var step = OuterClampSlewCPerMin / 60.0 * outerDt;
+                            s.ClampFloorSlewC = s.ClampFromAbove
+                                ? Math.Min(target, s.ClampFloorSlewC + step)
+                                : Math.Max(target, s.ClampFloorSlewC - step);
+                            effBias = s.ClampFromAbove
+                                ? Math.Max(bias, s.ClampFloorSlewC)   // 自上而下趋近：限深
+                                : Math.Min(bias, s.ClampFloorSlewC);  // 自下而上趋近：限高
+                            s.OuterClampBinding = Math.Abs(effBias - bias) > 1e-9;
+                        }
+                    }
+
+                    if (push is not null)
+                    {
+                        // 影子偏置：主设定 + P + D − 压低量（基准稳态偏置时再加冻结的 I），夹在偏置限幅内。
+                        // 用 P 而不是 Tr − Δ：Tr 刚过目标 0.1 K 时两者只差 0.15 K，釜内冲得越高 P 越负压得越深
+                        var baseBias = s.OuterPid.LastP + s.OuterPid.LastD + (push.FromEquilibrium ? s.OuterPid.LastI : 0);
+                        effBias = Math.Clamp(baseBias - push.BelowC, s.OuterPid.OutputMin, s.OuterPid.OutputMax);
+                    }
+                    s.InnerSetpointC = Math.Clamp(s.SetpointC + effBias + boost,
+                        InnerSetpointMinC, InnerSetpointMaxC);
+
+                    // 两段式积分放电：趋近段沿途多攒的积分（远超稳态所需）若不处理，
+                    // 只能靠温度越过设定值反向积分慢慢放掉——即串级下冲的主因。
+                    // 第一枪（趋近放电）：误差首次缩进趋近带内即放。从这里起比例项已足够
+                    //   推进，僵尸积分只会把腔体设定值多压两分钟，让腔体在核心到站时
+                    //   还欠着几℃ 才到稳态位置——实测剩余下冲全部来自这段腔体欠账。
+                    // 第二枪（过零放电）：第一枪之后最后一段趋近重新累积的小额积分，
+                    //   过零瞬间再清一次。
+                    // 均为一次性触发；曲线运行中不适用；改设定值后重新武装；
+                    // 积分从不冻结，稳态偏置过时最多偏一次、由正常积分接管收敛。
+                    var outerErr = s.SetpointC - outerPv;
+                    if (push is null && s.Profile is null
+                        && SteadyBiasFor(s, s.SetpointC) is { } steadyI)     // 【本地改动】外环按釜选表；压低期间两枪都不打
+                    {
+                        if (s.OuterApproachDischargeArmed
+                            && Math.Abs(outerErr) <= OuterDischargeApproachBandC)
+                        {
+                            s.OuterApproachDischargeArmed = false;
+                            if (Math.Abs(s.OuterPid.LastI - steadyI) > OuterDischargeMinGapC)
+                            {
+                                s.OuterPid.PresetIntegral(steadyI);
+                                OnOuterPresetToLearned(s);     // 【本地改动】
+                            }
+                        }
+                        // 过零判据用 <=0 且前值非零：严格 <0 会被"恰好等于零"的采样吞掉
+                        // （TC1 量化 1mK，实测撞上 e=+0.000 → 乘积为零 → 第二枪未开，下冲 0.115）
+                        if (s.OuterCrossingArmed
+                            && !double.IsNaN(s.LastOuterErrorC) && Math.Abs(s.LastOuterErrorC) > 1e-12
+                            && s.LastOuterErrorC * outerErr <= 0)
+                        {
+                            s.OuterCrossingArmed = false;
+                            if (s.FinArmed)
+                                FinishCrossingShot(ch, s, steadyI, snapshot.Timestamp);     // 【本地改动】大降温收尾：按过零速度封顶
+                            else if (Math.Abs(s.OuterPid.LastI - steadyI) > OuterDischargeMinGapC)
+                            {
+                                s.OuterPid.PresetIntegral(steadyI);
+                                OnOuterPresetToLearned(s);     // 【本地改动】
+                            }
+                        }
+                    }
+                    s.LastOuterErrorC = outerErr;
+
+                    // 偏置限幅自动扩程：偏置顶在限幅上、内环未饱和、且误差已停止缩小，
+                    // 说明瓶颈是这条人为限幅（维持低温需要的偏置随温差增大，低温段容易不够用）。
+                    // 长距离降温时偏置顶限幅但误差持续缩小——那是限幅在正常限速，不会触发。
+                    var oldLimit = s.OuterPid.OutputMax;
+                    if (push is not null)
+                    {
+                        s.BiasGuard.Reset();           // 压低期间不扩程：扩程会写进增益表
+                    }
+                    else if (s.BiasGuard.Update(outerDt, bias, oldLimit, innerSaturated,
+                            outerErr) is { } widened)
+                    {
+                        s.OuterPid.SetOutputLimits(-widened, widened);
+                        if (OuterSchedule(s, s.SetpointC).WidenOuterBiasLimit(s.SetpointC, widened))     // 【本地改动】外环按釜选表
+                            GainScheduleChanged?.Invoke(ch);
+                        else
+                            s.ManualOuterMaxBiasC = widened;   // 表里没有该温度点时至少本次运行生效
+                        SaturationWarning?.Invoke(
+                            $"通道{ch}外环偏置已顶在 ±{oldLimit:F0}℃ 限幅上 " +
+                            $"{s.BiasGuard.PinnedSecondsToWiden / 60:F0} 分钟、误差停止缩小而内环尚有余力：" +
+                            $"维持 {s.SetpointC:F1}℃ 需要的腔体-内部温差超出限幅，已自动放宽到 ±{widened:F0}℃");
+                    }
+
+                    // 稳态偏置学习：内部温度已稳在主设定值上时，当前偏置就是该温度维持平衡
+                    // 所需的腔体-内部温差，登记后供下次同温启动预置外环积分。
+                    // 学习带必须比 SteadyBandC 窄：缓沉暂态（误差 0.05~0.2）时若开录，
+                    // 会把暂态偏置当稳态写进表，反过来让放电比对失准（第四轮实测教训）。
+                    // 【本地改动】还要釜内这一阵真不动（OuterLearnStillC）：慢慢穿过目标的那一分钟也在带里，那时的偏置是漂着的。
+                    // 大降温收尾武装着、多给的那份还没退完时也不学：那时的偏置里有漏热还没退的那一截
+                    if (push is null && !innerSaturated && s.Profile is null && Math.Abs(outerErr) <= OuterLearnBandC && OuterStill(s)
+                        && !(s.FinArmed && (!s.FinEnded || s.FinGain > 0)))
+                    {
+                        s.LastSteadyBias = s.LastSteadyBias is { } prev
+                            ? prev + 0.05 * (bias - prev)   // 低通，约 20 次外环更新的时间常数
+                            : bias;
+                        // 【本地改动】学到的稳态偏置记进外环那张表；表里没有这个温度的行就按插值参数新建一行带着它——
+                        // 自整定只在几个点整过，中间的温度第一次跑到稳态也该记下来，下次启动才有预置、两枪放电才开得了
+                        if (++s.OuterSteadyCycles >= OuterSteadyCyclesToLearn
+                            && OuterSchedule(s, s.SetpointC).LearnSteadyBias(s.SetpointC, s.LastSteadyBias.Value, createIfMissing: true))
+                            GainScheduleChanged?.Invoke(ch);
+                        // 【本地改动】这一场已经稳住过：积分里就是维持这个温度要的偏置，刹车那份不再单算（改方向 / 坡走完不重摆）
+                        if (s.OuterSteadyCycles >= OuterSteadyCyclesToLearn)
+                        {
+                            s.OuterBiasKnown = true;
+                            s.OuterIntegralPristine = false;
+                            s.OuterBrakeC = 0;
+                            s.OuterIntegralRef = s.OuterPid.LastI;
+                        }
+                    }
+                    else
+                    {
+                        s.OuterSteadyCycles = 0;
+                    }
                 }
             }
         }
@@ -2427,6 +2865,10 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
             OuterD = cascade ? s.OuterPid.LastD : double.NaN,
             OuterPushC = cascade && s.Push is { } pushed ? pushed.BelowC : double.NaN,
             OuterFinishC = cascade && !holding ? s.FinAppliedC : double.NaN,
+            HeatBoosting = cascade && !holding && s.VelMode,
+            HeatBoostVmCPerMin = cascade && !holding && s.VelMode ? s.VelVmCPerMin : double.NaN,
+            HeatBoostVstarCPerMin = cascade && !holding && s.VelMode ? s.VelVstarCPerMin : double.NaN,
+            HeatBoostBrake = cascade && !holding && s.VelMode ? s.VelBrake : double.NaN,
         };
     }
 
