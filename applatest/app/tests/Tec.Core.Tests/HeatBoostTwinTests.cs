@@ -318,7 +318,11 @@ public class HeatBoostTwinTests(ITestOutputHelper output)
         Dump("升温加速 20 → 21", on, 21);
         Assert.Contains(on.Notes(), n => n.StartsWith("通道1升温加速：釜内"));
         Assert.InRange(on.Overshoot(21), 0, 0.04);
-        Assert.True(on.StayInMin(21, 0.05) < s0.StayInMin(21, 0.05) - 5);
+        // 不加速那台原来趋近那一枪进带第一拍就空打、积分往外跑：冲 0.11、28 分钟才稳进 ±0.05，加速快它 5 分钟以上；
+        // 那一枪改成等 Tr 真往目标走才打以后它自己也 10 分钟上下稳进、冲 0.05——加速不比它慢就行
+        Assert.InRange(on.StayInMin(21, 0.05), 0, 15);
+        Assert.True(on.StayInMin(21, 0.05) <= s0.StayInMin(21, 0.05) + 2, $"加速 {on.StayInMin(21, 0.05):F1} min、不加速 {s0.StayInMin(21, 0.05):F1} min");
+        Assert.InRange(s0.Overshoot(21), 0, 0.08);
     }
 
     [Fact]

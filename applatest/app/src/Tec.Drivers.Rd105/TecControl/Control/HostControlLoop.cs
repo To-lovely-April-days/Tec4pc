@@ -280,7 +280,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         /// 只在过零时放电仍嫌太晚：僵尸积分在趋近最后阶段一直把腔体设定值压得过低，
         /// 腔体因此在核心到站时还欠着约 3℃ 才到它的稳态位置，核心只能继续下沉等它——
         /// 实测第三轮剩余的 0.18℃ 下冲全部来自这段腔体欠账（腔体 t=14.4 回到稳态位置，
-        /// 核心谷底恰在 t=13.9）。误差首次缩进趋近带内时提前放电，腔体提前两分钟归位。
+        /// 核心谷底恰在 t=13.9）。误差缩进趋近带内、釜内真在往目标走时提前放电（到站稳住学到了还没打的作废），腔体提前两分钟归位。
         /// </summary>
         public bool OuterApproachDischargeArmed;
 
@@ -390,8 +390,8 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         /// <summary>【本地改动】解除压低立的（会话线程），回路线程收走：这一回重新武装是解除压低。SetSetpoint 不碰它——那边前后两次立
         /// <see cref="OuterRearmedFlag"/>、回路线程几个标志分几下收，后一下可能落到下一拍，单看「重新武装了、没改目标」会把改目标认成解除压低。</summary>
         public int OuterRearmInPlaceFlag;
-        /// <summary>【本地改动】解除压低以后外环积分不许往上攒，到这个时刻为止（<see cref="OuterBiasCheckHold"/> 封顶；自校正管着的目标上、
-        /// 拿住期过了、两枪不打的那种才立）：压低把釜内拽到目标下面那一截不是偏置不够，攒进去就是下一回冲过头的电荷。
+        /// <summary>【本地改动】解除压低以后外环积分不许往上攒，到这个时刻为止（<see cref="OuterBiasCheckHold"/> 封顶；每回解除压低都立——
+        /// 自校正管着的目标上拿住期里松开的从拿住期满起算；自校正改一次不动它）：压低把釜内拽到目标下面那一截不是偏置不够，攒进去就是下一回冲过头的电荷。
         /// 釜内到过目标下面、又回到目标就放开；往下退照退。回路线程用。</summary>
         public DateTime ReleaseGuardUntil;
         public bool ReleaseGuardBelow;
@@ -886,7 +886,8 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
     public double? GetOuterPushDown(int ch) => State(ch).Push?.BelowC;
 
     /// <summary>
-    /// 趋近放电带宽（℃）：外环误差首次缩到该值以内时执行第一段积分放电。
+    /// 趋近放电带宽（℃）：外环误差在该值以内、且釜内真在往目标走（ApproachingSetpoint，同「趋近不积分」的判据）时执行第一段积分放电；
+    /// 到站稳住学到稳态偏置时还没打的作废。
     /// 从这里起比例项单独已足够把温度推到设定值，积分再累积只会变成过冲电荷。
     /// </summary>
     public double OuterDischargeApproachBandC { get; set; } = 1.0;
@@ -2776,9 +2777,11 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                     s.ShotsFromPushRelease = true;
                     // 管着的目标上：拿住期过了两枪就不打，压低拽下去那一截别攒进积分（ReleaseGuardUntil）。拿住期里松开的从拿住期满起算——
                     // 不然拿住期满正赶上釜内被压在目标下面，两枪不打、积分又没人拦，一攒又冲（孪生：改完 7 分钟压一次，冲 0.13、又压两回）
+                    // 管不着的目标上（两枪照打）也立：两枪在松开那会儿多半空打掉（釜内在目标上面、跟表差不到门槛），压低拽下去那一截
+                    // 照样攒进积分、回头冲过又压，每 12 分钟一回一直摆（孪生：表对的、42 → 43 之后每 12 分钟压一回；42 稳住后扰动 8 分钟，100 分钟里压 5 回）
                     s.ReleaseGuardUntil = OverrideCovers(s, s.SetpointC)
                         ? (snapshot.Timestamp >= s.BiasHoldUntil ? snapshot.Timestamp : s.BiasHoldUntil) + OuterBiasCheckHold
-                        : default;
+                        : snapshot.Timestamp + OuterBiasCheckHold;
                     s.ReleaseGuardBelow = false;
                     // 这个目标上（上次改以后）第一次冲过头被压低：从这儿起整个窗口估出来的比积分低就按小门槛改（BiasSelfCheck）。
                     // 上一次解除隔了两个窗口以上：不是一串来回压里的，从这一次重新起算——窗口整个在这次解除以后，压低以前的扰动不算进去
@@ -2890,7 +2893,8 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                     // 需求别记账。两条都只拦积分往参照值（信得过的偏置）外面、往外环正推的方向走；积分在参照值另一边、往回退（退债）不拦——
                     // 冲过头以后 Tr 往回走那一段要靠它把攒反了的积分退回来
                     var outward = (s.OuterPid.LastI - s.OuterIntegralRef) * outerErr0 >= 0;
-                    var approaching = ApproachingSetpoint(s, snapshot.Timestamp, outerErr0) && outward;
+                    var approachRaw = ApproachingSetpoint(s, snapshot.Timestamp, outerErr0);     // Tr 真在往目标走（不管积分在哪边）：趋近那一枪也认它
+                    var approaching = approachRaw && outward;
                     var innerLag = s.InnerSetpointC - pv;
                     var innerBehind = OuterInnerLagFreezeC > 0 && Math.Abs(innerLag) > OuterInnerLagFreezeC
                                       && innerLag * outerErr0 > 0 && outward;
@@ -2909,7 +2913,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                         && (Math.Abs(outerPv - (double.IsFinite(s.BiasOverrideSp) ? s.BiasOverrideSp : s.SetpointC)) > OuterBiasCheckBandC || s.Profile is not null))
                         s.BiasHoldUntil = default;
                     var biasHold = snapshot.Timestamp < s.BiasHoldUntil;
-                    // 【本地改动】解除压低以后（自校正管着的目标上、两枪不打）：釜内在目标下面时积分不往上攒，压低拽下去那一截不是偏置不够——
+                    // 【本地改动】解除压低以后（不管自校正管不管得着这个目标，两枪多半空打）：釜内在目标下面时积分不往上攒，压低拽下去那一截不是偏置不够——
                     // 攒进去就是下一回冲过头的电荷，再压低、再攒，越摆越大（孪生：40 稳住后压一次，积分 3.25 → 3.84 → 4.18、又压两次、又改一次）。
                     // 釜内在目标上面照常往下退（估高了靠它收）；到过下面又回到目标、走上曲线、压上了就放开
                     var releaseGuard = false;
@@ -2987,12 +2991,12 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
 
                     // 两段式积分放电：趋近段沿途多攒的积分（远超稳态所需）若不处理，
                     // 只能靠温度越过设定值反向积分慢慢放掉——即串级下冲的主因。
-                    // 第一枪（趋近放电）：误差首次缩进趋近带内即放。从这里起比例项已足够
+                    // 第一枪（趋近放电）：误差在趋近带内、且 Tr 真在往目标走时放（1 K 小台阶一改完就在带里，Tr 没动之前不打）。从这里起比例项已足够
                     //   推进，僵尸积分只会把腔体设定值多压两分钟，让腔体在核心到站时
                     //   还欠着几℃ 才到稳态位置——实测剩余下冲全部来自这段腔体欠账。
                     // 第二枪（过零放电）：第一枪之后最后一段趋近重新累积的小额积分，
                     //   过零瞬间再清一次。
-                    // 均为一次性触发；曲线运行中不适用；改设定值后重新武装；
+                    // 均为一次性触发；曲线运行中不适用；改设定值 / 解除压低后重新武装；第一枪到站稳住学到稳态偏置时还没打就作废；
                     // 积分从不冻结，稳态偏置过时最多偏一次、由正常积分接管收敛。
                     var outerErr = s.SetpointC - outerPv;
                     // 【本地改动】偏置自校正改过这个目标、拿住期也过了：解除压低重新武装的两枪不再往那个估值上打——估值差个零点几 K 时，
@@ -3003,8 +3007,10 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                     if (push is null && s.Profile is null && !overrideSettled
                         && SteadyBiasFor(s, s.SetpointC) is { } steadyI)     // 【本地改动】外环按釜选表；压低期间两枪都不打
                     {
+                        // 【本地改动】进了趋近带还得 Tr 真在往目标走才打：1 K 的小台阶一改完误差就在带里，原来第一拍就打（积分跟学到的差不到门槛、
+                        // 空打），之后 Tr 还没动、积分照攒往外跑 0.5 K，没枪收拾（孪生：43 → 42 掉 0.135、42 → 43 冲 0.156 以后每 12 分钟压一回）
                         if (s.OuterApproachDischargeArmed
-                            && Math.Abs(outerErr) <= OuterDischargeApproachBandC)
+                            && Math.Abs(outerErr) <= OuterDischargeApproachBandC && approachRaw)
                         {
                             s.OuterApproachDischargeArmed = false;
                             if (Math.Abs(s.OuterPid.LastI - steadyI) > OuterDischargeMinGapC)
@@ -3073,6 +3079,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                         // 【本地改动】这一场已经稳住过：积分里就是维持这个温度要的偏置，刹车那份不再单算（改方向 / 坡走完不重摆）
                         if (s.OuterSteadyCycles >= OuterSteadyCyclesToLearn)
                         {
+                            s.OuterApproachDischargeArmed = false;     // 【本地改动】没趋近就到站稳住了（台阶小、Tr 没怎么动）：趋近那一枪作废，别留到以后乱打
                             // 【本地改动】真稳住学到了：这一场按学到的用（表里那行可能记在邻近的行、插值出来不一样，或者表没收），不退回表里那个。
                             // 只在自校正管着的目标上挪：管不着的目标学到的已经进表、照表查就是它；挪过去反倒把原目标那个实测丢了
                             // （改回原目标又按表里错的打两枪、又摆），附近没校正过的目标还平白不打两枪

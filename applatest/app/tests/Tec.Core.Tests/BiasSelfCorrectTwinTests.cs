@@ -192,14 +192,21 @@ public class BiasSelfCorrectTwinTests(ITestOutputHelper output)
     /// · Tr 丢失 20 s 又回来：窗口和锁存都清掉——回来以后重新等过零、再攒满一个窗口才改；
     /// · 走曲线（保温段停在 40）：一直不记、不改；
     /// · 改完以后改目标 40.3（表里那头也是错的 5.53）：按实测平移，不冲、不压低，也不再改（改目标清窗口和锁存另有一条：<see cref="BiasSelfCorrectRetargetTwinTests"/>）；
-    /// · 改完以后釜内跑出 ±0.5（外环读数临时低 0.7 K 一分钟）：拿住放开、积分接着动，不再拿回来。
+    /// · 改完以后釜内跑出 ±0.5（外环读数临时低 0.7 K 一分钟）：拿住放开（不等拿住期满），不再拿回来。积分这会儿还不动——
+    ///   改之前那次压低松开立的保护（管不着的目标上也立、10 分钟）还拦着往上攒，读数低那一下正是不该攒的（让它攒：回头多冲 0.1、多压一回）。
     /// </summary>
     [Fact]
     public async Task 清窗口和拿住积分_Tr丢失_走曲线_改目标_跑出带子()
     {
         const double sp = 40;
         double? lostAt = null, backAt = null, spChangedAt = null, kickAt = null, kickEnd = null;
-        bool lostBack = false, kickBack = false;     // 读数接回去只接一次、到点后第一拍就接（别卡在一个几秒的窗口里：回路慢一拍跨过去就再也接不回来）
+        bool lostBack = false, kickBack = false;
+        DateTime? holdInKick = null, holdAfterKick = null;
+        static DateTime HoldUntil(HeatBoostTwinTests.Rig r)
+        {
+            var st = BiasSelfCorrectRetargetTwinTests.StateOf(r.Loop);
+            return (DateTime)st.GetType().GetField("BiasHoldUntil")!.GetValue(st)!;
+        }     // 读数接回去只接一次、到点后第一拍就接（别卡在一个几秒的窗口里：回路慢一拍跨过去就再也接不回来）
         var swBase = new EarlySwitch();
         var swLost = new EarlySwitch();
         var swProf = new EarlySwitch();
@@ -245,10 +252,18 @@ public class BiasSelfCorrectTwinTests(ITestOutputHelper output)
                 r.Loop.SetOuterSource(1, () => Math.Round(r.P.Tr, 2) - 0.7);
                 kickEnd = ka + 60;
             }
+            else if (kickEnd is { } ke0 && holdInKick is null && t >= ke0 - 20)
+            {
+                holdInKick = HoldUntil(r);                // 跑出带子 40 s 了：拿住应该已经放开
+            }
             else if (kickEnd is { } ke && !kickBack && t >= ke)
             {
                 r.Loop.SetOuterSource(1, () => Math.Round(r.P.Tr, 2));
                 kickBack = true;
+            }
+            else if (kickBack && holdAfterKick is null && t >= kickEnd!.Value + 180)
+            {
+                holdAfterKick = HoldUntil(r);             // 读数接回去 3 分钟（回到带子里了）：不再拿回来
             }
         });
         await Task.WhenAll(baseRig.Loop.StartChannelAsync(1, sp), lost.Loop.StartChannelAsync(1, sp), prof.Loop.StartChannelAsync(1, sp),
@@ -295,13 +310,13 @@ public class BiasSelfCorrectTwinTests(ITestOutputHelper output)
         Assert.DoesNotContain(swSp.PushAtMin, m => m * 60 - ts0 > changed);
         Assert.Single(spFixes);
 
-        // 跑出带子：拿住放开、积分接着动，不再拿回来；只改那一次
+        // 跑出带子：拿住放开（拿住期还没满就放开了）、不再拿回来；只改那一次
         Assert.Single(Fixes(kick));
         Assert.NotNull(kickEnd);
-        var tk0 = kick.Trace()[0].T;
         var fixK = FixAt(kick);
-        var after = kick.Trace().Where(x => x.T - tk0 >= kickEnd!.Value - tk0 + 30 && x.T - tk0 <= fixK + 540).Select(x => x.I).ToArray();
-        Assert.True(after.Max() - after.Min() > 0.02, $"跑出带子以后积分 {after.Min():F4}…{after.Max():F4}（还拿着）");
+        Assert.True(kickEnd!.Value - kick.Trace()[0].T < fixK + 540, $"跑出带子 {kickEnd.Value / 60:F2} min 已经过了拿住期");
+        Assert.Equal(default(DateTime), holdInKick);
+        Assert.Equal(default(DateTime), holdAfterKick);
     }
 
     /// <summary>

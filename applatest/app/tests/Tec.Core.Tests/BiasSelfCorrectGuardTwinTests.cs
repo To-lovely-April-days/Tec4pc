@@ -177,14 +177,73 @@ public class BiasSelfCorrectGuardTwinTests(ITestOutputHelper output)
         output.WriteLine($"   回 42 那一刻：42 用的偏置 {steadyAtBack:F3}、实测 {overrideAtBack:F3}");
         // 往上的目标不比实测小（两边都留余量的话 2.94）：两枪按它打
         Assert.True(steadyAtBack >= overrideAtBack - 1e-9, $"回 42 用的偏置 {steadyAtBack:F3} 比实测 {overrideAtBack:F3} 还小");
-        // 掉多少主要看 43 → 42 往下走开头那一下积分往外跑了多少（降 1 K 的通病，表对也一样）、趋近那枪赶没赶上 0.25 K 的死区：41.87–41.91
-        Assert.True(after.Min(x => x.Tr) >= 42 - 0.15, $"回 42 以后掉到 {after.Min(x => x.Tr):F3}（平移把差算了两遍）");
+        // 趋近那一枪原来进带第一拍就打（空打）、之后积分往外跑：41.87–41.91；现在等 Tr 真往下走才打：41.96 上下
+        Assert.True(after.Min(x => x.Tr) >= 42 - 0.08, $"回 42 以后掉到 {after.Min(x => x.Tr):F3}（平移把差算了两遍 / 趋近那枪空打）");
         Assert.True(after.Min(x => x.I) >= 3.32 - 0.6, $"回 42 以后积分最低 {after.Min(x => x.I):F2}");
         Assert.DoesNotContain(sw.PushAtMin, m => m * 60 >= back!.Value);
         // 掉下去那一下积分在下面攒了点，回来以后慢慢冲过 0.06 一次（不压低）、30 分钟起稳住
         Assert.True(after[^1].T - (back!.Value + 30 * 60) >= 10 * 60, $"回 42 后 30 分钟起只看了 {(after[^1].T - back!.Value) / 60 - 30:F1} 分钟");
         var tail = after.Where(x => x.T >= back!.Value + 30 * 60).Select(x => x.Tr).ToArray();
         Assert.True(tail.Min() >= 42 - 0.05 && tail.Max() <= 42 + 0.05, $"回 42 后 30 分钟起 Tr {tail.Min():F3}…{tail.Max():F3}");
+    }
+}
+
+/// <summary>
+/// 管着的目标上压得久（180 s，会话自己的提前切换压低就是这么长）：松开以后釜内还要往下走 4 分钟、坑底掉 0.66 K，全是压低拽的——
+/// 保护一直拦到釜内回目标。曾试过「拦下的积分过了 0.7 K 就放开」：坑底凑满放开、往回走那下积分 3.25 → 3.55，冲 0.12、又压一回、又改一次
+/// （HEAD 和只按时间拦都是冲 0.045、不压、只改一次）。拿住期里压（改完 7 分钟）也一样。
+/// </summary>
+public class BiasSelfCorrectLongPushTwinTests(ITestOutputHelper output)
+{
+    [Fact]
+    public async Task 管着的目标上压180秒_坑底不放开积分_不冲不再压()
+    {
+        var rigs = new List<(string Name, HeatBoostTwinTests.Rig R, EarlySwitch Sw, Func<double?> PushAt, Func<bool> Released)>();
+        try
+        {
+            foreach (var (name, afterMin) in new[] { ("改完 25 分钟压 180 s", 25.0), ("改完 7 分钟（拿住期里）压 180 s", 7.0) })
+            {
+                double? fix = null, push = null;
+                var rel = false;
+                var sw = new EarlySwitch();
+                var r = Rig(5.53, true, sw, NearTarget(), (r, c) =>
+                {
+                    var t = r.P.SimSeconds;
+                    if (fix is null && c.OuterI < 4.5) fix = t;
+                    else if (fix is { } f && push is null && t >= f + afterMin * 60)
+                    {
+                        if (r.Loop.SetOuterPushDown(1, 2.0)) push = t;
+                    }
+                    else if (push is { } p && !rel && t >= p + 180)
+                    {
+                        r.Loop.SetOuterPushDown(1, null);
+                        rel = true;
+                    }
+                });
+                rigs.Add((name, r, sw, () => push, () => rel));
+            }
+            await Task.WhenAll(rigs.Select(x => x.R.Loop.StartChannelAsync(1, 40)));
+            await Task.WhenAll(rigs.Select(x => x.R.UntilMin(80)));
+            foreach (var (name, r, sw, pushAt, released) in rigs)
+            {
+                Report(output, name, r, sw);
+                Assert.NotNull(pushAt());
+                Assert.True(released(), $"{name}：硬压没松开");
+                var p = pushAt()!.Value;
+                var after = r.Trace().Where(x => x.T >= p).ToArray();
+                output.WriteLine($"   {name}：压以后最高 {after.Max(x => x.Tr) - 40:+0.000;-0.000}、积分最高 {after.Max(x => x.I):F2}");
+                Assert.Single(Fixes(r));
+                Assert.DoesNotContain(sw.PushAtMin, m => m * 60 > p);
+                Assert.True(after.Max(x => x.I) <= 3.32 + 0.3, $"{name}：压以后积分最高 {after.Max(x => x.I):F2}（坑底放开、往回走那下攒进去了）");
+                Assert.True(after.Max(x => x.Tr) <= 40 + 0.08, $"{name}：压以后冲到 {after.Max(x => x.Tr):F3}");
+                var tail = after.Where(x => x.T >= p + 30 * 60).Select(x => x.Tr).ToArray();
+                Assert.True(tail.Min() >= 40 - 0.05 && tail.Max() <= 40 + 0.05, $"{name}：压 30 分钟以后 Tr {tail.Min():F3}…{tail.Max():F3}");
+            }
+        }
+        finally
+        {
+            foreach (var x in rigs) await x.R.DisposeAsync();
+        }
     }
 }
 
@@ -649,5 +708,87 @@ public class BiasSelfCorrectTableTests(ITestOutputHelper output)
         Assert.Contains("借「TEC 表」", borrowed);
         Assert.Contains("PID 页「双向挡表」这个温度加一行", borrowed);
         Assert.Contains("PID 页「双向挡表」改一下", own);
+    }
+}
+
+/// <summary>
+/// 自校正改一次不动解除压低立的积分保护：壁慢的釜（壁滞后 36 s、壁时间常数 200 s，τ1 1374 / 981），表 5.53、改完一次以后 25 分钟放热 2 K 八分钟——
+/// 放热顶过目标、压一次，松开紧跟着按放热那会儿实测又改一次（积分 ≈ 1.5，真值 3.32）；放热撤了釜内掉 0.7 K、跑出带子、拿住放开。
+/// 保护还立着：积分等保护到期才往上走、到 3.3–3.4 被趋近冻住，回来冲 0.03–0.05、不再压、不再改（HEAD 一样）。
+/// 改的时候把保护清了：拿住一放开（釜内还在坑底往下走）积分就往上攒到 3.7–3.8，冲 0.13–0.16、又压 1–2 回、又改一次。
+/// </summary>
+public class BiasSelfCorrectSlowWallExothermTwinTests(ITestOutputHelper output)
+{
+    private static object F(object st, string name) => st.GetType().GetField(name)!.GetValue(st)!;
+
+    [Fact]
+    public async Task 壁慢的釜放热时又改一次_改不清解除压低的保护_放热撤了不冲不再压()
+    {
+        var rigs = new List<(string Name, HeatBoostTwinTests.Rig R, EarlySwitch Sw, Func<double?> Dist, Func<bool> Back, Func<DateTime?> GuardAtRefix)>();
+        try
+        {
+            foreach (var (name, tau1) in new[] { ("τ1 1374", 981.4 * 1.4), ("τ1 981", 981.4) })
+            {
+                double? fix = null, dist = null;
+                var back = false;
+                DateTime? guardAtRefix = null;
+                var sw = new EarlySwitch();
+                var plant = new HeatBoostTwinTests.Plant(39.6, 44.0, 44.0, 44.0, tau1: tau1, b: 3.32, tw: 200, wallDelay: 36);
+                var r = Rig(5.53, true, sw, plant, (r, c) =>
+                {
+                    var t = r.P.SimSeconds;
+                    if (fix is null && c.OuterI < 4.5) fix = t;
+                    else if (fix is { } f && dist is null && t >= f + 25 * 60)
+                    {
+                        dist = t;
+                        r.P.B = 1.32;
+                    }
+                    else if (dist is { } d && !back && t >= d + 8 * 60)
+                    {
+                        r.P.B = 3.32;
+                        back = true;
+                    }
+                    // 第二次改的那一拍（EarlySwitch 刚记上）：解除压低立的保护还在不在
+                    if (sw.FixAt.Count == 2 && guardAtRefix is null)
+                        guardAtRefix = (DateTime)F(BiasSelfCorrectRetargetTwinTests.StateOf(r.Loop), "ReleaseGuardUntil");
+                });
+                rigs.Add((name, r, sw, () => dist, () => back, () => guardAtRefix));
+            }
+            await Task.WhenAll(rigs.Select(x => x.R.Loop.StartChannelAsync(1, 40)));
+            await Task.WhenAll(rigs.Select(x => x.R.UntilMin(100)));
+            foreach (var (name, r, sw, distAt, backed, guardAt) in rigs)
+            {
+                Report(output, $"壁慢的釜（{name}）改完 25 分钟放热 2 K 八分钟", r, sw);
+                Assert.NotNull(distAt());
+                Assert.True(backed(), $"{name}：放热没撤");
+                var d = distAt()!.Value;
+                var end = d + 8 * 60;
+                var after = r.Trace().Where(x => x.T >= end).ToArray();
+                var bottom = after.Where(x => x.T <= end + 20 * 60).MinBy(x => x.Tr).T;
+                var rebound = after.Where(x => x.T >= bottom).Max(x => x.Tr) - 40;
+                var maxI = after.Max(x => x.I);
+                var pushesAfter = sw.PushAtMin.Where(m => m * 60 >= end).ToArray();
+                output.WriteLine($"   {name}：放热里压 {sw.PushAtMin.Count(m => m * 60 >= d && m * 60 < end)} 次、改 {sw.FixAt.Count} 次；放热撤了以后压 {pushesAfter.Length} 次、" +
+                                 $"坑底以后最高 {rebound:+0.000;-0.000}、积分最高 {maxI:F2}；第二次改那一拍保护到 {guardAt():HH:mm:ss.fff}");
+
+                // 用例本身：放热真压了一次、松开以后按放热那会儿实测又改了一次（积分改到 2 以下）
+                Assert.Contains(sw.PushAtMin, m => m * 60 >= d && m * 60 < end);
+                Assert.True(sw.FixAt.Count >= 2 && sw.FixAt[1] >= d && sw.FixAt[1] < end,
+                    $"{name}：第二次改在 {string.Join("、", sw.FixAt.Select(x => (x / 60).ToString("F1")))} min，放热 {d / 60:F1}–{end / 60:F1} min");
+                Assert.True(r.Trace().Where(x => x.T >= sw.FixAt[1]).Min(x => x.I) < 2.0, $"{name}：第二次改没把积分改低（这条用例没查到东西）");
+
+                // 放热撤了：积分不往上攒过头、不冲、不再压、不再改
+                Assert.True(maxI <= 3.32 + 0.3, $"{name}：放热撤了以后积分最高 {maxI:F2}（拿住一放开就往上攒了）");
+                Assert.True(rebound <= 0.08, $"{name}：放热撤了、坑底以后冲到 {rebound:+0.000}");
+                Assert.Empty(pushesAfter);
+                Assert.Equal(2, Fixes(r).Length);
+                // 改的那一拍不清解除压低立的保护（上面那几条就是清了的后果）
+                Assert.True(guardAt() is { } g && g != default, $"{name}：放热里那次改把解除压低立的积分保护清了");
+            }
+        }
+        finally
+        {
+            foreach (var x in rigs) await x.R.DisposeAsync();
+        }
     }
 }
