@@ -109,6 +109,11 @@ public class CascadeFieldTwinTests(ITestOutputHelper output)
                 OuterFinishShotWindow = TimeSpan.FromSeconds(120 / K),
                 OuterFinishShotMinSpan = TimeSpan.FromSeconds(60 / K),
                 OuterFinishCarry = TimeSpan.FromSeconds(20 * 60 / K),
+                // 外环偏置自校正照现场开着（按压缩时间）：这些场景表里的偏置都对，不该触发
+                OuterBiasCheckWindow = TimeSpan.FromSeconds(600 / K),
+                OuterBiasCheckTauHat = 800 / K,
+                OuterBiasCheckWallHat = 120 / K,
+                OuterBiasCheckHold = TimeSpan.FromSeconds(600 / K),
             };
             Loop.SetActuatorMode(1, ActuatorMode.HeaterTec);
             var both = Loop.GetGainSchedule(1, GainTable.Both);

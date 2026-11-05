@@ -260,6 +260,17 @@ public sealed class PidGainSchedule
     /// <summary>【本地改动】稳态偏置只在离登记点这么近（℃）时才沿用到两头之外 / 只有一行时。</summary>
     public double SteadyBiasReachC { get; set; } = 15;
 
+    /// <summary>【本地改动】此刻这张表的副本（工作点和查表规则都一样，之后各改各的）：外环偏置自校正按改之前的表平移附近目标用。</summary>
+    public PidGainSchedule Clone()
+    {
+        lock (_lock)
+        {
+            var c = new PidGainSchedule { MergeBandC = MergeBandC, SegmentBoundaryC = SegmentBoundaryC, SteadyBiasReachC = SteadyBiasReachC };
+            c._points.AddRange(_points);
+            return c;
+        }
+    }
+
     /// <summary>【本地改动】离设定值最近的、登记过外环参数的工作点有多远（℃）；一个都没有为 null。外环该查哪张表用它比。</summary>
     public double? NearestOuterDistance(double setpointC)
     {

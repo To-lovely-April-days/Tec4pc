@@ -102,6 +102,11 @@ public class OuterApproachTests(ITestOutputHelper output)
                 OuterBrakeBiasC = rules ? 1.5 : 0,
                 OuterStartQuietWindow = rules && quiet ? TimeSpan.FromSeconds(120 / K) : TimeSpan.Zero,
                 OuterStartAverage = TimeSpan.FromSeconds(30 / K),
+                // 外环偏置自校正照现场开着（按压缩时间）：这些场景表里的偏置都对，不该触发
+                OuterBiasCheckWindow = TimeSpan.FromSeconds(600 / K),
+                OuterBiasCheckTauHat = 800 / K,
+                OuterBiasCheckWallHat = 120 / K,
+                OuterBiasCheckHold = TimeSpan.FromSeconds(600 / K),
             };
             Loop.ConfigurePid(1, 20, 0.05, 0, 90, invertOutput: false);
             Loop.ConfigureCascade(1, 2.5, 0.013 * K, 0, 8);

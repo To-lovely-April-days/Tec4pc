@@ -25,15 +25,24 @@ public class HeatBoostTwinTests(ITestOutputHelper output)
         private double _tj, _tr, _tw, _s, _h1, _h2, _cf, _t, _pend;
         private int _conn, _pendSide;
         private readonly Queue<(double T, double H)> _hq = new();
+        private readonly Queue<(double T, double Tj)> _wq = new();
         private DateTime _last;
         public int Switches;
+        private readonly double _tau1, _twLag, _wallDelay, _bPerK, _bAtC;
+        private double _b;
 
-        public Plant(double tr0, double tj0, double tw0, double s0)
+        /// <summary>釜：τ1 / 稳态偏置 b / 壁滞后 tw / 夹套到壁的纯滞后（s）缺省 = −2 → 20 那场的拟合；40 ℃ 那场（165419）拟合 981 / 3.32 / 116 / 18。
+        /// 偏置随温度变：b + bPerK ×（Tr − bAtC）（缺省不变）。</summary>
+        public Plant(double tr0, double tj0, double tw0, double s0, double tau1 = 1027, double b = 1.6, double tw = 142, double wallDelay = 0,
+            double bPerK = 0, double bAtC = 0)
         {
             _tr = tr0; _tj = tj0; _tw = tw0; _s = s0;
             _conn = _pendSide = 1;
+            _tau1 = tau1; _b = b; _twLag = tw; _wallDelay = wallDelay; _bPerK = bPerK; _bAtC = bAtC;
         }
 
+        /// <summary>稳态偏置（运行中可改：模拟估值跟实际差一截）。</summary>
+        public double B { get { lock (_gate) return _b; } set { lock (_gate) _b = value; } }
         public double Tr { get { lock (_gate) return _tr; } }
         public double Tj { get { lock (_gate) return _tj; } }
         public double SimSeconds { get { lock (_gate) return _t; } }
@@ -69,8 +78,11 @@ public class HeatBoostTwinTests(ITestOutputHelper output)
                     var dTj = 0.002815 * _h2 - 0.00152 * _cf + 0.0061 + (_s - _tj) / 429.7 + (_tr - _tj) / 816.8;
                     _s += (_tj - _s) / 150.7 * h;
                     _tj += dTj * h;
-                    var dTr = (_tw - _tr - 1.6) / 1027.0;
-                    _tw += (_tj - _tw) / 142.0 * h;
+                    var dTr = (_tw - _tr - (_b + _bPerK * (_tr - _bAtC))) / _tau1;
+                    _wq.Enqueue((_t, _tj));
+                    var tjd = _wq.Peek().Tj;
+                    while (_wq.Count > 1 && _t - _wq.Peek().T > _wallDelay) tjd = _wq.Dequeue().Tj;
+                    _tw += (tjd - _tw) / _twLag * h;
                     _tr += dTr * h;
                 }
             }
@@ -86,7 +98,8 @@ public class HeatBoostTwinTests(ITestOutputHelper output)
         private readonly List<string> _notes = new();
         private readonly List<(double T, double Tr, double Tj, double Isp, double I, bool Boost, double Vm, double Vs)> _trace = new();
 
-        public Rig(Plant plant, HeatBoostLevel level, bool allowed, Action<HostControlLoop>? tweak = null, double learnedBias = 1.6)
+        public Rig(Plant plant, HeatBoostLevel level, bool allowed, Action<HostControlLoop>? tweak = null, double learnedBias = 1.6,
+            double[]? rows = null, Action<Rig, ChannelCycleInfo>? onCycle = null)
         {
             P = plant;
             Dev = new FakeRd105Device { Thermal = false };
@@ -119,11 +132,16 @@ public class HeatBoostTwinTests(ITestOutputHelper output)
                 HeatBoostHandAverage = TimeSpan.FromSeconds(120 / K),
                 HeatBoostStallWindow = TimeSpan.FromSeconds(300 / K),
                 HeatBoostDenyGrace = TimeSpan.FromSeconds(30 / K),
+                // 外环偏置自校正照现场开着（按压缩时间）：这些场景表里的偏置都对，不该触发
+                OuterBiasCheckWindow = TimeSpan.FromSeconds(600 / K),
+                OuterBiasCheckTauHat = 800 / K,
+                OuterBiasCheckWallHat = 120 / K,
+                OuterBiasCheckHold = TimeSpan.FromSeconds(600 / K),
             };
             Loop.SetActuatorMode(1, ActuatorMode.HeaterTec);
             var both = Loop.GetGainSchedule(1, GainTable.Both);
             both.SegmentBoundaryC = double.NaN;
-            foreach (var sp in new[] { 20.0, 21.0, 25.0 })
+            foreach (var sp in rows ?? new[] { 20.0, 21.0, 25.0 })
                 both.Learn(new GainPoint(sp, new PidGains(9.4, 0.037 * K, 175 / K), 0, 0,
                     new PidGains(2.5, 0.01 * K, 0), 8, SteadyBiasC: learnedBias, HeatRatio: 3.5));
             Loop.ConfigurePid(1, 9.4, 0.037 * K, 175 / K, 90, invertOutput: false, derivativeFilterSeconds: 8.6 / K);
@@ -138,6 +156,7 @@ public class HeatBoostTwinTests(ITestOutputHelper output)
                 var c = res.Ch1;
                 P.Step(res.Snapshot.Timestamp, c.Active ? c.DutyPercent : 0);
                 Dev.Set(1, "TCADJTEMP", (long)Math.Round(P.Tj * 1e5));
+                if (c.Active) onCycle?.Invoke(this, c);
                 lock (_gate)
                     if (c.Active)
                         _trace.Add((P.SimSeconds, P.Tr, P.Tj, c.InnerSetpointC, c.OuterI, c.HeatBoosting,
@@ -146,9 +165,19 @@ public class HeatBoostTwinTests(ITestOutputHelper output)
             Loop.Start();
         }
 
+        /// <summary>等到现场 minutes 分钟。通道停了（外环丢了跳掉之类）直接报错；墙钟超过应有的 3 倍 + 1 分钟也报错——别把整轮测试挂死。</summary>
         public async Task UntilMin(double minutes)
         {
-            while (Trace() is var t && (t.Length == 0 || t[^1].T - t[0].T < minutes * 60)) await Task.Delay(20);
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(minutes * 60 / K * 3 + 60);
+            while (Trace() is var t && (t.Length == 0 || t[^1].T - t[0].T < minutes * 60))
+            {
+                var at = t.Length == 0 ? 0 : (t[^1].T - t[0].T) / 60;
+                if (t.Length > 0 && !Loop.GetChannelStatus(1).Active)
+                    throw new InvalidOperationException($"通道 1 在 {at:F1} min 停了：{string.Join(" | ", Notes().TakeLast(2))}");
+                if (DateTime.UtcNow > deadline)
+                    throw new TimeoutException($"等现场 {minutes} min 超时（才到 {at:F1} min）");
+                await Task.Delay(20);
+            }
         }
 
         public string[] Notes() { lock (_notes) return _notes.ToArray(); }
