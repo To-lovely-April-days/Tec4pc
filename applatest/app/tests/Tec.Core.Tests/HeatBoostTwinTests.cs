@@ -98,8 +98,11 @@ public class HeatBoostTwinTests(ITestOutputHelper output)
         private readonly List<string> _notes = new();
         private readonly List<(double T, double Tr, double Tj, double Isp, double I, bool Boost, double Vm, double Vs)> _trace = new();
 
+        /// <param name="bothRows">【本地改动】给了就按它摆双向挡表（B = null 的行只带参数、不带稳态偏置 = 表里「没有这个温度的偏置」）；不给照旧 rows × learnedBias。</param>
+        /// <param name="heaterRows">【本地改动】加热棒表的行（带外环参数才算「登记过外环」、双向挡表给不出时回路才借得到）。</param>
         public Rig(Plant plant, HeatBoostLevel level, bool allowed, Action<HostControlLoop>? tweak = null, double learnedBias = 1.6,
-            double[]? rows = null, Action<Rig, ChannelCycleInfo>? onCycle = null)
+            double[]? rows = null, Action<Rig, ChannelCycleInfo>? onCycle = null,
+            (double T, double? B)[]? bothRows = null, (double T, double B)[]? heaterRows = null)
         {
             P = plant;
             Dev = new FakeRd105Device { Thermal = false };
@@ -134,16 +137,27 @@ public class HeatBoostTwinTests(ITestOutputHelper output)
                 HeatBoostDenyGrace = TimeSpan.FromSeconds(30 / K),
                 // 外环偏置自校正照现场开着（按压缩时间）：这些场景表里的偏置都对，不该触发
                 OuterBiasCheckWindow = TimeSpan.FromSeconds(600 / K),
-                OuterBiasCheckTauHat = 800 / K,
+                OuterBiasCheckTauHat = 1000 / K,
                 OuterBiasCheckWallHat = 120 / K,
                 OuterBiasCheckHold = TimeSpan.FromSeconds(600 / K),
+                OuterHeatBalanceSpan = TimeSpan.FromSeconds(300 / K),          // 【本地改动】热平衡缓冲（压低那一刻改积分 / 过零封顶）也按压缩时间
+                OuterHeatBalanceSlopeSpan = TimeSpan.FromSeconds(180 / K),
+                OuterHeatBalanceMinSpan = TimeSpan.FromSeconds(150 / K),
             };
             Loop.SetActuatorMode(1, ActuatorMode.HeaterTec);
             var both = Loop.GetGainSchedule(1, GainTable.Both);
             both.SegmentBoundaryC = double.NaN;
-            foreach (var sp in rows ?? new[] { 20.0, 21.0, 25.0 })
+            IEnumerable<(double T, double? B)> bothSeed = bothRows ?? (rows ?? new[] { 20.0, 21.0, 25.0 }).Select(t => (t, (double?)learnedBias));
+            foreach (var (sp, b) in bothSeed)
                 both.Learn(new GainPoint(sp, new PidGains(9.4, 0.037 * K, 175 / K), 0, 0,
-                    new PidGains(2.5, 0.01 * K, 0), 8, SteadyBiasC: learnedBias, HeatRatio: 3.5));
+                    new PidGains(2.5, 0.01 * K, 0), 8, SteadyBiasC: b, HeatRatio: 3.5));
+            if (heaterRows is not null)
+            {
+                var heater = Loop.GetGainSchedule(1, GainTable.Heater);
+                heater.SegmentBoundaryC = double.NaN;
+                foreach (var (sp, b) in heaterRows)
+                    heater.Learn(new GainPoint(sp, new PidGains(9.4, 0.037 * K, 175 / K), 0, 0, new PidGains(2.5, 0.01 * K, 0), 8, SteadyBiasC: b));
+            }
             Loop.ConfigurePid(1, 9.4, 0.037 * K, 175 / K, 90, invertOutput: false, derivativeFilterSeconds: 8.6 / K);
             Loop.ConfigureCascade(1, 2.5, 0.01 * K, 0, 8);
             Loop.SetStrategy(1, ControlStrategy.Cascade);

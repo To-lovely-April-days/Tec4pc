@@ -292,6 +292,8 @@ public sealed class ChillerInterlockTests
         b.Rd.Set(1, "TCADJTEMP", (long)Math.Round(tj * 1e5));
         await WaitJacket(t, tj);
         b.Now = b.Now.AddSeconds(dt);
+        // 【本地改动】这组用例按「10 s 窗就进段」写的（2026-10-28）；进段至少 30 s 窗、压低再进间隔见 DuoPushReentryTests
+        ((DuoSession)s).EnterSlopeMinSpan = ((DuoSession)s).SlopeMinSpan;
         await Tick(s);
     }
 
@@ -344,6 +346,7 @@ public sealed class ChillerInterlockTests
         d.ChillerMinGap = TimeSpan.Zero;
         d.CoolMinDuration = TimeSpan.Zero;
         d.ExitLead = TimeSpan.Zero;
+        d.ReentryDwell = TimeSpan.Zero;                   // 【本地改动】这条紧跟着再进一段；再进间隔（2026-11-06）另见 DuoPushReentryTests
         await Overshoot(b, s, t, manual: true);
         var id = AskId(s);
 
@@ -427,6 +430,7 @@ public sealed class ChillerInterlockTests
         var b = Rig();
         var (s, t) = await Cooling(b);
         await using var _ = s;
+        ((DuoSession)s).ReentryDwell = TimeSpan.Zero;     // 【本地改动】这条紧跟着再进一段；再进间隔（2026-11-06）另见 DuoPushReentryTests
         await Overshoot(b, s, t, manual: true);
         var id = AskId(s);
 
@@ -1046,6 +1050,7 @@ public sealed class ChillerInterlockTests
         var d = (DuoSession)s;
         d.CoolMinDuration = TimeSpan.Zero;
         d.ExitLead = TimeSpan.Zero;
+        d.ReentryDwell = TimeSpan.Zero;                   // 【本地改动】这条紧跟着再进一段；再进间隔（2026-11-06）另见 DuoPushReentryTests
         await Overshoot(b, s, t, manual: false);
         Assert.True(b.Io.Coils[7]);
 
@@ -1111,6 +1116,7 @@ public sealed class ChillerInterlockTests
         d.CoolMinDuration = TimeSpan.Zero;
         d.ExitLead = TimeSpan.Zero;
         d.ChillerMinGap = TimeSpan.FromSeconds(120);      // 这条的时间线按 120 s 排（缺省 60 s）
+        d.ReentryDwell = TimeSpan.Zero;                   // 【本地改动】这条紧跟着再进一段；再进间隔（2026-11-06）另见 DuoPushReentryTests
         await Overshoot(b, s, t, manual: false);          // 自动开水：冷启动一次
         Assert.True(b.Io.Coils[7]);
         Assert.Equal(2, b.Chiller.State);

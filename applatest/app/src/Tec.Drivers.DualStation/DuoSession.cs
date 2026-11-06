@@ -149,6 +149,24 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     internal TimeSpan SlopeMinSpan { get; set; } = TimeSpan.FromSeconds(10);
     /// <summary>斜率小于它算「没动」（K/s；0.0005 = 0.03 K/min，Tr 0.01 K 量化、30 s 窗能分辨 ~0.02 K/min）。</summary>
     internal double SlopeEpsKPerS { get; set; } = 0.0005;
+    /// <summary>
+    /// 【本地改动】压低再进间隔（2026-11-06）：提前判据进的制冷段结束（回落 / 超前回落 / 功率符号退 / 挂起期间回落）之后这么久之内
+    /// 不再按提前判据进段，继电器只按功率符号走（0 = 不限）。现场 R1-tc1-20261106-130619（65.8 → 70 ℃）：31.46 min 功率转正松开压低、
+    /// 31.55 min（5 s 后）Tr 70.15 ℃ 相对目标 +0.04 K/min（0.01 K 量化的抖动）又按提前判据进、再压 2 K——第二段的最短 60 s 把继电器
+    /// 扣在 TEC 上而内环早已要加热（−90 %），夹套掉到 63.8 ℃（压低目标 67.7，低了 4 K）、Tr 掉 1.56 K、15 分钟才爬回来。
+    /// 松开后头一分钟釜壁还在回弹，这时的「在升」不是放热、是上一段的尾巴：让加热棒先把夹套托回去（该间隔内回路真要冷照功率符号接 TEC）。
+    /// </summary>
+    internal TimeSpan ReentryDwell { get; set; } = TimeSpan.FromSeconds(60);
+    /// <summary>
+    /// 【本地改动】提前判据「进」要的斜率至少跨这么长的窗（原来跟 Below 一样 10 s 就表态）：0.01 K 量化的 Tr 在 10 s 窗里翻一格就是
+    /// 0.06 K/min，过 0.03 K/min 的门槛——误进一次就压低一次。已在 TEC 侧的「还在升」照旧看 10 s 窗（误判只是多留几拍，方向是不超调那边）。
+    /// 滑窗留点按它多留一拍（<see cref="SlopeRetention"/>），不然恰好 30 s 的点因为拍子抖动出窗、永远凑不够跨度。
+    /// </summary>
+    internal TimeSpan EnterSlopeMinSpan { get; set; } = TimeSpan.FromSeconds(30);
+    /// <summary>上一段提前判据进的制冷段什么时候结束的（再进间隔从这里算；新目标 / 停控清掉）。采集线程写、读。</summary>
+    private readonly DateTimeOffset?[] _earlyExitAt = new DateTimeOffset?[2];
+    /// <summary>「再进间隔内不进」每段间隔只报一次。</summary>
+    private readonly bool[] _dwellSaid = new bool[2];
     /// <summary>整机：冷水机上一次冷启动（发开机且它不在转）的时刻；撤销关水时它还在转的不算。</summary>
     private DateTimeOffset? _chillerLastStartAt;
     /// <summary>挂着的那次开机是不是冷启动（补发路径沿用）。</summary>
@@ -258,6 +276,8 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         if (well is not (0 or 1)) return;
         _wantEnabled[well] = true;
         _slope[well].Clear();
+        _earlyExitAt[well] = null;          // 【本地改动】新目标：上一段的再进间隔作废（方向重新算，跟符号计时一样）
+        _dwellSaid[well] = false;
         Interlocked.Increment(ref _issueGen[well]);
     }
 
@@ -315,6 +335,8 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         _boostAsk[well] = _boostWaterSaid[well] = false;
         try { _rd.TempOf(well).SetHeatBoost(_boost, _boostMaxDt, false); } catch { /* 停控路上尽力而为 */ }
         _slope[well].Clear();
+        _earlyExitAt[well] = null;          // 【本地改动】再进间隔随停控清掉
+        _dwellSaid[well] = false;
         Interlocked.Increment(ref _issueGen[well]);
         System.Threading.Interlocked.Increment(ref _stopGen[well]);
     }
@@ -413,6 +435,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         _pushFromEquilibrium = cfg.Str(F.PushBase, "釜内") == "稳态偏置";
         ExitLead = TimeSpan.FromSeconds(Math.Clamp(cfg.Num(F.ExitLead, 180), 0, 600));
         CoolMinDuration = TimeSpan.FromSeconds(Math.Clamp(cfg.Num(F.CoolMin, 60), 0, 600));
+        ReentryDwell = TimeSpan.FromSeconds(Math.Clamp(cfg.Num(F.PushReentry, 60), 0, 300));   // 【本地改动】压低再进间隔，同上开会话读一次
         // 缺省 60 s（用户定的，2026-11-02：原来 120 s，双向挡整定周期比它短，每周都被扣）。台面里存的 120 是旧缺省
         // （工作站属性栏打开过就写进去）：当旧缺省、按 60 用（用户定的：不用现场去改文件，同 DO6 / DO7 那条）。别的填法照填的走
         var chillerGap = cfg.Num(F.ChillerGap, 60);
@@ -910,7 +933,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
             // 不是绝对温度（不然降温斜坡里「在降」恒成立）。用会话的钟，测试拨 Now 才推得动
             var byTr = t.Kind == TempChannelKind.Reactor && TrValid(w);
             var sp = _wantEnabled[w] ? t.ActiveSetpoint ?? t.Setpoint : null;
-            _slope[w].Add(at, sp is { } spv ? (byTr ? t.CurrentReactor : t.CurrentJacket) - spv : double.NaN, byTr ? "Tr" : "Tj", SlopeWindowSpan);
+            _slope[w].Add(at, sp is { } spv ? (byTr ? t.CurrentReactor : t.CurrentJacket) - spv : double.NaN, byTr ? "Tr" : "Tj", SlopeRetention);
         }
 
         // 蒸回流跟随环：每拍把夹套目标追到 Tr+ΔT（钳上限、限速写、必要时切热源）
@@ -1737,7 +1760,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
                         // 问题留着等答复 / 到时，结果记下给之后再要 TEC 时用——不然要冷 ⇄ 不要冷来回一次就重问一次
                         if (HoldNoLongerNeeded(well, target, ep, v, act) is { } gone)
                         {
-                            if (act) EndEpisode(well, gone, keepAsk: true);
+                            if (act) EndEpisode(well, gone, keepAsk: true, dwell: true);
                             return Side.Electric;
                         }
                         return act ? ResolveHold(well, target, out blocked) : Side.Electric;
@@ -1770,7 +1793,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
                             // 被控量（加上超前）回落到目标以下：段结束、夹套目标交还外环——但**继电器不在这里扳**，交给下面的
                             // 「低过目标且回路不要制冷」与功率符号：要持续制冷才守得住的目标（低于环境温 / 放热还在），交还之后回路照样要冷，
                             // 留在 TEC，不来回启停冷水机
-                            if (act) EndEpisode(well, "被控量回落");
+                            if (act) EndEpisode(well, "被控量回落", dwell: true);
                             ep = null;
                         }
                         else
@@ -1778,8 +1801,9 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
                             if (SignSide(well) is { } bySign2)
                             {
                                 // 被控量还高过目标且在升：夹套环说要加热（夹套已被压到目标之下）也不交还——釜内还没下来，TEC 留着
-                                if (bySign2 == Side.Electric && v.Enter) return Side.Tec;
-                                if (bySign2 == Side.Electric && act) EndEpisode(well, $"功率已连续 {SignDwell.TotalSeconds:0} s 指向电加热");
+                                // （【本地改动】Rising = 原来的 Enter、10 s 窗：守着不走的判据不收紧，收紧的只是「进」）
+                                if (bySign2 == Side.Electric && v.Rising) return Side.Tec;
+                                if (bySign2 == Side.Electric && act) EndEpisode(well, $"功率已连续 {SignDwell.TotalSeconds:0} s 指向电加热", dwell: true);
                                 return bySign2;
                             }
                             return Side.Tec;
@@ -1789,9 +1813,26 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
                     // 提前判据：被控量高过目标 δ 且在升、此刻不在 TEC 侧 → 进制冷段（不等功率翻号、不等驻留）
                     if (v.Enter && !tecNow)
                     {
-                        if (!act) return Side.Tec;
-                        _earlyDecided[well] = true;
-                        return TryEnter(well, target, "提前判据", out blocked);
+                        // 【本地改动】压低刚松开、再进间隔没到：不进、不压，往下按功率符号走——加热棒该出力就出力（现场松开那一刻内环要 −90 %
+                        // 加热，再进却把继电器扣回 TEC 60 s），回路真要冷照符号进法接 TEC（不受最短制冷时间、不压偏置）。只报一次
+                        if (ReentryLeft(well) is { } left)
+                        {
+                            if (act && !_dwellSaid[well])
+                            {
+                                _dwellSaid[well] = true;
+                                var text = $"工位 {AB(well)} 双向挡：{Ctl(well)} {Controlled(well):F2} ℃ 又高过目标 {target:F2} + {EarlyDelta:F2} ℃ 且在升" +
+                                           $"（相对目标 {SlopePerMin(well):+0.00;−0.00} K/min），但上一段提前判据进的制冷段 {(ReentryDwell - left).TotalSeconds:0} s 前才结束——" +
+                                           $"再进间隔 {ReentryDwell.TotalSeconds:0} s 内不按提前判据进，继电器按功率符号走（这一段只报一次）";
+                                _ctx.Log?.Invoke("info", $"{InstanceId} {text}");
+                                _rd.TempOf(well).Note(text);
+                            }
+                        }
+                        else
+                        {
+                            if (!act) return Side.Tec;
+                            _earlyDecided[well] = true;
+                            return TryEnter(well, target, "提前判据", out blocked);
+                        }
                     }
                     // 反过来（用户定的：降温过了头就该升温）：在 TEC 侧、被控量低过目标 δ 且在降、回路没在明确要制冷 → 回加热棒，
                     // 不等符号驻留。回路还要冷（积分负着：低于环境温的目标）就不跟它拗，留在 TEC
@@ -1813,7 +1854,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
                         // 被控量的判据否决唱反调的符号（只否决「换边」，不赶走已经在那一侧的）：
                         // 在加热棒侧、低过目标且还在降，符号说要 TEC 也不去制冷；在 TEC 侧、高过目标且还在升，符号说要加热也不走
                         if (bySign == Side.Tec && !tecNow && v.Below) return Side.Electric;
-                        if (bySign == Side.Electric && tecNow && v.Enter) return Side.Tec;
+                        if (bySign == Side.Electric && tecNow && v.Rising) return Side.Tec;     // 【本地改动】Rising = 原来的 Enter（10 s 窗）
                         // 符号说要 TEC（不立段：不受最短制冷时间、不压偏置），但中途开冷水机同样要过「问人」「最短间隔」两道门
                         if (bySign == Side.Tec && !tecNow)
                             return act ? GateTec(well, target, BySignWhy, out blocked) : Side.Tec;
@@ -1855,9 +1896,22 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
 
     /// <summary>
     /// 被控量相对目标怎么样（偏差 e = 被控量 − 目标，斜率是偏差的斜率——斜坡中目标在动，比的是「追没追上」，不是绝对温度）：
-    /// Enter = 高过 δ 且偏差在涨；Below = 低过 δ 且偏差在跌；LeadExit = 偏差 + 超前 × 斜率 低过 δ 且在跌（只用来提前结束制冷段、交还夹套目标）。
+    /// Enter = 高过 δ 且偏差在涨（【本地改动】斜率要跨够 <see cref="EnterSlopeMinSpan"/>，进段 / 压低只认它）；
+    /// Rising = 同样的判据按 10 s 窗（【本地改动】只用来「已在 TEC 侧就别走」——误判多留几拍，方向是不超调那边）；
+    /// Below = 低过 δ 且偏差在跌；LeadExit = 偏差 + 超前 × 斜率 低过 δ 且在跌（只用来提前结束制冷段、交还夹套目标）。
     /// </summary>
-    private readonly record struct Early(bool Enter, bool Below, bool LeadExit);
+    private readonly record struct Early(bool Enter, bool Below, bool LeadExit, bool Rising = false);
+
+    /// <summary>【本地改动】滑窗留多久的点：进段要凑 <see cref="EnterSlopeMinSpan"/> 的跨度，留点得比它多一拍，不然恰好卡在边上的点抖出窗就永远凑不够。</summary>
+    private TimeSpan SlopeRetention => SlopeWindowSpan >= EnterSlopeMinSpan + _tick ? SlopeWindowSpan : EnterSlopeMinSpan + _tick;
+
+    /// <summary>【本地改动】再进间隔还剩多久；不在间隔内（没结束过段 / 到点了 / 配 0）为 null。</summary>
+    private TimeSpan? ReentryLeft(int well)
+    {
+        if (ReentryDwell <= TimeSpan.Zero || _earlyExitAt[well] is not { } at) return null;
+        var left = ReentryDwell - (_ctx.Clock() - at);
+        return left > TimeSpan.Zero ? left : null;
+    }
 
     private Early EarlyVerdict(int well, double target)
     {
@@ -1869,10 +1923,13 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         var de = _slope[well].Slope(SlopeMinSpan);
         if (double.IsNaN(de)) return default;                                        // 方向未知：交给符号
         var e = cur - target;
+        // 【本地改动】进段的「在升」要跨够 EnterSlopeMinSpan 才算（NaN = 跨度不够 = 不进）；门槛还是 SlopeEpsKPerS
+        var deEnter = EnterSlopeMinSpan > SlopeMinSpan ? _slope[well].Slope(EnterSlopeMinSpan) : de;
         return new Early(
-            Enter: e >= EarlyDelta && de >= SlopeEpsKPerS,
+            Enter: e >= EarlyDelta && deEnter >= SlopeEpsKPerS,
             Below: e <= -EarlyDelta && de <= -SlopeEpsKPerS,
-            LeadExit: e + ExitLead.TotalSeconds * de <= -EarlyDelta && de <= -SlopeEpsKPerS);
+            LeadExit: e + ExitLead.TotalSeconds * de <= -EarlyDelta && de <= -SlopeEpsKPerS,
+            Rising: e >= EarlyDelta && de >= SlopeEpsKPerS);
     }
 
     private bool ControlledBelow(int well, double target)
@@ -2093,8 +2150,10 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     /// <summary>
     /// 段结束（回落 / 符号退 / 新目标 / 夹套烫 / 停控 / 规矩变了）：交还夹套目标、撤回没答的询问、记一句。没段什么都不做。
     /// keepAsk：【本地改动】挂起期间不要制冷了——问题不收回，留着等答复 / 到时（SettleIdleAsk 落地），本次控温只问一次。
+    /// dwell：【本地改动】段是自己走完的（回落 / 符号退 / 挂起期间回落）——提前判据进的段记下结束时刻，<see cref="ReentryDwell"/> 内不再按提前判据进；
+    /// 新目标 / 停控 / 规矩变了那些结束不记（下一步是重新起步，不是回弹）。
     /// </summary>
-    private void EndEpisode(int well, string why, bool keepAsk = false)
+    private void EndEpisode(int well, string why, bool keepAsk = false, bool dwell = false)
     {
         var ep = Interlocked.Exchange(ref _coolEp[well], null);
         if (ep is null) return;
@@ -2109,7 +2168,15 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         }
         var now = _ctx.Clock();
         var dur = now - ep.Since;
-        var text = ep.Hold is not null
+        // 【本地改动】提前判据进的段自己走完：再进间隔从此刻算（符号进的段没压过，不限）
+        var dwellText = "";
+        if (dwell && !EnteredBySign(ep) && ReentryDwell > TimeSpan.Zero)
+        {
+            _earlyExitAt[well] = now;
+            _dwellSaid[well] = false;
+            dwellText = $"；{ReentryDwell.TotalSeconds:0} s 内不再按提前判据进（继电器按功率符号走）";
+        }
+        var text = (ep.Hold is not null
             ? $"工位 {AB(well)} 双向挡：制冷段取消（{why}；TEC 没接上，{(ep.Hold == "ask" ? "等人答复" : "等冷水机间隔")} " +
               $"{(now - ep.HoldSince!.Value).TotalSeconds:0} s）——留在加热棒{restored}" +
               (askKept ? "；开不开冷却水的询问留着，答了 / 到时就记下，这次控温之后再要接 TEC 照答复办、不再问" : "")
@@ -2117,7 +2184,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
                 ? $"工位 {AB(well)} 双向挡：{Ctl(well)} {Controlled(well):F2} ℃ 回落到目标 {ep.Target:F2} − {EarlyDelta:F2} ℃ 以下且在降" +
                   $"（{SlopePerMin(well):+0.00;−0.00} K/min{(ExitLead > TimeSpan.Zero ? $"，超前 {ExitLead.TotalSeconds:0} s" : "")}），" +
                   $"制冷段已 {dur.TotalSeconds:0} s——段结束{restored}；继电器交给回路（不要冷了就回加热棒，还要冷就留在 TEC）"
-                : $"工位 {AB(well)} 双向挡：制冷段结束（{why}，{dur.TotalSeconds:0} s）{restored}";
+                : $"工位 {AB(well)} 双向挡：制冷段结束（{why}，{dur.TotalSeconds:0} s）{restored}") + dwellText;
         _ctx.Log?.Invoke("info", $"{InstanceId} {text}");
         t.Note(text);
     }
@@ -2129,9 +2196,10 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         var now = _ctx.Clock();
         if (_coolEp[well] is not { } ep)
         {
-            if (_askWater[well] != AskState.Pending) return "";
+            var dwellX = ReentryLeft(well) is { } left ? $"·再进间隔还剩 {left.TotalSeconds:0} s" : "";   // 【本地改动】
+            if (_askWater[well] != AskState.Pending) return dwellX;
             lock (_askGate)
-                return _ask is { } a && _askWell == well ? $"·冷却水询问挂着（还剩 {Math.Max(0, (a.Deadline - now).TotalSeconds):0} s）" : "";
+                return dwellX + (_ask is { } a && _askWell == well ? $"·冷却水询问挂着（还剩 {Math.Max(0, (a.Deadline - now).TotalSeconds):0} s）" : "");
         }
         return ep.Hold switch
         {

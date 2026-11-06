@@ -164,7 +164,10 @@ public class PidTuningBenchTests
         Assert.Equal(5.5, row.SteadyBiasC);
         Assert.Equal(5.5, b.Preview(PidActuator.Heater, 50).SteadyBiasC);
         Assert.Equal(5.5, b.Preview(PidActuator.Heater, 55).SteadyBiasC);   // 15 ℃ 内沿用
-        Assert.Null(b.Preview(PidActuator.Heater, 80).SteadyBiasC);
+        // 【本地改动】⑤（2026-11-06）：表没有这个温度按学到的行外推——只有 50 那一行就按 0.10 K/K 推（5.5 + 0.10 × 30 = 8.5；原来 15 ℃ 外给 null、回路去借别的表）；
+        // 离最近那行超过 80 K（SteadyBiasExtrapolateReachC）不推。这几张表按执行器分、表内不分段（SegmentBoundaryC = NaN），所以 120 也推得到（12.5）
+        Assert.Equal(8.5, b.Preview(PidActuator.Heater, 80).SteadyBiasC!.Value, 6);
+        Assert.Null(b.Preview(PidActuator.Heater, 140).SteadyBiasC);
 
         // 重读盘上的表还在；清掉这一格就是没有
         b.Reload();

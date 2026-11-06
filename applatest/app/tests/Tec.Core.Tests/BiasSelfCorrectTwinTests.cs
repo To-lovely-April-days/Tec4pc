@@ -15,11 +15,15 @@ public class BiasSelfCorrectTwinTests(ITestOutputHelper output)
 {
     private const double K = HeatBoostTwinTests.K;
 
-    /// <summary>照 DuoSession 双向挡的提前判据 + 制冷段（压低基准釜内、Δ 2 K、最短 60 s、超前 180 s、驻留 3 s）。只在回路线程上调。</summary>
+    /// <summary>照 DuoSession 双向挡的提前判据 + 制冷段（压低基准釜内、Δ 2 K、最短 60 s、超前 180 s、驻留 3 s）。只在回路线程上调。
+    /// 【本地改动】照会话 2026-11-06 那两条：② 段结束（超前回落 / 功率翻号）后 <see cref="ReentryDwell"/> 内不再按提前判据进（现场松开 5 s 就被 0.01 K 量化出来的 +0.04 K/min 假斜率再压一回），
+    /// Enter 用的斜率要跨满 30 s 的窗；功率符号说加热但 Enter（高过目标且在升）还成立时不退段（DuoSession.cs:1781 那条，原来孪生没照搬）。</summary>
     internal sealed class EarlySwitch
     {
         private readonly List<(double T, double E)> _w = new();
-        private double? _since, _heatSince;
+        private double? _since, _heatSince, _endedAt;
+        /// <summary>② 压低再进间隔（现场秒；DualStation「压低再进间隔」缺省 60 s）。0 = 像原来那样段一结束就能再进。</summary>
+        public double ReentryDwell = 60;
         public int Pushes;
         public readonly List<double> PushAtMin = new();
         /// <summary>每次自校正的时刻（现场秒，跟 Trace 的 T 同一个钟）。</summary>
@@ -30,7 +34,7 @@ public class BiasSelfCorrectTwinTests(ITestOutputHelper output)
         public void Release(HeatBoostTwinTests.Rig r)
         {
             if (_since is not null) r.Loop.SetOuterPushDown(1, null);
-            _since = _heatSince = null;
+            _since = _heatSince = _endedAt = null;
             _w.Clear();
         }
 
@@ -49,17 +53,21 @@ public class BiasSelfCorrectTwinTests(ITestOutputHelper output)
             if (Paused) return;
             var e = Math.Round(r.P.Tr, 2) - c.SetpointC;
             _w.Add((t, e));
-            _w.RemoveAll(x => t - x.T > 30);
+            // 窗留 30 s、再多留一个 30 s 以外的点：Enter 要的斜率得跨满 30 s（原来 RemoveAll 之后跨度永远差一拍不到 30）
+            while (_w.Count > 1 && t - _w[1].T > 30) _w.RemoveAt(0);
+            var span = _w[^1].T - _w[0].T;
             var slope = double.NaN;
-            if (_w.Count >= 3 && _w[^1].T - _w[0].T >= 10)
+            if (_w.Count >= 3 && span >= 10)
             {
                 double tm = _w.Average(x => x.T), em = _w.Average(x => x.E), sxx = 0, sxy = 0;
                 foreach (var (tt, ee) in _w) { sxx += (tt - tm) * (tt - tm); sxy += (tt - tm) * (ee - em); }
                 if (sxx > 0) slope = sxy / sxx;
             }
+            var enterNow = !double.IsNaN(slope) && e >= 0.1 && slope >= 0.0005;
             if (_since is null)
             {
-                if (!double.IsNaN(slope) && e >= 0.1 && slope >= 0.0005 && r.Loop.SetOuterPushDown(1, 2.0))
+                // ② 段刚结束的 ReentryDwell 里不进（继电器照功率符号走，加热棒能出力）；Enter 的斜率窗不满 30 s 不进
+                if (enterNow && span >= 30 && (_endedAt is null || t - _endedAt.Value >= ReentryDwell) && r.Loop.SetOuterPushDown(1, 2.0))
                 {
                     _since = t;
                     _heatSince = null;
@@ -71,15 +79,21 @@ public class BiasSelfCorrectTwinTests(ITestOutputHelper output)
             if (t - _since.Value < 60) return;
             var lead = !double.IsNaN(slope) && e + 180 * slope <= -0.1 && slope <= -0.0005;
             if (c.DutyPercent > 1) _heatSince ??= t; else _heatSince = null;
-            if (lead || _heatSince is { } hs && t - hs >= 3)
+            // 功率说加热、Enter 还成立：不退（DuoSession.cs:1781）——釜内还高过目标且在升，TEC 留着
+            if (lead || (!enterNow && _heatSince is { } hs && t - hs >= 3))
             {
                 r.Loop.SetOuterPushDown(1, null);
                 _since = null;
+                _endedAt = t;
             }
         }
     }
 
     internal static HeatBoostTwinTests.Plant Run165419() => new(32.81, 33.98, 33.98, 33.98, tau1: 981.4, b: 3.32, tw: 116.4, wallDelay: 18);
+
+    /// <summary>【本地改动】2026-11-06 现场 R1-tc1-20261106-130619（双向挡釜内 65.8 → 70 ℃）拟合的釜：τ1 1126 s、b 6.41 K、壁滞后 12 s、夹套到壁纯滞后 30 s。
+    /// 原装夹套模型下表 7.82 时复现第一次爬过 70 + 压低，表 6.41 时干净（不压、冲过 0.03）。</summary>
+    internal static HeatBoostTwinTests.Plant Run130619() => new(65.78, 67.37, 67.37, 67.37, tau1: 1126, b: 6.41, tw: 12, wallDelay: 30);
 
     /// <summary>同一台釜，从 39.6 ℃、夹套 / 釜壁 44 ℃ 起（6 分钟左右就过 40）：查清窗口那几条路用，省掉前面 30 分钟升温。</summary>
     internal static HeatBoostTwinTests.Plant NearTarget() => new(39.6, 44.0, 44.0, 44.0, tau1: 981.4, b: 3.32, tw: 116.4, wallDelay: 18);

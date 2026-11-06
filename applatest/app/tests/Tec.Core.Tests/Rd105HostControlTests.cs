@@ -900,6 +900,7 @@ public class Rd105HostControlTests
         d.CoolMinDuration = TimeSpan.FromSeconds(2);
         d.ExitLead = TimeSpan.Zero;
         d.SignDwell = TimeSpan.FromHours(1);       // 假机夹套每秒走 1 K、几秒就压到压低后的目标以下：只验温度判据这条路，符号别来扳
+        d.EnterSlopeMinSpan = d.SlopeMinSpan;      // 【本地改动】这条验的是压低 / 冻结 / 交还，按 10 s 窗就进写的（25 s 内要切）；进段至少 30 s 窗见 DuoPushReentryTests
         var t = Temp(s, 0);
         await WaitUntil(() => !double.IsNaN(t.CurrentJacket), 3000, "夹套读数");
         // 离目标 0.2 K 起步：不到 0.5 K 不加刹车（没学到偏置时起步会往来的方向刹一把），这条只验提前切 TEC

@@ -269,8 +269,11 @@ public class BiasSelfCorrectLearnTwinTests(ITestOutputHelper output)
         // 表里偏高 0.5：按小门槛改一次（冲过目标被压低过那种），改完不再压、稳住
         var fixesT = Fixes(tblHi);
         Assert.Single(fixesT);
-        Assert.Contains("冲过目标被压低过", fixesT[0]);
-        Assert.Contains("+3.82 K 跟实测差", fixesT[0]);          // 差 0.5 K 也说表偏了（不说「对得上、不用改」）
+        // 【本地改动】（2026-11-06 ①）现在第一次爬过 40.1 压低那一拍就按热平衡改（3.76 → 3.25，b̂ 跟真值 3.32 差 0.07），压一回、19 分钟稳进 ±0.05；
+        // 原来要等松开以后窗口攒满按小门槛改（压两回）。表偏 0.5 K 照样说「偏了」（不说「对得上、不用改」）
+        Assert.Contains("压低那一刻按热平衡", fixesT[0]);
+        Assert.Contains("+3.82 K", fixesT[0]);
+        Assert.Contains("偏了", fixesT[0]);
         var fixTbl = swT.FixAt[0];
         Assert.True(swT.Pushes <= 2, $"表偏高 0.5：压低 {swT.Pushes} 次");
         Assert.DoesNotContain(swT.PushAtMin, m => m * 60 > fixTbl);

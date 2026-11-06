@@ -620,7 +620,7 @@ public sealed class HmiViewModel : ViewModelBase
             if (chillerGap == 120) chillerGap = 60;
             rows.Add(new SysRow("双向挡参数",
                 $"提前 δ {cfg.Num("提前切换偏差", 0.1):0.00} K · 压低 Δ {cfg.Num("制冷时夹套压低", 2):0.0} K（基准 {cfg.Str("压低基准", "釜内")}）" +
-                $" · 退出超前 {cfg.Num("退出超前", 180):0} s · 最短制冷 {cfg.Num("最短制冷时间", 60):0} s · 冷水机间隔 {chillerGap:0} s" +
+                $" · 退出超前 {cfg.Num("退出超前", 180):0} s · 最短制冷 {cfg.Num("最短制冷时间", 60):0} s · 再进间隔 {cfg.Num("压低再进间隔", 60):0} s · 冷水机间隔 {chillerGap:0} s" +     // 【本地改动】压低再进间隔（2026-11-06）
                 $" · 弹窗 {cfg.Num("中途弹窗等答复", 60):0} s · 驻留 {cfg.Num("符号驻留", 3):0} s · 通水 {cfg.Num("通水延时", 5):0} s",
                 "在工作站台面属性栏修改，重新连接设备后生效"));
             // 【本地改动】升温加速（2026-11-04）

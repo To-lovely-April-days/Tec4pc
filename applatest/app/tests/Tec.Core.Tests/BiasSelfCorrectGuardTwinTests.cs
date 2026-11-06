@@ -120,10 +120,14 @@ public class BiasSelfCorrectGuardTwinTests(ITestOutputHelper output)
         var tail1 = after1.Where(x => x.T >= push1!.Value + 30 * 60).Select(x => x.Tr).ToArray();
         Assert.True(tail1.Min() >= 40 - 0.05 && tail1.Max() <= 40 + 0.05, $"硬压 30 分钟以后 Tr {tail1.Min():F3}…{tail1.Max():F3}");
 
-        // P3：扰动那一下最多压一次；回来以后不再压、积分不往上跑、不再改
+        // P3：扰动那一下最多压一次；回来以后不再压、积分不往上跑、不再改。
+        // 【本地改动】（2026-11-06 ①）扰动压低那一拍「压低那一刻按热平衡」不改：改完 25 分钟里这个目标真稳住过（学到过），再被压低是扰动不是表错——
+        // 压低前那几分钟的热平衡是扰动里的釜（偏置 2.6），按它改会把对的积分 3.18 改到 2.58、扰动撤了釜内掉到 39.55、71 分钟才稳进 ±0.05（不改：掉到 39.60、57.5 分钟）
         Assert.NotNull(d3);
         Assert.True(back3, "扰动没撤");
-        Assert.Single(Fixes(p3));
+        var fixes3 = Fixes(p3);
+        Assert.Single(fixes3);
+        Assert.DoesNotContain(fixes3, n => n.Contains("压低那一刻按热平衡"));
         var pushes3 = sw3.PushAtMin.Where(m => m * 60 > d3!.Value).ToArray();
         Assert.True(pushes3.Length <= 1, $"扰动以后压低 {pushes3.Length} 次：{string.Join("、", pushes3.Select(m => m.ToString("F1")))} min");
         var after3 = p3.Trace().Where(x => x.T >= d3!.Value + 6 * 60).ToArray();
@@ -338,8 +342,11 @@ public class BiasSelfCorrectRefixAnchorTwinTests(ITestOutputHelper output)
         Assert.True(anchorA != default, "硬压解除以后起算点没立（这条用例没查到早先立着的那种）");
         Assert.Contains(swA.PushAtMin, m => m * 60 > distA!.Value);       // 扰动真压了一次
         var fixesA = Fixes(a);
+        // 小门槛那条照样不错改；【本地改动】（2026-11-06 ①）扰动压低那一拍「压低那一刻按热平衡」也不改：这个目标这一场稳住过（学到过），再被压低是扰动不是表错
+        // （改了的话 3.16 → 2.57，扰动撤了釜内掉到 39.54、96 分钟才稳进 ±0.05；不改 82.7 分钟）
         Assert.Single(fixesA);
         Assert.DoesNotContain(fixesA, n => n.Contains("冲过目标被压低过"));
+        Assert.DoesNotContain(fixesA, n => n.Contains("压低那一刻按热平衡"));
         Assert.True(a.StayInMin(40, 0.05) <= 90, $"扰动以后 {a.StayInMin(40, 0.05):F1} min 才稳在 ±0.05（按小门槛错改、多沉）");
 
         Assert.True(anchorB != default, "B：硬压解除以后起算点没立");
@@ -716,6 +723,8 @@ public class BiasSelfCorrectTableTests(ITestOutputHelper output)
 /// 放热顶过目标、压一次，松开紧跟着按放热那会儿实测又改一次（积分 ≈ 1.5，真值 3.32）；放热撤了釜内掉 0.7 K、跑出带子、拿住放开。
 /// 保护还立着：积分等保护到期才往上走、到 3.3–3.4 被趋近冻住，回来冲 0.03–0.05、不再压、不再改（HEAD 一样）。
 /// 改的时候把保护清了：拿住一放开（釜内还在坑底往下走）积分就往上攒到 3.7–3.8，冲 0.13–0.16、又压 1–2 回、又改一次。
+/// 【本地改动】（2026-11-06 ①）放热顶上去压低那一拍就先按压低前的热平衡改一次（τ1 981：3.03 → 2.59；τ1 1374：2.95 → 1.86），松开以后窗口攒满的那次小门槛再改
+/// 看时序有没有：τ1 981 有时赶在放热撤了之前（2.62 → 1.60，69 分钟稳进 ±0.05）、有时窗口被放热撤了那一掉打断（没有，75 分钟；① 关着 72 分钟）——两种都不冲、不再压。
 /// </summary>
 public class BiasSelfCorrectSlowWallExothermTwinTests(ITestOutputHelper output)
 {
@@ -732,6 +741,7 @@ public class BiasSelfCorrectSlowWallExothermTwinTests(ITestOutputHelper output)
                 double? fix = null, dist = null;
                 var back = false;
                 DateTime? guardAtRefix = null;
+                var fixesSeen = 0;
                 var sw = new EarlySwitch();
                 var plant = new HeatBoostTwinTests.Plant(39.6, 44.0, 44.0, 44.0, tau1: tau1, b: 3.32, tw: 200, wallDelay: 36);
                 var r = Rig(5.53, true, sw, plant, (r, c) =>
@@ -748,9 +758,15 @@ public class BiasSelfCorrectSlowWallExothermTwinTests(ITestOutputHelper output)
                         r.P.B = 3.32;
                         back = true;
                     }
-                    // 第二次改的那一拍（EarlySwitch 刚记上）：解除压低立的保护还在不在
-                    if (sw.FixAt.Count == 2 && guardAtRefix is null)
-                        guardAtRefix = (DateTime)F(BiasSelfCorrectRetargetTwinTests.StateOf(r.Loop), "ReleaseGuardUntil");
+                    // 放热里改的那一拍（EarlySwitch 刚记上）：解除压低立的保护还在不在。
+                    // 【本地改动】（2026-11-06 ①）改的次数不定（τ1 1374 第一次爬过 40 压低那一拍就按热平衡改一次 5.52 → 4.36；τ1 981 松开以后那次小门槛再改看时序有没有），
+                    // 不按第几次认，按「放热那 8 分钟里改的」认，几次都记最后那次（松开以后那次有的话就是它）
+                    if (sw.FixAt.Count > fixesSeen)
+                    {
+                        fixesSeen = sw.FixAt.Count;
+                        if (dist is { } d0 && t >= d0 && t < d0 + 8 * 60)
+                            guardAtRefix = (DateTime)F(BiasSelfCorrectRetargetTwinTests.StateOf(r.Loop), "ReleaseGuardUntil");
+                    }
                 });
                 rigs.Add((name, r, sw, () => dist, () => back, () => guardAtRefix));
             }
@@ -769,19 +785,27 @@ public class BiasSelfCorrectSlowWallExothermTwinTests(ITestOutputHelper output)
                 var maxI = after.Max(x => x.I);
                 var pushesAfter = sw.PushAtMin.Where(m => m * 60 >= end).ToArray();
                 output.WriteLine($"   {name}：放热里压 {sw.PushAtMin.Count(m => m * 60 >= d && m * 60 < end)} 次、改 {sw.FixAt.Count} 次；放热撤了以后压 {pushesAfter.Length} 次、" +
-                                 $"坑底以后最高 {rebound:+0.000;-0.000}、积分最高 {maxI:F2}；第二次改那一拍保护到 {guardAt():HH:mm:ss.fff}");
+                                 $"坑底以后最高 {rebound:+0.000;-0.000}、积分最高 {maxI:F2}；放热里改那一拍保护到 {guardAt():HH:mm:ss.fff}");
 
-                // 用例本身：放热真压了一次、松开以后按放热那会儿实测又改了一次（积分改到 2 以下）
+                // 用例本身：放热真压了一次、放热里按实测又改了（至少改低过再改一次的门槛 0.2 K——这条用例没查到东西的话就是空的）。
+                // 【本地改动】（2026-11-06 ①）改的次序变了：τ1 1374 第一次爬过 40 压低那一拍按热平衡改（5.52 → 4.36）、过零 + 一个窗口自校正（→ 2.6）、
+                // 放热压低那一拍再按热平衡改（2.95 → 1.86）；放热撤了掉到 39.37、63 分钟稳进 ±0.05（① 关着 72.4 分钟）。
+                // τ1 981 第一次压低那一拍没改（夹套跟得不够紧）、自校正 5.46 → 3.05、放热压低那一拍 ① 3.03 → 2.59，松开以后那次小门槛再改（2.62 → 1.60）看时序有没有：
+                // 有 69 分钟稳进、没有 75 分钟（① 关着 72）。原来这儿要「改到 2 以下」，那是松开以后按放热里的实测改的数；① 在压低那一拍改、按的是压低前的热平衡、
+                // 一次最多 1.5 K，放热的 2 K 还没全显出来，改到 2.6 左右——所以改成「真改低了」
                 Assert.Contains(sw.PushAtMin, m => m * 60 >= d && m * 60 < end);
-                Assert.True(sw.FixAt.Count >= 2 && sw.FixAt[1] >= d && sw.FixAt[1] < end,
-                    $"{name}：第二次改在 {string.Join("、", sw.FixAt.Select(x => (x / 60).ToString("F1")))} min，放热 {d / 60:F1}–{end / 60:F1} min");
-                Assert.True(r.Trace().Where(x => x.T >= sw.FixAt[1]).Min(x => x.I) < 2.0, $"{name}：第二次改没把积分改低（这条用例没查到东西）");
+                var fixInHeat = sw.FixAt.FirstOrDefault(x => x >= d && x < end);
+                Assert.True(fixInHeat > 0,
+                    $"{name}：改在 {string.Join("、", sw.FixAt.Select(x => (x / 60).ToString("F1")))} min，放热 {d / 60:F1}–{end / 60:F1} min 里一次都没改");
+                var iBeforeFix = r.Trace().Last(x => x.T < fixInHeat).I;
+                var iAfterFix = r.Trace().Where(x => x.T >= fixInHeat).Min(x => x.I);
+                Assert.True(iBeforeFix - iAfterFix >= 0.2, $"{name}：放热里那次改没把积分改低（{iBeforeFix:F2} → 最低 {iAfterFix:F2}；这条用例没查到东西）");
 
                 // 放热撤了：积分不往上攒过头、不冲、不再压、不再改
                 Assert.True(maxI <= 3.32 + 0.3, $"{name}：放热撤了以后积分最高 {maxI:F2}（拿住一放开就往上攒了）");
                 Assert.True(rebound <= 0.08, $"{name}：放热撤了、坑底以后冲到 {rebound:+0.000}");
                 Assert.Empty(pushesAfter);
-                Assert.Equal(2, Fixes(r).Length);
+                Assert.InRange(Fixes(r).Length, 2, 3);     // 【本地改动】① 之前恒为 2；现在 τ1 1374 3 次、τ1 981 2 或 3 次（见上）
                 // 改的那一拍不清解除压低立的保护（上面那几条就是清了的后果）
                 Assert.True(guardAt() is { } g && g != default, $"{name}：放热里那次改把解除压低立的积分保护清了");
             }

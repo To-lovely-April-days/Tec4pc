@@ -86,6 +86,8 @@ public sealed class DualStationDriver : IDeviceDriver
         public const string ExitLead = "退出超前";
         /// <summary>提前判据进的制冷段至少持续多久（s）。</summary>
         public const string CoolMin = "最短制冷时间";
+        /// <summary>【本地改动】提前判据进的制冷段结束（压低松开）之后多久之内不再按提前判据进（s；0 = 不限）。</summary>
+        public const string PushReentry = "压低再进间隔";
         /// <summary>两次冷启动冷水机的最短间隔（s）。</summary>
         public const string ChillerGap = "冷水机最短间隔";
         /// <summary>手动温控中途切 TEC 的弹窗等人多久（s），到了按打开。</summary>
@@ -254,6 +256,12 @@ public sealed class DualStationDriver : IDeviceDriver
             with { Tip = "退出制冷段的判据用「被控量 + 超前 × 斜率」比目标 − δ：釜壁有几分钟滞后，看着还高其实已经在往下掉就该提前交还加热棒。0 = 只看被控量" },
         Field.Num(Fields.CoolMin, "最短制冷时间", 60, "s", 0, 600, 10)
             with { Tip = "提前判据进的制冷段至少持续这么久：段内 TEC 功率由 PID 调（可到 0），但不切回加热棒、不停冷水机——别让冷水机来回启停" },
+        // 【本地改动】压低再进间隔（2026-11-06）：现场 65.8 → 70 ℃，31.46 min 功率转正松开压低、31.55 min 又按提前判据进（Tr +0.04 K/min 的
+        // 量化抖动），第二段的最短 60 s 把继电器扣在 TEC 上而内环早已要加热——夹套 63.8 ℃（压低目标 67.7）、釜内掉 1.56 K、15 分钟才回来
+        Field.Num(Fields.PushReentry, "压低再进间隔", 60, "s", 0, 300, 10)
+            with { Tip = "提前判据进的制冷段结束（被控量回落 / 功率转正）之后这么久之内，不再按提前判据切 TEC、不再压夹套目标，继电器只按功率符号走" +
+                         "（加热棒该出力就出力；回路真要冷照功率符号接 TEC，不受最短制冷时间）。松开后头一分钟釜壁还在回弹，这时的「在升」多半是上一段的尾巴：" +
+                         "现场 2026-11-06 松开 5 s 后又进一次，夹套掉到压低目标以下 4 K、釜内掉 1.56 K、15 分钟才爬回来。0 = 不限" },
         Field.Num(Fields.ChillerGap, "冷水机最短间隔", 60, "s", 0, 900, 10)
             with { Tip = "两次冷启动冷水机之间至少隔这么久（压缩机保护）：间隔内自动要切 TEC 先不开（加热棒 0 出力），到点再开；" +
                          "撤销关水（冷水机还在转）不算冷启动；人 / 配方明确下发目标不受它拦。不联动冷水机不生效。" +

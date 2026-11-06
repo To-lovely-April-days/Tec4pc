@@ -638,6 +638,8 @@ public sealed class DualStationDriverTests
         b.Rd.Set(1, "TCADJTEMP", (long)Math.Round(tj * 1e5));
         await WaitJacket(t, tj);
         b.Now = b.Now.AddSeconds(dt);
+        // 【本地改动】这组用例按「10 s 窗就进段」写的（2026-10-28）；进段至少 30 s 窗、压低再进间隔见 DuoPushReentryTests
+        ((DuoSession)s).EnterSlopeMinSpan = ((DuoSession)s).SlopeMinSpan;
         await ((DuoSession)s).PollOnceAsync(CancellationToken.None);
     }
 
@@ -725,6 +727,7 @@ public sealed class DualStationDriverTests
         var d = (DuoSession)s;
         d.CoolMinDuration = TimeSpan.FromSeconds(20);
         d.ExitLead = TimeSpan.Zero;                        // 先验不带超前的那条：被控量本身低过 目标 − δ
+        d.ReentryDwell = TimeSpan.Zero;                    // 【本地改动】这条紧跟着再进一段；再进间隔（2026-11-06）另见 DuoPushReentryTests
         await HeatingAt30(b, s, t);
         foreach (var (tj, dt) in new[] { (30.06, 4.0), (30.12, 4.0), (30.18, 4.0) }) await Drive(b, s, t, tj, dt);
         Assert.True(b.Io.Coils[7]);

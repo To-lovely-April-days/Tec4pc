@@ -410,6 +410,19 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         /// 回路线程整个换掉（不改元素），别的线程读到的总是完整的一份。</summary>
         public (double Sp, double Bias)[] BiasMeasured = [];
 
+        /// <summary>【本地改动】热平衡滚动缓冲（<see cref="HostControlLoop.OuterHeatBalanceSpan"/>）：每个外环拍的 (时刻, 釜内, 夹套, 夹套目标——上一拍外环给的、夹套这一拍在追的, 釜壁估计)。
+        /// 过没过零都记、压低期间照记；跟 <see cref="BiasWin"/> 一起清（开控 / 改目标 / Tr 丢失恢复 / 曲线 / 加速 / 大降温收尾）。
+        /// 自校正只是关着（<see cref="HostControlLoop.OuterBiasCheckWindow"/> = 0）不清——过零封顶（<see cref="HostControlLoop.OuterCrossCapJacketSteadyC"/>）不靠自校正。只在回路线程读写。</summary>
+        public readonly Queue<(DateTime At, double TrC, double TjC, double IspC, double WallC)> HeatBal = new();
+
+        /// <summary>【本地改动】上一拍压没压着：刚压上的那一拍（上一拍没压、这一拍压着）按压低前的热平衡改积分一次（<see cref="HostControlLoop.OuterPushRefixMaxDropC"/>）。回路线程用。</summary>
+        public bool PushSeen;
+
+        /// <summary>【本地改动】这一场在哪个目标上真稳住过（稳态偏置学习攒满 <see cref="HostControlLoop.OuterSteadyCyclesToLearn"/> 拍那一刻记；NaN = 还没有）：
+        /// 积分就是维持它要的偏置，之后再冲上去被压低是扰动（放热 / 加料）不是表错，压低那一刻按热平衡那条不改。
+        /// 跟 <see cref="BiasWin"/> 一起清（开控 / 改目标 / Tr 丢失恢复 / 曲线 / 加速）。回路线程用。</summary>
+        public double BiasSettledSp = double.NaN;
+
         /// <summary>【本地改动】外环积分的参照值——信得过的那个偏置：起步预置、重摆刹车、放电预置、坡尾回基、这一场稳住时的积分。
         /// 改目标 / 解除压低不动它。「趋近不积分」「夹套跟不上不积分」只拦积分往参照值外面、往外环正推的方向走；
         /// 往参照值那边回（退债）两条都不拦。</summary>
@@ -949,11 +962,14 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
 
     /// <summary>【本地改动】偏置自校正改过以后，管着的目标上又冲过目标被压低过一回（估高了）：解除压低以后整个窗口里估出来的
     /// 比积分低过这么多（K）就再改一次，只往下。不然估高 0.3–0.7 K 时差得不到 <see cref="OuterBiasCheckGapC"/>，积分只在每回冲过目标那几分钟往下退一点，
-    /// 一压一冲摆一个多小时（孪生：估高 0.6 K 压低 6 回、90 分钟才稳；这样压一回、改一次就稳）。窗口整个在解除以后，压低以前的扰动不算进去。0 = 不这样改。</summary>
+    /// 一压一冲摆一个多小时（孪生：估高 0.6 K 压低 6 回、90 分钟才稳；这样压一回、改一次就稳）。窗口整个在解除以后，压低以前的扰动不算进去。
+    /// 压低那一刻按热平衡改（<see cref="OuterPushRefixMaxDropC"/>）和过零封顶（<see cref="OuterCrossCapJacketSteadyC"/>）也用这个门槛。0 = 三处都不这样改。</summary>
     public double OuterBiasCheckRefixGapC { get; set; } = 0.2;
 
-    /// <summary>【本地改动】偏置自校正的热平衡：釜内每升 1 K/s 夹套要比釜内多高（s，约等于釜的时间常数，现场拟合 930–1030 s，取小一点）。</summary>
-    public double OuterBiasCheckTauHat { get; set; } = 800;
+    /// <summary>【本地改动】偏置自校正的热平衡：釜内每升 1 K/s 夹套要比釜内多高（s，约等于釜的时间常数）。现场拟合：40 ℃ 那场（165419）τ1 ≈ 980–1030 s，
+    /// 70 ℃ 那场（130619）≈ 1130–1300 s。原来取 800「偏小一点」：在釜内还在升的窗口上 τ̂ 偏小扣掉的升温那一项不够、b̂ 落在高的那边——高的那边正是冲过头的方向
+    /// （2026-11-06 那场 52.4 min 自校正改到 6.89，真值 6.4–6.6，之后又压低一回）；估低只是在目标下面停一会儿。所以宁大勿小，取 1000。</summary>
+    public double OuterBiasCheckTauHat { get; set; } = 1000;
 
     /// <summary>【本地改动】偏置自校正只在釜内过一次目标以后才开始攒（窗口清过以后重新等）：趋近尾巴上釜内还在减速，估出来偏低
     /// （孪生里表对的时候也会改错、拖慢到站）。只管第一次——会话提前切换的压低 / 松开不算清。</summary>
@@ -971,6 +987,56 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
     /// <summary>【本地改动】偏置自校正改过以后，这一场改到离那个目标多近（K）以内的新目标，也按实测跟表的差平移表里的值（两枪放电 / 坡尾回基 / 加速都按它）。
     /// 不平移的话改完马上改个 0.3 K，表里那个错的偏置又回来——孪生里 40 改完改 40.3 又冲过 0.43、又压低、又等十几分钟再改一次。0 = 只管原目标。</summary>
     public double OuterBiasCheckCarryC { get; set; } = 2.0;
+
+    /// <summary>
+    /// 【本地改动】压低那一刻按热平衡改积分。现场（2026-11-06 R1-tc1-20261106-130619，双向挡釜内 65.8 → 70 ℃）：双向挡表没有 70 ℃ 那行、借加热棒表的 7.82 K，
+    /// 真值 6.4–6.6（拟合 τ1 1126 s、b 6.41、壁滞后 ~40 s）。釜内 28.8 min 过 70 还在升 0.07 K/min、爬到 70.11 提前切 TEC 压低，松开 5 s 又压（0.01 K 量化出来的 +0.04 K/min 假斜率），
+    /// 第二段最短 60 s 把继电器留在 TEC、夹套掉到 63.8，釜内掉 1.56 K、15 分钟爬回来，再过零、再压……操作人 71 min 停了。
+    /// 要害：外环积分只有釜内在目标 +0.1 带里那一两分钟能往下退，压低冻结、松开后的保护、趋近冻结、钳位都在釜内 &lt; 目标时拦着；自校正那条又要 ±0.5 K 里干净的 600 s 窗口，
+    /// 压低拽下去 1.5 K 就把窗口打断——起步偏高 1.4 K 的积分在新温度上没有快路往下走，只能一压一冲。
+    /// 这条在**刚压上的那一拍**（上一拍没压、这一拍压着；每回压低只判一次）直接按压低前的热平衡改：釜内在目标上面、热平衡缓冲（<see cref="OuterHeatBalanceSpan"/>）攒够
+    /// <see cref="OuterHeatBalanceMinSpan"/>、这段里夹套一直跟着它的目标（最大 |夹套 − 夹套目标| ≤ <see cref="OuterPushRefixJacketTrackC"/>，没跟上的话「夹套 − 釜内」不是热平衡）、
+    /// 釜内最近 <see cref="OuterHeatBalanceSlopeSpan"/> 的最小二乘斜率 ≥ 0（在升着冲过头的），
+    /// b̂ = 平均(釜壁估计 − 釜内，最近 <see cref="OuterHeatBalanceSlopeSpan"/>) − <see cref="OuterBiasCheckTauHat"/> × 斜率；积分比 b̂ 高过 <see cref="OuterBiasCheckRefixGapC"/>
+    /// 就预置到 max(b̂, 积分 − 这个值)——一次最多往下压这么多 K（估错也错不远），只往下、从不往上。记账跟自校正一样（<c>ApplyBiasFix</c>：这一场这个目标按实测、
+    /// 学稳态偏置从它起、再改隔一个窗口），但不拿住积分：压低冻结和松开后的保护已经盖住这段过渡。
+    /// 现场回放（τ̂ 800）：29.8 min 7.78 → 6.74、49.6 min 7.75 → 7.03、71.2 min 6.82 → 6.47。0 = 关；自校正关着（<see cref="OuterBiasCheckWindow"/> = 0）也不改。
+    /// 这个目标这一场已经真稳住过的（稳态偏置学习攒满 <see cref="OuterSteadyCyclesToLearn"/> 拍，<see cref="ChannelState.BiasSettledSp"/>）也不改：积分已经证明是维持它要的偏置，
+    /// 再冲上去被压低是扰动不是表错，压低前那几分钟的热平衡是扰动里的釜，按它改只会把对的积分改低、扰动撤了釜内在目标下面多待十来分钟
+    /// （孪生：42 稳住后放热 1 K 四分钟，改 3.28 → 2.72，稳进 ±0.05 从 13.9 min 变 27.9 min，不冲不多压；8 个放热 / 硬压用例都这样）。
+    /// 只按「稳住过」认、不按表的来路认：学到的行错着（70 = 7.82、真值 6.41）第一次爬过去压低那一拍照改——不改的话压三回（孪生 26.7、34.4、43.8 min），改了压一回。
+    /// </summary>
+    public double OuterPushRefixMaxDropC { get; set; } = 1.5;
+
+    /// <summary>【本地改动】压低那一刻改积分要夹套这段一直跟着它的目标：缓冲里最大 |夹套 − 夹套目标| 不超过它（K）。</summary>
+    public double OuterPushRefixJacketTrackC { get; set; } = 0.5;
+
+    /// <summary>
+    /// 【本地改动】热平衡滚动缓冲：每个外环拍记一笔 (釜内, 夹套, 夹套目标, 釜壁估计)，留这么长。过没过零都记、压低期间照记——自校正那个窗口（<see cref="ChannelState.BiasWin"/>）过零才开始、
+    /// 压低一回就重攒，压低那一刻 / 过零那一刻要的是**之前**那几分钟。开控 / 改目标 / Tr 丢失恢复 / 曲线 / 加速时跟自校正窗口一起清。
+    /// <see cref="OuterPushRefixMaxDropC"/> 和 <see cref="OuterCrossCapJacketSteadyC"/> 都看它。釜壁估计是 <see cref="OuterBiasCheckWallHat"/> 那个一阶滞后（每拍都在跟）。
+    /// </summary>
+    public TimeSpan OuterHeatBalanceSpan { get; set; } = TimeSpan.FromSeconds(300);
+
+    /// <summary>【本地改动】热平衡里釜内斜率、「釜壁 − 釜内」平均取最近这么长（宇电 0.01 K 分辨率下 180 s 最小二乘够稳）。</summary>
+    public TimeSpan OuterHeatBalanceSlopeSpan { get; set; } = TimeSpan.FromSeconds(180);
+
+    /// <summary>【本地改动】热平衡缓冲至少攒够这么长才算得出 b̂（刚开控 / 刚改目标 / Tr 刚恢复不算）。</summary>
+    public TimeSpan OuterHeatBalanceMinSpan { get; set; } = TimeSpan.FromSeconds(150);
+
+    /// <summary>
+    /// 【本地改动】借来 / 外推的表值过零时按实测封顶。这个目标的稳态偏置不是这个温度学到的（借另一张表的、按表外推的——<see cref="BiasOrigin"/>；两行之间插出来的算学到的），
+    /// 过零那一枪本来要把积分打回表值，表值偏高就是打进去的冲过头电荷（那场 7.82 对 6.4）。过零前最近 <see cref="OuterHeatBalanceSpan"/> 夹套稳着（最高最低差 ≤ 这个值，K；
+    /// 夹套顶在 主设定 + 限幅 上趋近就是这样）时，过零那一刻 b̂ = (釜壁估计 − 釜内) − <see cref="OuterBiasCheckTauHat"/> × 釜内最近 <see cref="OuterHeatBalanceSlopeSpan"/> 的斜率
+    /// 就是维持这个目标要的偏置；表值比 b̂ 高过 <see cref="OuterBiasCheckRefixGapC"/> 就把那一枪的落点改成 min(表值, max(表值 − <see cref="OuterCrossCapMaxDropC"/>, b̂))，
+    /// 只往下，记账跟自校正一样（不拿住）。夹套还在动的不封（21 → 40 那场过零前 5 分钟夹套掉了 4.3 K：釜壁存热没算，估不准）。
+    /// 现场：28.8 min 过零时釜内 70.00、夹套 78.0、斜率 0.081 K/min → b̂ 6.98（τ̂ 800）/ 6.71（τ̂ 1000），表 7.82 → 落 6.71。0 = 关。
+    /// 只看自己这个开关，不靠自校正开着（<see cref="OuterBiasCheckWindow"/> = 0 照封；压低那一刻改积分 <see cref="OuterPushRefixMaxDropC"/> 则跟自校正一起关）。
+    /// </summary>
+    public double OuterCrossCapJacketSteadyC { get; set; } = 0.5;
+
+    /// <summary>【本地改动】过零封顶一次最多把表值往下压多少 K。</summary>
+    public double OuterCrossCapMaxDropC { get; set; } = 2.0;
 
     /// <summary>
     /// 腔体跟踪缺口前馈增益（0 关闭）。剩余到温下冲的物理来源：外环偏置收拢时腔体
@@ -1368,15 +1434,22 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
     private static PidGainSchedule OuterSchedule(ChannelState s, double setpointC)
         => s.Table == GainTable.Both ? s.BothSchedule : NearestOuterSchedule(s, setpointC);
 
+    /// <summary>【本地改动】一次稳态偏置查询：值、来路（<see cref="BiasOrigin"/>）、数从哪张表来（这一场实测的 From 为 null）。</summary>
+    private readonly record struct BiasSource(double? Bias, BiasOrigin Origin, PidGainSchedule? From);
+
     /// <summary>
-    /// 【本地改动】稳态偏置（夹套 − 釜内）是釜的热平衡，跟哪只执行器在出力无关：双向挡那张表还没学到这个温度的，
-    /// 借 TEC / 加热棒两张表里最近的那个（只读）——不然第一次跑双向挡外环积分从 0 起、两枪放电也打不了。学到的照样记进双向挡那张。
+    /// 【本地改动】稳态偏置（夹套 − 釜内）是釜的热平衡，跟哪只执行器在出力无关：双向挡那张表还没学到这个温度的，先按它自己学到的行外推
+    /// （<see cref="PidGainSchedule.SteadyBiasSource"/>），还给不出再借 TEC / 加热棒两张表里最近的那个（只读）——不然第一次跑双向挡外环积分从 0 起、两枪放电也打不了。
+    /// 学到的照样记进双向挡那张。
     /// </summary>
-    private double? SteadyBiasFor(ChannelState s, double setpointC)
+    private double? SteadyBiasFor(ChannelState s, double setpointC) => SteadyBiasSource(s, setpointC).Bias;
+
+    /// <summary>【本地改动】同上，连带来路：这一场自校正 / 稳住实测过的（含按实测平移的）算学到的、From 为 null；表里查的照表的来路（学到的 / 外推的 / 借的）。</summary>
+    private BiasSource SteadyBiasSource(ChannelState s, double setpointC)
     {
-        if (s.BiasOverrideC is not { } o) return TableBiasFor(s, setpointC);
-        if (Math.Abs(setpointC - s.BiasOverrideSp) < 1e-9) return o;     // 【本地改动】自校正过的这一场按实测
-        var live = TableBiasFor(s, setpointC);
+        if (s.BiasOverrideC is not { } o) return TableBiasSource(s, setpointC);
+        if (Math.Abs(setpointC - s.BiasOverrideSp) < 1e-9) return new(o, BiasOrigin.Learned, null);     // 【本地改动】自校正过的这一场按实测
+        var live = TableBiasSource(s, setpointC);
         if (!OverrideCovers(s, setpointC)) return live;
         // 这一场实测过的点：回到实测过的目标直接按实测；夹在两个实测点中间按两头线性插（偏置随温度近乎线性）；
         // 只在一边的从那边离得最近的那个平移。只从最新那个平移不行：表副本只在改之前那一刻对，
@@ -1385,31 +1458,31 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         (double Sp, double B) lo = (double.NaN, 0), hi = (double.NaN, 0);
         foreach (var (msp, mb) in s.BiasMeasured.Append((s.BiasOverrideSp, o)))
         {
-            if (Math.Abs(msp - setpointC) < 1e-9) return mb;
+            if (Math.Abs(msp - setpointC) < 1e-9) return new(mb, BiasOrigin.Learned, null);
             if (msp < setpointC && !(msp <= lo.Sp)) lo = (msp, mb);
             if (msp > setpointC && !(msp >= hi.Sp)) hi = (msp, mb);
         }
         if (!double.IsNaN(lo.Sp) && !double.IsNaN(hi.Sp))
-            return lo.B + (hi.B - lo.B) * (setpointC - lo.Sp) / (hi.Sp - lo.Sp);
+            return new(lo.B + (hi.B - lo.B) * (setpointC - lo.Sp) / (hi.Sp - lo.Sp), BiasOrigin.Learned, null);
         var (refSp, refB) = double.IsNaN(lo.Sp) ? hi : lo;
         // 附近的目标按「实测 − 表」平移，两头从同一张表上取：TEC / 加热棒两张表按离得近的选、双向挡出了外推范围借另两张——
         // 两头各查各的，表和表之间那个台阶就加进来了（例：加热棒挡 37 改完 3.0、TEC 表那头 1.0、加热棒表这头 5.5，平移成 7.5）。
         // 表按自校正第一次改那一刻的副本查：改完在原目标稳住学到的会把表里那行改成实测，拿现在的表算差就没了，旁边还错着的行又回来
         // （孪生：40、43 两行都错成 5.53，40 学完再改 41.5，平移归零、按 4.31 打两枪冲 0.23、压低两次）。那张表在原目标上没数：直接用实测
-        var (t1, from) = s.BiasCarryTables is { } pre
+        var (t1, _, from) = s.BiasCarryTables is { } pre
             ? TableBiasSource(s.Table, pre.Tec, pre.Heater, pre.Both, setpointC)
-            : TableBiasSource(s, setpointC);
+            : live;
         if (t1 is not { } v || from is null) return live;
         var carried = v + (refB - (from.SteadyBiasAt(refSp) ?? v));
-        if (live is not { } l) return carried;
+        if (live.Bias is not { } l) return new(carried, BiasOrigin.Learned, null);
         // 平移完不许跑出「实测 ~ 现在表里这个目标」那一段（按离实测点多远给偏置随温度的斜率留一点）：表只是原目标那行错、别的温度这一场学对了，
         // 整段平移就把差算了两遍（孪生：40 改完去 43 学对、回 42 平移成 1.77，真值 3.3，下冲 0.45）。
         // 只往物理上对的那边留：维持的偏置随釜内温度单调往上（散热 ∝ 釜内 − 室温，室温以下也一样），比实测点高的目标不会比实测还小、低的不会比实测还大
         // （两边都留的话 40 改完 3.24、回 42 夹到 2.94，掉 0.16）
         var slack = OuterBiasCarrySlackPerK * Math.Abs(setpointC - refSp);
-        return setpointC > refSp
+        return new(setpointC > refSp
             ? Math.Clamp(carried, refB, Math.Max(refB, l) + slack)
-            : Math.Clamp(carried, Math.Min(refB, l) - slack, refB);
+            : Math.Clamp(carried, Math.Min(refB, l) - slack, refB), BiasOrigin.Learned, null);
     }
 
     /// <summary>【本地改动】平移的结果最多跑出「实测 ~ 现在表里」那一段多远：每离实测点 1 K 给这么多（K），稳态偏置随温度的斜率（散热 ∝ 釜内 − 室温，40 ℃ 上约 0.17 K/K）。</summary>
@@ -1438,22 +1511,56 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         return false;
     }
 
-    /// <summary>【本地改动】增益表里这个目标的稳态偏置（不看自校正）。</summary>
-    private static double? TableBiasFor(ChannelState s, double setpointC) => TableBiasSource(s, setpointC).Bias;
-
-    /// <summary>【本地改动】同上，连带是哪张表给的数。</summary>
-    private static (double? Bias, PidGainSchedule? From) TableBiasSource(ChannelState s, double setpointC)
+    /// <summary>【本地改动】增益表里这个目标的稳态偏置（不看自校正），连带来路和是哪张表给的数。</summary>
+    private static BiasSource TableBiasSource(ChannelState s, double setpointC)
         => TableBiasSource(s.Table, s.GainSchedule, s.HeaterSchedule, s.BothSchedule, setpointC);
 
-    /// <summary>【本地改动】同上，三张表显式给（自校正平移拿表的副本查）。</summary>
-    private static (double? Bias, PidGainSchedule? From) TableBiasSource(GainTable table, PidGainSchedule tec, PidGainSchedule heater,
+    /// <summary>
+    /// 【本地改动】同上，三张表显式给（自校正平移拿表的副本查）。顺序：用的那张表自己的行（插值 / 够近沿用）→ 它自己按学到的行外推
+    /// （<see cref="PidGainSchedule.SteadyBiasSource"/>）→ 双向挡借 TEC / 加热棒里最近的那张（含那张表的外推；来路记「借的」）→ null。
+    /// </summary>
+    private static BiasSource TableBiasSource(GainTable table, PidGainSchedule tec, PidGainSchedule heater,
         PidGainSchedule both, double setpointC)
     {
         var nearest = NearestOuterSchedule(table, tec, heater, both, setpointC);
         var sched = table == GainTable.Both ? both : nearest;
-        if (sched.SteadyBiasAt(setpointC) is { } b) return (b, sched);
-        if (table == GainTable.Both && nearest.SteadyBiasAt(setpointC) is { } nb) return (nb, nearest);
-        return (null, null);
+        var own = sched.SteadyBiasSource(setpointC);
+        if (own.Bias is { } b) return new(b, own.Origin, sched);
+        if (table == GainTable.Both && !ReferenceEquals(nearest, both) && nearest.SteadyBiasAt(setpointC) is { } nb)
+            return new(nb, BiasOrigin.Borrowed, nearest);
+        return new(null, BiasOrigin.Learned, null);
+    }
+
+    /// <summary>【本地改动】增益表（不看这一场的实测）给这个目标的稳态偏置、来路、哪张表：双向挡自己的行 → 自己外推 → 借另两张 → null。界面 / 测试看来路用。</summary>
+    public (double? Bias, BiasOrigin Origin, GainTable? From) TableSteadyBias(int ch, double setpointC)
+    {
+        var s = State(ch);
+        var r = TableBiasSource(s, setpointC);
+        return (r.Bias, r.Origin, r.From is { } f ? TableOf(s, f) : null);
+    }
+
+    private static GainTable TableOf(ChannelState s, PidGainSchedule sched)
+        => ReferenceEquals(sched, s.BothSchedule) ? GainTable.Both : ReferenceEquals(sched, s.HeaterSchedule) ? GainTable.Heater : GainTable.Tec;
+
+    private static string TableName(GainTable t) => t switch { GainTable.Both => "双向挡表", GainTable.Heater => "加热棒表", _ => "TEC 表" };
+
+    /// <summary>【本地改动】提示里说稳态偏置的来路：借的 / 外推的要说清不是这个温度实测的（过零时夹套稳着会按实测封顶，<see cref="OuterCrossCapJacketSteadyC"/>）。</summary>
+    private static string BiasOriginText(ChannelState s, double setpointC, BiasSource src)
+    {
+        var tname = src.From is { } f ? TableName(TableOf(s, f)) : "";
+        switch (src.Origin)
+        {
+            case BiasOrigin.Borrowed:
+                return $"双向挡表这个温度还没有，借「{tname}」的稳态偏置（不是这个温度实测的：过零时夹套稳着就按实测热平衡封顶）";
+            case BiasOrigin.Extrapolated:
+                var x = src.From?.SteadyBiasSource(setpointC) ?? default;
+                var how = x.Rows >= 2
+                    ? $"按 {x.Rows} 行拟合（重心 {x.AnchorC:F1} ℃、斜率 {x.SlopePerK:F2} K/K）"
+                    : $"按 {x.AnchorC:F1} ℃ 那行、斜率 {x.SlopePerK:F2} K/K";
+                return $"「{tname}」没有这个温度，按表外推：{how}（散热随釜内温度近乎线性涨；过零时夹套稳着就按实测热平衡封顶）";
+            default:
+                return "这个温度学到的稳态偏置";
+        }
     }
 
     private static PidGainSchedule NearestOuterSchedule(ChannelState s, double setpointC)
@@ -1698,11 +1805,11 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
     /// <summary>【本地改动】双向挡整定里每半周至少留多少出力（%）：自寻中挪得再多，加热半周也还是加热棒、制冷半周也还是 TEC。</summary>
     public const double AlternateMinPercent = 3;
 
-    /// <summary>【本地改动】双向挡那张表在这个温度的稳态偏置（夹套 − 釜内）：自己没学到借另两张最近的——跟控温时预置外环用的同一个数。</summary>
+    /// <summary>【本地改动】双向挡那张表在这个温度的稳态偏置（夹套 − 釜内）：自己没学到先按自己的行外推、再借另两张最近的——跟控温时预置外环用的同一个数。</summary>
     public double? BothSteadyBias(int ch, double setpointC)
     {
         var s = State(ch);
-        return s.BothSchedule.SteadyBiasAt(setpointC) ?? NearestOuterSchedule(s, setpointC).SteadyBiasAt(setpointC);
+        return TableBiasSource(GainTable.Both, s.GainSchedule, s.HeaterSchedule, s.BothSchedule, setpointC).Bias;
     }
 
     /// <summary>【本地改动】整定器此刻要的输出（PID 那一侧：正 = 加热、负 = 制冷）；没在整定或还没算过一拍是 null。</summary>
@@ -1823,8 +1930,8 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
     /// </summary>
     private (double Bias, double Brake, bool Known, string Why) OuterStartBias(ChannelState s, double setpointC)
     {
-        if (SteadyBiasFor(s, setpointC) is { } learned)
-            return (learned, 0, true, "这个温度学到的稳态偏置");
+        if (SteadyBiasSource(s, setpointC) is { Bias: { } learned } src)
+            return (learned, 0, true, BiasOriginText(s, setpointC, src));     // 【本地改动】借的 / 外推的说清来路
         var q = QuietStartBias(s);
         if (q.Bias is { } est)
             return (est, 0, true, $"这个温度没学到稳态偏置；起步前 {OuterStartQuietWindow.TotalSeconds:0} s 釜内 / 夹套都稳" +
@@ -2319,10 +2426,13 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         var w = OuterBiasCheckWindow;
         var q = s.BiasWin;
         var wall = OuterBiasCheckWallHat > 0 ? s.BiasWallHat : tj;
-        if (!(w > TimeSpan.Zero) || s.Profile is not null || s.FinArmed && (!s.FinEnded || s.FinGain > 0)
-            || !double.IsFinite(tr) || !double.IsFinite(wall) || !double.IsFinite(err))
+        // 【本地改动】曲线 / 大降温收尾 / 读数不全：热平衡不可信，缓冲跟窗口一起清。自校正只是关着（w = 0）不算——缓冲照留：
+        // 过零封顶（OuterCrossCapJacketSteadyC）不靠自校正（复查：原来这儿每拍把刚记的那一笔清掉，关着自校正时封顶就哑了，借表 7.82 又是现场那种 7 分钟一压）
+        var blind = s.Profile is not null || s.FinArmed && (!s.FinEnded || s.FinGain > 0)
+                    || !double.IsFinite(tr) || !double.IsFinite(wall) || !double.IsFinite(err);
+        if (!(w > TimeSpan.Zero) || blind)
         {
-            BiasWinReset(s);
+            BiasWinReset(s, heatBal: blind);
             return;
         }
         if (OuterBiasCheckAfterCross && !s.BiasCrossed)
@@ -2358,24 +2468,12 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         var refix = OuterBiasCheckRefixGapC > 0 && s.RefixFrom > s.LastBiasFix && first.At >= s.RefixFrom
                     && now >= s.BiasHoldUntil && before - bhat > OuterBiasCheckRefixGapC;
         if (!refix && Math.Abs(bhat - before) <= OuterBiasCheckGapC) return;
-        var (table, from) = TableBiasSource(s, sp);
-        // 附近目标的平移按改之前的表算（这一场第一次改的那一刻；后面再改不重拍——表那时候可能已经学过了）
-        s.BiasCarryTables ??= new BiasTables(s.GainSchedule.Clone(), s.HeaterSchedule.Clone(), s.BothSchedule.Clone());
-        s.OuterPid.PresetIntegral(bhat);
-        s.OuterIntegralRef = s.OuterPid.LastI;
-        s.OuterIntegralPristine = false;
-        s.OuterBrakeC = 0;
-        s.OuterBiasKnown = true;
-        s.BiasOverrideC = s.OuterPid.LastI;
-        s.BiasOverrideSp = sp;
-        s.BiasMeasured = [(sp, s.OuterPid.LastI)];     // 之前别处实测的可能是釜变了以前的：只留这一个
-        s.LastSteadyBias = s.OuterPid.LastI;     // 学稳态偏置从实测这个值起低通，别从改之前那个错的起
-        s.OuterSteadyCycles = 0;
-        s.LastBiasFix = now;
-        s.BiasHoldUntil = now + OuterBiasCheckHold;
-        // 说的是数真从哪张表来的：TEC / 加热棒按离得近的那张取、双向挡这个温度没有的借另两张（不看此刻是哪个挡）
-        var tableName = ReferenceEquals(from, s.BothSchedule) ? "双向挡表" : ReferenceEquals(from, s.HeaterSchedule) ? "加热棒表" : "TEC 表";
-        var borrowed = s.Table == GainTable.Both && from is not null && !ReferenceEquals(from, s.BothSchedule);
+        var (table, origin, from) = TableBiasSource(s, sp);
+        ApplyBiasFix(s, now, sp, bhat, hold: true);
+        // 说的是数真从哪张表来的：TEC / 加热棒按离得近的那张取、双向挡这个温度没有的先外推、再借另两张（不看此刻是哪个挡）
+        var tableName = from is { } f ? TableName(TableOf(s, f)) : "";
+        var borrowed = origin == BiasOrigin.Borrowed;
+        var extrapolated = origin == BiasOrigin.Extrapolated;
         // 表偏没偏按 b̂ 的误差说（表对时 b̂ 最多差 0.35 K），不按改不改的门槛：积分攒过了头才改的那次，表差 0.8 K 也不能说「对得上、不用改」
         var tableDiff = table is { } t0 ? Math.Abs(t0 - bhat) : 0;
         var tableOff = tableDiff > OuterBiasTableOffC;
@@ -2389,20 +2487,159 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                              "，这一场按实测用（两枪放电也按它），稳住以后照常学进表" +
                              (borrowed
                                  ? $"——双向挡表这个温度还没有，这个数是借「{tableName}」的；要是经常偏，PID 页「双向挡表」这个温度加一行"
-                                 : $"——表里这个值要是经常偏，PID 页「{tableName}」改一下")
+                                 : extrapolated
+                                     ? $"——「{tableName}」没有这个温度，这个数是按表外推的；稳住学进表以后下次就按学到的"
+                                     : $"——表里这个值要是经常偏，PID 页「{tableName}」改一下")
                 : $"；表里这个温度的稳态偏置 {t:+0.00;-0.00} K 跟实测对得上，是积分自己跑偏了（多半中途有扰动），表不用改"));
+    }
+
+    /// <summary>
+    /// 【本地改动】按实测改外环积分的记账（自校正 <see cref="BiasSelfCheck"/>、压低那一刻改 <see cref="PushRefix"/>、过零封顶 <see cref="CrossingCap"/> 共用）：
+    /// 积分预置到 newI、参照落到它、偏置算摸清了、刹车不再单算；这一场这个目标按实测（两枪放电 / 落地钳位 / 坡尾回基 / 加速都按它，附近目标按差平移——
+    /// 平移用的表副本第一次改那一刻拍，后面再改不重拍）；实测点只留这一个（之前别处实测的可能是釜变了以前的）；学稳态偏置的低通从它起（别从改之前那个错的起）；
+    /// 再改至少隔一个窗口。hold = 还要拿住 <see cref="OuterBiasCheckHold"/>：自校正改在稳态附近的过渡里要；压低那一刻 / 过零那一枪改的不要——压低冻结和松开后的保护已经盖住过渡。
+    /// </summary>
+    private void ApplyBiasFix(ChannelState s, DateTime now, double sp, double newI, bool hold)
+    {
+        s.BiasCarryTables ??= new BiasTables(s.GainSchedule.Clone(), s.HeaterSchedule.Clone(), s.BothSchedule.Clone());
+        s.OuterPid.PresetIntegral(newI);
+        s.OuterIntegralRef = s.OuterPid.LastI;
+        s.OuterIntegralPristine = false;
+        s.OuterBrakeC = 0;
+        s.OuterBiasKnown = true;
+        s.BiasOverrideC = s.OuterPid.LastI;
+        s.BiasOverrideSp = sp;
+        s.BiasMeasured = [(sp, s.OuterPid.LastI)];
+        s.LastSteadyBias = s.OuterPid.LastI;
+        s.OuterSteadyCycles = 0;
+        s.LastBiasFix = now;
+        if (hold) s.BiasHoldUntil = now + OuterBiasCheckHold;
+    }
+
+    /// <summary>【本地改动】热平衡滚动缓冲记一笔（<see cref="OuterHeatBalanceSpan"/>）。isp = 这一拍夹套在追的目标（上一拍外环给的）。</summary>
+    private void HeatBalRecord(ChannelState s, DateTime now, double tr, double tj, double isp)
+    {
+        var q = s.HeatBal;
+        if (!(OuterHeatBalanceSpan > TimeSpan.Zero)) { q.Clear(); return; }
+        var wall = OuterBiasCheckWallHat > 0 ? s.BiasWallHat : tj;
+        if (!double.IsFinite(tr) || !double.IsFinite(tj) || !double.IsFinite(wall) || !double.IsFinite(isp)) return;
+        q.Enqueue((now, tr, tj, isp, wall));
+        while (q.Count > 0 && now - q.Peek().At > OuterHeatBalanceSpan) q.Dequeue();
+    }
+
+    /// <summary>【本地改动】一次热平衡估计：b̂、釜内斜率（K/min）、用的「釜壁 − 釜内」、缓冲跨度（s）、缓冲里夹套离它目标最远多少、夹套最高最低差。</summary>
+    private readonly record struct HeatBalance(double BHat, double SlopeKPerMin, double DiffC, double SpanS, double TrackErrC, double TjSpanC);
+
+    /// <summary>
+    /// 【本地改动】按热平衡缓冲估维持目标要的偏置：b̂ = 「釜壁估计 − 釜内」 − <see cref="OuterBiasCheckTauHat"/> × 釜内斜率（最近 <see cref="OuterHeatBalanceSlopeSpan"/> 的最小二乘，K/s）。
+    /// meanDiff = 「釜壁 − 釜内」取那一段的平均（压低那一刻：釜内在爬，平均稳）；false 取最后一笔（过零那一刻：就按过零这一点）。
+    /// 缓冲不够 <see cref="OuterHeatBalanceMinSpan"/>、点太少为 null。
+    /// </summary>
+    private HeatBalance? HeatBalanceEstimate(ChannelState s, DateTime now, bool meanDiff)
+    {
+        var q = s.HeatBal;
+        if (q.Count < 3) return null;
+        var span = (now - q.Peek().At).TotalSeconds;
+        if (span + 1e-9 < OuterHeatBalanceMinSpan.TotalSeconds) return null;
+        var sw = OuterHeatBalanceSlopeSpan;
+        double track = 0, tjLo = double.MaxValue, tjHi = double.MinValue;
+        DateTime? t0 = null;
+        double n = 0, mt = 0, my = 0, md = 0;
+        (DateTime At, double TrC, double TjC, double IspC, double WallC) last = default;
+        foreach (var e in q)
+        {
+            last = e;
+            track = Math.Max(track, Math.Abs(e.TjC - e.IspC));
+            tjLo = Math.Min(tjLo, e.TjC);
+            tjHi = Math.Max(tjHi, e.TjC);
+            if (now - e.At > sw) continue;
+            t0 ??= e.At;
+            n++;
+            mt += (e.At - t0.Value).TotalSeconds;
+            my += e.TrC;
+            md += e.WallC - e.TrC;
+        }
+        if (t0 is not { } start || n < 3) return null;
+        mt /= n;
+        my /= n;
+        md /= n;
+        double num = 0, den = 0;
+        foreach (var e in q)
+        {
+            if (now - e.At > sw) continue;
+            var dx = (e.At - start).TotalSeconds - mt;
+            num += dx * (e.TrC - my);
+            den += dx * dx;
+        }
+        if (den <= 0) return null;
+        var slope = num / den;
+        var diff = meanDiff ? md : last.WallC - last.TrC;
+        return new HeatBalance(diff - OuterBiasCheckTauHat * slope, slope * 60, diff, span, track, tjHi - tjLo);
+    }
+
+    /// <summary>【本地改动】刚压上的那一拍按压低前的热平衡改积分（见 <see cref="OuterPushRefixMaxDropC"/>）。只在回路线程、外环那一拍调；err = 主设定 − 釜内。</summary>
+    private void PushRefix(int ch, ChannelState s, DateTime now, double tr, double err)
+    {
+        if (!(OuterPushRefixMaxDropC > 0) || !(OuterBiasCheckWindow > TimeSpan.Zero) || s.Profile is not null || !(err < 0)) return;
+        // 这个目标这一场真稳住过（学到过）：积分就是维持它要的偏置，再被压低是扰动不是表错，压低前的热平衡是扰动里的釜——按它改只会把对的积分改低
+        // （孪生：42 稳住后放热 1 K 四分钟 3.28 → 2.72，稳进 ±0.05 13.9 → 27.9 min）。借表 / 外推 / 学到的行错着、从没稳住过的照改（不改压三回、改了压一回）
+        if (Math.Abs(s.BiasSettledSp - s.SetpointC) < 1e-9) return;
+        if (HeatBalanceEstimate(s, now, meanDiff: true) is not { } e) return;
+        if (e.TrackErrC > OuterPushRefixJacketTrackC || e.SlopeKPerMin < 0) return;
+        var before = s.OuterPid.LastI;
+        if (!(OuterBiasCheckRefixGapC > 0) || before - e.BHat <= OuterBiasCheckRefixGapC) return;     // 门槛 0 = 跟自校正一样关
+        ApplyBiasFix(s, now, s.SetpointC, Math.Max(e.BHat, before - OuterPushRefixMaxDropC), hold: false);
+        var (table, origin, from) = TableBiasSource(s, s.SetpointC);
+        var tname = from is { } f ? TableName(TableOf(s, f)) : "";
+        ChannelNotice?.Invoke(ch, "warn",
+            $"通道{ch}外环偏置自校正：压低那一刻按热平衡——釜内 {tr:F2} ℃ 冲过目标 {s.SetpointC:F2} ℃ 被压低；压低前 {e.SpanS / 60:0.#} 分钟夹套一直跟着它的目标（最多差 {e.TrackErrC:0.00} K）、" +
+            $"釜内 {e.SlopeKPerMin:+0.000;-0.000} K/min，实测维持目标要的「夹套 − 釜内」≈ {e.BHat:+0.00;-0.00} K，外环积分 {before:F2} → {s.OuterPid.LastI:F2} ℃" +
+            $"（一次最多压 {OuterPushRefixMaxDropC:0.#} K、只往下；压低冻结和松开后的保护盖住过渡，不另拿住）" +
+            (table is { } t
+                ? $"；表里这个温度的稳态偏置 {t:+0.00;-0.00} K" + origin switch
+                {
+                    BiasOrigin.Borrowed => $"是双向挡表没有、借「{tname}」的",
+                    BiasOrigin.Extrapolated => $"是「{tname}」没有这个温度、按表外推的",
+                    _ => $"（「{tname}」）{(Math.Abs(t - e.BHat) > OuterBiasTableOffC ? "偏了" : "跟实测差不多，是积分自己跑偏了")}"
+                } + "，这一场按实测用、稳住以后学进表"
+                : "；表里这个温度还没有稳态偏置，稳住以后学进表"));
+    }
+
+    /// <summary>
+    /// 【本地改动】借来 / 外推的表值过零时按实测封顶（见 <see cref="OuterCrossCapJacketSteadyC"/>）：封了返回 true（过零那一枪不再打回表值）。table = 那一枪本来要落的值。
+    /// </summary>
+    private bool CrossingCap(int ch, ChannelState s, DateTime now, double tr, double table, BiasSource src)
+    {
+        if (!(OuterCrossCapJacketSteadyC > 0) || src.Origin == BiasOrigin.Learned || s.Profile is not null) return false;
+        if (HeatBalanceEstimate(s, now, meanDiff: false) is not { } e) return false;
+        if (e.SpanS + 2 * OuterPeriod.TotalSeconds < OuterHeatBalanceSpan.TotalSeconds) return false;     // 「夹套稳着」要看满整个缓冲，缓冲还没攒满不封
+        if (!(OuterBiasCheckRefixGapC > 0) || e.TjSpanC > OuterCrossCapJacketSteadyC || table - e.BHat <= OuterBiasCheckRefixGapC) return false;
+        var before = s.OuterPid.LastI;
+        ApplyBiasFix(s, now, s.SetpointC, Math.Min(table, Math.Max(table - OuterCrossCapMaxDropC, e.BHat)), hold: false);
+        var tname = src.From is { } f ? TableName(TableOf(s, f)) : "";
+        var where = src.Origin == BiasOrigin.Borrowed ? $"双向挡表这个温度还没有、借「{tname}」的" : $"「{tname}」没有这个温度、按表外推的";
+        ChannelNotice?.Invoke(ch, "warn",
+            $"通道{ch}外环偏置自校正：釜内 {tr:F2} ℃ 过零时夹套稳着（最近 {e.SpanS / 60:0.#} 分钟最高最低差 {e.TjSpanC:0.00} K），" +
+            $"表里这个温度的稳态偏置 {table:+0.00;-0.00} K 是{where}、不是实测——按此刻热平衡（「釜壁 − 釜内」{e.DiffC:0.00} K、釜内 {e.SlopeKPerMin:+0.000;-0.000} K/min）" +
+            $"维持目标要 ≈ {e.BHat:+0.00;-0.00} K，过零那一枪落到 {s.OuterPid.LastI:F2} ℃（外环积分 {before:F2} → {s.OuterPid.LastI:F2}，最多比表值低 {OuterCrossCapMaxDropC:0.#} K）；" +
+            "这一场按它用，稳住以后学进表");
+        return true;
     }
 
     /// <summary>【本地改动】自校正提示里「表跟实测差了」的门槛（K）：表对时 b̂ 跟真值最多差 0.35 K（Python 孪生）。差过它、不到再改一次的门槛的
     /// 只说「跟实测差多少」，过了才说「偏了」；差不过它才说「对得上、积分自己跑偏」（孪生：表偏高 0.5、b̂ 3.41，按 0.5 算会说对得上）。</summary>
     private const double OuterBiasTableOffC = 0.35;
 
-    /// <summary>【本地改动】偏置自校正窗口清空、过零重新等（改目标 / Tr 丢失恢复 / 曲线 / 加速 / 大降温收尾 / 开控）。压低和解除压低不清。</summary>
-    private static void BiasWinReset(ChannelState s)
+    /// <summary>【本地改动】偏置自校正窗口清空、过零重新等（改目标 / Tr 丢失恢复 / 曲线 / 加速 / 大降温收尾 / 开控）。压低和解除压低不清。
+    /// heatBal = 热平衡缓冲（<see cref="ChannelState.HeatBal"/>）跟着一起清；自校正只是关着（<see cref="OuterBiasCheckWindow"/> = 0）时传 false——过零封顶不靠自校正、还要它。</summary>
+    private static void BiasWinReset(ChannelState s, bool heatBal = true)
     {
         s.BiasWin.Clear();
         s.BiasCrossed = false;
         s.BiasLastErr = double.NaN;
+        if (!heatBal) return;
+        s.HeatBal.Clear();           // 【本地改动】热平衡缓冲跟它一起清（压低 / 解除压低不走这儿，照记）
+        s.BiasSettledSp = double.NaN; // 【本地改动】「这个目标稳住过」也从头来（改目标 / 开控 / Tr 丢了 / 曲线 / 加速：新局面）
     }
 
     /// <summary>【本地改动】偏置自校正的釜壁估计：夹套一阶滞后 <see cref="OuterBiasCheckWallHat"/>，每拍跟（Tr 丢失保持期也跟），开控时从夹套起。</summary>
@@ -2759,6 +2996,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                     s.ShotsFromPushRelease = false;          // 开控：新的一段趋近
                     s.ReleaseGuardUntil = default;
                     s.RefixFrom = default;
+                    s.PushSeen = false;                      // 【本地改动】
                 }
                 var rearmed = Interlocked.Exchange(ref s.OuterRearmedFlag, 0) != 0;
                 var targetChanged = Interlocked.Exchange(ref s.OuterTargetChangedFlag, 0) != 0;
@@ -2879,6 +3117,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                 {
                     ApproachingSetpoint(s, snapshot.Timestamp, outerErr0);
                     BiasWinReset(s);                         // 偏置自校正只管现在的外环
+                    s.PushSeen = false;                      // 【本地改动】速度环里不会压着
                     s.LastOuterErrorC = outerErr0;
                     s.OuterSteadyCycles = 0;
                     s.BiasGuard.Reset();
@@ -2905,6 +3144,11 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                                  || approaching || innerBehind;
                     // 【本地改动】夹套压低（制冷段）：这一拍整段按它来——积分冻结（现有饱和冻结判据不覆盖
                     // 「I = +5.5、内环贴下限、err < 0」这种，必须显式冻，不然 I 以 Ki·err 慢慢往下积）。push 是这一拍开头拍下的那份
+                    // 【本地改动】热平衡缓冲每拍记（夹套目标记上一拍外环给的——这一拍夹套在追的就是它）；刚压上的那一拍按压低前的热平衡改积分（OuterPushRefixMaxDropC）
+                    HeatBalRecord(s, snapshot.Timestamp, outerPv, pv, s.InnerSetpointC);
+                    var newPush = push is not null && !s.PushSeen;
+                    s.PushSeen = push is not null;
+                    if (newPush) PushRefix(ch, s, snapshot.Timestamp, outerPv, outerErr0);
                     BiasSelfCheck(ch, s, snapshot.Timestamp, outerPv, pv, outerErr0, push);     // 【本地改动】表里的偏置错得多：按实测改（改了这一拍就按新积分算）
                     var integralBefore = s.OuterPid.LastI;
                     // 【本地改动】自校正刚改完：积分先按实测那个值拿住（OuterBiasCheckHold），别在改完那一下的过渡里又攒回去
@@ -3005,7 +3249,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                     // 积分照攒，不放掉就冲（孪生：40 改完改 41.5 不打冲 0.18、压低两次、又改一次；打 0.04）
                     var overrideSettled = s.ShotsFromPushRelease && OverrideCovers(s, s.SetpointC) && snapshot.Timestamp >= s.BiasHoldUntil;
                     if (push is null && s.Profile is null && !overrideSettled
-                        && SteadyBiasFor(s, s.SetpointC) is { } steadyI)     // 【本地改动】外环按釜选表；压低期间两枪都不打
+                        && SteadyBiasSource(s, s.SetpointC) is { Bias: { } steadyI } steadySrc)     // 【本地改动】外环按釜选表；压低期间两枪都不打
                     {
                         // 【本地改动】进了趋近带还得 Tr 真在往目标走才打：1 K 的小台阶一改完误差就在带里，原来第一拍就打（积分跟学到的差不到门槛、
                         // 空打），之后 Tr 还没动、积分照攒往外跑 0.5 K，没枪收拾（孪生：43 → 42 掉 0.135、42 → 43 冲 0.156 以后每 12 分钟压一回）
@@ -3028,7 +3272,9 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                             s.OuterCrossingArmed = false;
                             if (s.FinArmed)
                                 FinishCrossingShot(ch, s, steadyI, snapshot.Timestamp);     // 【本地改动】大降温收尾：按过零速度封顶
-                            else if (Math.Abs(s.OuterPid.LastI - steadyI) > OuterDischargeMinGapC)
+                            // 【本地改动】借来 / 外推的表值、夹套稳着：这一枪按实测热平衡封顶（CrossingCap），不打回表值
+                            else if (!CrossingCap(ch, s, snapshot.Timestamp, outerPv, steadyI, steadySrc)
+                                     && Math.Abs(s.OuterPid.LastI - steadyI) > OuterDischargeMinGapC)
                             {
                                 s.OuterPid.PresetIntegral(steadyI);
                                 OnOuterPresetToLearned(s);     // 【本地改动】
@@ -3079,6 +3325,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                         // 【本地改动】这一场已经稳住过：积分里就是维持这个温度要的偏置，刹车那份不再单算（改方向 / 坡走完不重摆）
                         if (s.OuterSteadyCycles >= OuterSteadyCyclesToLearn)
                         {
+                            s.BiasSettledSp = s.SetpointC;             // 【本地改动】这个目标真稳住过：之后被压低是扰动，压低那一刻不按热平衡改（OuterPushRefixMaxDropC）
                             s.OuterApproachDischargeArmed = false;     // 【本地改动】没趋近就到站稳住了（台阶小、Tr 没怎么动）：趋近那一枪作废，别留到以后乱打
                             // 【本地改动】真稳住学到了：这一场按学到的用（表里那行可能记在邻近的行、插值出来不一样，或者表没收），不退回表里那个。
                             // 只在自校正管着的目标上挪：管不着的目标学到的已经进表、照表查就是它；挪过去反倒把原目标那个实测丢了
