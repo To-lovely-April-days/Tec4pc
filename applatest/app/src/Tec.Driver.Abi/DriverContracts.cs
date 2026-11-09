@@ -72,6 +72,20 @@ public interface IReconnectAwareSession
     bool Reconnecting { get; set; }
 }
 
+/// <summary>
+/// 【本地改动】串口跟工位走（用户 2026-11-10 定的）：一个工位一台的设备（搅拌驱动器、数字 pH 电极）绑到哪个系统通道，
+/// 串口就按那个工位的缺省口填——现场两块 CH344 的口是按工位接死的（搅拌 A = COM11 / B = COM14、pH A = COM12 / B = COM13），
+/// 拖到工位上就不用再去属性栏改口。宿主只在口还是空的、或者是缺省表里某个口（没手填过）时才改；手填过别的口的不动。
+/// 驱动可选实现；没实现的设备串口照旧手填。
+/// </summary>
+public interface IStationPortDefaults
+{
+    /// <summary>连接参数里串口那一项的键。</summary>
+    string PortFieldKey { get; }
+    /// <summary>绑到系统通道 channelNumber（1 = 工位 A、2 = 工位 B……）时串口的缺省；不认识的通道号返回 null。</summary>
+    string? DefaultPortFor(int channelNumber);
+}
+
 public interface IDeviceDriver
 {
     DriverInfo Info { get; }

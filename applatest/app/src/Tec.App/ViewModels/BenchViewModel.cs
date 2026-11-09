@@ -529,6 +529,7 @@ public sealed class BenchViewModel : ViewModelBase
             {
                 _ws.Bench.Bindings.Add(new Binding(_selected.Id, ch, BindingMode.Exclusive));
                 DockToChannel(_selected, ch);          // 画布上的探头挪到那条通道的工位上
+                ApplyStationPort(_selected.Id, ch);    // 串口跟工位走
             }
             else
             {
@@ -1254,6 +1255,29 @@ public sealed class BenchViewModel : ViewModelBase
         foreach (var ch in channels)
             _ws.Bench.Bindings.Add(new Binding(deviceId, ch,
                 exclusive ? BindingMode.Exclusive : BindingMode.Shared));
+        ApplyStationPort(deviceId, channels.Count == 1 ? channels[0] : null);
+    }
+
+    /// <summary>
+    /// 【本地改动】串口跟工位走（用户 2026-11-10 定的）：一个工位一台的设备绑到哪个通道，串口就按驱动声明的那个工位缺省口填
+    /// （搅拌 CH1 = COM11 / CH2 = COM14，数字 pH CH1 = COM12 / CH2 = COM13）。只在口还是空的、或者是缺省表里的某个口时改——
+    /// 手填过别的口的不动。改了记一笔日志；属性栏正显示这台就刷一下表单。随后的重建会按新口重开这一台。
+    /// </summary>
+    private void ApplyStationPort(string deviceId, int? channel)
+    {
+        if (channel is not { } ch) return;
+        if (_ws.Bench.Device(deviceId) is not { } dev) return;
+        if (_ws.Drivers.Driver(dev.DriverId) is not IStationPortDefaults spd) return;
+        if (spd.DefaultPortFor(ch) is not { } want) return;
+        var key = spd.PortFieldKey;
+        var cur = dev.Connection.Str(key, "").Trim();
+        var untouched = cur.Length == 0
+            || Enumerable.Range(1, 8).Select(spd.DefaultPortFor).Any(p => p is not null && string.Equals(p, cur, StringComparison.OrdinalIgnoreCase));
+        if (!untouched || string.Equals(cur, want, StringComparison.OrdinalIgnoreCase)) return;
+        dev.Connection[key] = want;
+        _ws.Log?.Write("设备", $"{dev.Display}（{dev.InstanceId}）绑到 CH{ch}，串口按工位缺省填成 {want}（原来是{(cur.Length == 0 ? "空的" : $" {cur}")}）——手填过别的口的不会被改",
+                       _ws.Operator);
+        if (_selected?.Id == deviceId) BuildForms();
     }
 
     /// <summary>台面上的编号前缀，沿用预置台面的写法（R1/P1/PH1…）。</summary>

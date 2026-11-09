@@ -19,7 +19,7 @@ namespace Tec.Drivers.Aqmd;
 /// 驱动器一侧的语义：速度闭环目标是**换向频率**（Hz），不是 rpm；rpm = Hz ÷ 极数 × 20 ÷ 减速比（手册 p10）。
 /// 极数不知道就换算不了，所以极数是硬要求：驱动器里有就用驱动器里的，没有就得在属性栏填。
 /// </summary>
-public sealed class AqmdStirrerDriver : IDeviceDriver
+public sealed class AqmdStirrerDriver : IDeviceDriver, IStationPortDefaults
 {
     public const string DriverId = "tec.stir.aqmd2408";
 
@@ -144,6 +144,10 @@ public sealed class AqmdStirrerDriver : IDeviceDriver
     /// <summary>驱动器认领配方里的「搅拌」指令（声明在 ABI 的 CommandSpecs.Stirring，跟仿真机同一条）。</summary>
     public IReadOnlyList<CommandDescriptor> Commands { get; } = CommandSpecs.Stirring;
 
+    // ── 串口跟工位走（IStationPortDefaults）：绑到 CH1 就是 COM11、CH2 就是 COM14 ──
+    public string PortFieldKey => FieldPort;
+    public string? DefaultPortFor(int channelNumber) => channelNumber switch { 1 => DefaultPort, 2 => DefaultPortB, _ => null };
+
     public static Parity ParityOf(string s) => s switch
     {
         ParityOdd => Parity.Odd,
@@ -153,7 +157,7 @@ public sealed class AqmdStirrerDriver : IDeviceDriver
 
     public static StopBits StopBitsOf(string s) => s.Trim() == "1" ? StopBits.One : StopBits.Two;
 
-    /// <summary>「COM11 @ 9600 8E2，站号 1」——报错和回显里指着说的那条链路。</summary>
+    /// <summary>「COM11 @ 9600 8N2，站号 1」——报错和回显里指着说的那条链路。</summary>
     public static string LinkName(ParameterSet cn)
         => $"{cn.Str(FieldPort, DefaultPort)} @ {(int)cn.Num(FieldBaud, DefaultBaud)} " +
            $"{TecControl.Core.Comm.SerialPortTransport.FrameName(ParityOf(cn.Str(FieldParity, DefaultParity)), StopBitsOf(cn.Str(FieldStop, DefaultStop)))}" +

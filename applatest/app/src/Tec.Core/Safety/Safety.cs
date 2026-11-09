@@ -175,6 +175,15 @@ public sealed class SafetyMonitor
     }
 
     /// <summary>
+    /// 【本地改动】撤掉某通道由设备 Limits 推出来的底线限值（FromDeviceLimits）。台面只重连这一路的设备时用：
+    /// 别的通道的限值不动，这一路的按新会话的 Limits 重推。正在报的那条由 EvaluateCore 里「限值不在册」那段收尾。
+    /// </summary>
+    public int RemoveDeviceLimits(int channel)
+    {
+        lock (_gate) return _limits.RemoveAll(l => l.FromDeviceLimits && l.Channel == channel);
+    }
+
+    /// <summary>
     /// 配方「改限值」步骤设定一条限值。同一通道同一监测量的**配方**限值
     /// 只留最新一条（后面的步骤改的是同一条限值，不是叠一条新的）；
     /// 底线限值（FromDeviceLimits）不受影响——两条同时求值，

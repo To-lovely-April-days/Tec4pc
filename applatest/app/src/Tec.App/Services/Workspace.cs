@@ -356,24 +356,42 @@ public sealed class Workspace : IHmiHost
         finally { _rebuildGate.Release(); }
     }
 
+    /// <summary>【本地改动】每个已开会话的签名与它挂的通道：重建时比签名，没变的会话原样留着，只重开变了的那几台。</summary>
+    private readonly Dictionary<string, (string Sig, List<int> Chs)> _sessionInfo = new(StringComparer.Ordinal);
+
+    /// <summary>一台设备的会话签名：驱动、连接参数、配置、绑的通道——任一变了才重开它；纯挪位置、别的设备的事都不算。</summary>
+    private static string SignatureOf(DeviceInstance dev, IReadOnlyList<int> chs)
+    {
+        static string Dump(ParameterSet p) => string.Join(";", p
+            .OrderBy(kv => kv.Key, StringComparer.Ordinal)
+            .Select(kv => $"{kv.Key}={Convert.ToString(kv.Value, System.Globalization.CultureInfo.InvariantCulture)}"));
+        return $"{dev.DriverId}|{Dump(dev.Connection)}|{Dump(dev.Config)}|{string.Join(",", chs)}";
+    }
+
+    /// <summary>这台设备挂在哪几路（宿主按孔位、探头按绑定）。</summary>
+    private List<int> ChannelsOfDevice(string instanceId)
+    {
+        var hosted = _channels.Where(c => c.HostInstanceId == instanceId).Select(c => c.Number).ToList();
+        return hosted.Count > 0 ? hosted
+            : Bench.Bindings.Where(b => b.DeviceId == instanceId).Select(b => b.ChannelNumber).Distinct().OrderBy(x => x).ToList();
+    }
+
+    /// <summary>这台设备所在的通道有没有在跑（运行中 / 暂停）。重连 / 断开它要先问——别为了点一下「连接」把别人的实验掐了。</summary>
+    public bool IsRunningOn(string instanceId)
+    {
+        var chs = ChannelsOfDevice(instanceId);
+        return Engine.Runners.Any(r => chs.Contains(r.Number) && r.State is ChannelRunState.Running or ChannelRunState.Paused);
+    }
+
     private async Task RebuildChannelsCoreAsync(bool connect)
     {
         // 取消闸建在收会话之前：收会话要花时间，这期间点的「取消连接」也作数
         _connectCts = new CancellationTokenSource();
-        // 重建重开不是真断开：先记住谁开着——收的时候打 Reconnecting 标记（别停冷水机 / 关阀），
-        // 新会话的 DriverContext.Reconnecting 也按它给（开机复位按物理现状接手）
-        var hadSession = _sessions.Keys.ToHashSet(StringComparer.Ordinal);
-        await CloseSessionsAsync("台面改动，设备会话重开", rebuild: true).ConfigureAwait(false);
-        _channels.Clear();
-        Engine.ResetSafety("台面重建，限值已重设");
 
-        // 台面上已经没有的设备，断开标记一并摘掉——删设备 / 新建实验 / 换台面文件
-        // 都走这里，不摘的话标记就指着一台不存在的设备
-        _disconnected.RemoveWhere(id => Bench.Devices.All(d => d.InstanceId != id));
-
-        // 1. 先按宿主设备开通道
-        var number = 0;
+        // 0. 新的通道布局先纯算出来，什么都不动：按宿主设备的孔位编号
+        var layout = new List<(int Number, string Host, int Well)>();
         var hostWells = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+        var number = 0;
         foreach (var dev in Bench.Devices)
         {
             var driver = Drivers.Driver(dev.DriverId);
@@ -382,17 +400,25 @@ public sealed class Workspace : IHmiHost
             for (var w = 0; w < driver.Info.ChannelsPerDevice; w++)
             {
                 number++;
-                _channels.Add(new Channel(number, dev.InstanceId, w));
+                layout.Add((number, dev.InstanceId, w));
                 list.Add(number);
             }
             hostWells[dev.InstanceId] = list;
         }
+        // 【本地改动】通道编号整体变了（增减了反应主机）、或者只建拓扑不开会话：全部重来，跟从前一样。
+        // 其余情况按设备签名比对，只重开变了的那几台——从前台面一动全体会话重开、正在跑的通道一律中止，
+        // 拖一支 pH 过去温控主机都要断一次重连（用户 2026-11-10 提的）
+        var layoutChanged = layout.Count != _channels.Count
+            || layout.Where((l, i) => _channels[i].Number != l.Number || _channels[i].HostInstanceId != l.Host || _channels[i].Well != l.Well).Any();
+        var full = layoutChanged || !connect;
 
-        // 2. 打开会话并挂能力——自动连接：每台都开，手动断开（_disconnected）的除外，
+        // 台面上已经没有的设备，断开标记一并摘掉——删设备 / 新建实验 / 换台面文件
+        // 都走这里，不摘的话标记就指着一台不存在的设备
+        _disconnected.RemoveWhere(id => Bench.Devices.All(d => d.InstanceId != id));
+
+        // 1. 该连哪些、各挂哪几路——自动连接：每台都开，手动断开（_disconnected）的除外，
         //    那是调试 / 暂离时停掉的一台，界面上是个安静的「未连接」。
-        //    先排出要连的清单，再把台面先亮出来（节点、通道先就位，还是「未连接」）——
-        //    「先见设备、再见连接中」就是这个顺序；逐台开会话时横幅报进度、节点顶菊花。
-        //    connect = false（打开实验的第一步）只到上面为止：通道建好、会话一个不开
+        //    connect = false（打开实验的第一步）只建通道、会话一个不开
         var plan = new List<(DeviceInstance Dev, List<int> Chs)>();
         if (connect)
             foreach (var dev in Bench.Devices)
@@ -409,13 +435,70 @@ public sealed class Workspace : IHmiHost
                 plan.Add((dev, chs));
             }
 
-        IsConnecting = plan.Count > 0;
-        ConnectTotal = plan.Count;
+        // 2. 比签名：没变的留着，变了 / 新来的 / 上次没开成的重开，不在清单里的（删了、手动断开了、绑定没了）关掉
+        var keep = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+        var open = new List<(DeviceInstance Dev, List<int> Chs)>();
+        foreach (var (dev, chs) in plan)
+        {
+            if (!full && _sessions.ContainsKey(dev.InstanceId)
+                && _sessionInfo.TryGetValue(dev.InstanceId, out var old) && old.Sig == SignatureOf(dev, chs))
+                keep[dev.InstanceId] = chs;
+            else
+                open.Add((dev, chs));
+        }
+        var close = _sessions.Keys.Where(id => !keep.ContainsKey(id)).ToList();
+        // 重建重开不是真断开：先记住谁开着——收的时候打 Reconnecting 标记（别停冷水机 / 关阀），
+        // 新会话的 DriverContext.Reconnecting 也按它给（开机复位按物理现状接手）
+        var hadSession = _sessions.Keys.ToHashSet(StringComparer.Ordinal);
+
+        // 受影响的通道：要关的会话从前挂的 + 要开的会话将要挂的。只有这几路要停、要摘能力、要重推限值
+        var affected = new HashSet<int>();
+        if (full) { foreach (var c in _channels) affected.Add(c.Number); foreach (var l in layout) affected.Add(l.Number); }
+        foreach (var id in close) if (_sessionInfo.TryGetValue(id, out var info)) foreach (var c in info.Chs) affected.Add(c);
+        foreach (var (_, chs) in open) foreach (var c in chs) affected.Add(c);
+
+        if (full || close.Count > 0 || open.Count > 0)
+            Log?.Write("设备", full
+                ? "台面重建：通道布局变了，全部设备会话重开"
+                : $"台面改动：重开 {string.Join("、", close.Concat(open.Select(o => o.Dev.InstanceId)).Distinct())}"
+                  + (keep.Count > 0 ? $"；{string.Join("、", keep.Keys)} 没变，会话留着不动" : ""), Operator);
+
+        // 3. 停受影响的通道、收要关的会话（留着的那几台一根线都不碰）
+        await CloseSessionsAsync(full ? "台面重建，设备会话重开" : "台面改动，这一路的设备会话重开",
+                                 rebuild: true, only: full ? null : close, channels: full ? null : affected).ConfigureAwait(false);
+
+        // 4. 通道对象：布局没变就留着（跑着的执行器攥着它），只把受影响的那几路能力摘空、把留下的会话重新挂回去
+        if (full)
+        {
+            _channels.Clear();
+            foreach (var (n, host, well) in layout) _channels.Add(new Channel(n, host, well));
+            Engine.ResetSafety("台面重建，限值已重设");
+        }
+        else
+        {
+            foreach (var ch in _channels.Where(c => affected.Contains(c.Number)))
+            {
+                ch.DetachAll();
+                Engine.Safety.RemoveDeviceLimits(ch.Number);
+            }
+            foreach (var (id, chs) in keep)
+            {
+                var session = _sessions[id];
+                for (var w = 0; w < chs.Count && w < Math.Max(1, session.WellCount); w++)
+                    if (affected.Contains(chs[w]))
+                        _channels.FirstOrDefault(c => c.Number == chs[w])?.Attach(session, w, hostWells.ContainsKey(id));
+            }
+        }
+
+        // 5. 逐台开要开的会话；横幅报进度、节点顶菊花。先排清单、再把台面亮出来——「先见设备、再见连接中」
+        foreach (var (dev, _) in open) _openFailures.Remove(dev.InstanceId);
+        IsConnecting = open.Count > 0;
+        ConnectTotal = open.Count;
         if (IsConnecting)
         {
             ConnectIndex = 0;
-            ConnectingInstanceId = plan[0].Dev.InstanceId;
-            ConnectDeviceName = plan[0].Dev.Display;
+            ConnectingInstanceId = open[0].Dev.InstanceId;
+            ConnectDeviceName = open[0].Dev.Display;
             await RaiseBenchChangedAsync().ConfigureAwait(false);   // 先见设备
             RaiseConnectProgress();
         }
@@ -423,7 +506,7 @@ public sealed class Workspace : IHmiHost
         // 取消：还没连的（含正在连的这台）标成手动断开——界面停在「未连接」，点「连接」接回来
         void CancelRest(int from)
         {
-            var rest = plan.Skip(from).ToList();
+            var rest = open.Skip(from).ToList();
             foreach (var p in rest) _disconnected.Add(p.Dev.InstanceId);
             Log?.Write("设备", $"连接已取消：{string.Join("、", rest.Select(p => p.Dev.Display))} 未连（点「连接」可接回来）",
                        Operator, LogLevel.Warn);
@@ -431,10 +514,10 @@ public sealed class Workspace : IHmiHost
 
         try
         {
-            for (var i = 0; i < plan.Count; i++)
+            for (var i = 0; i < open.Count; i++)
             {
                 if (_connectCts.IsCancellationRequested) { CancelRest(i); break; }
-                var (dev, chs) = plan[i];
+                var (dev, chs) = open[i];
                 ConnectIndex = i;
                 ConnectingInstanceId = dev.InstanceId;
                 ConnectDeviceName = dev.Display;
@@ -478,6 +561,7 @@ public sealed class Workspace : IHmiHost
 
                 Log?.Write("设备", $"{dev.Display}（{dev.InstanceId}）已连接", Operator);
                 _sessions[dev.InstanceId] = session;
+                _sessionInfo[dev.InstanceId] = (SignatureOf(dev, chs), chs.ToList());
                 Engine.Ingest(session);
 
                 for (var w = 0; w < chs.Count && w < Math.Max(1, session.WellCount); w++)
@@ -520,7 +604,8 @@ public sealed class Workspace : IHmiHost
 
         // 4. 执行器 + 安全限值。缺省从设备 Limits 推导，操作人只能收紧（§7.5）
         //    台面上已经没有的通道，执行器一并摘掉——留着的话它指向一个
-        //    早已不存在的孔位，下一次「全部启动」会去启一条不在台面上的通道
+        //    早已不存在的孔位，下一次「全部启动」会去启一条不在台面上的通道。
+        //    通道对象没换的（没受影响的那几路）Engine.Attach 原样返回老执行器，限值也不重推
         foreach (var gone in Engine.Runners.Select(r => r.Number)
                                    .Where(n => _channels.All(c => c.Number != n)).ToList())
             Engine.Detach(gone);
@@ -528,6 +613,7 @@ public sealed class Workspace : IHmiHost
         foreach (var ch in _channels)
         {
             Engine.Attach(ch);
+            if (!affected.Contains(ch.Number)) continue;
             if (ch.Capabilities.Get<ITemperatureControl>() is { } t)
                 Engine.Safety.Add(SafetyMonitor.FromTemperature(ch.Number, t.Limits));
 
@@ -559,27 +645,30 @@ public sealed class Workspace : IHmiHost
     }
 
     /// <summary>
-    /// 把台面上所有设备会话收掉：先停正在跑的通道并记一笔——它的会话马上就要被
-    /// Dispose，让它「接着跑」只是对着空气下指令：界面上通道明明「运行中」，
-    /// 釜温却一动不动，而且一声不吭。停下来至少在记录里写清了为什么停。
+    /// 把设备会话收掉：先停正在跑的通道并记一笔——它的会话马上就要被 Dispose，让它「接着跑」只是对着空气下指令：
+    /// 界面上通道明明「运行中」，釜温却一动不动，而且一声不吭。停下来至少在记录里写清了为什么停。
+    /// 【本地改动】<paramref name="only"/> 给了就只收这几台、<paramref name="channels"/> 给了就只停这几路；都不给 = 全部（从前的行为）。
     /// </summary>
     /// <param name="rebuild">true = 台面重建 / 重连（马上重开）：设备还在台面上的会话
     /// 打上 Reconnecting 标记再收——「走人前收拾」（停冷水机、关冷却水阀）跳过，
     /// 物理状态交给新会话接手。false（默认）= 真断开，照常收拾。</param>
-    private async Task CloseSessionsAsync(string why, bool rebuild = false)
+    private async Task CloseSessionsAsync(string why, bool rebuild = false,
+                                          IReadOnlyCollection<string>? only = null, ISet<int>? channels = null)
     {
         foreach (var r in Engine.Runners.ToList())
-            if (r.State is ChannelRunState.Running or ChannelRunState.Paused)
+            if ((channels is null || channels.Contains(r.Number))
+                && r.State is ChannelRunState.Running or ChannelRunState.Paused)
                 r.Abort(Operator, why);
         foreach (var r in Engine.Runners.ToList())
-        {
-            try { await r.Completion.ConfigureAwait(false); } catch { }
-        }
+            if (channels is null || channels.Contains(r.Number))
+            {
+                try { await r.Completion.ConfigureAwait(false); } catch { }
+            }
 
         // 先把表摘空再逐个收：收会话要 await，这期间别让任何人再从表里读到一个正在死的会话
-        var closing = _sessions.ToList();
-        _sessions.Clear();
-        _openFailures.Clear();
+        var closing = only is null ? _sessions.ToList() : _sessions.Where(kv => only.Contains(kv.Key)).ToList();
+        foreach (var (id, _) in closing) { _sessions.Remove(id); _sessionInfo.Remove(id); _openFailures.Remove(id); }
+        if (only is null) { _sessions.Clear(); _sessionInfo.Clear(); _openFailures.Clear(); }
         foreach (var (id, s) in closing)
         {
             // 设备被删的不算重开（它已经不在台面上了）——那是真断开，照常收拾
@@ -589,7 +678,7 @@ public sealed class Workspace : IHmiHost
         }
     }
 
-    /// <summary>有没有通道正在跑（运行中 / 暂停）。重连要先问它——不能为了点一下「连接」把别人的实验掐了。</summary>
+    /// <summary>有没有通道正在跑（运行中 / 暂停）。</summary>
     public bool AnyChannelRunning
         => Engine.Runners.Any(r => r.State is ChannelRunState.Running or ChannelRunState.Paused);
 
@@ -597,13 +686,14 @@ public sealed class Workspace : IHmiHost
     /// 「连接」：先测后开（手动断开的设备从这里回到自动连接）。测试要占串口，而这台
     /// 设备的会话可能正拿着同一个口（Windows 上一个串口只许开一次）——所以先把
     /// 会话收掉、让驱动按**当前**连接参数探一遍（回显固件 / 序列号 / 路数），
-    /// 再把台面上的会话按当前参数重开。改了串口之后点它，改动才真正生效；
+    /// 再按当前参数重开。改了串口之后点它，改动才真正生效；
     /// 之前会话一直拿着旧口子，属性栏上明明填了 COM7、面板里却什么都读不到。
+    /// 【本地改动】只收、只重开这一台——别的设备会话不动（从前点一下「连接」全体重开）。
     ///
     /// 探不通也照常重开（自动连接）：界面上是「未连接：原因」，下次台面改动顺带重试一次
     /// （一次一抛，不成循环）；不想让它连就点「断开」。
     ///
-    /// 有通道在跑就拒绝：重开会话必然要停它。
+    /// 它所在的通道在跑就拒绝：重开会话必然要停它。
     /// </summary>
     public async Task<ProbeResult> ConnectAsync(string instanceId)
     {
@@ -611,8 +701,8 @@ public sealed class Workspace : IHmiHost
         if (dev is null) return new ProbeResult(false, "这台设备已不在台面上");
         if (Drivers.Driver(dev.DriverId) is not { } driver)
             return new ProbeResult(false, $"没有驱动 {dev.DriverId}");
-        if (AnyChannelRunning)
-            return new ProbeResult(false, "有通道正在运行——重连要先停设备会话，先把通道停下来再连");
+        if (IsRunningOn(instanceId))
+            return new ProbeResult(false, "这台设备所在的通道正在运行——重连要先停它的会话，先把那一路停下来再连");
 
         // 跟重建走同一把锁：测试要占串口，重建要开串口，两件事不能交错
         await _rebuildGate.WaitAsync().ConfigureAwait(false);
@@ -620,13 +710,14 @@ public sealed class Workspace : IHmiHost
         try
         {
             _disconnected.Remove(instanceId);
-            await CloseSessionsAsync("重新连接设备，会话重开", rebuild: true).ConfigureAwait(false);
+            await CloseSessionsAsync("重新连接设备，会话重开", rebuild: true,
+                                     only: new[] { instanceId }, channels: ChannelsOfDevice(instanceId).ToHashSet()).ConfigureAwait(false);
             try { r = await driver.ProbeAsync(dev.Connection, CancellationToken.None).ConfigureAwait(false); }
             catch (Exception ex) { r = new ProbeResult(false, ex.Message); }
             Log?.Write("设备", $"{dev.Display}（{dev.InstanceId}）连接测试：{(r.Success ? "成功" : "失败")}——{r.Message}",
                        Operator, r.Success ? LogLevel.Info : LogLevel.Warn);
 
-            await RebuildChannelsCoreAsync(true).ConfigureAwait(false);
+            await RebuildChannelsCoreAsync(true).ConfigureAwait(false);     // 没会话的这一台重开，别的签名没变不动
         }
         finally { _rebuildGate.Release(); }
         return r;
@@ -635,14 +726,14 @@ public sealed class Workspace : IHmiHost
     /// <summary>
     /// 「断开」：把这台设备标成手动断开，重建时它不再开会话——采集停在这里，
     /// 设备和连接参数都留在台面上，想再连点「连接」就是（调试 / 暂离时用）。
-    /// 有通道在跑同样拒绝：收会话必然要停它。
+    /// 它所在的通道在跑同样拒绝：收会话必然要停它。【本地改动】只收这一台。
     /// </summary>
     public async Task<ProbeResult> DisconnectAsync(string instanceId)
     {
         var dev = Bench.Devices.FirstOrDefault(d => d.InstanceId == instanceId);
         if (dev is null) return new ProbeResult(false, "这台设备已不在台面上");
-        if (AnyChannelRunning)
-            return new ProbeResult(false, "有通道正在运行——断开要停设备会话，先把通道停下来再断");
+        if (IsRunningOn(instanceId))
+            return new ProbeResult(false, "这台设备所在的通道正在运行——断开要停设备会话，先把那一路停下来再断");
 
         await _rebuildGate.WaitAsync().ConfigureAwait(false);
         try

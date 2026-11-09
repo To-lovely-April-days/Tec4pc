@@ -17,7 +17,7 @@ namespace Tec.Drivers.DualStation;
 /// 5 温度状态（0 正常 / 1 过高过低 / 2 未接传感器）、8 地址、9 波特率、10 参数恢复（写 1996）、11 复位（写 1524）、
 /// 13 标定命令（1 零电位 / 2 斜率低点 / 3 斜率高点，读回标定结果码）、14 零电位 ×0.01 mV、15 斜率 %、20 标准液类型、25 数据格式。
 /// </summary>
-public sealed class BhtPhProbeDriver : IDeviceDriver
+public sealed class BhtPhProbeDriver : IDeviceDriver, IStationPortDefaults
 {
     public const string DriverId = "tec.probe.ph.bht";
 
@@ -70,6 +70,10 @@ public sealed class BhtPhProbeDriver : IDeviceDriver
 
     /// <summary>探头只采集；「pH 采集」指令由会话认领，不在这里声明新指令。</summary>
     public IReadOnlyList<CommandDescriptor> Commands { get; } = Array.Empty<CommandDescriptor>();
+
+    // ── 串口跟工位走（IStationPortDefaults）：绑到 CH1 就是 COM12、CH2 就是 COM13 ──
+    public string PortFieldKey => FieldPort;
+    public string? DefaultPortFor(int channelNumber) => channelNumber switch { 1 => DefaultPort, 2 => DefaultPortB, _ => null };
 
     /// <summary>「COM12 @ 9600 8N1，地址 2」。</summary>
     public static string LinkName(ParameterSet cn)
