@@ -40,8 +40,8 @@ public sealed class LibraryItemViewModel
             var caps = Package.Driver?.Info.Capabilities
                        ?? (IReadOnlyList<string>)Package.Manifest.Capabilities;
             if (caps.Contains("ITemperatureControl")) return "反应与控温";
-            if (caps.Contains("IStirrer")) return "反应与控温";       // 【本地改动】搅拌是釜的一部分，跟主机摆一类
-            if (caps.Contains("IDosing")) return "加料";
+            if (caps.Contains("IStirrer")) return "搅拌";              // 【本地改动】搅拌独立一类（用户 2026-11-10 定的）
+            if (caps.Contains("IDosing")) return "进料系统";           // 【本地改动】原「加料」改名：真机是两液一气进料系统
             if (caps.Contains("IScalarSensor")) return "在线检测";
             return "其他";
         }
@@ -1288,6 +1288,7 @@ public sealed class BenchViewModel : ViewModelBase
         "phel" => "PH",
         "trprobe" => "TR",
         "stirdrv" => "ST",      // 【本地改动】搅拌驱动器，与 HMI 缺省台面的 ST1 / ST2 同一套编号
+        "feedsys" => "F",       // 【本地改动】进料系统
         _ => "D"
     };
 
@@ -1339,7 +1340,7 @@ public sealed class BenchViewModel : ViewModelBase
     /// 分类的先后。按「先有台面才有别的」排：反应器给出通道，加料和探头都得
     /// 挂到通道上去。空的那一类不出现——不装加料泵的机器不该看见一个空的「加料」。
     /// </summary>
-    private static readonly string[] CategoryOrder = { "反应与控温", "加料", "在线检测", "其他" };
+    private static readonly string[] CategoryOrder = { "反应与控温", "搅拌", "进料系统", "在线检测", "其他" };   // 【本地改动】
 
     /// <summary>
     /// 设备库只上真机三件：双工位反应主机 + 两支宇电探头。程序里没有仿真，
@@ -1357,7 +1358,9 @@ public sealed class BenchViewModel : ViewModelBase
         // 【本地改动】搅拌电机驱动器（爱控 AQMD2408BLS-M）：真机第四件，一个工位一台
         Tec.Drivers.Aqmd.AqmdStirrerDriver.DriverId,
         // 【本地改动】数字 pH 电极（BHT-DM100，自带变送器直接出 pH）：真机第五件，一个工位一支
-        Tec.Drivers.DualStation.BhtPhProbeDriver.DriverId
+        Tec.Drivers.DualStation.BhtPhProbeDriver.DriverId,
+        // 【本地改动】两液一气进料系统（霍桐 HTLAB）：接在工位加料口上，管子画到釜盖
+        Tec.Drivers.Htlab.FeedSystemDriver.DriverId
     };
 
     public void Reload()

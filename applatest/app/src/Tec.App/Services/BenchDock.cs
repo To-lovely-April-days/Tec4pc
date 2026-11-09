@@ -77,6 +77,8 @@ public static class BenchDock
         // 插入形态的宽 = 它的 viewBox 宽（40）按主机比例缩，正好盖住主机图上那只灰电机头
         "stirdrv" => 34,
         "stirdrv-in" => 300.0 / MachineVw * 40,
+        // 【本地改动】两液一气进料系统：一台落地小机箱，按主机比例给到机箱宽的四成
+        "feedsys" => 120,
         _ => 60
     };
 
@@ -119,7 +121,9 @@ public static class BenchDock
             ["feedpump"] = (new Plug(176, 164, "up"), "feed", LinkKind.Feed),
             // 【本地改动】搅拌头：插头是轴的尖端（跟探头一样朝下），落到釜盖上就算插进去
             ["stirdrv"] = (new Plug(32, 296, "down"), "stir", LinkKind.Probe),
-            ["stirdrv-in"] = (new Plug(180, 96, "down"), "stir", LinkKind.Probe)
+            ["stirdrv-in"] = (new Plug(180, 96, "down"), "stir", LinkKind.Probe),
+            // 【本地改动】进料系统：管子从右侧出液接头出去，接到釜盖加料口（跟泵同一种 Feed 管）
+            ["feedsys"] = (new Plug(218, 122, "right"), "feed", LinkKind.Feed)
         };
 
     public static bool IsHost(string artKey) => artKey == "rd105";

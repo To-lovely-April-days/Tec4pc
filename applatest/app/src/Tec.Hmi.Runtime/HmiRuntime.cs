@@ -121,6 +121,8 @@ public sealed class HmiRuntime : IHmiHost, IAsyncDisposable
         Drivers.RegisterBuiltin(new Tec.Drivers.Aqmd.AqmdStirrerDriver());
         // 【本地改动】数字 pH 电极（BHT-DM100）：两个工位各一支
         Drivers.RegisterBuiltin(new Tec.Drivers.DualStation.BhtPhProbeDriver());
+        // 【本地改动】两液一气进料系统（霍桐 HTLAB）；缺省台面不摆它（现场串口还没定），台面文件里有就能开
+        Drivers.RegisterBuiltin(new Tec.Drivers.Htlab.FeedSystemDriver());
         // 第三方驱动包照工作站的规矩从 drivers/ 目录进
         Drivers.Discover(Path.Combine(AppContext.BaseDirectory, "drivers"));
         Drivers.LoadAll();

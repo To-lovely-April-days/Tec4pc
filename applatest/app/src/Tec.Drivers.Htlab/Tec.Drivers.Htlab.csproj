@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Tec.Drivers.Htlab</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 霍桐仪器两液一气进料系统（MFC 一路 + 计量泵两路，Modbus-RTU）。
+         引 DualStation 是为了串口池（SharedSerial / SerialPortPool）；Modbus 主站、断线自愈、串口报错翻译在 Rd105 里，传递引用过来。 -->
+    <ProjectReference Include="..\Tec.Drivers.DualStation\Tec.Drivers.DualStation.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Tec.Core.Tests" />
+  </ItemGroup>
+
+</Project>

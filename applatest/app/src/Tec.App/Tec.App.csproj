@@ -36,6 +36,7 @@
     <ProjectReference Include="..\Tec.Drivers.Rd105\Tec.Drivers.Rd105.csproj" />
     <ProjectReference Include="..\Tec.Drivers.DualStation\Tec.Drivers.DualStation.csproj" />
     <ProjectReference Include="..\Tec.Drivers.Aqmd\Tec.Drivers.Aqmd.csproj" />
+    <ProjectReference Include="..\Tec.Drivers.Htlab\Tec.Drivers.Htlab.csproj" />
   </ItemGroup>
 
 </Project>

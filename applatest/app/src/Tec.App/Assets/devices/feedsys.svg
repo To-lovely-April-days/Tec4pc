@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 300">
+<!-- 两液一气进料系统（霍桐仪器，2026-11-10 用户给的产品图）：白色机箱、顶上红色盖板托两只料瓶、
+     红色触摸屏面板带两颗圆钮、左侧两路进气接头、右侧出液接头、下面深色泵舱里两个泵头和 MFC。
+     线稿规矩同别的设备：描边 #4A4A4A；红 #B8322E / 高光 #D9534F / 暗红 #7A1F1C（跟搅拌头同一组色），
+     机箱白 #F9F9F9，泵舱深灰 #4A4A4A。出液口在右侧中部，管子从那里接到釜盖加料口（BenchDock 的 Plug）。 -->
+<g fill="none" stroke="#4A4A4A" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round">
+  <!-- 两只料瓶 -->
+  <g>
+    <rect x="52" y="4" width="14" height="10" rx="2" fill="#B8322E" stroke-width="1.2"/>
+    <path d="M48 14h22v8q10 6 10 18v30H38V40q0-12 10-18Z" fill="#E8F4F6" stroke-width="1.8"/>
+    <rect x="40" y="52" width="38" height="18" fill="#CFE8EA" stroke="none"/>
+    <rect x="138" y="4" width="14" height="10" rx="2" fill="#B8322E" stroke-width="1.2"/>
+    <path d="M134 14h22v8q10 6 10 18v30h-42V40q0-12 10-18Z" fill="#F6EEDD" stroke-width="1.8"/>
+    <rect x="126" y="52" width="38" height="18" fill="#EAD9B8" stroke="none"/>
+  </g>
+  <!-- 顶盖（红）与提手 -->
+  <rect x="10" y="70" width="200" height="16" rx="3" fill="#B8322E" stroke-width="2.4"/>
+  <rect x="14" y="56" width="22" height="18" rx="4" fill="#7A1F1C" stroke-width="1.8"/>
+  <rect x="184" y="56" width="22" height="18" rx="4" fill="#7A1F1C" stroke-width="1.8"/>
+  <!-- 机箱 -->
+  <rect x="10" y="86" width="200" height="150" fill="#F9F9F9" stroke-width="2.6"/>
+  <!-- 面板（红）：屏幕 + 两颗钮 -->
+  <rect x="38" y="94" width="144" height="78" rx="5" fill="#B8322E" stroke-width="2.4"/>
+  <rect x="48" y="102" width="86" height="50" rx="2" fill="#1E2A44" stroke-width="1.2"/>
+  <path d="M56 112h20M56 120h30M56 128h14M90 112h36M90 120h28" stroke="#CFE8EA" stroke-width="1.6"/>
+  <circle cx="156" cy="116" r="9" fill="#F1F1F1" stroke-width="1.8"/>
+  <circle cx="156" cy="116" r="4" fill="#B8322E" stroke="none"/>
+  <circle cx="156" cy="140" r="9" fill="#F1F1F1" stroke-width="1.8"/>
+  <circle cx="156" cy="140" r="4" fill="#B8322E" stroke="none"/>
+  <!-- 左侧两路进气接头 -->
+  <rect x="2" y="104" width="10" height="8" rx="1.5" fill="#C9C9C9" stroke-width="1.2"/>
+  <rect x="2" y="128" width="10" height="8" rx="1.5" fill="#C9C9C9" stroke-width="1.2"/>
+  <rect x="14" y="100" width="16" height="40" rx="3" fill="#DCDCDC" stroke-width="1.2"/>
+  <rect x="17" y="106" width="10" height="10" fill="#4A4A4A" stroke="none"/>
+  <!-- 右侧出液接头（管子从这里出去） -->
+  <rect x="190" y="110" width="16" height="30" rx="3" fill="#DCDCDC" stroke-width="1.2"/>
+  <rect x="193" y="114" width="10" height="10" fill="#4A4A4A" stroke="none"/>
+  <rect x="206" y="118" width="12" height="8" rx="1.5" fill="#C9C9C9" stroke-width="1.2"/>
+  <!-- 状态灯带 + 散热格栅 -->
+  <g fill="#D9534F" stroke="none">
+    <circle cx="60" cy="182" r="2.2"/><circle cx="76" cy="182" r="2.2" fill="#E0B030"/><circle cx="92" cy="182" r="2.2" fill="#2F6B38"/>
+    <circle cx="128" cy="182" r="2.2" fill="#2F8189"/><circle cx="144" cy="182" r="2.2" fill="#5b46bd"/><circle cx="160" cy="182" r="2.2"/>
+  </g>
+  <g stroke="#C9C9C9" stroke-width="1.2">
+    <path d="M40 194h140M40 200h140M40 206h140M40 212h140"/>
+  </g>
+  <!-- 泵舱（深色）：两个泵头 + 中间 MFC -->
+  <rect x="10" y="236" width="200" height="60" rx="3" fill="#4A4A4A" stroke-width="2.6"/>
+  <rect x="26" y="248" width="40" height="34" rx="3" fill="#8A8A8A" stroke="#2A2A2A" stroke-width="1.6"/>
+  <circle cx="38" cy="265" r="5" fill="#DCDCDC" stroke="#2A2A2A" stroke-width="1.2"/><circle cx="54" cy="265" r="5" fill="#DCDCDC" stroke="#2A2A2A" stroke-width="1.2"/>
+  <rect x="154" y="248" width="40" height="34" rx="3" fill="#8A8A8A" stroke="#2A2A2A" stroke-width="1.6"/>
+  <circle cx="166" cy="265" r="5" fill="#DCDCDC" stroke="#2A2A2A" stroke-width="1.2"/><circle cx="182" cy="265" r="5" fill="#DCDCDC" stroke="#2A2A2A" stroke-width="1.2"/>
+  <circle cx="110" cy="266" r="16" fill="#8A8A8A" stroke="#2A2A2A" stroke-width="1.6"/>
+  <circle cx="110" cy="266" r="7" fill="#1E2A44" stroke="#2A2A2A" stroke-width="1.2"/>
+  <path d="M66 266h28M126 266h28" stroke="#C9C9C9" stroke-width="1.6"/>
+</g>
+</svg>
