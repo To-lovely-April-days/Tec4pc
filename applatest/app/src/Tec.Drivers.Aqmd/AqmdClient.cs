@@ -101,6 +101,19 @@ public sealed class AqmdClient
             DefaultSpeedMode: At(AqmdRegisters.DefaultSpeedMode));
     }
 
+    /// <summary>驱动器温度（℃）与电源电压（V）：0x0037、0x0038 一帧读两个。</summary>
+    public async Task<(double TempC, double Volt)> ReadTempVoltAsync(CancellationToken ct)
+    {
+        var r = await _mb.ReadHoldingRegistersAsync(AqmdRegisters.DriverTemp, 2, ct).ConfigureAwait(false);
+        return ((short)r[0] * 0.1, r[1] * 0.1);
+    }
+
+    /// <summary>发学习命令（0x00E1 = 1，等于按键短按一下）。电机要空载。</summary>
+    public Task StartLearnAsync(CancellationToken ct) => _mb.WriteRegisterAsync(AqmdRegisters.LearnCommand, 1, ct);
+
+    public async Task<int> ReadLearnStatusAsync(CancellationToken ct)
+        => (await _mb.ReadHoldingRegistersAsync(AqmdRegisters.LearnStatus, 1, ct).ConfigureAwait(false))[0];
+
     /// <summary>写速度闭环目标（0x0043，有符号）。写它本身就把驱动器切到速度闭环方式（手册 §4.5.1）。</summary>
     public Task WriteSpeedAsync(short reg, CancellationToken ct)
         => _mb.WriteRegisterAsync(AqmdRegisters.SpeedSetpoint, unchecked((ushort)reg), ct);

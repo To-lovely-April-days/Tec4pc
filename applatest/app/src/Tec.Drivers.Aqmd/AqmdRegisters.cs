@@ -28,6 +28,17 @@ public static class AqmdRegisters
     public const ushort Fault = 0x0033;             // 故障码 0~9，见 FaultText
     public const ushort Rpm = 0x0034;               // 电机转速 rpm（要先配对极数 0x0073；没配读回 0xFFFF，现场见过）
     public const ushort RpmX10 = 0x0035;            // 1 = 0x0034 / 0x0022 的数值要 ×10
+    public const ushort DriverTemp = 0x0037;        // 驱动电路温度 ×0.1 ℃
+    public const ushort SupplyVoltage = 0x0038;     // 电源电压 ×0.1 V
+
+    // ── 6.3.9 电机学习 ──────────────────────────────────────────────
+    public const ushort LearnCommand = 0x00E1;      // 写 1 开始学习（= 按键短按一下）
+    public const ushort LearnStatus = 0x00E2;       // 0 就绪 / 1 正在学习 / 2 正在停止 / 3 学习完毕 / 4 学习失败
+
+    public static string LearnStatusText(int s) => s switch
+    {
+        0 => "准备就绪", 1 => "正在学习", 2 => "正在停止", 3 => "学习完毕", 4 => "学习失败", _ => $"状态码 {s}"
+    };
 
     // ── 6.3.3 速度控制（写）──────────────────────────────────────────
     public const ushort StopCmd = 0x0040;           // 0 正常停止 / 1 紧急制动 / 2 自由停止

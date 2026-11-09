@@ -1328,7 +1328,8 @@ public sealed class BenchViewModel : ViewModelBase
     {
         Tec.Drivers.DualStation.DualStationDriver.DriverId,
         Tec.Drivers.DualStation.YudianTrProbeDriver.DriverId,
-        Tec.Drivers.DualStation.YudianPhProbeDriver.DriverId,
+        // 【本地改动】宇电 J4 那支「pH 玻璃电极」从库里撤了（用户 2026-11-09 定的：现场 pH 是下面那支数字电极，J4 模块没装）；
+        // 驱动照旧注册，老台面上摆过的还能开，只是库里不再有、拖不出新的
         // 【本地改动】搅拌电机驱动器（爱控 AQMD2408BLS-M）：真机第四件，一个工位一台
         Tec.Drivers.Aqmd.AqmdStirrerDriver.DriverId,
         // 【本地改动】数字 pH 电极（BHT-DM100，自带变送器直接出 pH）：真机第五件，一个工位一支

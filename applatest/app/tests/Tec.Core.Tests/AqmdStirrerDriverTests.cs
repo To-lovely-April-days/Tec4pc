@@ -68,19 +68,20 @@ public sealed class AqmdStirrerDriverTests
     // ── 缺省值 / 探测 ─────────────────────────────────────────────
 
     [Fact]
-    public void 缺省连接参数照现场_COM11_9600_偶校验_2停止位_站号1()
+    public void 缺省连接参数照现场_COM11_9600_无校验_2停止位_站号1()
     {
         var drv = new AqmdStirrerDriver();
         var cn = new ParameterSet().FillDefaults(drv.ConnectionSchema);
         Assert.Equal("COM11", cn.Str(AqmdStirrerDriver.FieldPort));
         Assert.Equal(9600, cn.Num(AqmdStirrerDriver.FieldBaud));
-        Assert.Equal(AqmdStirrerDriver.ParityEven, cn.Str(AqmdStirrerDriver.FieldParity));
+        Assert.Equal(AqmdStirrerDriver.ParityNone, cn.Str(AqmdStirrerDriver.FieldParity));
         Assert.Equal("2", cn.Str(AqmdStirrerDriver.FieldStop));
         Assert.Equal(1, cn.Int(AqmdStirrerDriver.FieldAddr));
-        // 帧格式真的传到串口层：偶校验 + 2 停止位（现场实测通的那档，不是手册写的 8E1）
-        Assert.Equal(Parity.Even, AqmdStirrerDriver.ParityOf(cn.Str(AqmdStirrerDriver.FieldParity)));
+        // 帧格式真的传到串口层：无校验 + 2 停止位（现场串口工具和本程序实测通的那档；驱动器自己报 8E1，同为 11 位）
+        Assert.Equal(Parity.None, AqmdStirrerDriver.ParityOf(cn.Str(AqmdStirrerDriver.FieldParity)));
         Assert.Equal(StopBits.Two, AqmdStirrerDriver.StopBitsOf(cn.Str(AqmdStirrerDriver.FieldStop)));
-        Assert.Contains("8E2", AqmdStirrerDriver.LinkName(cn));
+        Assert.Contains("8N2", AqmdStirrerDriver.LinkName(cn));
+        Assert.True(drv.Info.HasSettings);                                  // 极数、额定电流、数圈测试、学习都在设备参数面板里
         // 真机驱动认领的是 ABI 那条「搅拌」，跟仿真机同一条——仿真调好的配方插上真机能跑
         Assert.Contains(drv.Commands, c => c.Id == CommandSpecs.Stir);
         Assert.Equal(0, drv.Info.ChannelsPerDevice);
@@ -128,16 +129,79 @@ public sealed class AqmdStirrerDriverTests
     // ── 开机核对 ─────────────────────────────────────────────────
 
     [Fact]
-    public async Task 极数没配又没填_开不了并说怎么数圈()
+    public async Task 极数没配又没填_连得上但这一路没有搅拌能力_日志教怎么数圈()
+    {
+        // 现场踩到的死循环：数圈得先让它转，极数不填又不让连——所以极数没配也连上，面板能用，只是不挂 IStirrer
+        var drive = MakeDrive(poles: 0);
+        var logs = new List<(string, string)>();
+
+        await using var s = await Wire(drive).OpenAsync(Conn(), Ctx(1, logs: logs), CancellationToken.None);
+
+        Assert.False(((AqmdStirrerSession)s).StirrerReady);
+        Assert.Empty(s.CapabilitiesOf(0));                           // HMI / 配方看到的是「这一路没接搅拌」
+        Assert.Null(s.Resolve(CommandSpecs.Stir));
+        lock (logs) Assert.Contains(logs, l => l.Item1 == "error" && l.Item2.Contains("极数是 0") && l.Item2.Contains("400 ÷ 圈数") && l.Item2.Contains("数圈测试"));
+
+        // 轮询照常：电流 / 故障码出样，rpm 不编数不发
+        var got = new List<Sample>();
+        using var sub = s.Samples.Subscribe(new Collect(x => { lock (got) got.Add(x); }));
+        drive.Regs[0x0022] = 600;
+        await ((AqmdStirrerSession)s).PollOnceAsync(CancellationToken.None);
+        lock (got)
+        {
+            Assert.Contains(got, x => x.Tag == "stirI");
+            Assert.DoesNotContain(got, x => x.Tag == "rpm");
+        }
+    }
+
+    [Fact]
+    public async Task 参数面板_数圈测试按20Hz转到时自动停_写极数4存储核对_实时组能读()
     {
         var drive = MakeDrive(poles: 0);
-        var drv = Wire(drive);
+        var logs = new List<(string, string)>();
+        await using var s = await Wire(drive).OpenAsync(Conn(), Ctx(1, logs: logs), CancellationToken.None);
+        var ps = (AqmdStirrerSession)s;
+        var dev = (IDeviceSettings)s;
+        ps.CountTestSeconds = 0.2;
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => drv.OpenAsync(Conn(), Ctx(1), CancellationToken.None));
+        var live = await dev.ReadAsync(AqmdStirrerSession.GroupLive, CancellationToken.None);
+        Assert.Contains("极数未配", live.Str(AqmdStirrerSession.KRpm));
 
-        Assert.Contains("极数是 0", ex.Message);
-        Assert.Contains("400 ÷ 圈数", ex.Message);
-        Assert.False(drive.IsOpen);                                  // 开不了就把口子让出来
+        var said = await dev.RunAsync(AqmdStirrerSession.ActCountTest, CancellationToken.None);
+        Assert.Equal(200, drive.Regs[0x0043]);                          // 20.0 Hz
+        Assert.Equal(200, drive.Regs[0x0052]);                          // 加减速放缓到 20 Hz/s
+        Assert.Contains("400 ÷ 圈数", said);
+        await Task.Delay(800);
+        Assert.Contains("写寄存器 64=0", drive.Requests);              // 到时自己停
+        lock (logs) Assert.Contains(logs, l => l.Item2.Contains("数圈测试到时，已停机"));
+
+        var notes = await dev.WriteAsync(AqmdStirrerSession.GroupMotor, ParameterSet.Of((AqmdStirrerSession.KPoles, 4d)), CancellationToken.None);
+        Assert.Equal(4, drive.Regs[0x0073]);
+        Assert.Contains("写寄存器 352=1", drive.Requests);              // 0x0160 存储
+        Assert.Contains(notes, n => n.Contains("极数 0 → 4") && n.Contains("重新点「连接」"));
+
+        var odd = await dev.WriteAsync(AqmdStirrerSession.GroupMotor, ParameterSet.Of((AqmdStirrerSession.KPoles, 3d)), CancellationToken.None);
+        Assert.Contains(odd, n => n.Contains("偶数"));
+        Assert.Equal(4, drive.Regs[0x0073]);
+
+        var motor = await dev.ReadAsync(AqmdStirrerSession.GroupMotor, CancellationToken.None);
+        Assert.Equal(4, motor.Num(AqmdStirrerSession.KPoles));
+        Assert.Equal("已学习", motor.Str(AqmdStirrerSession.KLearned));
+    }
+
+    [Fact]
+    public async Task 参数面板_保护写通讯中断停机5秒_存储系统参数_读回核对()
+    {
+        var drive = MakeDrive();
+        await using var s = await Wire(drive).OpenAsync(Conn(), Ctx(1), CancellationToken.None);
+
+        var notes = await ((IDeviceSettings)s).WriteAsync(AqmdStirrerSession.GroupProtect,
+            ParameterSet.Of((AqmdStirrerSession.KWatchdog, 5d), (AqmdStirrerSession.KStallStop, 0d)), CancellationToken.None);
+
+        Assert.Equal(50, drive.Regs[0x0095]);
+        Assert.Contains("写寄存器 384=1", drive.Requests);
+        Assert.Contains(notes, n => n.Contains("通讯中断停机 0 → 5 s"));
+        Assert.Contains(notes, n => n.Contains("堵转停机时间已经是 关"));
     }
 
     [Fact]
@@ -170,14 +234,28 @@ public sealed class AqmdStirrerDriverTests
     }
 
     [Fact]
-    public async Task 未学习_开机拒绝并说按键学习()
+    public async Task 未学习_连得上但没有搅拌能力_面板学习相序成功后提示重新连接()
     {
         var drive = MakeDrive(learned: false);
+        var logs = new List<(string, string)>();
+        // 驱动器收到学习命令（0x00E1 = 1）后学一会儿：状态 0x00E2 = 3 学习完毕，0x0075 变成已学习
+        drive.OnWrite = (addr, v) => { if (addr == 0x00E1 && v == 1) { drive.Regs[0x00E2] = 3; drive.Regs[0x0075] = 1; } };
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => Wire(drive).OpenAsync(Conn(), Ctx(1), CancellationToken.None));
+        await using var s = await Wire(drive).OpenAsync(Conn(), Ctx(1, logs: logs), CancellationToken.None);
+        Assert.False(((AqmdStirrerSession)s).StirrerReady);
+        Assert.Empty(s.CapabilitiesOf(0));
+        lock (logs) Assert.Contains(logs, l => l.Item1 == "error" && l.Item2.Contains("未学习") && l.Item2.Contains("学习相序"));
 
-        Assert.Contains("未学习", ex.Message);
-        Assert.Contains("按键", ex.Message);
+        // 数圈测试在没学习时不转——转也转不了，写了还会被 0x60 拒
+        var refused = await ((IDeviceSettings)s).RunAsync(AqmdStirrerSession.ActCountTest, CancellationToken.None);
+        Assert.Contains("先点「学习相序」", refused);
+        Assert.DoesNotContain(drive.Requests, r => r.StartsWith("写寄存器 67=", StringComparison.Ordinal));
+
+        var said = await ((IDeviceSettings)s).RunAsync(AqmdStirrerSession.ActLearn, CancellationToken.None);
+        Assert.Contains("写寄存器 225=1", drive.Requests);            // 0x00E1
+        Assert.Contains("学习完毕", said);
+        Assert.Contains("已学习", said);
+        Assert.Contains("重新点「连接」", said);
     }
 
     [Fact]

@@ -10,8 +10,9 @@ namespace Tec.Drivers.Aqmd;
 /// 搅拌电机驱动器（成都爱控 AQMD2408BLS-M，Modbus-RTU over RS485）：一个工位一台，
 /// 绑到哪个工位那一路就有了搅拌能力（IStirrer）。串口写在**自己的**属性里（用户定的：每台设备的串口跟着设备走）。
 ///
-/// 现场（2026-11-09 用户用串口工具实测）：两台都答 9600 bps、偶校验，**2 停止位才通**（手册 6.1 写的是
-/// 偶校验 + 1 停止位——照现场填，手册那档留在下拉里）；站号都是 1；工位 A 在 COM11、工位 B 在 COM14
+/// 现场（2026-11-09 用户用串口工具和本程序实测）：两台都答 9600 bps、**无校验 + 2 停止位**（8N2）。驱动器自己报的是
+/// 偶校验 + 1 停止位（寄存器 0x0092 = 2）——8E1 和 8N2 都是 11 位一个字符，CH344 这边按 8N2 收发实测通，
+/// 8N1（10 位）不通；照现场填，偶校验那档留在下拉里；站号都是 1；工位 A 在 COM11、工位 B 在 COM14
 /// （两块 CH344 剩下的两个口，和口的字母正好相反：COM11 是第一块的 C、COM14 是第一块的 D——所以按工位记，别按字母记）。
 /// 型号名读回「AQMD2408BLS-M2」v1.3，极数没配（0x0073 = 0）、额定电流还是出厂 7 A——这两项做成配置，连接时写进驱动器。
 ///
@@ -33,7 +34,7 @@ public sealed class AqmdStirrerDriver : IDeviceDriver
     public const string ParityEven = "偶校验";
     public const string ParityOdd = "奇校验";
     public const string ParityNone = "无校验";
-    public static readonly string[] ParityOptions = { ParityEven, ParityOdd, ParityNone };
+    public static readonly string[] ParityOptions = { ParityNone, ParityEven, ParityOdd };
     public static readonly string[] StopOptions = { "2", "1" };
     public static readonly string[] BaudOptions = { "9600", "19200", "38400", "57600", "115200" };
 
@@ -42,7 +43,8 @@ public sealed class AqmdStirrerDriver : IDeviceDriver
     public const string DefaultPortB = "COM14";
     public const int DefaultAddr = 1;
     public const int DefaultBaud = 9600;
-    public const string DefaultParity = ParityEven;
+    /// <summary>现场实测通的帧格式：无校验 + 2 停止位（见类注释）。</summary>
+    public const string DefaultParity = ParityNone;
     public const string DefaultStop = "2";
 
     // ── 设备配置 ───────────────────────────────────────────────────
@@ -81,6 +83,7 @@ public sealed class AqmdStirrerDriver : IDeviceDriver
     {
         ChannelsPerDevice = 0,              // 绑到主机的工位上，不自带通道（跟宇电探头一样）
         SimulatorIncluded = false,
+        HasSettings = true,                 // 设备参数面板：实时量、极数 / 额定电流 / 保护直接写驱动器、数圈测试、学习相序
         IconKey = "stirdrv",
         Description = "AQMD2408BLS-M 无刷电机驱动器，RS485 Modbus-RTU。一个工位一台，接到哪个工位那一路就能设转速、看实测转速与电流；" +
                       "配方里的「搅拌」步骤由它执行。",
@@ -97,14 +100,15 @@ public sealed class AqmdStirrerDriver : IDeviceDriver
         Field.Sel(FieldBaud, "波特率", BaudOptions, DefaultBaud.ToString())
             with { Tip = "出厂 9600（现场实测就是）。驱动器那边改了波特率这里跟着改" },
         Field.Sel(FieldParity, "校验", ParityOptions, DefaultParity)
-            with { Tip = "出厂偶校验（现场读回 0x0092 = 2）。跟 RD105 / IO8R / 宇电的无校验不一样，所以不能和它们共一个口" },
+            with { Tip = "现场实测「无校验 + 2 停止位」通。驱动器自己报的是偶校验 + 1 停止位（0x0092 = 2），两种都是 11 位一个字符，" +
+                         "CH344 这边按无校验 2 停止位收发没问题；8N1（10 位）不通。「测试连接」会把各档换着试" },
         Field.Sel(FieldStop, "停止位", StopOptions, DefaultStop)
-            with { Tip = "现场串口工具实测 2 停止位才通；手册写的是 1。「测试连接」两档都会试并告诉你哪档通" },
+            with { Tip = "现场实测 2 停止位才通；手册写的是 1。「测试连接」两档都会试并告诉你哪档通" },
         Field.Num(FieldPeriod, "轮询周期", 500, "ms", 200, 5000, 100)
             with { Tip = "读实测转速 / 电流 / 故障码的周期。驱动器的「通讯中断停机」要是开着，这个周期必须比它短得多" }
     })
     {
-        Tip = "9600 · 8 位 · 偶校验 · 2 停止位 · 站号 1 是现场两台实测通的参数。驱动器要先用按键切到 485 通讯方式" +
+        Tip = "9600 · 8 位 · 无校验 · 2 停止位 · 站号 1 是现场两台实测通的参数。驱动器要先用按键切到 485 通讯方式" +
               "（黄灯灭、绿灯闪；黄灯常亮是数字/模拟方式，按住按键 1 s 松开切换）。「测试连接」真的开口子读型号、极数、学习状态。"
     };
 
@@ -112,8 +116,9 @@ public sealed class AqmdStirrerDriver : IDeviceDriver
     {
         Field.Num(FieldPoles, "电机极数", 0, "", 0, 64, 1)
             with { Tip = "电机铭牌上的极数（不是极对数）。转速 = 换向频率 ÷ 极数 × 20，不填就换算不出来。0 = 照驱动器里存的（0x0073）；" +
-                         "现场那两台驱动器里是 0，必须填。不知道就让它转 20 Hz 数一分钟圈数：极数 = 400 ÷ 圈数（100 圈 = 4 极、50 圈 = 8 极）。" +
-                         "填了连接时写进驱动器并存储，读回核对一致才用" },
+                         "现场那两台驱动器里是 0。两个地方都是 0 也连得上，只是这一路没有搅拌能力——到「设备参数」面板点「数圈测试」" +
+                         "让它按 20 Hz 转一分钟，数圈数：极数 = 400 ÷ 圈数（100 圈 = 4 极、50 圈 = 8 极），在面板「电机参数」里写进驱动器，再点「连接」。" +
+                         "这里填了连接时写进驱动器并存储，读回核对一致才用" },
         Field.Num(FieldRatedCurrent, "电机额定电流", 0, "A", 0, 10, 0.1)
             with { Tip = "电机铭牌额定电流。手册要求配成与电机一致，否则调速不稳、烧保险丝；现场那两台还是出厂 7 A。" +
                          "0 = 不改驱动器里的；填了连接时把额定电流与最大负载电流都写成它并存储" },
@@ -142,8 +147,8 @@ public sealed class AqmdStirrerDriver : IDeviceDriver
     public static Parity ParityOf(string s) => s switch
     {
         ParityOdd => Parity.Odd,
-        ParityNone => Parity.None,
-        _ => Parity.Even
+        ParityEven => Parity.Even,
+        _ => Parity.None
     };
 
     public static StopBits StopBitsOf(string s) => s.Trim() == "1" ? StopBits.One : StopBits.Two;
@@ -190,7 +195,7 @@ public sealed class AqmdStirrerDriver : IDeviceDriver
 
     private static IEnumerable<(string Parity, string Stop)> Alternatives(string parity, string stop)
     {
-        foreach (var p in new[] { ParityEven, ParityNone, ParityOdd })
+        foreach (var p in new[] { ParityNone, ParityEven, ParityOdd })
             foreach (var s in new[] { "2", "1" })
                 if (p != parity || s != stop) yield return (p, s);
     }
