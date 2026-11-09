@@ -73,6 +73,8 @@ public static class BenchDock
         "trprobe" or "phel" => 18,
         // 插入形态的宽 = 它的 viewBox 宽（50）按主机比例缩，落到主机上不差一个像素
         "trprobe-in" or "phel-in" => 300.0 / MachineVw * 50,
+        // 【本地改动】搅拌电机驱动器：55×55 mm 的板子，按主机比例大致是机箱高度的六成
+        "stirdrv" => 64,
         _ => 60
     };
 
@@ -89,7 +91,11 @@ public static class BenchDock
         new Anchor("S1FD", PortKind.Side, Cx0 - 57, 171, "left", "工位1 · 加料口") { Slot = 0, Side = "L", Accept = "feed" },
         new Anchor("S2TR", PortKind.Top, Cx1 - 18, 163, "up", "工位2 · Tr") { Slot = 1, Accept = "tr" },
         new Anchor("S2PH", PortKind.Top, Cx1 + 18, 163, "up", "工位2 · pH") { Slot = 1, Accept = "ph" },
-        new Anchor("S2FD", PortKind.Side, Cx1 + 57, 171, "right", "工位2 · 加料口") { Slot = 1, Side = "R", Accept = "feed" }
+        new Anchor("S2FD", PortKind.Side, Cx1 + 57, 171, "right", "工位2 · 加料口") { Slot = 1, Side = "R", Accept = "feed" },
+        // 【本地改动】搅拌口：主机图上每个工位顶部那只搅拌电机（rd105.svg 的 x=168~192, y=24~82）——
+        // 驱动器是外挂的小板子，用一条信号线接到电机头顶；一个工位一台，Bus 类接口不吸附、不换图
+        new Anchor("S1ST", PortKind.Bus, Cx0, 24, "up", "工位1 · 搅拌") { Slot = 0, Accept = "stir" },
+        new Anchor("S2ST", PortKind.Bus, Cx1, 24, "up", "工位2 · 搅拌") { Slot = 1, Accept = "stir" }
     };
 
     public static Anchor? AnchorById(string? id)
@@ -107,7 +113,9 @@ public static class BenchDock
             ["trprobe-in"] = (new Plug(36, 138, "down"), "tr", LinkKind.Probe),
             ["phel"] = (new Plug(17, 291, "down"), "ph", LinkKind.Probe),
             ["phel-in"] = (new Plug(14, 138, "down"), "ph", LinkKind.Probe),
-            ["feedpump"] = (new Plug(176, 164, "up"), "feed", LinkKind.Feed)
+            ["feedpump"] = (new Plug(176, 164, "up"), "feed", LinkKind.Feed),
+            // 【本地改动】搅拌驱动器：电机线从板子顶沿中间那个接线端子出去
+            ["stirdrv"] = (new Plug(60, 8, "up"), "stir", LinkKind.Signal)
         };
 
     public static bool IsHost(string artKey) => artKey == "rd105";

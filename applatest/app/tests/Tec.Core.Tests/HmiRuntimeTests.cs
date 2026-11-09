@@ -29,11 +29,17 @@ public sealed class HmiRuntimeTests
 
         Assert.True(rt.SeededDefaultBench);
         Assert.True(File.Exists(rt.BenchPath));
-        // 缺省是真机三件：双工位主机 + 两支宇电探头
-        Assert.Equal(3, rt.Bench.Devices.Count);
+        // 缺省是真机五件：双工位主机 + 两支宇电探头 + 两台搅拌驱动器（2026-11-09 接入，一个工位一台）
+        Assert.Equal(5, rt.Bench.Devices.Count);
         Assert.Contains(rt.Bench.Devices, d => d.DriverId == Tec.Drivers.DualStation.DualStationDriver.DriverId);
-        // 探头各绑两条通道（A/B 工位）
-        Assert.Equal(4, rt.Bench.Bindings.Count);
+        // 探头各绑两条通道（A/B 工位）；搅拌各绑一条，串口按现场：A = COM11、B = COM14
+        Assert.Equal(6, rt.Bench.Bindings.Count);
+        var st = rt.Bench.Devices.Where(d => d.DriverId == Tec.Drivers.Aqmd.AqmdStirrerDriver.DriverId).ToList();
+        Assert.Equal(2, st.Count);
+        Assert.Equal("COM11", st[0].Connection.Str(Tec.Drivers.Aqmd.AqmdStirrerDriver.FieldPort));
+        Assert.Equal("COM14", st[1].Connection.Str(Tec.Drivers.Aqmd.AqmdStirrerDriver.FieldPort));
+        Assert.Contains(rt.Bench.Bindings, b => b.DeviceId == st[0].InstanceId && b.ChannelNumber == 1);
+        Assert.Contains(rt.Bench.Bindings, b => b.DeviceId == st[1].InstanceId && b.ChannelNumber == 2);
     }
 
     [Fact]

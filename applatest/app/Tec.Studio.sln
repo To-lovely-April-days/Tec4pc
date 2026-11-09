@@ -22,6 +22,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Tec.Drivers.Rd105", "src\Te
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tec.Drivers.DualStation", "src\Tec.Drivers.DualStation\Tec.Drivers.DualStation.csproj", "{82022274-1D2F-4865-B9C0-58D6028A9A89}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tec.Drivers.Aqmd", "src\Tec.Drivers.Aqmd\Tec.Drivers.Aqmd.csproj", "{5A4C2E7D-9B1F-4C3A-8E6D-2F7B1C9A4D60}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tec.Hmi.Ui", "src\Tec.Hmi.Ui\Tec.Hmi.Ui.csproj", "{26BAA346-98E9-4FEA-BBDC-8D37904A10AC}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tec.Hmi.Runtime", "src\Tec.Hmi.Runtime\Tec.Hmi.Runtime.csproj", "{72A40530-F44F-4E38-BD91-6436DCB8FBEE}"
@@ -96,6 +98,10 @@ Global
 		{ED58384D-52E0-4CDF-BB80-F648D11889FB}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{ED58384D-52E0-4CDF-BB80-F648D11889FB}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{ED58384D-52E0-4CDF-BB80-F648D11889FB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5A4C2E7D-9B1F-4C3A-8E6D-2F7B1C9A4D60}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5A4C2E7D-9B1F-4C3A-8E6D-2F7B1C9A4D60}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5A4C2E7D-9B1F-4C3A-8E6D-2F7B1C9A4D60}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5A4C2E7D-9B1F-4C3A-8E6D-2F7B1C9A4D60}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -115,6 +121,7 @@ Global
 		{B796A9E6-E248-4A10-9FBA-2F888BE380F5} = {3C251A66-0C84-527C-B12F-21F6518914DC}
 		{31CF828C-8E27-41B5-BB42-6F8C4533853E} = {3C251A66-0C84-527C-B12F-21F6518914DC}
 		{ED58384D-52E0-4CDF-BB80-F648D11889FB} = {3C251A66-0C84-527C-B12F-21F6518914DC}
+		{5A4C2E7D-9B1F-4C3A-8E6D-2F7B1C9A4D60} = {3C251A66-0C84-527C-B12F-21F6518914DC}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {FC2D90A0-0FEF-5234-A176-B4B89E7DF3C9}

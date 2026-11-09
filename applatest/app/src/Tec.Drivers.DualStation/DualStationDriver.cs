@@ -293,7 +293,7 @@ public sealed class DualStationDriver : IDeviceDriver
               "IO8R 打不开时这台既不能制冷也不能加热，控温目标会被拒绝。"
     };
 
-    /// <summary>指令是静态声明的，没连硬件也要能编辑配方（§3.3）。这台真机没有搅拌，不认领搅拌指令。</summary>
+    /// <summary>指令是静态声明的，没连硬件也要能编辑配方（§3.3）。主机本身没有搅拌，不认领搅拌指令——搅拌由独立的搅拌电机驱动器（`Tec.Drivers.Aqmd`）绑到工位上认领。</summary>
     public IReadOnlyList<CommandDescriptor> Commands { get; } = CommandSpecs.Temperature;
 
     public async Task<ProbeResult> ProbeAsync(ParameterSet connection, CancellationToken ct)

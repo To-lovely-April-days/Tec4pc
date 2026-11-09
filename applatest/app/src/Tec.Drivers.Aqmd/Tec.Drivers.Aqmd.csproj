@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Tec.Drivers.Aqmd</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 搅拌电机驱动器（成都爱控 AQMD2408BLS-M，Modbus-RTU）。
+         引 DualStation 是为了串口池（SharedSerial / SerialPortPool：每台设备的串口写在自己属性里，
+         同名口合并成一条链路）；Modbus 主站、断线自愈（LinkRecovery）、串口报错翻译（SerialFault）
+         在 Rd105 里，经 DualStation 传递引用过来。 -->
+    <ProjectReference Include="..\Tec.Drivers.DualStation\Tec.Drivers.DualStation.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 回归测试要一拍一拍地推采集循环（PollOnceAsync），不靠真时钟 -->
+    <InternalsVisibleTo Include="Tec.Core.Tests" />
+  </ItemGroup>
+
+</Project>

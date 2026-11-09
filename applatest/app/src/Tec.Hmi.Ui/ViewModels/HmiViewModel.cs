@@ -298,7 +298,7 @@ public sealed class HmiViewModel : ViewModelBase
             new TyRow("TrTj", "TrTj", "蒸回流", hasReflux, cur == "TrTj",
                       "该设备没有夹套跟随能力（蒸回流）"),
             new TyRow("R", "R", "搅拌转速", hasStir, cur == "R",
-                      "这台主机没有搅拌接口——搅拌协议未知"),
+                      "这一路没接搅拌驱动器——台面上把搅拌驱动器绑到这个工位"),
             new TyRow("Wait", "Wait", "等待", true, cur == "Wait"),
             new TyRow("Dose", "Dose", "加料", hasPump, cur == "Dose", "这一路没接加料泵"),
         };
@@ -730,7 +730,7 @@ public sealed class HmiViewModel : ViewModelBase
         if (!Keys.TryGetValue(key, out var meta)) return;
         if (key is "rpm" or "rEnd" or "rDur" && !z.HasStir)
         {
-            Toast("这台主机没有搅拌接口——搅拌协议未知，转速设定不可用");
+            Toast("这一路没接搅拌驱动器，转速设定不可用——台面上把搅拌驱动器绑到这个工位");
             return;
         }
         _kpZone = z;
@@ -1202,7 +1202,8 @@ public sealed class HmiZoneViewModel : ViewModelBase
 
     internal bool HasPump => Dose is not null;
 
-    /// <summary>这一路有没有搅拌能力。真机双工位主机没有（搅拌通讯协议未知）——
+    /// <summary>这一路有没有搅拌能力。真机上由独立的搅拌电机驱动器（爱控 AQMD，`Tec.Drivers.Aqmd`）绑到工位上提供，
+    /// 没绑就没有——
     /// 面板凡涉及搅拌的显示与操作都按它收口，照加料徽章那套「—/未接」的规矩。</summary>
     internal bool HasStir => Stir is not null;
 
@@ -1262,6 +1263,8 @@ public sealed class HmiZoneViewModel : ViewModelBase
     public double? PhVal { get; private set; }
     public double RpmVal { get; private set; }
     public double? TorqueVal { get; private set; }
+    /// <summary>【本地改动】搅拌电机相电流（A，标签 stirI）：真机驱动器（爱控 AQMD）报的是电流不是扭矩，搅拌卡上有它就显示它。</summary>
+    public double? StirCurrentVal { get; private set; }
     public double? FlowVal { get; private set; }
     public double? TotalVal { get; private set; }
     public double? TrRate { get; private set; }
@@ -1333,6 +1336,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
         TotalVal = Dose?.TotalVolume;
         TcVal = Tag("Tc");
         TorqueVal = Tag("torque");
+        StirCurrentVal = Tag("stirI");
         HeatState = Tag("heat") is { } hs ? (int)Math.Round(hs) : -1;
         _tecPwr = Tag("tecpwr");
         FlowVal = Dose is null ? null : Tag("flow") ?? 0;
@@ -1598,8 +1602,10 @@ public sealed class HmiZoneViewModel : ViewModelBase
     // 分不清「没搅拌器」和「搅拌器停着」（与加料徽章同一套规矩）
     public string RpmBox => HasStir ? RpmVal.ToString("0") : "—";
     public bool RpmOff => !HasStir || RpmVal <= 0;
+    // 【本地改动】真机驱动器给的是电机相电流（A），仿真器给的是扭矩——哪个有显示哪个，都没有就「—」
     public string RpmNote => !HasStir ? "未接搅拌"
-        : TorqueVal is { } q ? $"扭矩 {q:0} mN·m" : "扭矩 —";
+        : TorqueVal is { } q ? $"扭矩 {q:0} mN·m"
+        : StirCurrentVal is { } i ? $"电流 {i:0.00} A" : "电流 —";
     public string DoseBox => Dose is null ? "—" : (FlowVal ?? 0).ToString("0.00");
     public bool DoseOff => Dose is null || (FlowVal ?? 0) <= 0;
     public string DoseNote => TotalVal is { } t ? $"累计 {t:0.0} mL" : "未接泵";
@@ -1611,15 +1617,15 @@ public sealed class HmiZoneViewModel : ViewModelBase
 
     public string NowLine1 => $"Tj {F2(TjVal)} ℃　Tr−Tj {(TrVal is { } a && TjVal is { } b ? Sg(a - b) : "—")} K";
     public string NowLine2 => $"Tc {F1(TcVal)} ℃ · {(TcVal is null ? "无信号" : "冷媒正常")}";
-    public string StirNow => HasStir
-        ? $"实测 {RpmVal:0} rpm　扭矩 {(TorqueVal is { } q ? q.ToString("0") : "—")} mN·m"
-        : "本机无搅拌接口";
+    public string StirNow => !HasStir ? "本机无搅拌接口"
+        : TorqueVal is { } q ? $"实测 {RpmVal:0} rpm　扭矩 {q:0} mN·m"
+        : $"实测 {RpmVal:0} rpm　电流 {(StirCurrentVal is { } i ? i.ToString("0.00") : "—")} A";
 
     /// <summary>搅拌卡副标题。从前写死仿真器的规格（磁耦合顶置 · 50–1000 rpm ·
     /// 扭矩上限 59 mN·m）——真机上是假话；现按能力现读量程，没有搅拌就说没有。</summary>
     public string StirSpec => Stir is { } s
         ? $"转速 {s.Limits.Min:0}–{s.Limits.Max:0} rpm"
-        : "本机无搅拌接口 · 搅拌协议未知";
+        : "本机未接搅拌驱动器";
 
     public string VbTr => F1(Pv(TargetKey));
     public string VbRate => (Pv("rate") < 0 ? "−" : "") + Math.Abs(Pv("rate")).ToString("0.0");
@@ -2113,7 +2119,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
             foreach (var k in new[] { "rpm", "rEnd", "rDur" }) Pending.Remove(k);
             if (Pending.Count == 0)
             {
-                _owner.Toast("这台主机没有搅拌接口，转速设定没有去处");
+                _owner.Toast("这一路没接搅拌驱动器，转速设定没有去处");
                 RaiseZone();
                 return;
             }
@@ -3108,7 +3114,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
                 }
                 break;
             case "rpm":
-                if (!HasStir) { _owner.Toast("这台主机没有搅拌接口——搅拌协议未知"); break; }
+                if (!HasStir) { _owner.Toast("这一路没接搅拌驱动器"); break; }
                 var (sl, sh) = RangeOf("rpm");
                 _owner.OpenKeypadCustom("该步搅拌转速", "rpm", sl, sh,
                     v => { s.Rpm = v; SaveSeq(); RefreshSeq(); });
@@ -3169,7 +3175,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
         if (!HasStir && _seq.FindIndex(s => s.Type == "R") is var k and >= 0)
         {
             // 在面板层用**卡片序号**说人话——校验器报的是翻译件步号，对不上这 6 张卡
-            _owner.Toast($"序列第 {k + 1} 步是搅拌——这台主机没有搅拌接口，删掉它再启动");
+            _owner.Toast($"序列第 {k + 1} 步是搅拌——这一路没接搅拌驱动器，删掉它再启动");
             return;
         }
         if (!CanReflux && _seq.FindIndex(s => s.Type == "TrTj") is var k2 and >= 0)

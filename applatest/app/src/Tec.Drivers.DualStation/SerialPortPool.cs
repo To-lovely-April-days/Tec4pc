@@ -1,3 +1,4 @@
+using System.IO.Ports;
 using TecControl.Core.Comm;
 
 namespace Tec.Drivers.DualStation;
@@ -67,13 +68,20 @@ public static class SerialPortPool
         public required SerialPortTransport Transport;
         public required SemaphoreSlim BusLock;
         public required int Baud;
+        /// <summary>【本地改动】帧格式（校验位 / 停止位），跟波特率一样是整条口子共用的。</summary>
+        public required Parity Parity;
+        public required StopBits StopBits;
         public int Refs;
     }
 
     private static readonly object Gate = new();
     private static readonly Dictionary<string, Entry> Ports = new(StringComparer.OrdinalIgnoreCase);
 
-    public static SharedSerial Rent(string portName, int baud)
+    /// <summary>
+    /// 【本地改动】校验位 / 停止位可选，缺省 8N1（宇电 / IO8R / 冷水机照旧）。搅拌电机驱动器是 8E2，
+    /// 跟 8N1 的设备填同一个口名就是接线错了——帧格式不一致跟波特率不一致一样当场拒绝。
+    /// </summary>
+    public static SharedSerial Rent(string portName, int baud, Parity parity = Parity.None, StopBits stopBits = StopBits.One)
     {
         var key = portName.Trim();
         lock (Gate)
@@ -82,9 +90,11 @@ public static class SerialPortPool
             {
                 e = new Entry
                 {
-                    Transport = new SerialPortTransport(key, baud),
+                    Transport = new SerialPortTransport(key, baud, parity, stopBits),
                     BusLock = new SemaphoreSlim(1, 1),
                     Baud = baud,
+                    Parity = parity,
+                    StopBits = stopBits,
                     Refs = 0
                 };
                 Ports[key] = e;
@@ -94,6 +104,13 @@ public static class SerialPortPool
                 throw new InvalidOperationException(
                     $"串口 {key} 已按 {e.Baud} 波特率开着，另一台设备要按 {baud} 用它——" +
                     "一条串口只有一个波特率，共口的设备波特率必须一致");
+            }
+            else if (e.Parity != parity || e.StopBits != stopBits)
+            {
+                throw new InvalidOperationException(
+                    $"串口 {key} 已按 {SerialPortTransport.FrameName(e.Parity, e.StopBits)} 开着，另一台设备要按 " +
+                    $"{SerialPortTransport.FrameName(parity, stopBits)} 用它——一条串口只有一种帧格式，" +
+                    "搅拌驱动器（偶校验）和宇电 / IO8R（无校验）不能共一个口，查一下串口是不是选错了");
             }
 
             e.Refs++;

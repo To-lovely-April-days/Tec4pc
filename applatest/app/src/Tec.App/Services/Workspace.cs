@@ -246,6 +246,8 @@ public sealed class Workspace : IHmiHost
         Drivers.RegisterBuiltin(new Tec.Drivers.DualStation.YudianTrProbeDriver());
         Drivers.RegisterBuiltin(new Tec.Drivers.DualStation.YudianPhProbeDriver());
         Drivers.RegisterBuiltin(new Tec.Drivers.Rd105.Rd105TecDriver());
+        // 【本地改动】搅拌电机驱动器（爱控 AQMD2408BLS-M，2026-11-09 接入）：一个工位一台，绑到工位上那一路才有搅拌能力
+        Drivers.RegisterBuiltin(new Tec.Drivers.Aqmd.AqmdStirrerDriver());
         // 第三方驱动包从 drivers/ 目录进
         Drivers.Discover(Path.Combine(AppContext.BaseDirectory, "drivers"));
         Drivers.LoadAll();

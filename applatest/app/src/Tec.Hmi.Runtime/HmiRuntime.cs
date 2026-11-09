@@ -117,6 +117,8 @@ public sealed class HmiRuntime : IHmiHost, IAsyncDisposable
         Drivers.RegisterBuiltin(new Tec.Drivers.DualStation.DualStationDriver());
         Drivers.RegisterBuiltin(new Tec.Drivers.DualStation.YudianTrProbeDriver());
         Drivers.RegisterBuiltin(new Tec.Drivers.DualStation.YudianPhProbeDriver());
+        // 【本地改动】搅拌电机驱动器（爱控 AQMD2408BLS-M）：两个工位各一台，串口各自写在属性里
+        Drivers.RegisterBuiltin(new Tec.Drivers.Aqmd.AqmdStirrerDriver());
         // 第三方驱动包照工作站的规矩从 drivers/ 目录进
         Drivers.Discover(Path.Combine(AppContext.BaseDirectory, "drivers"));
         Drivers.LoadAll();
@@ -190,6 +192,20 @@ public sealed class HmiRuntime : IHmiHost, IAsyncDisposable
                     DriverId = Tec.Drivers.DualStation.YudianPhProbeDriver.DriverId,
                     InstanceId = "PH1", Label = "宇电 pH 电极（J4）"
                 },
+                // 【本地改动】搅拌电机驱动器一个工位一台（2026-11-09 现场定的串口：工位 A = COM11、工位 B = COM14；
+                // 极数 / 额定电流现场学习完在属性栏填，没填开机会被指出来）
+                new DeviceDoc
+                {
+                    DriverId = Tec.Drivers.Aqmd.AqmdStirrerDriver.DriverId,
+                    InstanceId = "ST1", Label = "搅拌驱动器 · 工位 A",
+                    Connection = ParameterSet.Of((Tec.Drivers.Aqmd.AqmdStirrerDriver.FieldPort, Tec.Drivers.Aqmd.AqmdStirrerDriver.DefaultPort))
+                },
+                new DeviceDoc
+                {
+                    DriverId = Tec.Drivers.Aqmd.AqmdStirrerDriver.DriverId,
+                    InstanceId = "ST2", Label = "搅拌驱动器 · 工位 B",
+                    Connection = ParameterSet.Of((Tec.Drivers.Aqmd.AqmdStirrerDriver.FieldPort, Tec.Drivers.Aqmd.AqmdStirrerDriver.DefaultPortB))
+                },
             },
             Bindings =
             {
@@ -197,6 +213,8 @@ public sealed class HmiRuntime : IHmiHost, IAsyncDisposable
                 new BindingDoc { DeviceId = "TR1", Channel = 2, Port = 1 },
                 new BindingDoc { DeviceId = "PH1", Channel = 1 },
                 new BindingDoc { DeviceId = "PH1", Channel = 2, Port = 1 },
+                new BindingDoc { DeviceId = "ST1", Channel = 1 },
+                new BindingDoc { DeviceId = "ST2", Channel = 2 },
             }
         };
         TecFiles.SaveBench(BenchPath, doc);

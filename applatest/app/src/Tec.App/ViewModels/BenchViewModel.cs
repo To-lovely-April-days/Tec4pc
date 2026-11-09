@@ -40,6 +40,7 @@ public sealed class LibraryItemViewModel
             var caps = Package.Driver?.Info.Capabilities
                        ?? (IReadOnlyList<string>)Package.Manifest.Capabilities;
             if (caps.Contains("ITemperatureControl")) return "反应与控温";
+            if (caps.Contains("IStirrer")) return "反应与控温";       // 【本地改动】搅拌是釜的一部分，跟主机摆一类
             if (caps.Contains("IDosing")) return "加料";
             if (caps.Contains("IScalarSensor")) return "在线检测";
             return "其他";
@@ -1257,6 +1258,7 @@ public sealed class BenchViewModel : ViewModelBase
         "feedpump" => "P",
         "phel" => "PH",
         "trprobe" => "TR",
+        "stirdrv" => "ST",      // 【本地改动】搅拌驱动器，与 HMI 缺省台面的 ST1 / ST2 同一套编号
         _ => "D"
     };
 
@@ -1321,7 +1323,9 @@ public sealed class BenchViewModel : ViewModelBase
     {
         Tec.Drivers.DualStation.DualStationDriver.DriverId,
         Tec.Drivers.DualStation.YudianTrProbeDriver.DriverId,
-        Tec.Drivers.DualStation.YudianPhProbeDriver.DriverId
+        Tec.Drivers.DualStation.YudianPhProbeDriver.DriverId,
+        // 【本地改动】搅拌电机驱动器（爱控 AQMD2408BLS-M）：真机第四件，一个工位一台
+        Tec.Drivers.Aqmd.AqmdStirrerDriver.DriverId
     };
 
     public void Reload()
