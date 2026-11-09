@@ -9,7 +9,7 @@
 - **串口只能一个程序占着。** 把工作站（Tec.App）和设备 HMI 关掉再开这个工具；测完再开回去。
 - 台面：工具自己的数据目录是 `%AppData%\TecLimitTest\`，里面的 `bench.json` 就是台面（格式跟工作站的
   台面文件一样）。第一次开机没有的话，先从设备 HMI 的 `%AppData%\TecHmi\bench.json` 拷一份；那也没有就写一份
-  缺省的（主机 + 两支宇电探头，串口按驱动缺省：RD105 COM7、IO8R COM10、两支宇电探头都是 COM3）。
+  缺省的（主机 + 两支宇电探头，串口按驱动缺省：RD105 COM7、IO8R COM3、两支宇电探头的串口按现场填）。
   串口不对在左栏改，点「保存并连接」。也可以「导入台面…」选工作站另存的 `.tecbench`、设备 HMI 的 `bench.json`
   或实验文件 `.tec`（取里面的台面）。
 - 运行：`dotnet run --project src/Tec.LimitTest`，或发布后双击 `Tec.LimitTest.exe`。

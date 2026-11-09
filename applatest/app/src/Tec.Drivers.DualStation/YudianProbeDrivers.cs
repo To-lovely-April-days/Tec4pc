@@ -22,7 +22,7 @@ public sealed class YudianTrProbeDriver : YudianProbeDriverBase
         kind: YudianKind.Thermal,
         tag: new TagDescriptor("Tr", "釜内温度", "℃", DataShape.Scalar)
             { Nominal = new ValueRange(-40, 180) },
-        defaultPort: "COM3",         // 现场那台（用户定的）：宇电模块在 CH344 的 D 口
+        defaultPort: "COM8",         // 现场那台（用户 2026-11-09 定的）：宇电模块在 CH344 第二块的 A 口 COM8；之前一度在 D 口 COM3，那个口现在给了 IO8R
         description: "Pt100 探头，接在宇电 AI-8848GD91J7 采集模块的一路输入上；" +
                      "插到哪个工位，那一路的釜内温度就由它测得。")
     { }
@@ -43,7 +43,7 @@ public sealed class YudianPhProbeDriver : YudianProbeDriverBase
         kind: YudianKind.Linear,
         tag: new TagDescriptor("pH", "pH", "", DataShape.Scalar)
             { Nominal = new ValueRange(0, 14) },
-        defaultPort: "COM3",         // 跟 Tr 探头同一条 485（宇电导轨拼接共口）；pH 模块现场还没装
+        defaultPort: "COM8",         // 跟 Tr 探头同一条 485（宇电导轨拼接共口）；pH 模块现场还没装
         description: "复合电极经 pH 变送器（4~20mA）接宇电模块的线性电流输入；" +
                      "量程定标（ScL/ScH）从模块上读出来，不在配置里另抄一份。")
     { }
@@ -203,7 +203,7 @@ public abstract class YudianProbeDriverBase : IDeviceDriver
 
     /// <summary>
     /// 测试用：换掉串口池，假从站/假总线整链回归。
-    /// 兜底口名是这台驱动的缺省（现在是 COM3，CH344 的 D 口）——不是写死的 COM4：刚拖上台面、属性栏还没打开过的探头，
+    /// 兜底口名是这台驱动的缺省（现在是 COM8）——不是写死的 COM4：刚拖上台面、属性栏还没打开过的探头，
     /// 连接参数是空的，从前就按 COM4 去开，属性栏里明明显示的是缺省口（Xvfb 截图踩到）。
     /// </summary>
     public Func<ParameterSet, SharedSerial> SerialFactory { get; set; }

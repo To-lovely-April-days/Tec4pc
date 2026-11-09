@@ -102,8 +102,8 @@ public sealed class DualStationDriver : IDeviceDriver
 
     /// <summary>
     /// 连接参数的缺省值——按现场那台机器填的（用户定的）：RD105 在 CH344 的 C 口（COM7）、
-    /// IO8R 在 B 口（COM10），两条都走 RS485 = Modbus-RTU、站号 1；RD105 波特率 38400（用户定的，
-    /// 不是协议 §1 写的 485 口出厂 9600），IO8R 9600；冷水机在 COM8（9600 8N1、站号 1）。
+    /// IO8R 在 D 口（COM3；2026-11-09 用户定的，原先在 B 口 COM10），两条都走 RS485 = Modbus-RTU、站号 1；RD105 波特率 38400（用户定的，
+    /// 不是协议 §1 写的 485 口出厂 9600），IO8R 9600；冷水机在 COM10（9600 8N1、站号 1；2026-11-09 用户定的，原先 COM8，那个口现在给了宇电模块）。
     /// COM 号是这台 PC 上的枚举结果，换台电脑可能变，属性栏里改就是了；这里只是少填几步。
     /// </summary>
     public static class Defaults
@@ -112,11 +112,11 @@ public sealed class DualStationDriver : IDeviceDriver
         public const int BaudRd105 = 38400;
         public const string ProtoRd105 = Rd105Protocol.Modbus;
         public const int AddrRd105 = 1;
-        public const string PortIo = "COM10";
+        public const string PortIo = "COM3";
         public const int BaudIo = 9600;
         public const int AddrIo = 1;
-        /// <summary>冷水机主板 485 口：现场在 COM8（用户定的），选上就跟冷却水阀联动；清空就不联动。</summary>
-        public const string PortChiller = "COM8";
+        /// <summary>冷水机主板 485 口：现场在 COM10（2026-11-09 用户定的，原先 COM8），选上就跟冷却水阀联动；清空就不联动。</summary>
+        public const string PortChiller = "COM10";
         /// <summary>协议 §1：9600 8N1、站号 1。</summary>
         public const int BaudChiller = 9600;
         public const int AddrChiller = 1;
@@ -145,7 +145,7 @@ public sealed class DualStationDriver : IDeviceDriver
         Field.Num(Fields.AddrRd105, "RD105 站号", Defaults.AddrRd105, "", 1, 247, 1)
             with { Tip = "只在 Modbus-RTU 下用，出厂 1（协议 §3.5.3）" },
         Field.Sel(Fields.HasIo, "电加热切换（IO8R）", new[] { "有", "无" }, "有"),
-        Field.Port(Fields.PortIo, "IO8R 串口", Defaults.PortIo, "艾莫迅 JY-MODBUS-IO8R。下拉里是当前检测到的串口（现场那台在 CH344 的 B 口）"),
+        Field.Port(Fields.PortIo, "IO8R 串口", Defaults.PortIo, "艾莫迅 JY-MODBUS-IO8R。下拉里是当前检测到的串口（现场那台在 CH344 的 D 口 COM3，2026-11-09 定的）"),
         Field.Num(Fields.AddrIo, "IO8R 站号", Defaults.AddrIo, "", 1, 247, 1),
         Field.Sel(Fields.BaudIo, "IO8R 波特率", new[] { "4800", "9600", "19200", "38400", "57600", "115200" }, Defaults.BaudIo.ToString()),
         // 冷水机跟冷却水阀联动（用户定的标准开关顺序）：开水先开阀再开冷水机；关水先停冷水机、等它真停了再关阀

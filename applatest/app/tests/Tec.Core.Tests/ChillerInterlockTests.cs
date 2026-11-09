@@ -1578,11 +1578,11 @@ public sealed class ChillerInterlockTests
     }
 
     [Fact]
-    public void 冷水机串口缺省COM8_清空才不联动()
+    public void 冷水机串口缺省COM10_清空才不联动()
     {
-        // 现场冷水机在 COM8（用户定的）：装好程序就联动；把串口清空才是不联动
+        // 现场冷水机在 COM10（2026-11-09 用户定的，原先 COM8）：装好程序就联动；把串口清空才是不联动
         var cn = new ParameterSet().FillDefaults(new DualStationDriver().ConnectionSchema);
-        Assert.Equal("COM8", cn.Str(DualStationDriver.Fields.PortChiller));
+        Assert.Equal("COM10", cn.Str(DualStationDriver.Fields.PortChiller));
         using (var linked = DuoLinks.Serial(cn)) Assert.NotNull(linked.Chiller);
 
         cn[DualStationDriver.Fields.PortChiller] = "";

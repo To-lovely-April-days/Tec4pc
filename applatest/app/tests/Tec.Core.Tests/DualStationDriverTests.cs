@@ -103,7 +103,7 @@ public sealed class DualStationDriverTests
     [Fact]
     public void 连接参数缺省照现场那台机器填()
     {
-        // 用户定的：RD105 在 CH344 的 C 口（COM7）、IO8R 在 B 口（COM10）、冷水机 COM8，
+        // 用户定的：RD105 在 CH344 的 C 口（COM7）、IO8R 在 D 口（COM3，2026-11-09 从 COM10 改过来）、冷水机 COM10（同日从 COM8 改过来），
         // 两条都是 RS485 = Modbus-RTU、站号 1；RD105 38400（用户定的）、IO8R 9600。装好程序不改一项点「连接」就该通。
         var cn = new ParameterSet().FillDefaults(new DualStationDriver().ConnectionSchema);
 
@@ -113,11 +113,11 @@ public sealed class DualStationDriverTests
         Assert.Equal(1, cn.Int(DualStationDriver.Fields.AddrRd105));
 
         Assert.Equal("有", cn.Str(DualStationDriver.Fields.HasIo));
-        Assert.Equal("COM10", cn.Str(DualStationDriver.Fields.PortIo));
+        Assert.Equal("COM3", cn.Str(DualStationDriver.Fields.PortIo));
         Assert.Equal(9600, cn.Num(DualStationDriver.Fields.BaudIo));
         Assert.Equal(1, cn.Int(DualStationDriver.Fields.AddrIo));
 
-        Assert.Equal("COM8", cn.Str(DualStationDriver.Fields.PortChiller));
+        Assert.Equal("COM10", cn.Str(DualStationDriver.Fields.PortChiller));
         Assert.Equal(9600, cn.Num(DualStationDriver.Fields.BaudChiller));
         Assert.Equal(1, cn.Int(DualStationDriver.Fields.AddrChiller));
 

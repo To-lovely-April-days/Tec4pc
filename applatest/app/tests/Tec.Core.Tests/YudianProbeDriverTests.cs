@@ -492,9 +492,9 @@ public sealed class YudianProbeDriverTests
         await ((YudianProbeSession)s).PollOnceAsync(CancellationToken.None);
         lock (got) Assert.Equal(25.0, got.Single(x => x.Tag == "Tr").Value, 2);
 
-        // 缺省串口：现场那台宇电在 CH344 的 D 口 COM3（用户定的）
-        Assert.Equal("COM3", new YudianTrProbeDriver().ConnectionSchema.Find(YudianProbeDriverBase.FieldPort)!.Default);
-        Assert.Equal("COM3", new YudianPhProbeDriver().ConnectionSchema.Find(YudianProbeDriverBase.FieldPort)!.Default);
+        // 缺省串口：现场那台宇电在 COM8（用户 2026-11-09 定的；原先的 COM3 给了 IO8R）
+        Assert.Equal("COM8", new YudianTrProbeDriver().ConnectionSchema.Find(YudianProbeDriverBase.FieldPort)!.Default);
+        Assert.Equal("COM8", new YudianPhProbeDriver().ConnectionSchema.Find(YudianProbeDriverBase.FieldPort)!.Default);
     }
 
     [Fact]

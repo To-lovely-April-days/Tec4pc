@@ -60,7 +60,7 @@ public sealed class MainViewModel : Bindable
     private Io8rTester? _io;
     private readonly DispatcherTimer _poll;
     private bool _busy;
-    private string _port = "COM10";
+    private string _port = "COM3";
     private string _baud = "9600";
     private string _station = "1";
     private string _status = "未连接";
@@ -81,7 +81,7 @@ public sealed class MainViewModel : Bindable
     public ObservableCollection<DoRow> Rows { get; }
     public ObservableCollection<string> Log { get; } = new();
 
-    /// <summary>现场缺省 COM10 / 9600 / 站号 1（跟双工位主机的连接参数缺省一样）。</summary>
+    /// <summary>现场缺省 COM3 / 9600 / 站号 1（跟双工位主机的连接参数缺省一样；2026-11-09 从 COM10 改过来）。</summary>
     public string Port { get => _port; set => Set(ref _port, value); }
     public string Baud { get => _baud; set => Set(ref _baud, value); }
     public string Station { get => _station; set => Set(ref _station, value); }
