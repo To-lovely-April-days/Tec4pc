@@ -38,7 +38,8 @@ public partial class DeviceSettingsWindow : Window
     [DllImport("dwmapi.dll", ExactSpelling = true)]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
 
-    public static void Open(Workspace ws, string deviceId, string label)
+    /// <param name="panelName">标题里的叫法：主机「温控器参数」，别的设备「设备参数」（【本地改动】）。</param>
+    public static void Open(Workspace ws, string deviceId, string label, string panelName = "温控器参数")
     {
         if (ByDevice.TryGetValue(deviceId, out var had))
         {
@@ -48,7 +49,7 @@ public partial class DeviceSettingsWindow : Window
         }
         var win = new DeviceSettingsWindow
         {
-            Title = $"{label} · 温控器参数",
+            Title = $"{label} · {panelName}",
             DataContext = new DeviceSettingsViewModel(ws, deviceId, label)
         };
         ByDevice[deviceId] = win;

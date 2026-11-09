@@ -96,11 +96,11 @@ public partial class BenchView : UserControl
         HmiWindow.Open(vm.Ws, sel.Id, sel.Title, sel.Channels.OrderBy(x => x).ToArray());
     }
 
-    /// <summary>「温控器参数」：给选中的反应主机开参数窗（温控器自己的寄存器：最大功率、电流、PID、自整定）。</summary>
+    /// <summary>「温控器参数 / 设备参数」：给选中的设备开参数窗（设备自己的寄存器）。【本地改动】按驱动声明的 HasSettings 放行，不只主机。</summary>
     private void OnOpenSettings(object? sender, RoutedEventArgs e)
     {
-        if (Vm is not { Selected: { } sel } vm || !vm.IsReactor) return;
-        DeviceSettingsWindow.Open(vm.Ws, sel.Id, sel.Title);
+        if (Vm is not { Selected: { } sel } vm || !vm.HasSettings) return;
+        DeviceSettingsWindow.Open(vm.Ws, sel.Id, sel.Title, vm.SettingsLabel);
     }
 
     /// <summary>

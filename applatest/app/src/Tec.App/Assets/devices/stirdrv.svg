@@ -1,33 +1,37 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
-<!-- 搅拌电机驱动器（爱控 AQMD2408BLS-M，55×55 mm 的裸板）。
-     画的是手册 §1.1 那张俯视图的意思：上沿一排通讯 / 信号端子，下沿电源 + 电机 + 霍尔端子，
-     中间主控芯片、一颗按键、两只状态灯。顶沿中间那只端子是电机线出去的地方（BenchDock 的 Plug）。
-     跟别的设备图一样是线稿，描边 #4A4A4A。 -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 300">
+<!-- 顶置式搅拌头（现场那支，2026-11-09 用户照片）：红色圆筒无刷电机壳、两圈散热槽、顶上航空插头，
+     下面米色卡盘收成锥形，细不锈钢轴到底一片小桨。设备库与台面上的独立形态。
+     驱动器板子（爱控 AQMD）装在柜子里，操作人认的是这支头，所以台面画它。
+     线稿规矩同别的设备：描边 #4A4A4A；壳体红 #B8322E / 高光 #D9534F，卡盘米色 #E3DCC8。 -->
 <g fill="none" stroke="#4A4A4A" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round">
-  <!-- 电机线接头（朝上）-->
-  <rect x="52" y="2" width="16" height="12" rx="2" fill="#C9C9C9" stroke-width="1.2"/>
-  <path d="M56 6v4M60 6v4M64 6v4" stroke-width="1"/>
-  <!-- 板子 -->
-  <rect x="10" y="14" width="100" height="100" rx="5" fill="#F1F1F1" stroke-width="2.6"/>
-  <circle cx="17" cy="21" r="2.2" fill="#DCDCDC" stroke-width="1"/>
-  <circle cx="103" cy="21" r="2.2" fill="#DCDCDC" stroke-width="1"/>
-  <circle cx="17" cy="107" r="2.2" fill="#DCDCDC" stroke-width="1"/>
-  <circle cx="103" cy="107" r="2.2" fill="#DCDCDC" stroke-width="1"/>
-  <!-- 上沿端子排：A / B / COM 等 -->
-  <rect x="24" y="18" width="72" height="14" rx="1.5" fill="#DCDCDC" stroke-width="1.2"/>
-  <path d="M32 21v8M40 21v8M48 21v8M56 21v8M64 21v8M72 21v8M80 21v8M88 21v8" stroke-width="1"/>
-  <!-- 主控芯片 -->
-  <rect x="44" y="46" width="32" height="32" rx="2" fill="#4A4A4A" stroke-width="1.2"/>
-  <path d="M38 52h6M38 60h6M38 68h6M76 52h6M76 60h6M76 68h6M52 40v6M60 40v6M68 40v6M52 78v6M60 78v6M68 78v6" stroke-width="1"/>
-  <!-- 按键 + 两只状态灯（黄 / 绿）-->
-  <rect x="18" y="52" width="12" height="12" rx="2" fill="#DCDCDC" stroke-width="1.2"/>
-  <circle cx="24" cy="76" r="3" fill="#E0B030" stroke-width="1"/>
-  <circle cx="24" cy="88" r="3" fill="#2F6B38" stroke-width="1"/>
-  <!-- 功率管一列 -->
-  <rect x="86" y="46" width="14" height="40" rx="1.5" fill="#DCDCDC" stroke-width="1.2"/>
-  <path d="M86 54h14M86 62h14M86 70h14M86 78h14" stroke-width="1"/>
-  <!-- 下沿端子排：V+ V- U V W / 5V0 HU HV HW COM -->
-  <rect x="24" y="92" width="72" height="14" rx="1.5" fill="#DCDCDC" stroke-width="1.2"/>
-  <path d="M32 95v8M40 95v8M48 95v8M56 95v8M64 95v8M72 95v8M80 95v8M88 95v8" stroke-width="1"/>
+  <!-- 航空插头 -->
+  <rect x="26" y="2" width="12" height="10" rx="2" fill="#9A9A9A" stroke-width="1.2"/>
+  <path d="M29 5h6M29 8h6" stroke="#4A4A4A" stroke-width="1"/>
+  <!-- 电机壳（上段，带散热槽） -->
+  <rect x="12" y="12" width="40" height="86" rx="7" fill="#B8322E" stroke-width="2.4"/>
+  <rect x="18" y="16" width="6" height="78" rx="3" fill="#D9534F" stroke="none"/>
+  <g stroke="#4A4A4A" stroke-width="1.2" fill="#7A1F1C">
+    <rect x="17" y="30" width="4" height="30" rx="2"/><rect x="24" y="30" width="4" height="30" rx="2"/>
+    <rect x="31" y="30" width="4" height="30" rx="2"/><rect x="38" y="30" width="4" height="30" rx="2"/>
+    <rect x="45" y="30" width="4" height="30" rx="2"/>
+  </g>
+  <g fill="#7A1F1C" stroke="#4A4A4A" stroke-width="1">
+    <circle cx="20" cy="22" r="1.6"/><circle cx="28" cy="22" r="1.6"/><circle cx="36" cy="22" r="1.6"/><circle cx="44" cy="22" r="1.6"/>
+    <circle cx="20" cy="70" r="1.6"/><circle cx="28" cy="70" r="1.6"/><circle cx="36" cy="70" r="1.6"/><circle cx="44" cy="70" r="1.6"/>
+  </g>
+  <!-- 电机壳（下段，两个螺孔） -->
+  <rect x="12" y="98" width="40" height="60" rx="4" fill="#B8322E" stroke-width="2.4"/>
+  <rect x="18" y="100" width="6" height="56" rx="3" fill="#D9534F" stroke="none"/>
+  <circle cx="40" cy="116" r="4" fill="#7A1F1C" stroke-width="1.2"/>
+  <circle cx="40" cy="134" r="4" fill="#7A1F1C" stroke-width="1.2"/>
+  <!-- 米色卡盘：直段 + 锥段 + 轴套 -->
+  <rect x="12" y="158" width="40" height="36" rx="3" fill="#E3DCC8" stroke-width="2.4"/>
+  <path d="M12 194 20 214H44L52 194Z" fill="#E3DCC8" stroke-width="1.8"/>
+  <rect x="24" y="214" width="16" height="22" rx="2" fill="#E3DCC8" stroke-width="1.8"/>
+  <rect x="24" y="224" width="16" height="3" fill="#4A4A4A" stroke="none"/>
+  <!-- 搅拌轴 + 小桨 -->
+  <path d="M32 236v54" stroke-width="2.6"/>
+  <path d="M24 290h16" stroke-width="2.6"/>
+  <path d="M24 290 20 296M40 290 44 296" stroke-width="2"/>
 </g>
 </svg>

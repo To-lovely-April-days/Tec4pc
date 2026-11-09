@@ -129,6 +129,7 @@ public sealed class DualStationDriver : IDeviceDriver
     {
         ChannelsPerDevice = 2,
         SimulatorIncluded = false,
+        HasSettings = true,
         IconKey = "rd105",
         Description = "RD105 双路夹套控温 + IO8R 热源切换（电加热棒升温、TEC 制冷：冷水机已开是双向挡，一个 PID 两边出力、继电器跟功率符号走）。" +
                       "釜内 Tr 与 pH 由宇电探头设备各自采集，插到工位上即归该路。",

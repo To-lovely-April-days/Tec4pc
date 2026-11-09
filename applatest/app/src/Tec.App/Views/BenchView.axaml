@@ -423,9 +423,10 @@
                         Margin="0,0,0,10" IsVisible="{Binding HasSelection}">
               <Button Classes="pill" Content="手动控制面板" IsVisible="{Binding IsReactor}"
                       Click="OnOpenHmi" />
-              <Button Classes="pill" Content="温控器参数" IsVisible="{Binding IsReactor}"
+              <!-- 【本地改动】按驱动声明的 HasSettings 摆，不按「是不是主机」：数字 pH 电极的标定也在这扇窗里做 -->
+              <Button Classes="pill" Content="{Binding SettingsLabel}" IsVisible="{Binding HasSettings}"
                       Click="OnOpenSettings"
-                      ToolTip.Tip="温控器自己的寄存器：最大功率、两路电流、PID、自整定……读的是它此刻的值" />
+                      ToolTip.Tip="设备自己的寄存器：温控器是最大功率、两路电流、PID、自整定；pH 电极是实时读数、标准液、零电位 / 斜率标定……读的是它此刻的值" />
               <!-- 「连接」= 先探一遍（固件 / 序列号 / 路数回显在上方）再按当前参数重开会话。
                    改串口之后点它改动才生效；手动「断开」过的设备也靠它接回来。
                    「断开」只在连着时出现：收会话、停采集（调试 / 暂离用），设备和参数留在台面上 -->

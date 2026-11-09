@@ -403,7 +403,7 @@ public sealed class BenchViewModel : ViewModelBase
             BuildWells();
             _connDirty = false;
             RaiseAll(nameof(HasSelection), nameof(SelectedTitle), nameof(SelectedDriver), nameof(SelectedSub),
-                     nameof(IsReactor), nameof(IsProbe), nameof(DeviceName), nameof(BindTarget),
+                     nameof(IsReactor), nameof(IsProbe), nameof(HasSettings), nameof(SettingsLabel), nameof(DeviceName), nameof(BindTarget),
                      nameof(LinkText), nameof(LinkOk), nameof(IsConnected));
         }
     }
@@ -436,6 +436,11 @@ public sealed class BenchViewModel : ViewModelBase
     /// <summary>反应器（自带通道）和探头（要绑定通道）两种面板不一样，照原型 renderProps 分支。</summary>
     public bool IsReactor => _selected?.Driver is { Info.ChannelsPerDevice: > 0 };
     public bool IsProbe => _selected is not null && !IsReactor;
+    /// <summary>【本地改动】选中的设备有没有「设备参数」面板：按驱动自己声明的 HasSettings，不按「是不是主机」猜
+    /// （数字 pH 电极的标定在面板里做）。</summary>
+    public bool HasSettings => _selected?.Driver is { Info.HasSettings: true };
+    /// <summary>钮上的字：主机叫「温控器参数」（老叫法，现场认得），别的设备叫「设备参数」。</summary>
+    public string SettingsLabel => IsReactor ? "温控器参数" : "设备参数";
 
     /// <summary>设备名可改（GBG 的铅笔按钮）。改完台面上的标签跟着变。</summary>
     public string DeviceName
@@ -969,9 +974,9 @@ public sealed class BenchViewModel : ViewModelBase
             if (host is null) continue;
             var a = BenchDock.AnchorById(dev.DockAnchor);
             if (a is null) continue;
-            // Tr / pH 是插进工位的，没有管子——插入件本身画在工位上，
+            // Tr / pH / 搅拌头是插进工位的，没有管子——插入件本身画在工位上，
             // 它的「连接」由插入形态 + 读数标签表达（见 RebuildDecor）
-            if (a.Accept is "tr" or "ph") continue;
+            if (a.Accept is "tr" or "ph" or "stir") continue;
             Add(node.ArtKey, new Point(node.X, node.Y), node.Width, dev.DockSideTag,
                 dev.InstanceId, host, a);
         }
@@ -1325,7 +1330,9 @@ public sealed class BenchViewModel : ViewModelBase
         Tec.Drivers.DualStation.YudianTrProbeDriver.DriverId,
         Tec.Drivers.DualStation.YudianPhProbeDriver.DriverId,
         // 【本地改动】搅拌电机驱动器（爱控 AQMD2408BLS-M）：真机第四件，一个工位一台
-        Tec.Drivers.Aqmd.AqmdStirrerDriver.DriverId
+        Tec.Drivers.Aqmd.AqmdStirrerDriver.DriverId,
+        // 【本地改动】数字 pH 电极（BHT-DM100，自带变送器直接出 pH）：真机第五件，一个工位一支
+        Tec.Drivers.DualStation.BhtPhProbeDriver.DriverId
     };
 
     public void Reload()

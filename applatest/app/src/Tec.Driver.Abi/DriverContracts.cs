@@ -21,6 +21,12 @@ public sealed record DriverInfo(string Id, string Name, string Vendor, string Ve
     public string? IconKey { get; init; }
     public string? Description { get; init; }
     public IReadOnlyList<string> Capabilities { get; init; } = Array.Empty<string>();
+    /// <summary>
+    /// 【本地改动】这台设备的会话实现 IDeviceSettings（有「设备参数」面板）。界面按它决定摆不摆那颗钮——
+    /// 从前只有反应主机有参数窗（温控器寄存器），探头类设备一律没有；数字 pH 电极要在面板里做标定，
+    /// 所以改成驱动自己声明，不按「是不是主机」猜。
+    /// </summary>
+    public bool HasSettings { get; init; }
 }
 
 public sealed record ProbeResult(bool Success, string Message)

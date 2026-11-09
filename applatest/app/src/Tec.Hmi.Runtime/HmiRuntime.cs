@@ -119,6 +119,8 @@ public sealed class HmiRuntime : IHmiHost, IAsyncDisposable
         Drivers.RegisterBuiltin(new Tec.Drivers.DualStation.YudianPhProbeDriver());
         // 【本地改动】搅拌电机驱动器（爱控 AQMD2408BLS-M）：两个工位各一台，串口各自写在属性里
         Drivers.RegisterBuiltin(new Tec.Drivers.Aqmd.AqmdStirrerDriver());
+        // 【本地改动】数字 pH 电极（BHT-DM100）：两个工位各一支
+        Drivers.RegisterBuiltin(new Tec.Drivers.DualStation.BhtPhProbeDriver());
         // 第三方驱动包照工作站的规矩从 drivers/ 目录进
         Drivers.Discover(Path.Combine(AppContext.BaseDirectory, "drivers"));
         Drivers.LoadAll();
@@ -187,10 +189,19 @@ public sealed class HmiRuntime : IHmiHost, IAsyncDisposable
                     DriverId = Tec.Drivers.DualStation.YudianTrProbeDriver.DriverId,
                     InstanceId = "TR1", Label = "宇电 Tr 探头（J7）"
                 },
+                // 【本地改动】pH 用数字电极（BHT-DM100）：一个工位一支，COM12 = 工位 A、COM13 = 工位 B（2026-11-09 现场定的）。
+                // 宇电 J4 那套 pH 现场没装，驱动照旧注册（老台面能开），缺省台面不再摆它
                 new DeviceDoc
                 {
-                    DriverId = Tec.Drivers.DualStation.YudianPhProbeDriver.DriverId,
-                    InstanceId = "PH1", Label = "宇电 pH 电极（J4）"
+                    DriverId = Tec.Drivers.DualStation.BhtPhProbeDriver.DriverId,
+                    InstanceId = "PH1", Label = "数字 pH 电极 · 工位 A",
+                    Connection = ParameterSet.Of((Tec.Drivers.DualStation.BhtPhProbeDriver.FieldPort, Tec.Drivers.DualStation.BhtPhProbeDriver.DefaultPort))
+                },
+                new DeviceDoc
+                {
+                    DriverId = Tec.Drivers.DualStation.BhtPhProbeDriver.DriverId,
+                    InstanceId = "PH2", Label = "数字 pH 电极 · 工位 B",
+                    Connection = ParameterSet.Of((Tec.Drivers.DualStation.BhtPhProbeDriver.FieldPort, Tec.Drivers.DualStation.BhtPhProbeDriver.DefaultPortB))
                 },
                 // 【本地改动】搅拌电机驱动器一个工位一台（2026-11-09 现场定的串口：工位 A = COM11、工位 B = COM14；
                 // 极数 / 额定电流现场学习完在属性栏填，没填开机会被指出来）
@@ -212,7 +223,7 @@ public sealed class HmiRuntime : IHmiHost, IAsyncDisposable
                 new BindingDoc { DeviceId = "TR1", Channel = 1 },
                 new BindingDoc { DeviceId = "TR1", Channel = 2, Port = 1 },
                 new BindingDoc { DeviceId = "PH1", Channel = 1 },
-                new BindingDoc { DeviceId = "PH1", Channel = 2, Port = 1 },
+                new BindingDoc { DeviceId = "PH2", Channel = 2 },
                 new BindingDoc { DeviceId = "ST1", Channel = 1 },
                 new BindingDoc { DeviceId = "ST2", Channel = 2 },
             }

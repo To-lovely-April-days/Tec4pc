@@ -81,6 +81,7 @@ public sealed class Rd105TecDriver : IDeviceDriver
         // 每路探头测的都是夹套 Tj。釜内 Tr / pH 由宇电模块另采，不在这台设备上
         ChannelsPerDevice = 2,
         SimulatorIncluded = false,
+        HasSettings = true,
         IconKey = "reactor2",
         Description = "RD105 ASCII 协议。一台带两路夹套回路——TC1 = 工位 A，TC2 = 工位 B；" +
                       "釜内 Tr 由宇电采集模块另采。",

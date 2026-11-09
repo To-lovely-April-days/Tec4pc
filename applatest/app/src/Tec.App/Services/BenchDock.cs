@@ -73,8 +73,10 @@ public static class BenchDock
         "trprobe" or "phel" => 18,
         // 插入形态的宽 = 它的 viewBox 宽（50）按主机比例缩，落到主机上不差一个像素
         "trprobe-in" or "phel-in" => 300.0 / MachineVw * 50,
-        // 【本地改动】搅拌电机驱动器：55×55 mm 的板子，按主机比例大致是机箱高度的六成
-        "stirdrv" => 64,
+        // 【本地改动】顶置搅拌头（现场那支红色电机头，用户照片）：独立形态按探头同一比例给；
+        // 插入形态的宽 = 它的 viewBox 宽（40）按主机比例缩，正好盖住主机图上那只灰电机头
+        "stirdrv" => 34,
+        "stirdrv-in" => 300.0 / MachineVw * 40,
         _ => 60
     };
 
@@ -92,10 +94,11 @@ public static class BenchDock
         new Anchor("S2TR", PortKind.Top, Cx1 - 18, 163, "up", "工位2 · Tr") { Slot = 1, Accept = "tr" },
         new Anchor("S2PH", PortKind.Top, Cx1 + 18, 163, "up", "工位2 · pH") { Slot = 1, Accept = "ph" },
         new Anchor("S2FD", PortKind.Side, Cx1 + 57, 171, "right", "工位2 · 加料口") { Slot = 1, Side = "R", Accept = "feed" },
-        // 【本地改动】搅拌口：主机图上每个工位顶部那只搅拌电机（rd105.svg 的 x=168~192, y=24~82）——
-        // 驱动器是外挂的小板子，用一条信号线接到电机头顶；一个工位一台，Bus 类接口不吸附、不换图
-        new Anchor("S1ST", PortKind.Bus, Cx0, 24, "up", "工位1 · 搅拌") { Slot = 0, Accept = "stir" },
-        new Anchor("S2ST", PortKind.Bus, Cx1, 24, "up", "工位2 · 搅拌") { Slot = 1, Accept = "stir" }
+        // 【本地改动】搅拌口：釜盖正中，搅拌头套上去就换成插入形态盖在主机图那只灰电机头的位置上
+        // （rd105.svg 的 x=168~192, y=24~82），跟 Tr / pH 插进釜口一个做法；一个工位一支，
+        // 拖近了吸附、拖远了拔下来（ProbeSnapRange 那道门限对它同样管）
+        new Anchor("S1ST", PortKind.Top, Cx0, 150, "up", "工位1 · 搅拌") { Slot = 0, Accept = "stir" },
+        new Anchor("S2ST", PortKind.Top, Cx1, 150, "up", "工位2 · 搅拌") { Slot = 1, Accept = "stir" }
     };
 
     public static Anchor? AnchorById(string? id)
@@ -114,8 +117,9 @@ public static class BenchDock
             ["phel"] = (new Plug(17, 291, "down"), "ph", LinkKind.Probe),
             ["phel-in"] = (new Plug(14, 138, "down"), "ph", LinkKind.Probe),
             ["feedpump"] = (new Plug(176, 164, "up"), "feed", LinkKind.Feed),
-            // 【本地改动】搅拌驱动器：电机线从板子顶沿中间那个接线端子出去
-            ["stirdrv"] = (new Plug(60, 8, "up"), "stir", LinkKind.Signal)
+            // 【本地改动】搅拌头：插头是轴的尖端（跟探头一样朝下），落到釜盖上就算插进去
+            ["stirdrv"] = (new Plug(32, 296, "down"), "stir", LinkKind.Probe),
+            ["stirdrv-in"] = (new Plug(180, 96, "down"), "stir", LinkKind.Probe)
         };
 
     public static bool IsHost(string artKey) => artKey == "rd105";
@@ -160,6 +164,7 @@ public static class BenchDock
         {
             "trprobe" => "trprobe-in",
             "phel" => "phel-in",
+            "stirdrv" => "stirdrv-in",      // 【本地改动】搅拌头套上工位：红壳盖在主机图的灰电机头上
             _ => null
         };
     }
@@ -222,7 +227,7 @@ public static class BenchDock
             var host = ws.Bench.Devices.FirstOrDefault(d => d.InstanceId == dev.DockHostId);
             if (host is null) continue;
             var a = AnchorById(dev.DockAnchor);
-            if (a is null || a.Accept is "tr" or "ph") continue;
+            if (a is null || a.Accept is "tr" or "ph" or "stir") continue;   // 插进工位的都没有管子，搅拌头也是
 
             var artKey = ws.Drivers.Driver(dev.DriverId)?.Info.IconKey ?? "rd105";
             var hostKey = ws.Drivers.Driver(host.DriverId)?.Info.IconKey ?? "rd105";
@@ -273,7 +278,7 @@ public static class BenchDock
             var d = (w.X - drop.X) * (w.X - drop.X) + (w.Y - drop.Y) * (w.Y - drop.Y);
             if (d < bd) { bd = d; best = a; }
         }
-        if (best is not null && accept is "tr" or "ph" && bd > ProbeSnapRange * ProbeSnapRange)
+        if (best is not null && accept is "tr" or "ph" or "stir" && bd > ProbeSnapRange * ProbeSnapRange)
             return null;
         return best;
     }

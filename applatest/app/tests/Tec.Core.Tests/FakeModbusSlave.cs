@@ -61,6 +61,10 @@ public sealed class FakeModbusSlave : ISerialTransport
     /// TC1:RESISTOR（0x1004）就是这样：01 03 08 00 00 00 00 06 9C 83，报 8 字节只来 7 个。</summary>
     public HashSet<int> TruncateAlwaysAt { get; } = new();
 
+    /// <summary>【本地改动】每写完一个寄存器（06 / 10）回调一次（地址, 值），写进 Regs 之后调——测试拿它模拟
+    /// 「写命令寄存器、设备把结果码放回同一个寄存器」这类脾气（pH 变送器的标定命令 13）。</summary>
+    public Action<int, ushort>? OnWrite { get; set; }
+
     // ── ISerialTransport ─────────────────────────────────────────────
 
     public bool IsOpen { get; private set; }
@@ -177,6 +181,7 @@ public sealed class FakeModbusSlave : ISerialTransport
                 Regs[addr] = (ushort)At(4);
                 Requests.Add($"写寄存器 {addr}={Regs[addr]}");
                 Reply(fc, frame[2..6]);
+                OnWrite?.Invoke(addr, (ushort)At(4));
                 break;
             }
             case 0x0F:
@@ -197,6 +202,7 @@ public sealed class FakeModbusSlave : ISerialTransport
                     Regs[start + i] = (ushort)(frame[7 + i * 2] << 8 | frame[8 + i * 2]);
                 Requests.Add($"写多寄存器 {start}+{count}");
                 Reply(fc, frame[2..6]);
+                for (var i = 0; i < count; i++) OnWrite?.Invoke(start + i, Regs[start + i]);
                 break;
             }
             default:
