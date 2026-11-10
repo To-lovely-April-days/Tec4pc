@@ -13,7 +13,8 @@ namespace Tec.Core.Tests;
 /// </summary>
 public class OuterSmallStepTwinTests(ITestOutputHelper output)
 {
-    internal static HeatBoostTwinTests.Plant Near(double tr0) => new(tr0, tr0 + 4.4, tr0 + 4.4, tr0 + 4.4, tau1: 981.4, b: 3.32, tw: 116.4, wallDelay: 18);
+    /// <summary>【本地改动】偏置随釜温 0.087 K/K（11-09 那场拟的；40 ℃ 3.32）：小台阶的平移带着斜率，釜也得有斜率才对得上。</summary>
+    internal static HeatBoostTwinTests.Plant Near(double tr0) => new(tr0, tr0 + 4.4, tr0 + 4.4, tr0 + 4.4, tau1: 981.4, b: 3.32, tw: 116.4, wallDelay: 18, bPerK: 0.087, bAtC: 40);
 
     internal sealed class Step
     {

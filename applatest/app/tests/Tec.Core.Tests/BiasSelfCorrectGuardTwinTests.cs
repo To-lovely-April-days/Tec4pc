@@ -179,8 +179,8 @@ public class BiasSelfCorrectGuardTwinTests(ITestOutputHelper output)
         Assert.Single(Fixes(r42));
         var after = r42.Trace().Where(x => x.T >= back!.Value).ToArray();
         output.WriteLine($"   回 42 那一刻：42 用的偏置 {steadyAtBack:F3}、实测 {overrideAtBack:F3}");
-        // 往上的目标不比实测小（两边都留余量的话 2.94）：两枪按它打
-        Assert.True(steadyAtBack >= overrideAtBack - 1e-9, $"回 42 用的偏置 {steadyAtBack:F3} 比实测 {overrideAtBack:F3} 还小");
+        // 【本地改动】2026-11-09 起每个目标稳住都记成实测点：43 学到的也是实测点，回 42 夹在 40 的实测（3.24）和 43 的实测（≈3.30）之间插，不再从表平移
+        Assert.InRange(steadyAtBack!.Value, 3.24 - 0.1, overrideAtBack!.Value + 0.05);
         // 趋近那一枪原来进带第一拍就打（空打）、之后积分往外跑：41.87–41.91；现在等 Tr 真往下走才打：41.96 上下
         Assert.True(after.Min(x => x.Tr) >= 42 - 0.08, $"回 42 以后掉到 {after.Min(x => x.Tr):F3}（平移把差算了两遍 / 趋近那枪空打）");
         Assert.True(after.Min(x => x.I) >= 3.32 - 0.6, $"回 42 以后积分最低 {after.Min(x => x.I):F2}");
@@ -709,8 +709,9 @@ public class BiasSelfCorrectTableTests(ITestOutputHelper output)
         output.WriteLine(heat);
         output.WriteLine(borrowed);
         output.WriteLine(own);
-        Assert.Contains("+1.00 K 偏了", heat);
-        Assert.Contains("PID 页「TEC 表」改一下", heat);
+        // 【本地改动】2026-11-09：37 ℃ 离 TEC 表 25 那行 12 K、过了 2 K 的平沿用带，按 0.10 K/K 外推成 2.2（原来平着沿用 1.0）——跟实测 3.0 差 0.8、不到 1.0 的「偏了」门槛，说「跟实测差」；来路说外推
+        Assert.Contains("+2.20 K 跟实测差 0.80 K", heat);
+        Assert.Contains("「TEC 表」没有这个温度，这个数是按表外推的", heat);
         Assert.Contains("+1.00 K 偏了", borrowed);
         Assert.Contains("借「TEC 表」", borrowed);
         Assert.Contains("PID 页「双向挡表」这个温度加一行", borrowed);

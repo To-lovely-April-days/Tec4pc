@@ -351,8 +351,9 @@ public class BiasSelfCorrectLearnTwinTests(ITestOutputHelper output)
         double? At(double sp) => (double?)steady.Invoke(loop, new[] { st, (object)sp });
         foreach (var sp in new[] { 37.0, 37.4, 37.6, 38.5, 39.0, 39.5 })
             output.WriteLine($"{sp:F1} ℃：{At(sp):F3}");
+        // 【本地改动】2026-11-09：表两头之外按斜率（一行 0.10 K/K）走，平移带着这个斜率——两头同一张表（37.4 按 TEC 表、37.6 按加热棒表，斜率一样）
         foreach (var sp in new[] { 37.0, 37.4, 37.6, 38.5, 39.0 })
-            Assert.Equal(3.0, At(sp)!.Value, 9);
-        Assert.Equal(5.5, At(39.5)!.Value, 9);     // 出了 ±2 K：照表
+            Assert.Equal(3.0 + 0.10 * (sp - 37), At(sp)!.Value, 6);
+        Assert.Equal(5.5 + 0.10 * (39.5 - 50), At(39.5)!.Value, 6);     // 出了 ±2 K：照表（加热棒表 50 那行按斜率推下来）
     }
 }

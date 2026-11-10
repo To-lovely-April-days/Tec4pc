@@ -91,7 +91,8 @@ public class HostControlLoopUnitTests
     {
         var sch = new PidGainSchedule { SegmentBoundaryC = double.NaN };
         sch.Learn(new GainPoint(50, Inner, 20, 300, Outer, 8, SteadyBiasC: 3.0));
-        Assert.Equal(3.0, sch.SteadyBiasAt(60));            // 10 ℃ 内沿用
+        Assert.Equal(4.0, sch.SteadyBiasAt(60)!.Value, 6);  // 【本地改动】2026-11-09：两头之外过 2 K 按斜率推（一行 0.10 K/K），不再平着沿用
+        Assert.Equal(3.15, sch.SteadyBiasAt(51.5)!.Value, 6);  // 2 K 内也按斜率走，只是还算「学到的」
         Assert.Null(sch.SteadyBiasAt(140));                  // 90 ℃ 外不沿用（50 ℃ 的偏置喂给 140 ℃ 只会错）
         Assert.NotNull(sch.GainsAt(140));                    // 内环参数照旧取最近行
 

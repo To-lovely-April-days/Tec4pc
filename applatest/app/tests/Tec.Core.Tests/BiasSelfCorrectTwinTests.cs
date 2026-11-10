@@ -98,13 +98,19 @@ public class BiasSelfCorrectTwinTests(ITestOutputHelper output)
     /// <summary>同一台釜，从 39.6 ℃、夹套 / 釜壁 44 ℃ 起（6 分钟左右就过 40）：查清窗口那几条路用，省掉前面 30 分钟升温。</summary>
     internal static HeatBoostTwinTests.Plant NearTarget() => new(39.6, 44.0, 44.0, 44.0, tau1: 981.4, b: 3.32, tw: 116.4, wallDelay: 18);
 
-    /// <summary>自校正的参数（按压缩时间）孪生 Rig 里本来就配好了；这里只管开关。</summary>
+    /// <summary>自校正的参数（按压缩时间）孪生 Rig 里本来就配好了；这里只管开关。
+    /// 【本地改动】selfCorrect = false 把按实测改积分的三条路一起关：自校正窗口、两枪的热平衡落点、趋近卡住补偏置——「不校正」= 回路只认起点，现场那样来回压的基线。</summary>
     internal static HeatBoostTwinTests.Rig Rig(double tableBias, bool selfCorrect, EarlySwitch sw,
         HeatBoostTwinTests.Plant? plant = null, Action<HeatBoostTwinTests.Rig, ChannelCycleInfo>? extra = null,
         Action<HostControlLoop>? tweak = null)
         => new(plant ?? Run165419(), HeatBoostLevel.Off, allowed: false, tweak: l =>
             {
-                if (!selfCorrect) l.OuterBiasCheckWindow = TimeSpan.Zero;
+                if (!selfCorrect)
+                {
+                    l.OuterBiasCheckWindow = TimeSpan.Zero;
+                    l.OuterCrossCapJacketSteadyC = 0;
+                    l.OuterCrawlRefixGapC = 0;
+                }
                 tweak?.Invoke(l);
             }, learnedBias: tableBias, rows: new[] { 40.0 }, onCycle: (r, c) =>
             {
@@ -170,26 +176,23 @@ public class BiasSelfCorrectTwinTests(ITestOutputHelper output)
         Report("自校正（表 5.53）", on, swOn);
         Report("表对（3.32）、自校正开着", right, swRight);
 
-        // 不校正：现场那样一直摆
-        Assert.DoesNotContain(off.Notes(), n => n.Contains("自校正"));
+        // 不校正（自校正、热平衡落点、趋近补偏置全关）：现场那样一直摆
+        Assert.DoesNotContain(off.Notes(), n => n.Contains("自校正") || n.Contains("热平衡"));
         Assert.True(swOff.Pushes >= 4, $"压低 {swOff.Pushes} 次");
         var (offLo, offHi) = Band(off, 50);
         Assert.True(offHi - offLo >= 0.2, $"不校正 50 分钟起 Tr {offLo:F3}…{offHi:F3}");
 
-        // 自校正：过零以后攒满一个窗口改一次（按釜壁估计，估得准），改完积分拿住——之后不再压低、稳住
-        var fixes = Fixes(on);
-        Assert.Single(fixes);
-        Assert.Contains("表里这个温度的稳态偏置 +5.53 K 偏了", fixes[0]);
-        Assert.Contains("PID 页「双向挡表」改一下", fixes[0]);
+        // 【本地改动】2026-11-09 表只做起点：趋近那一枪在 39 ℃（夹套钉在 48 上、稳着）就按此刻热平衡把 5.53 打下来（一枪最多挪 2 K），不等过零、不等 10 分钟窗口；
+        // 原来要过零 + 一个窗口（31 分钟）自校正才改、改完那一下掉 0.28。之后最多压一回，壁里存的热让它冲 0.15 上下
+        var shot = Assert.Single(on.Notes(), n => n.Contains("趋近那一枪"));
+        Assert.Contains("按此刻热平衡", shot);
+        Assert.Contains("+5.53 K（「双向挡表」学到的）只做起点", shot);
         var fixAt = FixAt(on);
         var crossAt = Crossings(on, _ => 40)[0];
-        Assert.True(fixAt >= crossAt + 0.95 * 600, $"自校正 {fixAt / 60:F2} min 早于第一次过零 {crossAt / 60:F2} min + 一个窗口（过零锁存没起作用）");
-        Assert.InRange(fixAt / 60, 25, 40);
-        Assert.InRange(on.Trace().First(x => x.I < 4.5).I, 3.32 - 0.3, 3.32 + 0.3);
-        Assert.DoesNotContain(swOn.PushAtMin, m => m > fixAt / 60);
-        var t0 = on.Trace()[0].T;
-        var post = on.Trace().Where(x => x.T - t0 > fixAt).Select(x => x.Tr).ToArray();
-        Assert.True(post.Min() >= 40 - 0.32 && post.Max() <= 40.27, $"改完以后 Tr {post.Min():F3}…{post.Max():F3}");   // 改完那一下往下掉 0.28 一次，不再冲上去
+        Assert.True(fixAt < crossAt, $"改在 {fixAt / 60:F2} min，第一次过零 {crossAt / 60:F2} min——该在过零之前那一枪就改");
+        Assert.InRange(on.Trace().First(x => x.I < 4.5).I, 3.32 - 0.4, 3.32 + 0.4);
+        Assert.True(swOn.Pushes <= 1, $"压低 {swOn.Pushes} 次");
+        Assert.True(Fixes(on).Length <= 1, $"自校正改了 {Fixes(on).Length} 次");
         var (onLo, onHi) = Band(on, 45);
         Assert.True(onLo >= 39.93 && onHi <= 40.07, $"自校正 45 分钟起 Tr {onLo:F3}…{onHi:F3}");
         Assert.InRange(on.Trace()[^1].I, 3.32 - 0.3, 3.32 + 0.3);

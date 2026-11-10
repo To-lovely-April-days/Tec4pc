@@ -197,7 +197,14 @@ public class CascadeFieldTwinTests(ITestOutputHelper output)
             output.WriteLine($"   · {n}");
     }
 
-    private static readonly Action<HostControlLoop> Off = l => l.OuterFinishGain = 0;
+    /// <summary>「关（现在）」= 现场 2026-11-03 那场的回路：大降温收尾关；【本地改动】2026-11-09 的趋近卡住补偏置、两枪按热平衡落点也关——
+    /// 它们一开，最后 0.8 K 爬 25 分钟那段就被热平衡补掉了（基线 53 → 36 分钟进 ±0.1、冲 0.26 → 0.09），复现不出现场、也没法单独比收尾那条。</summary>
+    private static readonly Action<HostControlLoop> Off = l =>
+    {
+        l.OuterFinishGain = 0;
+        l.OuterCrawlRefixGapC = 0;
+        l.OuterCrossCapJacketSteadyC = 0;
+    };
 
     [Fact]
     public async Task 现场复现_釜内8降到负15_收尾加比例_快且不冲过()

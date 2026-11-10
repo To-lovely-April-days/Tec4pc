@@ -314,7 +314,9 @@ public class HeatBoostTwinTests(ITestOutputHelper output)
         Assert.False(r.Loop.IsHeatBoosting(1));
         var quit = Assert.Single(r.Notes(), n => n.Contains("升温加速退出"));
         Assert.Contains("TEC 此刻接不上", quit);
-        Assert.Contains("→ 1.60", quit);                          // 还在往上推（不在刹车）：积分回 B
+        // 还在往上推（不在刹车）：积分回 B。【本地改动】B 就是起步预置的那个数（20 和 21 两行合并成一行、20 ℃ 在它 1 K 外按斜率算：1.58，不再写死 1.60）
+        var startBias = System.Text.RegularExpressions.Regex.Match(r.Notes().First(n => n.Contains("串级外环积分起点")), @"积分起点 ([+-]?[\d.]+) ℃").Groups[1].Value;
+        Assert.Contains($"→ {double.Parse(startBias):F2}", quit);
         Assert.DoesNotContain("正在刹车", quit);
         await r.UntilMin(40);
         Dump("10 分钟时 TEC 接不上了", r, 20);

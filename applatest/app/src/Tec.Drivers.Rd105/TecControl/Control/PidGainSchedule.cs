@@ -268,9 +268,10 @@ public sealed class PidGainSchedule
     public double? SteadyBiasAt(double setpointC) => SteadyBiasSource(setpointC).Bias;
 
     /// <summary>
-    /// 【本地改动】稳态偏置连带来路：① 自己的行（落在行上 / 两行之间插值 / <see cref="SteadyBiasReachC"/> 内沿用到两头之外，原来就这样）= 学到的；
-    /// ② 没有：按学到的行**外推**——带稳态偏置的行 ≥ 2 行时对 (温度, 偏置) 做最小二乘，斜率夹在 [<see cref="SteadyBiasSlopeMinPerK"/>, <see cref="SteadyBiasSlopeMaxPerK"/>]
-    /// 里、线过两行的重心；只有 1 行按 <see cref="SteadyBiasSlopePerK"/> 从那一行推；离最近的行超过 <see cref="SteadyBiasExtrapolateReachC"/> 不推（null，让回路去借别的表）。
+    /// 【本地改动】稳态偏置连带来路：① 自己的行（落在行上 / 两行之间插值 / 两头之外 <see cref="SteadyBiasCarryFlatC"/> 内平着沿用）= 学到的；
+    /// ② 两头之外再远（<see cref="SteadyBiasReachC"/> 内也一样）、或根本没有：按学到的行**外推**——带稳态偏置的行 ≥ 2 行时对 (温度, 偏置) 做最小二乘，
+    /// 斜率夹在 [<see cref="SteadyBiasSlopeMinPerK"/>, <see cref="SteadyBiasSlopeMaxPerK"/>] 里、从最近那行起推；只有 1 行按 <see cref="SteadyBiasSlopePerK"/> 从那一行推；
+    /// 离最近的行超过 <see cref="SteadyBiasExtrapolateReachC"/> 不推（null，让回路去借别的表）。外推关着时两头之外 <see cref="SteadyBiasReachC"/> 内照旧平着沿用。
     /// 物理依据：维持的偏置 ≈ 散热 ∝ 釜内 − 室温，随釜内近乎线性往上——这台釜 20 ℃ 1.6、40 ℃ 3.4、70 ℃ 6.4 K（约 0.10 K/K）。
     /// 现场（2026-11-06，双向挡 65.8 → 70 ℃）：双向挡表只有 40 ℃ 那行（3.4），70 ℃ 离得远给了 null、借加热棒表的 7.82，真值 6.4——多出 1.4 K 只能靠冲过头慢慢退，
     /// 一压一冲一个多小时；按 40 那行外推 3.4 + 0.10 × 30 = 6.4，正是真值。只在同一执行器段里推（不跨 <see cref="SegmentBoundaryC"/>）。
@@ -285,9 +286,33 @@ public sealed class PidGainSchedule
                 p => p.SteadyBiasC,
                 (lo, hi, f) => Lerp(lo.SteadyBiasC!.Value, hi.SteadyBiasC!.Value, f),
                 edgeMaxDistanceC: SteadyBiasReachC);
-            if (own is { } b) return new SteadyBiasLookup(b, BiasOrigin.Learned);
+            if (own is { } b)
+            {
+                // 【本地改动】两头之外超过 SteadyBiasCarryFlatC 的不再平着沿用：按斜率从最近那行往外推、来路记外推。
+                // 现场 2026-11-09（R1-tc1-20261109-095506）：双向挡表只有 40 = 3.43，50 ℃ 在 15 K 内平着沿用 3.43 还算「学到的」，真值 5.1——
+                // 到站前釜内在 49.5 停住靠慢积分多爬 20 分钟、过零那一枪又把攒对的 5.01 打回 3.43、釜内掉 0.3 K。按 0.10 K/K 推是 4.43，差一半。
+                // 外推关着（SteadyBiasExtrapolateReachC ≤ 0）照旧平着沿用
+                var beyond = BeyondRows(setpointC);
+                if (beyond > 0 && SteadyBiasExtrapolateReachC > 0 && ExtrapolateSteadyBias(setpointC) is { Bias: not null } ex)
+                    return beyond > SteadyBiasCarryFlatC ? ex : ex with { Origin = BiasOrigin.Learned };   // 2 K 内值也按斜率走（两头连续），只是还算学到的
+                return new SteadyBiasLookup(b, BiasOrigin.Learned);
+            }
             return ExtrapolateSteadyBias(setpointC);
         }
+    }
+
+    /// <summary>【本地改动】设定值在带稳态偏置的行（同段）两头之外多少 K；夹在行之间 / 一行没有为 0。锁内调。</summary>
+    private double BeyondRows(double setpointC)
+    {
+        double lo = double.MaxValue, hi = double.MinValue;
+        foreach (var p in _points)
+        {
+            if (p.SteadyBiasC is null || !SameSegment(p.TemperatureC, setpointC)) continue;
+            lo = Math.Min(lo, p.TemperatureC);
+            hi = Math.Max(hi, p.TemperatureC);
+        }
+        if (lo > hi) return 0;
+        return setpointC < lo ? lo - setpointC : setpointC > hi ? setpointC - hi : 0;
     }
 
     /// <summary>【本地改动】按学到的行外推（见 <see cref="SteadyBiasSource"/>）；推不了返回 Bias = null。锁内调。</summary>
@@ -303,7 +328,8 @@ public sealed class PidGainSchedule
         if (rows.Count == 1)
             return new SteadyBiasLookup(near.SteadyBiasC!.Value + SteadyBiasSlopePerK * (setpointC - near.TemperatureC),
                 BiasOrigin.Extrapolated, SteadyBiasSlopePerK, near.TemperatureC, 1);
-        // ≥ 2 行：最小二乘拟合斜率（夹在物理上说得通的范围里），线过重心——两行时就是过两行的直线
+        // ≥ 2 行：最小二乘拟合斜率（夹在物理上说得通的范围里），从最近那行起推——两行时就是过两行的直线；
+        // 【本地改动】三行以上原来线过重心，边上那行就接不上（2 K 内平着沿用、再远一跳）：改成从最近那行起，两头连续
         double mt = 0, mb = 0;
         foreach (var p in rows) { mt += p.TemperatureC; mb += p.SteadyBiasC!.Value; }
         mt /= rows.Count;
@@ -316,8 +342,12 @@ public sealed class PidGainSchedule
             den += dx * dx;
         }
         var slope = den > 1e-9 ? Math.Clamp(num / den, SteadyBiasSlopeMinPerK, SteadyBiasSlopeMaxPerK) : SteadyBiasSlopePerK;
-        return new SteadyBiasLookup(mb + slope * (setpointC - mt), BiasOrigin.Extrapolated, slope, mt, rows.Count);
+        return new SteadyBiasLookup(near.SteadyBiasC!.Value + slope * (setpointC - near.TemperatureC), BiasOrigin.Extrapolated, slope, near.TemperatureC, rows.Count);
     }
+
+    /// <summary>【本地改动】两头之外这么多 K 以内还算「学到的」（值照样从边上那行按斜率走，两头连续、提示不说外推）；再远来路记外推（<see cref="SteadyBiasReachC"/> 内也推）。
+    /// 偏置随釜温约 0.09–0.12 K/K（这台釜 20 ℃ 1.6、40 ℃ 3.4、50 ℃ 5.1、70 ℃ 6.9），平着沿用 10 K 就差 1 K 多。外推关着才平着沿用。</summary>
+    public double SteadyBiasCarryFlatC { get; set; } = 2.0;
 
     /// <summary>【本地改动】稳态偏置只在离登记点这么近（℃）时才沿用到两头之外 / 只有一行时；再远就外推（<see cref="SteadyBiasSource"/>）。</summary>
     public double SteadyBiasReachC { get; set; } = 15;
@@ -343,6 +373,7 @@ public sealed class PidGainSchedule
                 MergeBandC = MergeBandC, SegmentBoundaryC = SegmentBoundaryC, SteadyBiasReachC = SteadyBiasReachC,
                 SteadyBiasSlopePerK = SteadyBiasSlopePerK, SteadyBiasSlopeMinPerK = SteadyBiasSlopeMinPerK,
                 SteadyBiasSlopeMaxPerK = SteadyBiasSlopeMaxPerK, SteadyBiasExtrapolateReachC = SteadyBiasExtrapolateReachC,
+                SteadyBiasCarryFlatC = SteadyBiasCarryFlatC,
             };
             c._points.AddRange(_points);
             return c;

@@ -49,9 +49,10 @@ public class OuterBorrowedBiasTwinTests(ITestOutputHelper output)
         var start = NewTempRig.StartNote(r);
         Assert.Contains("+7.82", start);
         Assert.Contains("借「加热棒表」", start);
-        var cap = Assert.Single(r.Notes(), n => n.Contains("过零那一枪落到"));     // 起步提示里也提「过零时夹套稳着」，认封顶那条独有的话
+        var cap = Assert.Single(r.Notes(), n => n.Contains("那一枪"));     // 【本地改动】2026-11-09 起两枪落点按实测（热平衡），表值只做起点：夹套钉在 78 上趋近、69 ℃ 那一枪就按热平衡落
         Assert.Contains("借「加热棒表」", cap);
         Assert.Contains("+7.82 K", cap);
+        Assert.Contains("只做起点、不打回去", cap);
         Assert.True(sw.Pushes <= 1, $"压低 {sw.Pushes} 次：{string.Join("、", sw.PushAtMin.Select(m => m.ToString("F1")))} min");
         Assert.InRange(r.Overshoot(70), 0, 0.2);
         // 封顶那一枪落到 6.46（真值 6.41）；壁里存的热还是把釜内推到 70.10 压一回（夹套在 78 上顶了 25 分钟）。松开以后：
@@ -70,7 +71,7 @@ public class OuterBorrowedBiasTwinTests(ITestOutputHelper output)
         await r.UntilMin(75);
         NewTempRig.Report(output, "借表 7.82（过零封顶关）", r, sw);
 
-        Assert.DoesNotContain(r.Notes(), n => n.Contains("过零那一枪落到"));
+        Assert.DoesNotContain(r.Notes(), n => n.Contains("那一枪"));          // 热平衡落点关着、这一场又没实测过：两枪只剩「回起点」、起点就是 7.82，空打
         Assert.Equal(1, sw.Pushes);
         var refix = Assert.Single(r.Notes(), n => n.Contains("压低那一刻按热平衡"));
         Assert.Contains("借「加热棒表」", refix);
@@ -95,8 +96,8 @@ public class OuterBorrowedBiasTwinTests(ITestOutputHelper output)
         await r.UntilMin(50);
         NewTempRig.Report(output, "借表 7.82（自校正关、过零封顶开）", r, sw);
 
-        var cap = Assert.Single(r.Notes(), n => n.Contains("外环偏置自校正"));     // 自校正关着：只有封顶这一条（压低那一刻改积分跟自校正一起关）
-        Assert.Contains("过零那一枪落到", cap);
+        Assert.DoesNotContain(r.Notes(), n => n.Contains("外环偏置自校正"));     // 自校正关着（压低那一刻改积分跟自校正一起关）
+        var cap = Assert.Single(r.Notes(), n => n.Contains("那一枪"));              // 【本地改动】落点按热平衡，不靠自校正开着
         Assert.Contains("借「加热棒表」", cap);
         Assert.True(sw.Pushes <= 1, $"压低 {sw.Pushes} 次：{string.Join("、", sw.PushAtMin.Select(m => m.ToString("F1")))} min");
         Assert.InRange(r.Overshoot(70), 0, 0.2);
@@ -155,16 +156,19 @@ public class SteadyBiasExtrapolationTests
         Assert.Equal(BiasOrigin.Extrapolated, far.Origin);
         Assert.Equal(0.10, far.SlopePerK, 6);
         Assert.Equal(2, far.Rows);
-        Assert.Equal(35, far.AnchorC, 6);                           // 线过两行的重心
+        Assert.Equal(40, far.AnchorC, 6);                           // 【本地改动】从最近那行起推（两头接得上）
         Assert.Equal(6.4, sch.SteadyBiasAt(70)!.Value, 6);          // 老接口也外推
         Assert.Equal(0.4, sch.SteadyBiasSource(10).Bias!.Value, 6); // 往下也推
         var mid = sch.SteadyBiasSource(35);
         Assert.Equal(2.9, mid.Bias!.Value, 6);
         Assert.Equal(BiasOrigin.Learned, mid.Origin);               // 两行之间插出来的算学到的
+        var near = sch.SteadyBiasSource(41.5);
+        Assert.Equal(3.55, near.Bias!.Value, 6);                    // 两头之外 2 K 内值也按斜率走（两头连续），只是还算学到的
+        Assert.Equal(BiasOrigin.Learned, near.Origin);
         var edge = sch.SteadyBiasSource(50);
-        Assert.Equal(3.4, edge.Bias!.Value, 6);
-        Assert.Equal(BiasOrigin.Learned, edge.Origin);              // 15 K 内沿用两头（原来就这样）
-        Assert.Equal(BiasOrigin.Extrapolated, sch.SteadyBiasSource(56).Origin);   // 过了 15 K 才外推
+        Assert.Equal(4.4, edge.Bias!.Value, 6);                     // 【本地改动】2026-11-09：再远就按斜率推（现场 50 ℃ 平着沿用 40 那行的 3.43、真值 5.1）
+        Assert.Equal(BiasOrigin.Extrapolated, edge.Origin);
+        Assert.Equal(BiasOrigin.Extrapolated, sch.SteadyBiasSource(56).Origin);
     }
 
     [Fact]
@@ -175,13 +179,13 @@ public class SteadyBiasExtrapolationTests
         steep.Learn(Row(40, 5.0));                                  // 0.40 K/K → 0.30
         var s = steep.SteadyBiasSource(70);
         Assert.Equal(0.30, s.SlopePerK, 6);
-        Assert.Equal(3.0 + 0.30 * 35, s.Bias!.Value, 6);
+        Assert.Equal(5.0 + 0.30 * 30, s.Bias!.Value, 6);          // 从最近那行（40 = 5.0）起推
         var flat = new PidGainSchedule { SegmentBoundaryC = double.NaN };
         flat.Learn(Row(30, 3.0));
         flat.Learn(Row(40, 3.1));                                   // 0.01 K/K → 0.02
         var f = flat.SteadyBiasSource(70);
         Assert.Equal(0.02, f.SlopePerK, 6);
-        Assert.Equal(3.05 + 0.02 * 35, f.Bias!.Value, 6);
+        Assert.Equal(3.1 + 0.02 * 30, f.Bias!.Value, 6);
     }
 
     [Fact]
@@ -209,7 +213,7 @@ public class SteadyBiasExtrapolationTests
         Assert.NotNull(sch.SteadyBiasAt(120));                      // 80 K 刚好
         sch.SteadyBiasExtrapolateReachC = 0;
         Assert.Null(sch.SteadyBiasAt(70));                          // 关了：原来的规矩（15 K 外 null）
-        Assert.Equal(3.4, sch.SteadyBiasAt(50));
+        Assert.Equal(3.4, sch.SteadyBiasAt(50));                    // 关了：15 K 内照旧平着沿用
         var seg = new PidGainSchedule { SegmentBoundaryC = 100 };
         seg.Learn(Row(50, 3.0));
         Assert.Null(seg.SteadyBiasAt(110));                         // 另一段（另一套执行器）不推
