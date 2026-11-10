@@ -316,6 +316,17 @@ public interface IStirrerRamp
     void SetRampSeconds(double seconds);
 }
 
+/// <summary>
+/// 【本地改动】可选：搅拌器此刻的意图（IStirrer 的实现顺带实现它）。面板那颗「搅拌」开关拿它跟实测转速一起对账——
+/// 开关跟着电机的真实状态走，不跟着面板自己上一次的记忆走（序列结束保搅拌、重连、面板关了再开之后都对不上）。
+/// 刚下发还没转起来时实测转速是 0，光看实测会把开关打回「关」，所以要有这个「最后下发的目标」。
+/// </summary>
+public interface IStirrerStatus
+{
+    /// <summary>最后一次成功下发的目标转速（rpm）；停机 / 没下发过 = 0。</summary>
+    double TargetRpm { get; }
+}
+
 public sealed record DoseRequest(double Volume, double RatePerMin)
 {
     /// <summary>加料的物料名，只用于记录与报告。</summary>

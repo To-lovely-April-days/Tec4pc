@@ -134,7 +134,9 @@ public sealed class TecClient(ISerialTransport transport) : IDisposable
             // VS 照样在抛出点误报「用户未处理」（线程池那半段栈上看不到调用方的 catch）
             string? reply = null;
             Exception? error = null;
-            await Task.Run(() =>
+            // 【本地改动】专用线程，不占线程池：RD105 不应答时一条指令要重发满 2 s，从前这 2 s 一直占着一个池线程
+            // （见 Tec.Drivers.Rd105.SerialWork——一台不通的设备不能把别的模块的指令堵在池里排队）
+            await Tec.Drivers.Rd105.SerialWork.Run(() =>
             {
                 try { reply = ExecWithRetry(command, budgetEnd, ct); }
                 catch (Exception ex) { error = ex; }

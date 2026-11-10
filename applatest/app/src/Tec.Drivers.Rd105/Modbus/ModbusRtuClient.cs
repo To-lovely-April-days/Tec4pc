@@ -96,7 +96,8 @@ public sealed class ModbusRtuClient
     {
         Exception? error = null;
         T? result = default;
-        await Task.Run(() =>
+        // 【本地改动】专用线程，不占线程池（见 SerialWork：一台不通的设备不能把别的模块的指令堵在池里排队）
+        await SerialWork.Run(() =>
         {
             try { result = work(); }
             catch (Exception ex) { error = ex; }
@@ -108,7 +109,7 @@ public sealed class ModbusRtuClient
     private static async Task GuardAsync(Action work, CancellationToken ct)
     {
         Exception? error = null;
-        await Task.Run(() =>
+        await SerialWork.Run(() =>
         {
             try { work(); }
             catch (Exception ex) { error = ex; }

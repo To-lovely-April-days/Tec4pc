@@ -541,8 +541,11 @@ internal sealed class ReactorWell : ITemperatureControl, IRefluxControl, IHeatSo
 
 /// <summary>转速斜坡通过 ABI 的可选口 IStirrerRamp 提供——面板与执行器
 /// 按接口问，不认识这个具体类（HMI 拆独立项目后它们也见不到这个程序集）。</summary>
-public sealed class StirrerImpl : IStirrer, IStirrerRamp
+public sealed class StirrerImpl : IStirrer, IStirrerRamp, IStirrerStatus
 {
+    /// <summary>IStirrerStatus：最后下发的目标（面板开关对账用）。</summary>
+    public double TargetRpm => _target;
+
     private readonly Action<int, string, double> _emit;
     private readonly Broadcast<Sample> _speed = new();
     private double _target;

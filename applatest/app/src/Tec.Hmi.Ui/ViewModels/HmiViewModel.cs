@@ -1227,6 +1227,8 @@ public sealed class HmiZoneViewModel : ViewModelBase
     /// 业务走完回路开了又打回开（现场踩到：开关开→关→开弹跳）。</summary>
     public bool TempBusy { get; private set; }
     public bool StirOn { get; private set; }
+    /// <summary>【本地改动】搅拌开关在途（启动 / 停机指令发出去还没回执）。在途不叠、对账不对它。</summary>
+    public bool StirBusy { get; private set; }
     public bool TrOn { get; private set; } = true;
     public bool PhOn { get; private set; }
     public string RampBy { get; private set; } = "rate";
@@ -1354,6 +1356,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
         EngineRunning = r?.State is Tec.Core.Records.ChannelRunState.Running
                                   or Tec.Core.Records.ChannelRunState.Paused;
         SyncWithLoop();
+        SyncStir();
         RefreshLoopNotice();
         // 程序在跑 = 温控当然是开的，不用等面板那个开关也被按下
         Therm = !(TempOn || EngineRunning) ? 0
@@ -1481,6 +1484,42 @@ public sealed class HmiZoneViewModel : ViewModelBase
             }
             else Log("对账", "回路已停（安全停机 / 程序 / 别处停的）——面板「温控」开关跟着关");
         }
+    }
+
+    // ── 【本地改动】「搅拌」开关 ⇄ 电机真实状态对账 ────────────────────
+    //
+    // 从前这颗开关只是面板自己记的一个状态，不看电机转没转。电机在转而开关显示「关」的情况很多：序列结束按设计保搅拌、
+    // 设备重连过、面板关了重开、在设备参数里做过数圈测试——这时点一下发出去的是「开」，要再点一次才是停；
+    // 而且停机指令是发了就不管，失败了没有任何提示（用户 2026-11-10：「别的模块通信异常时搅拌都关不了」）。
+    // 现在：电机在转（实测 > 0，或最后下发的目标 > 0）开关就是开；连着 3 拍对不上才改（起停有加减速）；
+    // 程序在跑也照样对——程序开的搅拌，开关显示开，点一下才是「关」。
+    // 停机发出去以后给它几拍减速，到点实测还在转就弹出来说。
+
+    private const int StirStopWaitTicks = 8;
+    private int _stirMismatch;
+    private int _stirStopCheck;
+
+    private void SyncStir()
+    {
+        if (Stir is not { } s) { StirOn = false; _stirMismatch = 0; _stirStopCheck = 0; return; }
+        if (_stirStopCheck > 0)
+        {
+            // 停机指令已回执、电机在减速：这几拍不对账（不然开关会被打回「开」）；到点还在转才说
+            if (--_stirStopCheck > 0) return;
+            if (s.CurrentRpm > 0)
+            {
+                Log("拒绝", $"搅拌停机指令发了，{StirStopWaitTicks} s 后实测还有 {s.CurrentRpm:0} rpm");
+                _owner.Toast($"搅拌没停下来：实测还有 {s.CurrentRpm:0} rpm——再点一次；还不停就到驱动器上断电，原因看系统日志里搅拌那几行");
+            }
+        }
+        if (StirBusy) return;
+        var running = s.CurrentRpm > 0 || (s is IStirrerStatus st && st.TargetRpm > 0);
+        if (running == StirOn) { _stirMismatch = 0; return; }
+        if (++_stirMismatch < 3) return;
+        _stirMismatch = 0;
+        StirOn = running;
+        Log("对账", running ? $"搅拌在转（实测 {s.CurrentRpm:0} rpm）——面板「搅拌」开关跟着开"
+                            : "搅拌已停——面板「搅拌」开关跟着关");
     }
 
     private double? ReadPh()
@@ -2066,32 +2105,78 @@ public sealed class HmiZoneViewModel : ViewModelBase
 
     public void ToggleStir()
     {
-        if (GuardEngine()) return;
         if (Stir is not { } s) { _owner.Toast("该通道没有搅拌能力"); return; }
-        StirOn = !StirOn;
-        if (StirOn) IssueStir();
-        else _ = s.StopAsync(CancellationToken.None);
-        Log("开关", "搅拌" + (StirOn ? " 开" : " 关"));
-        RaiseZone();
-    }
-
-    private void IssueStir()
-    {
-        if (Stir is not { } s) return;
-        var rEnd = Pv("rEnd");
-        var rDur = Pv("rDur");
-        if (rEnd > 0 && rDur > 0 && s is IStirrerRamp impl)
+        if (StirBusy) return;               // 在途不叠
+        var wantOn = !StirOn;
+        // 【本地改动】「关」永远放行：程序在跑、别的模块通信异常，都不许拦着人把搅拌关掉。
+        // 「开」和改转速照旧归程序管（程序控制中会被拦下）
+        if (wantOn && GuardEngine()) return;
+        StirOn = wantOn;
+        StirBusy = true;
+        _stirMismatch = 0;
+        _stirStopCheck = 0;
+        if (wantOn)
         {
-            // 斜坡：终值 + 时长换算成驱动的加减速斜率（rampSeconds 按满量程标）
-            var delta = Math.Abs(rEnd - s.CurrentRpm);
-            if (delta > 1) impl.SetRampSeconds(rDur * 60 * s.Limits.Max / delta);
-            _ = s.SetSpeedAsync(rEnd, CancellationToken.None);
+            Log("开关", "搅拌 开");
+            TrackStir(IssueStirAsync(s), "搅拌启动", stop: false);
         }
         else
         {
-            if (s is IStirrerRamp i2) i2.SetRampSeconds(5);
-            _ = s.SetSpeedAsync(Pv("rpm"), CancellationToken.None);
+            Log("开关", EngineRunning ? "搅拌 关（程序运行中手动停——「关」不受程序控制限制；下一条搅拌步骤会再把它打开）" : "搅拌 关");
+            TrackStir(StopStirAsync(s), "搅拌停机", stop: true);
         }
+        RaiseZone();
+    }
+
+    /// <summary>停机带 8 s 期限：驱动器不应答也要有个了结，不能让开关永远转菊花。</summary>
+    private static async Task StopStirAsync(IStirrer s)
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        await s.StopAsync(cts.Token).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 【本地改动】搅拌指令等回执：成了收菊花；不成把原因弹出来、记进日志——从前是发了就不管，
+    /// 驱动器拒绝（没切到 485 方式、没学习相序）或串口不通，面板上一点动静都没有。
+    /// </summary>
+    private void TrackStir(Task task, string what, bool stop)
+    {
+        task.ContinueWith(t =>
+        {
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                StirBusy = false;
+                var why = t.IsCanceled ? "8 s 内驱动器没有应答"
+                        : t.Exception?.GetBaseException() is { } ex ? (ex is OperationCanceledException ? "8 s 内驱动器没有应答" : ex.Message)
+                        : null;
+                if (why is not null)
+                {
+                    Log("拒绝", $"{what}失败：{why}");
+                    _owner.Toast($"{what}失败：{why}");
+                }
+                else if (stop) _stirStopCheck = StirStopWaitTicks;      // 给电机几拍减速，到点还在转再说
+                RaiseZone();
+            });
+        }, TaskScheduler.Default);
+    }
+
+    private Task IssueStirAsync(IStirrer s)
+    {
+        try
+        {
+            var rEnd = Pv("rEnd");
+            var rDur = Pv("rDur");
+            if (rEnd > 0 && rDur > 0 && s is IStirrerRamp impl)
+            {
+                // 斜坡：终值 + 时长换算成驱动的加减速斜率（rampSeconds 按满量程标）
+                var delta = Math.Abs(rEnd - s.CurrentRpm);
+                if (delta > 1) impl.SetRampSeconds(rDur * 60 * s.Limits.Max / delta);
+                return s.SetSpeedAsync(rEnd, CancellationToken.None);
+            }
+            if (s is IStirrerRamp i2) i2.SetRampSeconds(5);
+            return s.SetSpeedAsync(Pv("rpm"), CancellationToken.None);
+        }
+        catch (Exception ex) { return Task.FromException(ex); }
     }
 
     public void ToggleTrSensor()
@@ -2132,7 +2217,11 @@ public sealed class HmiZoneViewModel : ViewModelBase
         foreach (var kv in Pending) Sets[kv.Key] = kv.Value;
         Pending.Clear();
         if (TempOn) IssueTemp();
-        if (StirOn) IssueStir();
+        if (StirOn && Stir is { } stirNow && !StirBusy)
+        {
+            StirBusy = true;
+            TrackStir(IssueStirAsync(stirNow), "搅拌转速下发", stop: false);
+        }
 
         var held = new List<string>();
         if (tempPending && TempOn && _tuneAsked) held.Add("温度目标落在双向挡没整定的温度，没下发——先整定");

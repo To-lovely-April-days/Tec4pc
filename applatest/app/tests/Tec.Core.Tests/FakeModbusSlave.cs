@@ -76,8 +76,12 @@ public sealed class FakeModbusSlave : ISerialTransport
     public void DiscardInput() => _tx.Clear();
     public void Dispose() => IsOpen = false;
 
+    /// <summary>【本地改动】有没有哪一帧是在线程池线程上写的——串口事务该在专用线程上（SerialWork），回归盯这个。</summary>
+    public bool AnyWriteOnPoolThread { get; private set; }
+
     public void Write(byte[] buffer, int offset, int count)
     {
+        if (Thread.CurrentThread.IsThreadPoolThread) AnyWriteOnPoolThread = true;
         if (Dead) throw new IOException("函数不正确。");
         if (!IsOpen) throw new InvalidOperationException("串口没打开");
         for (var i = 0; i < count; i++) _rx.Add(buffer[offset + i]);

@@ -27,7 +27,8 @@ public sealed class Workspace : IHmiHost
     /// <summary>IHmiHost：数据目录。面板序列、快照、导出都写在它下面。</summary>
     public string DataDir => ExperimentStore.DataDir;
 
-    private readonly Dictionary<string, IDeviceSession> _sessions = new(StringComparer.Ordinal);
+    // 【本地改动】并发字典：不同串口的设备同时连（见 ConnectGroups），几条线同时往里写，界面线程每秒还在读
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, IDeviceSession> _sessions = new(StringComparer.Ordinal);
     /// <summary>重建通道 / 重连一次只许一个在跑（见 RebuildChannelsAsync）。</summary>
     private readonly SemaphoreSlim _rebuildGate = new(1, 1);
 
@@ -51,7 +52,7 @@ public sealed class Workspace : IHmiHost
 
     /// <summary>上一次重建时没打开的设备：实例号 → 驱动报的原因。台面属性栏和
     /// HMI 头卡念的「未连接：……」就是它——打不开要说为什么，不能只写个「未连接」。</summary>
-    private readonly Dictionary<string, string> _openFailures = new(StringComparer.Ordinal);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _openFailures = new(StringComparer.Ordinal);
 
     /// <summary>被手动断开的设备（运行时状态，不落盘）。默认全自动：拖上台面 / 开机 / 读盘
     /// 都直接开会话起采集、实时出数；点「断开」才进这个集合（调试 / 暂离时停掉一台），
@@ -215,11 +216,27 @@ public sealed class Workspace : IHmiHost
 
     /// <summary>正在逐台开会话（横幅看这个）。</summary>
     public bool IsConnecting { get; private set; }
-    /// <summary>正在连的这台的名字（横幅文案）与实例号（节点菊花看谁）。</summary>
-    public string ConnectDeviceName { get; private set; } = "";
-    public string? ConnectingInstanceId { get; private set; }
-    /// <summary>正在连的是第几台（0 起）/ 一共几台。</summary>
-    public int ConnectIndex { get; private set; }
+    // 【本地改动】设备是同时连的，「正在连的那一台」变成「还在连的那几台」
+    private readonly Dictionary<string, string> _connecting = new(StringComparer.Ordinal);   // 实例号 → 显示名
+    private readonly object _openGate = new();
+    private int _connectDone;
+
+    /// <summary>还在连的那几台的名字（横幅文案）：「A、B、C」，超过三台写「A、B、C 等 5 台」。</summary>
+    public string ConnectDeviceName
+    {
+        get
+        {
+            lock (_connecting)
+            {
+                var names = _connecting.Values.ToList();
+                return names.Count <= 3 ? string.Join("、", names) : $"{string.Join("、", names.Take(3))} 等 {names.Count} 台";
+            }
+        }
+    }
+    /// <summary>这台是不是还在连（节点菊花、属性栏「连接中…」看它）。</summary>
+    public bool IsConnectingDevice(string instanceId) { lock (_connecting) return _connecting.ContainsKey(instanceId); }
+    /// <summary>这一轮已经有结果的台数（连上、连不上、被取消都算）/ 一共几台。</summary>
+    public int ConnectDone => Volatile.Read(ref _connectDone);
     public int ConnectTotal { get; private set; }
 
     /// <summary>当前这次重建的取消闸。一次重建一把：队列里等着的下一次拿新的。</summary>
@@ -237,6 +254,9 @@ public sealed class Workspace : IHmiHost
 
     public void Boot()
     {
+        // 【本地改动】线程池下限抬到 32（兜底，见 SerialWork）：各模块的串口事务已在专用线程上，这里防的是剩下那点同步等待撞车
+        Tec.Drivers.Rd105.SerialWork.RaiseThreadPoolFloor();
+
         // 程序里只有真机驱动，没有仿真：双工位反应主机（RD105 + IO8R，见
         // docs/双工位反应主机驱动需求.md）、两支宇电探头（Tr = J7、pH = J4，
         // 串口各在探头自己的属性里），以及单独的 RD105 温控器（老台面上摆过的
@@ -483,48 +503,62 @@ public sealed class Workspace : IHmiHost
                 ch.DetachAll();
                 Engine.Safety.RemoveDeviceLimits(ch.Number);
             }
+            var keepOrder = new Dictionary<string, int>(StringComparer.Ordinal);
+            for (var i = 0; i < plan.Count; i++) keepOrder[plan[i].Dev.InstanceId] = i;
             foreach (var (id, chs) in keep)
             {
                 var session = _sessions[id];
                 for (var w = 0; w < chs.Count && w < Math.Max(1, session.WellCount); w++)
                     if (affected.Contains(chs[w]))
-                        _channels.FirstOrDefault(c => c.Number == chs[w])?.Attach(session, w, hostWells.ContainsKey(id));
+                        _channels.FirstOrDefault(c => c.Number == chs[w])
+                                 ?.Attach(session, w, hostWells.ContainsKey(id), keepOrder.GetValueOrDefault(id, int.MaxValue));
             }
         }
 
-        // 5. 逐台开要开的会话；横幅报进度、节点顶菊花。先排清单、再把台面亮出来——「先见设备、再见连接中」
-        foreach (var (dev, _) in open) _openFailures.Remove(dev.InstanceId);
+        // 5. 开要开的会话——【本地改动】不同串口的设备**同时连**，共用一个串口的归一组、组内一台一台来（ConnectGroups）。
+        //    从前全台面一台一台顺序连：主机的温控器不通要换着试好几档、十几二十秒，排在后面的搅拌 / pH 这段时间都没连上。
+        //    挂到通道上的先后按连接清单里的位置排（Attach 的 order），谁先连上不影响「通道上第一个某某能力是谁」。
+        //    先把台面亮出来（节点、通道先就位，还是「未连接」）再连——「先见设备、再见连接中」
+        var orderOf = new Dictionary<string, int>(StringComparer.Ordinal);
+        for (var i = 0; i < plan.Count; i++) orderOf[plan[i].Dev.InstanceId] = i;
+        foreach (var (dev, _) in open) _openFailures.TryRemove(dev.InstanceId, out _);
         IsConnecting = open.Count > 0;
         ConnectTotal = open.Count;
+        Volatile.Write(ref _connectDone, 0);
+        lock (_connecting)
+        {
+            _connecting.Clear();
+            foreach (var (dev, _) in open) _connecting[dev.InstanceId] = dev.Display;
+        }
         if (IsConnecting)
         {
-            ConnectIndex = 0;
-            ConnectingInstanceId = open[0].Dev.InstanceId;
-            ConnectDeviceName = open[0].Dev.Display;
             await RaiseBenchChangedAsync().ConfigureAwait(false);   // 先见设备
             RaiseConnectProgress();
         }
 
-        // 取消：还没连的（含正在连的这台）标成手动断开——界面停在「未连接」，点「连接」接回来
-        void CancelRest(int from)
+        var token = _connectCts.Token;
+        var cancelled = new List<string>();
+
+        // 这一台有结果了（连上 / 连不上 / 被取消）：菊花收掉、进度加一
+        void Done(DeviceInstance dev)
         {
-            var rest = open.Skip(from).ToList();
-            foreach (var p in rest) _disconnected.Add(p.Dev.InstanceId);
-            Log?.Write("设备", $"连接已取消：{string.Join("、", rest.Select(p => p.Dev.Display))} 未连（点「连接」可接回来）",
-                       Operator, LogLevel.Warn);
+            lock (_connecting) _connecting.Remove(dev.InstanceId);
+            Interlocked.Increment(ref _connectDone);
+            RaiseConnectProgress();
         }
 
-        try
+        // 取消：还没连上的标成手动断开——界面停在「未连接」，点「连接」接回来
+        void MarkCancelled(DeviceInstance dev)
         {
-            for (var i = 0; i < open.Count; i++)
-            {
-                if (_connectCts.IsCancellationRequested) { CancelRest(i); break; }
-                var (dev, chs) = open[i];
-                ConnectIndex = i;
-                ConnectingInstanceId = dev.InstanceId;
-                ConnectDeviceName = dev.Display;
-                RaiseConnectProgress();
+            lock (_openGate) { _disconnected.Add(dev.InstanceId); cancelled.Add(dev.Display); }
+            Done(dev);
+        }
 
+        async Task OpenGroupAsync(List<(DeviceInstance Dev, List<int> Chs)> group)
+        {
+            foreach (var (dev, chs) in group)
+            {
+                if (token.IsCancellationRequested) { MarkCancelled(dev); continue; }
                 var driver = Drivers.Driver(dev.DriverId)!;
 
                 var ctx = new DriverContext
@@ -540,45 +574,65 @@ public sealed class Workspace : IHmiHost
                         level is "error" ? LogLevel.Error : level is "warn" ? LogLevel.Warn : LogLevel.Info)
                 };
 
-                IDeviceSession session;
+                IDeviceSession? session = null;
                 try
                 {
-                    session = await driver.OpenAsync(dev.Connection, ctx, _connectCts.Token)
-                                          .ConfigureAwait(false);
-                    await session.StartAsync(_connectCts.Token).ConfigureAwait(false);
+                    session = await driver.OpenAsync(dev.Connection, ctx, token).ConfigureAwait(false);
+                    await session.StartAsync(token).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {
-                    CancelRest(i);
-                    break;
+                    if (session is not null) { try { await session.DisposeAsync().ConfigureAwait(false); } catch { } }
+                    MarkCancelled(dev);
+                    continue;
                 }
                 catch (Exception ex)
                 {
                     // 打不开照实记着继续：这一台在台面上显示「未连接：原因」，
-                    // 别的设备照常开——一台串口没插不该把整个台面拖死
+                    // 别的设备照常开——一台串口没插不该把整个台面拖死。开了口子却没起来的把口子让出来
+                    if (session is not null) { try { await session.DisposeAsync().ConfigureAwait(false); } catch { } }
                     _openFailures[dev.InstanceId] = ex.Message;
                     Log?.Write("设备", $"{dev.Display}（{dev.InstanceId}）打开失败：{ex.Message}", Operator, LogLevel.Error);
+                    Done(dev);
                     continue;
                 }
 
-                Log?.Write("设备", $"{dev.Display}（{dev.InstanceId}）已连接", Operator);
-                _sessions[dev.InstanceId] = session;
-                _sessionInfo[dev.InstanceId] = (SignatureOf(dev, chs), chs.ToList());
-                Engine.Ingest(session);
-
-                for (var w = 0; w < chs.Count && w < Math.Max(1, session.WellCount); w++)
+                // 登记与挂载一把锁串起来：几条线同时连上时，采样管线的订阅、会话表、签名表不交错
+                lock (_openGate)
                 {
-                    var ch = _channels.FirstOrDefault(c => c.Number == chs[w]);
-                    ch?.Attach(session, w, hostWells.ContainsKey(dev.InstanceId));
+                    Log?.Write("设备", $"{dev.Display}（{dev.InstanceId}）已连接", Operator);
+                    _sessions[dev.InstanceId] = session;
+                    _sessionInfo[dev.InstanceId] = (SignatureOf(dev, chs), chs.ToList());
+                    Engine.Ingest(session);
+
+                    for (var w = 0; w < chs.Count && w < Math.Max(1, session.WellCount); w++)
+                    {
+                        var ch = _channels.FirstOrDefault(c => c.Number == chs[w]);
+                        ch?.Attach(session, w, hostWells.ContainsKey(dev.InstanceId), orderOf.GetValueOrDefault(dev.InstanceId, int.MaxValue));
+                    }
                 }
+                Done(dev);
             }
+        }
+
+        try
+        {
+            var groups = ConnectGroups.Group(open, o => Drivers.Driver(o.Dev.DriverId) is { } d
+                ? ConnectGroups.PortsOf(d, o.Dev.Connection) : Array.Empty<string>());
+            if (groups.Count > 1)
+                Log?.Write("设备", $"同时连接 {groups.Count} 组设备（不同串口各连各的）：" +
+                                   string.Join("；", groups.Select(g => string.Join(" → ", g.Select(x => x.Dev.InstanceId)))), Operator);
+            // Task.Run 起：驱动的 OpenAsync 在第一个 await 之前常有同步的开串口，别让它把别的组的起步堵住
+            await Task.WhenAll(groups.Select(g => Task.Run(() => OpenGroupAsync(g)))).ConfigureAwait(false);
+            if (cancelled.Count > 0)
+                Log?.Write("设备", $"连接已取消：{string.Join("、", cancelled)} 未连（点「连接」可接回来）", Operator, LogLevel.Warn);
         }
         finally
         {
             // 半路出幺蛾子也不能让横幅卡住：连接状态一定归位
             _connectCts = null;
             IsConnecting = false;
-            ConnectingInstanceId = null;
+            lock (_connecting) _connecting.Clear();
             RaiseConnectProgress();
         }
 
@@ -669,7 +723,7 @@ public sealed class Workspace : IHmiHost
 
         // 先把表摘空再逐个收：收会话要 await，这期间别让任何人再从表里读到一个正在死的会话
         var closing = only is null ? _sessions.ToList() : _sessions.Where(kv => only.Contains(kv.Key)).ToList();
-        foreach (var (id, _) in closing) { _sessions.Remove(id); _sessionInfo.Remove(id); _openFailures.Remove(id); }
+        foreach (var (id, _) in closing) { _sessions.TryRemove(id, out _); _sessionInfo.Remove(id); _openFailures.TryRemove(id, out _); }
         if (only is null) { _sessions.Clear(); _sessionInfo.Clear(); _openFailures.Clear(); }
         foreach (var (id, s) in closing)
         {

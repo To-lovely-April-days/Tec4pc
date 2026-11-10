@@ -476,34 +476,39 @@ public sealed class ChannelRunner
         }
     }
 
-    /// <summary>停机收尾能等多久。真机不响应时不能把收尾卡死在这儿。</summary>
-    private static readonly TimeSpan SafeStopBudget = TimeSpan.FromSeconds(10);
+    /// <summary>
+    /// 停机收尾时**每台设备各自**能等多久。真机不响应时不能把收尾卡死在这儿。
+    /// 【本地改动】从前是整条通道共用一个 10 s：设备挨个停、主机排第一，主机的温控器 / 继电器板不通时它一台就把 10 s 耗光，
+    /// 排在后面的进料泵拿到的是已经过期的令牌——泵停不下来（用户 2026-11-10：「各个模块不要互相干涉」）。
+    /// </summary>
+    public TimeSpan SafeStopBudget { get; init; } = TimeSpan.FromSeconds(10);
+
+    /// <summary>「10 s」——记录里说预算时用；不到一秒的（回归测试）按毫秒说。</summary>
+    private string BudgetText => SafeStopBudget.TotalSeconds >= 1
+        ? $"{Fmt.Num(SafeStopBudget.TotalSeconds, 0)} s" : $"{SafeStopBudget.TotalMilliseconds:0} ms";
 
     /// <summary>
-    /// 挨个问这一路上的设备：把你在这一路的输出收到安全态。
+    /// 让这一路上的每台设备把输出收到安全态。**各台同时做、各有各的预算**，谁不通只耽误自己。
     /// **该关什么归驱动说**，Core 不认识具体设备（§核心架构 §1）。
-    /// 做了什么逐条进记录——GLP 要答得出「停的那一刻机器被动了什么」。
+    /// 做了什么逐条进记录——GLP 要答得出「停的那一刻机器被动了什么」；记录照挂载顺序写，不照谁先停完。
     ///
     /// 这里**不用** _cts：它刚刚才被 Cancel，拿它去停设备等于一条指令都发不出去。
-    /// 单开一个带预算的令牌，某台设备不响应也不能把别的几台拖住。
+    /// 每台单开一个带预算的令牌；驱动连令牌都不理（卡死在串口里）也只等到预算为止，照实记「超时未响应」。
     /// </summary>
     private async Task SafeStopAsync(ChannelRun run)
     {
-        using var cts = new CancellationTokenSource(SafeStopBudget);
-        foreach (var a in _channel.Attachments)
+        var attachments = _channel.Attachments;
+        var results = await Task.WhenAll(attachments.Select(StopOneAsync)).ConfigureAwait(false);
+        for (var i = 0; i < attachments.Count; i++)
         {
-            IReadOnlyList<string>? did;
-            try
-            {
-                did = await a.Session.SafeStopAsync(a.Well, cts.Token).ConfigureAwait(false);
-            }
-            catch (Exception ex)
+            var a = attachments[i];
+            var (did, error) = results[i];
+            if (error is not null)
             {
                 // 停不下来是最该留痕的一种情况：机器还开着，而且没人知道
-                Log(EventKind.SafeStop, $"{a.Session.InstanceId} 停机失败：{ex.Message}", null);
+                Log(EventKind.SafeStop, $"{a.Session.InstanceId} 停机失败：{error}", null);
                 continue;
             }
-
             if (did is null)
             {
                 // 驱动没实现。不假装停干净了——现场得知道这台还开着
@@ -512,6 +517,35 @@ public sealed class ChannelRunner
             }
             foreach (var line in did)
                 Log(EventKind.SafeStop, $"{a.Session.InstanceId} {line}", null);
+        }
+    }
+
+    private async Task<(IReadOnlyList<string>? Did, string? Error)> StopOneAsync(DeviceAttachment a)
+    {
+        var cts = new CancellationTokenSource(SafeStopBudget);
+        try
+        {
+            // 丢到线程池上起：驱动的 SafeStop 要是同步卡在串口里，不能把别的几台的起步也堵住
+            var task = Task.Run(() => a.Session.SafeStopAsync(a.Well, cts.Token).AsTask());
+            var done = await Task.WhenAny(task, Task.Delay(SafeStopBudget + TimeSpan.FromSeconds(1))).ConfigureAwait(false);
+            if (done != task)
+            {
+                _ = task.ContinueWith(t => { _ = t.Exception; cts.Dispose(); }, TaskScheduler.Default);
+                return (null, $"{BudgetText} 内没有响应，输出可能仍开着");
+            }
+            var did = await task.ConfigureAwait(false);
+            cts.Dispose();
+            return (did, null);
+        }
+        catch (OperationCanceledException)
+        {
+            cts.Dispose();
+            return (null, $"{BudgetText} 内没停完（设备不响应），输出可能仍开着");
+        }
+        catch (Exception ex)
+        {
+            cts.Dispose();
+            return (null, ex.Message);
         }
     }
 
@@ -526,7 +560,6 @@ public sealed class ChannelRunner
     private async Task EmergencyAsync()
     {
         if (Safety?.EmergencyPlanOf(Number) is not { } plan) return;
-        using var cts = new CancellationTokenSource(SafeStopBudget);
         var caps = _channel.Capabilities;
 
         if (plan.SafeTemp is { } t)
@@ -545,9 +578,13 @@ public sealed class ChannelRunner
         }
         else Log(EventKind.SafeStop, "紧急程序：搅拌保持当前转速（Rsafe = 保持）", null);
 
+        // 【本地改动】每个动作各有各的预算：从前 Tsafe 与 Rsafe 共用一个 10 s，温控器不通时把它耗光，
+        // 紧急转速就发不出去了——跟收安全态同一个毛病
         async Task Try(string what, Func<CancellationToken, Task> go)
         {
+            using var cts = new CancellationTokenSource(SafeStopBudget);
             try { await go(cts.Token).ConfigureAwait(false); Log(EventKind.SafeStop, what, null); }
+            catch (OperationCanceledException) { Log(EventKind.SafeStop, $"{what} 失败：{BudgetText} 内设备没有响应", null); }
             catch (Exception ex) { Log(EventKind.SafeStop, $"{what} 失败：{ex.Message}", null); }
         }
     }

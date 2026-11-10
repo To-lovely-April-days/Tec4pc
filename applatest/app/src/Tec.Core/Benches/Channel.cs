@@ -2,28 +2,59 @@ using Tec.Driver.Abi;
 
 namespace Tec.Core.Benches;
 
-public sealed record DeviceAttachment(IDeviceSession Session, int Well, bool IsHost);
+public sealed record DeviceAttachment(IDeviceSession Session, int Well, bool IsHost)
+{
+    /// <summary>
+    /// 【本地改动】这台设备在台面连接清单里排第几。会话是各连各的（不同串口同时连），谁先连上不一定——
+    /// 挂载按这个序号排，通道上「第一个 IScalarSensor 是谁」才每次都一样；没给的排在后面、按挂上来的先后。
+    /// </summary>
+    public int Order { get; init; } = int.MaxValue;
+    internal long Seq { get; init; }
+}
 
 /// <summary>
 /// 通道的能力集合。上层只问"有没有这项能力"，不问"这是哪台设备"。
+/// 【本地改动】写时复制：界面线程每秒在读、设备会话在后台线程挂上摘下——从前是一只共用的 List，
+/// 一边遍历一边改（「Collection was modified」那一类）。现在改的时候换一只新数组，读的人拿到的永远是完整的一份。
 /// </summary>
 public sealed class CapabilitySet : ICapabilityLookup
 {
-    private readonly List<ICapability> _items = new();
+    private volatile ICapability[] _items = Array.Empty<ICapability>();
+    private readonly object _gate = new();
 
     public IReadOnlyList<ICapability> All => _items;
 
     public void Add(IEnumerable<ICapability> caps)
     {
-        foreach (var c in caps) if (!_items.Contains(c)) _items.Add(c);
+        lock (_gate)
+        {
+            var list = _items.ToList();
+            foreach (var c in caps) if (!list.Contains(c)) list.Add(c);
+            _items = list.ToArray();
+        }
     }
 
-    public void Clear() => _items.Clear();
+    /// <summary>整份换掉（去重、保序）。</summary>
+    public void Replace(IEnumerable<ICapability> caps)
+    {
+        lock (_gate)
+        {
+            var list = new List<ICapability>();
+            foreach (var c in caps) if (!list.Contains(c)) list.Add(c);
+            _items = list.ToArray();
+        }
+    }
+
+    public void Clear()
+    {
+        lock (_gate) _items = Array.Empty<ICapability>();
+    }
 
     public T? Get<T>() where T : class, ICapability
     {
-        for (var i = 0; i < _items.Count; i++)
-            if (_items[i] is T t) return t;
+        var items = _items;
+        for (var i = 0; i < items.Length; i++)
+            if (items[i] is T t) return t;
         return null;
     }
 
@@ -31,8 +62,9 @@ public sealed class CapabilitySet : ICapabilityLookup
 
     public bool Has(Type capabilityType)
     {
-        for (var i = 0; i < _items.Count; i++)
-            if (capabilityType.IsInstanceOfType(_items[i])) return true;
+        var items = _items;
+        for (var i = 0; i < items.Length; i++)
+            if (capabilityType.IsInstanceOfType(items[i])) return true;
         return false;
     }
 }
@@ -57,19 +89,39 @@ public sealed class Channel
     public string Name => $"CH{Number}";
 
     public CapabilitySet Capabilities { get; } = new();
-    public List<DeviceAttachment> Attachments { get; } = new();
 
-    public void Attach(IDeviceSession session, int well, bool isHost)
+    private volatile DeviceAttachment[] _attachments = Array.Empty<DeviceAttachment>();
+    private readonly object _gate = new();
+    private long _seq;
+
+    /// <summary>挂在这一路上的设备，按 <see cref="DeviceAttachment.Order"/> 排。每次读到的是完整的一份快照（写时复制）。</summary>
+    public IReadOnlyList<DeviceAttachment> Attachments => _attachments;
+
+    /// <param name="order">这台设备在台面连接清单里的序号（见 DeviceAttachment.Order）；不给 = 排在后面、按挂上来的先后。</param>
+    public void Attach(IDeviceSession session, int well, bool isHost, int? order = null)
     {
-        Attachments.RemoveAll(a => ReferenceEquals(a.Session, session) && a.Well == well);
-        Attachments.Add(new DeviceAttachment(session, well, isHost));
-        Capabilities.Add(session.CapabilitiesOf(well));
+        lock (_gate)
+        {
+            var old = _attachments;
+            // 不是从设备会话来的能力（测试直接塞的那种）照旧留着
+            var fromSessions = new HashSet<ICapability>(old.SelectMany(a => a.Session.CapabilitiesOf(a.Well)), ReferenceEqualityComparer.Instance);
+            var extras = Capabilities.All.Where(c => !fromSessions.Contains(c)).ToList();
+
+            var list = old.Where(a => !(ReferenceEquals(a.Session, session) && a.Well == well)).ToList();
+            list.Add(new DeviceAttachment(session, well, isHost) { Order = order ?? int.MaxValue, Seq = ++_seq });
+            var sorted = list.OrderBy(a => a.Order).ThenBy(a => a.Seq).ToArray();
+            _attachments = sorted;
+            Capabilities.Replace(sorted.SelectMany(a => a.Session.CapabilitiesOf(a.Well)).Concat(extras));
+        }
     }
 
     public void DetachAll()
     {
-        Attachments.Clear();
-        Capabilities.Clear();
+        lock (_gate)
+        {
+            _attachments = Array.Empty<DeviceAttachment>();
+            Capabilities.Clear();
+        }
     }
 
     /// <summary>

@@ -64,6 +64,9 @@ public sealed class RunEngine
 
     public double TimeScale { get; set; } = 1;
 
+    /// <summary>【本地改动】中止收尾时每台设备各自能等多久（见 ChannelRunner.SafeStopBudget）。回归测试把它调短。</summary>
+    public TimeSpan SafeStopBudget { get; set; } = TimeSpan.FromSeconds(10);
+
     public void NewBatch(string name, string? op, string benchName)
     {
         // 上一个批次一条通道都没跑过就把它丢掉——那是「按了运行又没启动成」
@@ -152,6 +155,7 @@ public sealed class RunEngine
         var r = new ChannelRunner(channel, Catalog, Builtins, Arbiter, Now, (ch, id) => ResourceOf(ch, id))
         {
             TimeScale = TimeScale,
+            SafeStopBudget = SafeStopBudget,
             // 带 Guard 的步骤执行期间要往安全层挂临时限值，撤挂都由执行器自己管
             Safety = Safety
         };

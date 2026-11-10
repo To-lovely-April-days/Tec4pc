@@ -26,9 +26,10 @@ namespace Tec.Hmi.Runtime;
 /// </summary>
 public sealed class HmiRuntime : IHmiHost, IAsyncDisposable
 {
-    private readonly Dictionary<string, IDeviceSession> _sessions = new(StringComparer.Ordinal);
+    // 【本地改动】并发字典：开机时不同串口的设备同时连，几条线同时写、面板线程同时读
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, IDeviceSession> _sessions = new(StringComparer.Ordinal);
     /// <summary>开机没打开的设备：实例号 → 驱动报的原因（头卡上「未连接：……」念它）。</summary>
-    private readonly Dictionary<string, string> _openFailures = new(StringComparer.Ordinal);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _openFailures = new(StringComparer.Ordinal);
     private readonly List<IDisposable> _trFeedSubs = new();
     private readonly List<Channel> _channels = new();
     private readonly Dictionary<string, string> _archived = new(StringComparer.Ordinal);
@@ -111,6 +112,9 @@ public sealed class HmiRuntime : IHmiHost, IAsyncDisposable
     /// </summary>
     public void Boot(double timeScale = 1)
     {
+        // 【本地改动】线程池下限抬到 32（兜底，见 SerialWork）
+        Tec.Drivers.Rd105.SerialWork.RaiseThreadPoolFloor();
+
         // 真机三驱动：双工位主机 + 两支宇电探头（需求 docs/双工位反应主机驱动需求.md）。
         // 程序里没有仿真——早期那套仿真孪生已从程序里拿掉，只留在回归测试里当替身
         // （测试要用就在 Boot 之前往 Drivers 里注册）
@@ -262,7 +266,10 @@ public sealed class HmiRuntime : IHmiHost, IAsyncDisposable
             hostWells[dev.InstanceId] = list;
         }
 
-        // 2. 打开会话并挂能力
+        // 2. 打开会话并挂能力——【本地改动】不同串口的设备同时连，共用一个口的归一组、组内一台一台来（ConnectGroups）。
+        //    从前一台一台顺序连：主机不通要试十几二十秒，排在后面的搅拌 / pH 这段时间面板上都是「未接」。
+        //    挂到通道上的先后按台面清单里的位置排（Attach 的 order），谁先连上不影响能力的先后
+        var plan = new List<(DeviceInstance Dev, List<int> Chs, IDeviceDriver Driver)>();
         foreach (var dev in Bench.Devices)
         {
             var driver = Drivers.Driver(dev.DriverId);
@@ -272,39 +279,56 @@ public sealed class HmiRuntime : IHmiHost, IAsyncDisposable
                 : Bench.Bindings.Where(b => b.DeviceId == dev.InstanceId)
                                 .Select(b => b.ChannelNumber).Distinct().OrderBy(x => x).ToList();
             if (chs.Count == 0) continue;
-
-            var ctx = new DriverContext
-            {
-                InstanceId = dev.InstanceId,
-                ChannelNumbers = chs,
-                Config = dev.Config,
-                Simulated = false,
-                TimeScale = Clock.Rate,
-                Clock = Clock.Func,
-                Log = (level, text) => Log.Write("设备", $"{text}", Operator,
-                    level is "error" ? LogLevel.Error : level is "warn" ? LogLevel.Warn : LogLevel.Info)
-            };
-
-            IDeviceSession session;
-            try
-            {
-                session = await driver.OpenAsync(dev.Connection, ctx, CancellationToken.None).ConfigureAwait(false);
-                await session.StartAsync(CancellationToken.None).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                // 打不开照实记着继续：面板上这一路显示「未连接：原因」，比整机起不来诚实
-                _openFailures[dev.InstanceId] = ex.Message;
-                Log.Write("设备", $"{dev.InstanceId} 打开失败：{ex.Message}", Operator, LogLevel.Error);
-                continue;
-            }
-            Log.Write("设备", $"{dev.Display}（{dev.InstanceId}）已连接", Operator);
-
-            _sessions[dev.InstanceId] = session;
-            Engine.Ingest(session);
-            for (var w = 0; w < chs.Count && w < Math.Max(1, session.WellCount); w++)
-                ChannelOf(chs[w])?.Attach(session, w, hostWells.ContainsKey(dev.InstanceId));
+            plan.Add((dev, chs, driver));
         }
+        var orderOf = new Dictionary<string, int>(StringComparer.Ordinal);
+        for (var i = 0; i < plan.Count; i++) orderOf[plan[i].Dev.InstanceId] = i;
+        var openGate = new object();
+
+        async Task OpenGroupAsync(List<(DeviceInstance Dev, List<int> Chs, IDeviceDriver Driver)> group)
+        {
+            foreach (var (dev, chs, driver) in group)
+            {
+                var ctx = new DriverContext
+                {
+                    InstanceId = dev.InstanceId,
+                    ChannelNumbers = chs,
+                    Config = dev.Config,
+                    Simulated = false,
+                    TimeScale = Clock.Rate,
+                    Clock = Clock.Func,
+                    Log = (level, text) => Log.Write("设备", $"{text}", Operator,
+                        level is "error" ? LogLevel.Error : level is "warn" ? LogLevel.Warn : LogLevel.Info)
+                };
+
+                IDeviceSession? session = null;
+                try
+                {
+                    session = await driver.OpenAsync(dev.Connection, ctx, CancellationToken.None).ConfigureAwait(false);
+                    await session.StartAsync(CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    // 打不开照实记着继续：面板上这一路显示「未连接：原因」，比整机起不来诚实。开了口子却没起来的把口子让出来
+                    if (session is not null) { try { await session.DisposeAsync().ConfigureAwait(false); } catch { } }
+                    _openFailures[dev.InstanceId] = ex.Message;
+                    Log.Write("设备", $"{dev.InstanceId} 打开失败：{ex.Message}", Operator, LogLevel.Error);
+                    continue;
+                }
+
+                lock (openGate)
+                {
+                    Log.Write("设备", $"{dev.Display}（{dev.InstanceId}）已连接", Operator);
+                    _sessions[dev.InstanceId] = session;
+                    Engine.Ingest(session);
+                    for (var w = 0; w < chs.Count && w < Math.Max(1, session.WellCount); w++)
+                        ChannelOf(chs[w])?.Attach(session, w, hostWells.ContainsKey(dev.InstanceId), orderOf[dev.InstanceId]);
+                }
+            }
+        }
+
+        var groups = ConnectGroups.Group(plan, x => ConnectGroups.PortsOf(x.Driver, x.Dev.Connection));
+        await Task.WhenAll(groups.Select(g => Task.Run(() => OpenGroupAsync(g)))).ConfigureAwait(false);
 
         // 2.5 跨会话喂釜温（同工作站 §2.5）：宇电探头发的 Tr 按通道号
         //     喂给实现 IExternalReactorTemp 的主机会话

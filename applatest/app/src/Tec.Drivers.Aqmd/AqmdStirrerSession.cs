@@ -630,7 +630,7 @@ public sealed class AqmdStirrerSession : IDeviceSession, IDeviceSettings
     }
 
     /// <summary>这一路的搅拌能力。斜坡经 IStirrerRamp 给（满量程用时），下一次 SetSpeedAsync 用掉。</summary>
-    private sealed class Stirrer : IStirrer, IStirrerRamp
+    private sealed class Stirrer : IStirrer, IStirrerRamp, IStirrerStatus
     {
         private readonly AqmdStirrerSession _s;
         private readonly Broadcast<Sample> _speed = new();
@@ -643,6 +643,8 @@ public sealed class AqmdStirrerSession : IDeviceSession, IDeviceSettings
         public double CurrentRpm { get; internal set; }
         /// <summary>最后下发的目标（0 = 停）；SafeStop / 关会话时说话用。</summary>
         internal double Target { get; set; }
+        /// <summary>IStirrerStatus：面板开关对账用。</summary>
+        public double TargetRpm => Target;
         public IObservable<Sample> Speed => _speed;
 
         public Task SetSpeedAsync(double rpm, CancellationToken ct)

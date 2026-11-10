@@ -476,7 +476,7 @@ public sealed class BenchViewModel : ViewModelBase
         get
         {
             if (_selected is null) return "";
-            if (_selected.Id == _ws.ConnectingInstanceId) return "连接中…";
+            if (_ws.IsConnectingDevice(_selected.Id)) return "连接中…";
             var (text, _) = DeviceLink.Describe(_ws.Session(_selected.Id), _ws.OpenFailure(_selected.Id));
             return _connDirty ? $"{text} · 连接参数已改，点「连接」生效" : text;
         }
@@ -497,11 +497,12 @@ public sealed class BenchViewModel : ViewModelBase
     /// <summary>正在逐台连接（横幅看它）。</summary>
     public bool IsConnecting => _ws.IsConnecting;
     public string ConnectText => $"正在连接 {_ws.ConnectDeviceName}…";
-    public string ConnectProgressText => $"{_ws.ConnectIndex + 1}/{_ws.ConnectTotal}";
+    /// <summary>【本地改动】设备是同时连的：进度说「已有结果几台 / 共几台」，不再是「第几台」。</summary>
+    public string ConnectProgressText => $"{_ws.ConnectDone}/{_ws.ConnectTotal}";
 
     private void OnConnectProgress()
     {
-        foreach (var n in Devices) n.IsConnecting = n.Id == _ws.ConnectingInstanceId;
+        foreach (var n in Devices) n.IsConnecting = _ws.IsConnectingDevice(n.Id);
         RaiseAll(nameof(IsConnecting), nameof(ConnectText), nameof(ConnectProgressText));
         RaiseLink();    // 选中的正是正在连的那台时，链路行念「连接中…」
     }
