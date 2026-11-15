@@ -582,15 +582,21 @@ public class Rd105HostControlTests
         Assert.True(lines.Length > 8, $"只有 {lines.Length} 行");
         Assert.Contains("开始：夹套 30 ℃（尽快）", lines[1]);
         Assert.Contains(lines, l => l.Contains("目标改为 32 ℃"));
-        Assert.EndsWith("停止：操作人停控", lines[^1]);
-        // 每行 25 列：时间、秒、模式、设定、内环设定、Tr、Tj、写入、回显、P、I、D、外环 P/I/D、收尾多给、升温加速（boost / v_m / v_star / brake_f）、执行器、保持、耗时、extra、note
+        // 「停止」那行列数跟表头走；停止原因还在 note 那一列（下标 24），后面是外环实时算那 8 列（这一行都空）
+        var stop = lines[^1].Split(',');
+        Assert.Equal(33, stop.Length);
+        Assert.EndsWith("停止：操作人停控", stop[24]);
+        Assert.All(stop[25..], c => Assert.Equal("", c));
+        // 每行 33 列：时间、秒、模式、设定、内环设定、Tr、Tj、写入、回显、P、I、D、外环 P/I/D、收尾多给、升温加速（boost / v_m / v_star / brake_f）、执行器、保持、耗时、extra、note，
+        // 再加外环实时算第 0 步（新算法只算不控）的 8 列：algo、lo_isp、lo_b、lo_xr、lo_wall、lo_tau、lo_tau2、lo_alarm——原 25 列的列号没动
         var cols = lines[2].Split(',');
-        Assert.Equal(25, cols.Length);
+        Assert.Equal(33, cols.Length);
         Assert.Equal("Tj", cols[2]);
         Assert.Equal("30", cols[3]);
         Assert.Equal("", cols[16]);                      // 没在升温加速：空
         Assert.Equal("TEC双向", cols[20]);
-        Assert.Equal(25, lines[^1].Split(',').Length);   // 「停止」那行列数跟表头走
+        Assert.Equal("0", cols[25]);                     // algo：旧外环在控（第 0 步恒 0）
+        Assert.All(cols[26..], c => Assert.Equal("", c)); // 单机没人喂釜内 Tr：新算法的影子没起算，后 7 列空
 
         // 再下发：新文件
         await t.SetTargetAsync(new TempTarget(28, TempChannelKind.Jacket), CancellationToken.None);

@@ -1,0 +1,7 @@
+# LiveOuter 对拍数据和 Python 参考实现：行尾一律 LF、检出时不许换。
+# reference/outer_m.py 的 md5 是生成脚本的门槛（插桩按行号挂）；合成场重生成后要能跟仓库里的逐字节比。
+reference/*.py text eol=lf
+reference/*.md text eol=lf
+golden/synth/*.csv text eol=lf
+golden/whitebox/*.json text eol=lf
+golden/real/*.gz binary

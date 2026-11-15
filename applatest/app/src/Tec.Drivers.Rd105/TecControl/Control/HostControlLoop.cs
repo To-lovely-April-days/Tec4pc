@@ -65,6 +65,10 @@ public sealed record ChannelCycleInfo(
     public double HeatBoostVmCPerMin { get; init; } = double.NaN;
     public double HeatBoostVstarCPerMin { get; init; } = double.NaN;
     public double HeatBoostBrake { get; init; } = double.NaN;
+
+    /// <summary>【本地改动】（2026-11-14，外环改「按实测实时算」第 0 步）新外环影子运行这一拍的读数：只给逐拍记录末尾那几列（lo_isp / lo_b / …）用，
+    /// 回路自己不读它——控温还是原来的外环。影子两拍之间（它 ≥ 2 s 一拍）是上一拍的同一份；还没起算 / 在等断档后重摆 / 影子停了为 null。</summary>
+    public LiveOuterReadout? LiveOuter { get; init; }
 }
 
 /// <summary>一个完整控制周期的结果（后台线程发布）。电流每 4 个周期采样一次，其余周期为 null。</summary>
@@ -452,6 +456,15 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         /// <see cref="OuterStartQuietWindow"/> 多一点。起步时没学到稳态偏置就看这段稳不稳、稳就拿「夹套 − 釜内」当外环积分起点。
         /// 回路线程写、StartChannelAsync（会话线程）读：锁它自己。</summary>
         public readonly Queue<(DateTime At, double OuterC, double InnerC)> History = new();
+
+        /// <summary>【本地改动】（2026-11-14，外环改「按实测实时算」第 0 步）新外环的影子运行：每拍算一遍、只进逐拍记录，不控
+        /// （<see cref="HostControlLoop.LiveShadowTick"/>）。跟这个对象同寿命——从连上设备拿到第一拍有效读数起一直算，
+        /// 开控 / 停控 / 改目标都不清（方案 B 节：τ̂ 两炉之间带着）：<b>StartChannelAsync / StopChannelAsync / SetSetpoint 里不要加它的复位</b>，
+        /// 只有断开设备重连（新回路、新 ChannelState）才从出厂值重新来。出厂三个数两个工位先共用缺省的 950 / 170 / 0.017（按工位存是第 2 步的事）。
+        /// 只在回路那一条顺序流上读写；不是 readonly 只为测试能换成别的实现（会抛异常的 / null = 不算）。</summary>
+        public LiveOuterShadow? Live = new();
+        /// <summary>【本地改动】影子停了（算挂了）已经说过一次，不再说。</summary>
+        public bool LiveStopSaid;
 
         /// <summary>落地偏置钳位已锁存（进交接带一次即锁，至首次过零由武装标志一并解除）。
         /// 必须锁存：按拍重判会在带边被 ±10mK 噪声来回触发，实测出现 4 次咬合-松开抖动。</summary>
@@ -2874,6 +2887,84 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         }
     }
 
+    /// <summary>
+    /// 【本地改动】（2026-11-14，外环改「按实测实时算」第 0 步：只算不控）每拍把这一路此刻的事实交给新外环的影子，
+    /// 拿回这一拍该记进逐拍记录的读数（没有为 null）。控没控都调——影子从连上设备拿到第一拍有效读数起一直算。
+    ///
+    /// 这里对回路状态<b>只读不写</b>（唯一写的是影子自己的两个字段 Live / LiveStopSaid），不收任何标志、不调任何有副作用的方法；
+    /// 返回值只被挂到这一拍的 ChannelCycleInfo.LiveOuter 上（→ 逐拍记录末尾那几列），不进夹套目标、不进占空比、不进继电器 / 冷却水。
+    /// 整段包 try / catch：这里漏出一个异常会被 RunAsync 当成串口故障（这一拍两路都不算不写、可能当拍重开串口、连着 20 拍就两路停控），
+    /// 所以任何异常都就地吃掉、把这一路影子停掉（直到回路重建），只说一次，控温照常。
+    ///
+    /// 喂的量都是这一路控制计算「之前」看到的，也就是上一拍留下的——跟 Python 试算台 Obs 的定义一致：
+    ///   · 夹套 = 这一路内环的被控量（pv）；釜内 = 串级外环的被控量（跟 RecordHistory 同一个读法，多读这一次；读不到 / 抛了都算无效）。
+    ///   · 釜内串级在控（Active 且 Cascade）→ 目标 = 此刻的主设定（走坡时是坡上的当前值）；不在控、或在控的是夹套 → 影子自己取当时的釜内读数。
+    ///     这一段的终点和坡速第 0 步不给（ITemperatureProfile 拿不出来，第 2 步补接口）。
+    ///   · 放热报警要的四个事实：内环贴下限 = 上一拍 PID 那一侧的输出 ≤ 下限（判法同外环冻积分那一处；只在闭环控温时 LastDutyPercent 才是 PID 那一侧的量）；
+    ///     TEC 被扣着 = 查双向挡表、形态却是只加热（会话在等人答冷却水 / 等冷水机间隔，升温加速也这么认）；输出开着 = 在控且没挂起；
+    ///     「热源继电器在 TEC 侧」回路不知道（继电器是会话扳的）——第 0 步按不成立喂（宁可不报，lo_alarm 恒 0），第 1 步由会话把「TEC 此刻真接着」给进来。
+    ///   · 节拍：影子自己记上一拍时刻（LastOuterUpdate 开控、Tr 恢复时会被清，不能借来当节拍），门槛用 OuterPeriod；
+    ///     LastOuterUpdate 只拿来看一眼「旧外环这一拍到没到」，好让两边同拍算（只读）。
+    /// </summary>
+    private LiveOuterReadout? LiveShadowTick(int ch, ChannelState s, TecSnapshot snapshot, double pv)
+    {
+        var shadow = s.Live;
+        if (shadow is null) return null;
+        try
+        {
+            LiveOuterReadout? readout = null;
+            if (!shadow.Stopped)
+            {
+                double tr;
+                try { tr = s.OuterSource is { } src ? src() : s.OuterFeedbackSensor == 1 ? snapshot.Temp1C : snapshot.Temp2C; }
+                catch { tr = double.NaN; }
+                var active = s.Active;
+                var closedLoop = active && s.Tuner is null;
+                var reactorInControl = closedLoop && s.Strategy == ControlStrategy.Cascade;
+                var period = OuterPeriod.TotalSeconds;
+                var lastOuter = s.LastOuterUpdate;
+                var sinceOuter = lastOuter == default ? double.NaN : (snapshot.Timestamp - lastOuter).TotalSeconds;
+                readout = shadow.Tick(snapshot.Timestamp, period, new LiveOuterFacts
+                {
+                    Tj = pv,
+                    Tr = tr,
+                    ReactorInControl = reactorInControl,
+                    SetpointC = s.SetpointC,
+                    LoopBeatPending = reactorInControl && sinceOuter >= 0 && sinceOuter < period,
+                    TecSide = false,
+                    InnerSatLow = closedLoop && s.LastDutyPercent <= s.Pid.OutputMin + 1e-6,
+                    TecWithheld = s.Table == GainTable.Both && s.Actuator == ActuatorMode.HeatOnly,
+                    OutputOn = active && !s.Suspended,
+                });
+            }
+            if (shadow.Stopped) LiveShadowSayStopped(ch, s, shadow.StopReason);
+            return readout;
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                shadow.Stop($"{ex.GetType().Name}：{ex.Message}");
+                LiveShadowSayStopped(ch, s, shadow.StopReason);
+            }
+            catch { /* 影子的事不许碰到控温 */ }
+            return null;
+        }
+    }
+
+    /// <summary>【本地改动】影子停了：只说一次（日志 + 逐拍记录的 note）。处理函数抛了也不许漏回回路。字眼避开孪生测试按字数次数的那几个。</summary>
+    private void LiveShadowSayStopped(int ch, ChannelState s, string? reason)
+    {
+        if (s.LiveStopSaid) return;
+        s.LiveStopSaid = true;
+        try
+        {
+            ChannelNotice?.Invoke(ch, "warn",
+                $"通道{ch}新外环试算（只算不控）出错、这一路不再算了：{reason}。控温不受影响，只是逐拍记录末尾 lo_ 那几列从此留空；断开设备重连后重新开始算");
+        }
+        catch { /* 同上 */ }
+    }
+
     // ---------- 主循环 ----------
 
     private async Task RunAsync(CancellationToken ct)
@@ -2921,6 +3012,8 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
             var s = State(ch);
             var pv = Pv(s, ch, snapshot);
             RecordHistory(s, snapshot, pv);          // 【本地改动】
+            // 【本地改动】（2026-11-14，外环实时算第 0 步）新外环的影子：只算、只进记录。不写在 RecordHistory 里——那里头有提前返回
+            var live = LiveShadowTick(ch, s, snapshot, pv);
 
             if (s.Suspended && s.Tuner is { } held
                 && DateTime.Now - (s.SuspendedSince ?? DateTime.Now) > TuningSuspendLimit)
@@ -2961,6 +3054,9 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                 }
                 infos[ch - 1] = new ChannelCycleInfo(false, false, 0, s.SetpointC, pv, s.LastDutyPercent, 0, 0, 0);
             }
+            // 【本地改动】影子这一拍的读数挂到这一路的周期快照上（拷一份、别的属性一个不动），上面哪条分支都不用知道它；
+            // 这一路的控制量到这儿都已经算完写完了
+            if (live is not null) infos[ch - 1] = infos[ch - 1] with { LiveOuter = live };
         }
 
         TecErrorCode? error = null;

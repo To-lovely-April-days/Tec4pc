@@ -12,11 +12,31 @@ namespace Tec.Drivers.Rd105;
 /// 升温加速（boost = 1 时夹套目标归速度环管；v_m 釜内实测升温速度、v_star 刹车曲线允许的速度，K/min；brake_f 刹车偏置分数）、执行器形态、Tr 丢失保持秒数、
 /// 串口耗时、热源侧（组合会话喂）、事件（开始 / 停止原因 / 回路的提示）。
 /// 回路线程写、控制线程开关：一把锁。每 10 行 flush 一次（掉电最多丢 5 s）。记录开不了文件不影响控温。
+///
+/// 【本地改动】（2026-11-14，外环改「按实测实时算」第 0 步：新算法只算不控）行尾追加 8 列，原 25 列（time … note）的列号和内容一个不动：
+///   algo      哪个外环在控：0 = 旧外环（第 0 步恒 0；第 1 步新算法能控了才会有 1）
+///   lo_isp    新算法想给的夹套目标（℃，已夹到 −50…200）——只是算出来看的，没有给内环
+///   lo_b      它实时算的维持温差 b̂（K）：稳住时 = 夹套 − 釜内
+///   lo_xr     它滤过的釜内 T̂（℃）
+///   lo_wall   它的釜壁估计 Ŵ（℃）
+///   lo_tau    它认的釜时间常数 τ̂（s，进公式的那个）
+///   lo_tau2   第二路认的 τ（s，只管「τ̂ 往小改不许小过它」）
+///   lo_alarm  放热报警的条件这一拍成立（1 / 0）。第 0 步回路不知道继电器在哪一侧，恒 0
+/// 后 7 列在影子还没起算（没拿到过「釜内、夹套都有效」的读数）、断档超过 60 s 在等重摆、或者影子停掉时留空。
+/// 影子 ≥ 2 s 才算一拍，记录是每个回路周期一行：两拍之间的行重复上一拍的数。
+/// 怎么读才可靠：extra / note 两列是自由文字，含逗号 / 引号 / 换行时整格用双引号包起来、里面的引号写两个（标准 CSV）——
+/// 用认引号的 CSV 解析器按列名读；图省事按逗号硬拆的，新列要从行尾倒着数（新 8 列全是数字，不含逗号）。
+/// 「停止」那一行不是逐拍行：只有 time、elapsed_s、note 三格有内容，note 还在它那一列，别的列（含新 8 列）都空——每一行的列数都等于表头。
 /// </summary>
 public sealed class Rd105LoopRecorder : IDisposable
 {
     public const string Header =
-        "time,elapsed_s,kind,setpoint,inner_sp,tr,tj,duty_written,duty_applied,p,i,d,outer_p,outer_i,outer_d,outer_fin,boost,v_m,v_star,brake_f,actuator,hold_s,cycle_ms,extra,note";
+        "time,elapsed_s,kind,setpoint,inner_sp,tr,tj,duty_written,duty_applied,p,i,d,outer_p,outer_i,outer_d,outer_fin,boost,v_m,v_star,brake_f,actuator,hold_s,cycle_ms,extra,note"
+        + ",algo,lo_isp,lo_b,lo_xr,lo_wall,lo_tau,lo_tau2,lo_alarm";       // 【本地改动】外环实时算第 0 步：只在行尾加，前 25 列不动
+
+    // 【本地改动】「停止」行要把 note 放回它自己那一列、后面补齐空列：列数和 note 的位置都从表头算，表头再加列也不用改
+    private static readonly string[] Columns = Header.Split(',');
+    private static readonly int NoteIndex = Array.IndexOf(Columns, "note");
 
     private readonly string _instanceId;
     private readonly int _tc;
@@ -113,6 +133,7 @@ public sealed class Rd105LoopRecorder : IDisposable
             Num(sb, info.OuterHoldSeconds ?? double.NaN);
             Num(sb, cycleMs);
             sb.Append(Csv(extra)).Append(',').Append(Csv(_pendingNote));
+            AppendLiveOuter(sb, info);                           // 【本地改动】外环实时算第 0 步：行尾 8 列
             _pendingNote = null;
             try
             {
@@ -141,7 +162,9 @@ public sealed class Rd105LoopRecorder : IDisposable
                 _pendingNote = null;
                 _w.WriteLine($"{now.ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture)}," +
                              $"{(now - _startedAt).TotalSeconds.ToString("0.0", CultureInfo.InvariantCulture)}" +
-                             new string(',', Header.Count(c => c == ',') - 1) + Csv(note));     // 【本地改动】列数跟着表头走
+                             // 【本地改动】note 放在它自己那一列（原来是「放最后一列」——表头在 note 后面加了列以后会落到新算法的最后一列去），
+                             // 后面补齐空列：每一行的列数都等于表头
+                             new string(',', NoteIndex - 1) + Csv(note) + new string(',', Columns.Length - 1 - NoteIndex));
                 _w.Flush();
             }
             catch { /* 收尾尽力而为 */ }
@@ -155,6 +178,36 @@ public sealed class Rd105LoopRecorder : IDisposable
     }
 
     public void Dispose() => Stop("会话关闭");
+
+    /// <summary>
+    /// 【本地改动】（外环实时算第 0 步）接在 note 后面的 8 列：algo + 影子这一拍的 7 个读数（没有就 7 个空格子）。
+    /// 这一段在 Write 自己的 try 外面、又在回路那条流上：这里漏一个异常会被当成串口故障（这一拍两路不写、可能重开串口），
+    /// 所以自己兜住——出了事就把这 8 列写成「0 + 7 个空」，原 25 列照写。
+    /// </summary>
+    private static void AppendLiveOuter(StringBuilder sb, ChannelCycleInfo info)
+    {
+        var mark = sb.Length;
+        try
+        {
+            sb.Append(",0,");                                    // algo：第 0 步新算法只算不控，恒 0（旧外环在控）
+            if (info.LiveOuter is { } lo)
+            {
+                Num(sb, lo.JacketSetpointC);
+                Num(sb, lo.BHat);
+                Num(sb, lo.THat);
+                Num(sb, lo.Wall);
+                Num(sb, lo.Tau);
+                Num(sb, lo.TauEkf);
+                sb.Append(lo.AlarmOn ? '1' : '0');
+            }
+            else sb.Append(',', 6);                              // 7 个空格子之间是 6 个逗号
+        }
+        catch
+        {
+            sb.Length = mark;
+            sb.Append(",0").Append(',', 7);
+        }
+    }
 
     private static void Num(StringBuilder sb, double v)
     {
