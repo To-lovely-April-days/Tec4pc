@@ -76,13 +76,22 @@ public sealed class RuntimeRig : IRig, IDisposable, IAsyncDisposable
         var pwr = Get("tecpwr");
         // 电流：上位机 PID 下会话自己每两秒发一路 cur；温控器 PID 下没有，退回参数窗每 5 s 读的那份
         var cur = Get("cur") ?? (now - _curAt <= CurrentPeriod * 3 ? _cur[well] : null);
+        // 【本地改动】（2026-11-17，升降温速率测试）Tj 连同它的采样时刻一起给（速率按真实采样时刻算、读数停更几秒就停）
+        double? tj = null;
+        DateTimeOffset? tjAt = null;
+        if (_rt.Pipeline.TryLatest(ch, "Tj", now, out var tjs) && tjs.Quality == Quality.Good && !double.IsNaN(tjs.Value))
+        {
+            tj = tjs.Value;
+            tjAt = tjs.WallClock;
+        }
         return new WellReading(
-            Tj: Get("Tj"),
+            Tj: tj,
             Tr: Get("Tr"),
             Out: Get("duty"),
             Cur: cur,
             Source: heat is null ? null : heat == 0 ? "TEC" : "电加热",
-            TecPower: pwr is null ? null : pwr != 0);
+            TecPower: pwr is null ? null : pwr != 0)
+        { TjAt = tjAt };
     }
 
     public bool IsAlive(out string why)

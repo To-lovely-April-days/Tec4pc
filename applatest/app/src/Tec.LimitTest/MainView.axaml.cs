@@ -41,6 +41,12 @@ public partial class MainView : UserControl
     private void Estop_Click(object? sender, RoutedEventArgs e) => Vm?.EmergencyStop();
     private void Continue_Click(object? sender, RoutedEventArgs e) => Vm?.Continue();
 
+    // 【本地改动】（2026-11-17）「升降温速率」那一页的钮；急停、打开输出目录跟矩阵那页共用
+    private void RateStart_Click(object? sender, RoutedEventArgs e) => Vm?.StartRate();
+    private void RateStop_Click(object? sender, RoutedEventArgs e) => Vm?.StopRate();
+    private void RateSkip_Click(object? sender, RoutedEventArgs e) => Vm?.SkipRate();
+    private void RateContinue_Click(object? sender, RoutedEventArgs e) => Vm?.ContinueRate();
+
     private void OpenOut_Click(object? sender, RoutedEventArgs e)
     {
         if (Vm is not { } vm) return;

@@ -12,6 +12,13 @@ namespace Tec.LimitTest.Runs;
 public sealed record WellReading(double? Tj, double? Tr, double? Out, double? Cur, string? Source, bool? TecPower)
 {
     public static readonly WellReading Empty = new(null, null, null, null, null, null);
+
+    /// <summary>
+    /// 【本地改动】（2026-11-17，升降温速率测试）Tj 这个数是什么时候采的（管线里那条采样自带的墙钟）；不知道是 null。
+    /// 速率测试拿它：① 按真实采样时刻算一分钟升了多少（不拿 Runner 读数那一刻冒充，差不到一秒但满功率下一秒就是零点几度）；
+    /// ② 夹套读数几秒没更新就停（管线 15 s 才判过期，满功率加热 15 s 能升好几度）。别的测试不用它。
+    /// </summary>
+    public DateTimeOffset? TjAt { get; init; }
 }
 
 /// <summary>

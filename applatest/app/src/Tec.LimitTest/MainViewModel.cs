@@ -94,7 +94,7 @@ public sealed class CellRow : Bindable
 /// 主窗的状态。所有能改的东西都是字符串（开始时再解析、解析不了当场说），
 /// 跑起来之后矩阵和参数锁住，Runner 的状态每秒刷一遍。
 /// </summary>
-public sealed class MainViewModel : Bindable
+public sealed partial class MainViewModel : Bindable
 {
     private readonly ToolHost _host;
     private readonly DispatcherTimer _timer;
@@ -145,7 +145,7 @@ public sealed class MainViewModel : Bindable
     private string _connStatus = "未连接";
     public string ConnStatus { get => _connStatus; set => Set(ref _connStatus, value); }
 
-    public bool CanConnect => !_busy && !IsRunning;
+    public bool CanConnect => !_busy && !IsRunning && !IsRateRunning;     // 【本地改动】速率测试在跑也不许重连
 
     private void LoadDevices()
     {
@@ -192,7 +192,7 @@ public sealed class MainViewModel : Bindable
     /// <summary>把界面上的连接参数写回台面、存盘、连接（连过就是重连）。</summary>
     public async Task ConnectAsync()
     {
-        if (_busy || IsRunning) return;
+        if (_busy || IsRunning || IsRateRunning) return;
         _busy = true;
         Raise(nameof(CanConnect));
         ConnStatus = "正在连接…";
@@ -222,12 +222,13 @@ public sealed class MainViewModel : Bindable
             LoadDevices();
             Raise(nameof(CanConnect));
             Raise(nameof(CanStart));
+            Raise(nameof(CanStartRate));
         }
     }
 
     public async Task ImportBenchAsync(string path)
     {
-        if (_busy || IsRunning) return;
+        if (_busy || IsRunning || IsRateRunning) return;
         _busy = true;
         try
         {
@@ -242,6 +243,7 @@ public sealed class MainViewModel : Bindable
             Raise(nameof(BenchPathText));
             Raise(nameof(CanConnect));
             Raise(nameof(CanStart));
+            Raise(nameof(CanStartRate));
         }
     }
 
@@ -289,7 +291,7 @@ public sealed class MainViewModel : Bindable
         set { if (Set(ref _waters, value) && !IsRunning) RebuildCells(); }
     }
 
-    public bool CanEditPlan => !IsRunning;
+    public bool CanEditPlan => !IsRunning && !IsRateRunning;
 
     public ObservableCollection<CellRow> Cells { get; } = new();
 
@@ -329,7 +331,7 @@ public sealed class MainViewModel : Bindable
     // ── 运行 ──────────────────────────────────────────────────────
 
     public bool IsRunning => _run is { IsCompleted: false };
-    public bool CanStart => !_busy && !IsRunning && _host.Rig is not null;
+    public bool CanStart => !_busy && !IsRunning && !IsRateRunning && _host.Rig is not null;     // 【本地改动】两页互锁
     public bool CanStop => IsRunning;
     public bool CanSkip => IsRunning && _runner?.State is RunnerState.Running or RunnerState.Returning or RunnerState.WaitingWater;
     public bool IsWaitingWater => IsRunning && _runner?.State == RunnerState.WaitingWater;
@@ -453,7 +455,8 @@ public sealed class MainViewModel : Bindable
 
     public void EmergencyStop()
     {
-        if (_runner is { } r && IsRunning) _ = r.EmergencyStopAsync();
+        if (_rateRunner is { } rr && IsRateRunning) _ = rr.EmergencyStopAsync();     // 【本地改动】速率测试在跑：走它的急停（整轮结束）
+        else if (_runner is { } r && IsRunning) _ = r.EmergencyStopAsync();
         else if (_host.Rig is { } rig)
             _ = Task.Run(async () =>
             {
@@ -507,6 +510,7 @@ public sealed class MainViewModel : Bindable
         Raise(nameof(CanConnect));
         Raise(nameof(IsWaitingWater));
         Raise(nameof(CanEditPlan));
+        Raise(nameof(CanStartRate));     // 【本地改动】两页互锁
     }
 
     private void Tick()
@@ -522,6 +526,7 @@ public sealed class MainViewModel : Bindable
             BText = "B：—（未连接）";
         }
         if (IsRunning) Refresh();
+        if (IsRateRunning) RefreshRate();     // 【本地改动】速率测试每秒刷一遍
         RefreshDeviceStatus();
         var tail = _host.Tail(200);
         if (tail.Count != LogLines.Count || (tail.Count > 0 && LogLines.Count > 0 && !LogLines[^1].EndsWith(tail[^1].Text, StringComparison.Ordinal)))
@@ -542,6 +547,8 @@ public sealed class MainViewModel : Bindable
     {
         _timer.Stop();
         _stop?.Cancel();
+        _rateStop?.Cancel();     // 【本地改动】关窗时速率测试也收尾（两路归零、报告落盘）
         try { _run?.Wait(TimeSpan.FromSeconds(5)); } catch { }
+        try { _rateRun?.Wait(TimeSpan.FromSeconds(5)); } catch { }
     }
 }

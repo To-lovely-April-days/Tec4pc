@@ -49,8 +49,11 @@
       </StackPanel>
     </ScrollViewer>
 
-    <!-- 中栏：矩阵、按钮、条件、参数 -->
-    <ScrollViewer Grid.Row="1" Grid.Column="1" Margin="4,0">
+    <!-- 中栏：两页。「极限矩阵」= 矩阵、按钮、条件、参数；「升降温速率」（【本地改动】2026-11-17，用户要的满功率升 / 降温速率测试） -->
+    <TabControl Grid.Row="1" Grid.Column="1" Margin="4,0" Padding="0,6,0,0">
+    <TabItem>
+    <TabItem.Header><TextBlock Text="极限矩阵" FontSize="15" FontWeight="Bold"/></TabItem.Header>
+    <ScrollViewer>
       <StackPanel Spacing="8">
         <Grid ColumnDefinitions="Auto,Auto,16,Auto,*">
           <TextBlock Text="控温对象" VerticalAlignment="Center" Margin="0,0,6,0"/>
@@ -151,6 +154,96 @@
         </Grid>
       </StackPanel>
     </ScrollViewer>
+    </TabItem>
+
+    <TabItem>
+    <TabItem.Header><TextBlock Text="升降温速率" FontSize="15" FontWeight="Bold"/></TabItem.Header>
+    <ScrollViewer>
+      <StackPanel Spacing="8">
+        <TextBlock TextWrapping="Wrap" Foreground="#555555"
+                   Text="满功率升 / 降温速率：从当前温度直接开始，给夹套一个够不着的目标，让输出顶在温控器的「最大输出占空比」上（= 满功率）。每个工位从接上满功率那一刻起算，满功率到时输出归零，再记一段看停了以后还冲多少。满功率这段夹套升（降）够合格线算合格。两个工位一起测，做完出一份 Excel 报告（汇总 + 每秒数据 + 曲线）。"/>
+        <Border Background="#FFF3E0" BorderBrush="#FB8C00" BorderThickness="1" Padding="8">
+          <TextBlock TextWrapping="Wrap"
+                     Text="玻璃釜：满功率一分钟升 20 ℃，釜内外温差很大，有炸裂风险——釜里最好有液体，别从太高的温度开始。升温途中夹套到「升温停止线」那一路马上归零；读数几秒不更新、安全层触发都会两路全停。降温要冷却水：开始降温前会停下来让你把水开好、填水温。"/>
+        </Border>
+        <WrapPanel>
+          <CheckBox Content="升温（加热棒满功率）" IsChecked="{Binding RateHeat}" IsEnabled="{Binding CanEditRate}" Margin="0,0,18,4"/>
+          <CheckBox Content="降温（TEC 满功率，要冷却水）" IsChecked="{Binding RateCool}" IsEnabled="{Binding CanEditRate}" Margin="0,0,18,4"/>
+          <CheckBox Content="工位 A" IsChecked="{Binding RateWellA}" IsEnabled="{Binding CanEditRate}" Margin="0,0,18,4"/>
+          <CheckBox Content="工位 B" IsChecked="{Binding RateWellB}" IsEnabled="{Binding CanEditRate}" Margin="0,0,18,4"/>
+        </WrapPanel>
+        <Grid ColumnDefinitions="140,*,140,*" RowDefinitions="Auto,Auto,Auto,Auto">
+          <TextBlock Text="合格线：升 ℃" VerticalAlignment="Center" ToolTip.Tip="满功率这段夹套至少升这么多算合格（缺省 20：一分钟升 20 ℃）"/>
+          <TextBox Grid.Column="1" Text="{Binding RateHeatPassText}" IsEnabled="{Binding CanEditRate}" Margin="0,1,10,1"/>
+          <TextBlock Grid.Column="2" Text="合格线：降 ℃" VerticalAlignment="Center" ToolTip.Tip="满功率这段夹套至少降这么多算合格（缺省 20）"/>
+          <TextBox Grid.Column="3" Text="{Binding RateCoolPassText}" IsEnabled="{Binding CanEditRate}" Margin="0,1"/>
+          <TextBlock Grid.Row="1" Text="满功率 s" VerticalAlignment="Center" ToolTip.Tip="从接上满功率起开多久（缺省 60 = 一分钟）"/>
+          <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding RateFullText}" IsEnabled="{Binding CanEditRate}" Margin="0,1,10,1"/>
+          <TextBlock Grid.Row="1" Grid.Column="2" Text="归零后再记 s" VerticalAlignment="Center" ToolTip.Tip="输出归零以后再记多久，看夹套还冲多少（缺省 60）"/>
+          <TextBox Grid.Row="1" Grid.Column="3" Text="{Binding RateAfterText}" IsEnabled="{Binding CanEditRate}" Margin="0,1"/>
+          <TextBlock Grid.Row="2" Text="升温停止线 ℃" VerticalAlignment="Center" ToolTip.Tip="升温途中哪一路夹套到这里就马上归零。导热油夹套上限 200 ℃，缺省 190 留 10 ℃ 给余温上冲"/>
+          <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding RateStopLineText}" IsEnabled="{Binding CanEditRate}" Margin="0,1,10,1"/>
+          <TextBlock Grid.Row="2" Grid.Column="2" Text="测几次" VerticalAlignment="Center" ToolTip.Tip="每一次 = 升温一次再降温一次（勾了哪个做哪个），都从当时的温度直接开始"/>
+          <TextBox Grid.Row="2" Grid.Column="3" Text="{Binding RateRoundsText}" IsEnabled="{Binding CanEditRate}" Margin="0,1"/>
+          <TextBlock Grid.Row="3" Text="釜内物料（手填）" VerticalAlignment="Center" ToolTip.Tip="釜里装的什么、多少（写进报告）：空釜和有料差别很大"/>
+          <TextBox Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="3" Text="{Binding RateMaterial}" IsEnabled="{Binding CanEditRate}" Margin="0,1"/>
+        </Grid>
+        <Grid ColumnDefinitions="140,*,140,*" RowDefinitions="Auto,Auto">
+          <TextBlock Text="操作人" VerticalAlignment="Center"/>
+          <TextBox Grid.Column="1" Text="{Binding OperatorName}" IsEnabled="{Binding CanEditRate}" Margin="0,1,10,1"/>
+          <TextBlock Grid.Column="2" Text="环境温度 ℃" VerticalAlignment="Center"/>
+          <TextBox Grid.Column="3" Text="{Binding AmbientText}" IsEnabled="{Binding CanEditRate}" Margin="0,1"/>
+          <TextBlock Grid.Row="1" Text="补丁版本" VerticalAlignment="Center"/>
+          <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding PatchText}" IsEnabled="{Binding CanEditRate}" Margin="0,1,10,1"/>
+          <TextBlock Grid.Row="1" Grid.Column="2" Text="输出目录" VerticalAlignment="Center"/>
+          <TextBox Grid.Row="1" Grid.Column="3" Text="{Binding OutDir}" IsEnabled="{Binding CanEditRate}" Margin="0,1"/>
+        </Grid>
+        <TextBlock TextWrapping="Wrap" Foreground="#777777" FontSize="11"
+                   Text="操作人、环境温度、补丁版本、输出目录跟「极限矩阵」那页是同一份。最大输出占空比从温控器读、TEC 接入上限从台面配置读，没读到报告里留空。"/>
+
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <Button Content="开始速率测试" Click="RateStart_Click" IsEnabled="{Binding CanStartRate}" Background="#2E7D32" Foreground="White" Padding="22,8"/>
+          <Button Content="跳过当前" Click="RateSkip_Click" IsEnabled="{Binding CanSkipRate}" Padding="14,8"
+                  ToolTip.Tip="只停当前这一项（两路归零），接着做下一项；等冷却水时点它 = 降温都不做"/>
+          <Button Content="停止" Click="RateStop_Click" IsEnabled="{Binding CanStopRate}" Padding="14,8"/>
+          <Button Content="急停" Click="Estop_Click" Background="#C62828" Foreground="White" Padding="22,8"
+                  ToolTip.Tip="设备所有输出收安全态（TEC / 加热棒都断），整轮结束。没在跑也能按"/>
+        </StackPanel>
+
+        <Border IsVisible="{Binding IsRateWaitingWater}" Background="#FFF8E1" BorderBrush="#F9A825" BorderThickness="1" Padding="10">
+          <StackPanel Spacing="6">
+            <TextBlock Text="{Binding RatePromptText}" TextWrapping="Wrap" FontWeight="Bold"/>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="冷却水温度 ℃（手填）" VerticalAlignment="Center"/>
+              <TextBox Text="{Binding RateWaterText}" Width="90"/>
+              <Button Content="继续" Click="RateContinue_Click" Background="#1565C0" Foreground="White" Padding="18,6"/>
+            </StackPanel>
+          </StackPanel>
+        </Border>
+
+        <TextBlock Text="{Binding RateStatusText}" FontWeight="Bold" TextWrapping="Wrap"/>
+        <TextBlock Text="{Binding RatePhaseText}" Foreground="#555555" TextWrapping="Wrap"/>
+        <ItemsControl ItemsSource="{Binding RateRows}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Border BorderBrush="#CCCCCC" BorderThickness="1" Padding="8" Margin="0,3" Background="{Binding Fill}">
+                <StackPanel Spacing="2">
+                  <StackPanel Orientation="Horizontal" Spacing="10">
+                    <TextBlock Text="{Binding Title}" FontWeight="Bold"/>
+                    <TextBlock Text="{Binding StateText}"/>
+                  </StackPanel>
+                  <TextBlock Text="{Binding Detail}" FontSize="12" Foreground="#444444" TextWrapping="Wrap"/>
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <TextBlock Text="{Binding RateReportText}" FontSize="11" Foreground="#777777" TextWrapping="Wrap"/>
+        <Button Content="打开输出目录" Click="OpenOut_Click"/>
+      </StackPanel>
+    </ScrollViewer>
+    </TabItem>
+    </TabControl>
 
     <!-- 右栏：实时与日志 -->
     <Grid Grid.Row="1" Grid.Column="2" RowDefinitions="Auto,Auto,Auto,Auto,*" Margin="8,0,0,0">
