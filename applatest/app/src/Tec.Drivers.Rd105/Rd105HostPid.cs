@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using TecControl.Core.Control;
 using Tec.Driver.Abi;
 
@@ -173,6 +174,12 @@ public sealed class Rd105HostPid : IPidTuningBench
         public double[]? Inner { get; set; }
         public double[]? Outer { get; set; }
         public double OuterMaxBiasC { get; set; }
+
+        /// <summary>【本地改动】（2026-11-16，外环第 1 步，主会话 D2 甲）这一路选的外环：「新」= 按实测实时算；没有这一项（null）= 旧。
+        /// 「旧」不写出（WhenWritingNull）：从没选过新、或者选回了旧，存出来的文件跟以前逐字节一样；排在最后，旧文件读进来就是缺这一项 = 旧。
+        /// 老程序读新文件：不认识的项 System.Text.Json 缺省跳过，照样读得进。</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? OuterAlgo { get; set; }
     }
 
     private bool LoadParams()
@@ -187,6 +194,10 @@ public sealed class Rd105HostPid : IPidTuningBench
                 _loop.SetManualGains(_tc, i[0], i[1], i[2]);
             if (doc.Outer is { Length: 3 } o && o.All(ok) && doc.OuterMaxBiasC > 0)
                 _loop.ConfigureCascade(_tc, o[0], o[1], o[2], doc.OuterMaxBiasC);
+            // 【本地改动】（外环第 1 步）外环「旧 / 新」：只认「新」，没有这一项 / 别的字一律旧。开放了才推给回路（只是请求，开控才锁）；
+            // 单机 RD105 没开放：不推，只记着，下次存盘原样写回去（同一个实例号的双工位主机那边选的不能被它抹掉）
+            _outerLive = doc.OuterAlgo == OuterAlgoLive;
+            if (_outerSupported) _loop.SetOuterAlgorithm(_tc, _outerLive);
             return true;
         }
         catch (Exception ex)
@@ -208,6 +219,39 @@ public sealed class Rd105HostPid : IPidTuningBench
             Outer = new[] { m.Outer.Kp, m.Outer.Ki, m.Outer.Kd },
             OuterMaxBiasC = m.OuterMaxBiasC
         };
+        doc.OuterAlgo = _outerLive ? OuterAlgoLive : null;     // 【本地改动】（外环第 1 步）「旧」不写出：旧文件逐字节不变
+        Directory.CreateDirectory(Path.GetDirectoryName(_paramsPath)!);
+        File.WriteAllText(_paramsPath, JsonSerializer.Serialize(doc, new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    /// <summary>
+    /// 【本地改动】（2026-11-16，外环第 1 步复核）外环开关只动盘上 OuterAlgo 这一项，不按内存全量重写（SaveParams 那样）：
+    /// · 不把本场内存里的手动值带进文件——回路扩程会只在本场放宽手动偏置上限（HostControlLoop 里「表里那个温度点没有外环行」那一支写 ManualOuterMaxBiasC，
+    ///   注释说「至少本次运行生效」），开关一存就落了盘，下一场读回来偏置限幅就跟以前不一样；
+    /// · 只为开关建的文件（Inner / Outer 空、调度开、偏置 0）选回旧就删掉，回到「从没设过」——开会话那句日志仍是「（缺省）」，跟以前逐字节一样。
+    ///   旧版 SaveParams 写出来的文件 Inner / Outer 永远是数组，不会误删；之后 SetScheduling / SetManual 照原来全量写，照常带上 OuterAlgo。
+    /// 文件已存在且是 SaveParams 写的：读进来改这一项再写回去，别的字节不变（LiveOuterSwitchStoreTests 逐字节钉着）；已经是这个值就不动盘。
+    /// 读不出（坏文件）：照原来全量写。写不进抛出去（调用方回滚）。
+    /// </summary>
+    private void SaveOuterAlgo(bool live)
+    {
+        var want = live ? OuterAlgoLive : null;
+        ParamsDoc? doc = null;
+        if (File.Exists(_paramsPath))
+        {
+            try { doc = JsonSerializer.Deserialize<ParamsDoc>(File.ReadAllText(_paramsPath)); }
+            catch { /* 读不出：下面照原来全量写 */ }
+            if (doc is null) { SaveParams(); return; }
+            if (doc.OuterAlgo == want) return;
+        }
+        else if (!live) return;                                 // 没文件又选旧：本来就是「从没设过」，什么都不写
+        doc ??= new ParamsDoc();                                // 只为开关建：Inner / Outer 空、OuterMaxBiasC 0，读回来只做「调度开」= 缺省
+        doc.OuterAlgo = want;
+        if (!live && doc.Inner is null && doc.Outer is null && doc.Scheduling && doc.OuterMaxBiasC == 0)
+        {
+            File.Delete(_paramsPath);
+            return;
+        }
         Directory.CreateDirectory(Path.GetDirectoryName(_paramsPath)!);
         File.WriteAllText(_paramsPath, JsonSerializer.Serialize(doc, new JsonSerializerOptions { WriteIndented = true }));
     }
@@ -392,6 +436,87 @@ public sealed class Rd105HostPid : IPidTuningBench
         _loop.ConfigureCascade(_tc, manual.Outer.Kp, manual.Outer.Ki, manual.Outer.Kd, manual.OuterMaxBiasC);
         SaveParams();
         _log("info", $"{Who} 手动 PID 参数已改：内环 {Fmt(manual.Inner)}；外环 {Fmt(manual.Outer)}、偏置上限 ±{manual.OuterMaxBiasC:0.#} ℃");
+    }
+
+    // ── 【本地改动】（2026-11-16，外环改「按实测实时算」第 1 步，主会话 D2 甲 / D4 / D13 / D15）串级外环「旧 / 新」 ──────────
+    // 用户 2026-11-16 点头：面板上加「外环：旧 / 新」，缺省旧；选「新」那一场由新算法控。每个工位一份，跟增益调度开关存在同一个 pid.json：
+    // 开会话读回（LoadParams），双工位主机开放之后推给回路；面板改了立刻存、立刻推。推的只是「请求」——回路在开控那一刻按它锁定、整场不变
+    // （HostControlLoop.StartChannelAsync），这里不碰锁定。单机 RD105（Rd105TecDriver）不开放：存的值不推、不许改。
+
+    /// <summary>pid.json 里「新」怎么写（「旧」不写出）。</summary>
+    private const string OuterAlgoLive = "新";
+    private volatile bool _outerLive;
+    private volatile bool _outerSupported;
+
+    /// <summary>【本地改动】只有双工位主机开放（<see cref="AllowOuterAlgorithmChoice"/>）。</summary>
+    public bool OuterAlgorithmSupported => _outerSupported;
+
+    /// <summary>【本地改动】已选新。没开放（单机 RD105）一律按接口缺省说「旧」——文件里存着的「新」它只原样存回去，不当自己的选择。</summary>
+    public bool OuterAlgorithmLive => _outerSupported && _outerLive;
+
+    /// <summary>【本地改动】在控釜内（串级）时：新外环锁定在控 = true，旧 = false；没在控 / 控夹套（单环没有外环）/ 没开放为 null。</summary>
+    public bool? OuterAlgorithmLiveInUse
+        => _outerSupported && _loop.GetChannelStatus(_tc).Active && _loop.GetStrategy(_tc) == ControlStrategy.Cascade
+            ? _loop.IsLiveOuterInControl(_tc)
+            : null;
+
+    /// <summary>【本地改动】温控卡上那一行（主会话 D15：人话，不用 b̂ / τ̂ 这种符号）。维持温差 = 新外环此刻估的 BHat，釜反应时间 = 它估的釜时间常数 Tau（秒 → 分钟）。</summary>
+    public string? OuterAlgorithmNote
+    {
+        get
+        {
+            if (!_outerSupported) return null;
+            var st = _loop.GetLiveOuterStatus(_tc);
+            // 【本地改动】（第 1 步复核）不在控：这一路新外环之前算出错停了（直到断开设备重连才换新的，HostControlLoop.ChannelState.Live），
+            // 下一次开控一定锁成旧（LockLiveOuter 的 live.Stopped 那一支）——别许诺「下一次起用」，说清楚。适用范围照 Toast 带上「双向挡」
+            if (OuterAlgorithmLiveInUse is not { } inUse)
+                return !st.Requested ? "外环：旧"
+                    : st.ShadowStopped ? $"外环：已选 新，但这一路新外环之前算出错停了（{st.StopReason}）：断开设备重连之前开温控仍按旧外环控"
+                    : "外环：已选 新（按实测实时算），下一次开温控（双向挡、控釜内）起用";
+            if (inUse)
+                return (st.Requested ? "外环：新（按实测实时算）" : "外环：这一场在用 新（已选 旧，停控后重新开控才换回）") +
+                       (st.Last is { } lo && double.IsFinite(lo.BHat) && double.IsFinite(lo.Tau)
+                           ? $" · 维持温差 {Math.Round(lo.BHat, 1) + 0.0:0.0} K · 釜反应时间约 {lo.Tau / 60:0} min"     // + 0.0：−0.04 不印成「−0.0」
+                           : $" · 这一拍没有读数（夹套目标先保持，{_loop.OuterLossGrace.TotalSeconds:0} s 内拿不回来停控）");
+            if (!st.Requested) return "外环：旧";
+            return st.LockNote is { } why
+                ? $"外环：已选 新，这一场在用 旧——{why}"
+                : "外环：已选 新 / 这一场在用 旧，停控后重新开控才用上";
+        }
+    }
+
+    /// <summary>
+    /// 【本地改动】双工位主机（DuoSession）开会话时调一次：这一路开放外环「旧 / 新」开关，把 pid.json 里存的那个推给回路（只是请求，开控才锁）。
+    /// 单机 RD105 不调——它没有加热棒 ↔ TEC 双向，新算法用不上。存的是「新」才说一句；旧的什么都不多说（开机日志跟以前一样）。
+    /// </summary>
+    public void AllowOuterAlgorithmChoice()
+    {
+        if (_outerSupported) return;
+        _outerSupported = true;
+        _loop.SetOuterAlgorithm(_tc, _outerLive);
+        if (_outerLive)
+            _log("info", $"{Who} 外环算法：上次选的是「新」（按实测实时算，存在 {_paramsPath}）——开温控（双向挡、控釜内）起由它控；要回原来的外环在面板上选「旧」");
+    }
+
+    /// <summary>【本地改动】面板改选外环：先存盘（只动 OuterAlgo 这一项，见 <see cref="SaveOuterAlgo"/>），存上了才推给回路（只改请求）。
+    /// 存不上（文件被别的进程独占 / 只读 / 目录写不进）抛出去（IOException、UnauthorizedAccessException 等），选择和回路请求都不动——
+    /// 面板把抛出当「拒绝、选择不变」，这里得是真的（不然重启或 PID 页「重读」后又悄悄回到盘上那个）。没开放的抛 NotSupportedException，什么都不动。</summary>
+    public void SetOuterAlgorithm(bool live)
+    {
+        if (!_outerSupported)
+            throw new NotSupportedException("这一路不支持选外环算法（只有双工位反应主机的上位机 PID 支持；单独的 RD105 只有原来的外环）");
+        // 【本地改动】（第 1 步复核）先存后推，存不上回滚：SaveOuterAlgo 读不出旧文件、退回全量 SaveParams 时按 _outerLive 写这一项，所以先摆上
+        var was = _outerLive;
+        _outerLive = live;
+        try { SaveOuterAlgo(live); }
+        catch { _outerLive = was; throw; }
+        _loop.SetOuterAlgorithm(_tc, live);
+        var inUse = OuterAlgorithmLiveInUse;
+        _log("info", $"{Who} 外环算法选了「{(live ? "新」（按实测实时算）" : "旧」（原来的外环）")}，已存盘——" +
+            (inUse is null ? "下一次开温控（控釜内）起用"
+             : inUse == live ? "这一场本来就是它"
+             : "这一路正在控温：这一场照开控时定的走完，停控后重新开控才用上") +
+            (live ? "；只在双向挡、控釜内时用得上，别的情况开控时按旧控并说明原因" : ""));
     }
 
     // ── 在用参数与实时 ─────────────────────────────────────────────

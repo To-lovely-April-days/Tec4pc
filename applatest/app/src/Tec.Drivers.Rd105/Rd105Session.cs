@@ -130,6 +130,11 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
                 _loop.SetMaxDuty(tc, pct);
                 if (_pids[tc - 1] is { } pid) pid.Limited = pct;
                 _ctx.Log?.Invoke("info", $"{InstanceId} TC{tc} 最大输出 LIMITED 改为 {pct} %——回路的输出上限跟着改");
+            },
+            // 【本地改动】（2026-11-17，S2）参数窗改了限流：回路的电流门槛跟着改（不说话：参数窗自己那一句已经说了改成多少）
+            MaxCurrentWritten = (tc, amps) =>
+            {
+                if (_host) _loop.SetTecCurrentLimit(tc, amps);
             }
         };
     }
@@ -264,6 +269,9 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
                         Rd105HostControl.FallbackInner.Ki, Rd105HostControl.FallbackInner.Kd);
                     _loop.ConfigurePid(tc, m.Kp, m.Ki, m.Kd, limited, _invert, Rd105HostControl.InnerDerivativeFilterSeconds);
                     if (_pids[tc - 1] is { } pid) pid.Limited = limited;
+                    // 【本地改动】（2026-11-17，S2「看电流再决定」）温控器里存着的限流 SETCURRENT 推给回路：新模式跑飞「放热」豁免的电流门槛按它算
+                    // （读不到就不推，回路按 0.5 A——协议最小限流，门槛宁低勿高）。只记、不改任何控制量
+                    _loop.SetTecCurrentLimit(tc, cfg.MaxCurrentA);
                 }
                 catch (Exception ex)
                 {
@@ -333,6 +341,8 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
         for (var i = 0; i < 2; i++)
         {
             var info = infos[i];
+            ExothermEdge(i, info);          // 【本地改动】（外环第 1 步）放热报警的沿：在写这一拍之前判，报出来的那句 note 落在 lo_alarm 变 1 的那一行
+            ReadingAlarmEdge(i, info);      // 【本地改动】（2026-11-17，S1）「读数没跟着夹套降」报警的红条
             _recorders[i]?.Write(info, _temps[i].CurrentReactor, ActuatorName(_loop.GetActuatorMode(i + 1)), r.CycleMs, LoopExtra?.Invoke(i));
             // 曲线上的「控温输出」是温控器回显（实际存下）的那个数；它按自己的规矩改了写入值时，画的是它真出的力
             _temps[i].LastDuty = info.AppliedDutyPercent ?? info.DutyPercent;
@@ -347,9 +357,75 @@ public sealed class Rd105Session : IDeviceSession, IDeviceSettings
                     ? $"釜内 Tr 读数丢失 {held:0} s，夹套按 {inner:F1} ℃ 保持（{_loop.OuterLossGrace.TotalSeconds:0} s 内回来接着串级，回不来停控）"
                     : null;
                 Push(_temps[i].Channel, "Tjset", inner, at, Quality.Good);
+                // 【本地改动】（外环第 1 步，主会话 D10）新外环在控时保持期夹套目标不是「按某个数保持」，是它只按模型推的：换一句
+                if (info.LiveOuterInControl && info.OuterHoldSeconds is { } heldLive)
+                    _temps[i].Holding = $"釜内 Tr 读数丢失 {heldLive:0} s，外环新算法按模型推夹套目标（此刻 {inner:F1} ℃）" +
+                                        $"（{_loop.OuterLossGrace.TotalSeconds:0} s 内回来接着按读数算，回不来停控）";
             }
             else _temps[i].Holding = null;
         }
+    }
+
+    // 【本地改动】（外环第 1 步）两路各自的放热报警此刻成立没有（上一拍的状态，判沿用）。只在回路回调线程读写
+    private readonly bool[] _exoOn = new bool[2];
+    // 【本地改动】（第 1 步复核）影子那一份报警条件上一拍成立没有（读数为 null 的拍沿用它）——红条现在还看跑飞豁免，_exoOn 不再只是它
+    private readonly bool[] _exoAlarm = new bool[2];
+
+    /// <summary>
+    /// 【本地改动】（2026-11-16，外环改「按实测实时算」第 1 步，主会话 D11）新外环的放热报警：上升 / 下降沿只在这一处判。
+    /// 成立 = 这一拍新外环在控、它的读数里 AlarmOn（制冷顶满 ≥ 60 s、釜内 60 s 里还在升、釜壁估计比釜内冷——LiveOuter.Alarm）。
+    /// 读数为 null 的拍（影子两拍之间不会 null；停了 / 在等断档重摆才 null）保持上一状态，不当成「撤了」，免得一抖就重报。
+    /// 上升沿：日志 warn + 逐拍记录 note + Rd105TemperatureControl.Exotherm（界面红条）；下降沿：日志 info + note、Exotherm 清掉。
+    /// 只报，不停控、不动设备、不进 Faults（那个每次读告警字都整个覆盖）、不进安全报警本（用户 2026-11-16：保持满冷，不停控）。
+    /// 旧外环在控（algo = 0）一律不报：旧模式下 lo_alarm 列可能是 1（TecEngaged 两种模式都喂），只是记。
+    /// 字眼避开验收仿真按字数计数的那几个（夹套压低 / 外环积分冻结在 / 外环偏置自校正 / 那一枪）。
+    /// 【本地改动】（第 1 步复核）① 跑飞保护的「放热」豁免成立着（info.LiveExoExempt）也一并上红条：豁免成立时影子的报警条件不一定成立
+    /// （降温中 TEC 开路，夹套被釜往上带、釜内却不升），原来只进日志 / note，面板上看不见。② 两种都不看 TEC 有没有真在取热
+    /// （「TEC 真接着」是继电器指令，没有电流 / 水流判据）：断水、冷水机故障、TEC 开路也像放热——不说「保持满冷」，叫人查 TEC 电流和冷却水。
+    /// </summary>
+    private void ExothermEdge(int i, ChannelCycleInfo info)
+    {
+        var was = _exoOn[i];
+        var alarm = info.LiveOuterInControl && (info.LiveOuter is { } lo ? lo.AlarmOn : _exoAlarm[i]);
+        _exoAlarm[i] = alarm;
+        var exempt = info.LiveOuterInControl && info.LiveExoExempt;
+        var on = alarm || exempt;
+        if (on == was) return;
+        _exoOn[i] = on;
+        var tc = i + 1;
+        if (on)
+        {
+            var text = alarm
+                ? $"通道{tc}放热报警：TEC 制冷已顶满 60 s 以上，釜内还在升、比釜壁估计还热——控温不停；" +
+                  "是加料 / 放热反应，还是冷却没在出力（TEC 功率线 / 冷却水 / 冷水机）？请人工查 TEC 电流和冷却水"
+                : $"通道{tc}放热报警：TEC 制冷顶满，夹套还被釜内往上带（跑飞保护按放热放过，没停）——控温不停；" +
+                  "是加料 / 放热反应，还是冷却没在出力（TEC 功率线 / 冷却水 / 冷水机）？请人工查 TEC 电流和冷却水";
+            _temps[i].Exotherm = text;
+            _ctx.Log?.Invoke("warn", $"{InstanceId} {text}");
+            _recorders[i]?.Note(text);
+            return;
+        }
+        _temps[i].Exotherm = null;
+        if (info.LiveOuterInControl)
+        {
+            var text = $"通道{tc}放热报警撤了：报警条件不再成立（不顶满了 / 釜内不升了 / 夹套不再被往上带）";
+            _ctx.Log?.Invoke("info", $"{InstanceId} {text}");
+            _recorders[i]?.Note(text);
+        }
+        // 不在新外环控温了（停控 / 回路停了）：那一份记录已经收尾，只进日志，不往下一份记录的开头挂 note
+        else _ctx.Log?.Invoke("info", $"{InstanceId} 通道{tc}放热报警随停控撤了");
+    }
+
+    /// <summary>
+    /// 【本地改动】（2026-11-17，S1「读数对不上就停控」）「读数没跟着夹套降」报警的红条：新外环在控、周期快照带着那句话（<see cref="ChannelCycleInfo.ReadingAlarm"/>）
+    /// 就摆到 <see cref="Rd105TemperatureControl.ReadingAlarm"/>（界面经 ITemperatureStatus.Alarm 跟放热报警一起出红条、上升沿 Toast）；没有了就清。
+    /// 上升 / 撤了那两句日志 + 逐拍记录 note 回路已经经 ChannelNotice 说过（OnChannelNotice），这里不再说——只管红条。停控那一拍快照不带，红条随停控清。
+    /// 旧外环在控的一路回路从来不给这句话，永远 null。
+    /// </summary>
+    private void ReadingAlarmEdge(int i, ChannelCycleInfo info)
+    {
+        var text = info.LiveOuterInControl ? info.ReadingAlarm : null;
+        if (_temps[i].ReadingAlarm != text) _temps[i].ReadingAlarm = text;
     }
 
     private async Task RestoreDeviceModeAsync(int tc)

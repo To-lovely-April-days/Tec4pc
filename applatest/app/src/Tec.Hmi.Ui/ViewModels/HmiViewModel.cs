@@ -1358,6 +1358,8 @@ public sealed class HmiZoneViewModel : ViewModelBase
         SyncWithLoop();
         SyncStir();
         RefreshLoopNotice();
+        RefreshOuter();         // 【本地改动】（外环第 1 步）「外环 旧 | 新」两段钮 / 状态行 / 放热报警红条
+        StepAlarm();            // 【本地改动】（外环第 1 步）放热报警上升沿 Toast + 面板日志（要在下面拼头卡那句之前：头卡带「放热报警」）
         // 程序在跑 = 温控当然是开的，不用等面板那个开关也被按下
         Therm = !(TempOn || EngineRunning) ? 0
             : Tag("Tset") is { } sp && TrVal is { } tr
@@ -1399,6 +1401,9 @@ public sealed class HmiZoneViewModel : ViewModelBase
                 : LoopNotice is not null ? "手动待机 · 回路自己停了控温（原因见下）"
                 : "手动待机 · 温控开关关着（打开才下发目标）";
         }
+        // 【本地改动】（外环第 1 步，主会话 D11）放热报警：头卡（通道页每一个标签顶上、总览卡片）也带一句，看别的页也知道有警；红条只在温控卡 / 趋势页
+        // 【本地改动】（2026-11-17，S1 复核查实）分得出是哪一种：放热 → 原话；S1「读数没跟着夹套降」→「釜内读数报警」；两样都在两样都说
+        HeadNote += HmiOuterAlgo.HeadAlarm(_exoAlarm is not null, _readAlarm is not null);
         RaiseZone();
     }
 
@@ -1428,8 +1433,18 @@ public sealed class HmiZoneViewModel : ViewModelBase
             _holdingOn = on;
             if (on)
             {
+                // 【本地改动】（外环第 1 步，主会话 D10）新外环在控：保持期夹套目标是它按模型推的，不是钳到釜内设定——换说法；旧外环下面原句一字不动
+                if (PidBench?.OuterAlgorithmLiveInUse == true)
+                {
+                    var (holdLog, holdToast) = HmiOuterAlgo.LiveHolding();
+                    Log("回路", holdLog);
+                    _owner.Toast(holdToast);
+                }
+                else
+                {
                 Log("回路", "釜内 Tr 读数丢失，夹套设定钳到釜内设定保持，等它回来");
                 _owner.Toast("釜内 Tr 读数丢失，夹套设定已钳到釜内设定，宽限内回来自动继续");
+                }
             }
             else if (st is { Active: true })
             {
@@ -1439,6 +1454,106 @@ public sealed class HmiZoneViewModel : ViewModelBase
         }
         LoopNotice = holding
             ?? (!(TempOn || EngineRunning) && st?.LastStop is { } why ? $"回路自己停了控温：{why}" : null);
+    }
+
+    // ── 【本地改动】（2026-11-16，外环改「按实测实时算」第 1 步，主会话 D2 甲 / D4 / D11 / D15）外环「旧 | 新」+ 放热报警 ──────────
+    //
+    // 用户 2026-11-16 点头：面板上加「外环：旧 / 新」，缺省旧；选「新」那一场由新算法（按实测实时算）控，随时能切回去；放热只报不停控。
+    // 开关每个工位一份，存在本机这一路的 pid.json（跟 PID 整定页的「增益调度」开关同一个文件），从温控卡标题旁的两段钮改：
+    // 点了立刻存、立刻告诉回路，但只是「请求」——回路在开控那一刻锁定这一场用哪个，控中改了这一场照旧，停控后重新开控才用上（D4）。
+    // 工作站弹出的 HMI 窗和设备端 HMI 是同一份界面，两边都能改、都看得见。出不出、说什么都在 HmiOuterAlgo（纯函数，单测）。
+    // 放热报警：驱动给的那一句（ITemperatureStatus.Alarm，只在新外环在控、报警条件成立时有）摆成温控卡 / 趋势页顶上一条红条，
+    // 上升沿 Toast + 面板日志各一次（面板日志在批次跑着时进运行记录，同别的面板日志）。只报：不停控、不弹确认、不进安全报警本。
+    // 旧外环 / 温控器 PID / 单机 RD105：钮不出（或只多一行「外环：旧」）、报警永远没有，别的一个字不变。
+
+    /// <summary>温控卡标题旁「外环 旧 | 新」两段钮（连带下面一行状态字）出不出。</summary>
+    public bool ShowOuterPick { get; private set; }
+    /// <summary>已选的外环（true = 新）——两段钮哪一格亮。在用的看状态行。</summary>
+    public bool OuterLive { get; private set; }
+    /// <summary>两段钮下面那一行（人话）；钮不出是 null。</summary>
+    public string? OuterLine { get; private set; }
+    /// <summary>状态行标琥珀色：在控、已选跟在用不一样（停控后重新开控才用上 / 选了新这一场锁成了旧）。</summary>
+    public bool OuterLineWarn { get; private set; }
+    /// <summary>放热报警那一句（红条）；没有是 null。
+    /// 【本地改动】（2026-11-17，S1 复核查实）红条是驱动给的整串：放热那一句、S1「读数没跟着夹套降」那一句，两样都在用「；」接起来（Toast / 面板日志 / 头卡按两种分开说）。</summary>
+    public string? LoopAlarm { get; private set; }
+
+    private readonly HmiAlarmEdge _alarmEdge = new();
+    // 【本地改动】（2026-11-17，S1 复核查实）两种报警各走各的沿：放热那一句（_alarmEdge，原样）和 S1「读数没跟着夹套降」那一句（_readEdge）。
+    // 原来一条 Alarm 一个沿：一种亮着时另一种再起来没有沿（不 Toast、不进面板日志），S1 那一种还被说成放热报警
+    private readonly HmiAlarmEdge _readEdge = new();
+    private string? _exoAlarm, _readAlarm;
+
+    private void RefreshOuter()
+    {
+        var b = PidBench;
+        var supported = b is { OuterAlgorithmSupported: true };
+        ShowOuterPick = HmiOuterAlgo.ShowPick(Mode, HostLoop, supported);
+        OuterLive = supported && b!.OuterAlgorithmLive;
+        var inUse = supported ? b!.OuterAlgorithmLiveInUse : null;
+        OuterLine = HmiOuterAlgo.Line(ShowOuterPick, OuterLive, ShowOuterPick ? b!.OuterAlgorithmNote : null);
+        OuterLineWarn = HmiOuterAlgo.LineWarn(ShowOuterPick, OuterLive, inUse);
+        LoopAlarm = (Temp as ITemperatureStatus)?.Alarm;
+        // 【本地改动】（2026-11-17，S1 复核查实）红条照旧摆整串；沿 / Toast / 面板日志 / 头卡按两种分开（驱动单给 S1 那一句：ITemperatureStatus.ReadingAlarm）
+        (_exoAlarm, _readAlarm) = HmiOuterAlgo.SplitAlarm(LoopAlarm, (Temp as ITemperatureStatus)?.ReadingAlarm);
+        RaiseAll(nameof(ShowOuterPick), nameof(OuterLive), nameof(OuterLine), nameof(OuterLineWarn), nameof(LoopAlarm));
+    }
+
+    /// <summary>放热报警的沿（每拍一次，只在 Refresh 里调）：上升沿面板日志 + Toast，撤了面板日志一句。
+    /// 【本地改动】（2026-11-17，S1 复核查实）两种报警各一个沿：放热那一句照原样（Toast 叫人查 TEC 电流和冷却水、撤了「放热报警撤了」）；
+    /// S1「读数没跟着夹套降」那一句自己的 Toast（看釜内探头）和撤了那一句。面板日志记各自那一句（不是接起来的整串）。</summary>
+    private void StepAlarm()
+    {
+        switch (_alarmEdge.Step(_exoAlarm))
+        {
+            case HmiAlarmEdge.Edge.Raised:
+                Log("回路", _exoAlarm!);
+                _owner.Toast(HmiOuterAlgo.AlarmToast(Index));
+                break;
+            case HmiAlarmEdge.Edge.Cleared:
+                Log("回路", HmiOuterAlgo.AlarmClearedLog);
+                break;
+        }
+        switch (_readEdge.Step(_readAlarm))
+        {
+            case HmiAlarmEdge.Edge.Raised:
+                Log("回路", _readAlarm!);
+                _owner.Toast(HmiOuterAlgo.ReadingAlarmToast(Index));
+                break;
+            case HmiAlarmEdge.Edge.Cleared:
+                Log("回路", HmiOuterAlgo.ReadingAlarmClearedLog);
+                break;
+        }
+    }
+
+    /// <summary>温控卡上点了「旧」/「新」：交给驱动（存盘、告诉回路——只是请求），面板日志 + Toast 说清什么时候用上。</summary>
+    public void PickOuter(bool live)
+    {
+        if (PidBench is not { OuterAlgorithmSupported: true } b)
+        {
+            _owner.Toast("这一路不能选外环算法（只有双工位主机的上位机 PID、釜内控温才有）");
+            return;
+        }
+        // 【本地改动】（外环第 1 步复核）温控正在下发（转圈）：开控要先通水 / 切热源（几秒），锁定排在那之后的 StartChannelAsync——
+        // 这时改选会被这一次开控锁走，面板和驱动的提示却说「下一次开温控起用」。不交给驱动，等转完再选
+        if (TempBusy)
+        {
+            _owner.Toast("温控正在下发（转圈中），转完再选外环");
+            return;
+        }
+        if (b.OuterAlgorithmLive == live) return;
+        try { b.SetOuterAlgorithm(live); }
+        catch (Exception ex)
+        {
+            Log("拒绝", ex.Message);
+            _owner.Toast(ex.Message);
+            return;
+        }
+        var (log, toast) = HmiOuterAlgo.Picked(live, b.OuterAlgorithmLiveInUse);
+        Log("外环", log);
+        _owner.Toast(toast);
+        RefreshOuter();
+        Raise(nameof(LastLog));
     }
 
     // ── 面板开关 ⇄ 回路真实状态对账 ─────────────────────────────────
@@ -1823,6 +1938,7 @@ public sealed class HmiZoneViewModel : ViewModelBase
         {
             _owner.Toast($"温控已停，已切到{ModeName}——填好目标再打开「温控」");
         }
+        RefreshOuter();         // 【本地改动】（外环第 1 步）「外环 旧 | 新」只在釜内控温摆：换了模式当下就收 / 摆，不等下一拍
         RaiseZone();
     }
 

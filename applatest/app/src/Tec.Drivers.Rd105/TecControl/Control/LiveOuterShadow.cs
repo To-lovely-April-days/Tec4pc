@@ -57,6 +57,8 @@ namespace TecControl.Core.Control;
 /// <param name="Tau">τ̂（s）：进控制律的那个。lo_tau。</param>
 /// <param name="TauEkf">第二路认的 τ（s）。lo_tau2。</param>
 /// <param name="AlarmOn">放热报警的条件这一拍成立。lo_alarm。第 0 步回路不知道继电器在哪一侧（按「不在 TEC 侧」喂），所以恒为 false。</param>
+/// <remarks>【本地改动】（外环第 1 步）AlarmOn：会话每拍把「TEC 此刻真接着」给回路（HostControlLoop.SetTecEngaged），两种外环都喂，它才可能成立；
+/// 只有新外环在控时才报出来（Rd105Session.OnCycle 按上升沿报一次、不停控）。</remarks>
 public sealed record LiveOuterReadout(
     double JacketSetpointC, double BHat, double THat, double Wall, double Tau, double TauEkf, bool AlarmOn);
 
@@ -82,6 +84,7 @@ public readonly record struct LiveOuterFacts
     public bool LoopBeatPending { get; init; }
 
     /// <summary>热源继电器在 TEC 侧。回路不知道继电器（会话扳的）——第 0 步恒给 false（宁可不报），第 1 步由会话把「TEC 此刻真接着」给进来。</summary>
+    /// <remarks>【本地改动】第 1 步：回路喂的是会话每拍给的「TEC 此刻真接着」（HostControlLoop.SetTecEngaged；没人给就是 false）。</remarks>
     public bool TecSide { get; init; }
 
     /// <summary>内环贴在下限（上一拍 PID 那一侧的输出 ≤ 下限；只加热形态下是贴着 0）。</summary>
@@ -126,8 +129,22 @@ public class LiveOuterShadow
     /// <summary>核心类。给测试和排查看内部量用；控温路径上没有人读它。</summary>
     public LiveOuter Core { get; }
 
+    /// <summary>
+    /// 【本地改动】（2026-11-16，外环第 1 步，主会话 D14）时间压缩倍数：调用方给的时刻差（墙钟）乘它才是现场秒。缺省 1 = 产品里一直是 1。
+    /// 只给压缩时间的孪生 / 验收仿真用：回路的时间是墙钟，压 K 倍跑时把影子换成 TimeScale = K 的，核心类拿到的 dt、外环周期都是现场秒，
+    /// 三个门槛（2 / 10 / 60 s）和核心类里写死的 1e-8·dt 也就都对了——不用把 31 个参数逐个按量纲缩（scout-tests §3）。
+    /// = 1 时乘 1.0 在 IEEE 下逐位不变：现有 LiveOuter 测试和对拍就是证明。不是 HostControlLoop 的属性，验收的压缩表不枚举它。
+    /// </summary>
+    public double TimeScale { get; init; } = 1.0;
+
     /// <summary>起算过没有。</summary>
     public bool Started => _started;
+
+    /// <summary>
+    /// 【本地改动】（2026-11-17，S1「读数对不上就停控」）影子自己的秒表（现场秒）：各拍 dt 累加（TimeScale = 1 时就是墙钟秒的累加），
+    /// 断档重摆时把断掉的那一段也加进去。回路拿它当 <see cref="ReadingCheck"/> 的时刻（S1 跟影子同一个时基：「两拍隔了 60 s 以上 = 影子重摆了」才对得上）。只读。
+    /// </summary>
+    public double ClockS => _clockS;
 
     /// <summary>已经停掉（抛过异常 / 内部量出现过 NaN、无穷）。停了就一直停着，直到这个对象被换掉。</summary>
     public bool Stopped { get; private set; }
@@ -167,6 +184,7 @@ public class LiveOuterShadow
 
     private LiveOuterReadout? TickCore(DateTime now, double periodS, in LiveOuterFacts f)
     {
+        periodS *= TimeScale;                                  // 【本地改动】外环周期也换成现场秒（TimeScale = 1 逐位不变）
         bool hasTj = double.IsFinite(f.Tj), hasTr = double.IsFinite(f.Tr);
 
         // (d) 起算：第一次「釜内、夹套都有效」的那一拍
@@ -178,6 +196,7 @@ public class LiveOuterShadow
         }
 
         double dt = (now - _lastAt).TotalSeconds;
+        dt *= TimeScale;                                       // 【本地改动】墙钟秒 → 现场秒（TimeScale = 1 逐位不变）
         if (dt < 0.0)
         {
             // 墙钟往回跳了：真实过了多久不知道（多半很短）。这一拍不算，从现在重新计拍
@@ -246,7 +265,7 @@ public class LiveOuterShadow
     {
         // 第一拍也要给一个 dt（过渡参考、顶满计时那一拍按它走）：就用外环周期，Python 试算台给的也是这个（2 s）；周期配得离谱就按 2 s
         double dt0 = periodS > 0.0 && periodS <= MaxStepS ? periodS : MaxStepS;
-        if (reseat) _clockS += (now - _lastAt).TotalSeconds;   // 秒表照常往前走（60 s 窗反正在重摆里清了）
+        if (reseat) _clockS += (now - _lastAt).TotalSeconds * TimeScale;   // 秒表照常往前走（60 s 窗反正在重摆里清了）；【本地改动】按现场秒（D14）
         double sp = Target(f, hasTr: true, out bool placeholder);
         var input = Input(f, sp, f.Tr, dt0);
         SeatCore(input, reseat);

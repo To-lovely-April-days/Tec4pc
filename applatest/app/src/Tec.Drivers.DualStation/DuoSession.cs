@@ -337,6 +337,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         _slope[well].Clear();
         _earlyExitAt[well] = null;          // 【本地改动】再进间隔随停控清掉
         _dwellSaid[well] = false;
+        _liveWas[well] = false;             // 【本地改动】（外环第 1 步）下一场按那时回路锁定的重新比（新外环那句提示每场说一次）
         Interlocked.Increment(ref _issueGen[well]);
         System.Threading.Interlocked.Increment(ref _stopGen[well]);
     }
@@ -498,6 +499,12 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
                     Ended = () => EndTune(well)
                 };
         }
+
+        // 【本地改动】（2026-11-16，外环改「按实测实时算」第 1 步，主会话 D2 甲 / D13）串级外环「旧 / 新」开关只在双工位主机上开放：
+        // 存在本机这一路的 pid.json（跟增益调度开关一个文件，缺这一项 = 旧），这里把存的那个推给回路（只是请求，下一次开控才锁）。
+        // 单机 RD105（Rd105TecDriver）不开放，面板上就没有这个开关。温控器 PID 方式下没有整定台（PidOf 为 null），什么都不做
+        for (var w = 0; w < 2; w++)
+            _rd.PidOf(w)?.AllowOuterAlgorithmChoice();
     }
 
     // ── 自整定的热源配合（面板「PID 整定」页）──────────────────────────
@@ -1010,7 +1017,10 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         // 恰恰最需要那句「要升温但电加热用不了」的提醒，放进去就永远打不出来。
         // 真要扳继电器的时候它自己会看 ElectricReady
         for (var w = 0; w < 2; w++)
+        {
             await AutoSourceAsync(w, ct).ConfigureAwait(false);
+            PushLoopFacts(w);           // 【本地改动】（外环第 1 步）这一路换完挡紧接着把「TEC 此刻真接着」推给回路（见 PushLoopFacts）
+        }
 
         // 【本地改动】升温加速：判 TEC 接不接得上推给回路、要加速就提前备水（在水阀对账之前：认领了的对账不关）
         for (var w = 0; w < 2; w++)
@@ -1064,6 +1074,7 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         else
         {
             SettleIdleAsk(well);                    // 挂着却没人在等的询问：答了 / 到时就落地（不管下面这一拍要不要换挡）
+            NoteLiveRules(well);                    // 【本地改动】（外环第 1 步）这一路刚归新外环管：提前判据留下的东西收掉、说一句（见 NoteLiveRules）
             if (innerT.Setpoint is not { } sp) return;
             // 串级丢了釜内 Tr、回路在保持（夹套设定钳到釜内设定）：升温挡 / 降温挡不换挡，等 Tr 回来或回路停控。
             // 双向挡不设这个例外——一个 PID 的规矩就是继电器跟符号，保持期夹套设定钳到釜内设定、回路要制冷就接 TEC，
@@ -1374,6 +1385,9 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
         var level = _boost;
         var eligible = level != HeatBoostLevel.Off && !_tecHeat && _chiller && _regime[well] == Regime.Both && _wantEnabled[well]
                        && !Tuning(well) && !RefluxActive(well) && t.Kind == TempChannelKind.Reactor && _links.Io is not null && _ioOk;
+        // 【本地改动】（外环第 1 步，主会话 C5）新外环在控的这一路不升温加速：回路新外环那一支不走 HeatBoostStep（开控时 Vel* 也清了），
+        // 这里再拦一道，免得切换前留下的「在等 TEC」让会话去认领冷却水 / 提前问。旧模式 LiveRules 恒假，eligible 不变
+        if (LiveRules(well)) eligible = false;
         var boosting = eligible && t.HeatBoosting;
         var waiting = eligible && !boosting && t.HeatBoostWaitingForTec;
         Volatile.Write(ref _boostWanted[well], boosting || waiting);
@@ -1493,6 +1507,64 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
     /// 夹套多烫都不算接不上：「TEC 加热」不启用时 TEC 只制冷，发热那面贴的是冷却水，TEC 接入上限（90 ℃）管不到它（用户定的）。
     /// </summary>
     private bool TecWithheld(int well) => _coolEp[well]?.Hold is not null || TuningBoth(well) && Volatile.Read(ref _tuneGap[well]);
+
+    // ── 【本地改动】（2026-11-16，外环改「按实测实时算」第 1 步）这一路此刻外环归不归新算法管 ─────────────────────────
+    // 用户 2026-11-16 点头：选「新」时「提前切 TEC、压低 2 度、至少制冷 60 秒、低了回加热棒」这几条不再起作用；冷却水的问答和自动开照旧。
+    // 主会话 D1 / D3 / D8：A1–A6（EarlyVerdict 那一串 + ControlledBelow）按路关；最短制冷 60 s 不动——新模式里提前判据进的段不存在了，
+    // 剩下的只有经挂起 / 等水后接上 TEC 的段，试算台验证新算法时就是这个条件（session.py min_cool_after_hold_s = 60）。
+    // 判定一律按路、读回路开控时锁定的实际状态（Rd105TemperatureControl.LiveOuterInControl），不读开关本身，也不去拨 EarlyDelta / CoolMinDuration
+    // 这种整机一份的量（拨了另一路一起没了）。旧模式（没选新 / 温控器 PID / 控夹套 / 锁成了旧）恒假：每个用到它的地方都落回原来那一行。
+    // 不加 TimeSpan 字段 / 属性（验收仿真逐个枚举 DuoSession 的 TimeSpan 字段，多一个就红）。
+
+    /// <summary>【本地改动】测试口：不为 null 就由它说某一路此刻算不算新外环在控（温控器 PID 假机上验会话规则的语义用）。生产里永远 null。</summary>
+    internal Func<int, bool>? LiveRulesOverride { get; set; }
+
+    /// <summary>【本地改动】这一路此刻外环归新算法管（上位机串级控釜内、这一场开控时锁成了新、还在控；切继电器挂起那一两秒、Tr 丢失保持期也算）：
+    /// 会话的提前切 TEC / 压低 / 按 ±δ 抢先回加热棒、否决功率符号那几条对这一路不起作用，继电器只跟功率符号。</summary>
+    private bool LiveRules(int well)
+        => well is 0 or 1 && (LiveRulesOverride is { } f ? f(well) : _rd.TempOf(well).LiveOuterInControl);
+
+    /// <summary>【本地改动】上一拍这一路的 <see cref="LiveRules"/>（采集线程写；停控复位）。</summary>
+    private readonly bool[] _liveWas = new bool[2];
+
+    /// <summary>
+    /// 【本地改动】（主会话 C6）按路比上一拍：旧 → 新那一拍收掉提前判据那套留下的东西，再说一句这一路会话规则怎么变了（每场说一次）。
+    /// 每次下发本来就在 WantedSide(fresh) 里 EndEpisode("下发了新目标")、NoteStart 清再进间隔，而回路只在下发（开控）时锁定（D4），
+    /// 所以多数时候这里没东西可收。漏网的（读码）：下发那一刻夹套读不到——WantedSide 在 fresh 那一支之前就返回了，段没收；下一拍夹套又读到了，
+    /// 段就带进了新模式（之前控夹套时提前判据照样立段，改下发釜内目标碰上这一下也一样）。新模式下没人再按旧判据撤它：挂着的到答复就接 TEC，接着的一直扣着。
+    /// 收法：提前判据进的段结束（问水留着——本次控温只问一次，SettleIdleAsk 落地）、再进间隔清掉；符号进的段新模式照用，不动。
+    /// 新 → 旧什么都不用做（偏差滑窗一直在喂，旧判据当拍就能用）。旧模式 LiveRules 恒假、等于初值，一句不走。
+    /// </summary>
+    private void NoteLiveRules(int well)
+    {
+        var live = LiveRules(well);
+        if (live == _liveWas[well]) return;
+        _liveWas[well] = live;
+        if (!live) return;
+        if (_coolEp[well] is { } ep && !EnteredBySign(ep))
+            EndEpisode(well, "外环换成新算法", keepAsk: true);
+        _earlyExitAt[well] = null;
+        _dwellSaid[well] = false;
+        var minCool = CoolMinDuration < TimeSpan.FromSeconds(1) ? 1 : CoolMinDuration.TotalSeconds;     // 跟段里判最短制冷同一个下限（WantedSide）
+        var text = $"工位 {AB(well)} 外环归新算法（按实测实时算）：会话这一路的提前切 TEC、压低夹套目标、按 ±{EarlyDelta:0.0#} K 抢先回加热棒 / 否决功率符号这几条停用，" +
+                   $"继电器只跟功率符号（同号连续 {SignDwell.TotalSeconds:0} s 才扳）；冷却水询问 / 自动开水、冷水机最短间隔照旧，" +
+                   $"经挂起（等答开不开冷却水 / 等冷水机最短间隔）才接上 TEC 的那一段仍至少制冷 {minCool:0} s（免得阀开了又关）";
+        _ctx.Log?.Invoke("info", $"{InstanceId} {text}");
+        _rd.TempOf(well).Note(text);
+    }
+
+    /// <summary>
+    /// 【本地改动】（主会话 D7 / C7）这一路换完挡紧接着把「TEC 此刻真接着」推给回路：进新外环的放热报警，新外环在控时跑飞保护的放热豁免也看它。
+    /// 两种外环都推（旧模式只影响逐拍记录 lo_alarm 那一列，不进任何控制量）。每路换完就推、不等两路都换完——一路切换卡着通水 5 s，
+    /// 一起推的话另一路的事实要晚这么久。事实只取继电器影子（<see cref="TecDriving"/>：加热棒断、TEC 功率线合），不看日志 / note / 水的认领
+    /// （11-16 那场 4139 s 有「指向 TEC、冷却水阀打开」，继电器却没动）。切继电器那一两秒回路挂着、输出关着，报警的顶满计时本来就清零，不用再扣。
+    /// 推失败不拖采集拍；温控器 PID 方式下没有上位机回路，什么都不做。
+    /// </summary>
+    private void PushLoopFacts(int well)
+    {
+        try { _rd.TempOf(well).SetTecEngaged(TecDriving(well)); }
+        catch { /* 尽力而为（同 NoteStop 里推升温加速那一句） */ }
+    }
 
     /// <summary>TEC 反向输出加热启没启用（界面按能力问它）。</summary>
     internal bool TecHeating => _tecHeat;
@@ -1915,6 +1987,9 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
 
     private Early EarlyVerdict(int well, double target)
     {
+        // 【本地改动】（外环第 1 步，主会话 D1 / C2）这一路新外环在控：提前切 TEC（Enter）、回落 / 超前退段（LeadExit）、按 ±δ 抢先回加热棒和否决功率符号
+        // （Below / Rising）全都不判——等于这一路 δ = +∞，继电器只跟功率符号；压低只在提前判据立的段里调，跟着没了。旧模式 LiveRules 恒假，落到下一行
+        if (LiveRules(well)) return default;
         if (RefluxActive(well)) return default;                                      // 跟随目标随 Tr 抖，只看符号
         var t = _rd.TempOf(well);
         if (((ITemperatureStatus)t).Holding is not null) return default;             // Tr 丢了保持期：被控量退成 Tj，比不得
@@ -1932,8 +2007,10 @@ public sealed class DuoSession : IDeviceSession, IExternalReactorTemp, IDeviceSe
             Rising: e >= EarlyDelta && de >= SlopeEpsKPerS);
     }
 
+    // 【本地改动】（外环第 1 步，主会话 C3）新外环在控的这一路不按「低过目标 δ」撤挂起段（挂起只看功率符号，同 EarlyVerdict 开头那一句）；
+    // 旧模式 !LiveRules 恒真、没有副作用，跟原来那个式子一样
     private bool ControlledBelow(int well, double target)
-        => Controlled(well) is var cur && !double.IsNaN(cur) && cur <= target - EarlyDelta;
+        => !LiveRules(well) && Controlled(well) is var cur && !double.IsNaN(cur) && cur <= target - EarlyDelta;
 
     /// <summary>
     /// 【本地改动】挂起段（等人答 / 等冷水机间隔）该不该撤——不要制冷了返回撤的原因，还要冷返回 null。act 才记计时。

@@ -22,6 +22,10 @@ public sealed class DuoTempControl : ITemperatureControl, IRefluxControl, IHeatS
     string? ITemperatureStatus.Holding => ((ITemperatureStatus)Inner).Holding;
     string? ITemperatureStatus.LastStop => ((ITemperatureStatus)Inner).LastStop;
     double? ITemperatureStatus.CascadePushC => ((ITemperatureStatus)Inner).CascadePushC;
+    // 【本地改动】（外环第 1 步，主会话 D11）放热报警：这里是逐个显式转发的，不加这一行面板永远读到接口缺省的 null（测试钉着）
+    string? ITemperatureStatus.Alarm => ((ITemperatureStatus)Inner).Alarm;
+    // 【本地改动】（2026-11-17，S1 复核查实）S1 那一句单独一份：同上要显式转发，漏了面板分不出是哪一种报警（测试钉着）
+    string? ITemperatureStatus.ReadingAlarm => ((ITemperatureStatus)Inner).ReadingAlarm;
 
     private readonly DuoSession _s;
     private readonly int _well;

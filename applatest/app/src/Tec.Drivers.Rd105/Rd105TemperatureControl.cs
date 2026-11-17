@@ -119,6 +119,17 @@ public sealed class Rd105TemperatureControl : ITemperatureControl, ITemperatureS
 
     double? ITemperatureStatus.CascadePushC => JacketPushC;
 
+    /// <summary>【本地改动】（外环第 1 步，主会话 D11）ITemperatureStatus：放热报警那句话（<see cref="Exotherm"/>），同 Holding 只在回路开着时算数——
+    /// 停控以后不挂着旧报警；切热源那一两秒输出关着时也不给（下一拍重开就回来，Exotherm 本身不清）。</summary>
+    /// <remarks>【本地改动】（2026-11-17，S1）S1「读数没跟着夹套降」报警（<see cref="ReadingAlarm"/>）走同一条红条：两样都在就用「；」接起来，放热那一句在前。</remarks>
+    string? ITemperatureStatus.Alarm => !Enabled ? null
+        : Exotherm is null ? ReadingAlarm
+        : ReadingAlarm is null ? Exotherm
+        : Exotherm + "；" + ReadingAlarm;
+
+    /// <summary>【本地改动】（2026-11-17，S1 复核查实）ITemperatureStatus：S1 那一句单独一份（面板分得出是哪一种报警），同 Alarm 只在回路开着时给。</summary>
+    string? ITemperatureStatus.ReadingAlarm => !Enabled ? null : ReadingAlarm;
+
     /// <summary>
     /// 制冷段：把夹套目标压到基准以下 belowC（fromEquilibrium = true 压到稳态偏置之下；false 压到釜内之下，按外环 P 算）。
     /// 夹套单环 / 温控器 PID / 回路没在控 → false，调用方只扳继电器。不看 Enabled：切换序列中途输出临时关着那一两秒回路照样在控
@@ -150,6 +161,38 @@ public sealed class Rd105TemperatureControl : ITemperatureControl, ITemperatureS
 
     /// <summary>【本地改动】这一路别的条件都齐了、只等 TEC 接得上就升温加速：会话据此提前备水 / 提前问。</summary>
     public bool HeatBoostWaitingForTec => _loop is not null && Kind == TempChannelKind.Reactor && _loop.HeatBoostWaitingForTec(_tc);
+
+    // ---- 【本地改动】（2026-11-16，外环改「按实测实时算」第 1 步）外环「旧 / 新」：照 SetHeatBoost 的写法转一层到回路（按路），温控器 PID 方式下什么都不做 ----
+
+    /// <summary>【本地改动】这一路下一次开控用哪个外环（true = 新）。只存请求：在控的这一场照开控时锁定的走完，停控后再开控才用上（回路里锁）。</summary>
+    public void SetOuterAlgorithm(bool live) => _loop?.SetOuterAlgorithm(_tc, live);
+
+    /// <summary>【本地改动】已选的外环（true = 新）；温控器 PID 方式下没有，false。</summary>
+    public bool OuterAlgorithmRequested => _loop?.GetOuterAlgorithm(_tc) ?? false;
+
+    /// <summary>【本地改动】组合会话每拍给「TEC 此刻真接着」（继电器在 TEC 侧、TEC 功率线合着、不在挂起）：进新外环的放热报警和跑飞保护的放热豁免。</summary>
+    public void SetTecEngaged(bool engaged) => _loop?.SetTecEngaged(_tc, engaged);
+
+    /// <summary>【本地改动】这一路此刻夹套目标归新外环给（上位机串级控釜内、这一场开控时锁定成了新、还在控）。
+    /// 会话按它决定这一路那几条旧规则（提前切 TEC / 压低 / …）开不开——看回路锁定的值，不自己再读一遍开关。</summary>
+    public bool LiveOuterInControl => _loop is not null && Kind == TempChannelKind.Reactor && _loop.IsLiveOuterInControl(_tc);
+
+    /// <summary>【本地改动】给界面的新外环状态（已选 / 在用 / 维持温差 BHat / 釜时间常数 Tau / 锁成旧的原因）；温控器 PID 方式下 null。</summary>
+    public LiveOuterChannelStatus? LiveOuterStatus => _loop?.GetLiveOuterStatus(_tc);
+
+    /// <summary>
+    /// 【本地改动】放热报警此刻成立时的那句话（新外环在控、它的报警条件成立：制冷顶满 ≥ 60 s、釜内还在升、釜壁估计比釜内冷；
+    /// 第 1 步复核起跑飞保护的「放热」豁免成立着也算——两种都可能是冷却没在出力，话里叫人查 TEC 电流和冷却水）；不成立 / 旧外环 / 不在控为 null。
+    /// 只报、不停控（用户 2026-11-16）。由 Rd105Session.OnCycle 每拍按上升 / 下降沿写（只在那一处判）；界面经 ITemperatureStatus.Alarm 拿它出红条（只在输出开着时给，见下面那个显式实现）。
+    /// </summary>
+    public string? Exotherm { get; internal set; }
+
+    /// <summary>
+    /// 【本地改动】（2026-11-17，S1「读数对不上就停控」）「读数没跟着夹套降」报警此刻成立时的那句话：新外环在控、夹套一直往下推够了、釜内读数 30 s 平均一直没动——
+    /// 可能是慢慢变强的放热，也可能是探头读数卡住 / 不在本釜液里，从温度上分不开，只报不停控（用户「放热只报不停」）。不成立 / 旧外环 / 不在控为 null。
+    /// 由 Rd105Session.OnCycle 每拍按周期快照写；界面经 ITemperatureStatus.Alarm 跟放热报警一起出红条（只在输出开着时给）。
+    /// </summary>
+    public string? ReadingAlarm { get; internal set; }
 
     /// <summary>
     /// 回路此刻真正在追的设定值：RampAsync 斜坡中是斜坡当前值（不是终点）；温控器 PID 方式退回 Setpoint。

@@ -89,6 +89,9 @@ public partial class HmiView : UserControl
     private void OnModeTr(object? s, RoutedEventArgs e) => Vm?.Cur?.SwitchMode("Tr");
     private void OnModeTj(object? s, RoutedEventArgs e) => Vm?.Cur?.SwitchMode("Tj");
     private void OnModeTrTj(object? s, RoutedEventArgs e) => Vm?.Cur?.SwitchMode("TrTj");
+    // 【本地改动】（外环第 1 步）温控卡「外环 旧 | 新」
+    private void OnOuterOld(object? s, RoutedEventArgs e) => Vm?.Cur?.PickOuter(false);
+    private void OnOuterNew(object? s, RoutedEventArgs e) => Vm?.Cur?.PickOuter(true);
 
     private void OnTogTr(object? s, PointerPressedEventArgs e) { Vm?.Cur?.ToggleTrSensor(); e.Handled = true; }
     private void OnTogPh(object? s, PointerPressedEventArgs e) { Vm?.Cur?.TogglePhSensor(); e.Handled = true; }

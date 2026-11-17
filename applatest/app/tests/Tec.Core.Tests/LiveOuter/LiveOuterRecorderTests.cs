@@ -13,6 +13,8 @@ namespace Tec.Core.Tests;
 /// · extra / note 带逗号、引号时照样拆得对（认引号的拆法）；按逗号硬拆的从行尾倒着数 8 格也拿得到新列；
 /// · 「停止」行：note 还在它自己那一列，后面补齐空列，每一行的列数都等于表头；
 /// · 走真会话：釜内有读数时记录里新列有数，没喂釜内（影子起不了算）就留空。
+/// 【本地改动】（2026-11-17，S1「读数对不上就停控」）lo_alarm 后面再加 3 列 s1_ra / s1_d / s1_u（新外环在控、判据算过才有数），前 33 列不动：
+/// 下面这几条按 33 → 36 改了（第 0 步的 8 列取 [25..33]、从行尾倒着数要跳过 3 格），另加一条钉 s1_ 那 3 列的写法。
 /// </summary>
 public class LiveOuterRecorderTests
 {
@@ -21,6 +23,9 @@ public class LiveOuterRecorderTests
         "time,elapsed_s,kind,setpoint,inner_sp,tr,tj,duty_written,duty_applied,p,i,d,outer_p,outer_i,outer_d,outer_fin,boost,v_m,v_star,brake_f,actuator,hold_s,cycle_ms,extra,note";
 
     private const string NewColumns = "algo,lo_isp,lo_b,lo_xr,lo_wall,lo_tau,lo_tau2,lo_alarm";
+
+    /// <summary>【本地改动】（2026-11-17，S1）再加的 3 列。</summary>
+    private const string S1Columns = "s1_ra,s1_d,s1_u";
 
     /// <summary>认引号的 CSV 拆行：格子整个用双引号包着时里面可以有逗号，两个引号 = 一个引号。</summary>
     private static string[] SplitCsv(string line)
@@ -46,11 +51,11 @@ public class LiveOuterRecorderTests
     }
 
     [Fact]
-    public void 表头_原25列一字不差_行尾多8列()
+    public void 表头_原25列一字不差_行尾多8列_S1再加3列()
     {
-        Assert.Equal(OldHeader + "," + NewColumns, Rd105LoopRecorder.Header);
+        Assert.Equal(OldHeader + "," + NewColumns + "," + S1Columns, Rd105LoopRecorder.Header);
         var cols = Rd105LoopRecorder.Header.Split(',');
-        Assert.Equal(33, cols.Length);
+        Assert.Equal(36, cols.Length);
         Assert.Equal(OldHeader.Split(','), cols[..25]);
         Assert.Equal("extra", cols[23]);
         Assert.Equal("note", cols[24]);
@@ -92,33 +97,34 @@ public class LiveOuterRecorderTests
         Assert.Equal(6, lines.Length);                                 // 表头 + 4 拍 + 停止
         Assert.Equal(Rd105LoopRecorder.Header, lines[0].TrimStart('﻿'));
         var rows = lines.Skip(1).Select(SplitCsv).ToArray();
-        Assert.All(rows, r => Assert.Equal(33, r.Length));             // 每一行的列数都等于表头（认引号地拆）
+        Assert.All(rows, r => Assert.Equal(36, r.Length));             // 每一行的列数都等于表头（认引号地拆）
+        Assert.All(rows, r => Assert.Equal(new[] { "", "", "" }, r[33..]));   // 【本地改动】（S1）旧外环在控：s1_ 那 3 列空
 
         // ①：第 2…23 列跟旧程序写的那一行逐格相同；note 是「开始」那句；新列 = 0 + 7 个空
         Assert.Equal(old, rows[0][2..24]);
         Assert.Equal("开始：釜内 60 ℃（尽快）", rows[0][24]);
-        Assert.Equal(new[] { "0", "", "", "", "", "", "", "" }, rows[0][25..]);
-        // 这一行没有带引号的格子：整行除了时间两格，就是旧程序会写的那一行后面接上 ",0,,,,,,,"
-        Assert.EndsWith("," + string.Join(",", old) + ",开始：釜内 60 ℃（尽快）,0,,,,,,,", lines[1]);
+        Assert.Equal(new[] { "0", "", "", "", "", "", "", "" }, rows[0][25..33]);
+        // 这一行没有带引号的格子：整行除了时间两格，就是旧程序会写的那一行后面接上 ",0,,,,,,,"（再接 s1_ 那 3 个空格子 ",,,"）
+        Assert.EndsWith("," + string.Join(",", old) + ",开始：釜内 60 ℃（尽快）,0,,,,,,,,,,", lines[1]);
 
         // ②：前 25 列跟 ① 一样（note 空了）；新列是影子的 7 个数，三位小数
         Assert.Equal(old, rows[1][2..24]);
         Assert.Equal("", rows[1][24]);
-        Assert.Equal(new[] { "0", "65.432", "5.813", "41.837", "47.65", "987.654", "912.346", "0" }, rows[1][25..]);
-        Assert.EndsWith("," + string.Join(",", old) + ",,0,65.432,5.813,41.837,47.65,987.654,912.346,0", lines[2]);
+        Assert.Equal(new[] { "0", "65.432", "5.813", "41.837", "47.65", "987.654", "912.346", "0" }, rows[1][25..33]);
+        Assert.EndsWith("," + string.Join(",", old) + ",,0,65.432,5.813,41.837,47.65,987.654,912.346,0,,,", lines[2]);
 
         // ③：带逗号 / 引号的 extra、note 拆回原话；新列不受影响
         Assert.Equal(old[..21], rows[2][2..23]);
         Assert.Equal("电加热,双向挡", rows[2][23]);
         Assert.Equal("他说\"先开水\",然后停了", rows[2][24]);
-        Assert.Equal(new[] { "0", "-50", "5.813", "41.837", "47.65", "987.654", "912.346", "1" }, rows[2][25..]);
-        // 按逗号硬拆会多出格子（note 里有逗号），但新 8 列全是数字：从行尾倒着数照样拿得对
+        Assert.Equal(new[] { "0", "-50", "5.813", "41.837", "47.65", "987.654", "912.346", "1" }, rows[2][25..33]);
+        // 按逗号硬拆会多出格子（note 里有逗号），但新 8 + 3 列全是数字：从行尾倒着数照样拿得对
         var naive = lines[3].Split(',');
-        Assert.True(naive.Length > 33);
-        Assert.Equal(rows[2][25..], naive[^8..]);
+        Assert.True(naive.Length > 36);
+        Assert.Equal(rows[2][25..], naive[^11..]);
 
         // ④：不是有限数的那一格留空，别的照写
-        Assert.Equal(new[] { "0", "65.432", "", "41.837", "47.65", "", "912.346", "0" }, rows[3][25..]);
+        Assert.Equal(new[] { "0", "65.432", "", "41.837", "47.65", "", "912.346", "0" }, rows[3][25..33]);
         Assert.Equal("", rows[3][23]);
 
         // 停止行：只有时间、秒数、note 有内容；note 还在第 24 列（下标），不是最后一列
@@ -128,7 +134,33 @@ public class LiveOuterRecorderTests
         Assert.Equal("停止：操作人停控", stop[24]);
         Assert.All(stop[2..24], cell => Assert.Equal("", cell));
         Assert.All(stop[25..], cell => Assert.Equal("", cell));
-        Assert.EndsWith(",停止：操作人停控,,,,,,,,", lines[5]);
+        Assert.EndsWith(",停止：操作人停控,,,,,,,,,,,", lines[5]);
+    }
+
+    [Fact]
+    public void S1三列_新外环在控且判据算过才有数_三位小数_旧外环和没算过留空()
+    {
+        // 【本地改动】（2026-11-17，S1）s1_ra / s1_d / s1_u：新外环在控（algo 1）、周期快照带着判据这一拍的量才写；旧外环在控（algo 0）带着也不写
+        using var dir = Rd105HostControl.UseGainsDir(Path.Combine(Path.GetTempPath(), "tec-lo-rec-" + Guid.NewGuid().ToString("N")));
+        var rec = new Rd105LoopRecorder("R1", 1, (_, _) => { });
+        rec.Start("釜内", 60, "尽快");
+        var path = rec.Path!;
+        var info = new ChannelCycleInfo(true, false, 0, 60, 42.3, -90, 0, 0, 0) { Cascade = true, InnerSetpointC = 74.6, OuterMeasuredC = 41.8 };
+        var beat = new ReadingCheckBeat(ReadingVerdict.Ok, "", true, 41.8, -0.12345, 10, 5, 41.8, true, 8.76543, 1, 2, 0.01, 0.2, 0.24996);
+        rec.Write(info with { LiveOuterInControl = true, ReadingBeat = beat }, 41.8, "加热棒+TEC双向", 125, null);
+        rec.Write(info with { LiveOuterInControl = true }, 41.8, "加热棒+TEC双向", 125, null);                 // 新外环在控、还没算过
+        rec.Write(info with { LiveOuterInControl = false, ReadingBeat = beat }, 41.8, "加热棒+TEC双向", 125, null);  // 旧外环：不写
+        rec.Write(info with { LiveOuterInControl = true, ReadingBeat = beat with { U = double.NaN } }, 41.8, "加热棒+TEC双向", 125, null);
+        rec.Stop("操作人停控");
+        var rows = File.ReadAllLines(path).Skip(1).Select(SplitCsv).ToArray();
+        Assert.All(rows, r => Assert.Equal(36, r.Length));
+        Assert.Equal(new[] { "-0.123", "8.765", "0.25" }, rows[0][33..]);
+        Assert.Equal("1", rows[0][25]);
+        Assert.Equal(new[] { "", "", "" }, rows[1][33..]);
+        Assert.Equal(new[] { "", "", "" }, rows[2][33..]);
+        Assert.Equal("0", rows[2][25]);
+        Assert.Equal(new[] { "-0.123", "8.765", "" }, rows[3][33..]);
+        Assert.Equal(new[] { "", "", "" }, rows[4][33..]);              // 停止行
     }
 
     // ── 走真会话 ─────────────────────────────────────────────────────
@@ -188,7 +220,7 @@ public class LiveOuterRecorderTests
         Assert.Equal(Rd105LoopRecorder.Header, la[0].TrimStart('﻿'));
         var ra = la.Skip(1).Select(SplitCsv).ToArray();
         Assert.True(ra.Length > 8, $"A 路只有 {ra.Length} 行");
-        Assert.All(ra, r => Assert.Equal(33, r.Length));
+        Assert.All(ra, r => Assert.Equal(36, r.Length));
         var beatsA = ra[..^1];                                         // 最后一行是「停止」
         // 原来的列照旧
         Assert.All(beatsA, r => { Assert.Equal("Tr", r[2]); Assert.Equal("30", r[3]); Assert.Equal("20", r[5]); Assert.Equal("TEC双向", r[20]); });
@@ -207,7 +239,7 @@ public class LiveOuterRecorderTests
             Assert.Equal("0", r[32]);                                  // lo_alarm：第 0 步恒 0
         });
         // 3 s 里影子至少又算过一拍：新列不是从头到尾同一组数；两拍之间的行重复上一拍的数
-        var groups = beatsA.Select(r => string.Join(",", r[26..])).Distinct().Count();
+        var groups = beatsA.Select(r => string.Join(",", r[26..33])).Distinct().Count();
         Assert.InRange(groups, 2, beatsA.Length - 3);
         // 「停止」行
         Assert.Equal("停止：操作人停控", ra[^1][24]);
@@ -216,13 +248,13 @@ public class LiveOuterRecorderTests
         // B 路：没有釜内读数 → 影子没起算 → 后 7 列空，algo 照写 0；原来的列照旧
         var rb = File.ReadAllLines(pathB).Skip(1).Select(SplitCsv).ToArray();
         Assert.True(rb.Length > 8, $"B 路只有 {rb.Length} 行");
-        Assert.All(rb, r => Assert.Equal(33, r.Length));
+        Assert.All(rb, r => Assert.Equal(36, r.Length));
         Assert.All(rb[..^1], r =>
         {
             Assert.Equal("Tj", r[2]);
             Assert.Equal("30", r[3]);
             Assert.Equal("", r[5]);
-            Assert.Equal(new[] { "0", "", "", "", "", "", "", "" }, r[25..]);
+            Assert.Equal(new[] { "0", "", "", "", "", "", "", "", "", "", "" }, r[25..]);
         });
     }
 }

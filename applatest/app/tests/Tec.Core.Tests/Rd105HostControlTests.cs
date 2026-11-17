@@ -584,13 +584,13 @@ public class Rd105HostControlTests
         Assert.Contains(lines, l => l.Contains("目标改为 32 ℃"));
         // 「停止」那行列数跟表头走；停止原因还在 note 那一列（下标 24），后面是外环实时算那 8 列（这一行都空）
         var stop = lines[^1].Split(',');
-        Assert.Equal(33, stop.Length);
+        Assert.Equal(36, stop.Length);                   // 【本地改动】（2026-11-17，S1）行尾再加 s1_ra / s1_d / s1_u 3 列：33 → 36，前 33 列不动
         Assert.EndsWith("停止：操作人停控", stop[24]);
         Assert.All(stop[25..], c => Assert.Equal("", c));
         // 每行 33 列：时间、秒、模式、设定、内环设定、Tr、Tj、写入、回显、P、I、D、外环 P/I/D、收尾多给、升温加速（boost / v_m / v_star / brake_f）、执行器、保持、耗时、extra、note，
         // 再加外环实时算第 0 步（新算法只算不控）的 8 列：algo、lo_isp、lo_b、lo_xr、lo_wall、lo_tau、lo_tau2、lo_alarm——原 25 列的列号没动
         var cols = lines[2].Split(',');
-        Assert.Equal(33, cols.Length);
+        Assert.Equal(36, cols.Length);                   // 【本地改动】（S1）再加 3 列 s1_ra / s1_d / s1_u（旧外环在控：空）
         Assert.Equal("Tj", cols[2]);
         Assert.Equal("30", cols[3]);
         Assert.Equal("", cols[16]);                      // 没在升温加速：空

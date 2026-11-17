@@ -200,4 +200,29 @@ public interface IPidTuningBench : ICapability
 
     /// <summary>表被回路改了（自整定登记、学到稳态偏置、偏置上限放宽）或重读了。可能在任何线程上来。</summary>
     event Action? TablesChanged;
+
+    // ── 【本地改动】（2026-11-16，外环改「按实测实时算」第 1 步，主会话 D2 甲）串级外环「旧 / 新」 ──────────────────
+    // 用户 2026-11-16 点头：面板上加「外环：旧 / 新」，缺省旧；选「新」那一场由新算法（按实测实时算）控，随时能切回去。
+    // 每个工位一份，存在本机这一路的 pid.json（跟「增益调度」开关同一个文件；没有这一项 = 旧）。开控那一刻锁定、整场不变：
+    // 控中改了只存着，停控后重新开控才用上（主会话 D4）。新算法只在双向挡、釜内控温时用得上，别的情况选了也按旧控、说一句为什么（D13）。
+    // 全是缺省成员：老实现不用改，一律「不支持、旧」；只有双工位反应主机打开支持（单机 RD105 没有加热棒 ↔ TEC 双向，不支持）。
+
+    /// <summary>【本地改动】这一路能不能选外环算法（缺省 false）。不支持时界面不显示这个开关。</summary>
+    bool OuterAlgorithmSupported => false;
+
+    /// <summary>【本地改动】已选的外环：true = 新（按实测实时算），false = 旧（缺省）。下一次开控按它锁定。</summary>
+    bool OuterAlgorithmLive => false;
+
+    /// <summary>【本地改动】此刻在用的外环：这一路在控釜内（串级）时 true = 新、false = 旧；没在控 / 控的是夹套（没有外环）为 null。
+    /// 跟 <see cref="OuterAlgorithmLive"/> 不一样 = 控中改了选择（或选了新、这一场锁成了旧），停控后重新开控才用上。</summary>
+    bool? OuterAlgorithmLiveInUse => null;
+
+    /// <summary>【本地改动】给人看的一行外环状态（人话，不带符号）：在用新时「外环：新（按实测实时算）· 维持温差 X K · 釜反应时间约 Y min」；
+    /// 已选 / 在用不一样时说「停控后重新开控才用上」；选了新却锁成旧时说为什么。不支持为 null。</summary>
+    string? OuterAlgorithmNote => null;
+
+    /// <summary>【本地改动】改选外环并立刻存盘、推给回路——只改「请求」：在控的这一场照开控时锁定的走完，停控后重新开控才用上。
+    /// 不支持的抛 NotSupportedException（缺省实现就是这样）。存盘失败抛（IOException 等），选择和回路请求都不变（面板据此说「拒绝」）。</summary>
+    void SetOuterAlgorithm(bool live)
+        => throw new NotSupportedException("这一路不支持选外环算法（只有双工位反应主机的上位机 PID 支持）");
 }

@@ -71,6 +71,10 @@ public sealed class Rd105Settings : IDeviceSettings
     /// <summary>参数窗写了某路的 LIMITED（最大输出占空比）：会话接上去让回路的上限跟着改。</summary>
     internal Action<int, int>? MaxDutyWritten { get; set; }
 
+    /// <summary>【本地改动】（2026-11-17，S2「看电流再决定」）参数窗写了某路的 SETCURRENT（最大输出电流，A）：会话接上去推给回路
+    /// （新模式跑飞「放热」豁免的电流门槛按它算，HostControlLoop.SetTecCurrentLimit）。仿 <see cref="MaxDutyWritten"/>。</summary>
+    internal Action<int, double>? MaxCurrentWritten { get; set; }
+
     public Rd105Settings(Rd105Link link, ParameterSet config, Action<string, string>? log, bool hostLoop = false)
     {
         _client = link.Client;
@@ -313,6 +317,7 @@ public sealed class Rd105Settings : IDeviceSettings
             {
                 var amps = Math.Clamp(v.Num(spec.Key), 0.5, 15);
                 await _ctl.SetMaxCurrentAsync(tc!.Value, amps, ct).ConfigureAwait(false);
+                MaxCurrentWritten?.Invoke(tc.Value, amps);   // 【本地改动】（S2）回路的电流门槛跟着改
                 _config[Rd105TecDriver.FieldMaxCurrent] = amps;
                 return $"{who}最大输出电流 = {amps:0.0} A（SETCURRENT={TecScale.MaxCurrentToRaw(amps)}，已同步到台面配置）";
             }

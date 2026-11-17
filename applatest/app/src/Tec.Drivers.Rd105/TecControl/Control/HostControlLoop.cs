@@ -69,6 +69,42 @@ public sealed record ChannelCycleInfo(
     /// <summary>【本地改动】（2026-11-14，外环改「按实测实时算」第 0 步）新外环影子运行这一拍的读数：只给逐拍记录末尾那几列（lo_isp / lo_b / …）用，
     /// 回路自己不读它——控温还是原来的外环。影子两拍之间（它 ≥ 2 s 一拍）是上一拍的同一份；还没起算 / 在等断档后重摆 / 影子停了为 null。</summary>
     public LiveOuterReadout? LiveOuter { get; init; }
+
+    /// <summary>【本地改动】（2026-11-16，外环改「按实测实时算」第 1 步）这一拍这一路的夹套目标是新外环给的（开控时选了「新」、锁定成了新、还在控——
+    /// 挂起那一两秒、Tr 丢失保持期也算）。逐拍记录 algo 列写 1 就看它；旧外环在控 / 不在控 / 单环一律 false（缺省），旧模式下这一格跟以前逐字节相同。
+    /// 为 true 的那几拍 OuterP / OuterI / OuterD / OuterFinishC 给 NaN：旧外环这一场一拍没算，那几个数是开控时清的 0 或上一场留下的，记出来只会误导。</summary>
+    public bool LiveOuterInControl { get; init; }
+
+    /// <summary>【本地改动】（2026-11-16，外环第 1 步复核）新外环在控、跑飞保护的「放热」豁免这一拍成立着（判到要停、因为制冷顶满 + TEC 真接着 + 釜内比夹套热而没停，
+    /// 直到条件不成立）。会话据此一并上红条：豁免成立时影子的报警条件不一定成立（降温中 TEC 开路，釜内不升），不上的话面板上什么都看不见。
+    /// 只在 <see cref="LiveOuterInControl"/> 为 true 的拍才可能为 true；旧模式恒 false。</summary>
+    public bool LiveExoExempt { get; init; }
+
+    /// <summary>【本地改动】（2026-11-17，S1「读数对不上就停控」）新外环在控、「读数没跟着夹套降」报警成立着：那句话（会话据此上红条，同放热报警那一条）；
+    /// 没报 / 旧模式为 null。只在 <see cref="LiveOuterInControl"/> 为 true 的拍才可能有。上升沿 / 撤了的那两句回路已经经 ChannelNotice 说过（日志 + 逐拍记录 note）。</summary>
+    public string? ReadingAlarm { get; init; }
+
+    /// <summary>【本地改动】（2026-11-17，S1）新外环在控时 S1 判据最近一拍的量（逐拍记录行尾 s1_ra / s1_d / s1_u；两拍之间重复上一拍）；旧模式 / 还没算过为 null。</summary>
+    public ReadingCheckBeat? ReadingBeat { get; init; }
+}
+
+/// <summary>
+/// 【本地改动】（2026-11-16，外环第 1 步）某一路新外环的状态，给界面读（<see cref="HostControlLoop.GetLiveOuterStatus"/>）。只读快照，读的那一刻拷出来的。
+/// </summary>
+/// <param name="Requested">已选「新」（会话 / 面板最近一次 <see cref="HostControlLoop.SetOuterAlgorithm"/> 给的）。下一次开控才按它锁定。</param>
+/// <param name="InControl">在用「新」：在控、釜内串级、开控时锁定成了新（= <see cref="HostControlLoop.IsLiveOuterInControl"/>）。</param>
+/// <param name="Active">这一路在控（闭环控温中）。</param>
+/// <param name="ShadowStarted">新外环起算了（拿到过釜内、夹套都有效的读数）。</param>
+/// <param name="ShadowStopped">新外环算出错停了（直到断开设备重连）；<paramref name="StopReason"/> 是原因。</param>
+/// <param name="StopReason">停的原因；没停为 null。</param>
+/// <param name="Last">新外环最近一拍的读数（维持温差 BHat、釜时间常数 Tau 秒……）；还没起算 / 停了 / 在等断档重摆为 null。</param>
+/// <param name="LockNote">这一场选了新、开控时却锁成了旧的原因（影子停了 / 没起算 / 不是双向挡 / 控的是夹套）；锁成新、或者没选新为 null。停控清。</param>
+public sealed record LiveOuterChannelStatus(
+    bool Requested, bool InControl, bool Active, bool ShadowStarted, bool ShadowStopped, string? StopReason,
+    LiveOuterReadout? Last, string? LockNote)
+{
+    /// <summary>在控、选的跟在用的不一样：界面上说「已选 X / 在用 Y，停控后重新开控才用上」。</summary>
+    public bool PendingUntilRestart => Active && Requested != InControl;
 }
 
 /// <summary>一个完整控制周期的结果（后台线程发布）。电流每 4 个周期采样一次，其余周期为 null。</summary>
@@ -465,6 +501,64 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         public LiveOuterShadow? Live = new();
         /// <summary>【本地改动】影子停了（算挂了）已经说过一次，不再说。</summary>
         public bool LiveStopSaid;
+
+        // ---- 【本地改动】（2026-11-16，外环改「按实测实时算」第 1 步：新外环能接手控温，开关缺省「旧」）----
+        // 都是这个私有类的字段、只经方法读写（HostControlLoop 不加公有可写属性：验收仿真的压缩表逐个枚举那些属性）。旧路径一个都不读。
+        /// <summary>会话 / 面板要哪个外环：true = 新（<see cref="HostControlLoop.SetOuterAlgorithm"/>）。缺省 false = 旧；只是「请求」，下一次开控才按它锁定。</summary>
+        public volatile bool LiveRequested;
+        /// <summary>这一场锁定的是新外环（<see cref="HostControlLoop.StartChannelAsync"/> 在 Active = true 之前锁、整场不变，停控清）。
+        /// 先写它再 volatile 写 Active：回路线程先读 Active 再读它，读到的一定是这一场的锁定值。</summary>
+        public volatile bool LiveInControl;
+        /// <summary>锁定时的控温对象（串级 / 单环）：同一场里切换序列中途重新开控（挂起中下发）且对象没换才沿用锁定值，换了对象就重锁。</summary>
+        public ControlStrategy LiveLockStrategy;
+        /// <summary>选了新、开控时却锁成旧的原因（给界面）；停控清。</summary>
+        public volatile string? LiveLockNote;
+        /// <summary>会话每拍给的「TEC 此刻真接着」（继电器在 TEC 侧、TEC 功率线合着、不在挂起）：喂影子的放热报警（两种模式都喂，旧模式只影响 lo_alarm 列），
+        /// 新模式下跑飞保护的「放热」豁免也要它。没人给（单机 Rd105、温控器 PID 方式）就一直是 false。</summary>
+        public volatile bool TecEngaged;
+        /// <summary>这一拍影子的读数（RunOneCycleAsync 里 LiveShadowTick 刚返回的那一份，可能为 null）：新外环在控时 RunControlStepAsync 拿它当夹套目标。
+        /// 不用 Live.Last——等断档重摆那几拍 Tick 返回 null，Last 却还是 60 s 以前的旧读数。只在回路线程读写。</summary>
+        public LiveOuterReadout? LiveNow;
+        /// <summary>新外环在控、影子这一拍没读数从什么时候起（夹套目标保持上一拍的值；连续 OuterLossGrace 拿不到就停控）。拿回来清。回路线程用。</summary>
+        public DateTime? LiveMissingSince;
+        /// <summary>新模式跑飞保护的「放热」豁免已经说过（直到豁免条件不成立再重新武装）。回路线程用。</summary>
+        public bool LiveExoSaid;
+        /// <summary>【本地改动】（第 1 步复核）新模式跑飞「放热」豁免最近一拍有效的釜内读数：Tr 这一拍读不到（E3 保持期）就拿它跟夹套比，
+        /// 不让一拍 NaN 把豁免当拍翻成停控（抢在 OuterLossGrace 之前把满冷关掉）。开控清成 NaN（没拿到过 = 比不出「比夹套热」，照停）。回路线程用。</summary>
+        public double LiveExoLastTr = double.NaN;
+
+        // ---- 【本地改动】（2026-11-17，第 1 步复核之后用户选的两道保护：S1「读数对不上就停控」、S2「看电流再决定」）----
+        // 同上：都是这个私有类的字段（HostControlLoop 不加公有可写属性）。S1 那几个旧模式一拍都不碰（S1 只在开控锁成新时建，旧模式一直是 null）；
+        // S2 的电流样本两种模式都存（只是存，旧模式没有人读——旧模式不走 LiveRunaway），不改任何控制量。
+        /// <summary>S1 判据（<see cref="ReadingCheck"/>）：开控锁成新外环时新建，锁成旧 / 停控清成 null；同一场挂起中再开控沿用（D4）。
+        /// 会话线程（开控 / 停控）写引用、回路线程读：回路先读 volatile 的 Active 再读它，读到的是这一场的那一个。</summary>
+        public ReadingCheck? S1;
+        /// <summary>S1 上一拍喂过的那一份影子读数（按引用比：影子两拍之间回的是同一个对象，只有新的一份才喂）。回路线程用。</summary>
+        public LiveOuterReadout? S1Readout;
+        /// <summary>S1 最近一拍的结果（排查 / 逐拍记录 s1_ 列用）。回路线程用。</summary>
+        public ReadingCheckBeat? S1Beat;
+        /// <summary>S1 判到停控、等这一路下一次控制步去停（判在 RunOneCycleAsync 里，挂起那几拍不走控制步）：停控原因那句话；null = 没有。回路线程用，开控 / 停控清。</summary>
+        public string? S1StopPending;
+        /// <summary>S1「读数没跟着夹套降」报警成立着：那句话（周期快照带出去上红条）；null = 没报。上升沿说一次、撤了说一次。回路线程用，开控 / 停控清。</summary>
+        public string? S1AlarmText;
+        /// <summary>【本地改动】（2026-11-17，S1 复核查实）这条报警的锁存：起了以后只在读数真动了 0.02 K 才撤（夹套推到底、R_A 回到门槛以内不撤）。
+        /// 开控锁定 / 停控换一个新的（整个换，回路线程这一拍拿到的是哪一个就用哪一个）。</summary>
+        public ReadingAlarmLatch S1Latch = new();
+
+        /// <summary>S2：这一路最近一个「TEC 在出力」的合格电流样本的时刻；null = 没有 / TEC 离开过。
+        /// 【本地改动】（2026-11-17 复核查实）时刻是回路的单调时间线（HostControlLoop._cycleMono），不是快照墙钟；下面 LiveSatLowAt、两个样本队列同。</summary>
+        public DateTime? TecDrawAt;
+        /// <summary>S2：那个合格样本的电流（A）和那一拍告警字里本路「限流中」位。</summary>
+        public double TecDrawAmps;
+        public bool TecDrawLimiting;
+        /// <summary>S2：新外环在控的控制步里最近一次「制冷那一侧顶满（贴下限、不顶上限）」那一拍的时刻（合格样本要「这一拍」顶满）。回路线程用。</summary>
+        public DateTime LiveSatLowAt;
+        /// <summary>S2：TEC 不接着时读到的本路电流（空载读数 I_空），留最新一个往前 W 秒内的。回路线程用。</summary>
+        public readonly Queue<(DateTime At, double Amps)> TecIdleAmps = new();
+        /// <summary>S2：TEC 接着时读到的本路电流，留最近 W 秒（只给「没在出力」那句话报「近 W s 电流最大」用）。TEC 离开清。回路线程用。</summary>
+        public readonly Queue<(DateTime At, double Amps)> TecSideAmps = new();
+        /// <summary>S2：本路 SETCURRENT 限流值（A，<see cref="HostControlLoop.SetTecCurrentLimit"/>）；NaN = 没推过（按 0.5 A，协议最小限流，门槛宁低勿高）。</summary>
+        public double TecLimitA = double.NaN;
 
         /// <summary>落地偏置钳位已锁存（进交接带一次即锁，至首次过零由武装标志一并解除）。
         /// 必须锁存：按拍重判会在带边被 ±10mK 噪声来回触发，实测出现 4 次咬合-松开抖动。</summary>
@@ -901,6 +995,9 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
             ChannelNotice?.Invoke(ch, "info", $"通道{ch}夹套压低解除：外环从积分 {s.OuterPid.LastI:F2} ℃ 接着算，趋近 / 过零放电重新武装");
             return true;
         }
+        // 【本地改动】（外环第 1 步，用户 2026-11-16 点头：选「新」时提前切 TEC / 压低那几条不再起作用）这一场新外环在控：不接受压低，
+        // 会话当没压上（只扳继电器）。新外环自己按实测给夹套目标，压低的效果在它那里没有落点。旧模式条件恒假
+        if (s.LiveInControl) return false;
         if (!s.Active || s.Strategy != ControlStrategy.Cascade || s.Tuner is not null) return false;
         var below = Math.Abs(belowC.Value);
         var limit = s.OuterPid.OutputMax;
@@ -1432,6 +1529,102 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
     /// <summary>【本地改动】会话每拍告诉回路这一路此刻 TEC 接不接得上（冷却水已通 / 人选了不开 / 不用水）：升温加速靠 TEC 刹车，接不上不进、进了就退。</summary>
     public void SetHeatBoostAllowed(int ch, bool allowed) => State(ch).HeatBoostAllowed = allowed;
 
+    // ---------- 【本地改动】（2026-11-16，外环改「按实测实时算」第 1 步）外环算法「旧 / 新」 ----------
+    // 全是方法、不加属性：验收仿真把 HostControlLoop 的公有可写属性逐个归类压缩，多一个就红（第 1 步约束）。
+    // 规矩（主会话 D4）：开控那一刻锁定、整场不变；控中改选择只存请求，停控后再开控才用上；不做控中切换。
+
+    /// <summary>【本地改动】这一路下一次开控用哪个外环：true = 新（按实测实时算，<see cref="LiveOuter"/>），false = 旧（缺省）。
+    /// 只存请求、当拍不改控温：在控的这一场照开控时锁定的那个走完（<see cref="StartChannelAsync"/> 里锁）。</summary>
+    public void SetOuterAlgorithm(int ch, bool live) => State(ch).LiveRequested = live;
+
+    /// <summary>【本地改动】这一路已选的外环（最近一次 <see cref="SetOuterAlgorithm"/> 给的；缺省 false = 旧）。</summary>
+    public bool GetOuterAlgorithm(int ch) => State(ch).LiveRequested;
+
+    /// <summary>【本地改动】这一路此刻夹套目标归新外环给：在控、釜内串级、这一场开控时锁定成了新。挂起（切继电器那一两秒）、Tr 丢失保持期照样为真；停控即假。</summary>
+    public bool IsLiveOuterInControl(int ch)
+    {
+        var s = State(ch);
+        return s.Active && s.LiveInControl && s.Strategy == ControlStrategy.Cascade;
+    }
+
+    /// <summary>【本地改动】会话每拍告诉回路这一路 TEC 此刻真接着没有（继电器在 TEC 侧、TEC 功率线合着、不在挂起）。
+    /// 两种外环都喂：进新外环的放热报警（旧模式只影响逐拍记录 lo_alarm 列，不进任何控制量）；新外环在控时跑飞保护的「放热」豁免也看它。</summary>
+    public void SetTecEngaged(int ch, bool engaged) => State(ch).TecEngaged = engaged;
+
+    /// <summary>
+    /// 【本地改动】（2026-11-17，S2「看电流再决定」）这一路 TEC 的限流值（SETCURRENT，A）：会话开会话读回温控器参数后推一次，参数窗改了再推。
+    /// 新模式跑飞「放热」豁免的电流门槛 I_通 = √(I_空 × I_限) 用它（<see cref="TecDrawThreshold"/>）。没推过按 0.5 A（协议能设的最小限流，门槛宁低勿高）。
+    /// 是方法不是属性（回路不加公有可写属性）；不是有限正数就不收。
+    /// </summary>
+    public void SetTecCurrentLimit(int ch, double amps)
+    {
+        if (double.IsFinite(amps) && amps > 0) State(ch).TecLimitA = amps;
+    }
+
+    /// <summary>【本地改动】给界面读的新外环状态：已选 / 在用 / 维持温差 / 釜时间常数 / 为什么锁成了旧（见 <see cref="LiveOuterChannelStatus"/>）。</summary>
+    public LiveOuterChannelStatus GetLiveOuterStatus(int ch)
+    {
+        var s = State(ch);
+        var shadow = s.Live;
+        return new LiveOuterChannelStatus(
+            Requested: s.LiveRequested,
+            InControl: s.Active && s.LiveInControl && s.Strategy == ControlStrategy.Cascade,
+            Active: s.Active,
+            ShadowStarted: shadow?.Started ?? false,
+            ShadowStopped: shadow?.Stopped ?? false,
+            StopReason: shadow?.StopReason,
+            Last: shadow?.Last,
+            LockNote: s.LiveLockNote);
+    }
+
+    /// <summary>
+    /// 【本地改动】开控时锁定这一场的外环（在 Active = true 之前调）。返回选了新却锁不成新的原因（给提示用；锁成新、或者没选新为 null）。
+    /// 锁成新要全成立（主会话 D4 / D13）：选了新、釜内串级、双向挡那张表（新算法只在加热棒 + TEC 双向下试算验证过）、新外环起算了而且没停。
+    /// </summary>
+    private string? LockLiveOuter(ChannelState s)
+    {
+        s.LiveLockStrategy = s.Strategy;
+        s.LiveMissingSince = null;
+        s.LiveExoSaid = false;
+        s.LiveExoLastTr = double.NaN;      // 【本地改动】（第 1 步复核）上一场留下的釜内读数不带进这一场
+        // 【本地改动】（2026-11-17，S1 / S2）这一场的判据从头来：S1 先清（锁成新再在下面新建）；上一场的「TEC 在出力」样本不替这一场作保
+        s.S1 = null;
+        s.S1Readout = null;
+        s.S1Beat = null;
+        s.S1StopPending = null;
+        s.S1AlarmText = null;
+        s.S1Latch = new();                 // 【本地改动】（2026-11-17，S1 复核查实）报警锁存跟着从头来
+        s.TecDrawAt = null;
+        var live = s.Live;
+        var why = !s.LiveRequested ? null
+            : s.Strategy != ControlStrategy.Cascade
+                ? "新算法只管釜内控温，这一场控的是夹套：按原来的单环控"
+            : s.Table != GainTable.Both
+                ? "新算法只在双向挡（加热棒 + TEC，冷水机标开）下用，这一路此刻查的是" +
+                  (s.Table == GainTable.Tec ? " TEC " : "加热棒") + "那张表：这一场按旧外环控"
+            : live is null
+                ? "这一路没有新外环：这一场按旧外环控"
+            : live.Stopped
+                ? $"这一路新外环之前算出错停了（{live.StopReason}）：这一场按旧外环控；断开设备重连后新外环重新开始算"
+            : !live.Started
+                ? "这一路新外环还没拿到过釜内、夹套都有效的读数（还没起算）：这一场按旧外环控，等它起算以后停控再开控"
+            : null;
+        // 【本地改动】（2026-11-17，S1）锁成新才建判据：旧模式一直是 null，回路那一头见 null 一拍都不算。先建好再写 LiveInControl（再往后才是 volatile 的 Active = true）
+        if (s.LiveRequested && why is null) s.S1 = new ReadingCheck(live!.Core.Params, S1GapSeconds(live));
+        s.LiveInControl = s.LiveRequested && why is null;
+        s.LiveLockNote = why;
+        return why;
+    }
+
+    /// <summary>
+    /// 【本地改动】（2026-11-17，S1）S1 的「两次有效读数最多隔多久还接着算」（影子现场秒）：= OuterLossGrace（缺省 30 s：读数断这么久 E3 本来就停控了，定稿 §1.2），
+    /// 乘影子的 TimeScale 换成现场秒（产品里 = 1）。下限 LiveOuterShadow.SplitAboveS（10 s，影子「离上一拍超过它才算真断了一阵」）：
+    /// 台面把「Tr 丢失宽限」填 0 时 E3 一读不到就停，S1 却会把每两拍之间的 2 s 都当成「断了」、每拍重起参考——判据整个哑掉；
+    /// 平常的拍（真机 2–5 s，最长 12.8 s 那一拍也只是「拍长」）不该算断。缺省 30 s 时这个下限不起作用。
+    /// </summary>
+    private double S1GapSeconds(LiveOuterShadow shadow)
+        => Math.Max(OuterLossGrace.TotalSeconds * shadow.TimeScale, LiveOuterShadow.SplitAboveS);
+
     /// <summary>【本地改动】这一路此刻夹套目标归升温加速管。</summary>
     public bool IsHeatBoosting(int ch)
     {
@@ -1662,6 +1855,10 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         s.ProfileStartC = s.SetpointC;
         s.ProfileHoldAt = s.OuterLostSince is null ? null : s.ProfileStart;   // 【本地改动】保持期里起的曲线从头就暂停
         // 【本地改动】坡起点不在这儿清：坡中途重下一条坡（重规划）还用最早那个起点——那时的积分才是没带跟坡电荷的值
+        // 【本地改动】（外环第 1 步，主会话 D9：斜坡照用、不禁）新外环在控时走速率坡：这一步它拿不到坡的终点和坡速（第 2 步补接口），
+        // 只按坡上此刻的目标跟——试算台 42 → 60 不冲过（≤ +0.06），但坡尾落后 6–14 K、到站晚 6–20 min（scout-bench §3b）。说一声。旧模式条件恒假
+        if (s.Active && s.LiveInControl && s.Strategy == ControlStrategy.Cascade)
+            ChannelNotice?.Invoke(ch, "info", $"通道{ch}外环新算法这一步拿不到坡速：按坡上此刻的目标跟，会落在坡后面（坡越陡落得越多），到站比按坡速算的晚");
     }
 
     public void StopProfile(int ch) => State(ch).Profile = null;
@@ -1690,6 +1887,10 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         CancellationToken ct = default)
     {
         var s = State(ch);
+        // 【本地改动】（外环第 1 步，主会话 D4）同一场里再走一遍开控（会话切热源序列关了输出、挂着回路，这时来了一条下发：
+        // Rd105TemperatureControl.HostArmAsync 第三个条件「挂起中且输出没开」）：调之前就在控、对象没换 → 沿用这一场开控时锁定的外环，不按此刻的选择重锁
+        // （一场一个算法，直到停控）。换了对象（釜内 ⇄ 夹套）是新的一场，重锁。必须在下面任何一行改状态之前取
+        var keepLiveLock = s.Active && s.LiveLockStrategy == s.Strategy;
         if (s.Tuner is not null)
             throw new InvalidOperationException($"通道{ch}正在自整定，请先取消再启动控温");
         s.SetpointC = setpointC;
@@ -1698,6 +1899,11 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         s.Pid.Reset();
         if ((integralPreset ?? PresetFor(s, setpointC) ?? s.LastSteadyOutput) is { } preset)
             s.Pid.PresetIntegral(preset);
+
+        // 【本地改动】（外环第 1 步）锁定这一场的外环：一定在下面 Active = true 之前（回路线程先读 Active 再读锁定值）。
+        // 没选新（缺省）→ 锁成旧、什么都不说，跟以前一模一样；选了新却不满足条件 → 锁成旧、说一句为什么
+        if (!keepLiveLock && LockLiveOuter(s) is { } liveWhy)
+            ChannelNotice?.Invoke(ch, "warn", $"通道{ch}选了外环新算法，但{liveWhy}");
 
         // 串级：外环也从干净状态起步，但把积分预置到该温度已学到的稳态偏置上。
         // 否则腔体设定值要从"等于主设定值"一路积分到实际需要的偏置（−10℃ 实测约需 −5℃），
@@ -1736,6 +1942,9 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
             Volatile.Write(ref s.OuterTargetChangedFlag, 0);
             Volatile.Write(ref s.OuterRearmInPlaceFlag, 0);     // 【本地改动】上一轮停控前刚解除的压低不算这一轮的
             s.LastOuterSetpointC = double.NaN;
+            // 【本地改动】（外环第 1 步）下面到「积分起点」那句提示是旧外环的起步（A1：查表装外环参数、积分预置 / 刹车、夹套目标 = 目标 + 起点）：
+            // 新外环在控时整段跳过（不读表、不预置；夹套目标保持上面的「= 目标」，开控后第一拍起由新外环的读数盖掉）。旧模式照走，一行没改、没重排缩进
+            if (!s.LiveInControl) {
             ApplyOuterTuning(s, setpointC);   // 先装限幅，预置才会按正确范围截断
             // 【本地改动】积分起点：学到的稳态偏置 → 起步前稳着时的「夹套 − 釜内」→ 往来的方向刹车（OuterStartBias）
             var (start, brake, known, why) = OuterStartBias(s, setpointC);
@@ -1749,6 +1958,15 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
             if (Math.Abs(s.OuterPid.LastI) > 1e-12)
                 s.InnerSetpointC = Math.Clamp(setpointC + s.OuterPid.LastI, InnerSetpointMinC, InnerSetpointMaxC);
             ChannelNotice?.Invoke(ch, "info", $"通道{ch}串级外环积分起点 {s.OuterPid.LastI:+0.00;-0.00;0} ℃：{why}");
+            }
+            else if (keepLiveLock)
+                // 【本地改动】切热源序列中途重新开控：这一场照旧是新外环（开控时锁的），说一声（旧模式下这里什么都不多说）
+                ChannelNotice?.Invoke(ch, "info", $"通道{ch}切换中途重新开控：外环沿用这一场开控时定的新算法（改了选择要停控后重新开控才用上）");
+            else
+                // 【本地改动】（主会话 D15）开控提示：新外环这一场管夹套目标。维持温差 / 釜时间常数是它此刻手里的数（开控前不在控时也一直在算）
+                ChannelNotice?.Invoke(ch, "info", $"通道{ch}外环：新算法（按实测实时算）——这一场夹套目标由它按实测给，不用表里的外环参数和稳态偏置" +
+                    (s.Live?.Last is { } lo0 ? $"；此刻它估的维持温差 {lo0.BHat:F2} K、釜反应时间约 {lo0.Tau / 60:F0} min" : "") +
+                    "；改选「旧」要停控后重新开控才用上");
         }
 
         s.SteadyCycles = 0;
@@ -1878,6 +2096,13 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         s.VelMode = false;                           // 【本地改动】
         s.VelEligible = false;
         s.VelWantsTec = false;
+        s.LiveInControl = false;                     // 【本地改动】（外环第 1 步）这一场的锁定到此为止：下一次开控按那时的选择重锁（旧模式下它本来就是 false）
+        s.LiveLockNote = null;
+        s.S1 = null;                                 // 【本地改动】（2026-11-17，S1 / S2）这一场的判据、挂着的停控、报警、「TEC 在出力」样本到此为止（旧模式下这几个本来就是空的）
+        s.S1StopPending = null;
+        s.S1AlarmText = null;
+        s.S1Latch = new();                           // 【本地改动】（2026-11-17，S1 复核查实）报警锁存同上
+        s.TecDrawAt = null;
         await controller.SetDutyPercentAsync(ch, 0, ct).ConfigureAwait(false);
         await controller.SetEnableAsync(ch, false, ct).ConfigureAwait(false);
         if (ch == 1 && SyncMode != ChannelSyncMode.Independent)     // 【本地改动】独立两路：停 A 不动 B
@@ -2906,8 +3131,9 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
     ///   · 节拍：影子自己记上一拍时刻（LastOuterUpdate 开控、Tr 恢复时会被清，不能借来当节拍），门槛用 OuterPeriod；
     ///     LastOuterUpdate 只拿来看一眼「旧外环这一拍到没到」，好让两边同拍算（只读）。
     /// </summary>
-    private LiveOuterReadout? LiveShadowTick(int ch, ChannelState s, TecSnapshot snapshot, double pv)
+    private LiveOuterReadout? LiveShadowTick(int ch, ChannelState s, TecSnapshot snapshot, double pv, out double trFed)
     {
+        trFed = double.NaN;                          // 【本地改动】（2026-11-17，S1）这一拍喂给影子的釜内读数原样带回去（S1 喂同一个数）；没喂为 NaN
         var shadow = s.Live;
         if (shadow is null) return null;
         try
@@ -2918,6 +3144,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                 double tr;
                 try { tr = s.OuterSource is { } src ? src() : s.OuterFeedbackSensor == 1 ? snapshot.Temp1C : snapshot.Temp2C; }
                 catch { tr = double.NaN; }
+                trFed = tr;
                 var active = s.Active;
                 var closedLoop = active && s.Tuner is null;
                 var reactorInControl = closedLoop && s.Strategy == ControlStrategy.Cascade;
@@ -2931,7 +3158,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                     ReactorInControl = reactorInControl,
                     SetpointC = s.SetpointC,
                     LoopBeatPending = reactorInControl && sinceOuter >= 0 && sinceOuter < period,
-                    TecSide = false,
+                    TecSide = s.TecEngaged,      // 【本地改动】（外环第 1 步，主会话 D7）会话每拍给的「TEC 此刻真接着」，两种模式都喂（只进报警，不进 u）；没人给就是 false，跟第 0 步一样
                     InnerSatLow = closedLoop && s.LastDutyPercent <= s.Pid.OutputMin + 1e-6,
                     TecWithheld = s.Table == GainTable.Both && s.Actuator == ActuatorMode.HeatOnly,
                     OutputOn = active && !s.Suspended,
@@ -2957,12 +3184,280 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
     {
         if (s.LiveStopSaid) return;
         s.LiveStopSaid = true;
+        // 【本地改动】（外环第 1 步，主会话 D5）这一场新外环正在控：它停了就是外环没了——下面那句「控温不受影响」不对，换一句说清后果。
+        // 夹套目标保持、OuterLossGrace 后停控在 RunControlStepAsync 的新外环分支里（那边看到影子停了就不再另说一句）
+        if (s.Active && s.LiveInControl)
+        {
+            try
+            {
+                ChannelNotice?.Invoke(ch, "warn",
+                    $"通道{ch}新外环算出错、这一路不再算了：{reason}。这一场外环正由它控：夹套目标先保持在 {s.InnerSetpointC:F2} ℃，" +
+                    $"{OuterLossGrace.TotalSeconds:0} s 后停控；再开控按旧外环，断开设备重连后新外环重新开始算");
+            }
+            catch { /* 同上 */ }
+            return;
+        }
         try
         {
             ChannelNotice?.Invoke(ch, "warn",
                 $"通道{ch}新外环试算（只算不控）出错、这一路不再算了：{reason}。控温不受影响，只是逐拍记录末尾 lo_ 那几列从此留空；断开设备重连后重新开始算");
         }
         catch { /* 同上 */ }
+    }
+
+    /// <summary>
+    /// 【本地改动】（2026-11-16，外环第 1 步，主会话 D12）新外环在控时的方向跑飞保护，返回要不要停控（true 就走原来那段停控）。
+    /// ① 饱和计时分方向（<see cref="RunawayDetector.CheckDirectional"/>）：输出从加热顶满翻到制冷顶满算重新开始饱和——新外环往下的比例那一份不封顶，
+    ///    改目标时夹套目标可能一拍大跳，旧判据会把上一个方向的计时和起点带过来。
+    /// ② 「放热」豁免（用户 2026-11-16：制冷顶满釜内还在升就报警，保持满冷，不停控）：判到要停时，如果制冷那一侧顶满（内环贴下限、不顶上限）、
+    ///    TEC 真接着（会话给的）、釜内原始读数比夹套热——夹套是被釜里放的热往上带的，不是接反——就不停、说一次（条件不成立了重新武装）。
+    ///    TEC 没真接着（功率线没合 / 继电器在加热棒侧）、釜内不比夹套热，都照原来停控：那是该停的真故障，不能当放热放过去。
+    /// 只在新外环在控时调；旧模式一句都不走。
+    /// 【本地改动】（第 1 步复核）③ Tr 这一拍读不到（E3 保持期，outerPv 为 NaN）：拿最近一拍有效的 Tr 比，不让一拍 NaN（宇电质量不好喂 NaN、
+    ///    10 s 没新数置 NaN）把豁免当拍翻成停控、抢在 OuterLossGrace 之前把满冷关掉。最多沿用 OuterLossGrace（缺省 30 s）——过了 E3 自己按 Tr 丢失停控；
+    ///    顶满、TEC 真接着照样每拍看，TEC 掉了照停；开控以来没拿到过有效 Tr（NaN）比较为假，照停。
+    /// ④ 「TEC 真接着」是会话的继电器指令，不是电流 / 水流：断水、冷水机故障、TEC / 继电器下游开路时夹套也会被釜往上带，豁免照样成立——
+    ///    提示不说「保持满冷」，叫人查 TEC 电流和冷却水（要不要拿电流再卡一道、真停，要用户定，见第 1 步复核报告）。
+    /// 【本地改动】（2026-11-17，S2）④ 那一道用户定了：再卡电流（下面 ⑤）。TEC / 继电器下游开路（没电流）照停；断水 / 冷水机故障电流照样有，仍豁免，提示叫人查冷却水。
+    /// 【本地改动】（2026-11-17 复核查实）<paramref name="monoAt"/> = 这一拍的单调时刻（<see cref="_cycleMono"/>）：S2 的 W 秒时窗只按它算；
+    /// <paramref name="at"/>（快照墙钟）只交给跑飞判据（原样）。
+    /// </summary>
+    private bool LiveRunaway(int ch, ChannelState s, DateTime at, DateTime monoAt, double innerSetpoint, double pv, double outerPv,
+        bool satHigh, bool satLow, bool saturated)
+    {
+        var dir = !saturated ? 0 : s.Actuator switch
+        {
+            ActuatorMode.HeatOnly => 1,
+            ActuatorMode.CoolOnly => -1,
+            _ => satHigh ? 1 : -1,
+        };
+        var trip = s.Runaway.CheckDirectional(at, innerSetpoint, pv, dir);
+        if (!double.IsNaN(outerPv)) s.LiveExoLastTr = outerPv;     // 【本地改动】（第 1 步复核）见上 ③
+        var tr = s.LiveExoLastTr;
+        var exoBase = satLow && !satHigh && s.TecEngaged && tr > pv;
+        // 【本地改动】（2026-11-17，S2「看电流再决定」，用户 2026-11-16 选的）⑤ 豁免还要「TEC 在出力」：最近 W 秒里有一个合格电流样本
+        // （新外环在控 + TEC 真接着 + 那一拍制冷顶满时采的，电流 ≥ 门槛或告警字报本路限流中，见 NoteTecCurrent）。
+        // 看不到电流（读失败 / 没有合格样本 / 低于门槛 / 刚接回 TEC）= 不豁免，照下面原来那段停控（HeaterTec 那句原话一字不改），停之前多说一句 TEC 没在出力。
+        // 豁免成立以后每拍照样重判：TEC 中途掉了，W 之后当拍停。开头 180 s 饱和计时照旧，「刚接回 TEC 还没样本」实际碰不到（到 180 s 时已有约 90 个样本）。
+        // 断水 / 冷水机故障电流照样有（TEC 照样出力、只是热带不走）——电流判不出，提示里照样叫人查冷却水。
+        var drawing = TecDrawing(s, monoAt);             // 【本地改动】（复核后）单调时刻，见上
+        var exotherm = exoBase && drawing;
+        if (!exotherm)
+        {
+            s.LiveExoSaid = false;
+            if (trip && exoBase)
+            {
+                // 只因电流不豁免而停控：停之前先说一句（然后原来那句停控文字照原样走）
+                var w = TecDrawWindowSeconds();
+                var seen = s.TecSideAmps.Where(x => (monoAt - x.At).TotalSeconds <= w).Select(x => x.Amps).ToArray();
+                // 【本地改动】（2026-11-17 复核查实）近 W 秒一个 TEC 侧电流都没读到（seen 空）= 读电流 / 告警字那几笔没读成（NoteTecCurrent 没调到），
+                // 不是读到了小电流：不断定「TEC 没在出力」、不先把人引到接触器 / 接线上，说确认不了、先查温控器通讯。停照停（看不到电流 = 不豁免，用户 2026-11-16）。
+                // 读到了、电流低（seen 不空）那一种原话一字不变
+                ChannelNotice?.Invoke(ch, "warn", seen.Length > 0
+                    ? $"通道{ch}制冷顶满、夹套还被釜内往上带，但 TEC 没在出力（近 {w:F0} s " +
+                      $"电流最大 {seen.Max():F2} A，门槛 {TecDrawThreshold(s):F2} A" +
+                      "）——不当放热，按跑飞停控：请查 TEC 功率线接触器、TEC 接线、温控器告警"
+                    : $"通道{ch}制冷顶满、夹套还被釜内往上带，近 {w:F0} s 没读到 TEC 电流（读电流 / 告警字没读成），确认不了 TEC 在出力——" +
+                      "不当放热，按跑飞停控：先查温控器通讯（串口线、日志里的「轮询异常」），再查 TEC 功率线接触器、TEC 接线");
+            }
+            return trip;
+        }
+        if (trip && !s.LiveExoSaid)
+        {
+            s.LiveExoSaid = true;
+            ChannelNotice?.Invoke(ch, "warn",
+                $"通道{ch}放热或冷却没在出力：TEC 制冷已顶满 {s.Runaway.SaturatedSeconds:F0} s，夹套还被釜内往上带" +
+                $"（釜内 {tr:F2} ℃{(double.IsNaN(outerPv) ? "（Tr 丢失前最后一拍）" : "")} 比夹套 {pv:F2} ℃ 热），" +
+                $"TEC 电流 {s.TecDrawAmps:F2} A（在出力{(s.TecDrawLimiting ? "，限流中" : "")}）——不停控；" +
+                "是加料 / 放热反应，还是冷却水没在带走热（断水 / 冷水机）？电流看不出断水，请人工查冷却水");
+        }
+        return false;
+    }
+
+    // ---------- 【本地改动】（2026-11-17，S1「读数对不上就停控」，用户 2026-11-16 选的）----------
+    // 像超温、跑飞保护一样只管故障、不参与控温：判据（ReadingCheck）不回写任何控制量，判到停控走 TripChannelAsync（同 LiveRunaway 不豁免那一支的停法，
+    // 用 S1 自己的话），判到「读数没跟着夹套降」只报警（上升沿说一次、撤了说一次、周期快照带出去上红条）。只在新外环在控时算（锁定成新、釜内串级、
+    // 在闭环、不在整定）；旧模式 s.S1 一直是 null，一拍都不算、一句不说。要的量全是影子 / 回路已有的（影子的现场秒、喂给影子的釜内读数、Ŵ、τ̂、釜内目标），不多读串口。
+
+    /// <summary>
+    /// 【本地改动】（S1）影子这一拍出了一份新读数、新外环在控：喂 S1 一拍。判到停控 → 记下原因，这一路下一次控制步去停（挂起那几拍不走控制步）；
+    /// 「读数没跟着夹套降」成立 / 撤了 → 说一次。Tr 丢失保持期（读数 NaN）、继电器切换挂起那几拍照样喂（只记 Ŵ）；影子没读数（D5）那几拍没有新读数，不喂。
+    /// 不许拖累控温：自己兜住异常（判据是纯计算、不该抛；万一抛了，这一拍当没算）。
+    /// 【本地改动】（2026-11-17 复核查实）<paramref name="tj"/> = 这一拍的夹套读数（回路的 pv），只进 B 停控那句话。
+    /// </summary>
+    private void ReadingCheckTick(int ch, ChannelState s, LiveOuterReadout? live, double trFed, double tj)
+    {
+        if (live is null || s.S1 is not { } chk || ReferenceEquals(live, s.S1Readout)) return;
+        if (!(s.Active && s.LiveInControl && s.Strategy == ControlStrategy.Cascade && s.Tuner is null)) return;
+        try
+        {
+            s.S1Readout = live;
+            var clock = s.Live?.ClockS ?? double.NaN;
+            if (!double.IsFinite(clock)) return;
+            var b = chk.Step(clock, trFed, s.SetpointC, live.Wall, live.Tau);
+            s.S1Beat = b;
+            if (b.Verdict == ReadingVerdict.Stop)
+            {
+                // 【本地改动】（2026-11-17 复核查实：读数都对时连续打冷料也会按 B 停）B 那句话补上「读数是对的」那一种和停控的代价：
+                // 计量泵每分钟让釜掉 2–3 K、连打 8 min，约第 6 min 按 B 停（D1 闭环 = Python twin：60 ℃ −2 K/min 6.4 min 停、那一刻夹套 96.96 ℃，
+                // 停后 20 min 真釜内最高 68.48；−3 K/min 5.8 min、108.54 ℃、70.33；试算台 more.jsonl 那 21 台停后比目标 +4.2…+9.7 K、比不停多 +0.6…+5.9 K）——
+                // 停控后两只继电器都断开、没有 TEC 往回拉，夹套存的热只能往釜里走。判据不改（从温度上分不开），话里先叫人看是不是在加料，再查探头。
+                // 夹套温度是这一拍的读数（已有的量），读不到就不说数
+                var jacket = double.IsFinite(tj) ? $"此刻夹套 {tj:F1} ℃（釜内读数 {b.Y30:F2} ℃），" : "";
+                s.S1StopPending ??= b.Which.Contains('B') && !(b.Ra >= ReadingCheck.R0)
+                    ? $"通道{ch}釜内读数跟夹套对不上，已停控：加热中釜内读数从 {b.Y30 + b.D:F2} ℃ 掉到 {b.Y30:F2} ℃（{b.D:F1} K），" +
+                      $"夹套一直往里推热，按新算法认得出最慢的釜这会儿也该比读数高 {b.U:F2} K，读数却没回上来。" +
+                      "可能是釜内探头提出了液面、插到了别的工位、读数卡住；" +
+                      $"也可能读数是对的：正在连续加冷料 / 强吸热，掉了 {b.D:F1} K 还没回。" +
+                      jacket + "停控后加热、制冷都断开，夹套里存的热还会让釜内往上走。" +
+                      "先看是不是正在加料；不是的话查好釜内探头后重新下发目标"
+                    : $"通道{ch}釜内读数跟夹套对不上，已停控：釜内读数 {(clock - b.TRef) / 60:F0} min 没动过 0.02 K（30 s 平均 {b.Y30:F2} ℃），" +
+                      $"这段里夹套一直往上推，按新算法认得出最慢的釜也该升 {b.Ra:F2} K——读数没跟着动。" +
+                      "可能是釜内探头读数卡住、探头不在本釜液里、插到了别的工位。查好釜内探头后重新下发目标";
+                return;
+            }
+            // 【本地改动】（2026-11-17 复核查实）报警锁存（ReadingAlarmLatch）：起了以后只在读数真动了 0.02 K 才撤。原来按「A 的制冷方向这一拍还成立不成立」撤——
+            // 夹套推到底不动以后 950 s 回看窗滑过「往下推」那一段、R_A 回到 −0.25 以内就撤了，还说「读数又跟着夹套动了」，读数其实一拍没动，
+            // 之后 R_A 一直是 0、再也起不来（冻在 70、目标 60：冻住后 71.8 min 撤，95 min 时真釜内 −44.6 ℃）。读数读不到的拍保持上一状态（锁存里管）
+            switch (s.S1Latch.Step(b))
+            {
+                case ReadingAlarmEdge.Raised:
+                    s.S1AlarmText =
+                        $"通道{ch}釜内读数没跟着夹套降：读数 {(clock - b.TRef) / 60:F0} min 没动过 0.02 K（{b.Y30:F2} ℃），" +
+                        $"这段里夹套一直往下推，按新算法认得出最慢的釜也该降 {-b.Ra:F2} K。" +
+                        "可能是正在慢慢变强的放热（夹套在跟着把热带走），也可能是釜内探头读数卡住、不在本釜液里——两样从温度上分不开，" +
+                        "按「放热只报不停」不停控；请人看一眼釜内探头和釜里情况";
+                    ChannelNotice?.Invoke(ch, "warn", s.S1AlarmText);
+                    break;
+                case ReadingAlarmEdge.Cleared:
+                    s.S1AlarmText = null;
+                    ChannelNotice?.Invoke(ch, "info", $"通道{ch}釜内读数又跟着夹套动了，「读数没跟着夹套降」报警解除");
+                    break;
+            }
+        }
+        catch { /* 判据的事不许碰到控温 */ }
+    }
+
+    // ---------- 【本地改动】（2026-11-17，S2「看电流再决定」）新模式跑飞「放热」豁免要的「TEC 在出力」 ----------
+    // 只用回路现有的每 4 拍那一次读（告警字 + 两路 CURRENT），不加任何串口读：旧模式串口流量、钉子金样一字不变。只对双工位主机有意义
+    // （单机缺省温控器 PID 不读电流、没有继电器，TecEngaged 恒 false；新模式也只在 DuoSession 下锁得成）。
+
+    /// <summary>
+    /// 【本地改动】S2 的时窗 W（s）= max(OuterLossGrace, 15 个电流采样间隔 = 15 × 4 × Period)，缺省 max(30, 30) = 30 s。
+    /// OuterLossGrace 是已有的「读数断了能撑多久」设定（不新增设定）；下限 15 个采样：台面把宽限填 0 也不会让豁免永远不成立。
+    /// 【本地改动】（2026-11-17 复核查实）原来这里说「CURRENT 若是瞬时值、90 % 占空比下 15 个全落空 ≈ 1e-15」不对：样本不独立。
+    /// 回路每拍从这一拍开头起补足 Period（RunAsync），读电流那一拍落在一张锁死的 4 × 0.5 = 2 s 网格上，正好是 FPWM 1 Hz 周期的 2 倍、0.5 Hz 的 1 倍——
+    /// 相位锁住，真机三场记录 4 拍间隔中位 2.001–2.002 s、每个样本相位只挪 1–2 ms，同一个 100 ms 关断段能连着落 88–121 个样本。
+    /// 样本间隔约 2.002 s，15 × 2.002 = 30.03 s 已超 W：连着 14 个不合格样本豁免就断了。CURRENT 是平均值还是瞬时值没核过（定稿 §8）——
+    /// 防法不是放长 W（这台电脑的计时下连读 0 能到约 4 min，漂移趋近 0 时没有上界），是在另一个相位补读一笔（<see cref="NoteTecCurrentOffPhaseAsync"/>）。
+    /// </summary>
+    private double TecDrawWindowSeconds()
+        => Math.Max(OuterLossGrace.TotalSeconds, 15 * 4 * Period.TotalSeconds);
+
+    /// <summary>
+    /// 【本地改动】S2 的电流门槛 I_通 = √(max(I_空, 0.001) × I_限)（A）：开路时这一支只剩空载读数，接通顶满时上限是限流值，两头差两个数量级，
+    /// 取对数中点（离两头倍数一样），没有可调常数。I_空 = 最新一个空载样本往前 W 秒内空载样本的中位数（不到 1 mA 按 1 mA，一个字；一个都没有也按 1 mA）；
+    /// I_限 = SETCURRENT（没推过按 0.5 A）。现场数代进去：0.025 A × 5 A ≈ 0.35 A；限流 1 A ≈ 0.16 A。没有现场实测核过（定稿 §8）。
+    /// </summary>
+    private static double TecDrawThreshold(ChannelState s)
+    {
+        var idle = 0.001;
+        if (s.TecIdleAmps.Count > 0)
+        {
+            var a = s.TecIdleAmps.Select(x => x.Amps).OrderBy(x => x).ToArray();
+            var med = a.Length % 2 == 1 ? a[a.Length / 2] : 0.5 * (a[a.Length / 2 - 1] + a[a.Length / 2]);
+            idle = Math.Max(med, 0.001);
+        }
+        var limit = double.IsFinite(s.TecLimitA) && s.TecLimitA > 0 ? s.TecLimitA : 0.5;
+        return Math.Sqrt(idle * limit);
+    }
+
+    /// <summary>【本地改动】S2：每拍看一眼「TEC 此刻真接着」：继电器离开 TEC（会话给的为假）就当拍清掉合格样本和 TEC 侧电流——接回来以后上一次接通时的样本不替这一次作保。</summary>
+    private static void NoteTecEngaged(ChannelState s)
+    {
+        if (s.TecEngaged) return;
+        s.TecDrawAt = null;
+        s.TecSideAmps.Clear();
+    }
+
+    /// <summary>【本地改动】S2：此刻算不算「TEC 在出力」= 有合格样本、而且离它不超过 W 秒。
+    /// 【本地改动】（2026-11-17 复核查实）时基是回路的单调时刻（<see cref="_cycleMono"/>，样本、「这一拍制冷顶满」、此刻同一条线），不是快照的墙钟。</summary>
+    private bool TecDrawing(ChannelState s, DateTime at)
+        => s.TecDrawAt is { } drawAt && (at - drawAt).TotalSeconds <= TecDrawWindowSeconds();
+
+    /// <summary>
+    /// 【本地改动】（2026-11-17 复核查实：S2 系统钟往前 / 往回跳）S2 用的单调时间线的原点：回路每拍的单调时刻 = 它 + Environment.TickCount64 毫秒
+    /// （<see cref="_cycleMono"/>）。折成 DateTime 只为样本队列、「这一拍制冷顶满」、TecDrawAt 的类型不变（白盒测试按名字读写它们）。
+    /// 原点随便定的，离墙钟差几十年——一看就知道不是墙钟，也别拿它跟快照时刻比。
+    /// </summary>
+    private static readonly DateTime MonoOrigin = new(2000, 1, 1, 0, 0, 0, DateTimeKind.Unspecified);
+
+    /// <summary>
+    /// 【本地改动】（2026-11-17 复核查实）这一拍的单调时刻（RunOneCycleAsync 一开头按 Environment.TickCount64 定，整拍不变）：S2 的样本、
+    /// 「这一拍制冷顶满」（LiveSatLowAt）、豁免时判 W 秒，全按它。原来拿快照时刻（TecController 的 DateTime.Now）相减：系统钟对时 / 有人改钟往前跳
+    /// 28 s 以上，豁免当拍失效、放热中把满冷关掉（停前还说「没读到电流」）；往回跳 X 秒，旧样本要 X + W 秒才过期。S2 的 W 秒要的是真实经过的秒数，
+    /// TickCount64 单调（Windows 下含睡眠时间）。只在回路线程读写；别的计时（跑飞判据、OuterLossGrace、PID 的 dt）还是墙钟、原样（旧模式一字不变）。
+    /// </summary>
+    private DateTime _cycleMono = MonoOrigin;
+
+    /// <summary>
+    /// 【本地改动】（2026-11-17 复核查实：S2 读点跟 PWM 锁相）在另一个相位补读一笔本路 CURRENT，按路记样本（不进周期快照、不改任何控制量）。
+    /// 回路原来每 4 拍读一次电流（第 0、4、8… 拍，2 s 网格），这里在第 1、5、9… 拍（往后挪一拍 = 0.5 s）补读：读点 mod 1 s 是 0 / 0.5 s 两个相位、
+    /// mod 2 s 是 0 / 0.5 s——FPWM 1 Hz 下 90 % 占空比的关断段 ≤ 0.1 s、0.5 Hz 下 ≤ 0.2 s，两个相位不可能同时落进同一个关断段，
+    /// 所以 CURRENT 就算是瞬时值，每 2 s 里至少有一笔读在导通段（只差一笔读 0，豁免不会被锁相打断）。10 Hz 档 0.5 s 是周期的整数倍、补读跟原来同相，
+    /// 但那一档关断段只有 10 ms、相位每个样本挪 1–2 ms，锁不住十几个样本（推断）。
+    /// 只在要用的时候读：这一路这一拍走了控制步、新外环在控、TEC 真接着、这一拍制冷顶满（跟合格样本的条件一样，别的时候读了也不算数）；
+    /// 而且没有哪一路在按旧外环控 / 在整定——逐拍记录的 cycle_ms 是两路共用的，补一笔串口读会让旧模式那一路的 cycle_ms 变（旧模式一字不变）。
+    /// 所以一路新、一路旧（在控）时不补读，新那一路的 S2 照旧只有锁相的那一个读点（要用户定）。补读失败：这一笔没有样本（看不到电流 = 不作保），
+    /// 不往外抛（不算这一拍通信失败、不漏掉这一拍的周期快照）；取消照抛。
+    /// </summary>
+    private async Task NoteTecCurrentOffPhaseAsync(CancellationToken ct)
+    {
+        for (var ch = 1; ch <= 2; ch++)
+        {
+            var s = State(ch);
+            if (s.Busy && !(s.Active && s.LiveInControl)) return;
+        }
+        for (var ch = 1; ch <= 2; ch++)
+        {
+            var s = State(ch);
+            if (!(s.Active && !s.Suspended && s.Tuner is null && s.LiveInControl && s.Strategy == ControlStrategy.Cascade
+                  && s.TecEngaged && s.LiveSatLowAt == _cycleMono))
+                continue;
+            double amps;
+            try { amps = await controller.ReadCurrentAsync(ch, ct).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch { continue; }
+            NoteTecCurrent(s, _cycleMono, amps, limiting: false);
+        }
+    }
+
+    /// <summary>
+    /// 【本地改动】S2：每 4 拍读完告警字和两路电流以后，按路记一个样本（只存，不改任何控制量）。
+    /// · TEC 不接着（加热棒侧 / 两只都断 / 开控前空转）：进空载样本（I_空），只留最新一个往前 W 秒内的；
+    /// · TEC 接着：进「近 W 秒 TEC 侧电流」（只给停控前那句话用）；再满足这一拍走了控制步（在控、没挂起、不在整定）、新外环在控、
+    ///   这一拍制冷顶满（RunControlStepAsync 记的 <see cref="ChannelState.LiveSatLowAt"/> 就是这一拍）、电流 ≥ 门槛或告警字报本路限流中，
+    ///   就是合格样本：记下时刻、电流、限流位。
+    /// </summary>
+    private void NoteTecCurrent(ChannelState s, DateTime at, double amps, bool limiting)
+    {
+        var w = TecDrawWindowSeconds();
+        if (!s.TecEngaged)
+        {
+            s.TecIdleAmps.Enqueue((at, amps));
+            while (s.TecIdleAmps.Count > 0 && (at - s.TecIdleAmps.Peek().At).TotalSeconds > w) s.TecIdleAmps.Dequeue();
+            return;
+        }
+        s.TecSideAmps.Enqueue((at, amps));
+        while (s.TecSideAmps.Count > 0 && (at - s.TecSideAmps.Peek().At).TotalSeconds > w) s.TecSideAmps.Dequeue();
+        var stepped = s.Active && !s.Suspended && s.Tuner is null;
+        var live = s.LiveInControl && s.Strategy == ControlStrategy.Cascade;
+        if (stepped && live && s.LiveSatLowAt == at && (amps >= TecDrawThreshold(s) || limiting))
+        {
+            s.TecDrawAt = at;
+            s.TecDrawAmps = amps;
+            s.TecDrawLimiting = limiting;
+        }
     }
 
     // ---------- 主循环 ----------
@@ -3004,6 +3499,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
     private async Task RunOneCycleAsync(CancellationToken ct)
     {
         var workStart = Environment.TickCount64;
+        _cycleMono = MonoOrigin.AddMilliseconds(workStart);   // 【本地改动】（2026-11-17 复核查实）S2 的单调时刻：这一拍从头到尾就这一个（见字段说明）
         var snapshot = await controller.ReadSnapshotAsync(ct).ConfigureAwait(false);
 
         var infos = new ChannelCycleInfo[2];
@@ -3013,7 +3509,10 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
             var pv = Pv(s, ch, snapshot);
             RecordHistory(s, snapshot, pv);          // 【本地改动】
             // 【本地改动】（2026-11-14，外环实时算第 0 步）新外环的影子：只算、只进记录。不写在 RecordHistory 里——那里头有提前返回
-            var live = LiveShadowTick(ch, s, snapshot, pv);
+            var live = LiveShadowTick(ch, s, snapshot, pv, out var trFed);
+            s.LiveNow = live;                        // 【本地改动】（外环第 1 步）新外环在控时 RunControlStepAsync 拿这一拍的这一份当夹套目标（旧路径不读）
+            ReadingCheckTick(ch, s, live, trFed, pv);    // 【本地改动】（2026-11-17，S1）新外环在控、影子出了一份新读数：喂 S1（旧模式 s.S1 为 null，一拍都不算）；pv 只进 B 停控那句话（复核后）
+            NoteTecEngaged(s);                       // 【本地改动】（2026-11-17，S2）继电器离开 TEC：当拍清掉「TEC 在出力」（只是存的样本，不碰控制量）
 
             if (s.Suspended && s.Tuner is { } held
                 && DateTime.Now - (s.SuspendedSince ?? DateTime.Now) > TuningSuspendLimit)
@@ -3033,6 +3532,8 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                     s.SetpointC, pv, 0, 0, 0, 0)
                 {
                     Cascade = s.Strategy == ControlStrategy.Cascade, InnerSetpointC = s.InnerSetpointC,
+                    // 【本地改动】（外环第 1 步复核）algo 标志在这一支当场定（这一支没有 await，跟下面 RunControlStepAsync 回来的那一份一样按「这一拍走的是哪一支」）；旧模式恒 false
+                    LiveOuterInControl = s.Active && s.LiveInControl && s.Strategy == ControlStrategy.Cascade,
                     OuterHoldSeconds = s.OuterLostSince is { } lost ? (snapshot.Timestamp - lost).TotalSeconds : null
                 };
             }
@@ -3057,6 +3558,19 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
             // 【本地改动】影子这一拍的读数挂到这一路的周期快照上（拷一份、别的属性一个不动），上面哪条分支都不用知道它；
             // 这一路的控制量到这儿都已经算完写完了
             if (live is not null) infos[ch - 1] = infos[ch - 1] with { LiveOuter = live };
+            // 【本地改动】（外环第 1 步）这一拍夹套目标是新外环给的：记录 algo = 1；旧外环这一场一拍没算，它的 P / I / D 和大降温收尾那一格给空（NaN），
+            // 别把开控时清的 0、上一场留下的收尾偏置记成数。旧模式（LiveInControl 恒 false）不执行。
+            // 【本地改动】（第 1 步复核）标志看这一拍实际走的那一支（RunControlStepAsync / 挂起那一支当场定的 info.LiveOuterInControl），
+            // 不在这里再读一遍共享状态：操作人停控在另一条线程上，回路正卡在写占空比时它先把 Active / LiveInControl 清了，
+            // 回来这一拍照算完、照写了，再读就会记成「旧外环在控、outer 列是残值」那一行。停控 / 跳停那一拍回来的快照本来就是 false，不标
+            if (infos[ch - 1].LiveOuterInControl)
+                infos[ch - 1] = infos[ch - 1] with
+                {
+                    OuterP = double.NaN, OuterI = double.NaN, OuterD = double.NaN, OuterFinishC = double.NaN,
+                    LiveExoExempt = s.LiveExoSaid,    // 跑飞「放热」豁免成立着：会话一并上红条（Rd105Session.ExothermEdge）
+                    ReadingAlarm = s.S1AlarmText,     // 【本地改动】（2026-11-17，S1）「读数没跟着夹套降」报警成立着：会话上红条（Rd105Session.ReadingAlarmEdge）
+                    ReadingBeat = s.S1Beat,           // 【本地改动】（2026-11-17，S1）最近一拍的判据量：逐拍记录行尾 s1_ra / s1_d / s1_u
+                };
         }
 
         TecErrorCode? error = null;
@@ -3066,7 +3580,15 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
             error = await controller.ReadErrorCodeAsync(ct).ConfigureAwait(false);
             current1 = await controller.ReadCurrentAsync(1, ct).ConfigureAwait(false);
             current2 = await controller.ReadCurrentAsync(2, ct).ConfigureAwait(false);
+            // 【本地改动】（2026-11-17，S2）同一次读的样本按路记下来（只存；三笔都读到了才记）
+            // 【本地改动】（复核查实）样本时刻用这一拍的单调时刻，不用快照墙钟（见 _cycleMono）
+            NoteTecCurrent(State(1), _cycleMono, current1.Value, (error.Value & TecErrorCode.Ch1CurrentLimiting) != 0);
+            NoteTecCurrent(State(2), _cycleMono, current2.Value, (error.Value & TecErrorCode.Ch2CurrentLimiting) != 0);
         }
+        // 【本地改动】（2026-11-17 复核查实：S2 读点跟 PWM 锁相）上面那个 if 判的是加一之前的拍数：加一以后 % 4 == 2 = 原来那一次读之后的下一拍（缺省周期下往后挪 0.5 s）。
+        // 只在新外环在控、TEC 真接着、这一拍制冷顶满、没有哪一路按旧外环控时补读一笔本路电流（见 NoteTecCurrentOffPhaseAsync）；旧模式一笔不多读
+        else if (_cycleCount % 4 == 2)
+            await NoteTecCurrentOffPhaseAsync(ct).ConfigureAwait(false);
 
         var elapsedMs = Environment.TickCount64 - workStart;
         CycleCompleted?.Invoke(new ControlCycleResult(snapshot, infos[0], infos[1], error, current1, current2)
@@ -3097,6 +3619,9 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         // 宽限过了还没回来才停控。本机 TC 当外环（OuterSource 为 null）读 NaN 是探头没接，不是暂态，照旧当拍停控。
         // 现场：釜内 50 ℃ 串级升温到 3.2 min 探头样本断了 10 s，回路当拍停控、加热棒关了，面板上只剩开关自己灭了
         var cascade = s.Strategy == ControlStrategy.Cascade;
+        // 【本地改动】（外环第 1 步复核）这一拍走不走新外环，只在这里读一次（下面四处、连同回去的 algo 标志都用它）：
+        // 操作人停控在别的线程上随时会清 LiveInControl，一拍里读几遍可能前后走两支、记成另一支（旧模式恒 false）
+        var liveStep = cascade && s.LiveInControl;
         var outerPv = double.NaN;
         var holding = false;
         if (cascade)
@@ -3113,6 +3638,16 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                     return new ChannelCycleInfo(false, false, 0, s.SetpointC, pv, 0, 0, 0, 0);
                 }
                 var held = Math.Clamp(s.SetpointC, InnerSetpointMinC, InnerSetpointMaxC);
+                // 【本地改动】（外环第 1 步，主会话 D10）新外环在控：保持期夹套目标不钳到主设定，用新外环这一拍按模型推出来的那一个
+                // （影子没读数时只推不修，LiveOuter 观测器那一路）；影子这一拍也没给读数就保持上一拍的值（D5）。
+                // 试算（第 1 步复核按产品会话重跑：保持期继电器不换边——DuoSession.AutoSourceAsync 在 Tr 保持期换挡前就 return，双向挡也一样，
+                // 跟它 1079–1081 行的注释相反，fdc52ab3 起就这样；scratchpad verify-hold-relay/run-all.log 的 freeze 那几行）：保温探头断 20–39 s，
+                // 60 ℃ 按模型推 ≤ 0.06 K、钳到主设定 ≤ 0.07 K（逐台相差在 ±0.01 K 以内）；25 ℃（加热棒 / TEC 功率过零区）按模型推 ≤ 0.05 K、钳到主设定 0.00–0.10 K。
+                // 原来写的「钳到主设定 0.08–0.32 K」是试算台保持期照符号扳到 TEC 造成的，产品上不会这样——好处主要在功率过零区保温，60 ℃ 基本没有，也不会变差。
+                // 停控时限、曲线暂停照旧。旧模式 heldLive 为 null，下面每一句照原样走
+                double? heldLive = liveStep
+                    ? s.LiveNow is { } lh ? Math.Clamp(lh.JacketSetpointC, InnerSetpointMinC, InnerSetpointMaxC) : s.InnerSetpointC
+                    : null;
                 if (s.OuterLostSince is null)
                 {
                     s.OuterLostSince = snapshot.Timestamp;
@@ -3121,18 +3656,31 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                     if (s.VelMode) EndHeatBoost(ch, s, "釜内 Tr 读数丢失", rearming: false, s.LastOuterErrorC);     // 【本地改动】测不了速度就不按速度刹（刹车中的接住刹车）
                     s.VelEligible = false;
                     s.VelWantsTec = false;                // 这一段不会再加速了：别让会话接着备水
+                    if (heldLive is { } hl0)              // 【本地改动】新外环在控：说它的做法（else 下面那句是原句，一字没动）
+                        ChannelNotice?.Invoke(ch, "warn",
+                            $"通道{ch}串级外环的釜内 Tr 读数丢失：外环新算法没有读数时只按模型推夹套目标（此刻 {hl0:F1} ℃），" +
+                            $"不钳到釜内设定；{OuterLossGrace.TotalSeconds:0} s 内 Tr 回来就接着按读数算，回不来就停控");
+                    else
                     ChannelNotice?.Invoke(ch, "warn",
                         $"通道{ch}串级外环的釜内 Tr 读数丢失：外环冻结，夹套设定从 {s.InnerSetpointC:F1} ℃ 收到 {held:F1} ℃" +
                         $"（不高于、不低于釜内设定）；{OuterLossGrace.TotalSeconds:0} s 内 Tr 回来就接着串级，回不来就停控");
                 }
                 if (snapshot.Timestamp - s.OuterLostSince.Value >= OuterLossGrace)
                 {
+                    if (heldLive is not null)             // 【本地改动】新外环在控：停控照旧，只是原因里不说「按釜内设定保持」（它是按模型推的）
+                    {
+                        await TripChannelAsync(ch,
+                            $"通道{ch}串级外环的釜内 Tr 读数丢失超过 {OuterLossGrace.TotalSeconds:0} s（宇电探头断线 / 探头会话没出数）——" +
+                            "这段里外环新算法按模型推着夹套目标，仍无读数，已停控。修好探头后重新下发目标，或改控夹套").ConfigureAwait(false);
+                        return new ChannelCycleInfo(false, false, 0, s.SetpointC, pv, 0, 0, 0, 0);
+                    }
                     await TripChannelAsync(ch,
                         $"通道{ch}串级外环的釜内 Tr 读数丢失超过 {OuterLossGrace.TotalSeconds:0} s（宇电探头断线 / 探头会话没出数）——" +
                         $"这段里夹套已按釜内设定 {s.SetpointC:F1} ℃ 保持，仍无读数，已停控。修好探头后重新下发目标，或改控夹套").ConfigureAwait(false);
                     return new ChannelCycleInfo(false, false, 0, s.SetpointC, pv, 0, 0, 0, 0);
                 }
                 s.InnerSetpointC = held;
+                if (heldLive is { } hl1) s.InnerSetpointC = hl1;     // 【本地改动】新外环在控：按模型推的那一个（见上）
                 holding = true;
             }
             else if (s.OuterLostSince is { } since)
@@ -3156,6 +3704,10 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
                     s.ProfileHoldAt = null;
                     if (s.Profile is not null) resumed = "、曲线从暂停处续";
                 }
+                if (liveStep)                             // 【本地改动】（外环第 1 步）新外环在控：没有旧积分可「沿用」，说它的（else 下面那句是原句，一字没动）
+                    ChannelNotice?.Invoke(ch, "info",
+                        $"通道{ch}釜内 Tr 已恢复（丢失 {lostFor:F0} s，Tr {outerPv:F2} ℃）：外环新算法接着按读数算{resumed}");
+                else
                 ChannelNotice?.Invoke(ch, "info",
                     $"通道{ch}釜内 Tr 已恢复（丢失 {lostFor:F0} s，Tr {outerPv:F2} ℃）：串级外环接着算，积分沿用 {s.OuterPid.LastI:F2} ℃、微分重置{resumed}");
             }
@@ -3185,7 +3737,54 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
         if (cascade) BiasWallTrack(s, snapshot.Timestamp, pv);     // 【本地改动】偏置自校正的釜壁估计：Tr 丢失保持期也跟着夹套走
 
         // ② 闭环控制层：串级时先跑外环，算出内环设定值（【本地改动】Tr 丢失保持期整段跳过，内环设定已钳在主设定）
-        if (cascade && !holding)
+        // 【本地改动】（2026-11-16，外环改「按实测实时算」第 1 步）这一场开控时锁定成了新外环：夹套目标 = 新外环这一拍的读数（夹到回路的 −50…200），
+        // 旧外环这一拍整段不算——它的节拍门槛、查表装参数、收会话立的四个标志、两枪 / 自校正 / 收尾 / 压低 / 升温加速……下面那一大块一行不走（主会话 D1）。
+        // 节拍是新外环自己的（≥ 一个外环周期才算一拍，两拍之间 Tick 交回同一份读数 → 这里每 0.5 s 赋同一个值，等于保持）。
+        // 这一拍没读数（新外环停了 / 在等断档重摆）：夹套目标保持上一拍的值，连续 OuterLossGrace（缺省 30 s，同 Tr 丢失）拿不到就停控（主会话 D5）。
+        // 旧模式 LiveInControl 恒 false：走下面原来那一支（只把 if 改成 else if，里面一字没动）
+        // 【本地改动】（2026-11-17，S1）新外环在控、S1 判到「读数跟夹套对不上」（RunOneCycleAsync 里判、记下原因）：报警 + 停控，同跑飞不豁免那一支的停法，
+        // 用 S1 自己的话（停控原因进系统日志、逐拍记录收尾那一行、温控卡「上次停控」）。不先报后停。Tr 丢失保持期也在这儿停（那几拍判据不判，挂着的是之前判到的）。
+        // 旧模式 liveStep 恒 false、S1StopPending 恒 null：一句不走
+        if (liveStep && s.S1StopPending is { } s1Why)
+        {
+            s.S1StopPending = null;
+            await TripChannelAsync(ch, s1Why).ConfigureAwait(false);
+            return new ChannelCycleInfo(false, false, 0, s.SetpointC, pv, 0, 0, 0, 0);
+        }
+        if (cascade && !holding && liveStep)
+        {
+            if (s.LiveNow is { } lo)
+            {
+                if (s.LiveMissingSince is { } missFrom)
+                {
+                    s.LiveMissingSince = null;
+                    ChannelNotice?.Invoke(ch, "info",
+                        $"通道{ch}外环新算法的读数回来了（断了 {(snapshot.Timestamp - missFrom).TotalSeconds:F0} s，夹套目标一直保持在 {s.InnerSetpointC:F2} ℃）：接着按它算");
+                }
+                s.InnerSetpointC = Math.Clamp(lo.JacketSetpointC, InnerSetpointMinC, InnerSetpointMaxC);
+            }
+            else
+            {
+                var stopped = s.Live is not { } sh || sh.Stopped;
+                if (s.LiveMissingSince is null)
+                {
+                    s.LiveMissingSince = snapshot.Timestamp;
+                    // 影子停了的那一句 LiveShadowSayStopped 已经说过（含保持 / 停控），这里只说「没停、只是这一拍没有」那一种（在等断档重摆 / 还没起算）
+                    if (!stopped)
+                        ChannelNotice?.Invoke(ch, "warn",
+                            $"通道{ch}外环新算法这一拍没有读数（断档太久在等重新对准读数）：夹套目标先保持在 {s.InnerSetpointC:F2} ℃，" +
+                            $"{OuterLossGrace.TotalSeconds:0} s 内拿不回来就停控");
+                }
+                if (snapshot.Timestamp - s.LiveMissingSince.Value >= OuterLossGrace)
+                {
+                    await TripChannelAsync(ch,
+                        $"通道{ch}外环新算法 {OuterLossGrace.TotalSeconds:0} s 都没有读数（{(stopped ? $"新外环算出错停了：{s.Live?.StopReason}" : "断档后一直没对准读数")}）——" +
+                        $"这段里夹套目标一直保持在 {s.InnerSetpointC:F2} ℃，已停控。重新下发目标会再开控（新外环停了的话这一路按旧外环）").ConfigureAwait(false);
+                    return new ChannelCycleInfo(false, false, 0, s.SetpointC, pv, 0, 0, 0, 0);
+                }
+            }
+        }
+        else if (cascade && !holding)
         {
             var outerDt = s.LastOuterUpdate == default
                 ? OuterPeriod.TotalSeconds
@@ -3645,7 +4244,13 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
             ActuatorMode.CoolOnly => satLow,
             _ => satHigh || satLow
         };
-        if (s.Runaway.Check(snapshot.Timestamp, innerSetpoint, pv, saturated))
+        // 【本地改动】（2026-11-17，S2）新外环在控、这一拍制冷那一侧顶满（贴下限、不顶上限）：记下这一拍——这一拍回头读到的电流才算「顶满时采的」合格样本
+        // 【本地改动】（复核查实）记的是这一拍的单调时刻（_cycleMono），跟电流样本同一条时间线
+        if (cascade && liveStep && satLow && !satHigh) s.LiveSatLowAt = _cycleMono;
+        // 【本地改动】（外环第 1 步，主会话 D12）新外环在控：饱和计时分方向 + 「放热」豁免（LiveRunaway）；旧模式还是原来那一个调用、同样四个参数
+        if (cascade && liveStep
+                ? LiveRunaway(ch, s, snapshot.Timestamp, _cycleMono, innerSetpoint, pv, outerPv, satHigh, satLow, saturated)
+                : s.Runaway.Check(snapshot.Timestamp, innerSetpoint, pv, saturated))
         {
             await TripChannelAsync(ch, s.Actuator switch
             {
@@ -3730,6 +4335,7 @@ public sealed class HostControlLoop(TecController controller) : IDisposable
             HeatBoostVmCPerMin = cascade && !holding && s.VelMode ? s.VelVmCPerMin : double.NaN,
             HeatBoostVstarCPerMin = cascade && !holding && s.VelMode ? s.VelVstarCPerMin : double.NaN,
             HeatBoostBrake = cascade && !holding && s.VelMode ? s.VelBrake : double.NaN,
+            LiveOuterInControl = liveStep,   // 【本地改动】（外环第 1 步复核）这一拍走的是新外环那一支：algo 按它记（停控在别的线程上清了状态也不改口）；旧模式恒 false
         };
     }
 
