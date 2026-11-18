@@ -31,6 +31,10 @@ public enum RateRunnerState
 ///
 /// 降温要冷却水：第一项降温之前停下来等人确认水开好、填水温（同极限矩阵的等水提示）；升温不用水，不问。
 /// 时钟与等待是注入的（now / delay），回归测试用虚拟时间跑。
+///
+/// 【本地改动】（2026-11-18）升到目标温度（用户要的 80 / 100 ℃ 升温测试）：跟升温一样满功率、从当前温度开始，
+/// 不按时长归零，夹套到最高目标那一路就归零（满最长时间还没到也归零、记「没到」），再记 M s；过每个目标的用时在报告里按采样插值算。
+/// 每一次里排在降温后面：它一路升到 100 ℃ 以上，排在降温前面的话降温那项夹套高过 TEC 接入上限、接不上。
 /// </summary>
 public sealed class RateTestRunner
 {
@@ -67,6 +71,7 @@ public sealed class RateTestRunner
         {
             if (_s.Heat) _tests.Add(new RateTest(RateKind.Heat, r));
             if (_s.Cool) _tests.Add(new RateTest(RateKind.Cool, r));
+            if (_s.Reach) _tests.Add(new RateTest(RateKind.Reach, r, $"升到 {RateKinds.Targets(_s.ReachTargets)} ℃"));
         }
     }
 
@@ -130,7 +135,10 @@ public sealed class RateTestRunner
     {
         if (State is RateRunnerState.Running or RateRunnerState.WaitingWater)
             throw new InvalidOperationException("已经在跑了");
-        if (_tests.Count == 0) throw new InvalidOperationException("升温、降温一个都没勾");
+        if (_tests.Count == 0) throw new InvalidOperationException("升温、降温、升到目标温度一个都没勾");
+        if (_s.Reach && _s.ReachTargets.Count == 0) throw new InvalidOperationException("升到目标温度没填目标");
+        if (_s.Reach && _s.ReachTargets.Max() >= _s.StopLine)
+            throw new InvalidOperationException($"目标温度得低于升温停止线 {_s.StopLine:0.#} ℃");
         if (!_s.Wells().Any()) throw new InvalidOperationException("工位 A、B 一个都没勾");
         if (!_rig.IsAlive(out var why)) throw new InvalidOperationException("设备没连上：" + why);
 
@@ -142,7 +150,9 @@ public sealed class RateTestRunner
         ReportPath = Path.Combine(_outDir, $"升降温速率测试_{_startedAt.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture)}.xlsx");
         Log("info", $"升降温速率测试开始：{_rig.Describe}；工位 {string.Join("、", _s.Wells().Select(w => w == 0 ? "A" : "B"))}；" +
                     $"满功率 {_s.FullSeconds} s、归零后再记 {_s.AfterSeconds} s；合格线 升 {_s.HeatPassK:0.#} ℃ / 降 {_s.CoolPassK:0.#} ℃；" +
-                    $"升温停止线 {_s.StopLine:0.#} ℃；报告写到 {ReportPath}");
+                    $"升温停止线 {_s.StopLine:0.#} ℃；" +
+                    (_s.Reach ? $"升到目标温度 {RateKinds.Targets(_s.ReachTargets)} ℃（满功率最长 {_s.ReachMaxMinutes} min）；" : "") +
+                    $"报告写到 {ReportPath}");
         _rig.Tripped += OnTripped;
         State = RateRunnerState.Running;
         Status = "开始";
@@ -239,7 +249,9 @@ public sealed class RateTestRunner
         test.StartedAt = _now();
         test.Water = test.Kind == RateKind.Cool ? _water : null;
         _abortReason = null;
-        Status = $"{test.Title}：满功率{RateKinds.Name(test.Kind)}，从当前温度开始";
+        Status = test.Kind == RateKind.Reach
+            ? $"{test.Title}：满功率升温，从当前温度开始，夹套到 {_s.ReachTargets.Max():0.#} ℃ 归零"
+            : $"{test.Title}：满功率{RateKinds.Name(test.Kind)}，从当前温度开始";
         Phase = "准备";
         Touch();
         _cur = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -265,7 +277,7 @@ public sealed class RateTestRunner
             var target = TargetFor(test.Kind, wells);
             test.Target = target;
             csv = new CsvLog(Path.Combine(_outDir, "csv",
-                $"{_startedAt:yyyyMMdd_HHmmss}_{(test.Kind == RateKind.Heat ? "heat" : "cool")}{test.Round}.csv"));
+                $"{_startedAt:yyyyMMdd_HHmmss}_{test.Kind switch { RateKind.Heat => "heat", RateKind.Cool => "cool", _ => "reach" }}{test.Round}.csv"));
             var cmdAt = _now();
             foreach (var w in wells)
             {
@@ -332,10 +344,14 @@ public sealed class RateTestRunner
     private string? Precheck(int w, RateKind kind, WellReading r)
     {
         if (r.Tj is not { } tj) return "夹套没有读数";
-        if (kind == RateKind.Heat && tj >= _s.StopLine)
+        if (RateKinds.IsHeat(kind) && tj >= _s.StopLine)
             return $"夹套 {tj:0.0} ℃ 已到升温停止线 {_s.StopLine:0.#} ℃";
-        if (kind == RateKind.Heat && _rig.Limits(w) is { } lim && tj >= lim.Max)
+        if (RateKinds.IsHeat(kind) && _rig.Limits(w) is { } lim && tj >= lim.Max)
             return $"夹套 {tj:0.0} ℃ 已到温控器超温上限 {lim.Max:0.#} ℃";
+        if (kind == RateKind.Reach && _s.ReachTargets.Max() is var top && tj >= top)
+            return $"夹套 {tj:0.0} ℃ 已经不低于最高目标 {top:0.#} ℃，没得升——等夹套降下来再测";
+        if (kind == RateKind.Reach && _rig.Limits(w) is { } lm && lm.Max <= _s.ReachTargets.Max())
+            return $"温控器超温上限 {lm.Max:0.#} ℃ 不高于目标 {_s.ReachTargets.Max():0.#} ℃，满功率也到不了";
         if (kind == RateKind.Cool && _rig.Threshold is { } th && tj >= th)
             return $"夹套 {tj:0.0} ℃ 高于 TEC 接入上限 {th:0.#} ℃，TEC 接不上——等夹套降到 {th:0.#} ℃ 以下再测降温";
         if (kind == RateKind.Cool && _rig.Limits(w) is { } lo && tj <= lo.Min)
@@ -346,7 +362,7 @@ public sealed class RateTestRunner
     /// <summary>够不着的夹套目标：升温 = 停止线与各路超温上限里最小的；降温 = 各路超温下限里最大的（缺省 −40）。</summary>
     private double TargetFor(RateKind kind, List<int> wells)
     {
-        if (kind == RateKind.Heat)
+        if (RateKinds.IsHeat(kind))
         {
             var t = _s.StopLine;
             foreach (var w in wells)
@@ -364,12 +380,15 @@ public sealed class RateTestRunner
     {
         await _rig.SetTargetAsync(tr.Well, target, TempChannelKind.Jacket, token).ConfigureAwait(false);
         tr.T0 = _now();
-        Log("info", $"工位 {tr.WellName} 接上满功率{RateKinds.Name(tr.Kind)}（下令后 {(tr.T0.Value - tr.CommandAt!.Value).TotalSeconds:0.0} s）");
+        Log("info", $"工位 {tr.WellName} 接上满功率{(RateKinds.IsHeat(tr.Kind) ? "升温" : "降温")}（下令后 {(tr.T0.Value - tr.CommandAt!.Value).TotalSeconds:0.0} s）");
     }
 
     private async Task LoopAsync(RateTest test, List<int> wells, List<Task> go, CsvLog csv, CancellationToken token)
     {
-        var full = TimeSpan.FromSeconds(_s.FullSeconds);
+        var reach = test.Kind == RateKind.Reach;
+        var top = reach ? _s.ReachTargets.Max() : 0;
+        // 满功率最长开多久：一分钟那两项 = N s 到时归零；升到目标温度 = 最长那么多分钟（到最高目标就提前归零）
+        var full = reach ? TimeSpan.FromMinutes(_s.ReachMaxMinutes) : TimeSpan.FromSeconds(_s.FullSeconds);
         var after = TimeSpan.FromSeconds(_s.AfterSeconds);
         var loss = TimeSpan.FromSeconds(Math.Max(1, _s.ReadingLossSeconds));
         var lastGood = new DateTimeOffset[2];
@@ -408,7 +427,7 @@ public sealed class RateTestRunner
                 else lastGood[w] = now;
                 if (r.Tj is { } tj && _rig.Limits(w) is { } lim && (tj < lim.Min - 2 || tj > lim.Max + 2))
                     throw new RateAbort($"工位 {tr.WellName} 夹套 {tj:0.0} ℃ 跑出设备范围 {lim.Min:0.#}~{lim.Max:0.#} ℃", fatal: true);
-                if (test.Kind == RateKind.Heat && tr.StopAt is null && r.Tj is { } hot && hot >= _s.StopLine)
+                if (RateKinds.IsHeat(test.Kind) && tr.StopAt is null && r.Tj is { } hot && hot >= _s.StopLine)
                 {
                     // 还没接上就到了（下令那几秒）：不能先归零再让下令返回把它开回去——整项中止，finally 撤回下令再归零
                     if (tr.T0 is null)
@@ -418,13 +437,24 @@ public sealed class RateTestRunner
                 }
             }
 
-            // 时间线：接上满 N s 归零；归零后再记 M s 这一路就完
+            // 时间线：接上满 N s 归零（升到目标温度：夹套到最高目标归零，满最长时间还没到也归零）；归零后再记 M s 这一路就完
             foreach (var w in wells)
             {
                 var tr = test.Traces[w]!;
                 if (tr.Finished) continue;
-                if (tr.T0 is { } t0 && tr.StopAt is null && now - t0 >= full)
-                    await StopWellAsync(tr, now, null).ConfigureAwait(false);
+                if (tr.T0 is { } t0 && tr.StopAt is null)
+                {
+                    if (reach && reads[w].Tj is { } v && v >= top)
+                    {
+                        Log("info", $"{test.Title} 工位 {tr.WellName} 夹套到 {top:0.#} ℃（{v:0.0} ℃），输出归零");
+                        await StopWellAsync(tr, now, null).ConfigureAwait(false);
+                    }
+                    else if (now - t0 >= full)
+                    {
+                        if (reach) tr.EarlyStop = $"满功率 {_s.ReachMaxMinutes} min 还没到 {top:0.#} ℃，归零";
+                        await StopWellAsync(tr, now, tr.EarlyStop).ConfigureAwait(false);
+                    }
+                }
                 if (tr.StopAt is { } sa && now - sa >= after)
                 {
                     tr.Finished = true;
@@ -437,7 +467,7 @@ public sealed class RateTestRunner
             Touch();
             if (wells.All(w => test.Traces[w]!.Finished)) return;
 
-            // 下一拍：1 s 一拍，快到某一路的归零时刻就提前醒（归零时刻差不了零点几秒）
+            // 下一拍：1 s 一拍，快到某一路的归零时刻就提前醒（归零时刻差不了零点几秒；升到目标温度是满最长时间那一刻）
             var next = TimeSpan.FromSeconds(1);
             foreach (var w in wells)
                 if (test.Traces[w] is { T0: { } t0, StopAt: null } && t0 + full - now is var left && left > TimeSpan.Zero && left < next)
@@ -468,6 +498,18 @@ public sealed class RateTestRunner
             var tr = test.Traces[w]!;
             string s;
             if (tr.T0 is not { } t0) s = "等接上";
+            else if (tr.StopAt is null && test.Kind == RateKind.Reach)
+            {
+                // 「A 满功率 2 分 15 秒，夹套 79.0 ℃，到 60 ℃ 用了 1 分 27 秒」
+                var series = RateMath.TjSeries(tr);
+                var bits = new List<string> { $"满功率 {RateKinds.Duration((now - t0).TotalSeconds)}" };
+                if (series.Count > 0) bits.Add($"夹套 {series[^1].V:0.0} ℃");
+                if (RateMath.At(series, t0) is { } v0)
+                    foreach (var g in _s.ReachTargets.Where(g => g > v0))
+                        if (RateMath.Cross(series, t0, v0, g, 1, now) is { } sec)
+                            bits.Add($"到 {g:0.#} ℃ 用了 {RateKinds.Duration(sec)}");
+                s = string.Join("，", bits);
+            }
             else if (tr.StopAt is not { } sa)
             {
                 var series = RateMath.TjSeries(tr);
@@ -485,6 +527,12 @@ public sealed class RateTestRunner
     private string Brief(RateTest test, int w)
     {
         var m = RateMath.Compute(test.Traces[w]!, _s);
+        if (m.Reach is { } items)
+            return $"{(w == 0 ? "A" : "B")} 起点 {F(m.Start)} ℃，" +
+                   string.Join("、", items.Where(i => i.Measured).Select(i => i.Seconds is { } x
+                       ? $"到 {i.Target:0.#} ℃ 用 {x:0.0} s（平均 {i.PerMinute:0.0} ℃/min）"
+                       : $"{i.Target:0.#} ℃ 没到")) +
+                   $"，{m.Verdict}";
         var name = test.Kind == RateKind.Heat ? "升" : "降";
         return m.Change is { } c
             ? $"{(w == 0 ? "A" : "B")} {F(m.Start)} → {F(m.End)} ℃，{_s.FullSeconds} s {name}了 {c:0.0} ℃，{m.Verdict}"

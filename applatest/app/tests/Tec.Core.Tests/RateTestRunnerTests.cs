@@ -20,6 +20,10 @@ namespace Tec.Core.Tests;
 /// · 降温时夹套高过 TEC 接入上限那一路不做、原因进报告；
 /// · 下令还没返回就中止：先撤回下令再归零，不让它在归零之后又开起来；
 /// · Excel 报告：汇总一行一路、每项一张每秒数据、每张一张曲线，图表部件过 Open XML 校验。
+/// 【本地改动】（2026-11-18）升到目标温度（用户要的 80 / 100 ℃ 升温测试）：
+/// · 满功率从当前温度升，过每个目标记用时（采样之间插值）、平均升温速度 =（目标 − 起点）÷ 用时；到最高目标那一拍归零、再记 60 s；
+/// · 起点已经高于哪一档那一档不测；已经不低于最高目标这一路不做；满最长时间还没到归零、记「没到」；
+/// · 排在升温、降温后面；报告里单独一张结果表（到了绿、没到红）、一张每秒数据记到最晚归零那一路之后 60 s、曲线过校验。
 /// </summary>
 public class RateTestRunnerTests
 {
@@ -489,13 +493,176 @@ public class RateTestRunnerTests
         Assert.True(wb.Worksheets.Contains("降温 第2次"));
     }
 
+
+    // ── 升到目标温度（2026-11-18）──────────────────────────────────
+
+    private static RateSettings ReachOnly(Action<RateSettings>? more = null)
+    {
+        var s = new RateSettings { Heat = false, Cool = false, Reach = true, Operator = "测试员" };
+        more?.Invoke(s);
+        return s;
+    }
+
+    [Fact]
+    public async Task 升到目标温度_过80和100各记用时_平均升温速度按起点算_到100那一拍归零()
+    {
+        var (r, rig, _, logs, dir) = Make(ReachOnly());
+        await RunFeeding(r, double.NaN);
+
+        var t = r.Tests.Single();
+        Assert.Equal("升到 80、100 ℃ 第 1 次", t.Title);
+        Assert.Equal(RateState.Done, t.State);
+        Assert.Contains(rig.Targets, x => x.Target == 190 && x.Kind == TempChannelKind.Jacket);   // 够不着的目标同升温：停止线
+        // A 0.4 K/s 从 25 起：80 ℃ 在 137.5 s、100 ℃ 在 187.5 s（两拍之间插出来），平均都是 24 ℃/min
+        var a = M(r, RateKind.Reach, 0);
+        Assert.Equal("到了", a.Verdict);
+        Assert.Equal(25, a.Start!.Value, 1);
+        Assert.Equal(new[] { 80.0, 100.0 }, a.Reach!.Select(i => i.Target));
+        Assert.Equal(137.5, a.Reach![0].Seconds!.Value, 1);
+        Assert.Equal(24, a.Reach![0].PerMinute!.Value, 1);
+        Assert.Equal(187.5, a.Reach![1].Seconds!.Value, 1);
+        Assert.Equal(24, a.Reach![1].PerMinute!.Value, 1);
+        // 1 s 一拍：188 s 那一拍读到 100.2 ℃ 就归零；余热还冲 ≈ 4 ℃；输出全程顶满
+        var ta = t.Traces[0]!;
+        Assert.Equal(188, (ta.StopAt!.Value - ta.T0!.Value).TotalSeconds, 1);
+        Assert.Null(ta.EarlyStop);
+        Assert.InRange(a.Overrun!.Value, 3.5, 4.1);
+        Assert.Equal(100, a.FullOutPercent!.Value, 0);
+        Assert.Equal("", a.Note);
+        // B 0.3 K/s：80 ℃ 183.3 s、100 ℃ 250 s，18 ℃/min
+        var b = M(r, RateKind.Reach, 1);
+        Assert.Equal("到了", b.Verdict);
+        Assert.Equal(183.3, b.Reach![0].Seconds!.Value, 1);
+        Assert.Equal(250, b.Reach![1].Seconds!.Value, 1);
+        Assert.Equal(18, b.Reach![1].PerMinute!.Value, 1);
+        Assert.Null(rig.Target[0]);
+        Assert.Null(rig.Target[1]);
+        Assert.Contains(logs, l => l.Contains("夹套到 100 ℃"));
+        Assert.Contains(logs, l => l.Contains("到 100 ℃ 用 187.5 s"));
+        Assert.Single(Directory.GetFiles(Path.Combine(dir, "csv"), "*_reach1.csv"));
+        Assert.Equal("2 分 18 秒", RateKinds.Duration(137.5));
+        Assert.Equal("45 秒", RateKinds.Duration(45.2));
+    }
+
+    [Fact]
+    public async Task 升到目标温度_起点已经高于80_80不测_100照测()
+    {
+        var (r, _, _, _, _) = Make(ReachOnly(s => s.WellB = false), f => f.Tj[0] = 85);
+        await RunFeeding(r, double.NaN);
+        var m = M(r, RateKind.Reach, 0);
+        Assert.Equal("到了", m.Verdict);
+        Assert.False(m.Reach![0].Measured);
+        Assert.Null(m.Reach![0].Seconds);
+        Assert.Equal(37.5, m.Reach![1].Seconds!.Value, 1);     // 85 → 100 用 15 / 0.4
+        Assert.Equal(24, m.Reach![1].PerMinute!.Value, 1);
+        Assert.Contains("这一档不测", m.Note);
+        using var wb = new XLWorkbook(r.ReportPath!);
+        Assert.Contains(wb.Worksheet(RateReport.SummarySheet).CellsUsed(), c => c.GetString() == "不测");
+    }
+
+    [Fact]
+    public async Task 升到目标温度_起点已经不低于最高目标_这一路不做_另一路照做()
+    {
+        var (r, rig, _, _, _) = Make(ReachOnly(), f => f.Tj[0] = 105);
+        await RunFeeding(r, double.NaN);
+        var t = r.Tests.Single();
+        Assert.Equal(RateState.Done, t.State);
+        Assert.Contains("最高目标", t.Traces[0]!.Refused);
+        Assert.DoesNotContain(rig.Targets, x => x.Well == 0);
+        Assert.Equal("判不了", M(r, RateKind.Reach, 0).Verdict);
+        Assert.Equal("到了", M(r, RateKind.Reach, 1).Verdict);
+    }
+
+    [Fact]
+    public async Task 升到目标温度_满最长时间还没到最高目标_归零_记没到_到了的那档照记()
+    {
+        var (r, rig, _, _, _) = Make(ReachOnly(s => { s.ReachTargets = new[] { 40.0, 100.0 }; s.ReachMaxMinutes = 1; }));
+        await RunFeeding(r, double.NaN);
+        var t = r.Tests.Single();
+        Assert.Equal(RateState.Done, t.State);
+        var ta = t.Traces[0]!;
+        Assert.Equal(60, (ta.StopAt!.Value - ta.T0!.Value).TotalSeconds, 1);
+        Assert.Contains("1 min 还没到 100", ta.EarlyStop);
+        var a = M(r, RateKind.Reach, 0);
+        Assert.Equal("没到", a.Verdict);
+        Assert.Equal(37.5, a.Reach![0].Seconds!.Value, 1);      // 25 → 40 用 15 / 0.4
+        Assert.Null(a.Reach![1].Seconds);
+        Assert.Contains("还没到 100", a.Note);
+        Assert.Contains("满功率这段升了 24.0 ℃", a.Note);
+        Assert.Equal("没到", M(r, RateKind.Reach, 1).Verdict);
+        Assert.Null(rig.Target[0]);
+        Assert.Null(rig.Target[1]);
+        using var wb = new XLWorkbook(r.ReportPath!);
+        var cell = wb.Worksheet(RateReport.SummarySheet).CellsUsed(c => c.GetString() == "没到").First();
+        Assert.Equal(XLColor.FromHtml("#FFCDD2"), cell.Style.Fill.BackgroundColor);
+    }
+
+    [Fact]
+    public async Task 三样都勾_顺序是升温_降温_升到目标_报告两张结果表_每秒数据记到归零后_曲线过校验()
+    {
+        var (r, _, _, _, _) = Make(new RateSettings { Reach = true, Operator = "测试员", Patch = "0340", Material = "水 50 mL" });
+        await RunFeeding(r);
+        Assert.Equal(new[] { "升温 第 1 次", "降温 第 1 次", "升到 80、100 ℃ 第 1 次" }, r.Tests.Select(t => t.Title));
+        Assert.All(r.Tests, t => Assert.Equal(RateState.Done, t.State));
+        // 升到目标从降温结束后的温度直接开始（A：25 + 24 + 余热 4 − 21 − 余冷 3.5 ≈ 28.5）
+        var a = M(r, RateKind.Reach, 0);
+        Assert.InRange(a.Start!.Value, 26, 32);
+        Assert.Equal("到了", a.Verdict);
+        var reach = r.Tests[2];
+
+        var path = r.ReportPath!;
+        using (var wb = new XLWorkbook(path))
+        {
+            var sum = wb.Worksheet(RateReport.SummarySheet);
+            Assert.Single(sum.CellsUsed(c => c.GetString() == "结论"));      // 一分钟那张照旧
+            var hdr = sum.CellsUsed(c => c.GetString() == "结果").Single();
+            var cols = RateReport.ReachColumns(r.Settings.ReachTargets).ToList();
+            Assert.Equal(RateReport.SummaryColumns.Length, cols.Count);     // 两个目标：备注跟一分钟那张落在同一列
+            int Col(string name) => cols.IndexOf(name) + 1;
+            var row = sum.Row(hdr.Address.RowNumber + 1);
+            Assert.Equal("升到 80、100 ℃ 第 1 次", row.Cell(Col("测试")).GetString());
+            Assert.Equal("A", row.Cell(Col("工位")).GetString());
+            Assert.Equal("到了", row.Cell(Col("结果")).GetString());
+            Assert.Equal(a.Start!.Value, row.Cell(Col("起点 ℃")).GetDouble(), 3);
+            Assert.Equal(a.Reach![1].Seconds!.Value, row.Cell(Col("到 100 ℃ 用时 s")).GetDouble(), 3);
+            Assert.Equal(24, row.Cell(Col("起点→100 ℃ 平均升温 ℃/min")).GetDouble(), 1);
+            Assert.Equal(XLColor.FromHtml("#C8E6C9"), row.Cell(Col("结果")).Style.Fill.BackgroundColor);
+            Assert.Equal("B", sum.Row(hdr.Address.RowNumber + 2).Cell(Col("工位")).GetString());
+            Assert.Contains(sum.CellsUsed(), c => c.GetString() == "80、100");
+
+            // 每秒数据：0 s 起，记到最晚归零那一路之后 60 s
+            var sheet = wb.Worksheet("升到目标 第1次");
+            var first = RateReport.SecondHeaderRow + 1;
+            var latest = reach.Traces.Max(tr => (tr!.StopAt!.Value - tr.T0!.Value).TotalSeconds);
+            var lastRow = sheet.LastRowUsed()!.RowNumber();
+            Assert.Equal(Math.Ceiling(latest) + 60, sheet.Cell(lastRow, 1).GetDouble());
+            Assert.Equal("满功率", sheet.Cell(first + 100, 2).GetString());
+            Assert.Contains("到 100 ℃ 用", sheet.Cell(2, 1).GetString());
+        }
+
+        using var doc = SpreadsheetDocument.Open(path, false);
+        var wbPart = doc.WorkbookPart!;
+        var sh = wbPart.Workbook.Sheets!.Elements<DocumentFormat.OpenXml.Spreadsheet.Sheet>().Single(x => x.Name == "升到目标 第1次");
+        var ws = (WorksheetPart)wbPart.GetPartById(sh.Id!);
+        var chart = Assert.Single(ws.DrawingsPart!.ChartParts).ChartSpace.OuterXml;
+        Assert.Contains("'升到目标 第1次'!$C$5:$C$", chart);
+        Assert.Contains("升到 100 ℃ 归零", chart);
+        Assert.Equal(3, wbPart.WorksheetParts.Count(p => p.DrawingsPart is not null));
+        var errors = new OpenXmlValidator(FileFormatVersions.Office2016).Validate(doc)
+            .Where(e => e.Part?.Uri.ToString() is { } u && (u.Contains("/charts/") || u.Contains("/drawings/"))
+                        || e.Node is DocumentFormat.OpenXml.Spreadsheet.Drawing)
+            .Select(e => $"{e.Part?.Uri} {e.Path?.XPath} {e.Description}").ToList();
+        Assert.True(errors.Count == 0, string.Join("\n", errors));
+    }
+
     /// <summary>
-    /// 架在仿真主机上（真机那条路上除了串口都走一遍：HmiRuntime → 管线 → RuntimeRig → 通道的控温能力），升温降温各一次、出报告。
-    /// 仿真的「尽快」是按 2 ℃/min 走的（仿真模型自己的数，不是真机），所以两项都是「不合格」——这里锁的是路通、数有、图在。
+    /// 架在仿真主机上（真机那条路上除了串口都走一遍：HmiRuntime → 管线 → RuntimeRig → 通道的控温能力），升温、降温、升到 80 / 100 ℃ 各一次、出报告。
+    /// 仿真的「尽快」是按 2 ℃/min 走的（仿真模型自己的数，不是真机），所以一分钟那两项都是「不合格」、升到 100 ℃ 要半个多钟头
+    /// （最长等放到 60 min）——这里锁的是路通、数有、图在。
     /// 设了环境变量 TEC_RATE_SAMPLE_OUT 就把这份报告拷过去（给人看的样例报告就是这么出的）。
     /// </summary>
     [Fact]
-    public async Task 仿真主机_升温降温各一次_报告有数有图()
+    public async Task 仿真主机_升温降温升到目标各一次_报告有数有图()
     {
         var benchDir = Path.Combine(Path.GetTempPath(), "tec-rate-sim-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(benchDir);
@@ -519,7 +686,8 @@ public class RateTestRunnerTests
         }
 
         var outDir = OutDir();
-        var s = new RateSettings { Operator = "仿真", Patch = "0340", Material = "（仿真，无料）", Ambient = 24, ReadingLossSeconds = 120 };
+        var s = new RateSettings { Operator = "仿真", Patch = "0340", Material = "（仿真，无料）", Ambient = 24, ReadingLossSeconds = 120,
+                                   Reach = true, ReachMaxMinutes = 60 };
         var runner = new RateTestRunner(rig, s, outDir,
             now: rt.Clock.Func,
             delay: (t, ct) => Task.Delay(rt.Clock.RealDelay(t), ct),
@@ -527,7 +695,7 @@ public class RateTestRunnerTests
         var run = Task.Run(() => runner.RunAsync(CancellationToken.None));
         await WaitFor(() => runner.State == RateRunnerState.WaitingWater, run, 60000);
         runner.ConfirmWater(18.0);
-        await run.WaitAsync(TimeSpan.FromSeconds(90));
+        await run.WaitAsync(TimeSpan.FromSeconds(240));
 
         Assert.True(runner.Tests.All(t => t.State == RateState.Done), string.Join("；", runner.Tests.Select(t => $"{t.Title} {t.StateText} {t.Note}")));
         foreach (var t in runner.Tests)
@@ -536,9 +704,16 @@ public class RateTestRunnerTests
                 var m = RateMath.Compute(t.Traces[w]!, s);
                 Assert.NotNull(m.Start);
                 Assert.True(m.Change > 0, $"{t.Title} {w} 没往要的方向走：{m.Change}");
-                Assert.Equal("不合格", m.Verdict);      // 仿真 2 ℃/min
                 Assert.NotNull(m.Source);
                 Assert.Null(m.FullOutPercent);           // 仿真没有参数面板：最大输出占空比读不到，留空
+                if (t.Kind == RateKind.Reach)
+                {
+                    // 2 ℃/min：80、100 ℃ 都到了，平均升温速度在 2 上下（起点附近和快到时有一点偏）
+                    Assert.True(m.Verdict == "到了", $"{t.Title} {w}：{m.Verdict} {m.Note}");
+                    Assert.All(m.Reach!, i => Assert.InRange(i.PerMinute!.Value, 1.5, 2.5));
+                    continue;
+                }
+                Assert.Equal("不合格", m.Verdict);      // 仿真 2 ℃/min
                 Assert.InRange(m.RanSeconds!.Value, 59.5, 61);
             }
         Assert.Contains(rt.Log.Tail(500), e => e.Text.Contains("接上满功率升温"));
@@ -548,7 +723,7 @@ public class RateTestRunnerTests
             .Where(e => e.Part?.Uri.ToString() is { } u && (u.Contains("/charts/") || u.Contains("/drawings/")))
             .Select(e => $"{e.Part?.Uri} {e.Description}").ToList();
         Assert.True(errors.Count == 0, string.Join("\n", errors));
-        Assert.Equal(2, doc.WorkbookPart!.WorksheetParts.Count(p => p.DrawingsPart is not null));
+        Assert.Equal(3, doc.WorkbookPart!.WorksheetParts.Count(p => p.DrawingsPart is not null));
         doc.Dispose();
 
         if (Environment.GetEnvironmentVariable("TEC_RATE_SAMPLE_OUT") is { Length: > 0 } dst)

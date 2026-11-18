@@ -8,16 +8,41 @@ namespace Tec.LimitTest.Rate;
 // 一分钟到了输出归零、再记 1 分钟看停了以后还冲多少。
 // 满功率 = 温控器「最大输出占空比」LIMITED（协议上限 90 %），程序不改它：给夹套下一个够不着的目标，让输出一直顶在上限，
 // 不动驱动（外环第 1 步正在真机上测，驱动那几个文件不碰）。每秒实际输出了多少照记，没顶满报告里标出来。
+//
+// 【本地改动】（2026-11-18）加「升到目标温度」：用户原话「加一个 80 度 100 度的升温测试，等到了 80 或者 100，看经过的时间，一个平均值」。
+// 用户定的（2026-11-18）：满功率一路升（跟一分钟那项一样开满）；看夹套；平均值 = 平均升温速度（到的温度 − 起点）÷ 用时；
+// 从当前温度直接开始，起点已经高于哪一档那一档就不测。过每个目标记用时，到最高目标输出归零、再记一段看余温上冲。
 
-/// <summary>升温（加热棒满功率）还是降温（TEC 满功率，要冷却水）。</summary>
-public enum RateKind { Heat, Cool }
+/// <summary>
+/// 升温（加热棒满功率一分钟）、降温（TEC 满功率一分钟，要冷却水）、升到目标温度（加热棒满功率一路升到 80 / 100 ℃，看用时）。
+/// </summary>
+public enum RateKind { Heat, Cool, Reach }
 
 public static class RateKinds
 {
-    public static string Name(RateKind k) => k == RateKind.Heat ? "升温" : "降温";
+    public static string Name(RateKind k) => k switch
+    {
+        RateKind.Heat => "升温",
+        RateKind.Cool => "降温",
+        _ => "升到目标温度"
+    };
+
+    /// <summary>用加热棒的（升温、升到目标温度）：升温停止线、够不着的目标、开始前的检查都按升温走。</summary>
+    public static bool IsHeat(RateKind k) => k != RateKind.Cool;
 
     /// <summary>升温看「升了多少」取 +1，降温看「降了多少」取 −1：变化量 = 符号 ×（后 − 前）。</summary>
-    public static double Sign(RateKind k) => k == RateKind.Heat ? 1 : -1;
+    public static double Sign(RateKind k) => IsHeat(k) ? 1 : -1;
+
+    /// <summary>「2 分 45 秒」「45 秒」：用时给人看的写法（四舍五入到秒）。</summary>
+    public static string Duration(double seconds)
+    {
+        var t = (int)Math.Round(Math.Max(0, seconds));
+        return t < 60 ? $"{t} 秒" : $"{t / 60} 分 {t % 60} 秒";
+    }
+
+    /// <summary>「80、100」：目标温度列表的写法。</summary>
+    public static string Targets(IEnumerable<double> targets)
+        => string.Join("、", targets.Select(g => g.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)));
 }
 
 /// <summary>一轮速率测试的设置。界面上改，开始时拍一份快照给 Runner。</summary>
@@ -28,7 +53,17 @@ public sealed class RateSettings
     /// <summary>测哪几个工位（两个一起测是缺省，用户定的）。</summary>
     public bool WellA { get; set; } = true;
     public bool WellB { get; set; } = true;
-    /// <summary>测几次。每一次 = 升温一次再降温一次（勾了哪个做哪个），都从当时的温度直接开始。</summary>
+    /// <summary>升到目标温度（2026-11-18 用户要的）：满功率一路升，过每个目标记用时。缺省不做（界面上缺省勾上）。</summary>
+    public bool Reach { get; set; }
+    /// <summary>
+    /// 升到目标温度的目标（℃，从低到高、不重复）。缺省 80、100（用户原话）。都得低于升温停止线；
+    /// 夹套到最高那个就输出归零。
+    /// </summary>
+    public IReadOnlyList<double> ReachTargets { get; set; } = new[] { 80.0, 100.0 };
+    /// <summary>升到目标温度满功率最长开多久（min）：到这么久还没到最高目标就归零、记「没到」。缺省 20。</summary>
+    public int ReachMaxMinutes { get; set; } = 20;
+
+    /// <summary>测几次。每一次 = 升温、降温、升到目标温度各一次（勾了哪个做哪个），都从当时的温度直接开始。</summary>
     public int Rounds { get; set; } = 1;
 
     /// <summary>合格线（℃）：满功率这段至少升这么多。缺省 20（用户原话：一分钟夹套能不能上升 20 度）。</summary>
@@ -75,11 +110,15 @@ public enum RateState { Pending, Running, Done, Aborted, Skipped }
 /// <summary>一项测试（升温或降温的第几次），两个工位各一条记录。</summary>
 public sealed class RateTest
 {
-    public RateTest(RateKind kind, int round)
+    /// <param name="label">名字（缺省按种类：「升温」「降温」）；升到目标温度带上目标：「升到 80、100 ℃」。</param>
+    public RateTest(RateKind kind, int round, string? label = null)
     {
         Kind = kind;
         Round = round;
+        Label = label ?? RateKinds.Name(kind);
     }
+
+    public string Label { get; }
 
     public RateKind Kind { get; }
     /// <summary>第几次（1 起）。</summary>
@@ -95,8 +134,9 @@ public sealed class RateTest
     /// <summary>两个工位的记录；没测的那一路是 null。</summary>
     public RateTrace?[] Traces { get; } = new RateTrace?[2];
 
-    public string Title => $"{RateKinds.Name(Kind)} 第 {Round} 次";
-    public string SheetName => $"{RateKinds.Name(Kind)} 第{Round}次";
+    public string Title => $"{Label} 第 {Round} 次";
+    /// <summary>每秒数据那张表的名字（Excel 表名最长 31 个字，不能有 / 之类；升到目标温度不带目标数）。</summary>
+    public string SheetName => Kind == RateKind.Reach ? $"升到目标 第{Round}次" : $"{RateKinds.Name(Kind)} 第{Round}次";
 
     public string StateText => State switch
     {
@@ -190,8 +230,16 @@ public sealed record RateMetrics
     public double? AfterPeakSeconds { get; init; }
     /// <summary>下令到接上满功率用了多少秒（切热源、等冷却水的时间）。</summary>
     public double? ConnectSeconds { get; init; }
+    /// <summary>升到目标温度才有：每个目标一项（用时、平均升温速度）。</summary>
+    public IReadOnlyList<ReachItem>? Reach { get; init; }
     public string Note { get; init; } = "";
 }
+
+/// <summary>
+/// 升到目标温度里的一个目标：从接上满功率起用了多少秒到这个温度（在两个采样之间插出到的那一刻），
+/// 平均升温速度 =（目标 − 起点）÷ 用时，折合每分钟。起点已经不低于它的不测（Measured = false）。
+/// </summary>
+public sealed record ReachItem(double Target, bool Measured, double? Seconds, double? PerMinute);
 
 /// <summary>
 /// 从一个工位的每秒记录算报告里的数。纯计算，不碰设备，测试直接喂点。
@@ -248,9 +296,29 @@ public static class RateMath
     public static bool IsFull(double? output, double? limited)
         => output is { } o && limited is { } l && l > 0 && Math.Abs(o) >= l - 0.5;
 
+    /// <summary>
+    /// 从 t0（那一刻值 v0）往后，夹套第一次越过 line（按 sign 的方向）离 t0 多少秒：在越线前后两个采样之间插出越线那一刻。
+    /// end 之后的不算；没越过是 null。
+    /// </summary>
+    public static double? Cross(List<(DateTimeOffset T, double V)> series, DateTimeOffset t0, double v0, double line, double sign, DateTimeOffset end)
+    {
+        (DateTimeOffset T, double V) prev = (t0, v0);
+        foreach (var p in series.Where(x => x.T > t0 && x.T <= end))
+        {
+            if (sign * (p.V - line) >= 0)
+            {
+                var f = Math.Abs(p.V - prev.V) < 1e-12 ? 1 : Math.Clamp((line - prev.V) / (p.V - prev.V), 0, 1);
+                return (prev.T - t0).TotalSeconds + f * (p.T - prev.T).TotalSeconds;
+            }
+            prev = p;
+        }
+        return null;
+    }
+
     public static RateMetrics Compute(RateTrace tr, RateSettings s, string? abortNote = null)
     {
-        var pass = s.PassOf(tr.Kind);
+        var reach = tr.Kind == RateKind.Reach;
+        var pass = reach ? 0 : s.PassOf(tr.Kind);
         if (tr.Refused is { } why)
             return new RateMetrics { Verdict = "判不了", PassK = pass, Note = "没测：" + why };
         var t0 = tr.T0;
@@ -265,7 +333,8 @@ public static class RateMath
         var series = TjSeries(tr);
         var full = TimeSpan.FromSeconds(s.FullSeconds);
         var stop = tr.StopAt ?? (series.Count > 0 ? series[^1].T : t0.Value);
-        var end = stop < t0.Value + full ? stop : t0.Value + full;
+        // 满功率这段的终点：一分钟那两项到 N s 为止（提前归零就到归零）；升到目标温度到归零为止（到最高目标 / 满最长时间 / 中止）
+        var end = reach || stop < t0.Value + full ? stop : t0.Value + full;
         var ran = Math.Max(0, (end - t0.Value).TotalSeconds);
         var ranFull = ran >= s.FullSeconds - 0.5;
 
@@ -273,28 +342,12 @@ public static class RateMath
         var endV = At(series, end);
         double? change = start is { } sv && endV is { } ev ? sign * (ev - sv) : null;
 
-        // 升够合格线的时刻：在满功率这段里第一次越过「起点 + 符号 × 合格线」，在两个采样之间插出越线那一刻
-        double? toPass = null;
-        if (start is { } st)
-        {
-            var line = st + sign * pass;
-            (DateTimeOffset T, double V)? prev = (t0.Value, st);
-            foreach (var p in series.Where(x => x.T > t0.Value && x.T <= end))
-            {
-                if (sign * (p.V - line) >= 0)
-                {
-                    var (pt, pv) = prev!.Value;
-                    var f = Math.Abs(p.V - pv) < 1e-12 ? 1 : Math.Clamp((line - pv) / (p.V - pv), 0, 1);
-                    toPass = (pt - t0.Value).TotalSeconds + f * (p.T - pt).TotalSeconds;
-                    break;
-                }
-                prev = p;
-            }
-        }
+        // 升够合格线的时刻：在满功率这段里第一次越过「起点 + 符号 × 合格线」
+        double? toPass = !reach && start is { } st ? Cross(series, t0.Value, st, st + sign * pass, sign, end) : null;
 
-        // 最快的那 10 s：在满功率这段里按 1 s 一格滑，取变化最大的那一窗，折合每分钟
+        // 最快的那 10 s：在满功率这段里按 1 s 一格滑，取变化最大的那一窗，折合每分钟（一分钟那两项才算）
         double? fastest = null;
-        for (var k = 0; k + 10 <= ran + 1e-6; k++)
+        for (var k = 0; !reach && k + 10 <= ran + 1e-6; k++)
         {
             var v1 = At(series, t0.Value + TimeSpan.FromSeconds(k));
             var v2 = At(series, t0.Value + TimeSpan.FromSeconds(k + 10));
@@ -333,13 +386,43 @@ public static class RateMath
 
         string verdict;
         var notes = new List<string>();
-        if (toPass is not null) verdict = "合格";
-        else if (ranFull && change is not null) verdict = "不合格";
-        else verdict = "判不了";
-        if (!ranFull)
-            notes.Add(tr.EarlyStop is { } es ? $"满功率只开了 {ran:0} s：{es}"
-                      : abortNote is not null ? $"满功率只开了 {ran:0} s：中止（{abortNote}）"
-                      : $"满功率只开了 {ran:0} s");
+        List<ReachItem>? items = null;
+        if (reach)
+        {
+            // 升到目标温度：每个目标从接上满功率起用了多少秒到、平均每分钟升多少；起点已经不低于它的不测
+            items = new List<ReachItem>();
+            foreach (var g in s.ReachTargets)
+            {
+                if (start is not { } v0 || v0 >= g) { items.Add(new ReachItem(g, false, null, null)); continue; }
+                var sec = Cross(series, t0.Value, v0, g, 1, end);
+                items.Add(new ReachItem(g, true, sec, sec is { } x && x > 0 ? (g - v0) / x * 60 : null));
+            }
+            var measured = items.Where(i => i.Measured).ToList();
+            var timedOut = ran >= s.ReachMaxMinutes * 60 - 0.5;
+            if (measured.Count > 0 && measured.All(i => i.Seconds is not null)) verdict = "到了";
+            else if (measured.Count > 0 && timedOut) verdict = "没到";
+            else verdict = "判不了";
+            if (start is { } v && items.Any(i => !i.Measured))
+                notes.Add($"起点 {v:0.0} ℃ 已经不低于 {RateKinds.Targets(items.Where(i => !i.Measured).Select(i => i.Target))} ℃，这一档不测");
+            if (verdict != "到了")
+            {
+                var miss = RateKinds.Targets(measured.Where(i => i.Seconds is null).Select(i => i.Target));
+                notes.Add(tr.EarlyStop is { } es ? es
+                          : abortNote is not null ? $"满功率开了 {ran:0} s 就中止（{abortNote}），{miss} ℃ 没到"
+                          : miss.Length > 0 ? $"满功率开了 {ran:0} s，{miss} ℃ 没到" : "");
+                if (change is { } d) notes.Add($"满功率这段升了 {d:0.0} ℃");
+            }
+        }
+        else
+        {
+            if (toPass is not null) verdict = "合格";
+            else if (ranFull && change is not null) verdict = "不合格";
+            else verdict = "判不了";
+            if (!ranFull)
+                notes.Add(tr.EarlyStop is { } es ? $"满功率只开了 {ran:0} s：{es}"
+                          : abortNote is not null ? $"满功率只开了 {ran:0} s：中止（{abortNote}）"
+                          : $"满功率只开了 {ran:0} s");
+        }
         if (start is null || endV is null) notes.Add("起点或终点夹套没有读数");
         if (tr.Limited is null) notes.Add("没读到最大输出占空比，判不了输出开没开满");
         else if (fullPct is { } fp && fp < 90) notes.Add($"输出只有 {fp:0} % 的时间开满（最大输出占空比 {tr.Limited:0.#} %）——这一项不算满功率");
@@ -365,7 +448,8 @@ public static class RateMath
             AfterPeak = peak,
             AfterPeakSeconds = peakAt,
             ConnectSeconds = connect,
-            Note = string.Join("；", notes)
+            Reach = items,
+            Note = string.Join("；", notes.Where(n => n.Length > 0))
         };
     }
 }

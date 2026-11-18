@@ -34,6 +34,13 @@ public sealed partial class MainViewModel
     public bool RateHeat { get => _rateHeat; set => Set(ref _rateHeat, value); }
     private bool _rateCool = true;
     public bool RateCool { get => _rateCool; set => Set(ref _rateCool, value); }
+    // 【本地改动】（2026-11-18）升到目标温度：用户要的 80 / 100 ℃ 升温测试，缺省勾上
+    private bool _rateReach = true;
+    public bool RateReach { get => _rateReach; set => Set(ref _rateReach, value); }
+    private string _rateTargets = "80, 100";
+    public string RateTargetsText { get => _rateTargets; set => Set(ref _rateTargets, value); }
+    private string _rateReachMax = "20";
+    public string RateReachMaxText { get => _rateReachMax; set => Set(ref _rateReachMax, value); }
     private bool _rateWellA = true;
     public bool RateWellA { get => _rateWellA; set => Set(ref _rateWellA, value); }
     private bool _rateWellB = true;
@@ -87,6 +94,8 @@ public sealed partial class MainViewModel
         {
             Heat = RateHeat,
             Cool = RateCool,
+            Reach = RateReach,
+            ReachMaxMinutes = (int)D(RateReachMaxText, "最长等 min", ref error),
             WellA = RateWellA,
             WellB = RateWellB,
             HeatPassK = D(RateHeatPassText, "合格线：升", ref error),
@@ -100,8 +109,14 @@ public sealed partial class MainViewModel
             Material = RateMaterial.Trim()
         };
         if (!string.IsNullOrWhiteSpace(AmbientText)) s.Ambient = D(AmbientText, "环境温度", ref error);
+        // 目标温度：逗号、顿号、空格隔开都认；从低到高排、去重
+        var list = new List<double>();
+        foreach (var x in RateTargetsText.Split(new[] { ',', '，', '、', ' ', ';', '；', '/' }, StringSplitOptions.RemoveEmptyEntries))
+            list.Add(D(x, "目标温度", ref error));
+        var targets = list.Distinct().OrderBy(x => x).ToArray();
+        s.ReachTargets = targets;
         if (error is not null) return null;
-        if (!s.Heat && !s.Cool) { error = "升温、降温一个都没勾"; return null; }
+        if (!s.Heat && !s.Cool && !s.Reach) { error = "升温、降温、升到目标温度一个都没勾"; return null; }
         if (!s.WellA && !s.WellB) { error = "工位 A、B 一个都没勾"; return null; }
         if (s.HeatPassK <= 0 || s.CoolPassK <= 0) { error = "合格线要大于 0"; return null; }
         if (s.FullSeconds < 10 || s.FullSeconds > 600) { error = "满功率时长填 10 ~ 600 s"; return null; }
@@ -109,6 +124,14 @@ public sealed partial class MainViewModel
         if (s.Rounds < 1 || s.Rounds > 10) { error = "测几次填 1 ~ 10"; return null; }
         // 导热油夹套硬上限 200 ℃：停止线得在它下面（缺省 190，留 10 ℃ 给加热棒停了以后的余温上冲）
         if (s.StopLine >= 200) { error = "升温停止线得低于 200 ℃（导热油夹套的上限），缺省 190"; return null; }
+        if (s.Reach)
+        {
+            if (targets.Length == 0) { error = "目标温度没填（缺省 80, 100）"; return null; }
+            if (targets.Length > 5) { error = "目标温度最多填 5 个"; return null; }
+            if (targets[0] <= 0) { error = "目标温度要大于 0"; return null; }
+            if (targets[^1] >= s.StopLine) { error = $"目标温度得低于升温停止线 {s.StopLine:0.#} ℃"; return null; }
+            if (s.ReachMaxMinutes < 1 || s.ReachMaxMinutes > 120) { error = "最长等填 1 ~ 120 min"; return null; }
+        }
         if (string.IsNullOrWhiteSpace(s.Operator)) { error = "操作人没填"; return null; }
         return s;
     }
@@ -207,11 +230,21 @@ public sealed partial class MainViewModel
     {
         if (t.State is RateState.Pending or RateState.Running) return t.State == RateState.Running ? "进行中…" : "";
         var parts = new List<string>();
-        var verb = t.Kind == RateKind.Heat ? "升" : "降";
+        var verb = RateKinds.IsHeat(t.Kind) ? "升" : "降";
         for (var w = 0; w < 2; w++)
         {
             if (t.Traces[w] is not { } tr) continue;
             var m = RateMath.Compute(tr, s, t.State is RateState.Aborted or RateState.Skipped ? t.Note : null);
+            // 升到目标温度：「A：起点 25.0 ℃，到 80 ℃ 2 分 18 秒（平均 24.0 ℃/min），到 100 ℃ 3 分 8 秒（平均 24.0 ℃/min） · 到了」
+            if (m.Reach is { } items && m.Start is { } st && items.Any(i => i.Measured))
+            {
+                parts.Add($"{tr.WellName}：起点 {st:0.0} ℃，" +
+                          string.Join("，", items.Where(i => i.Measured).Select(i => i.Seconds is { } x
+                              ? $"到 {i.Target:0.#} ℃ {RateKinds.Duration(x)}（平均 {i.PerMinute:0.0} ℃/min）"
+                              : $"{i.Target:0.#} ℃ 没到")) +
+                          $" · {m.Verdict}" + (m.Verdict == "到了" || string.IsNullOrEmpty(m.Note) ? "" : $"（{m.Note}）"));
+                continue;
+            }
             parts.Add(m.Change is { } c && m.Start is { } a && m.End is { } b
                 ? $"{tr.WellName}：{a:0.0} → {b:0.0} ℃，{m.RanSeconds:0} s {verb}了 {c:0.0} ℃ · {m.Verdict}"
                 : $"{tr.WellName}：{m.Verdict}" + (string.IsNullOrEmpty(m.Note) ? "" : $"（{m.Note}）"));
