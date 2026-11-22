@@ -1261,7 +1261,7 @@ public sealed class BenchViewModel : ViewModelBase
 
     /// <summary>
     /// 【本地改动】串口跟工位走（用户 2026-11-10 定的）：一个工位一台的设备绑到哪个通道，串口就按驱动声明的那个工位缺省口填
-    /// （搅拌 CH1 = COM11 / CH2 = COM14，数字 pH CH1 = COM12 / CH2 = COM13）。只在口还是空的、或者是缺省表里的某个口时改——
+    /// （搅拌 CH1 = COM14 / CH2 = COM11（2026-11-22 对调过），数字 pH CH1 = COM12 / CH2 = COM13）。只在口还是空的、或者是缺省表里的某个口时改——
     /// 手填过别的口的不动。改了记一笔日志；属性栏正显示这台就刷一下表单。随后的重建会按新口重开这一台。
     /// </summary>
     private void ApplyStationPort(string deviceId, int? channel)

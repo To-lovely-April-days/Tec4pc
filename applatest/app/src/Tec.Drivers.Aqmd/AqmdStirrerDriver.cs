@@ -12,8 +12,10 @@ namespace Tec.Drivers.Aqmd;
 ///
 /// 现场（2026-11-09 用户用串口工具和本程序实测）：两台都答 9600 bps、**无校验 + 2 停止位**（8N2）。驱动器自己报的是
 /// 偶校验 + 1 停止位（寄存器 0x0092 = 2）——8E1 和 8N2 都是 11 位一个字符，CH344 这边按 8N2 收发实测通，
-/// 8N1（10 位）不通；照现场填，偶校验那档留在下拉里；站号都是 1；工位 A 在 COM11、工位 B 在 COM14
-/// （两块 CH344 剩下的两个口，和口的字母正好相反：COM11 是第一块的 C、COM14 是第一块的 D——所以按工位记，别按字母记）。
+/// 8N1（10 位）不通；照现场填，偶校验那档留在下拉里；站号都是 1；工位 A 在 COM14、工位 B 在 COM11
+/// （两块 CH344 剩下的两个口：COM11 是第一块的 C、COM14 是第一块的 D——按工位记，别按字母记）。
+/// 【本地改动】（用户 2026-11-22：通道 1 和通道 2 的搅拌反了）2026-11-09 记的是 A = COM11 / B = COM14，现场实际接线正好相反——
+/// 在通道 1 上开搅拌转的是工位 B 那台。缺省对调成 A = COM14 / B = COM11；已经存盘的台面里口不会自己变，要在属性栏把两台的串口换一下。
 /// 型号名读回「AQMD2408BLS-M2」v1.3，极数没配（0x0073 = 0）、额定电流还是出厂 7 A——这两项做成配置，连接时写进驱动器。
 ///
 /// 驱动器一侧的语义：速度闭环目标是**换向频率**（Hz），不是 rpm；rpm = Hz ÷ 极数 × 20 ÷ 减速比（手册 p10）。
@@ -38,9 +40,10 @@ public sealed class AqmdStirrerDriver : IDeviceDriver, IStationPortDefaults
     public static readonly string[] StopOptions = { "2", "1" };
     public static readonly string[] BaudOptions = { "9600", "19200", "38400", "57600", "115200" };
 
-    /// <summary>缺省照现场：工位 A 的那台在 COM11（工位 B 的填 COM14）。</summary>
-    public const string DefaultPort = "COM11";
-    public const string DefaultPortB = "COM14";
+    /// <summary>缺省照现场：工位 A 的那台在 COM14（工位 B 的填 COM11）。</summary>
+    // 【本地改动】（用户 2026-11-22）两个工位对调：原来 A = COM11 / B = COM14 跟现场接线反了，通道 1 的搅拌开的是工位 B 的电机
+    public const string DefaultPort = "COM14";
+    public const string DefaultPortB = "COM11";
     public const int DefaultAddr = 1;
     public const int DefaultBaud = 9600;
     /// <summary>现场实测通的帧格式：无校验 + 2 停止位（见类注释）。</summary>
@@ -93,7 +96,7 @@ public sealed class AqmdStirrerDriver : IDeviceDriver, IStationPortDefaults
     public ParameterSchema ConnectionSchema { get; } = new(new[]
     {
         Field.Port(FieldPort, "串口", DefaultPort,
-                   "下拉里是这台机器当前检测到的串口。现场：工位 A 的驱动器在 COM11、工位 B 的在 COM14（两块 CH344 剩下的那两个口）。" +
+                   "下拉里是这台机器当前检测到的串口。现场：工位 A 的驱动器在 COM14、工位 B 的在 COM11（两块 CH344 剩下的那两个口）。" +
                    "两台也可以并在一条 485 上共一个口，那样站号要不同"),
         Field.Num(FieldAddr, "站号", DefaultAddr, "", 1, 247, 1)
             with { Tip = "驱动器寄存器 0x009C，出厂 1（驱动器允许到 254，Modbus 主站这边只认 1~247）。现场两台各走一个口，都是 1" },
@@ -144,7 +147,7 @@ public sealed class AqmdStirrerDriver : IDeviceDriver, IStationPortDefaults
     /// <summary>驱动器认领配方里的「搅拌」指令（声明在 ABI 的 CommandSpecs.Stirring，跟仿真机同一条）。</summary>
     public IReadOnlyList<CommandDescriptor> Commands { get; } = CommandSpecs.Stirring;
 
-    // ── 串口跟工位走（IStationPortDefaults）：绑到 CH1 就是 COM11、CH2 就是 COM14 ──
+    // ── 串口跟工位走（IStationPortDefaults）：绑到 CH1 就是 COM14、CH2 就是 COM11（2026-11-22 对调过，见类注释）──
     public string PortFieldKey => FieldPort;
     public string? DefaultPortFor(int channelNumber) => channelNumber switch { 1 => DefaultPort, 2 => DefaultPortB, _ => null };
 

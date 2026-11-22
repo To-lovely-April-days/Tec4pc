@@ -14,7 +14,7 @@ namespace Tec.Drivers.Htlab;
 /// HMI 加料卡、运行页、导出里那一个「加料泵」是配置项「配方加料泵」选的那台（缺省泵 1）。
 /// MFC 气路配方语言里没有对应指令，在「设备参数」面板里设流量、开停。
 ///
-/// 现场串口还没定（八个 CH344 口已经占满：RD105 COM7、IO8R COM3、宇电 COM8、冷水机 COM10、搅拌 COM11/14、pH COM12/13），
+/// 现场串口还没定（八个 CH344 口已经占满：RD105 COM7、IO8R COM3、宇电 COM8、冷水机 COM10、搅拌 COM14/11、pH COM12/13），
 /// 缺省先写 COM15，接上第三块 USB 转串再在属性栏改。
 /// </summary>
 public sealed class FeedSystemDriver : IDeviceDriver

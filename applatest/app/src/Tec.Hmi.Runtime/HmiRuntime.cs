@@ -209,7 +209,7 @@ public sealed class HmiRuntime : IHmiHost, IAsyncDisposable
                     InstanceId = "PH2", Label = "数字 pH 电极 · 工位 B",
                     Connection = ParameterSet.Of((Tec.Drivers.DualStation.BhtPhProbeDriver.FieldPort, Tec.Drivers.DualStation.BhtPhProbeDriver.DefaultPortB))
                 },
-                // 【本地改动】搅拌电机驱动器一个工位一台（2026-11-09 现场定的串口：工位 A = COM11、工位 B = COM14；
+                // 【本地改动】搅拌电机驱动器一个工位一台（现场串口：工位 A = COM14、工位 B = COM11——2026-11-09 记反了，用户 2026-11-22 对调；
                 // 极数 / 额定电流现场学习完在属性栏填，没填开机会被指出来）
                 new DeviceDoc
                 {

@@ -67,12 +67,24 @@ public sealed class AqmdStirrerDriverTests
 
     // ── 缺省值 / 探测 ─────────────────────────────────────────────
 
+    // 【本地改动】（用户 2026-11-22）串口跟工位走：通道 1（工位 A）= COM14、通道 2（工位 B）= COM11。
+    // 2026-11-09 记成 A = COM11 / B = COM14，现场开通道 1 的搅拌转的是工位 B 的电机——钉住别再换回去
     [Fact]
-    public void 缺省连接参数照现场_COM11_9600_无校验_2停止位_站号1()
+    public void 串口跟工位走_通道1是COM14_通道2是COM11()
+    {
+        var drv = new AqmdStirrerDriver();
+        Assert.Equal("COM14", drv.DefaultPortFor(1));
+        Assert.Equal("COM11", drv.DefaultPortFor(2));
+        Assert.Null(drv.DefaultPortFor(3));
+    }
+
+    [Fact]
+    public void 缺省连接参数照现场_COM14_9600_无校验_2停止位_站号1()
     {
         var drv = new AqmdStirrerDriver();
         var cn = new ParameterSet().FillDefaults(drv.ConnectionSchema);
-        Assert.Equal("COM11", cn.Str(AqmdStirrerDriver.FieldPort));
+        // 【本地改动】（用户 2026-11-22：两个通道的搅拌反了）工位 A 的缺省口从 COM11 换成 COM14
+        Assert.Equal("COM14", cn.Str(AqmdStirrerDriver.FieldPort));
         Assert.Equal(9600, cn.Num(AqmdStirrerDriver.FieldBaud));
         Assert.Equal(AqmdStirrerDriver.ParityNone, cn.Str(AqmdStirrerDriver.FieldParity));
         Assert.Equal("2", cn.Str(AqmdStirrerDriver.FieldStop));

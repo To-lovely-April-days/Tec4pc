@@ -32,7 +32,7 @@ public sealed class HmiRuntimeTests
         // 缺省是真机六件：双工位主机 + 宇电 Tr 探头 + 两支数字 pH 电极 + 两台搅拌驱动器（2026-11-09 接入，一个工位一台）
         Assert.Equal(6, rt.Bench.Devices.Count);
         Assert.Contains(rt.Bench.Devices, d => d.DriverId == Tec.Drivers.DualStation.DualStationDriver.DriverId);
-        // Tr 探头绑两条通道（A/B 工位）；pH 电极、搅拌各绑一条，串口按现场：pH A = COM12、B = COM13，搅拌 A = COM11、B = COM14
+        // Tr 探头绑两条通道（A/B 工位）；pH 电极、搅拌各绑一条，串口按现场：pH A = COM12、B = COM13，搅拌 A = COM14、B = COM11（2026-11-22 对调）
         Assert.Equal(6, rt.Bench.Bindings.Count);
         var ph = rt.Bench.Devices.Where(d => d.DriverId == Tec.Drivers.DualStation.BhtPhProbeDriver.DriverId).ToList();
         Assert.Equal(2, ph.Count);
@@ -41,8 +41,8 @@ public sealed class HmiRuntimeTests
         Assert.DoesNotContain(rt.Bench.Devices, d => d.DriverId == Tec.Drivers.DualStation.YudianPhProbeDriver.DriverId);
         var st = rt.Bench.Devices.Where(d => d.DriverId == Tec.Drivers.Aqmd.AqmdStirrerDriver.DriverId).ToList();
         Assert.Equal(2, st.Count);
-        Assert.Equal("COM11", st[0].Connection.Str(Tec.Drivers.Aqmd.AqmdStirrerDriver.FieldPort));
-        Assert.Equal("COM14", st[1].Connection.Str(Tec.Drivers.Aqmd.AqmdStirrerDriver.FieldPort));
+        Assert.Equal("COM14", st[0].Connection.Str(Tec.Drivers.Aqmd.AqmdStirrerDriver.FieldPort));
+        Assert.Equal("COM11", st[1].Connection.Str(Tec.Drivers.Aqmd.AqmdStirrerDriver.FieldPort));
         Assert.Contains(rt.Bench.Bindings, b => b.DeviceId == st[0].InstanceId && b.ChannelNumber == 1);
         Assert.Contains(rt.Bench.Bindings, b => b.DeviceId == st[1].InstanceId && b.ChannelNumber == 2);
     }
