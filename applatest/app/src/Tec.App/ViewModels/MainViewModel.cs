@@ -44,6 +44,9 @@ public sealed class MainViewModel : ViewModelBase
         Export = new ExportViewModel(ws);
         Video = new VideoViewModel(ws, this);
 
+        // 【本地改动】标题栏「设置」弹出：渲染两项（统一字体 / 文字灰度抗锯齿）
+        Render = new RenderViewModel(App.Render);
+
         // 登录页。进入工作站后回开始页——每个班次从同一个地方开始
         Login = new LoginViewModel(ws, onEntered: () => Tab = TabStart);
         // 注销：收起主窗口、开回那扇 840 的登录窗。窗怎么换归外壳管，
@@ -252,6 +255,8 @@ public sealed class MainViewModel : ViewModelBase
 
     /// <summary>标题栏上的实验名。改过还没存的带一个星号。</summary>
     public string DocTitle => Workspace.Store.Title;
+
+    public RenderViewModel Render { get; }
 
     /// <summary>【本地改动】演示模式开着：标题栏常驻「演示数据」签——界面上的数全是仿真跑出来的，截图上要看得见。</summary>
     public bool IsDemo => Tec.Core.DemoMode.Enabled;

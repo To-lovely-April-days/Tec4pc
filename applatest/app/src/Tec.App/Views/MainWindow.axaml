@@ -70,10 +70,30 @@
             <ctl:TecIcon Key="ui-tb-about" Tint="#c8ccd1" VerticalAlignment="Center" />
             <TextBlock Text="关于" Foreground="#c8ccd1" FontSize="12" VerticalAlignment="Center" />
           </StackPanel>
-          <StackPanel Orientation="Horizontal" Spacing="4" Margin="6,0">
-            <ctl:TecIcon Key="ui-tb-settings" Tint="#c8ccd1" VerticalAlignment="Center" />
-            <TextBlock Text="设置" Foreground="#c8ccd1" FontSize="12" VerticalAlignment="Center" />
-          </StackPanel>
+          <!-- 【本地改动】「设置」接了渲染两项（统一字体 / 文字灰度抗锯齿，见 RenderPrefs）：
+               从前是个摆设字样，现在点开是一个小弹出。时标 / 单位 / 数据目录那些还没接 -->
+          <Button Classes="tbico" Margin="2,0" Padding="4,0" ToolTip.Tip="设置">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+              <ctl:TecIcon Key="ui-tb-settings" Tint="#c8ccd1" VerticalAlignment="Center" />
+              <TextBlock Text="设置" Foreground="#c8ccd1" FontSize="12" VerticalAlignment="Center" />
+            </StackPanel>
+            <Button.Flyout>
+              <Flyout Placement="BottomEdgeAlignedRight" HorizontalOffset="4" FlyoutPresenterClasses="umenupop">
+                <StackPanel Width="292" Margin="14,12,14,12" Spacing="6">
+                  <TextBlock Text="渲染" FontSize="13" FontWeight="Medium" Foreground="#292b2e" />
+                  <TextBlock Text="Mac 与 Windows 的观感差在字体与文字抗锯齿两处，这两项能抹平；像素密度看屏幕——Windows 缩放 150 %～200 % 时最接近。"
+                             FontSize="10.5" Foreground="#6b6f74" TextWrapping="Wrap" Margin="0,0,0,4" />
+                  <CheckBox IsChecked="{Binding Render.UnifiedFont}" IsEnabled="{Binding Render.FontBundled}"
+                            Content="统一中文字体（思源黑体 Noto Sans SC）" />
+                  <TextBlock Text="{Binding Render.FontNote}" FontSize="10.5" Foreground="#9ea2a6"
+                             TextWrapping="Wrap" Margin="26,-2,0,4" />
+                  <CheckBox IsChecked="{Binding Render.GrayscaleText}" Content="文字灰度抗锯齿（接近 macOS）" />
+                  <TextBlock Text="当场生效；关掉回到系统缺省（Windows 为 ClearType）" FontSize="10.5" Foreground="#9ea2a6"
+                             TextWrapping="Wrap" Margin="26,-2,0,0" />
+                </StackPanel>
+              </Flyout>
+            </Button.Flyout>
+          </Button>
           <StackPanel Orientation="Horizontal" Spacing="4" Margin="6,0">
             <ctl:TecIcon Key="ui-tb-help" Tint="#c8ccd1" VerticalAlignment="Center" />
             <TextBlock Text="帮助" Foreground="#c8ccd1" FontSize="12" VerticalAlignment="Center" />

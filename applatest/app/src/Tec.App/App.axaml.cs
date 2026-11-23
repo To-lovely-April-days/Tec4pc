@@ -11,12 +11,19 @@ namespace Tec.App;
 
 public partial class App : Application
 {
+    /// <summary>【本地改动】渲染设置（统一字体 / 文字灰度抗锯齿），开窗之前读一次并套上（见 RenderPrefs）。</summary>
+    public static RenderPrefs Render { get; private set; } = new();
+
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
 
     public override void OnFrameworkInitializationCompleted()
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            // 字体资源是 StaticResource，窗口装载那一刻就定了——所以必须在建任何窗口之前套
+            Render = RenderPrefs.Load();
+            Render.Apply(this);
+
             var workspace = new Workspace();
             workspace.Boot();
             new Shell(desktop, workspace).Start();
