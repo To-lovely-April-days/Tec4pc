@@ -26,6 +26,9 @@ public sealed class TrProbeDriver : IDeviceDriver
 
     public ParameterSchema ConnectionSchema { get; } = new(new[]
     {
+        // 【本地改动】串口 / 地址只做记录（仿真不开口子）：真机的宇电探头走温度模块串口 + 模块地址，演示台面照它填
+        Field.Port("串口", "温度模块串口", "COM3", "仿真不真开口子，照现场填着看"),
+        Field.Num("地址", "模块地址", 1, "", 1, 247, 1),
         Field.Sel("接线", "接线方式", new[] { "四线", "三线", "两线" }, "四线")
     })
     { Tip = "探头的数值随主机一路上来，不单独占端口——仿真机由 RD105 读，" +

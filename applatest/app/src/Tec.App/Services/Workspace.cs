@@ -13,6 +13,7 @@ using Tec.Core.Safety;
 using Tec.Core.Users;
 using Tec.Driver.Abi;
 using Tec.DriverHost;
+using Tec.Demo;
 using Tec.Hmi.Ui;
 
 namespace Tec.App.Services;
@@ -129,6 +130,8 @@ public sealed class Workspace : IHmiHost
         Operator = user.Display;
         Log.Write("登录", $"登录成功（{user.Name} · {user.RoleName} · 工作站 {Environment.MachineName}）", user.Display);
         UserChanged?.Invoke(this, EventArgs.Empty);
+        // 【本地改动】演示模式：登录之后才把两路跑起来——批次要署登录人的名，不署「未登录」
+        if (DemoMode.Enabled) DemoInstaller.StartRunsAfterSignIn(this);
     }
 
     /// <summary>注销回到登录页。通道该跑还在跑——注销的是人，不是机器；照实记一笔。</summary>
@@ -254,6 +257,10 @@ public sealed class Workspace : IHmiHost
 
     public void Boot()
     {
+        // 【本地改动】演示模式（--demo）：数据目录先重置成空的（Store / 账号库 / 归档都建在它下面）。
+        // 不带开关时 DemoMode.Enabled 恒为 false，下面每一个 if (DemoMode.Enabled) 都不走，程序与从前一模一样
+        if (DemoMode.Enabled) DemoInstaller.PrepareDataDir();
+
         // 【本地改动】线程池下限抬到 32（兜底，见 SerialWork）：各模块的串口事务已在专用线程上，这里防的是剩下那点同步等待撞车
         Tec.Drivers.Rd105.SerialWork.RaiseThreadPoolFloor();
 
@@ -275,6 +282,8 @@ public sealed class Workspace : IHmiHost
         // 第三方驱动包从 drivers/ 目录进
         Drivers.Discover(Path.Combine(AppContext.BaseDirectory, "drivers"));
         Drivers.LoadAll();
+        // 【本地改动】演示模式：仿真驱动包（demo/drivers/sim）当驱动包装进来——程序缺省不扫那个目录
+        if (DemoMode.Enabled) DemoDrivers.Load(Drivers);
 
         // 指令集是静态声明——没连硬件也要能编辑配方（§3）。从前搅拌 / 加料 /
         // pH 这几组指令是仿真驱动带进来的，仿真拿掉之后它们得自己站住：
@@ -289,10 +298,21 @@ public sealed class Workspace : IHmiHost
         // 加料泵是共享资源：同一时刻只让一个通道用（§5.1 / §7.4）
         Arbiter.Declare("P1", 1);
         Arbiter.Declare("P2", 1);
-        Engine.ResourceOf = ResourceOf;
+        // 【本地改动】演示台面的两液一气进料系统泵 1 归 CH1、泵 2 归 CH2，两台泵物理独立——按通道各占一台，
+        // 不然 CH1 滴加那半小时里 CH2 的 pH 反馈加料要排队等泵（真机的「2 泵 4 通道」规矩在演示台面上不成立）
+        Engine.ResourceOf = DemoMode.Enabled
+            ? (ch, cmd) => cmd.StartsWith("tec.dose.", StringComparison.Ordinal) ? new ResourceNeed($"P{ch}", ResourcePolicy.Queue) : null
+            : ResourceOf;
 
         // 时钟 1:1。从前这里写着「TimeScale = 60，演示用」——那是仿真时代的
-        // 加速；接真机之后 60× 的钟会把 10 分钟的保持记成 10 秒，绝不能留
+        // 加速；接真机之后 60× 的钟会把 10 分钟的保持记成 10 秒，绝不能留。
+        // 【本地改动】演示模式例外：仿真钟按 DemoMode.TimeScale（缺省 10×）走，几分钟就有看得出走势的曲线；
+        // 采样时间戳跟着虚拟钟，记录里的实际时长与计划时长仍然可比
+        if (DemoMode.Enabled)
+        {
+            Clock.Rate = DemoMode.TimeScale;
+            Engine.TimeScale = DemoMode.TimeScale;
+        }
 
         // 台面从空开始：设备由用户从设备库拖进来。
         // 配方也从空开始——预置几条「降温结晶」看着像已经配好了，其实一步没有。
@@ -343,6 +363,9 @@ public sealed class Workspace : IHmiHost
         // 化合物库同样从全局库读，同样不预置——早期版本灌过十条通用结晶模型物，
         // 落盘的那些在读盘时一次性清掉（见 CompoundSeedPurge 的说明）
         Store.LoadCompounds(Compounds);
+
+        // 【本地改动】演示模式：配方库 / 化合物库 / 账号 / 历史归档一次装入演示数据目录（见 DemoInstaller）
+        if (DemoMode.Enabled) DemoInstaller.SeedLibraries(this);
     }
 
     /// <summary>
@@ -352,7 +375,9 @@ public sealed class Workspace : IHmiHost
     /// </summary>
     public async Task StartAsync()
     {
-        await RebuildChannelsAsync();
+        // 【本地改动】演示模式：先打开演示实验（台面 + 配方 + 配料表）再连设备；两路的启动等登录之后（SignIn）
+        if (DemoMode.Enabled) await DemoInstaller.OpenExperimentAsync(this);
+        else await RebuildChannelsAsync();
         Store.ResetDirty();            // 开机建通道会触发 BenchChanged，别一上来就标脏
 
         _safetyTimer = new Timer(_ => Engine.Safety.Evaluate(), null,
@@ -566,8 +591,9 @@ public sealed class Workspace : IHmiHost
                     InstanceId = dev.InstanceId,
                     ChannelNumbers = chs,
                     Config = dev.Config,
-                    Simulated = false,
-                    TimeScale = 1,
+                    // 【本地改动】演示模式：会话按仿真打开、跟虚拟钟的倍率走；采样带 Quality.Simulated，导出时每行都标着来源
+                    Simulated = DemoMode.Enabled,
+                    TimeScale = DemoMode.Enabled ? DemoMode.TimeScale : 1,
                     Clock = Clock.Func,
                     Reconnecting = hadSession.Contains(dev.InstanceId),
                     Log = (level, text) => Log?.Write("设备", text, Operator,

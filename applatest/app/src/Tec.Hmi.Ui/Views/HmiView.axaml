@@ -395,6 +395,10 @@
                    Text="已开始的序列不可接收" IsVisible="{Binding IsFiles}" />
         <TextBlock FontSize="11.5" Foreground="#6F6F6F" VerticalAlignment="Center"
                    Text="登录与权限在工作站" IsVisible="{Binding IsSys}" />
+        <!-- 【本地改动】演示模式常驻签（只在带 demo 参数启动时出现） -->
+        <Border IsVisible="{Binding IsDemo}" Padding="7,1" CornerRadius="3" Background="#F2C230" VerticalAlignment="Center">
+          <TextBlock Text="{Binding DemoBadge}" Foreground="#3A2A00" FontSize="11" FontWeight="Medium" />
+        </Border>
         <Border Width="1" Height="16" Background="#DCDCDC" />
         <TextBlock FontSize="11" Foreground="#6F6F6F" VerticalAlignment="Center"
                    Text="上海霍桐实验仪器" />

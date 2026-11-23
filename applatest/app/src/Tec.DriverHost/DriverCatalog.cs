@@ -173,6 +173,45 @@ public sealed class DriverCatalog
             pkg.Driver = driver;
             pkg.Status = PackageStatus.Ok;
             pkg.Problem = null;
+
+            // 【本地改动】同一程序集里的兄弟驱动（manifest.siblingTypes）：同一个上下文里实例化，
+            // 各自按驱动号登记成一个包。一个失败只记那一个，不拖主包（见 DriverManifest.SiblingTypes 的说明）
+            foreach (var name in pkg.Manifest.SiblingTypes)
+            {
+                var sib = new DriverPackage
+                {
+                    Manifest = new DriverManifest { Id = name, Name = name, Entry = pkg.Manifest.Entry, TypeName = name, Abi = pkg.Manifest.Abi },
+                    Directory = pkg.Directory
+                };
+                try
+                {
+                    var st = asm.GetType(name, throwOnError: false);
+                    if (st is null) { sib.Status = PackageStatus.Broken; sib.Problem = $"程序集里找不到 {name}"; }
+                    else if (Activator.CreateInstance(st) is not IDeviceDriver sd) { sib.Status = PackageStatus.Broken; sib.Problem = $"{name} 不是 IDeviceDriver"; }
+                    else
+                    {
+                        var info = sd.Info;
+                        sib = new DriverPackage
+                        {
+                            Manifest = new DriverManifest
+                            {
+                                Id = info.Id, Name = info.Name, Vendor = info.Vendor, Version = info.Version, Abi = info.Abi,
+                                Entry = pkg.Manifest.Entry, TypeName = name, ChannelsPerDevice = info.ChannelsPerDevice,
+                                SimulatorIncluded = info.SimulatorIncluded, Capabilities = info.Capabilities.ToList(),
+                                Description = info.Description, Icon = info.IconKey
+                            },
+                            Directory = pkg.Directory,
+                            Driver = sd,
+                            Status = AbiVersion.IsCompatible(info.Abi) ? PackageStatus.Ok : PackageStatus.AbiMismatch
+                        };
+                        if (sib.Status == PackageStatus.AbiMismatch)
+                            sib.Problem = $"驱动 ABI {info.Abi} 与宿主 {AbiVersion.Text} 不兼容";
+                    }
+                }
+                catch (Exception ex) { sib.Status = PackageStatus.Broken; sib.Problem = ex.Message; }
+                Replace(sib);
+            }
+
             Changed?.Invoke(this, EventArgs.Empty);
             return true;
         }

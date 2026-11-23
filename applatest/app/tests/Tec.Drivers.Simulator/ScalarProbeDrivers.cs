@@ -17,6 +17,9 @@ public abstract class ScalarProbeDriver : IDeviceDriver
     /// <summary>仿真曲线：t 为通道已运行秒数，返回该时刻的读数。</summary>
     internal abstract double Simulate(double seconds, double noise);
 
+    /// <summary>【本地改动】按通道算的仿真曲线（pH 要看这一路往釜里加了多少酸）；缺省不看通道。</summary>
+    internal virtual double Simulate(int channel, double seconds, double noise) => Simulate(seconds, noise);
+
     public virtual ParameterSchema ConnectionSchema { get; } = new(new[]
     {
         Field.Sel("接入方式", "接入方式",
@@ -79,7 +82,7 @@ internal sealed class ScalarSession : SimSession
         _seconds += dt;
         foreach (var p in _ports)
         {
-            var v = _driver.Simulate(_seconds, Noise(0.01));
+            var v = _driver.Simulate(p.Channel, _seconds, Noise(0.01));
             p.Update(new Sample(p.Channel, _driver.Tag.Tag, Now.UtcTicks, Now, Math.Round(v, 3),
                                 Context.Simulated ? Quality.Simulated : Quality.Good));
             Emit(p.Channel, _driver.Tag.Tag, Math.Round(v, 3));
@@ -160,11 +163,15 @@ public sealed class PhProbeDriver : ScalarProbeDriver
     /// 仪器的，摆在电极上会让人以为真机 pH 走网口（用户实测问出：其实真机走的
     /// 是宇电 J4 的 RS-485 串口，口子在主机连接参数里）。
     /// </summary>
-    public override ParameterSchema ConnectionSchema { get; } = new(Array.Empty<FieldSpec>())
+    public override ParameterSchema ConnectionSchema { get; } = new(new[]
     {
-        Tip = "电极不占端口：仿真时数据由本驱动产生；真机上这支电极接在宇电 " +
-              "AI-8848GD91J4 的一路输入上（Modbus RTU 串口），串口与地址都在主机" +
-              "连接参数（「pH 串口」）里，测试连接也在主机上做。"
+        // 【本地改动】串口 / 地址只做记录（仿真不开口子）：现场的数字 pH 电极（BHT-DM100）有自己的串口，
+        // 工位 A = COM12、工位 B = COM13，演示台面照它填
+        Field.Port("串口", "串口", "COM12", "仿真不真开口子，照现场填着看"),
+        Field.Num("地址", "地址", 1, "", 1, 247, 1)
+    })
+    {
+        Tip = "仿真电极：数据由本驱动产生（跟着这一路泵加进去的酸走滴定曲线）。真机上是数字 pH 电极，RS485 直接出 pH。"
     };
 
     public override TagDescriptor Tag { get; } = new("pH", "pH", "", DataShape.Scalar)
@@ -174,6 +181,14 @@ public sealed class PhProbeDriver : ScalarProbeDriver
 
     internal override double Simulate(double seconds, double noise)
         => 7.4 - 2.2 * (1 - Math.Exp(-seconds / 900.0)) + noise;
+
+    /// <summary>
+    /// 【本地改动】pH 跟着「同一只釜」走（2026-11-23，演示模式）：这一路的泵加了多少酸，pH 就沿滴定曲线落到哪
+    /// （SimWorld.TitrationPh），再叠一点随时间的慢漂。WHY：从前 pH 只是时间的函数，pH 反馈加料的闭环合不上——
+    /// 泵一直加、pH 不理它。现在泵会话每拍把送出的体积记进 SimWorld，电极每拍来读，闭环是真的。
+    /// </summary>
+    internal override double Simulate(int channel, double seconds, double noise)
+        => SimWorld.TitrationPh(SimWorld.Dosed(channel)) + 0.04 * Math.Sin(seconds / 240.0) + noise;
 }
 
 public sealed class TurbidityProbeDriver : ScalarProbeDriver

@@ -252,4 +252,9 @@ public sealed class MainViewModel : ViewModelBase
 
     /// <summary>标题栏上的实验名。改过还没存的带一个星号。</summary>
     public string DocTitle => Workspace.Store.Title;
+
+    /// <summary>【本地改动】演示模式开着：标题栏常驻「演示数据」签——界面上的数全是仿真跑出来的，截图上要看得见。</summary>
+    public bool IsDemo => Tec.Core.DemoMode.Enabled;
+    public string DemoBadge => Tec.Core.DemoMode.Badge;
+    public string WindowTitle => "TecStudio 平行合成工作站 - PSW-4" + (IsDemo ? " · " + Tec.Core.DemoMode.Badge : "");
 }

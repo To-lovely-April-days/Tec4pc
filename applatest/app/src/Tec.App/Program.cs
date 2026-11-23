@@ -9,6 +9,8 @@ internal static class Program
     public static void Main(string[] args)
     {
         SharpenTimer();
+        // 【本地改动】演示模式：只认启动参数 --demo（或环境变量 TEC_DEMO=1），缺省关。见 Tec.Core.DemoMode
+        Tec.Core.DemoMode.Arm(args);
         try
         {
             BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);

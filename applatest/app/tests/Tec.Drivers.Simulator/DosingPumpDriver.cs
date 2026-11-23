@@ -125,14 +125,28 @@ internal sealed class DosingImpl : IDosing
     /// </summary>
     private double _remaining = double.PositiveInfinity;
 
+    // 【本地改动】标签名与流量上限可指定：两液一气孪生（FeedSystemSimDriver）用同一套模型发 p1flow / p1vol 这类真机标签
+    private readonly string _flowTag, _volTag;
+
     public DosingImpl(int channel, Action<int, string, double> emit, double maxVolume,
-                      CalibrationRecord? calibration, string material)
+                      CalibrationRecord? calibration, string material,
+                      string flowTag = "flow", string volTag = "volume", double maxRate = 20)
     {
         Channel = channel;
         _emit = emit;
-        Limits = new FlowLimits(0, 20, maxVolume);
+        Limits = new FlowLimits(0, maxRate, maxVolume);
         Calibration = calibration;
         Material = material;
+        _flowTag = flowTag;
+        _volTag = volTag;
+    }
+
+    /// <summary>【本地改动】镜像另一台泵的读数（配方泵的 flow / vol 两路），自己不跑模型。</summary>
+    public void MirrorOf(DosingImpl src)
+    {
+        TotalVolume = src.TotalVolume;
+        _emit(Channel, _flowTag, Math.Round(src._actualRate, 3));
+        _emit(Channel, _volTag, Math.Round(src.TotalVolume, 3));
     }
 
     public int Channel { get; }
@@ -181,10 +195,12 @@ internal sealed class DosingImpl : IDosing
         {
             TotalVolume += delivered;
             if (!double.IsPositiveInfinity(_remaining)) _remaining -= delivered;
+            // 【本地改动】加进「同一只釜」：这一路的 pH 电极按它走滴定曲线（SimWorld）
+            SimWorld.AddDosed(Channel, delivered);
         }
 
-        _emit(Channel, "flow", Math.Round(Math.Max(0, _actualRate + noise), 3));
-        _emit(Channel, "volume", Math.Round(TotalVolume, 3));
+        _emit(Channel, _flowTag, Math.Round(Math.Max(0, _actualRate + noise), 3));
+        _emit(Channel, _volTag, Math.Round(TotalVolume, 3));
     }
 }
 
@@ -192,8 +208,8 @@ internal sealed class DoseHandler : ICommandHandler
 {
     public async Task<CommandOutcome> ExecuteAsync(CommandContext ctx, CommandInput p, CancellationToken ct)
     {
-        var dosing = ctx.Capabilities.Get<IDosing>()
-                     ?? throw new InvalidOperationException("该通道没有加料能力");
+        var dosing = SimPumps.Pick(ctx.Capabilities.Get<IDosing>()
+                     ?? throw new InvalidOperationException("该通道没有加料能力"), p);   // 【本地改动】双泵设备按步骤点名
         if (dosing.Calibration is null)
             ctx.Note?.Invoke("泵未标定，加料量以命令值记录");
 
@@ -226,8 +242,8 @@ internal sealed class FeedbackDoseHandler : ICommandHandler
 {
     public async Task<CommandOutcome> ExecuteAsync(CommandContext ctx, CommandInput p, CancellationToken ct)
     {
-        var dosing = ctx.Capabilities.Get<IDosing>()
-                     ?? throw new InvalidOperationException("该通道没有加料能力");
+        var dosing = SimPumps.Pick(ctx.Capabilities.Get<IDosing>()
+                     ?? throw new InvalidOperationException("该通道没有加料能力"), p);   // 【本地改动】双泵设备按步骤点名
         var sensor = ctx.Capabilities.Get<IScalarSensor>()
                      ?? throw new InvalidOperationException("该通道没有反馈判据用的检测能力");
 

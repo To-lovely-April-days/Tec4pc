@@ -61,7 +61,10 @@ public sealed class ExperimentStore
     }
 
     /// <summary>数据目录。默认放在用户目录下，不往程序目录里写——装在 Program Files 时那儿是只读的。</summary>
-    public static string DataDir { get; } = Path.Combine(
+    public static string DataDir { get; } = Tec.Core.DemoMode.Enabled
+        // 【本地改动】演示模式用临时目录下一次性的演示数据目录，不碰操作人自己的 AppData\TecStudio（见 DemoMode）
+        ? Tec.Core.DemoMode.StudioDataDir
+        : Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData,
                                   Environment.SpecialFolderOption.Create),
         "TecStudio");

@@ -40,6 +40,10 @@ public sealed class HmiViewModel : ViewModelBase
     public ObservableCollection<HmiZoneViewModel> Zones { get; } = new();
     internal IHmiHost Ws => _ws;
 
+    /// <summary>【本地改动】演示模式开着：顶栏右侧常驻「演示数据」签（工作站弹出的面板与设备端 HMI 共用这一处）。</summary>
+    public bool IsDemo => Tec.Core.DemoMode.Enabled;
+    public string DemoBadge => Tec.Core.DemoMode.Badge;
+
     // ── 页面 / 标签 ─────────────────────────────────────────────────
 
     public string Page

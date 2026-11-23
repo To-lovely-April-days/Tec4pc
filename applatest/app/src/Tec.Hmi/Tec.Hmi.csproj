@@ -23,4 +23,16 @@
     <ProjectReference Include="..\Tec.Hmi.Runtime\Tec.Hmi.Runtime.csproj" />
   </ItemGroup>
 
+  <!-- 【本地改动】仿真驱动包：不引用，只跟着编译并拷到输出目录 demo\drivers\sim\（与工作站同一套做法，见 Tec.App.csproj） -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\tests\Tec.Drivers.Simulator\Tec.Drivers.Simulator.csproj"
+                      ReferenceOutputAssembly="false" Private="false" OutputItemType="DemoSimAssembly" />
+  </ItemGroup>
+  <Target Name="CopyDemoSimulator" AfterTargets="Build">
+    <Copy SourceFiles="@(DemoSimAssembly)" DestinationFolder="$(OutDir)demo\drivers\sim" SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="PublishDemoSimulator" AfterTargets="Publish">
+    <Copy SourceFiles="@(DemoSimAssembly)" DestinationFolder="$(PublishDir)demo\drivers\sim" SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>

@@ -7,7 +7,11 @@ internal static class Program
 {
     [STAThread]
     public static void Main(string[] args)
-        => BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+    {
+        // 【本地改动】演示模式：只认启动参数 --demo（或环境变量 TEC_DEMO=1），缺省关。见 Tec.Core.DemoMode
+        Tec.Core.DemoMode.Arm(args);
+        BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+    }
 
     public static AppBuilder BuildAvaloniaApp()
         => AppBuilder.Configure<App>()

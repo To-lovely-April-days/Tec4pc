@@ -37,6 +37,22 @@
     <ProjectReference Include="..\Tec.Drivers.DualStation\Tec.Drivers.DualStation.csproj" />
     <ProjectReference Include="..\Tec.Drivers.Aqmd\Tec.Drivers.Aqmd.csproj" />
     <ProjectReference Include="..\Tec.Drivers.Htlab\Tec.Drivers.Htlab.csproj" />
+    <!-- 【本地改动】演示模式（启动参数 demo）的演示工程 -->
+    <ProjectReference Include="..\Tec.Demo\Tec.Demo.csproj" />
   </ItemGroup>
+
+  <!-- 【本地改动】仿真驱动包：**不引用**（ReferenceOutputAssembly=false），只让它跟着编译，
+       Build 后把 dll 拷到输出目录 demo\drivers\sim\（manifest.json 由 Tec.Demo 带过来）。
+       程序缺省不扫这个目录，只有带 demo 参数启动时才当驱动包装进来（见 Tec.Demo/DemoDrivers）。 -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\tests\Tec.Drivers.Simulator\Tec.Drivers.Simulator.csproj"
+                      ReferenceOutputAssembly="false" Private="false" OutputItemType="DemoSimAssembly" />
+  </ItemGroup>
+  <Target Name="CopyDemoSimulator" AfterTargets="Build">
+    <Copy SourceFiles="@(DemoSimAssembly)" DestinationFolder="$(OutDir)demo\drivers\sim" SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="PublishDemoSimulator" AfterTargets="Publish">
+    <Copy SourceFiles="@(DemoSimAssembly)" DestinationFolder="$(PublishDir)demo\drivers\sim" SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>

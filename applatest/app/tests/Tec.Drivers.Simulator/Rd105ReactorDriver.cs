@@ -28,7 +28,10 @@ public sealed class Rd105ReactorDriver : IDeviceDriver
         Field.Port("端口", "串口", "COM3", "下拉里是这台机器当前检测到的串口"),
         Field.Sel("波特率", "波特率", new[] { "9600", "19200", "38400", "57600", "115200" }, "115200"),
         Field.Sel("校验", "校验位", new[] { "无", "奇", "偶" }, "无"),
-        Field.Num("站号", "站号", 1, "", 1, 247, 1)
+        Field.Num("站号", "站号", 1, "", 1, 247, 1),
+        // 【本地改动】真机双工位主机另有两个口（IO8R 继电器、宇电温度模块）：仿真只做记录不开口子，演示台面照现场填
+        Field.Port("IO8R串口", "IO8R 继电器串口", "COM8", "仿真不真开口子，照现场填着看"),
+        Field.Port("温度模块串口", "宇电温度模块串口", "COM3", "仿真不真开口子，照现场填着看")
     })
     { Tip = "RD-105 走 RS-485 Modbus RTU。改完点「测试连接」，会回显固件版本与探测到的孔位数。" };
 
@@ -37,6 +40,9 @@ public sealed class Rd105ReactorDriver : IDeviceDriver
         Field.Sel("釜规格", "反应釜规格", new[] { "25 mL", "50 mL", "100 mL", "250 mL" }, "100 mL"),
         Field.Sel("釜材质", "材质", new[] { "玻璃", "哈氏合金", "316L" }, "玻璃"),
         Field.Sel("搅拌桨", "搅拌桨", new[] { "锚式", "桨式", "磁子" }, "锚式"),
+        // 【本地改动】自带搅拌「无」= 搅拌由台面上独立的搅拌驱动器（StirrerSimDriver）管：这一路不暴露 IStirrer、不发 rpm，
+        // 同一路上只有一个搅拌源。缺省「有」保持老行为（回归测试里的台面没摆搅拌驱动器）
+        Field.Sel("自带搅拌", "自带顶置搅拌", new[] { "有", "无" }, "有"),
         Field.Sel("温度探头", "温度探头", new[] { "Pt100 四线", "Pt1000", "热电偶 K" }, "Pt100 四线"),
         // 仿真热模型的料液沸点：Tr 到这里停在平台上（潜热吃掉多余的热）。
         // 只影响仿真——真机的沸点由釜里的料决定，程序不知道也不该编
@@ -81,9 +87,11 @@ internal sealed class Rd105Session : SimSession
         var cfg = ctx.Config;
         var boiling = cfg.Num("沸点", 100);
         _wells = new ReactorWell[2];
+        var ownStir = cfg.Str("自带搅拌", "有") == "有";
         for (var i = 0; i < 2; i++)
             _wells[i] = new ReactorWell(i < chs.Count ? chs[i] : 0, Emit, () => Scale, () => Now)
             {
+                OwnStirrer = ownStir,
                 BoilingPoint = boiling is > 0 and < 1000 ? boiling : 100,
                 // 热源切换四项：与真机 DuoSession 读同名字段、同样的钳位（阈值 ≤ 90 死上限）
                 HasElectric = cfg.Str("电加热切换", "有") == "有",
@@ -108,6 +116,9 @@ internal sealed class Rd105Session : SimSession
         // 控温目标值。只在控温期间有数据——停控（自然冷却）时本来就没有设定值
         new TagDescriptor("Tset", "设定温度", "℃", DataShape.Scalar)
             { Nominal = new ValueRange(-40, 180), Period = TimeSpan.FromSeconds(1) },
+        // 【本地改动】串级内环（夹套）设定，与真机 DuoSession 同名：面板趋势页「Tj 设定」那条线读它
+        new TagDescriptor("Tjset", "夹套设定（串级）", "℃", DataShape.Scalar)
+            { Nominal = new ValueRange(-40, 200), Period = TimeSpan.FromSeconds(1) },
         // 控温输出。放大时最要紧的问题是「夹套已经满功率还压不住放热」，
         // 没有这一路看不出来。正值加热、负值制冷，±100 % 是执行器满出力
         new TagDescriptor("duty", "控温输出", "%", DataShape.Scalar)
@@ -127,9 +138,14 @@ internal sealed class Rd105Session : SimSession
     };
 
     public override IReadOnlyList<ICapability> CapabilitiesOf(int well)
-        => well >= 0 && well < _wells.Length
-            ? new ICapability[] { _wells[well], _wells[well].Stirrer, _wells[well].Light }
-            : Array.Empty<ICapability>();
+    {
+        if (well < 0 || well >= _wells.Length) return Array.Empty<ICapability>();
+        var w = _wells[well];
+        // 【本地改动】搅拌只在「自带搅拌 = 有」时上；PID 整定台（SimPidBench）随孔位一起上
+        return w.OwnStirrer
+            ? new ICapability[] { w, w.Stirrer, w.Light, w.Pid }
+            : new ICapability[] { w, w.Light, w.Pid };
+    }
 
     protected override void Tick(double dt)
     {
@@ -194,16 +210,29 @@ internal sealed class Rd105Session : SimSession
             did.Add("热源切换继电器已断开（落回 TEC 侧）");
         }
 
-        did.Add(w.Stirrer.CurrentRpm > 0
-            ? $"搅拌保持 {w.Stirrer.CurrentRpm:F0} rpm —— 热液不搅有局部过热风险，停搅拌要在配方里写"
-            : "搅拌本来就停着");
+        if (w.OwnStirrer)
+            did.Add(w.Stirrer.CurrentRpm > 0
+                ? $"搅拌保持 {w.Stirrer.CurrentRpm:F0} rpm —— 热液不搅有局部过热风险，停搅拌要在配方里写"
+                : "搅拌本来就停着");
         return did;
     }
 }
 
 /// <summary>一个孔位。温度、蒸回流、搅拌、背景灯四项能力都由它提供。</summary>
-internal sealed class ReactorWell : ITemperatureControl, IRefluxControl, IHeatSource
+internal sealed class ReactorWell : ITemperatureControl, IRefluxControl, IHeatSource, ITemperatureStatus
 {
+    /// <summary>【本地改动】搅拌是不是这个孔位自带的（设备配置「自带搅拌」）。</summary>
+    public bool OwnStirrer { get; init; } = true;
+
+    /// <summary>【本地改动】上位机 PID 整定台（HMI「PID 整定」页按它画）。</summary>
+    public SimPidBench Pid { get; }
+
+    // ── ITemperatureStatus：面板对账用（设定值 / 在不在控 / 回路在上位机）────────────
+    public double? Setpoint => _controlling ? _target : null;
+    bool ITemperatureStatus.Active => _controlling;     // IRefluxControl 也有一个 Active（跟随环开着没有），两个分开实现
+    bool ITemperatureStatus.HostLoop => true;
+    double? ITemperatureStatus.CascadeInnerSetpoint => _controlling && _kind == TempChannelKind.Reactor ? Math.Round(_innerSp, 2) : null;
+    private double _innerSp = 25;
     private readonly Action<int, string, double> _emit;
     private readonly Func<double> _scale;
     private readonly Func<DateTimeOffset> _now;
@@ -317,6 +346,7 @@ internal sealed class ReactorWell : ITemperatureControl, IRefluxControl, IHeatSo
         _now = now;
         Stirrer = new StirrerImpl(channel, emit);
         Light = new LightImpl(channel);
+        Pid = new SimPidBench(this, now);
     }
 
     public int Channel { get; }
@@ -535,7 +565,11 @@ internal sealed class ReactorWell : ITemperatureControl, IRefluxControl, IHeatSo
         // 设定温度只在控温时才存在：停控（自然冷却）没有设定值，
         // 这一路断掉比拿釜温顶替诚实——导出的是要签进记录的数据。
         if (_controlling) _emit(Channel, "Tset", Math.Round(_target, 2));
-        Stirrer.Tick(dt);
+        // 【本地改动】串级内环设定 = 此刻夹套在追的值（釜内环时夹套画在前面牵引，就是那个 lead）；整定台每拍跟一拍
+        _innerSp = _kind == TempChannelKind.Jacket ? _target : Math.Min(_target, JacketMax);
+        if (_controlling && _kind == TempChannelKind.Reactor) _emit(Channel, "Tjset", Math.Round(_innerSp, 2));
+        Pid.Tick(dt, _controlling, _target, _kind == TempChannelKind.Jacket ? CurrentJacket : CurrentReactor, Duty, _innerSp);
+        if (OwnStirrer) Stirrer.Tick(dt);
     }
 }
 
@@ -551,14 +585,15 @@ public sealed class StirrerImpl : IStirrer, IStirrerRamp, IStirrerStatus
     private double _target;
     private double _rampSeconds = 5;
 
-    public StirrerImpl(int channel, Action<int, string, double> emit)
+    public StirrerImpl(int channel, Action<int, string, double> emit, double maxRpm = 1000)
     {
         Channel = channel;
         _emit = emit;
+        Limits = new SpeedLimits(0, maxRpm);
     }
 
     public int Channel { get; }
-    public SpeedLimits Limits { get; } = new(0, 1000);
+    public SpeedLimits Limits { get; }
     public double CurrentRpm { get; private set; }
     /// <summary>搅拌扭矩 mN·m：静摩擦底数 + 随转速上升，转着才有；上限 59（磁耦合打滑点）。</summary>
     public double Torque { get; private set; }

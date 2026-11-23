@@ -6,6 +6,7 @@ using Tec.Core.Execution;
 using Tec.Core.Persistence;
 using Tec.Core.Records;
 using Tec.Core.Safety;
+using Tec.Demo;
 using Tec.Driver.Abi;
 using Tec.DriverHost;
 using Tec.Hmi.Ui;
@@ -37,10 +38,13 @@ public sealed class HmiRuntime : IHmiHost, IAsyncDisposable
     private Timer? _journal;
     private int _journalBusy;
 
-    public HmiRuntime(string? dataDir = null)
+    /// <param name="demo">【本地改动】演示模式；null = 看 DemoMode.Enabled（可执行按 --demo 打开）。测试传 true 不必动全局开关。</param>
+    public HmiRuntime(string? dataDir = null, bool? demo = null)
     {
-        DataDir = dataDir ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "TecHmi");
+        Demo = demo ?? DemoMode.Enabled;
+        DataDir = dataDir ?? (Demo
+            ? DemoMode.HmiDataDir
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "TecHmi"));
         Directory.CreateDirectory(DataDir);
 
         Clock = new VirtualClock();
@@ -71,6 +75,12 @@ public sealed class HmiRuntime : IHmiHost, IAsyncDisposable
     public string Operator => "设备面板";
 
     public string DataDir { get; }
+
+    /// <summary>
+    /// 【本地改动】演示模式：台面换成演示台面（全部接仿真驱动）、仿真驱动包当驱动包装进来、会话按仿真打开。
+    /// 缺省 false，一行演示代码都不走——「程序里不再有仿真」这条规矩只在这里例外，而且面板顶栏一直挂着「演示数据」签。
+    /// </summary>
+    public bool Demo { get; }
 
     public Channel? ChannelOf(int number) => _channels.FirstOrDefault(c => c.Number == number);
 
@@ -130,6 +140,8 @@ public sealed class HmiRuntime : IHmiHost, IAsyncDisposable
         // 第三方驱动包照工作站的规矩从 drivers/ 目录进
         Drivers.Discover(Path.Combine(AppContext.BaseDirectory, "drivers"));
         Drivers.LoadAll();
+        // 【本地改动】演示模式：仿真驱动包（demo/drivers/sim）当驱动包装进来——缺省不扫那个目录
+        if (Demo) DemoDrivers.Load(Drivers);
         foreach (var pkg in Drivers.Packages)
             if (pkg.Driver is { } d) Catalog.Register(d.Commands);
 
@@ -154,6 +166,13 @@ public sealed class HmiRuntime : IHmiHost, IAsyncDisposable
 
     private void LoadBench()
     {
+        if (Demo)
+        {
+            // 【本地改动】演示模式：台面文件、面板序列、面板配方库都按演示工程现写（数据目录是一次性的，见 DemoMode）
+            TecFiles.SaveBench(BenchPath, DemoBench.Build());
+            DemoHmi.Write(DataDir);
+            Log.Write("演示", $"演示模式：已写出演示台面 {BenchPath} 与面板序列（时标 {Clock.Rate:0.#}×）", Operator, LogLevel.Warn);
+        }
         if (!File.Exists(BenchPath))
         {
             // 第一次开机：写一份缺省台面（真机三件，串口按驱动缺省），
@@ -294,7 +313,7 @@ public sealed class HmiRuntime : IHmiHost, IAsyncDisposable
                     InstanceId = dev.InstanceId,
                     ChannelNumbers = chs,
                     Config = dev.Config,
-                    Simulated = false,
+                    Simulated = Demo,       // 【本地改动】演示模式按仿真打开：采样带 Quality.Simulated
                     TimeScale = Clock.Rate,
                     Clock = Clock.Func,
                     Log = (level, text) => Log.Write("设备", $"{text}", Operator,

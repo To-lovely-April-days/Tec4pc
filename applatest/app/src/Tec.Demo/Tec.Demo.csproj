@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 【本地改动】演示模式（启动参数 demo）的演示工程：台面 / 配方 / 配方库 / 化合物 / 配料表 / 历史归档 / HMI 面板文件 / 账号。
+       WHY：工作站（Tec.App）与设备端（Tec.Hmi.Runtime）都要装同一套演示工程，各写一份迟早对不上；
+       放 Tec.Core 又不行——这里满是 sim.* 驱动号和设备名，Core 不许认识它们。
+       只在 DemoMode.Enabled 时被调用；缺省启动一行都不执行。
+       不引用仿真驱动程序集：仿真驱动是运行时从 demo/drivers/sim/ 当插件装进来的（见 DemoDrivers）。 -->
+
+  <PropertyGroup>
+    <RootNamespace>Tec.Demo</RootNamespace>
+    <AssemblyName>Tec.Demo</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tec.Core\Tec.Core.csproj" />
+    <ProjectReference Include="..\Tec.DriverHost\Tec.DriverHost.csproj" />
+    <ProjectReference Include="..\Tec.Driver.Abi\Tec.Driver.Abi.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 化合物：docs/常用溶剂酸碱.csv 那 61 条原样链接进来，再加一份常见原料补充表 -->
+    <EmbeddedResource Include="..\..\docs\常用溶剂酸碱.csv" LogicalName="Tec.Demo.Data.常用溶剂酸碱.csv" />
+    <EmbeddedResource Include="Data\化合物-补充.csv" LogicalName="Tec.Demo.Data.化合物-补充.csv" />
+    <!-- 历史归档的采样曲线：从 2026-11 现场控温测试记录（R1-tc1-*.csv）按 10 s 重采样，runs.json 是分段说明 -->
+    <EmbeddedResource Include="Data\curves\*.csv" LogicalName="Tec.Demo.Data.curves.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Data\curves\runs.json" LogicalName="Tec.Demo.Data.curves.runs.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 仿真驱动包的 manifest：随引用它的可执行一起拷到输出目录 demo\drivers\sim\。
+         dll 本身由 Tec.App / Tec.Hmi 的 csproj 在 Build 后拷进同一个目录（不引用，只拷） -->
+    <Content Include="drivers\sim\manifest.json" Link="demo\drivers\sim\manifest.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

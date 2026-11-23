@@ -23,6 +23,15 @@ public sealed class DriverManifest
     [JsonPropertyName("icon")] public string? Icon { get; set; }
     [JsonPropertyName("description")] public string? Description { get; set; }
 
+    /// <summary>
+    /// 【本地改动】同一个程序集里的**其余**驱动类型（完整类名）。可选，缺省空。
+    /// WHY：一个 manifest 原本只带一个驱动。演示模式要把仿真驱动包（反应器 / 探头 / 泵 / 搅拌 / 进料
+    /// 五六个驱动在一个 dll 里）整包装进来，而且**必须在同一个 AssemblyLoadContext 里**——仿真泵往釜里加的酸
+    /// 要让仿真 pH 电极看见，靠的是程序集内的静态状态，拆成一包一个上下文就断了。
+    /// 这里列出的类型随主类型一起实例化，各自按 Info.Id 登记成独立的驱动包（目录、状态同主包）。
+    /// </summary>
+    [JsonPropertyName("siblingTypes")] public List<string> SiblingTypes { get; set; } = new();
+
     private static readonly JsonSerializerOptions Options = new()
     {
         PropertyNameCaseInsensitive = true,

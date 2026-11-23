@@ -1,0 +1,24 @@
+{
+  // 仿真驱动包（tests/Tec.Drivers.Simulator）。**只在演示模式（--demo）下被发现与加载**：
+  // 程序缺省不扫 demo/drivers/ 这个目录。一个 manifest 带整个程序集里的驱动（siblingTypes），
+  // 它们在同一个 AssemblyLoadContext 里——仿真泵与仿真 pH 电极靠程序集内的 SimWorld 联动。
+  "id": "sim.reactor.rd105",
+  "name": "双工位反应器 RD105（仿真）",
+  "vendor": "Tec",
+  "version": "1.0.0",
+  "abi": "1.0",
+  "entry": "Tec.Drivers.Simulator.dll",
+  "assemblyQualifiedType": "Tec.Drivers.Simulator.Rd105ReactorDriver",
+  "channelsPerDevice": 2,
+  "simulatorIncluded": true,
+  "icon": "rd105",
+  "capabilities": [ "ITemperatureControl", "IRefluxControl", "IStirrer", "IIllumination" ],
+  "siblingTypes": [
+    "Tec.Drivers.Simulator.TrProbeDriver",
+    "Tec.Drivers.Simulator.PhProbeDriver",
+    "Tec.Drivers.Simulator.DosingPumpDriver",
+    "Tec.Drivers.Simulator.StirrerSimDriver",
+    "Tec.Drivers.Simulator.FeedSystemSimDriver",
+    "Tec.Drivers.Simulator.TurbidityProbeDriver"
+  ]
+}
