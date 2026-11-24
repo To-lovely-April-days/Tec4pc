@@ -54,6 +54,7 @@ tec_core.exe，没有界面程序。
 编完以后程序在：
     hmi-cpp\build\Release\tec_core.exe
     hmi-cpp\build\Release\tec_hmi.exe
+    hmi-cpp\build\Release\tec_hmi_2x.exe   （同一套界面按 2 倍画的版本，高分屏用）
     hmi-cpp\build\Release\assets\      （字体和图片，自动拷过来的，要和 tec_hmi.exe 放在一起）
 
 跑一遍自带的测试（17 项，一两分钟）：
@@ -86,9 +87,17 @@ tec_core.exe，没有界面程序。
 
 2. 界面：
        build\Release\tec_hmi.exe --fullscreen
-   --fullscreen   去掉标题栏铺满屏幕（现场这么开）
-   --zoom 150     整个界面放大到 150 %（屏幕分辨率比 1280×720 大时用）
-   --host 地址 --port 端口   控制核心不在本机时才要写
+   --fullscreen   铺满屏幕（现场这么开）。屏幕比界面大时自动放大到放得下的最大，四周留黑边
+   --frame        带上系统的标题栏和边框（能拖动、有关闭键）。不写就只显示界面本身，摆在屏幕中间
+   --zoom 200     指定放大多少（百分比）。整数倍（200）边缘是清楚的；150 这类不是整数倍的会软一些
+   --1x           屏幕再大也用 1280×720 这一份，不自动换成 2 倍的
+
+   屏幕自适应：界面有两份，tec_hmi.exe 按 1280×720 画，tec_hmi_2x.exe 按 2560×1440 画
+   （同一套界面，字和线是按大尺寸现画的，不是放大出来的）。平时只用启动 tec_hmi.exe：
+   它发现屏幕放得下 2560×1440（比如 2560×1600、4K），旁边又有 tec_hmi_2x.exe，就自动改用那一份。
+   所以两个 exe 要放在一起。Windows 的缩放比例（125 %、150 %）不影响清晰度，程序是按真实像素画的。
+
+   没有标题栏时怎么关：Alt+F4，或者在任务栏上它的图标上点右键 → 关闭窗口。
 
 3. 串口：第一次运行按缺省的串口号去连（温控器 COM7、继电器 COM8、Tr 探头 COM3、
    搅拌 COM14 / COM11、pH COM12 / COM13、进料 COM15、冷水机 COM9）。
@@ -108,6 +117,7 @@ tec_core.exe，没有界面程序。
 新建一个 hmi 文件夹，把这几样拷进去：
     hmi\tec_core.exe
     hmi\tec_hmi.exe
+    hmi\tec_hmi_2x.exe      （高分屏上自动用它，要和 tec_hmi.exe 放在一起）
     hmi\gain-table.csv      （出厂增益表，在 hmi-cpp\build\Release 里，和 tec_core.exe 在一起）
     hmi\assets\             （字体和图片，整个文件夹）
 

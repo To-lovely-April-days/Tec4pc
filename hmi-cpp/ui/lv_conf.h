@@ -90,12 +90,7 @@
  * - LV_OS_WINDOWS
  * - LV_OS_MQX
  * - LV_OS_CUSTOM */
-/* Windows 上 LVGL 自带的窗口驱动要求选 Windows 这一项（它用系统的线程和锁）；别的系统上是不开窗口的自查版本，不需要 */
-#ifdef _WIN32
-#define LV_USE_OS   LV_OS_WINDOWS
-#else
 #define LV_USE_OS   LV_OS_NONE
-#endif
 
 #if LV_USE_OS == LV_OS_CUSTOM
     #define LV_OS_CUSTOM_INCLUDE <stdint.h>
@@ -1060,12 +1055,8 @@
 #define LV_USE_RENESAS_GLCDC    0
 
 /* LVGL Windows backend */
-/* Windows 上用 LVGL 自带的驱动开窗口、收触摸；别的系统上不编它（那边只出图不开窗口） */
-#ifdef _WIN32
-    #define LV_USE_WINDOWS    1
-#else
-    #define LV_USE_WINDOWS    0
-#endif
+/* LVGL 自带的 Windows 窗口驱动不用：它把画面整幅拉伸着贴，又糊又慢。窗口是我们自己开的（ui/src/win_window.inc） */
+#define LV_USE_WINDOWS    0
 
 /* Use OpenGL to open window on PC and handle mouse and keyboard */
 #define LV_USE_OPENGLES   0

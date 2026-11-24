@@ -72,11 +72,13 @@ ctest --test-dir build --output-on-failure
 
 界面程序 `tec_hmi` 和控制核心一起由根目录的 CMake 编（前提是 `third_party/lvgl-9.2.2` 在）。页面代码（`ui/gen`）、图标图片（`ui/assets/img`）、字体（`ui/assets/fonts`）都在仓库里，拿到代码就能编，不用装生成它们的那套工具。
 
-- **Windows（现场用）**：编出来的 `tec_hmi.exe` 会真的开一个 1280×720 的窗口，鼠标和触摸都能点。
-  - `tec_hmi --fullscreen`：去掉标题栏和边框，铺满屏幕（现场这么开）。
-  - `tec_hmi --zoom 150`：整个界面放大到 150 %（屏幕分辨率比 1280×720 大时用）。
+- **Windows（现场用）**：编出来的 `tec_hmi.exe` 开一个客户区正好 1280×720 的窗口，鼠标和触摸都能点。窗口是自己开的（`ui/src/win_window.inc`），画面一个像素对一个像素贴上去、只贴变了的那一块——不用 LVGL 自带的 Windows 驱动（它整幅拉伸着贴，用户 2026-11-24 上机看是「发虚、很卡」）。
+  - `tec_hmi --fullscreen`：去掉标题栏铺满屏幕（现场这么开）；屏幕比 1280×720 大时自动放大到放得下的最大。
+  - `tec_hmi --zoom 200`：指定放大多少。整数倍边缘清楚，非整数倍会软。
+  - `tec_hmi_2x.exe`：同一套界面按 2 倍现画（2560×1440）。不用手动挑：`tec_hmi.exe` 启动时发现屏幕放得下它、它又在旁边，就自动改用它（`--1x` 可以不让它换）。
+  - 缺省不带系统的标题栏和边框，只显示界面本身（用户 2026-11-24 要的）；`--frame` 才带。
   - `tec_hmi --host 地址 --port 端口`：连哪里的控制核心，缺省是本机 5020。
-  - **这一段 Windows 的代码还没有在 Windows 上编过、跑过**（开发机是 Mac），第一次上 Windows 要先过这一关。
+  - 自己开窗口这一版还没有在 Windows 上编过、跑过（开发机是 Mac）。
 - **Mac（开发用）**：编出来的是不开窗口的版本，只能出图和模拟点击：`tec_hmi --page 页面名 --shot 文件 [--after 秒] [--do 动作名…] [--tap x,y…]`。`--tap` 用的是设计稿上的坐标，走的是和真触摸一样的路。存出来的是原始画面数据，用 `ui/tools/raw2png.py` 转成 PNG（那个脚本按 2 倍图写的，配 `ui/build.sh 2` 编出来的 `ui/build/tec_hmi_2` 用）。
 
 字体：Inter 整套 + 裁小了的 Noto Sans SC（只留 GB2312 的 6763 个汉字和常用符号，`ui/tools/subset_fonts.py` 裁的），都是 OFL 许可，许可文本在字体旁边。

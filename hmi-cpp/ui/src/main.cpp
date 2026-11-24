@@ -37,10 +37,21 @@ using namespace ui;
 #include PAGES_INC
 
 static uint32_t g_fb[W * H];
+// 手指（或鼠标）现在在哪、按没按着。Windows 上是窗口消息在写，不开窗口时是 --tap 在写；LVGL 每一帧来读
+static struct { int x = 0, y = 0; bool down = false; } g_finger;
+#ifdef _WIN32
+#include "win_window.inc"
+#endif
 static void flush(lv_display_t* d, const lv_area_t* a, uint8_t* px) {
     const int w = a->x2 - a->x1 + 1;
-    if (std::getenv("UI_TRACE")) std::fprintf(stderr, "flush %d,%d %dx%d\n", a->x1, a->y1, w, a->y2 - a->y1 + 1);
-    for (int y = a->y1; y <= a->y2; y++) std::memcpy(&g_fb[y * W + a->x1], px + static_cast<size_t>(y - a->y1) * w * 4, static_cast<size_t>(w) * 4);
+    uint32_t* out = g_fb;
+#ifdef _WIN32
+    if (win::bits) out = win::bits;        // 开着窗口：直接写到窗口的那张画布上
+#endif
+    for (int y = a->y1; y <= a->y2; y++) std::memcpy(&out[y * W + a->x1], px + static_cast<size_t>(y - a->y1) * w * 4, static_cast<size_t>(w) * 4);
+#ifdef _WIN32
+    win::present(a->x1, a->y1, a->x2, a->y2);      // 只把变了的这一块贴上去
+#endif
     lv_display_flush_ready(d);
 }
 
@@ -546,8 +557,10 @@ int main(int argc, char** argv) {
     std::string page = "Ctl", shot;
     std::vector<std::string> todo;             // --do 动作名：开发时自查用，代替手指点一下
     std::vector<std::pair<int, int>> taps;     // --tap x,y：模拟手指在那个位置点一下（不开窗口时用）
-    int zoom = 100;                            // --zoom：Windows 上整个窗口放大多少（百分比）
-    bool fullscreen = false;                   // --fullscreen：Windows 上去掉边框铺满屏幕
+    int zoom = 0;                              // --zoom：Windows 上整个界面放大多少（百分比）；不写 = 窗口时 100，全屏时放大到屏幕放得下的最大
+    bool fullscreen = false;                   // --fullscreen：Windows 上铺满屏幕
+    bool frame = false;                        // --frame：Windows 上带系统的标题栏和边框（缺省不带）
+    bool only_1x = false;                      // --1x：屏幕再大也用 1 倍这一份，不自动换成 2 倍的
     double after = 2.0;
     for (int i = 1; i < argc; i++) {
         const std::string a = argv[i];
@@ -561,7 +574,10 @@ int main(int argc, char** argv) {
         else if (a == "--tap" && i + 1 < argc) { int x = 0, y = 0; if (std::sscanf(argv[++i], "%d,%d", &x, &y) == 2) taps.push_back({x, y}); }
         else if (a == "--zoom" && i + 1 < argc) zoom = std::atoi(argv[++i]);
         else if (a == "--fullscreen") fullscreen = true;
+        else if (a == "--frame") frame = true;
+        else if (a == "--1x") only_1x = true;
     }
+    (void)only_1x;
     lv_init();
     // LVGL 的钟用系统的单调钟：动画、长按判定都按真实时间走，不管一圈循环实际花了多久
     lv_tick_set_cb([]() -> uint32_t { return static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()); });
@@ -569,49 +585,43 @@ int main(int argc, char** argv) {
     const auto t0 = clock::now();
     auto last_poll = t0 - std::chrono::seconds(1);
 
+    bool windowed = false;
 #ifdef _WIN32
-    // ── Windows 上真正开窗口：LVGL 自带的 Windows 驱动画窗口、收鼠标和触摸。带 --shot 时仍走下面不开窗口的那一套（自查出图用） ──
+    // Windows 上真正开窗口（见 win_window.inc）。带 --shot 时不开，走不开窗口、只出图的那一套（自查用）
     if (shot.empty()) {
-        lv_display_t* d = lv_windows_create_display(L"HTLAB 多工位反应平台", W, H, zoom, false, false);
-        if (!d) { std::fprintf(stderr, "窗口开不出来\n"); return 1; }
-        lv_windows_acquire_pointer_indev(d);
-        if (fullscreen) {
-            // 现场用：去掉标题栏和边框，铺满主屏幕（屏幕要是 1280×720，或者用 --zoom 按比例放大到屏幕那么大）
-            HWND hwnd = lv_windows_get_display_window_handle(d);
-            SetWindowLongPtrW(hwnd, GWL_STYLE, WS_POPUP | WS_VISIBLE);
-            SetWindowPos(hwnd, HWND_TOP, 0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN), SWP_FRAMECHANGED | SWP_SHOWWINDOW);
-        }
-        // 窗口有它自己的一条线程在收消息；我们在主线程里改界面时把 LVGL 的那把锁拿上，免得两边同时动
-        lv_lock(); app.show(page); lv_unlock();
-        const HWND win = lv_windows_get_display_window_handle(d);      // 先记下窗口：窗口关掉以后 LVGL 会把 d 一起销毁，那时不能再拿 d 去问
-        for (;;) {
-            const auto now = clock::now();
-            if (now - last_poll >= std::chrono::milliseconds(500)) { last_poll = now; lv_lock(); app.poll(); lv_unlock(); }
-            const uint32_t wait = lv_timer_handler();           // 点击之类的事件是在这里面分发的（它自己会拿那把锁）
-            if (!IsWindow(win)) return 0;      // 窗口被关掉了
-            Sleep(wait < 1 ? 1 : wait > 10 ? 10 : wait);
-        }
+#if UI_SCALE == 1
+        if (!only_1x && zoom == 0 && win::hand_over_to_2x(fullscreen)) return 0;       // 屏幕够大：交给按 2 倍画的那一份
+#endif
+        if (!win::open(zoom, fullscreen, frame)) { std::fprintf(stderr, "窗口开不出来\n"); return 1; }
+        windowed = true;
     }
 #else
-    (void)zoom; (void)fullscreen;
+    (void)zoom; (void)fullscreen; (void)frame;
 #endif
 
-    // ── 不开窗口：画到内存里，可以模拟手指点、可以把画面存出来。这台 Mac 上开发和自查用的就是这一套 ──
+    // LVGL 画到内存里，画完一块交给 flush：开着窗口就贴到窗口上；不开窗口（Mac 上开发自查）就只留在内存里，可以存成图
     lv_display_t* d = lv_display_create(W, H);
     static uint32_t buf[W * H];
     lv_display_set_buffers(d, buf, nullptr, sizeof buf, LV_DISPLAY_RENDER_MODE_PARTIAL);
     lv_display_set_flush_cb(d, flush);
     // 假的手指：--tap x,y（设计稿上的坐标，1280×720 那一套）走的是和真触摸一样的路——LVGL 自己找点中了谁、判是不是一次点击
-    static struct { int x = 0, y = 0; bool down = false; } finger;
+    auto& finger = g_finger;
     lv_indev_t* touch = lv_indev_create();
     lv_indev_set_type(touch, LV_INDEV_TYPE_POINTER);
-    lv_indev_set_read_cb(touch, [](lv_indev_t*, lv_indev_data_t* data) { data->point.x = finger.x; data->point.y = finger.y; data->state = finger.down ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED; });
+    lv_indev_set_read_cb(touch, [](lv_indev_t*, lv_indev_data_t* data) { data->point.x = g_finger.x; data->point.y = g_finger.y; data->state = g_finger.down ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED; });
     app.show(page);
     int frames = 0, tap_phase = 0;
     for (;;) {
         const auto now = clock::now();
+#ifdef _WIN32
+        if (windowed && !win::pump()) return 0;        // 窗口被关掉了
+#endif
         if (now - last_poll >= std::chrono::milliseconds(500)) { last_poll = now; app.poll(); }
-        lv_timer_handler();
+        const uint32_t wait = lv_timer_handler();
+#ifdef _WIN32
+        if (windowed) { win::idle(wait < 1 ? 1 : wait > 10 ? 10 : wait); continue; }      // 开着窗口：下面那些是不开窗口时自查用的，用不着
+#endif
+        (void)wait; (void)windowed;
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
         // 第一帧要现算所有字形，可能一画就是两三秒；所以「点完」和「出图」之间按画过的帧数隔开，不按钟点，
         // 不然点完还没来得及重画就把旧画面存出去了
