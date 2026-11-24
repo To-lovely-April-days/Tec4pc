@@ -24,6 +24,7 @@
 | `ui/tools/gen_pinyin.swift` | 汉字 → 拼音的小工具（用 Mac 系统自带的转换），生成拼音字库和词库时用，产品里不带 |
 | `ui/tools/phrases.txt`、`gen_phrases.py` | 文字键盘的词库：清单里一行行写词，脚本配上拼音生成 `ui/src/phrase_dict.inc`。要加词就改清单再跑脚本 |
 | `ui/tools/add_polyphones.py` | 给拼音字库 `ui/src/pinyin_dict.inc` 补读音（ü 打 v 的音节、常用多音字）；可以反复跑 |
+| `ui/src/win_window.inc` | Windows 上自己开窗口那一段（只在 Windows 上编） |
 | `ui/tools/raw2png.py` | Mac 上自查出图：`tec_hmi_2 --shot` 存的是原始画面数据，用它转成 PNG；`--do 动作名` 可以代替手指点一下再出图 |
 | `trial_lvgl/` | LVGL 界面试做：把设计稿的一页自动翻成 LVGL 代码，不开窗口直接出图 |
 | `third_party/` | 第三方源码和工具，不进仓库 |
@@ -67,6 +68,19 @@ ctest --test-dir build --output-on-failure
 ## 设备没连上时
 
 温控器或继电器模块没连上（串口配错、线没插）时，`tec_core` 不会退出：它照常运行、照常答命令，只是不收「开始控温 / 开始序列」。触摸屏顶栏会显示红点「设备未连接」，到「设置 → 通信设置」把串口改对，再重启 `tec_core` 就好。
+
+## PC 工作站里的「手动控制面板」
+
+工作站点「手动控制面板」弹出来的那块，**就是这套界面本身**，不是照着重写的一版，也不是另开一个程序：
+同一份代码另编一个动态库 `tec_hmi_core`（CMake 目标，按 2 倍画），工作站把它装进自己的窗口，
+每帧要一张画好的画面贴上去，把鼠标动作当手指喂回来。所以 PC 上和触摸屏上长得一模一样，改设计稿两边一起变。
+
+- 库的接口在 `ui/src/main.cpp` 末尾（`TEC_HMI_LIB` 那一段）：起界面、走一帧、取画面、报鼠标、换一台机器、跳页。
+- 工作站那头是 `applatest/app/src/Tec.App/Controls/NativePanelView.cs` 和 `Views/PanelWindow.axaml`。
+- 库和它的 `assets` 放在工作站程序旁边的 `hmi` 文件夹；开发时用环境变量 `TEC_HMI_DIR` 指到别处。
+- **整个进程只有一套界面**（LVGL 是全局的），所以同时只能看一台机器；点另一台是把连接转过去，不是再开一扇窗。
+- 所有接口都要在同一个线程上调（工作站的界面线程）。
+- 连不上时在界面上查原因：设环境变量 `TEC_NET_TRACE`，每次尝试连接都会往标准错误写一行。
 
 ## 界面程序怎么编、怎么跑
 
