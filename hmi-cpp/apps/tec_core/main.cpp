@@ -13,11 +13,20 @@
 #include <memory>
 #include <string>
 #include <thread>
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
 
 static std::atomic<bool> g_quit{false};
 static void on_signal(int) { g_quit = true; }
 
 int main(int argc, char** argv) {
+    // 这个程序打印的中文是 UTF-8；Windows 控制台缺省按本地编码（GBK）显示，不说一声就是满屏乱码
+    // （用户 2026-11-25 截到的那一屏）
+#ifdef _WIN32
+    SetConsoleOutputCP(CP_UTF8);
+#endif
     std::string data = "data", gains = "data/gain-table.csv";
     bool sim = false;
     int port = -1;

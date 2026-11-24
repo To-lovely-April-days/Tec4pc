@@ -32,6 +32,13 @@ public static class NativePanel
     [DllImport(Lib)] private static extern void tec_hmi_pointer(int x, int y, int down);
     [DllImport(Lib)] private static extern void tec_hmi_connect(string host, int port, int channel);
     [DllImport(Lib)] private static extern void tec_hmi_show(string page, int channel);
+    [DllImport(Lib)] private static extern IntPtr tec_hmi_last_error();
+
+    private static string LastError()
+    {
+        try { return Marshal.PtrToStringUTF8(tec_hmi_last_error()) ?? ""; }
+        catch { return ""; }
+    }
 
     /// <summary>
     /// 库和 assets 可能放哪，按先后顺序找：环境变量指的地方（开发时用）、工作站旁边的 hmi 文件夹、工作站自己那层。
@@ -98,7 +105,11 @@ public static class NativePanel
                 // 3 = 找不到 assets（字体和图片）。不说清楚的话，画出来是一片灰、一个字都没有
                 if (rc == 3) return Problem = "没找到界面用的字体和图片：要有 assets 文件夹（里面是 fonts 和 img），"
                                             + "和 tec_hmi_core 放在一起。找过这几个地方：\n" + string.Join("\n", Candidates.Select(d => "　" + Path.Combine(d, "assets")));
-                if (rc != 0) return Problem = $"面板起不来（错误码 {rc}）：{Dir}";
+                if (rc != 0)
+            {
+                var why = LastError();
+                return Problem = $"面板起不来（错误码 {rc}）：{(why.Length > 0 ? why : Dir)}";
+            }
                 _started = true;
             }
             else if (_at != (host, port, channel))
@@ -116,6 +127,14 @@ public static class NativePanel
         catch (Exception ex) when (ex is EntryPointNotFoundException or BadImageFormatException)
         {
             return Problem = $"面板程序库对不上（可能是 32/64 位不符或版本旧了）：{ex.Message}";
+        }
+        catch (Exception ex)
+        {
+            // 库里崩了（SEHException 之类）绝不能把整个工作站带走：这里接住，面板上写清楚，别的页照常用
+            _started = false;
+            var why = LastError();
+            return Problem = "面板出错了，工作站其它功能不受影响。\n" + (why.Length > 0 ? why : ex.Message)
+                           + "\n（库：" + Dir + "）";
         }
     }
 

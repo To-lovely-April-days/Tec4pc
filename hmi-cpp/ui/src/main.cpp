@@ -84,7 +84,7 @@ struct App {
     int port = 5020;
     bool connected = false;
     json st;                                   // 最近一次的整机状态
-    struct Page { lv_obj_t* scr = nullptr; std::unique_ptr<Ui> ui; lv_obj_t* veil = nullptr; };
+    struct Page { lv_obj_t* scr = nullptr; std::unique_ptr<Ui> ui; };
     std::map<std::string, Page> pages;
     std::string cur;                           // 现在显示的页面
     int channel = 1;                           // 现在看的是哪个通道
@@ -269,24 +269,60 @@ struct App {
         return true;
     }
 
-    // 「这不是实时数据」那层白纱。
-    // **不能改屏幕本身的透明度**：LVGL 的画面缓冲是复用的，半透明的屏会和缓冲里上一页的残留混在一起，
-    // 几页叠在一张图上，花得没法看（用户 2026-11-25 在 Windows 上看到的就是这个）。
-    // 盖一层在最上面就没这个问题：屏幕本身仍然是不透明的，每次都把缓冲盖干净
-    void set_stale(Page& p, bool stale) {
-        if (!p.scr) return;
-        if (!p.veil) {
-            if (!stale) return;
-            p.veil = lv_obj_create(p.scr);
-            lv_obj_remove_style_all(p.veil);
-            lv_obj_set_pos(p.veil, 0, 0);
-            lv_obj_set_size(p.veil, W, H);
-            bg(p.veil, 0xFFFFFF, 140);
-            lv_obj_remove_flag(p.veil, LV_OBJ_FLAG_CLICKABLE);      // 不挡点击：这时还得能切页、能去「通信设置」改地址
-            lv_obj_remove_flag(p.veil, LV_OBJ_FLAG_SCROLLABLE);
+    // ── 没连上控制核心时的那一屏 ──
+    // 原来是在页面上蒙一层白纱，但底下仍是设计稿里的样例数字（65.0、结晶工艺-0824），看着像真的，很难看也容易误读。
+    // 用户 2026-11-25：「就是设计一个小界面，专门用来提示未连接上控制核心」。于是单独做一屏，干净地说清楚。
+    Page nolink;
+    lv_obj_t* nolink_where = nullptr;      // 正在连哪里
+    lv_obj_t* nolink_dots = nullptr;       // 「正在重试…」后面会动的点，让人知道程序没死
+    int nolink_tick = 0;
+
+    void nolink_build() {
+        if (nolink.scr) return;
+        const int S = UI_SCALE;
+        nolink.scr = lv_obj_create(nullptr);
+        lv_obj_remove_style_all(nolink.scr);
+        lv_obj_remove_flag(nolink.scr, LV_OBJ_FLAG_SCROLLABLE);
+        bg(nolink.scr, 0xEEF2F7, 255);
+        lv_obj_t* card = mk(nolink.scr, (W - 660 * S) / 2, (H - 300 * S) / 2, 660 * S, 300 * S, 0);
+        bg(card, 0xFFFFFF, 255);
+        lv_obj_set_style_radius(card, 18 * S, 0);
+        sh(card, 0x0D1828, 28, 40 * S, 0, 10 * S, 0);
+        lv_obj_t* dot = mk(card, 56 * S, 68 * S, 14 * S, 14 * S, 0);
+        bg(dot, 0xD64545, 255);
+        lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
+        // txt 是按中心点摆的；这一屏要左对齐，建完把 x 拨回左边界
+        auto line = [&](int x, int y, const char* t, int weight, float px, uint32_t col) {
+            lv_obj_t* l = txt(card, x, y, t, weight, px, col, 255, 0, 0);
+            lv_obj_set_x(l, x);
+            return l;
+        };
+        line(90 * S, 75 * S, "未连上控制核心", 600, 24, 0x1F2A35);
+        nolink_where = line(56 * S, 125 * S, "", 400, 16, 0x5A6675);
+        line(56 * S, 172 * S, "请确认机器上的控制核心已经启动，地址和端口填对。", 400, 15, 0x8792A0);
+        line(56 * S, 202 * S, "连上以后这一屏会自己消失，不用重开。", 400, 15, 0x8792A0);
+        nolink_dots = line(56 * S, 248 * S, "正在重试", 400, 15, 0x00559C);
+    }
+
+    /// 没连上：把这一屏摆出来（已经在就只刷新上面的字）
+    void nolink_show() {
+        nolink_build();
+        if (lv_screen_active() != nolink.scr) lv_screen_load(nolink.scr);
+        if (nolink_where) {
+            const std::string at = host + ":" + std::to_string(port);
+            if (at != lv_label_get_text(nolink_where)) { lv_label_set_text(nolink_where, at.c_str()); lv_obj_set_x(nolink_where, 56 * UI_SCALE); }
         }
-        if (stale) { lv_obj_move_foreground(p.veil); lv_obj_remove_flag(p.veil, LV_OBJ_FLAG_HIDDEN); }
-        else lv_obj_add_flag(p.veil, LV_OBJ_FLAG_HIDDEN);
+        if (nolink_dots && ++nolink_tick % 4 == 0) {      // 每两秒多一个点，转一圈：看得出程序还活着
+            static const char* d[] = {"正在重试", "正在重试 ·", "正在重试 · ·", "正在重试 · · ·"};
+            lv_label_set_text(nolink_dots, d[(nolink_tick / 4) % 4]);
+        }
+    }
+
+    /// 连上了：回到原来那一页
+    void nolink_hide() {
+        if (!nolink.scr || lv_screen_active() != nolink.scr) return;
+        auto it = pages.find(cur);
+        if (it != pages.end() && it->second.scr) lv_screen_load(it->second.scr);
     }
 
     void show(const std::string& name) {
@@ -507,13 +543,8 @@ struct App {
         // 还没拿到过状态：页面上那些数字是设计稿里的样例值（65.0、结晶工艺-0824 之类），不是真的。
         // 盖一层半透明的白，一眼看出「这不是实时数据」——顶栏那句红字容易被忽略，而面板在 PC 上是看远处机器的，
         // 把样例值当读数会出事
-        if (!st.is_object() || !st.contains("ch")) {
-            u.set_text("top.water", connected ? "读取中…" : "未连上控制核心");
-            u.show("top.water.dot", false);      // 这句话比「冷却水已关」长，会盖到小圆点上；何况这时也没有冷却水状态可报
-            set_stale(it->second, true);
-            return;
-        }
-        set_stale(it->second, false);
+        if (!st.is_object() || !st.contains("ch")) { nolink_show(); return; }
+        nolink_hide();
         // 控温设备没连上（串口配错之类）：核心还活着但不能控温。顶栏这个位置平时写冷却水，这时换成红点和这句话，哪一页都看得见
         const bool offline = !st.value("offline", std::string()).empty();
         u.set_text("top.water", offline ? "设备未连接" : st.value("valve_open", false) ? "冷却水已开" : "冷却水已关");
@@ -653,7 +684,13 @@ Embed& em() { static Embed e; return e; }
 }  // namespace
 
 /// 起界面。assets_dir 是放着 assets 文件夹的那一层；host / port 是控制核心在哪。成功回 0
-TEC_API int tec_hmi_init(const char* assets_dir, const char* host, int port, int channel) {
+// 出了岔子记在这儿，调用方可以取走显示；不让任何异常跑到调用方那边去——
+// 跨语言边界上漏出去的异常，在 C# 里只会变成一句「External component has thrown an exception」，什么也看不出来
+// （用户 2026-11-25 在工作站里点面板就撞上这个）
+static std::string g_err;
+TEC_API const char* tec_hmi_last_error(void) { return g_err.c_str(); }
+
+TEC_API int tec_hmi_init(const char* assets_dir, const char* host, int port, int channel) try {
     Embed& e = em();
     if (e.ready) return 0;                                  // 已经起过了
     ui::set_assets_dir(assets_dir ? assets_dir : "");
@@ -676,10 +713,16 @@ TEC_API int tec_hmi_init(const char* assets_dir, const char* host, int port, int
     e.app->show("Ctl");
     e.ready = true;
     return 0;
+} catch (const std::exception& ex) {
+    g_err = std::string("起界面时出错：") + ex.what();
+    return 10;
+} catch (...) {
+    g_err = "起界面时出错（不知道是什么错）";
+    return 11;
 }
 
 /// 走一帧：该问状态就问一次，该重画就重画。回「下次最晚隔多少毫秒再叫我」
-TEC_API int tec_hmi_tick(void) {
+TEC_API int tec_hmi_tick(void) try {
     Embed& e = em();
     if (!e.ready) return 100;
     const auto now = std::chrono::steady_clock::now();
@@ -688,6 +731,12 @@ TEC_API int tec_hmi_tick(void) {
     // 趁没人按着屏幕，把还没看过的页先在内存里画一遍（第一次点进去就不用现算了）
     if (++e.loops > 5 && !g_finger.down) e.app->warm_step();
     return static_cast<int>(wait < 1 ? 1 : wait > 30 ? 30 : wait);
+} catch (const std::exception& ex) {
+    g_err = std::string("刷新界面时出错：") + ex.what();
+    return 100;
+} catch (...) {
+    g_err = "刷新界面时出错（不知道是什么错）";
+    return 100;
 }
 
 /// 画面那块内存。一个像素四个字节，顺序是蓝绿红透明（和 Windows / Avalonia 的 Bgra8888 一致）
