@@ -424,12 +424,12 @@ std::string CoreApp::handle(const std::string& line, bool remote) {
             }
             else if (cmd == "gains.get") {
                 r["rows"] = json::array();
-                for (auto& g : table_.rows()) r["rows"].push_back({{"temp", g.temp}, {"kp", g.kp}, {"ki", g.ki}, {"kd", g.kd}, {"steady_bias", opt(g.steady_bias)}, {"heat_ratio", opt(g.heat_ratio)}});
+                for (auto& row : table_.rows()) r["rows"].push_back({{"temp", row.temp}, {"kp", row.kp}, {"ki", row.ki}, {"kd", row.kd}, {"steady_bias", opt(row.steady_bias)}, {"heat_ratio", opt(row.heat_ratio)}});
             }
             else if (cmd == "gains.set" || cmd == "gains.reload") {
                 // 换增益表：两个通道都没在控温、也没在跑序列时才收。控着温的时候把 PID 参数整个换掉，输出会跳
-                const StationSnapshot ss = station_->snapshot();
-                bool busy = ss.ch[0].running || ss.ch[1].running;
+                const StationSnapshot snap = station_->snapshot();
+                bool busy = snap.ch[0].running || snap.ch[1].running;
                 for (int k = 0; k < 2; k++) { const SeqState q2 = ch_[k].seq->status().state; busy = busy || q2 == SeqState::Running || q2 == SeqState::WaitingConfirm; }
                 if (busy) r = fail("有通道正在控温或跑序列，停下来才能换增益表");
                 else if (cmd == "gains.reload") {

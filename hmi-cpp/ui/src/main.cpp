@@ -40,10 +40,14 @@ static uint32_t g_fb[W * H];
 // 手指（或鼠标）现在在哪、按没按着。Windows 上是窗口消息在写，不开窗口时是 --tap 在写；LVGL 每一帧来读
 static struct { int x = 0, y = 0; bool down = false; } g_finger;
 #ifdef _WIN32
+#if !defined(TEC_HMI_LIB)              // 编成库给 PC 工作站用时不开窗口，这一套用不上
 #include "win_window.inc"
+#define TEC_HAS_WINDOW 1
+#endif
 #endif
 #ifdef _WIN32
 // 弹个框说句中文。Windows 上要先把 UTF-8 转成宽字符：按窄字符那套走会被当成系统本地编码，显示成乱码
+#if !defined(TEC_HMI_LIB)
 static void win_message_box(const std::string& text, const std::string& title) {
     auto wide = [](const std::string& u8) {
         const int n = MultiByteToWideChar(CP_UTF8, 0, u8.c_str(), -1, nullptr, 0);
@@ -54,17 +58,18 @@ static void win_message_box(const std::string& text, const std::string& title) {
     MessageBoxW(nullptr, wide(text).c_str(), wide(title).c_str(), MB_ICONERROR | MB_OK);
 }
 #endif
+#endif
 
 static bool g_dirty = false;         // 上次宿主取走画面之后，有没有重新画过
 static void flush(lv_display_t* d, const lv_area_t* a, uint8_t* px) {
     g_dirty = true;
     const int w = a->x2 - a->x1 + 1;
     uint32_t* out = g_fb;
-#ifdef _WIN32
+#ifdef TEC_HAS_WINDOW
     if (win::bits) out = win::bits;        // 开着窗口：直接写到窗口的那张画布上
 #endif
     for (int y = a->y1; y <= a->y2; y++) std::memcpy(&out[y * W + a->x1], px + static_cast<size_t>(y - a->y1) * w * 4, static_cast<size_t>(w) * 4);
-#ifdef _WIN32
+#ifdef TEC_HAS_WINDOW
     win::present(a->x1, a->y1, a->x2, a->y2);      // 只把变了的这一块贴上去
 #endif
     lv_display_flush_ready(d);
@@ -355,7 +360,7 @@ struct App {
         if (a == "edit:target" && st.is_object()) {
             const json& c = st["ch"][ci];
             const bool run = c.value("running", false);
-            const double cur = run ? c.value("sp", 25.0) : pending_sp[ci];
+            const double now_sp = run ? c.value("sp", 25.0) : pending_sp[ci];
             if (mode[ci] == 2) {
                 // 蒸回流填的不是目标温度，是「夹套比釜内高多少」。已经在回流时核心不收改动，先停再改
                 if (run) { ctl_msg[ci] = "蒸回流进行中改不了温差：先停下，改好再开"; refresh(); return; }
@@ -365,7 +370,7 @@ struct App {
             }
             const bool jk = mode[ci] == 1;       // 夹套控温：目标是夹套温度，上限按夹套的 200 ℃
             const json& nowv = jk ? c["tj"] : c["tr"];
-            open_keypad("通道 " + std::to_string(channel) + (jk ? " · 目标 Tj" : " · 目标 Tr"), "℃", cur, -40, jk ? 200 : 180, f1(cur) + " ℃", nowv.is_number() ? f1(nowv.get<double>()) + " ℃" : "—",
+            open_keypad("通道 " + std::to_string(channel) + (jk ? " · 目标 Tj" : " · 目标 Tr"), "℃", now_sp, -40, jk ? 200 : 180, f1(now_sp) + " ℃", nowv.is_number() ? f1(nowv.get<double>()) + " ℃" : "—",
                         [this, ci, run](double v) { pending_sp[ci] = v; if (run) ask({{"cmd", "temp.setpoint"}, {"ch", ci + 1}, {"target", v}}); poll(); });
             return;
         }
@@ -462,7 +467,7 @@ struct App {
             const std::string k = "main." + std::to_string(n);
             const bool run = c.value("running", false);
             const json& q = c["seq"];
-            const std::string qs = q.value("state", "idle"), mode = c.value("mode", "off");
+            const std::string qs = q.value("state", "idle"), cmode = c.value("mode", "off");
             const bool seq_on = qs == "running" || qs == "waiting_confirm";
             const bool live = run || seq_on;
             const double duty = c.value("duty", 0.0);
@@ -470,7 +475,7 @@ struct App {
             const std::string name = c.contains("run") && c["run"].is_string() ? c["run"].get<std::string>() : "";      // 没在跑序列时核心给的是空值，不是空字符串
             u.set_text(k + ".name", !name.empty() ? name : live ? "手动运行" : "未在运行");
             u.set_text(k + ".r1", seq_on ? hms(q.value("total_elapsed_s", 0.0)) : run ? "控温中" : "待机");
-            const char* mname = mode == "reactor" ? "釜内控温 Tr" : mode == "jacket" ? "夹套控温 Tj" : mode == "reflux" ? "蒸回流" : mode == "crystal" ? "结晶" : "未控温";
+            const char* mname = cmode == "reactor" ? "釜内控温 Tr" : cmode == "jacket" ? "夹套控温 Tj" : cmode == "reflux" ? "蒸回流" : cmode == "crystal" ? "结晶" : "未控温";
             u.set_text(k + ".mode", std::string(seq_on ? "程序模式" : "手动模式") + " · " + mname);
             u.set_text(k + ".r2", qs == "waiting_confirm" ? "等待确认后继续" : seq_on ? "步骤 " + std::to_string(q.value("index", 0) + 1) + " / " + std::to_string(q.value("count", 0))
                                   : !run ? "" : duty < -1 ? "加热中" : duty > 1 ? "制冷中" : "保温中");
@@ -567,13 +572,13 @@ struct App {
         const json& c = st["ch"][channel - 1];
         const bool run = c.value("running", false);
         const json& q = c["seq"];
-        const std::string qs = q.value("state", "idle"), mode = c.value("mode", "off");
+        const std::string qs = q.value("state", "idle"), cmode = c.value("mode", "off");
         const bool seq_on = qs == "running" || qs == "waiting_confirm";
         // 通道标题栏
         u.set_text("head.ch", "通道 " + std::to_string(channel));
         u.set_text("head.name", c["run"].is_string() ? c["run"].get<std::string>() : "未在运行");
         const double duty = c.value("duty", 0.0);
-        const char* mname = mode == "reactor" ? "釜内控温 Tr" : mode == "jacket" ? "夹套控温 Tj" : mode == "reflux" ? "蒸回流" : mode == "crystal" ? "结晶" : "未控温";
+        const char* mname = cmode == "reactor" ? "釜内控温 Tr" : cmode == "jacket" ? "夹套控温 Tj" : cmode == "reflux" ? "蒸回流" : cmode == "crystal" ? "结晶" : "未控温";
         u.set_text("head.mode", std::string(seq_on ? "程序控制" : "手动控制") + " · " + (!run ? "待机" : duty < -1 ? "加热中" : duty > 1 ? "制冷中" : "保温中") + " · " + mname);
         u.set_text("head.step", seq_on ? "步骤 " + std::to_string(q.value("index", 0) + 1) + " / " + std::to_string(q.value("count", 0)) : "无序列");
         // 「本步剩余」：这一步有确定时长的（等待、蒸回流、结晶曲线、按时长到达）才算得出剩多少；
@@ -617,7 +622,7 @@ struct App {
         if (cur.rfind("Safety", 0) == 0) { refresh_safety(u, c, ci); return; }
         if (cur.rfind("Export", 0) == 0) { refresh_export(u); return; }
         if (cur.rfind("Pid", 0) == 0) { refresh_pid(u, c, ci); return; }
-        if (run) { this->mode[ci] = mode == std::string("jacket") ? 1 : mode == std::string("reflux") ? 2 : mode == std::string("crystal") ? 3 : 0; pending_sp[ci] = c.value("sp", pending_sp[ci]); }
+        if (run) { this->mode[ci] = cmode == std::string("jacket") ? 1 : cmode == std::string("reflux") ? 2 : cmode == std::string("crystal") ? 3 : 0; pending_sp[ci] = c.value("sp", pending_sp[ci]); }
         set_radio(u, "mode", 4, this->mode[ci]);
         set_radio(u, "arrive", 3, arrive[ci]);
         // 设备控制页

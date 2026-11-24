@@ -47,7 +47,12 @@ void refresh_safety(Ui& u, const json& c, int ci) {
     SafetyView& v = sfv[ci];
     const json vs = c.value("vessel", json(""));
     u.set_text("sf.vessel", vs.is_string() && !vs.get<std::string>().empty() ? vs.get<std::string>() : "—");
-    if (!v.lim.is_object()) return;
+    // 还没拿到限值：把几个数字清成「—」，别把设计稿里的示意值（−40.0 / 180.0）当成真的限值摆在那儿
+    if (!v.lim.is_object()) {
+        for (int i = 0; i < 5; i++) u.set_text("sf.v." + std::to_string(i), "—");
+        u.set_text("sf.chip", "还没拿到控制核心的安全限值");
+        return;
+    }
     const double lo = v.lim.value("tr_min", -40.0), hi = v.lim.value("tr_max", 180.0), rate = v.lim.value("rate_max_k_per_min", 0.0);
     const std::string vals[5] = {f1(lo) + " ℃", f1(hi) + " ℃", rate > 0 ? f2(rate) + " ℃/min" : "关（不检测）",
                                  f0(v.lim.value("tj_min", -40.0)) + " … " + f0(v.lim.value("tj_max", 200.0)) + " ℃", "≤ " + f0(v.lim.value("tc_max", 45.0)) + " ℃"};
@@ -96,18 +101,18 @@ void alarm_refresh() {
         const json r = ask({{"cmd", "alarm.list"}});
         if (r.value("ok", false) && r["alarms"].is_array()) alv.list = r["alarms"];
     }
-    const json* cur = nullptr;
-    for (auto& a : alv.list) if (!a.value("acked", false)) { cur = &a; break; }
-    if (!cur) return;
+    const json* shown = nullptr;
+    for (auto& a : alv.list) if (!a.value("acked", false)) { shown = &a; break; }
+    if (!shown) return;
     if (lv_obj_has_flag(aldlg.scr, LV_OBJ_FLAG_HIDDEN)) { lv_obj_remove_flag(aldlg.scr, LV_OBJ_FLAG_HIDDEN); lv_obj_move_foreground(aldlg.scr); }     // 盖在别的弹窗（键盘之类）上面
-    alv.shown_id = cur->value("id", -1);
+    alv.shown_id = shown->value("id", -1);
     Ui& u = *aldlg.ui;
-    const int ch = cur->value("ch", 1);
+    const int ch = shown->value("ch", 1);
     // 报警记的是核心的时间，换成墙上的钟点：现在几点，减去「核心现在的时间 − 报警那一刻」
-    const long long wall = static_cast<long long>(std::time(nullptr)) - static_cast<long long>(std::llround(st.value("t", 0.0) - cur->value("t", 0.0)));
+    const long long wall = static_cast<long long>(std::time(nullptr)) - static_cast<long long>(std::llround(st.value("t", 0.0) - shown->value("t", 0.0)));
     u.set_text("al.when", "通道 " + std::to_string(ch) + " · " + clock_text(wall) + (na > 1 ? " · 还有 " + std::to_string(na - 1) + " 条" : ""));
-    u.set_text("al.title", cur->value("title", ""));
-    u.set_text("al.action", "安全层已执行：" + cur->value("action", ""));
+    u.set_text("al.title", shown->value("title", ""));
+    u.set_text("al.action", "安全层已执行：" + shown->value("action", ""));
     if (ch >= 1 && ch <= 2 && st.contains("ch")) {
         const json& c = st["ch"][ch - 1];
         u.set_text("al.now", std::string("现在实测：") + (c["tr"].is_number() ? "Tr " + f1(c["tr"].get<double>()) + " ℃　" : "") + "Tj " + f1(c.value("tj", 0.0)) + " ℃");

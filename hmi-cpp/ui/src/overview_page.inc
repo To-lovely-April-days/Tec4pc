@@ -235,24 +235,24 @@ void draw_overview_trend(lv_obj_t* box) {
     for (const Ser& s : SER) {
         const TrendData& d = tdat[s.c];
         const std::vector<double>& v = s.tj ? d.tj : d.tr;
-        std::vector<lv_point_precise_t> cur;
+        std::vector<lv_point_precise_t> pts;
         int last_x = -1000000;
         auto flush = [&]() {
-            if (cur.size() >= 2) {
-                op.lines.push_back(cur);
+            if (pts.size() >= 2) {
+                op.lines.push_back(pts);
                 lv_obj_t* ln = lv_line_create(plot);
                 lv_line_set_points(ln, op.lines.back().data(), static_cast<uint32_t>(op.lines.back().size()));
                 lv_obj_set_style_line_width(ln, static_cast<int>(s.width * S + 0.5), 0);
                 lv_obj_set_style_line_color(ln, lv_color_hex(s.color), 0);
                 lv_obj_set_style_line_rounded(ln, true, 0);
             }
-            cur.clear(); last_x = -1000000;
+            pts.clear(); last_x = -1000000;
         };
         for (size_t i = 0; i < d.t.size(); i++) {
             if (d.t[i] < x0) continue;
             if (!std::isfinite(v[i])) { flush(); continue; }
             const int x = X(d.t[i]), y = Y(v[i]);
-            if (x == last_x) cur.back().y = static_cast<lv_value_precise_t>(y); else cur.push_back({static_cast<lv_value_precise_t>(x), static_cast<lv_value_precise_t>(y)});
+            if (x == last_x) pts.back().y = static_cast<lv_value_precise_t>(y); else pts.push_back({static_cast<lv_value_precise_t>(x), static_cast<lv_value_precise_t>(y)});
             last_x = x;
         }
         flush();

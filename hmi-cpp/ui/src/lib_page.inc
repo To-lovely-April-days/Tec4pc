@@ -27,8 +27,8 @@ void lib_fetch(bool force) {
     bool found = false;
     for (auto& x : lib.list) if (x.value("name", "") == lib.sel) found = true;
     if (!found) { lib.sel = lib.list.empty() ? "" : lib.list[0].value("name", ""); lib.del_armed = false; }
-    const int pages = std::max(1, (static_cast<int>(lib.list.size()) + kLibRows - 1) / kLibRows);
-    lib.page = std::max(0, std::min(lib.page, pages - 1));
+    const int npages = std::max(1, (static_cast<int>(lib.list.size()) + kLibRows - 1) / kLibRows);
+    lib.page = std::max(0, std::min(lib.page, npages - 1));
     if (lib.steps_of != lib.sel) {
         lib.steps = json::array();
         if (!lib.sel.empty()) { const json g = ask({{"cmd", "recipe.get"}, {"name", lib.sel}}); if (g.value("ok", false) && g["steps"].is_array()) lib.steps = g["steps"]; }
@@ -40,11 +40,11 @@ bool lib_action(const std::string& a) {
     if (a == "nav:files" || a == "seq:lib") { lib.msg.clear(); lib.del_armed = false; show("Files"); return true; }
     if (a.rfind("lib:", 0) != 0) return false;
     const int n = static_cast<int>(lib.list.size());
-    const int pages = std::max(1, (n + kLibRows - 1) / kLibRows);
+    const int npages = std::max(1, (n + kLibRows - 1) / kLibRows);
     if (a != "lib:del") lib.del_armed = false;
     lib.msg.clear();
     if (a == "lib:prev") lib.page = std::max(0, lib.page - 1);
-    else if (a == "lib:next") lib.page = std::min(pages - 1, lib.page + 1);
+    else if (a == "lib:next") lib.page = std::min(npages - 1, lib.page + 1);
     else if (a.rfind("lib:sel:", 0) == 0) { const int i = lib.page * kLibRows + (a[8] - '0'); if (i < n) lib.sel = lib.list[i].value("name", ""); lib_fetch(true); }
     else if (a.rfind("lib:load:", 0) == 0) {
         const int ch = a[9] - '0', ci = ch - 1;
@@ -98,10 +98,10 @@ bool lib_action(const std::string& a) {
 void refresh_lib(Ui& u) {
     lib_fetch(false);
     const int n = static_cast<int>(lib.list.size());
-    const int pages = std::max(1, (n + kLibRows - 1) / kLibRows);
+    const int npages = std::max(1, (n + kLibRows - 1) / kLibRows);
     u.set_text("lib.count", "配方库 · " + std::to_string(n) + " 个");
-    u.show("lib.pager", pages > 1);
-    u.set_text("lib.page", std::to_string(lib.page + 1) + " / " + std::to_string(pages));
+    u.show("lib.pager", npages > 1);
+    u.set_text("lib.page", std::to_string(lib.page + 1) + " / " + std::to_string(npages));
     json cur_item;
     for (int i = 0; i < kLibRows; i++) {
         const std::string id = "lib.r." + std::to_string(i);

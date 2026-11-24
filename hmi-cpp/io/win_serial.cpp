@@ -1,7 +1,11 @@
 #ifdef _WIN32
 #include "win_serial.hpp"
+#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 #include <windows.h>
 #include <stdexcept>
 
@@ -11,9 +15,16 @@ namespace {
 
 std::string last_error_text() {
     const DWORD code = GetLastError();
-    char buf[256] = {0};
-    FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr, code, 0, buf, sizeof buf - 1, nullptr);
-    return "（系统错误 " + std::to_string(code) + "：" + buf + "）";
+    // 要走宽字符那套：窄字符版给回来的是系统本地编码（简体中文机器上是 GBK），
+    // 而程序里的字串一律 UTF-8，直接拼进去打到控制台就是一串乱码（用户 2026-11-25 截到的「系统错误 2: єT◆X…」）
+    wchar_t wbuf[256] = {0};
+    FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr, code, 0, wbuf, 255, nullptr);
+    std::wstring w(wbuf);
+    while (!w.empty() && (w.back() == L'\r' || w.back() == L'\n' || w.back() == L' ')) w.pop_back();      // 它末尾会带回车换行
+    std::string u8;
+    const int n = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), static_cast<int>(w.size()), nullptr, 0, nullptr, nullptr);
+    if (n > 0) { u8.resize(static_cast<size_t>(n)); WideCharToMultiByte(CP_UTF8, 0, w.c_str(), static_cast<int>(w.size()), u8.data(), n, nullptr, nullptr); }
+    return "（系统错误 " + std::to_string(code) + "：" + u8 + "）";
 }
 
 class WinSerial : public SerialTransport {

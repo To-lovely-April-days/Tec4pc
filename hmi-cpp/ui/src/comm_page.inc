@@ -72,9 +72,9 @@ bool comm_action(const std::string& a) {
         else if (a.rfind("cdstop:", 0) == 0) d["stop_bits"] = a[7] == '1' ? 2 : 1;
         else if (a == "cd:port") {
             // 串口号只填 COM 后面的数字。原来的名字不是 COMn 这种（开发机上）就从 1 起
-            const std::string port = d.value("port", "");
-            const double cur_n = port.rfind("COM", 0) == 0 ? std::atof(port.c_str() + 3) : 1;
-            open_keypad(d.value("label", "") + " · 串口号", "COM", cur_n, 1, 64, port, "—", [this](double x) { ced_dev.dev["port"] = "COM" + std::to_string(static_cast<int>(x)); comm_dlg_show(); }, 0);
+            const std::string com = d.value("port", "");
+            const double cur_n = com.rfind("COM", 0) == 0 ? std::atof(com.c_str() + 3) : 1;
+            open_keypad(d.value("label", "") + " · 串口号", "COM", cur_n, 1, 64, com, "—", [this](double x) { ced_dev.dev["port"] = "COM" + std::to_string(static_cast<int>(x)); comm_dlg_show(); }, 0);
             lv_obj_move_foreground(kp.scr);          // 键盘要盖在这个弹窗上面
             return true;
         }
@@ -133,7 +133,14 @@ bool comm_action(const std::string& a) {
 
 void refresh_comm(Ui& u) {
     comm_fetch(false);
-    if (!cmv.info.is_object()) return;
+    // 还没从控制核心拿到设备清单：**必须把这几行藏掉**。原样不动的话，屏上留着的是设计稿里的示意值
+    // （一排「正常」、一行「无应答」），看着像真的读数，点又点不动——用户 2026-11-25 就是被这一屏骗了
+    if (!cmv.info.is_object()) {
+        for (int k = 0; k < kCommRows; k++) u.show("cm.r." + std::to_string(k), false);
+        u.set_text("cm.msg", "还没拿到控制核心的设备清单");
+        u.set_text_color("cm.msg", 0xD64545);
+        return;
+    }
     const json& devs = cmv.info["devices"];
     const int n = static_cast<int>(devs.size());
     for (int k = 0; k < kCommRows; k++) {

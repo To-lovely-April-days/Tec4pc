@@ -90,6 +90,7 @@ static void usable(bool fullscreen, int& w, int& h, int& left, int& top) {
 // 界面有两份，tec_hmi 按 1280×720 画，tec_hmi_2x 按 2560×1440 画（字和线是按大尺寸现画的，不是放大出来的）。
 // 这里是 1 倍那一份启动时做的事：屏幕放得下 2 倍那一份、它又在旁边，就改成启动它（参数原样带过去），自己等它退出再退——
 // 这样不管是双击还是工作站启动，用的都是同一个 tec_hmi.exe，不用人去挑。返回 true = 已经交给 2 倍那一份跑完了
+#if UI_SCALE == 1          // 只有 1 倍那一份会往 2 倍转交，2 倍自己用不着
 static bool hand_over_to_2x(bool fullscreen) {
     int w, h, l, t; usable(fullscreen, w, h, l, t);
     if (w < 2 * W || h < 2 * H) return false;
@@ -108,6 +109,7 @@ static bool hand_over_to_2x(bool fullscreen) {
     CloseHandle(pi.hThread); CloseHandle(pi.hProcess);
     return true;
 }
+#endif
 
 // 开窗口。want_zoom：0 = 自己定（窗口时 100 %，全屏时放大到屏幕放得下的最大）；frame：要不要系统的标题栏和边框
 static bool open(int want_zoom, bool fullscreen, bool frame) {
