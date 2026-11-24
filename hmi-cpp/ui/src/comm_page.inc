@@ -102,7 +102,7 @@ bool comm_action(const std::string& a) {
             lv_obj_add_flag(commdlg.scr, LV_OBJ_FLAG_CLICKABLE);
             commdlg.ui = std::make_unique<Ui>();
             commdlg.ui->on_action = [this](const std::string& x) { action(x); };
-            for (const PageDef& d : kPages) if (std::string(d.name) == "CommDlg") d.build(commdlg.scr, *commdlg.ui);
+            for (const PageDef& d : kPages) if (std::string(d.name) == "CommDlg") { d.build(commdlg.scr, *commdlg.ui); lv_obj_update_layout(commdlg.scr); }
         }
         ced_dev.dev = cmv.info["devices"][k]; ced_dev.dev.erase("state"); ced_dev.dev.erase("problem");
         ced_dev.open = true;

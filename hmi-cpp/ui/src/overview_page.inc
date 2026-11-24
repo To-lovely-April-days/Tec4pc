@@ -80,7 +80,7 @@ void draw_scheme(lv_obj_t* box, int ci, const json& steps, const json& q) {
     for (double vv = std::ceil(lo / ystep) * ystep; vv < hi; vv += ystep) {
         bg(mk(plot, 0, Y(vv), pw, S, 0), 0xEDF1F5, 255);
         lv_obj_t* l = label(0, T + Y(vv), tnum(vv), 0x8792A0);
-        lv_obj_set_x(l, L - 8 * S - lv_obj_get_width(l));
+        lv_obj_set_x(l, L - 8 * S - label_w(l));
     }
     // 竖线分步 + 上面一行的步骤名（放得下就写全，放不下只写序号）
     for (int i = 0; i < n; i++) {
@@ -136,8 +136,8 @@ void draw_scheme(lv_obj_t* box, int ci, const json& steps, const json& q) {
         const bool left = xm > L + pw - 190 * S;
         lv_obj_t* l1 = label(0, top + 8 * S, std::to_string(i + 1) + " 加料 " + a, 0x00559C, 600, 14);
         lv_obj_t* l2 = label(0, top + 25 * S, "在 " + f1(seg[i].v1) + " ℃ 加" + (d.empty() ? "" : " · " + d), 0x4F5B67, 400, 13);
-        lv_obj_set_x(l1, left ? xm - 20 * S - lv_obj_get_width(l1) : xm + 20 * S);
-        lv_obj_set_x(l2, left ? xm - 20 * S - lv_obj_get_width(l2) : xm + 20 * S);
+        lv_obj_set_x(l1, left ? xm - 20 * S - label_w(l1) : xm + 20 * S);
+        lv_obj_set_x(l2, left ? xm - 20 * S - label_w(l2) : xm + 20 * S);
     }
     // 下面的时间刻度
     static const double nice[] = {5, 10, 15, 30, 60, 120, 240};
@@ -220,9 +220,9 @@ void draw_overview_trend(lv_obj_t* box) {
     for (int k = 0; k <= ny; k++) {
         const double v = lo + k * step;
         if (k > 0 && k < ny) bg(mk(plot, 0, Y(v), pw, S, 0), 0xDCE3EA, 255);
-        lv_obj_t* l = label(0, T + Y(v), tnum(v)); lv_obj_set_x(l, L - 8 * S - lv_obj_get_width(l));
+        lv_obj_t* l = label(0, T + Y(v), tnum(v)); lv_obj_set_x(l, L - 8 * S - label_w(l));
     }
-    { lv_obj_t* l = label(0, T - 12 * S, "℃"); lv_obj_set_x(l, L - 8 * S - lv_obj_get_width(l)); }
+    { lv_obj_t* l = label(0, T - 12 * S, "℃"); lv_obj_set_x(l, L - 8 * S - label_w(l)); }
     for (int k = 0; k <= 5; k++) {
         const int x = static_cast<int>(pw * k / 5.0);
         if (k > 0 && k < 5) bg(mk(plot, x, 0, S, ph, 0), 0xDCE3EA, 255);

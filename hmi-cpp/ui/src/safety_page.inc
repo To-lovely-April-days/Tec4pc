@@ -88,7 +88,7 @@ void alarm_refresh() {
         lv_obj_add_flag(aldlg.scr, LV_OBJ_FLAG_CLICKABLE);         // 点外面关不掉，也点不到后面
         aldlg.ui = std::make_unique<Ui>();
         aldlg.ui->on_action = [this](const std::string& a) { action(a); };
-        for (const PageDef& d : kPages) if (std::string(d.name) == "AlarmDlg") d.build(aldlg.scr, *aldlg.ui);
+        for (const PageDef& d : kPages) if (std::string(d.name) == "AlarmDlg") { d.build(aldlg.scr, *aldlg.ui); lv_obj_update_layout(aldlg.scr); }
     }
     const auto now = std::chrono::steady_clock::now();
     if (na != alv.count || now - alv.asked > std::chrono::seconds(2)) {
@@ -160,7 +160,7 @@ void open_alarmlist() {
         lv_obj_add_flag(allist.scr, LV_OBJ_FLAG_CLICKABLE);
         allist.ui = std::make_unique<Ui>();
         allist.ui->on_action = [this](const std::string& a) { action(a); };
-        for (const PageDef& d : kPages) if (std::string(d.name) == "AlarmListDlg") d.build(allist.scr, *allist.ui);
+        for (const PageDef& d : kPages) if (std::string(d.name) == "AlarmListDlg") { d.build(allist.scr, *allist.ui); lv_obj_update_layout(allist.scr); }
     }
     const json r = ask({{"cmd", "alarm.list"}});
     if (r.value("ok", false) && r["alarms"].is_array()) alv.list = r["alarms"];

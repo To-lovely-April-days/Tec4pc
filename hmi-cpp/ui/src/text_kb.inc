@@ -128,7 +128,7 @@ void open_text_kb(const std::string& title, const std::string& initial, size_t m
         lv_obj_add_flag(tkb.scr, LV_OBJ_FLAG_CLICKABLE);
         tkb.ui = std::make_unique<Ui>();
         tkb.ui->on_action = [this](const std::string& a) { action(a); };
-        for (const PageDef& d : kPages) if (std::string(d.name) == "TextDlg") d.build(tkb.scr, *tkb.ui);
+        for (const PageDef& d : kPages) if (std::string(d.name) == "TextDlg") { d.build(tkb.scr, *tkb.ui); lv_obj_update_layout(tkb.scr); }
     }
     tk.text = initial; tk.py.clear(); tk.cand.clear(); tk.starts.assign(1, 0); tk.upper = false; tk.symbols = false;
     tk.max_chars = max_chars; tk.ok = std::move(ok);

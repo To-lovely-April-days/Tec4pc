@@ -106,7 +106,7 @@ void open_stepdlg(int slot, const std::string& title) {
         lv_obj_add_flag(stepdlg.scr, LV_OBJ_FLAG_CLICKABLE);
         stepdlg.ui = std::make_unique<Ui>();
         stepdlg.ui->on_action = [this](const std::string& a) { action(a); };
-        for (const PageDef& d : kPages) if (std::string(d.name) == "StepDlg") d.build(stepdlg.scr, *stepdlg.ui);
+        for (const PageDef& d : kPages) if (std::string(d.name) == "StepDlg") { d.build(stepdlg.scr, *stepdlg.ui); lv_obj_update_layout(stepdlg.scr); }
     }
     step_slot = slot;
     stepdlg.ui->set_text("st.title", title);
@@ -266,7 +266,7 @@ void seq_build_parts(const std::string& page, Ui& u, lv_obj_t* scr) {
         lv_obj_add_flag(P.scr[p], LV_OBJ_FLAG_HIDDEN);
         P.ui[p] = std::make_unique<Ui>();
         P.ui[p]->on_action = [this](const std::string& a) { action(a); };
-        for (const PageDef& d : kPages) if (std::string(d.name) == names[p]) d.build(P.scr[p], *P.ui[p]);
+        for (const PageDef& d : kPages) if (std::string(d.name) == names[p]) { d.build(P.scr[p], *P.ui[p]); lv_obj_update_layout(P.scr[p]); }
     }
     // 当前步外圈那道跟着进度走的蓝弧：设计稿里画不出「会动的弧」，这里用 LVGL 的弧形控件叠在那个圆上
     for (int i = 0; i < 6; i++) {

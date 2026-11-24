@@ -96,7 +96,7 @@ void cry_build_parts(const std::string& page, lv_obj_t* scr) {
         lv_obj_add_flag(P.scr[p], LV_OBJ_FLAG_HIDDEN);
         P.ui[p] = std::make_unique<Ui>();
         P.ui[p]->on_action = [this](const std::string& a) { action(a); };
-        for (const PageDef& d : kPages) if (std::string(d.name) == names[p]) d.build(P.scr[p], *P.ui[p]);
+        for (const PageDef& d : kPages) if (std::string(d.name) == names[p]) { d.build(P.scr[p], *P.ui[p]); lv_obj_update_layout(P.scr[p]); }
         // 这张卡是盖在原来的卡片上面的：让它自己接住点击，不然点到空白处会点中底下被盖住的键
         for (uint32_t k = 0; k < lv_obj_get_child_count(P.scr[p]); k++) lv_obj_add_flag(lv_obj_get_child(P.scr[p], k), LV_OBJ_FLAG_CLICKABLE);
         // 这一块的卡片和底下原来的卡片大小、位置不一样，缝里会露出底下的卡片边：先垫一块和页面同色的底把那片区域盖住
@@ -191,6 +191,7 @@ void refresh_cry(const json& c, int ci) {
         u.set_text("ctl.run.t1", any_run ? "控温中" : "未控温");
         u.set_text("ctl.run.t2", any_run ? "点按停止" : "点按启动");
         u.set_text_color("ctl.run.t1", any_run ? 0x0A8A4F : 0x5A6675);
+        if (lv_obj_t* ic = u.box("ctl.run.icon")) if (u.changed("ctl.run.icon", any_run)) { lv_obj_set_style_image_recolor(ic, lv_color_hex(0x8792A0), 0); lv_obj_set_style_image_recolor_opa(ic, any_run ? 0 : 255, 0); }      // 没控温时圆是白的，白图标染成灰的
         if (lv_obj_t* o = u.box("ctl.run.circle")) if (u.changed("ctl.run.circle", any_run)) { bg(o, any_run ? 0x00B368 : 0xFFFFFF, 255); bd(o, any_run ? 0x00B368 : 0xC3CCD6, 255, 3 * UI_SCALE, LV_BORDER_SIDE_FULL); ol(o, 0x00B368, any_run ? 46 : 0, 5 * UI_SCALE); }
     }
     if (editing) {

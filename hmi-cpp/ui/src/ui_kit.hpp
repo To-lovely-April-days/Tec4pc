@@ -20,6 +20,8 @@ void ol(lv_obj_t* o, uint32_t c, int a, int w);
 void sh(lv_obj_t* o, uint32_t c, int a, int blur, int x, int y, int spread);
 lv_obj_t* txt(lv_obj_t* p, int cx, int cy, const char* s, int weight, float px, uint32_t c, int a, int ls, int wrap_w);
 lv_obj_t* im(lv_obj_t* p, int x, int y, const char* path);
+// 一段文字现在多宽（按字体直接量，不用先让整页重排一遍）
+int label_w(lv_obj_t* label);
 
 // 一页上所有「有名字的东西」
 class Ui {

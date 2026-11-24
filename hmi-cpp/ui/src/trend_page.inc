@@ -87,7 +87,7 @@ void draw_trend(lv_obj_t* box, int ci, Ui& u) {
     lv_obj_t* plot = mk(box, L, T, pw, ph, 1);
     bg(plot, 0xFFFFFF, 255);
     auto label = [&](int cx, int cy, const std::string& s, uint32_t col = 0x8792A0) { return txt(box, cx, cy, s.c_str(), 400, 12, col, 255, 0, 0); };
-    auto label_r = [&](int xr, int cy, const std::string& s) { lv_obj_t* l = label(xr, cy, s); lv_obj_set_x(l, xr - lv_obj_get_width(l)); };
+    auto label_r = [&](int xr, int cy, const std::string& s) { lv_obj_t* l = label(xr, cy, s); lv_obj_set_x(l, xr - label_w(l)); };
     auto label_l = [&](int xl, int cy, const std::string& s) { lv_obj_t* l = label(xl, cy, s); lv_obj_set_x(l, xl); };
     if (d.t.size() < 2) { label(L + pw / 2, T + ph / 2, "正在等数据…"); bd(plot, 0xB8C4D0, 255, S, LV_BORDER_SIDE_FULL); u.set_text("tr.win", "窗口 —"); return; }
 

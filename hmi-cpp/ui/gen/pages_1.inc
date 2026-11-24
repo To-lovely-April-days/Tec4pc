@@ -493,7 +493,7 @@ static void build_Ctl(lv_obj_t* scr, Ui& ui) {
     bd(o[247], 0x00B368, 255, 3, LV_BORDER_SIDE_FULL);
     ol(o[247], 0x00B368, 46, 5);
     ui.reg_box("ctl.run.circle", o[247]);
-    im(o[247], 11, 11, "A:assets/img/Ctl_17_1.png");
+    ui.reg_box("ctl.run.icon", im(o[247], 11, 11, "A:assets/img/Ctl_17_1.png"));
     o[249] = mk(o[246], 76, 11, 55, 43, 0);
     o[250] = mk(o[249], 0, 0, 55, 25, 0);
     ui.reg_box("ctl.run.t1", o[250]);
@@ -1093,7 +1093,7 @@ static void build_Ctl_2(lv_obj_t* scr, Ui& ui) {
     bd(o[247], 0x00B368, 255, 3, LV_BORDER_SIDE_FULL);
     ol(o[247], 0x00B368, 46, 5);
     ui.reg_box("ctl.run.circle", o[247]);
-    im(o[247], 11, 11, "A:assets/img/Ctl_2_17_1.png");
+    ui.reg_box("ctl.run.icon", im(o[247], 11, 11, "A:assets/img/Ctl_2_17_1.png"));
     o[249] = mk(o[246], 76, 11, 55, 43, 0);
     o[250] = mk(o[249], 0, 0, 55, 25, 0);
     ui.reg_box("ctl.run.t1", o[250]);
@@ -11645,7 +11645,7 @@ static void build_CryViewPart(lv_obj_t* scr, Ui& ui) {
     bd(o[197], 0x00B368, 255, 3, LV_BORDER_SIDE_FULL);
     ol(o[197], 0x00B368, 46, 5);
     ui.reg_box("ctl.run.circle", o[197]);
-    im(o[197], 11, 11, "A:assets/img/CryViewPart_0_1.png");
+    ui.reg_box("ctl.run.icon", im(o[197], 11, 11, "A:assets/img/CryViewPart_0_1.png"));
     o[199] = mk(o[196], 76, 11, 55, 43, 0);
     o[200] = mk(o[199], 0, 0, 55, 25, 0);
     ui.reg_box("ctl.run.t1", o[200]);

@@ -94,7 +94,7 @@ struct App {
             lv_obj_add_flag(kp.scr, LV_OBJ_FLAG_CLICKABLE);          // 弹窗开着的时候，点不到后面的页面
             kp.ui = std::make_unique<Ui>();
             kp.ui->on_action = [this](const std::string& a) { action(a); };
-            for (const PageDef& d : kPages) if (std::string(d.name) == "KeypadDlg") d.build(kp.scr, *kp.ui);
+            for (const PageDef& d : kPages) if (std::string(d.name) == "KeypadDlg") { d.build(kp.scr, *kp.ui); lv_obj_update_layout(kp.scr); }
             // 滑块可以按住拖：点一下只触发一次，拖动要另外接「按住」这个事件
             if (lv_obj_t* tr = kp.ui->box("kp.track")) lv_obj_add_event_cb(tr, [](lv_event_t* e) { static_cast<App*>(lv_event_get_user_data(e))->slide(); }, LV_EVENT_PRESSING, this);
         }
@@ -205,19 +205,54 @@ struct App {
         return json{{"ok", false}, {"error", "连不上控制核心"}};
     }
 
-    void show(const std::string& name) {
+    // 把一页搭出来（只搭、不显示）。已经搭过就什么都不做。返回 false = 没有这一页
+    bool ensure(const std::string& name) {
         Page& p = pages[name];
-        if (!p.scr) {
-            for (const PageDef& d : kPages) if (name == d.name) {
-                p.scr = lv_obj_create(nullptr);
-                lv_obj_remove_style_all(p.scr);
-                lv_obj_remove_flag(p.scr, LV_OBJ_FLAG_SCROLLABLE);
-                p.ui = std::make_unique<Ui>();
-                p.ui->on_action = [this](const std::string& a) { action(a); };
-                d.build(p.scr, *p.ui);
-            }
-            if (!p.scr) { pages.erase(name); return; }      // 这一页还没做
+        if (p.scr) return true;
+        for (const PageDef& d : kPages) if (name == d.name) {
+            p.scr = lv_obj_create(nullptr);
+            lv_obj_remove_style_all(p.scr);
+            lv_obj_remove_flag(p.scr, LV_OBJ_FLAG_SCROLLABLE);
+            p.ui = std::make_unique<Ui>();
+            p.ui->on_action = [this](const std::string& a) { action(a); };
+            { d.build(p.scr, *p.ui); lv_obj_update_layout(p.scr); }
         }
+        if (!p.scr) { pages.erase(name); return false; }      // 这一页还没做
+        return true;
+    }
+
+    // ── 提前准备 ──
+    // 用户 2026-11-24 上机：「每个菜单第一次进去的时候超级慢」。大头是字体引擎查字距表太慢（已经在 ui_kit.cpp 的 font() 里关掉，搭一页从一秒降到几十毫秒）；
+    // 剩下的是第一次画一页时要现算这一页上的字形、现解这一页上的图标图片，算过解过的留在缓存里。这里把这点余量也拿掉：第一页出来以后，趁没人碰屏幕的空当，
+    // 一页一页地在内存里先画一遍（不上屏），把字形和图片都备好。一次只备一页，手指按着的时候不备，免得挡住操作。
+    size_t warm_next = 0;
+    bool warm_step() {
+        static const size_t n = sizeof kPages / sizeof kPages[0];
+        if (warm_next >= n) return false;
+        const PageDef& d = kPages[warm_next++];
+        const std::string name = d.name;
+        const bool piece = name.size() > 4 && name.compare(name.size() - 4, 4, "Part") == 0, dlg = name.size() > 3 && name.compare(name.size() - 3, 3, "Dlg") == 0;
+        lv_obj_t* scr = nullptr;
+        std::unique_ptr<Ui> tmp_ui;
+        if (piece || dlg) {
+            // 弹窗和「一页里的一块」平时是用到才搭在别的东西上面的：这里搭一份临时的画一遍就扔，要的只是它带出来的字形和图片
+            scr = lv_obj_create(nullptr);
+            lv_obj_remove_style_all(scr);
+            tmp_ui = std::make_unique<Ui>();
+            { d.build(scr, *tmp_ui); lv_obj_update_layout(scr); }
+        } else {
+            if (name == cur || !ensure(name)) return true;
+            scr = pages[name].scr;
+        }
+        lv_obj_set_size(scr, W, H);
+        if (lv_draw_buf_t* shot = lv_snapshot_take(scr, LV_COLOR_FORMAT_XRGB8888)) lv_draw_buf_destroy(shot);
+        if (piece || dlg) lv_obj_delete(scr);
+        return true;
+    }
+
+    void show(const std::string& name) {
+        if (!ensure(name)) return;
+        Page& p = pages[name];
         cur = name;
         lv_screen_load(p.scr);
         refresh();
@@ -538,6 +573,8 @@ struct App {
         u.set_text("ctl.run.t1", run ? "控温中" : "未控温");
         u.set_text("ctl.run.t2", run ? "点按停止" : "点按启动");
         u.set_text_color("ctl.run.t1", run ? 0x0A8A4F : 0x5A6675);
+        // 圆键里的图标是一张白色的图：控温中圆是绿的，白图标正好；没控温时圆是白的，要把图标染成灰的才看得见
+        if (lv_obj_t* ic = u.box("ctl.run.icon")) if (u.changed("ctl.run.icon", run)) { lv_obj_set_style_image_recolor(ic, lv_color_hex(0x8792A0), 0); lv_obj_set_style_image_recolor_opa(ic, run ? 0 : 255, 0); }
         if (lv_obj_t* o = u.box("ctl.run.circle")) if (u.changed("ctl.run.circle", run)) { bg(o, run ? 0x00B368 : 0xFFFFFF, 255); bd(o, run ? 0x00B368 : 0xC3CCD6, 255, 3 * UI_SCALE, LV_BORDER_SIDE_FULL); ol(o, 0x00B368, run ? 46 : 0, 5 * UI_SCALE); }
         refresh_cry(c, ci);
     }
@@ -611,6 +648,7 @@ int main(int argc, char** argv) {
     lv_indev_set_read_cb(touch, [](lv_indev_t*, lv_indev_data_t* data) { data->point.x = g_finger.x; data->point.y = g_finger.y; data->state = g_finger.down ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED; });
     app.show(page);
     int frames = 0, tap_phase = 0;
+    long loops = 0;
     for (;;) {
         const auto now = clock::now();
 #ifdef _WIN32
@@ -618,6 +656,15 @@ int main(int argc, char** argv) {
 #endif
         if (now - last_poll >= std::chrono::milliseconds(500)) { last_poll = now; app.poll(); }
         const uint32_t wait = lv_timer_handler();
+        // 查「哪一下慢」用：设了环境变量 UI_TIME，一圈超过 50 毫秒就往 tec_hmi_time.log 里记一行（Windows 上程序没有命令行窗口，所以写文件）
+        static const bool timing = std::getenv("UI_TIME") != nullptr;
+        auto note_slow = [&](const char* what, clock::time_point from) {
+            const double ms = std::chrono::duration<double, std::milli>(clock::now() - from).count();
+            if (timing && ms > 50) if (std::FILE* f = std::fopen("tec_hmi_time.log", "a")) { std::fprintf(f, "%s %.0f ms（当前页 %s）\n", what, ms, app.cur.c_str()); std::fclose(f); }
+        };
+        note_slow("画一圈", now);
+        // 提前准备别的页：第一页已经画出来（过了头几圈）、手指没按着的时候，一圈备一页
+        if (++loops > 5 && !g_finger.down && (shot.empty() || std::getenv("UI_WARM"))) { const auto w0 = clock::now(); if (app.warm_step()) note_slow("提前准备一页", w0); }
 #ifdef _WIN32
         if (windowed) { win::idle(wait < 1 ? 1 : wait > 10 ? 10 : wait); continue; }      // 开着窗口：下面那些是不开窗口时自查用的，用不着
 #endif

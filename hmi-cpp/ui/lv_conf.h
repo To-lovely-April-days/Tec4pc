@@ -720,7 +720,7 @@
 #if LV_USE_FS_STDIO
     #define LV_FS_STDIO_LETTER 'A' /*Set an upper cased letter on which the drive will accessible (e.g. 'A')*/
     #define LV_FS_STDIO_PATH ""         /*Set the working directory. File/directory paths will be appended to it.*/
-    #define LV_FS_STDIO_CACHE_SIZE 0    /*>0 to cache this number of bytes in lv_fs_read()*/
+    #define LV_FS_STDIO_CACHE_SIZE (64 * 1024)    /*>0 to cache this number of bytes in lv_fs_read()*/
 #endif
 
 /*API for open, read, etc*/
@@ -858,7 +858,7 @@
  *==================*/
 
 /*1: Enable API to take snapshot for object*/
-#define LV_USE_SNAPSHOT 0
+#define LV_USE_SNAPSHOT 1      /* 「提前准备」用它在内存里把还没看过的页先画一遍 */
 
 /*1: Enable system monitor component*/
 #define LV_USE_SYSMON   0
