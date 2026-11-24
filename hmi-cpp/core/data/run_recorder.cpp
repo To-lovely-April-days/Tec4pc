@@ -1,4 +1,5 @@
 #include "run_recorder.hpp"
+#include "../util/utf8_file.hpp"
 #include <cstdio>
 #include "../../third_party/nlohmann/json.hpp"
 #include <algorithm>
@@ -51,9 +52,9 @@ bool RunRecorder::begin(const std::string& name, int channel) {
     const fs::path p = fs::u8path(dir_) / "runs" / fs::u8path(id_);
     fs::create_directories(p, ec);
     if (ec) return false;
-    f_samples_ = std::fopen((p / "samples.csv").u8string().c_str(), "w");
-    f_events_ = std::fopen((p / "events.csv").u8string().c_str(), "w");
-    f_steps_ = std::fopen((p / "steps.csv").u8string().c_str(), "w");
+    f_samples_ = open_file(p / "samples.csv", "w");
+    f_events_ = open_file(p / "events.csv", "w");
+    f_steps_ = open_file(p / "steps.csv", "w");
     if (!f_samples_ || !f_events_ || !f_steps_) { end(); return false; }
     std::fputs("t_s,sp,sp_now,tr,tj,tj_sp,duty,side,stir_set,stir_rpm,ph,dosed_ml,step\n", f_samples_);
     std::fputs("t_s,kind,text\n", f_events_);

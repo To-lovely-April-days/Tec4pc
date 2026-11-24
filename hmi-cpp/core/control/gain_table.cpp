@@ -1,4 +1,5 @@
 #include "gain_table.hpp"
+#include <filesystem>
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -12,7 +13,7 @@ GainTable::GainTable(std::vector<GainRow> rows) : rows_(std::move(rows)) {
 }
 
 GainTable GainTable::load(const std::string& path) {
-    std::ifstream in(path);
+    std::ifstream in(std::filesystem::u8path(path));
     std::vector<GainRow> rows;
     std::string line;
     while (std::getline(in, line)) {
@@ -36,14 +37,15 @@ GainTable GainTable::load(const std::string& path) {
 
 bool GainTable::save(const std::string& path) const {
     {
-        std::ifstream old(path, std::ios::binary);
-        std::ifstream bak(path + ".原始备份", std::ios::binary);
-        if (old && !bak) { std::ofstream o(path + ".原始备份", std::ios::binary); o << old.rdbuf(); }
+        namespace fs = std::filesystem;
+        std::ifstream old(fs::u8path(path), std::ios::binary);
+        std::ifstream bak(fs::u8path(path + ".原始备份"), std::ios::binary);
+        if (old && !bak) { std::ofstream o(fs::u8path(path + ".原始备份"), std::ios::binary); o << old.rdbuf(); }
     }
     // 先写临时文件再改名：写到一半断电，原来那份还在
     const std::string tmp = path + ".tmp";
     {
-        std::ofstream o(tmp, std::ios::binary);
+        std::ofstream o(std::filesystem::u8path(tmp), std::ios::binary);
         if (!o) return false;
         o << "温度(℃),Kp,Ki,Kd,Ku,Tu(s),外环Kp,外环Ki,外环Kd,偏置上限(℃),稳态偏置(℃),加热比\n";
         o << "# 这张表是触摸屏 / PC 端改过以后由控制核心存的；原来的文件在同目录的「.原始备份」里\n";
@@ -52,8 +54,12 @@ bool GainTable::save(const std::string& path) const {
             o << num(r.temp) << ',' << num(r.kp) << ',' << num(r.ki) << ',' << num(r.kd) << ",,,,,,," << (r.steady_bias ? num(*r.steady_bias) : "") << ',' << (r.heat_ratio ? num(*r.heat_ratio) : "") << "\n";
         if (!o) return false;
     }
-    std::remove(path.c_str());
-    return std::rename(tmp.c_str(), path.c_str()) == 0;
+    // 同样要走 filesystem：窄字符那套在 Windows 上按本地编码解释路径，中文路径会对不上
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::remove(fs::u8path(path), ec);
+    fs::rename(fs::u8path(tmp), fs::u8path(path), ec);
+    return !ec;
 }
 
 namespace {

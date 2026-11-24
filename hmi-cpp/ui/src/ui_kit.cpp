@@ -1,4 +1,5 @@
 #include "ui_kit.hpp"
+#include "../../core/util/utf8_file.hpp"
 #include <cstdio>
 #include <map>
 #include <string>
@@ -14,7 +15,7 @@ static std::string g_assets;
 // 这里自己挂一个：盘符 A 下的相对路径都从 g_assets 底下开
 static void* fs_open(lv_fs_drv_t*, const char* path, lv_fs_mode_t mode) {
     if (mode != LV_FS_MODE_RD) return nullptr;      // 界面只读图，不写
-    return std::fopen((g_assets + path).c_str(), "rb");
+    return tec::open_file_u8(g_assets + path, "rb");
 }
 static lv_fs_res_t fs_close(lv_fs_drv_t*, void* f) { std::fclose(static_cast<std::FILE*>(f)); return LV_FS_RES_OK; }
 static lv_fs_res_t fs_read(lv_fs_drv_t*, void* f, void* buf, uint32_t want, uint32_t* got) {
@@ -36,7 +37,7 @@ void set_assets_dir(const std::string& dir) {
 }
 
 bool assets_ok(void) {
-    if (std::FILE* f = std::fopen((g_assets + "assets/fonts/inter_400.ttf").c_str(), "rb")) { std::fclose(f); return true; }
+    if (std::FILE* f = tec::open_file_u8(g_assets + "assets/fonts/inter_400.ttf", "rb")) { std::fclose(f); return true; }
     return false;
 }
 
@@ -57,7 +58,7 @@ static const std::vector<unsigned char>& font_file(const std::string& path) {
     auto it = files.find(path);
     if (it != files.end()) return it->second;
     std::vector<unsigned char>& v = files[path];
-    if (std::FILE* f = std::fopen((g_assets + path).c_str(), "rb")) {
+    if (std::FILE* f = tec::open_file_u8(g_assets + path, "rb")) {
         std::fseek(f, 0, SEEK_END); const long n = std::ftell(f); std::fseek(f, 0, SEEK_SET);
         if (n > 0) { v.resize(static_cast<size_t>(n)); if (std::fread(v.data(), 1, v.size(), f) != v.size()) v.clear(); }
         std::fclose(f);

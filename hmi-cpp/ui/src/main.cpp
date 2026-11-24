@@ -42,6 +42,19 @@ static struct { int x = 0, y = 0; bool down = false; } g_finger;
 #ifdef _WIN32
 #include "win_window.inc"
 #endif
+#ifdef _WIN32
+// 弹个框说句中文。Windows 上要先把 UTF-8 转成宽字符：按窄字符那套走会被当成系统本地编码，显示成乱码
+static void win_message_box(const std::string& text, const std::string& title) {
+    auto wide = [](const std::string& u8) {
+        const int n = MultiByteToWideChar(CP_UTF8, 0, u8.c_str(), -1, nullptr, 0);
+        std::wstring w(n > 0 ? n - 1 : 0, L'\0');
+        if (n > 0) MultiByteToWideChar(CP_UTF8, 0, u8.c_str(), -1, w.data(), n);
+        return w;
+    };
+    MessageBoxW(nullptr, wide(text).c_str(), wide(title).c_str(), MB_ICONERROR | MB_OK);
+}
+#endif
+
 static bool g_dirty = false;         // 上次宿主取走画面之后，有没有重新画过
 static void flush(lv_display_t* d, const lv_area_t* a, uint8_t* px) {
     g_dirty = true;
@@ -730,18 +743,23 @@ int main(int argc, char** argv) {
     {
         namespace fs = std::filesystem;
         std::error_code ec;
-        fs::path d = fs::absolute(argv[0], ec).parent_path();
-        std::string found;
-        for (int i = 0; i < 4 && found.empty(); i++, d = d.parent_path()) if (fs::exists(d / "assets" / "fonts", ec)) found = d.u8string();
+        fs::path d = fs::absolute(argv[0], ec).parent_path().lexically_normal();
+        std::string found, tried;
+        for (int i = 0; i < 4 && found.empty(); i++, d = d.parent_path()) {
+            tried += "\n    " + (d / "assets").u8string();
+            if (fs::exists(d / "assets" / "fonts", ec)) found = d.u8string();
+        }
         ui::set_assets_dir(found);      // 找不到也要调：盘符 A 的文件驱动是在它里面挂上的
         // 没有 assets 就一个字、一张图都画不出来，只剩一片白底和几个框——现场看见这一屏根本猜不到是少拷了文件夹。
         // 所以这里直接说出来就退出，不要闷头画（用户 2026-11-25 两次遇到这一屏）
         if (!ui::assets_ok()) {
-            const std::string msg = "没找到界面用的字体和图片。\n\n"
-                                    "assets 文件夹（里面是 fonts 和 img）要和这个程序放在一起。\n\n"
-                                    "找过的位置：" + fs::absolute(argv[0], ec).parent_path().lexically_normal().u8string();
+            const std::string msg = "没找到界面用的字体和图片，界面会是一片白，所以先停下。\n\n"
+                                    "把 assets 文件夹（里面是 fonts 和 img）放到下面任意一处：" + tried +
+                                    "\n\n它在编译输出目录里，和这个程序在一起；源码里的那份在 hmi-cpp/ui/assets。";
 #ifdef _WIN32
-            MessageBoxA(nullptr, msg.c_str(), "HTLAB 多工位反应平台", MB_ICONERROR | MB_OK);
+            // 必须走宽字符那套：源码里的中文是 UTF-8，MessageBoxA 会按系统的本地编码去解释它，出来是一片乱码
+            // （用户 2026-11-25 看到的就是乱码框）
+            win_message_box(msg, "HTLAB 多工位反应平台");
 #else
             std::fprintf(stderr, "%s\n", msg.c_str());
 #endif
