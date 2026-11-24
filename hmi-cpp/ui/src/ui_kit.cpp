@@ -35,6 +35,11 @@ void set_assets_dir(const std::string& dir) {
     if (!g_assets.empty() && g_assets.back() != '/' && g_assets.back() != '\\') g_assets += '/';
 }
 
+bool assets_ok(void) {
+    if (std::FILE* f = std::fopen((g_assets + "assets/fonts/inter_400.ttf").c_str(), "rb")) { std::fclose(f); return true; }
+    return false;
+}
+
 void register_fs(void) {
     static lv_fs_drv_t drv;                      // LVGL 只记地址，这块不能是临时的
     static bool done = false;

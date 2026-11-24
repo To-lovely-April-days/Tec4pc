@@ -21,6 +21,10 @@ void set_assets_dir(const std::string& dir);
 // lv_init 会把驱动表重新初始化一遍，之前挂的会被抹掉
 void register_fs(void);
 
+// 资源目录里到底有没有东西。没有的话界面会一个字、一张图都没有，是一片灰——
+// 与其画出那么一屏，不如早点说「找不到」（踩过：装到 Windows 上少拷了 assets，看到的就是一片灰）
+bool assets_ok(void);
+
 lv_font_t* font(int weight, float css_px);
 lv_obj_t* mk(lv_obj_t* p, int x, int y, int w, int h, int clip);
 void bg(lv_obj_t* o, uint32_t c, int a);

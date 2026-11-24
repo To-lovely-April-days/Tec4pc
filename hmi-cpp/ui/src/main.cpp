@@ -624,6 +624,7 @@ TEC_API int tec_hmi_init(const char* assets_dir, const char* host, int port, int
     Embed& e = em();
     if (e.ready) return 0;                                  // 已经起过了
     ui::set_assets_dir(assets_dir ? assets_dir : "");
+    if (!ui::assets_ok()) return 3;      // 字体图片都在 assets 里，没有它画出来是一片灰，不如直接说找不到
     lv_init();
     ui::register_fs();                  // 要在 lv_init 之后：lv_init 会把驱动表重置
     lv_tick_set_cb([]() -> uint32_t { return static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()); });

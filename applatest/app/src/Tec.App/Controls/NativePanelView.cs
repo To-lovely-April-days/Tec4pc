@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
@@ -32,13 +33,30 @@ public static class NativePanel
     [DllImport(Lib)] private static extern void tec_hmi_connect(string host, int port, int channel);
     [DllImport(Lib)] private static extern void tec_hmi_show(string page, int channel);
 
-    /// <summary>库和 assets 放哪。开发时用环境变量 TEC_HMI_DIR 指到 hmi-cpp 的编译输出目录。</summary>
+    /// <summary>
+    /// 库和 assets 可能放哪，按先后顺序找：环境变量指的地方（开发时用）、工作站旁边的 hmi 文件夹、工作站自己那层。
+    /// 现场装的时候少拷一个 assets 是很容易发生的事，所以多找几处，找不到也要说清楚找过哪儿。
+    /// </summary>
+    public static IReadOnlyList<string> Candidates
+    {
+        get
+        {
+            var list = new List<string>();
+            var env = Environment.GetEnvironmentVariable("TEC_HMI_DIR");
+            if (!string.IsNullOrWhiteSpace(env)) list.Add(env);
+            list.Add(Path.Combine(AppContext.BaseDirectory, "hmi"));
+            list.Add(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar));
+            return list;
+        }
+    }
+
+    /// <summary>真正用的那个目录：挑第一个底下有 assets/fonts 的；都没有就用第一个（好让报错里有个具体路径）。</summary>
     public static string Dir
     {
         get
         {
-            var env = Environment.GetEnvironmentVariable("TEC_HMI_DIR");
-            return !string.IsNullOrWhiteSpace(env) ? env : Path.Combine(AppContext.BaseDirectory, "hmi");
+            foreach (var d in Candidates) if (Directory.Exists(Path.Combine(d, "assets", "fonts"))) return d;
+            return Candidates[0];
         }
     }
 
@@ -63,11 +81,12 @@ public static class NativePanel
             NativeLibrary.SetDllImportResolver(typeof(NativePanel).Assembly, (name, asm, path) =>
             {
                 if (name != Lib) return IntPtr.Zero;
-                foreach (var f in new[] { Lib + ".dll", "lib" + Lib + ".dylib", "lib" + Lib + ".so" })
-                {
-                    var full = Path.Combine(Dir, f);
-                    if (File.Exists(full) && NativeLibrary.TryLoad(full, out var h)) return h;
-                }
+                foreach (var d in Candidates)
+                    foreach (var f in new[] { Lib + ".dll", "lib" + Lib + ".dylib", "lib" + Lib + ".so" })
+                    {
+                        var full = Path.Combine(d, f);
+                        if (File.Exists(full) && NativeLibrary.TryLoad(full, out var h)) return h;
+                    }
                 return IntPtr.Zero;
             });
         }
@@ -76,7 +95,10 @@ public static class NativePanel
             if (!_started)
             {
                 var rc = tec_hmi_init(Dir, host, port, channel);
-                if (rc != 0) return Problem = $"面板起不来（错误码 {rc}）：检查 {Dir} 里有没有 assets 文件夹";
+                // 3 = 找不到 assets（字体和图片）。不说清楚的话，画出来是一片灰、一个字都没有
+                if (rc == 3) return Problem = "没找到界面用的字体和图片：要有 assets 文件夹（里面是 fonts 和 img），"
+                                            + "和 tec_hmi_core 放在一起。找过这几个地方：\n" + string.Join("\n", Candidates.Select(d => "　" + Path.Combine(d, "assets")));
+                if (rc != 0) return Problem = $"面板起不来（错误码 {rc}）：{Dir}";
                 _started = true;
             }
             else if (_at != (host, port, channel))
@@ -88,7 +110,8 @@ public static class NativePanel
         }
         catch (DllNotFoundException)
         {
-            return Problem = $"没找到面板程序库：把 hmi-cpp 编出来的 tec_hmi_core 和 assets 文件夹放进 {Dir}";
+            return Problem = "没找到面板程序库 tec_hmi_core：把 hmi-cpp 编出来的它和 assets 文件夹放到下面任意一处：\n"
+                           + string.Join("\n", Candidates.Select(d => "　" + d));
         }
         catch (Exception ex) when (ex is EntryPointNotFoundException or BadImageFormatException)
         {
