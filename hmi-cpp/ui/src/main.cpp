@@ -270,56 +270,42 @@ struct App {
     }
 
     // ── 没连上控制核心时的那一屏 ──
-    // 原来是在页面上蒙一层白纱，但底下仍是设计稿里的样例数字（65.0、结晶工艺-0824），看着像真的，很难看也容易误读。
-    // 用户 2026-11-25：「就是设计一个小界面，专门用来提示未连接上控制核心」。于是单独做一屏，干净地说清楚。
+    // 整屏换成设计稿里的 NoLink 那一页（用户 2026-11-25 从三个方案里选的「丙」：深色满屏，现场隔几米也看得见）。
+    // 不在页面上蒙白纱——底下是设计稿的样例数字（65.0、结晶工艺-0824），看着像真的，容易误读。
     Page nolink;
-    lv_obj_t* nolink_where = nullptr;      // 正在连哪里
-    lv_obj_t* nolink_dots = nullptr;       // 「正在重试…」后面会动的点，让人知道程序没死
+    bool ever_linked = false;      // 连上过没有：决定说「还没连上」还是「断开了」
     int nolink_tick = 0;
 
-    void nolink_build() {
-        if (nolink.scr) return;
-        const int S = UI_SCALE;
-        nolink.scr = lv_obj_create(nullptr);
-        lv_obj_remove_style_all(nolink.scr);
-        lv_obj_remove_flag(nolink.scr, LV_OBJ_FLAG_SCROLLABLE);
-        bg(nolink.scr, 0xEEF2F7, 255);
-        lv_obj_t* card = mk(nolink.scr, (W - 660 * S) / 2, (H - 300 * S) / 2, 660 * S, 300 * S, 0);
-        bg(card, 0xFFFFFF, 255);
-        lv_obj_set_style_radius(card, 18 * S, 0);
-        sh(card, 0x0D1828, 28, 40 * S, 0, 10 * S, 0);
-        lv_obj_t* dot = mk(card, 56 * S, 68 * S, 14 * S, 14 * S, 0);
-        bg(dot, 0xD64545, 255);
-        lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
-        // txt 是按中心点摆的；这一屏要左对齐，建完把 x 拨回左边界
-        auto line = [&](int x, int y, const char* t, int weight, float px, uint32_t col) {
-            lv_obj_t* l = txt(card, x, y, t, weight, px, col, 255, 0, 0);
-            lv_obj_set_x(l, x);
-            return l;
-        };
-        line(90 * S, 75 * S, "未连上控制核心", 600, 24, 0x1F2A35);
-        nolink_where = line(56 * S, 125 * S, "", 400, 16, 0x5A6675);
-        line(56 * S, 172 * S, "请确认机器上的控制核心已经启动，地址和端口填对。", 400, 15, 0x8792A0);
-        line(56 * S, 202 * S, "连上以后这一屏会自己消失，不用重开。", 400, 15, 0x8792A0);
-        nolink_dots = line(56 * S, 248 * S, "正在重试", 400, 15, 0x00559C);
-    }
-
-    /// 没连上：把这一屏摆出来（已经在就只刷新上面的字）
     void nolink_show() {
-        nolink_build();
-        if (lv_screen_active() != nolink.scr) lv_screen_load(nolink.scr);
-        if (nolink_where) {
-            const std::string at = host + ":" + std::to_string(port);
-            if (at != lv_label_get_text(nolink_where)) { lv_label_set_text(nolink_where, at.c_str()); lv_obj_set_x(nolink_where, 56 * UI_SCALE); }
+        if (!nolink.scr) {
+            for (const PageDef& d : kPages) if (std::string(d.name) == "NoLink") {
+                nolink.scr = lv_obj_create(nullptr);
+                lv_obj_remove_style_all(nolink.scr);
+                lv_obj_remove_flag(nolink.scr, LV_OBJ_FLAG_SCROLLABLE);
+                nolink.ui = std::make_unique<Ui>();
+                d.build(nolink.scr, *nolink.ui);
+            }
+            if (!nolink.scr) return;
         }
-        if (nolink_dots && ++nolink_tick % 4 == 0) {      // 每两秒多一个点，转一圈：看得出程序还活着
-            static const char* d[] = {"正在重试", "正在重试 ·", "正在重试 · ·", "正在重试 · · ·"};
-            lv_label_set_text(nolink_dots, d[(nolink_tick / 4) % 4]);
+        if (lv_screen_active() != nolink.scr) lv_screen_load(nolink.scr);
+        Ui& u = *nolink.ui;
+        // 一直没连上，和跑着跑着掉线，是两回事，话要说得不一样
+        u.set_text("nl.title", ever_linked ? "和控制核心断开了" : "未连上控制核心");
+        u.set_text("nl.where", host + " : " + std::to_string(port));
+        // 地址长短不一：装它的小条跟着宽窄，并保持居中
+        if (lv_obj_t* chip = u.box("nl.chip")) if (lv_obj_t* lb = u.label("nl.where")) {
+            const int w = label_w(lb) + 40 * UI_SCALE;
+            if (lv_obj_get_width(chip) != w) { lv_obj_set_width(chip, w); lv_obj_set_x(chip, (W - w) / 2); }
+        }
+        if (++nolink_tick % 4 == 0) {      // 每两秒多一个点，转一圈：看得出程序还活着
+            static const char* d[] = {"正在自动重试", "正在自动重试 ·", "正在自动重试 · ·", "正在自动重试 · · ·"};
+            u.set_text("nl.retry", d[(nolink_tick / 4) % 4]);
         }
     }
 
     /// 连上了：回到原来那一页
     void nolink_hide() {
+        ever_linked = true;
         if (!nolink.scr || lv_screen_active() != nolink.scr) return;
         auto it = pages.find(cur);
         if (it != pages.end() && it->second.scr) lv_screen_load(it->second.scr);
@@ -451,9 +437,13 @@ struct App {
         else if (a == "seq.end") { ask({{"cmd", "seq.end"}, {"ch", ch}}); poll(); }
     }
 
+    int poll_fail = 0;      // 连着几次没要到状态
     void poll() {
         const json j = ask({{"cmd", "state"}});
-        if (j.value("ok", false)) st = j;
+        if (j.value("ok", false)) { st = j; poll_fail = 0; }
+        // 控制核心掉了（程序退了、网线拔了）：屏上不能一直挂着最后那组读数装作还在跑。
+        // 连丢三次（一秒半）就把状态清掉，自动切到「未连上控制核心」那一屏（用户 2026-11-25：核心掉了不会提醒）
+        else if (++poll_fail >= 3) st = json();
         refresh();
     }
 

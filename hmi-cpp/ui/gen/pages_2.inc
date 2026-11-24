@@ -7345,6 +7345,34 @@ static void build_AlarmListDlg(lv_obj_t* scr, Ui& ui) {
     txt(o[115], 42, 35, "›", 400, 18, 0x4F5B67, 255, 0, 0);
 }
 
+static void build_NoLink(lv_obj_t* scr, Ui& ui) {
+    static lv_obj_t* o[15];
+    o[0] = mk(scr, 0, 0, 2560, 1440, 1);
+    bg(o[0], 0x002B7F, 255);
+    o[1] = mk(o[0], 1176, 300, 208, 208, 0);
+    bg(o[1], 0xE5484D, 36);
+    lv_obj_set_style_radius(o[1], LV_RADIUS_CIRCLE, 0);
+    im(o[1], 48, 48, "A:assets/img/NoLink_0_2.png");
+    o[3] = mk(o[0], 0, 572, 2560, 78, 0);
+    ui.reg_box("nl.title", o[3]);
+    ui.reg_text("nl.title", txt(o[3], 1280, 38, "未连上控制核心", 600, 30, 0xFFFFFF, 255, 0, 0), 'c', 1280, 38);
+    o[5] = mk(o[0], 1081, 680, 398, 80, 0);
+    bg(o[5], 0xFFFFFF, 20);
+    lv_obj_set_style_radius(o[5], 20, 0);
+    bd(o[5], 0xFFFFFF, 46, 2, LV_BORDER_SIDE_FULL);
+    ui.reg_box("nl.chip", o[5]);
+    o[6] = mk(o[5], 38, 16, 318, 44, 0);
+    ui.reg_box("nl.where", o[6]);
+    ui.reg_text("nl.where", txt(o[6], 159, 22, "192.168.1.50 : 5020", 500, 17, 0xDCE6F2, 255, 0, 0), 'c', 159, 22);
+    o[8] = mk(o[0], 0, 824, 2560, 38, 0);
+    txt(o[8], 1280, 19, "机器上的控制核心（tec_core）是不是在运行", 400, 15, 0x9FB3CC, 255, 0, 0);
+    o[10] = mk(o[0], 0, 884, 2560, 38, 0);
+    txt(o[10], 1280, 19, "地址和端口对不对，网络通不通", 400, 15, 0x9FB3CC, 255, 0, 0);
+    o[12] = mk(o[0], 0, 1000, 2560, 38, 0);
+    ui.reg_box("nl.retry", o[12]);
+    ui.reg_text("nl.retry", txt(o[12], 1280, 19, "正在自动重试 · · ·", 500, 15, 0x7FB2E8, 255, 0, 0), 'c', 1280, 19);
+}
+
 static void build_Files(lv_obj_t* scr, Ui& ui) {
     static lv_obj_t* o[258];
     o[0] = mk(scr, 0, 0, 2560, 1440, 1);
@@ -12187,6 +12215,7 @@ static const PageDef kPages[] = {
     {"CommDlg", build_CommDlg},
     {"AlarmDlg", build_AlarmDlg},
     {"AlarmListDlg", build_AlarmListDlg},
+    {"NoLink", build_NoLink},
     {"Files", build_Files},
     {"Main", build_Main},
     {"Scheme", build_Scheme},

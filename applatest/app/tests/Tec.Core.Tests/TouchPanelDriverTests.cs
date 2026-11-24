@@ -450,4 +450,24 @@ public sealed class TouchPanelDriverTests
                                      "AqmdStirrerDriver.DriverId", "BhtPhProbeDriver.DriverId", "FeedSystemDriver.DriverId" })
             Assert.DoesNotContain(gone, list);
     }
+
+    /// <summary>
+    /// 往界面库里传字符串必须标成 UTF-8。C# 的 DllImport 缺省按系统本地编码（简体中文机器上是 GBK）传，
+    /// 路径里有中文时库那边按 UTF-8 解不出来，直接抛异常——2026-11-25 用户点面板就是这么崩的，
+    /// 报「No mapping for the Unicode character exists in the target multi-byte code page」。
+    /// NativePanelView 在 Tec.App 里、测试工程不引它，所以直接看那段源码。
+    /// </summary>
+    [Fact]
+    public void 传给界面库的字符串都标了UTF8()
+    {
+        var f = new DirectoryInfo(AppContext.BaseDirectory);
+        while (f is not null && !File.Exists(Path.Combine(f.FullName, "Tec.Studio.sln"))) f = f.Parent;
+        if (f is null) return;                                               // 不是从仓库里跑的：跳过
+        var src = Path.Combine(f.FullName, "src", "Tec.App", "Controls", "NativePanelView.cs");
+        if (!File.Exists(src)) return;
+        var bad = File.ReadAllLines(src)
+            .Where(l => l.Contains("DllImport") && l.Contains("string ") && !l.Contains("LPUTF8Str"))
+            .ToList();
+        Assert.True(bad.Count == 0, "这些声明里的字符串没标成 UTF-8：\n" + string.Join("\n", bad));
+    }
 }

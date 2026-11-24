@@ -22,16 +22,19 @@ namespace Tec.App.Controls;
 /// </summary>
 public static class NativePanel
 {
+    // 往库里传字符串一律按 UTF-8：C# 的 DllImport 缺省是按系统本地编码（简体中文机器上是 GBK）传的，
+    // 路径里有中文时，库那边按 UTF-8 解就解不出来，当场抛异常——用户 2026-11-25 点面板报的
+    // 「No mapping for the Unicode character exists in the target multi-byte code page」就是它
     private const string Lib = "tec_hmi_core";
 
-    [DllImport(Lib)] private static extern int tec_hmi_init(string assetsDir, string host, int port, int channel);
+    [DllImport(Lib)] private static extern int tec_hmi_init([MarshalAs(UnmanagedType.LPUTF8Str)] string assetsDir, [MarshalAs(UnmanagedType.LPUTF8Str)] string host, int port, int channel);
     [DllImport(Lib)] private static extern int tec_hmi_tick();
     [DllImport(Lib)] private static extern IntPtr tec_hmi_pixels();
     [DllImport(Lib)] private static extern void tec_hmi_size(out int w, out int h);
     [DllImport(Lib)] private static extern int tec_hmi_take_dirty();
     [DllImport(Lib)] private static extern void tec_hmi_pointer(int x, int y, int down);
-    [DllImport(Lib)] private static extern void tec_hmi_connect(string host, int port, int channel);
-    [DllImport(Lib)] private static extern void tec_hmi_show(string page, int channel);
+    [DllImport(Lib)] private static extern void tec_hmi_connect([MarshalAs(UnmanagedType.LPUTF8Str)] string host, int port, int channel);
+    [DllImport(Lib)] private static extern void tec_hmi_show([MarshalAs(UnmanagedType.LPUTF8Str)] string page, int channel);
     [DllImport(Lib)] private static extern IntPtr tec_hmi_last_error();
 
     private static string LastError()
