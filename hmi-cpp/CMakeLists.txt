@@ -97,8 +97,11 @@ if(EXISTS ${LVGL_DIR}/lvgl.h)
       target_compile_options(${t} PRIVATE -Wno-unused-function -Wno-unused-parameter)
     endif()
   endforeach()
-  # 字体和图片拷到程序旁边：程序启动时按「自己旁边的 assets」找
-  add_custom_command(TARGET tec_hmi POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/ui/assets $<TARGET_FILE_DIR:tec_hmi>/assets)
+  # 字体和图片拷到程序旁边：程序启动时按「自己旁边的 assets」找。
+  # **只能有一处拷**：原来界面程序和界面库各挂一条 POST_BUILD 往同一个目录拷，并行编译时两边撞车，
+  # 撞上的那个目标就没有产出——踩过两次，而且 CMake 报的是大写的 Error，在一堆输出里很容易漏看
+  add_custom_target(ui_assets ALL COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/ui/assets $<TARGET_FILE_DIR:tec_hmi>/assets)
+  add_dependencies(tec_hmi_2x ui_assets)
 
   # 同一套界面再编一份动态库：PC 工作站（C#）把它装进自己的窗口，点「手动控制面板」弹出来的就是它。
   # 和触摸屏上跑的是同一份代码，所以两边长得一模一样、改设计稿两边一起变（用户 2026-11-24 定的）。
@@ -116,7 +119,7 @@ if(EXISTS ${LVGL_DIR}/lvgl.h)
   else()
     target_compile_options(tec_hmi_core PRIVATE -Wno-unused-function -Wno-unused-parameter)
   endif()
-  add_custom_command(TARGET tec_hmi_core POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/ui/assets $<TARGET_FILE_DIR:tec_hmi_core>/assets)
+  add_dependencies(tec_hmi_core ui_assets)
 else()
   message(STATUS "没找到 third_party/lvgl-9.2.2，这次不编界面程序 tec_hmi（下载方法见 README）")
 endif()
