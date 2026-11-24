@@ -8,6 +8,9 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 if(MSVC)
+  # 运行库静态链进去：装到现场那台干净的机器上不用另外装「VC++ 运行库」，拷过去就能跑。
+  # 跨模块只传数字和只读指针，没有「这边分配那边释放」，所以静态运行库是安全的
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
   add_compile_options(/W4 /utf-8)      # 源码里有中文注释和中文字符串，按 UTF-8 读
   # NOMINMAX：Windows 的头文件会把 min / max 定义成宏，把 std::min / std::max 弄坏（LVGL 的窗口驱动会把 windows.h 带进来）
   # _CRT_SECURE_NO_WARNINGS：不要为 fopen、getenv 这些标准函数报「不安全」的警告

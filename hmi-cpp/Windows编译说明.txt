@@ -139,7 +139,42 @@ tec_core.exe，没有界面程序。
 要用新界面：把台面上那台删掉，从设备库拖一台「双工位反应主机」下来，填上触摸屏的地址；
 探头、搅拌、进料那几台也一并删掉——它们现在都接在触摸屏上，工作站不再开串口。
 
-七、常见问题
+七、发布：哪些文件放哪
+----------------------
+编完以后 hmi-cpp\build\Release 里有这些东西（测试程序不用管）：
+
+    tec_core.exe        控制核心：连串口、控温、跑序列、记数据，没有界面
+    tec_hmi.exe         触摸屏上的界面（按 1280×720 画）
+    tec_hmi_2x.exe      同一套界面按 2560×1440 画，屏幕大时用
+    tec_hmi_core.dll    同一套界面编成的库，给 PC 工作站装在自己窗口里用
+    gain-table.csv      出厂增益表
+    assets\             字体和图片
+
+分别往两个地方放：
+
+【触摸屏里】（1280×720 的屏）
+    tec_core.exe
+    tec_hmi.exe
+    gain-table.csv
+    assets\
+  屏幕比 1280×720 大才需要再带上 tec_hmi_2x.exe（tec_hmi.exe 会自己改用它）。
+  **不要**放 tec_hmi_core.dll——那是给 PC 用的。
+
+【PC 工作站】（Tec.App.exe 旁边新建一个 hmi 文件夹）
+    hmi\tec_hmi_core.dll
+    hmi\assets\
+  就这两样。**不要**放 tec_core.exe、tec_hmi.exe、gain-table.csv——
+  控温和序列都在触摸屏里跑，PC 一个串口都不开。
+
+两边的 assets 是同一份，各放一份。
+
+升级时两边要一起换：PC 上那份 tec_hmi_core.dll 和触摸屏上的 tec_hmi.exe 是同一套界面代码，
+只换一边会出现「PC 上和屏上长得不一样」。
+
+现场那台机器不用另外装「VC++ 运行库」——运行库已经静态链进程序里了。
+
+
+八、常见问题
 ------------
 - 界面打开一个字都没有：assets 文件夹没和 tec_hmi.exe 放在一起。
 - 界面顶栏写「未连上控制核心」：tec_core.exe 没开，或者端口不是 5020。
