@@ -71,7 +71,7 @@ struct App {
     int port = 5020;
     bool connected = false;
     json st;                                   // 最近一次的整机状态
-    struct Page { lv_obj_t* scr = nullptr; std::unique_ptr<Ui> ui; };
+    struct Page { lv_obj_t* scr = nullptr; std::unique_ptr<Ui> ui; lv_obj_t* veil = nullptr; };
     std::map<std::string, Page> pages;
     std::string cur;                           // 现在显示的页面
     int channel = 1;                           // 现在看的是哪个通道
@@ -254,6 +254,26 @@ struct App {
         if (lv_draw_buf_t* shot = lv_snapshot_take(scr, LV_COLOR_FORMAT_XRGB8888)) lv_draw_buf_destroy(shot);
         if (piece || dlg) lv_obj_delete(scr);
         return true;
+    }
+
+    // 「这不是实时数据」那层白纱。
+    // **不能改屏幕本身的透明度**：LVGL 的画面缓冲是复用的，半透明的屏会和缓冲里上一页的残留混在一起，
+    // 几页叠在一张图上，花得没法看（用户 2026-11-25 在 Windows 上看到的就是这个）。
+    // 盖一层在最上面就没这个问题：屏幕本身仍然是不透明的，每次都把缓冲盖干净
+    void set_stale(Page& p, bool stale) {
+        if (!p.scr) return;
+        if (!p.veil) {
+            if (!stale) return;
+            p.veil = lv_obj_create(p.scr);
+            lv_obj_remove_style_all(p.veil);
+            lv_obj_set_pos(p.veil, 0, 0);
+            lv_obj_set_size(p.veil, W, H);
+            bg(p.veil, 0xFFFFFF, 140);
+            lv_obj_remove_flag(p.veil, LV_OBJ_FLAG_CLICKABLE);      // 不挡点击：这时还得能切页、能去「通信设置」改地址
+            lv_obj_remove_flag(p.veil, LV_OBJ_FLAG_SCROLLABLE);
+        }
+        if (stale) { lv_obj_move_foreground(p.veil); lv_obj_remove_flag(p.veil, LV_OBJ_FLAG_HIDDEN); }
+        else lv_obj_add_flag(p.veil, LV_OBJ_FLAG_HIDDEN);
     }
 
     void show(const std::string& name) {
@@ -472,15 +492,15 @@ struct App {
         std::strftime(b, sizeof b, "%H:%M", &tm); u.set_text("top.clock", b);
         std::strftime(b, sizeof b, "%Y.%m.%d", &tm); u.set_text("top.date", b);
         // 还没拿到过状态：页面上那些数字是设计稿里的样例值（65.0、结晶工艺-0824 之类），不是真的。
-        // 整页压暗，一眼看出「这不是实时数据」——顶栏那句红字容易被忽略，而面板在 PC 上是看远处机器的，
+        // 盖一层半透明的白，一眼看出「这不是实时数据」——顶栏那句红字容易被忽略，而面板在 PC 上是看远处机器的，
         // 把样例值当读数会出事
         if (!st.is_object() || !st.contains("ch")) {
             u.set_text("top.water", connected ? "读取中…" : "未连上控制核心");
             u.show("top.water.dot", false);      // 这句话比「冷却水已关」长，会盖到小圆点上；何况这时也没有冷却水状态可报
-            if (u.changed("live", false)) lv_obj_set_style_opa(it->second.scr, 70, 0);
+            set_stale(it->second, true);
             return;
         }
-        if (u.changed("live", true)) lv_obj_set_style_opa(it->second.scr, LV_OPA_COVER, 0);
+        set_stale(it->second, false);
         // 控温设备没连上（串口配错之类）：核心还活着但不能控温。顶栏这个位置平时写冷却水，这时换成红点和这句话，哪一页都看得见
         const bool offline = !st.value("offline", std::string()).empty();
         u.set_text("top.water", offline ? "设备未连接" : st.value("valve_open", false) ? "冷却水已开" : "冷却水已关");
