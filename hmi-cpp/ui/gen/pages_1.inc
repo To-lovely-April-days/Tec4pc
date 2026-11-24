@@ -161,7 +161,7 @@ static void build_Ctl(lv_obj_t* scr, Ui& ui) {
     im(o[86], 90, 7, "A:assets/img/Ctl_14_1.png");
     o[88] = mk(o[86], 73, 43, 66, 22, 0);
     txt(o[88], 33, 11, "PID 整定", 600, 16, 0x4F5B67, 255, 0, 0);
-    o[90] = mk(o[0], 8, 140, 1264, 69, 1);
+    o[90] = mk(o[0], 8, 140, 1264, 64, 1);
     bg(o[90], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[90], 10, 0);
     lv_obj_set_style_clip_corner(o[90], true, 0);
@@ -279,13 +279,13 @@ static void build_Ctl(lv_obj_t* scr, Ui& ui) {
     ui.reg_act(o[140], "seq.end");
     im(o[140], 27, 12, "A:assets/img/Ctl_15_1.png");
     txt(o[140], 89, 24, "结束序列", 600, 16, 0xFFFFFF, 255, 0, 0);
-    o[143] = mk(o[0], 8, 216, 322, 496, 1);
+    o[143] = mk(o[0], 8, 212, 322, 500, 1);
     bg(o[143], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[143], 10, 0);
     lv_obj_set_style_clip_corner(o[143], true, 0);
     ol(o[143], 0x102A4C, 18, 1);
     sh(o[143], 0x102A4C, 13, 3, 0, 1, 0);
-    o[144] = mk(o[143], 0, 368, 322, 128, 0);
+    o[144] = mk(o[143], 0, 368, 322, 132, 0);
     bg(o[144], 0xF3F6FA, 255);
     im(o[143], 73, 51, "A:assets/img/Ctl_16_1.png");
     o[146] = mk(o[143], 20, 16, 97, 18, 0);
@@ -322,7 +322,7 @@ static void build_Ctl(lv_obj_t* scr, Ui& ui) {
     ui.reg_text("ctl.sp", txt(o[167], 28, 16, "65.0", 600, 25, 0x1D3557, 255, 0, 0), 'l', 0, 16);
     o[169] = mk(o[166], 60, 12, 12, 16, 0);
     txt(o[169], 6, 8, "℃", 400, 13, 0x8792A0, 255, 0, 0);
-    o[171] = mk(o[0], 339, 216, 933, 53, 1);
+    o[171] = mk(o[0], 339, 212, 933, 56, 1);
     bg(o[171], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[171], 10, 0);
     lv_obj_set_style_clip_corner(o[171], true, 0);
@@ -393,7 +393,7 @@ static void build_Ctl(lv_obj_t* scr, Ui& ui) {
     ui.reg_text("rg.mode.3", txt(o[200], 17, 12, "结晶", 500, 17, 0x1F2A35, 255, 0, 0), 'l', 0, 12);
     o[202] = mk(o[199], 0, 25, 91, 18, 0);
     txt(o[202], 45, 9, "按分段曲线控温", 400, 13, 0x8792A0, 255, 0, 0);
-    o[204] = mk(o[0], 339, 277, 933, 214, 0);
+    o[204] = mk(o[0], 339, 256, 933, 216, 0);
     bg(o[204], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[204], 10, 0);
     ol(o[204], 0x102A4C, 18, 1);
@@ -500,10 +500,10 @@ static void build_Ctl(lv_obj_t* scr, Ui& ui) {
     o[252] = mk(o[249], 0, 25, 55, 18, 0);
     ui.reg_box("ctl.run.t2", o[252]);
     ui.reg_text("ctl.run.t2", txt(o[252], 26, 9, "点按停止", 400, 13, 0x8792A0, 255, 0, 0), 'c', 26, 9);
-    o[254] = mk(o[204], 24, 180, 885, 18, 0);
+    o[254] = mk(o[204], 24, 182, 885, 18, 0);
     ui.reg_box("ctl.temp.status", o[254]);
     ui.reg_text("ctl.temp.status", txt(o[254], 301, 9, "尽快：不限速，按最大能力到达　·　Tj 63.4 ℃　·　Tr − Tj −3.4 K　·　Tc 20.5 ℃ · 冷媒正常", 400, 14, 0x8792A0, 255, 0, 0), 'l', 0, 9);
-    o[256] = mk(o[0], 339, 498, 933, 214, 0);
+    o[256] = mk(o[0], 339, 488, 933, 216, 0);
     bg(o[256], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[256], 10, 0);
     ol(o[256], 0x102A4C, 18, 1);
@@ -594,7 +594,7 @@ static void build_Ctl(lv_obj_t* scr, Ui& ui) {
     o[306] = mk(o[303], 0, 21, 72, 21, 0);
     ui.reg_box("ctl.stir.val", o[306]);
     ui.reg_text("ctl.stir.val", txt(o[306], 32, 11, "300 rpm", 600, 15, 0x00559C, 255, 0, 0), 'l', 0, 11);
-    o[308] = mk(o[256], 24, 180, 885, 18, 0);
+    o[308] = mk(o[256], 24, 182, 885, 18, 0);
     ui.reg_box("ctl.stir.status", o[308]);
     ui.reg_text("ctl.stir.status", txt(o[308], 99, 9, "实测 300 rpm　·　电流 0.82 A", 400, 14, 0x8792A0, 255, 0, 0), 'l', 0, 9);
 }
@@ -760,7 +760,7 @@ static void build_Ctl_2(lv_obj_t* scr, Ui& ui) {
     im(o[86], 90, 7, "A:assets/img/Ctl_2_14_1.png");
     o[88] = mk(o[86], 73, 43, 66, 22, 0);
     txt(o[88], 33, 11, "PID 整定", 600, 16, 0x4F5B67, 255, 0, 0);
-    o[90] = mk(o[0], 8, 140, 1264, 69, 1);
+    o[90] = mk(o[0], 8, 140, 1264, 64, 1);
     bg(o[90], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[90], 10, 0);
     lv_obj_set_style_clip_corner(o[90], true, 0);
@@ -878,13 +878,13 @@ static void build_Ctl_2(lv_obj_t* scr, Ui& ui) {
     ui.reg_act(o[140], "seq.end");
     im(o[140], 27, 12, "A:assets/img/Ctl_2_15_1.png");
     txt(o[140], 89, 24, "结束序列", 600, 16, 0xFFFFFF, 255, 0, 0);
-    o[143] = mk(o[0], 8, 216, 322, 496, 1);
+    o[143] = mk(o[0], 8, 212, 322, 500, 1);
     bg(o[143], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[143], 10, 0);
     lv_obj_set_style_clip_corner(o[143], true, 0);
     ol(o[143], 0x102A4C, 18, 1);
     sh(o[143], 0x102A4C, 13, 3, 0, 1, 0);
-    o[144] = mk(o[143], 0, 368, 322, 128, 0);
+    o[144] = mk(o[143], 0, 368, 322, 132, 0);
     bg(o[144], 0xF3F6FA, 255);
     im(o[143], 73, 51, "A:assets/img/Ctl_2_16_1.png");
     o[146] = mk(o[143], 20, 16, 97, 18, 0);
@@ -921,7 +921,7 @@ static void build_Ctl_2(lv_obj_t* scr, Ui& ui) {
     ui.reg_text("ctl.sp", txt(o[167], 28, 16, "65.0", 600, 25, 0x1D3557, 255, 0, 0), 'l', 0, 16);
     o[169] = mk(o[166], 60, 12, 12, 16, 0);
     txt(o[169], 6, 8, "℃", 400, 13, 0x8792A0, 255, 0, 0);
-    o[171] = mk(o[0], 339, 216, 933, 53, 1);
+    o[171] = mk(o[0], 339, 212, 933, 56, 1);
     bg(o[171], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[171], 10, 0);
     lv_obj_set_style_clip_corner(o[171], true, 0);
@@ -992,7 +992,7 @@ static void build_Ctl_2(lv_obj_t* scr, Ui& ui) {
     ui.reg_text("rg.mode.3", txt(o[200], 17, 12, "结晶", 500, 17, 0x1F2A35, 255, 0, 0), 'l', 0, 12);
     o[202] = mk(o[199], 0, 25, 91, 18, 0);
     txt(o[202], 45, 9, "按分段曲线控温", 400, 13, 0x8792A0, 255, 0, 0);
-    o[204] = mk(o[0], 339, 277, 933, 214, 0);
+    o[204] = mk(o[0], 339, 256, 933, 216, 0);
     bg(o[204], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[204], 10, 0);
     ol(o[204], 0x102A4C, 18, 1);
@@ -1099,10 +1099,10 @@ static void build_Ctl_2(lv_obj_t* scr, Ui& ui) {
     o[252] = mk(o[249], 0, 25, 55, 18, 0);
     ui.reg_box("ctl.run.t2", o[252]);
     ui.reg_text("ctl.run.t2", txt(o[252], 26, 9, "点按停止", 400, 13, 0x8792A0, 255, 0, 0), 'c', 26, 9);
-    o[254] = mk(o[204], 24, 180, 885, 18, 0);
+    o[254] = mk(o[204], 24, 182, 885, 18, 0);
     ui.reg_box("ctl.temp.status", o[254]);
     ui.reg_text("ctl.temp.status", txt(o[254], 301, 9, "尽快：不限速，按最大能力到达　·　Tj 63.4 ℃　·　Tr − Tj −3.4 K　·　Tc 20.5 ℃ · 冷媒正常", 400, 14, 0x8792A0, 255, 0, 0), 'l', 0, 9);
-    o[256] = mk(o[0], 339, 498, 933, 214, 0);
+    o[256] = mk(o[0], 339, 488, 933, 216, 0);
     bg(o[256], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[256], 10, 0);
     ol(o[256], 0x102A4C, 18, 1);
@@ -1193,7 +1193,7 @@ static void build_Ctl_2(lv_obj_t* scr, Ui& ui) {
     o[306] = mk(o[303], 0, 21, 72, 21, 0);
     ui.reg_box("ctl.stir.val", o[306]);
     ui.reg_text("ctl.stir.val", txt(o[306], 32, 11, "300 rpm", 600, 15, 0x00559C, 255, 0, 0), 'l', 0, 11);
-    o[308] = mk(o[256], 24, 180, 885, 18, 0);
+    o[308] = mk(o[256], 24, 182, 885, 18, 0);
     ui.reg_box("ctl.stir.status", o[308]);
     ui.reg_text("ctl.stir.status", txt(o[308], 99, 9, "实测 300 rpm　·　电流 0.82 A", 400, 14, 0x8792A0, 255, 0, 0), 'l', 0, 9);
 }
@@ -1359,7 +1359,7 @@ static void build_ChTrend(lv_obj_t* scr, Ui& ui) {
     im(o[86], 90, 7, "A:assets/img/ChTrend_14_1.png");
     o[88] = mk(o[86], 73, 43, 66, 22, 0);
     txt(o[88], 33, 11, "PID 整定", 600, 16, 0x4F5B67, 255, 0, 0);
-    o[90] = mk(o[0], 8, 140, 1264, 69, 1);
+    o[90] = mk(o[0], 8, 140, 1264, 64, 1);
     bg(o[90], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[90], 10, 0);
     lv_obj_set_style_clip_corner(o[90], true, 0);
@@ -1477,7 +1477,7 @@ static void build_ChTrend(lv_obj_t* scr, Ui& ui) {
     ui.reg_act(o[140], "seq.end");
     im(o[140], 27, 12, "A:assets/img/ChTrend_15_1.png");
     txt(o[140], 89, 24, "结束序列", 600, 16, 0xFFFFFF, 255, 0, 0);
-    o[143] = mk(o[0], 8, 216, 1264, 496, 0);
+    o[143] = mk(o[0], 8, 212, 1264, 500, 0);
     bg(o[143], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[143], 10, 0);
     ol(o[143], 0x102A4C, 18, 1);
@@ -1672,8 +1672,8 @@ static void build_ChTrend(lv_obj_t* scr, Ui& ui) {
     lv_obj_set_style_radius(o[237], LV_RADIUS_CIRCLE, 0);
     ui.reg_box("rg.yax.1.in", o[237]);
     ui.reg_text("rg.yax.1", txt(o[235], 68, 20, "设定值附近", 400, 15, 0x4F5B67, 255, 0, 0), 'r', 105, 20);
-    o[239] = mk(o[143], 8, 138, 1248, 374, 0);
-    o[240] = mk(o[239], 0, 0, 1248, 374, 0);
+    o[239] = mk(o[143], 8, 138, 1248, 354, 0);
+    o[240] = mk(o[239], 0, 0, 1248, 354, 0);
     ui.reg_box("tr.chart", o[240]);
 }
 
@@ -1838,7 +1838,7 @@ static void build_ChTrend_2(lv_obj_t* scr, Ui& ui) {
     im(o[86], 90, 7, "A:assets/img/ChTrend_2_14_1.png");
     o[88] = mk(o[86], 73, 43, 66, 22, 0);
     txt(o[88], 33, 11, "PID 整定", 600, 16, 0x4F5B67, 255, 0, 0);
-    o[90] = mk(o[0], 8, 140, 1264, 69, 1);
+    o[90] = mk(o[0], 8, 140, 1264, 64, 1);
     bg(o[90], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[90], 10, 0);
     lv_obj_set_style_clip_corner(o[90], true, 0);
@@ -1956,7 +1956,7 @@ static void build_ChTrend_2(lv_obj_t* scr, Ui& ui) {
     ui.reg_act(o[140], "seq.end");
     im(o[140], 27, 12, "A:assets/img/ChTrend_2_15_1.png");
     txt(o[140], 89, 24, "结束序列", 600, 16, 0xFFFFFF, 255, 0, 0);
-    o[143] = mk(o[0], 8, 216, 1264, 496, 0);
+    o[143] = mk(o[0], 8, 212, 1264, 500, 0);
     bg(o[143], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[143], 10, 0);
     ol(o[143], 0x102A4C, 18, 1);
@@ -2151,8 +2151,8 @@ static void build_ChTrend_2(lv_obj_t* scr, Ui& ui) {
     lv_obj_set_style_radius(o[237], LV_RADIUS_CIRCLE, 0);
     ui.reg_box("rg.yax.1.in", o[237]);
     ui.reg_text("rg.yax.1", txt(o[235], 68, 20, "设定值附近", 400, 15, 0x4F5B67, 255, 0, 0), 'r', 105, 20);
-    o[239] = mk(o[143], 8, 138, 1248, 374, 0);
-    o[240] = mk(o[239], 0, 0, 1248, 374, 0);
+    o[239] = mk(o[143], 8, 138, 1248, 354, 0);
+    o[240] = mk(o[239], 0, 0, 1248, 354, 0);
     ui.reg_box("tr.chart", o[240]);
 }
 
@@ -2317,7 +2317,7 @@ static void build_Safety(lv_obj_t* scr, Ui& ui) {
     im(o[86], 90, 7, "A:assets/img/Safety_14_1.png");
     o[88] = mk(o[86], 73, 43, 66, 22, 0);
     txt(o[88], 33, 11, "PID 整定", 600, 16, 0x4F5B67, 255, 0, 0);
-    o[90] = mk(o[0], 8, 140, 1264, 69, 1);
+    o[90] = mk(o[0], 8, 140, 1264, 64, 1);
     bg(o[90], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[90], 10, 0);
     lv_obj_set_style_clip_corner(o[90], true, 0);
@@ -2435,7 +2435,7 @@ static void build_Safety(lv_obj_t* scr, Ui& ui) {
     ui.reg_act(o[140], "seq.end");
     im(o[140], 27, 12, "A:assets/img/Safety_15_1.png");
     txt(o[140], 89, 24, "结束序列", 600, 16, 0xFFFFFF, 255, 0, 0);
-    o[143] = mk(o[0], 8, 216, 1264, 431, 1);
+    o[143] = mk(o[0], 8, 212, 1264, 432, 1);
     bg(o[143], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[143], 10, 0);
     lv_obj_set_style_clip_corner(o[143], true, 0);
@@ -2542,7 +2542,7 @@ static void build_Safety(lv_obj_t* scr, Ui& ui) {
     o[206] = mk(o[200], 1011, 15, 205, 18, 0);
     ui.reg_box("sf.n.4", o[206]);
     ui.reg_text("sf.n.4", txt(o[206], 102, 9, "冷媒温度过高 → 停止制冷并报警", 400, 14, 0x8792A0, 255, 0, 0), 'r', 205, 9);
-    o[208] = mk(o[0], 8, 655, 1264, 57, 0);
+    o[208] = mk(o[0], 8, 652, 1264, 60, 0);
     bg(o[208], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[208], 10, 0);
     ol(o[208], 0x102A4C, 18, 1);
@@ -2722,7 +2722,7 @@ static void build_Safety_2(lv_obj_t* scr, Ui& ui) {
     im(o[86], 90, 7, "A:assets/img/Safety_2_14_1.png");
     o[88] = mk(o[86], 73, 43, 66, 22, 0);
     txt(o[88], 33, 11, "PID 整定", 600, 16, 0x4F5B67, 255, 0, 0);
-    o[90] = mk(o[0], 8, 140, 1264, 69, 1);
+    o[90] = mk(o[0], 8, 140, 1264, 64, 1);
     bg(o[90], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[90], 10, 0);
     lv_obj_set_style_clip_corner(o[90], true, 0);
@@ -2840,7 +2840,7 @@ static void build_Safety_2(lv_obj_t* scr, Ui& ui) {
     ui.reg_act(o[140], "seq.end");
     im(o[140], 27, 12, "A:assets/img/Safety_2_15_1.png");
     txt(o[140], 89, 24, "结束序列", 600, 16, 0xFFFFFF, 255, 0, 0);
-    o[143] = mk(o[0], 8, 216, 1264, 431, 1);
+    o[143] = mk(o[0], 8, 212, 1264, 432, 1);
     bg(o[143], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[143], 10, 0);
     lv_obj_set_style_clip_corner(o[143], true, 0);
@@ -2947,7 +2947,7 @@ static void build_Safety_2(lv_obj_t* scr, Ui& ui) {
     o[206] = mk(o[200], 1011, 15, 205, 18, 0);
     ui.reg_box("sf.n.4", o[206]);
     ui.reg_text("sf.n.4", txt(o[206], 102, 9, "冷媒温度过高 → 停止制冷并报警", 400, 14, 0x8792A0, 255, 0, 0), 'r', 205, 9);
-    o[208] = mk(o[0], 8, 655, 1264, 57, 0);
+    o[208] = mk(o[0], 8, 652, 1264, 60, 0);
     bg(o[208], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[208], 10, 0);
     ol(o[208], 0x102A4C, 18, 1);
@@ -3127,7 +3127,7 @@ static void build_Export(lv_obj_t* scr, Ui& ui) {
     im(o[86], 90, 7, "A:assets/img/Export_14_1.png");
     o[88] = mk(o[86], 73, 43, 66, 22, 0);
     txt(o[88], 33, 11, "PID 整定", 600, 16, 0x4F5B67, 255, 0, 0);
-    o[90] = mk(o[0], 8, 140, 1264, 69, 1);
+    o[90] = mk(o[0], 8, 140, 1264, 64, 1);
     bg(o[90], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[90], 10, 0);
     lv_obj_set_style_clip_corner(o[90], true, 0);
@@ -3245,7 +3245,7 @@ static void build_Export(lv_obj_t* scr, Ui& ui) {
     ui.reg_act(o[140], "seq.end");
     im(o[140], 27, 12, "A:assets/img/Export_15_1.png");
     txt(o[140], 89, 24, "结束序列", 600, 16, 0xFFFFFF, 255, 0, 0);
-    o[143] = mk(o[0], 8, 216, 1264, 431, 1);
+    o[143] = mk(o[0], 8, 212, 1264, 432, 1);
     bg(o[143], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[143], 10, 0);
     lv_obj_set_style_clip_corner(o[143], true, 0);
@@ -3354,7 +3354,7 @@ static void build_Export(lv_obj_t* scr, Ui& ui) {
     txt(o[179], 296, 18, "min", 400, 14, 0x8792A0, 255, 0, 0);
     o[189] = mk(o[167], 1062, 15, 154, 18, 0);
     txt(o[189], 77, 9, "时间从每一炉开始时算起", 400, 14, 0x8792A0, 255, 0, 0);
-    o[191] = mk(o[143], 0, 156, 1264, 48, 0);
+    o[191] = mk(o[143], 0, 148, 1264, 48, 0);
     bg(o[191], 0xEAF2FB, 255);
     o[192] = mk(o[191], 24, 13, 104, 22, 0);
     txt(o[192], 52, 11, "本机数据记录", 600, 17, 0x1F2A35, 255, 0, 0);
@@ -3381,7 +3381,7 @@ static void build_Export(lv_obj_t* scr, Ui& ui) {
     o[204] = mk(o[191], 1174, 15, 66, 18, 0);
     ui.reg_box("ex.count", o[204]);
     ui.reg_text("ex.count", txt(o[204], 33, 9, "已选 2 / 4", 400, 14, 0x4F5B67, 255, 0, 0), 'r', 66, 9);
-    o[206] = mk(o[143], 0, 204, 1264, 40, 0);
+    o[206] = mk(o[143], 0, 196, 1264, 40, 0);
     bg(o[206], 0xF7F9FB, 255);
     bd(o[206], 0xE8ECF1, 255, 1, LV_BORDER_SIDE_BOTTOM);
     ui.reg_act(o[206], "ex:all");
@@ -3412,7 +3412,7 @@ static void build_Export(lv_obj_t* scr, Ui& ui) {
     txt(o[218], 14, 10, "时长", 400, 14, 0x4F5B67, 255, 0, 0);
     o[220] = mk(o[206], 1212, 10, 28, 20, 0);
     txt(o[220], 14, 10, "日期", 400, 14, 0x4F5B67, 255, 0, 0);
-    o[222] = mk(o[143], 0, 244, 1264, 48, 0);
+    o[222] = mk(o[143], 0, 236, 1264, 48, 0);
     bg(o[222], 0xFFFFFF, 255);
     bd(o[222], 0xE8ECF1, 255, 1, LV_BORDER_SIDE_BOTTOM);
     ui.reg_box("ex.r.0", o[222]);
@@ -3450,7 +3450,7 @@ static void build_Export(lv_obj_t* scr, Ui& ui) {
     o[238] = mk(o[222], 1210, 14, 30, 21, 0);
     ui.reg_box("ex.r.0.t", o[238]);
     ui.reg_text("ex.r.0.t", txt(o[238], 15, 10, "今天", 400, 15, 0x8792A0, 255, 0, 0), 'r', 30, 10);
-    o[240] = mk(o[143], 0, 292, 1264, 48, 0);
+    o[240] = mk(o[143], 0, 284, 1264, 48, 0);
     bg(o[240], 0xFFFFFF, 255);
     bd(o[240], 0xE8ECF1, 255, 1, LV_BORDER_SIDE_BOTTOM);
     ui.reg_box("ex.r.1", o[240]);
@@ -3488,7 +3488,7 @@ static void build_Export(lv_obj_t* scr, Ui& ui) {
     o[256] = mk(o[240], 1156, 14, 84, 21, 0);
     ui.reg_box("ex.r.1.t", o[256]);
     ui.reg_text("ex.r.1.t", txt(o[256], 42, 10, "2026-11-22", 400, 15, 0x8792A0, 255, 0, 0), 'r', 84, 10);
-    o[258] = mk(o[143], 0, 340, 1264, 48, 0);
+    o[258] = mk(o[143], 0, 332, 1264, 48, 0);
     bg(o[258], 0xFFFFFF, 255);
     bd(o[258], 0xE8ECF1, 255, 1, LV_BORDER_SIDE_BOTTOM);
     ui.reg_box("ex.r.2", o[258]);
@@ -3526,7 +3526,7 @@ static void build_Export(lv_obj_t* scr, Ui& ui) {
     o[274] = mk(o[258], 1159, 14, 81, 21, 0);
     ui.reg_box("ex.r.2.t", o[274]);
     ui.reg_text("ex.r.2.t", txt(o[274], 40, 10, "2026-11-21", 400, 15, 0x8792A0, 255, 0, 0), 'r', 81, 10);
-    o[276] = mk(o[143], 0, 388, 1264, 48, 0);
+    o[276] = mk(o[143], 0, 380, 1264, 48, 0);
     bg(o[276], 0xFFFFFF, 255);
     bd(o[276], 0xE8ECF1, 255, 1, LV_BORDER_SIDE_BOTTOM);
     ui.reg_box("ex.r.3", o[276]);
@@ -3564,7 +3564,7 @@ static void build_Export(lv_obj_t* scr, Ui& ui) {
     o[292] = mk(o[276], 1156, 14, 84, 21, 0);
     ui.reg_box("ex.r.3.t", o[292]);
     ui.reg_text("ex.r.3.t", txt(o[292], 42, 10, "2026-11-20", 400, 15, 0x8792A0, 255, 0, 0), 'r', 84, 10);
-    o[294] = mk(o[0], 8, 655, 1264, 57, 0);
+    o[294] = mk(o[0], 8, 652, 1264, 60, 0);
     bg(o[294], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[294], 10, 0);
     ol(o[294], 0x102A4C, 18, 1);
@@ -3753,7 +3753,7 @@ static void build_Export_2(lv_obj_t* scr, Ui& ui) {
     im(o[86], 90, 7, "A:assets/img/Export_2_14_1.png");
     o[88] = mk(o[86], 73, 43, 66, 22, 0);
     txt(o[88], 33, 11, "PID 整定", 600, 16, 0x4F5B67, 255, 0, 0);
-    o[90] = mk(o[0], 8, 140, 1264, 69, 1);
+    o[90] = mk(o[0], 8, 140, 1264, 64, 1);
     bg(o[90], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[90], 10, 0);
     lv_obj_set_style_clip_corner(o[90], true, 0);
@@ -3871,7 +3871,7 @@ static void build_Export_2(lv_obj_t* scr, Ui& ui) {
     ui.reg_act(o[140], "seq.end");
     im(o[140], 27, 12, "A:assets/img/Export_2_15_1.png");
     txt(o[140], 89, 24, "结束序列", 600, 16, 0xFFFFFF, 255, 0, 0);
-    o[143] = mk(o[0], 8, 216, 1264, 431, 1);
+    o[143] = mk(o[0], 8, 212, 1264, 432, 1);
     bg(o[143], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[143], 10, 0);
     lv_obj_set_style_clip_corner(o[143], true, 0);
@@ -3980,7 +3980,7 @@ static void build_Export_2(lv_obj_t* scr, Ui& ui) {
     txt(o[179], 296, 18, "min", 400, 14, 0x8792A0, 255, 0, 0);
     o[189] = mk(o[167], 1062, 15, 154, 18, 0);
     txt(o[189], 77, 9, "时间从每一炉开始时算起", 400, 14, 0x8792A0, 255, 0, 0);
-    o[191] = mk(o[143], 0, 156, 1264, 48, 0);
+    o[191] = mk(o[143], 0, 148, 1264, 48, 0);
     bg(o[191], 0xEAF2FB, 255);
     o[192] = mk(o[191], 24, 13, 104, 22, 0);
     txt(o[192], 52, 11, "本机数据记录", 600, 17, 0x1F2A35, 255, 0, 0);
@@ -4007,7 +4007,7 @@ static void build_Export_2(lv_obj_t* scr, Ui& ui) {
     o[204] = mk(o[191], 1174, 15, 66, 18, 0);
     ui.reg_box("ex.count", o[204]);
     ui.reg_text("ex.count", txt(o[204], 33, 9, "已选 2 / 4", 400, 14, 0x4F5B67, 255, 0, 0), 'r', 66, 9);
-    o[206] = mk(o[143], 0, 204, 1264, 40, 0);
+    o[206] = mk(o[143], 0, 196, 1264, 40, 0);
     bg(o[206], 0xF7F9FB, 255);
     bd(o[206], 0xE8ECF1, 255, 1, LV_BORDER_SIDE_BOTTOM);
     ui.reg_act(o[206], "ex:all");
@@ -4038,7 +4038,7 @@ static void build_Export_2(lv_obj_t* scr, Ui& ui) {
     txt(o[218], 14, 10, "时长", 400, 14, 0x4F5B67, 255, 0, 0);
     o[220] = mk(o[206], 1212, 10, 28, 20, 0);
     txt(o[220], 14, 10, "日期", 400, 14, 0x4F5B67, 255, 0, 0);
-    o[222] = mk(o[143], 0, 244, 1264, 48, 0);
+    o[222] = mk(o[143], 0, 236, 1264, 48, 0);
     bg(o[222], 0xFFFFFF, 255);
     bd(o[222], 0xE8ECF1, 255, 1, LV_BORDER_SIDE_BOTTOM);
     ui.reg_box("ex.r.0", o[222]);
@@ -4076,7 +4076,7 @@ static void build_Export_2(lv_obj_t* scr, Ui& ui) {
     o[238] = mk(o[222], 1210, 14, 30, 21, 0);
     ui.reg_box("ex.r.0.t", o[238]);
     ui.reg_text("ex.r.0.t", txt(o[238], 15, 10, "今天", 400, 15, 0x8792A0, 255, 0, 0), 'r', 30, 10);
-    o[240] = mk(o[143], 0, 292, 1264, 48, 0);
+    o[240] = mk(o[143], 0, 284, 1264, 48, 0);
     bg(o[240], 0xFFFFFF, 255);
     bd(o[240], 0xE8ECF1, 255, 1, LV_BORDER_SIDE_BOTTOM);
     ui.reg_box("ex.r.1", o[240]);
@@ -4114,7 +4114,7 @@ static void build_Export_2(lv_obj_t* scr, Ui& ui) {
     o[256] = mk(o[240], 1156, 14, 84, 21, 0);
     ui.reg_box("ex.r.1.t", o[256]);
     ui.reg_text("ex.r.1.t", txt(o[256], 42, 10, "2026-11-22", 400, 15, 0x8792A0, 255, 0, 0), 'r', 84, 10);
-    o[258] = mk(o[143], 0, 340, 1264, 48, 0);
+    o[258] = mk(o[143], 0, 332, 1264, 48, 0);
     bg(o[258], 0xFFFFFF, 255);
     bd(o[258], 0xE8ECF1, 255, 1, LV_BORDER_SIDE_BOTTOM);
     ui.reg_box("ex.r.2", o[258]);
@@ -4152,7 +4152,7 @@ static void build_Export_2(lv_obj_t* scr, Ui& ui) {
     o[274] = mk(o[258], 1159, 14, 81, 21, 0);
     ui.reg_box("ex.r.2.t", o[274]);
     ui.reg_text("ex.r.2.t", txt(o[274], 40, 10, "2026-11-21", 400, 15, 0x8792A0, 255, 0, 0), 'r', 81, 10);
-    o[276] = mk(o[143], 0, 388, 1264, 48, 0);
+    o[276] = mk(o[143], 0, 380, 1264, 48, 0);
     bg(o[276], 0xFFFFFF, 255);
     bd(o[276], 0xE8ECF1, 255, 1, LV_BORDER_SIDE_BOTTOM);
     ui.reg_box("ex.r.3", o[276]);
@@ -4190,7 +4190,7 @@ static void build_Export_2(lv_obj_t* scr, Ui& ui) {
     o[292] = mk(o[276], 1156, 14, 84, 21, 0);
     ui.reg_box("ex.r.3.t", o[292]);
     ui.reg_text("ex.r.3.t", txt(o[292], 42, 10, "2026-11-20", 400, 15, 0x8792A0, 255, 0, 0), 'r', 84, 10);
-    o[294] = mk(o[0], 8, 655, 1264, 57, 0);
+    o[294] = mk(o[0], 8, 652, 1264, 60, 0);
     bg(o[294], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[294], 10, 0);
     ol(o[294], 0x102A4C, 18, 1);
@@ -4379,7 +4379,7 @@ static void build_Pid(lv_obj_t* scr, Ui& ui) {
     im(o[86], 90, 7, "A:assets/img/Pid_14_1.png");
     o[88] = mk(o[86], 73, 43, 66, 22, 0);
     txt(o[88], 33, 11, "PID 整定", 600, 16, 0xFFFFFF, 255, 0, 0);
-    o[90] = mk(o[0], 8, 140, 1264, 69, 1);
+    o[90] = mk(o[0], 8, 140, 1264, 64, 1);
     bg(o[90], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[90], 10, 0);
     lv_obj_set_style_clip_corner(o[90], true, 0);
@@ -4497,7 +4497,7 @@ static void build_Pid(lv_obj_t* scr, Ui& ui) {
     ui.reg_act(o[140], "seq.end");
     im(o[140], 27, 12, "A:assets/img/Pid_15_1.png");
     txt(o[140], 89, 24, "结束序列", 600, 16, 0xFFFFFF, 255, 0, 0);
-    o[143] = mk(o[0], 8, 216, 752, 496, 0);
+    o[143] = mk(o[0], 8, 212, 752, 500, 0);
     bg(o[143], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[143], 10, 0);
     ol(o[143], 0x102A4C, 18, 1);
@@ -4986,7 +4986,7 @@ static void build_Pid(lv_obj_t* scr, Ui& ui) {
     o[340] = mk(o[320], 668, 0, 40, 40, 0);
     ui.reg_act(o[340], "pg:del:7");
     im(o[340], 9, 9, "A:assets/img/Pid_23_1.png");
-    o[342] = mk(o[143], 16, 436, 720, 71, 0);
+    o[342] = mk(o[143], 16, 424, 720, 71, 0);
     o[343] = mk(o[342], 0, 0, 144, 71, 0);
     ui.reg_act(o[343], "pg:add");
     o[344] = mk(o[343], 48, 0, 48, 48, 0);
@@ -5037,7 +5037,7 @@ static void build_Pid(lv_obj_t* scr, Ui& ui) {
     o[366] = mk(o[363], 40, 53, 65, 18, 0);
     ui.reg_box("pg.clear.t", o[366]);
     ui.reg_text("pg.clear.t", txt(o[366], 32, 9, "清空这张表", 400, 13, 0xE5484D, 255, 0, 0), 'c', 32, 9);
-    o[368] = mk(o[0], 769, 216, 503, 143, 0);
+    o[368] = mk(o[0], 769, 212, 503, 144, 0);
     bg(o[368], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[368], 10, 0);
     ol(o[368], 0x102A4C, 18, 1);
@@ -5054,7 +5054,7 @@ static void build_Pid(lv_obj_t* scr, Ui& ui) {
     o[377] = mk(o[374], 0, 22, 290, 18, 0);
     ui.reg_box("pg.use.2", o[377]);
     ui.reg_text("pg.use.2", txt(o[377], 138, 9, "夹套目标 40.0 ℃ · 出力 31 %（TEC 制冷）", 400, 14, 0x4F5B67, 255, 0, 0), 'l', 0, 9);
-    o[379] = mk(o[368], 16, 97, 471, 36, 0);
+    o[379] = mk(o[368], 16, 98, 471, 36, 0);
     txt(o[379], 28, 18, "看某温度", 400, 14, 0x8792A0, 255, 0, 0);
     o[381] = mk(o[379], 64, 0, 76, 36, 0);
     bg(o[381], 0xF3F7FC, 255);
@@ -5067,7 +5067,7 @@ static void build_Pid(lv_obj_t* scr, Ui& ui) {
     o[384] = mk(o[379], 148, 9, 270, 18, 0);
     ui.reg_box("pg.look.r", o[384]);
     ui.reg_text("pg.look.r", txt(o[384], 135, 9, "℃ 会用：Kp 14.84 · Ki 0.0541 · Kd 294.8", 400, 14, 0x8792A0, 255, 0, 0), 'l', 0, 9);
-    o[386] = mk(o[0], 769, 367, 503, 90, 0);
+    o[386] = mk(o[0], 769, 364, 503, 88, 0);
     bg(o[386], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[386], 10, 0);
     ol(o[386], 0x102A4C, 18, 1);
@@ -5081,7 +5081,7 @@ static void build_Pid(lv_obj_t* scr, Ui& ui) {
     o[392] = mk(o[389], 0, 21, 244, 18, 0);
     ui.reg_box("pg.st.2", o[392]);
     ui.reg_text("pg.st.2", txt(o[392], 74, 9, "出力 31 %，没有顶到头", 400, 14, 0x4F5B67, 255, 0, 0), 'l', 0, 9);
-    o[394] = mk(o[0], 769, 464, 503, 248, 0);
+    o[394] = mk(o[0], 769, 460, 503, 252, 0);
     bg(o[394], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[394], 10, 0);
     ol(o[394], 0x102A4C, 18, 1);
@@ -5117,7 +5117,7 @@ static void build_Pid(lv_obj_t* scr, Ui& ui) {
     o[414] = mk(o[407], 162, 36, 193, 28, 0);
     ui.reg_box("pg.boost.n", o[414]);
     ui.reg_text("pg.boost.n", txt(o[414], 97, 8, "0 = 不加码（稳妥，升温慢一些）", 400, 13, 0x8792A0, 255, 0, 0), 'l', 0, 8);
-    o[416] = mk(o[394], 16, 218, 182, 16, 0);
+    o[416] = mk(o[394], 16, 222, 182, 16, 0);
     ui.reg_box("pg.msg", o[416]);
     ui.reg_text("pg.msg", txt(o[416], 91, 8, "改了以后要重启控制核心才生效", 400, 13, 0x8792A0, 255, 0, 0), 'l', 0, 8);
 }
@@ -5283,7 +5283,7 @@ static void build_Pid_2(lv_obj_t* scr, Ui& ui) {
     im(o[86], 90, 7, "A:assets/img/Pid_2_14_1.png");
     o[88] = mk(o[86], 73, 43, 66, 22, 0);
     txt(o[88], 33, 11, "PID 整定", 600, 16, 0xFFFFFF, 255, 0, 0);
-    o[90] = mk(o[0], 8, 140, 1264, 69, 1);
+    o[90] = mk(o[0], 8, 140, 1264, 64, 1);
     bg(o[90], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[90], 10, 0);
     lv_obj_set_style_clip_corner(o[90], true, 0);
@@ -5401,7 +5401,7 @@ static void build_Pid_2(lv_obj_t* scr, Ui& ui) {
     ui.reg_act(o[140], "seq.end");
     im(o[140], 27, 12, "A:assets/img/Pid_2_15_1.png");
     txt(o[140], 89, 24, "结束序列", 600, 16, 0xFFFFFF, 255, 0, 0);
-    o[143] = mk(o[0], 8, 216, 752, 496, 0);
+    o[143] = mk(o[0], 8, 212, 752, 500, 0);
     bg(o[143], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[143], 10, 0);
     ol(o[143], 0x102A4C, 18, 1);
@@ -5890,7 +5890,7 @@ static void build_Pid_2(lv_obj_t* scr, Ui& ui) {
     o[340] = mk(o[320], 668, 0, 40, 40, 0);
     ui.reg_act(o[340], "pg:del:7");
     im(o[340], 9, 9, "A:assets/img/Pid_2_23_1.png");
-    o[342] = mk(o[143], 16, 436, 720, 71, 0);
+    o[342] = mk(o[143], 16, 424, 720, 71, 0);
     o[343] = mk(o[342], 0, 0, 144, 71, 0);
     ui.reg_act(o[343], "pg:add");
     o[344] = mk(o[343], 48, 0, 48, 48, 0);
@@ -5941,7 +5941,7 @@ static void build_Pid_2(lv_obj_t* scr, Ui& ui) {
     o[366] = mk(o[363], 40, 53, 65, 18, 0);
     ui.reg_box("pg.clear.t", o[366]);
     ui.reg_text("pg.clear.t", txt(o[366], 32, 9, "清空这张表", 400, 13, 0xE5484D, 255, 0, 0), 'c', 32, 9);
-    o[368] = mk(o[0], 769, 216, 503, 143, 0);
+    o[368] = mk(o[0], 769, 212, 503, 144, 0);
     bg(o[368], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[368], 10, 0);
     ol(o[368], 0x102A4C, 18, 1);
@@ -5958,7 +5958,7 @@ static void build_Pid_2(lv_obj_t* scr, Ui& ui) {
     o[377] = mk(o[374], 0, 22, 290, 18, 0);
     ui.reg_box("pg.use.2", o[377]);
     ui.reg_text("pg.use.2", txt(o[377], 138, 9, "夹套目标 40.0 ℃ · 出力 31 %（TEC 制冷）", 400, 14, 0x4F5B67, 255, 0, 0), 'l', 0, 9);
-    o[379] = mk(o[368], 16, 97, 471, 36, 0);
+    o[379] = mk(o[368], 16, 98, 471, 36, 0);
     txt(o[379], 28, 18, "看某温度", 400, 14, 0x8792A0, 255, 0, 0);
     o[381] = mk(o[379], 64, 0, 76, 36, 0);
     bg(o[381], 0xF3F7FC, 255);
@@ -5971,7 +5971,7 @@ static void build_Pid_2(lv_obj_t* scr, Ui& ui) {
     o[384] = mk(o[379], 148, 9, 270, 18, 0);
     ui.reg_box("pg.look.r", o[384]);
     ui.reg_text("pg.look.r", txt(o[384], 135, 9, "℃ 会用：Kp 14.84 · Ki 0.0541 · Kd 294.8", 400, 14, 0x8792A0, 255, 0, 0), 'l', 0, 9);
-    o[386] = mk(o[0], 769, 367, 503, 90, 0);
+    o[386] = mk(o[0], 769, 364, 503, 88, 0);
     bg(o[386], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[386], 10, 0);
     ol(o[386], 0x102A4C, 18, 1);
@@ -5985,7 +5985,7 @@ static void build_Pid_2(lv_obj_t* scr, Ui& ui) {
     o[392] = mk(o[389], 0, 21, 244, 18, 0);
     ui.reg_box("pg.st.2", o[392]);
     ui.reg_text("pg.st.2", txt(o[392], 74, 9, "出力 31 %，没有顶到头", 400, 14, 0x4F5B67, 255, 0, 0), 'l', 0, 9);
-    o[394] = mk(o[0], 769, 464, 503, 248, 0);
+    o[394] = mk(o[0], 769, 460, 503, 252, 0);
     bg(o[394], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[394], 10, 0);
     ol(o[394], 0x102A4C, 18, 1);
@@ -6021,7 +6021,7 @@ static void build_Pid_2(lv_obj_t* scr, Ui& ui) {
     o[414] = mk(o[407], 162, 36, 193, 28, 0);
     ui.reg_box("pg.boost.n", o[414]);
     ui.reg_text("pg.boost.n", txt(o[414], 97, 8, "0 = 不加码（稳妥，升温慢一些）", 400, 13, 0x8792A0, 255, 0, 0), 'l', 0, 8);
-    o[416] = mk(o[394], 16, 218, 182, 16, 0);
+    o[416] = mk(o[394], 16, 222, 182, 16, 0);
     ui.reg_box("pg.msg", o[416]);
     ui.reg_text("pg.msg", txt(o[416], 91, 8, "改了以后要重启控制核心才生效", 400, 13, 0x8792A0, 255, 0, 0), 'l', 0, 8);
 }
@@ -6706,7 +6706,7 @@ static void build_Comm(lv_obj_t* scr, Ui& ui) {
     o[265] = mk(o[263], 26, 13, 434, 18, 0);
     ui.reg_box("cm.msg", o[265]);
     ui.reg_text("cm.msg", txt(o[265], 217, 9, "点一行改它的串口、波特率、校验、站号；改了要重启控制核心才生效", 400, 14, 0x8792A0, 255, 0, 0), 'l', 0, 9);
-    o[267] = mk(o[0], 795, 140, 477, 315, 0);
+    o[267] = mk(o[0], 795, 140, 477, 330, 0);
     bg(o[267], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[267], 10, 0);
     ol(o[267], 0x102A4C, 18, 1);
@@ -6784,12 +6784,12 @@ static void build_Comm(lv_obj_t* scr, Ui& ui) {
     ui.reg_box("sw.cm:remote.k", o[307]);
     o[308] = mk(o[302], 333, 18, 104, 16, 0);
     txt(o[308], 52, 8, "关掉后 PC 只能看", 400, 13, 0x8792A0, 255, 0, 0);
-    o[310] = mk(o[267], 20, 285, 437, 18, 0);
+    o[310] = mk(o[267], 20, 300, 437, 18, 0);
     im(o[310], -1, -1, "A:assets/img/Comm_21_1.png");
     o[312] = mk(o[310], 24, 1, 178, 16, 0);
     ui.reg_box("cm.tip", o[312]);
     ui.reg_text("cm.tip", txt(o[312], 89, 8, "PC 断开不影响本机控温和序列", 400, 13, 0x8792A0, 255, 0, 0), 'l', 0, 8);
-    o[314] = mk(o[0], 795, 462, 477, 250, 0);
+    o[314] = mk(o[0], 795, 478, 477, 234, 0);
     bg(o[314], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[314], 10, 0);
     ol(o[314], 0x102A4C, 18, 1);
@@ -7487,7 +7487,7 @@ static void build_Files(lv_obj_t* scr, Ui& ui) {
     im(o[66], 59, 7, "A:assets/img/Files_9_1.png");
     o[68] = mk(o[66], 51, 43, 48, 22, 0);
     txt(o[68], 24, 11, "配方库", 600, 16, 0xFFFFFF, 255, 0, 0);
-    o[70] = mk(o[0], 8, 140, 505, 507, 1);
+    o[70] = mk(o[0], 8, 140, 505, 504, 1);
     bg(o[70], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[70], 10, 0);
     lv_obj_set_style_clip_corner(o[70], true, 0);
@@ -7516,140 +7516,140 @@ static void build_Files(lv_obj_t* scr, Ui& ui) {
     bd(o[80], 0xCFD8E3, 255, 1, LV_BORDER_SIDE_FULL);
     ui.reg_act(o[80], "lib:next");
     txt(o[80], 19, 16, "›", 400, 18, 0x4F5B67, 255, 0, 0);
-    o[82] = mk(o[70], 0, 48, 505, 68, 0);
+    o[82] = mk(o[70], 0, 48, 505, 64, 0);
     bg(o[82], 0xFFFFFF, 255);
     bd(o[82], 0xE8ECF1, 255, 1, LV_BORDER_SIDE_BOTTOM);
     ui.reg_box("lib.r.0", o[82]);
     ui.reg_act(o[82], "lib:sel:0");
-    o[83] = mk(o[82], 0, 0, 4, 68, 0);
+    o[83] = mk(o[82], 0, 0, 4, 64, 0);
     bg(o[83], 0x00559C, 255);
     ui.reg_box("lib.r.0.bar", o[83]);
-    o[84] = mk(o[82], 18, 12, 122, 44, 0);
+    o[84] = mk(o[82], 18, 10, 122, 44, 0);
     o[85] = mk(o[84], 0, 0, 122, 24, 0);
     ui.reg_box("lib.r.0.n", o[85]);
     ui.reg_text("lib.r.0.n", txt(o[85], 61, 12, "结晶工艺-0824", 500, 17, 0x1F2A35, 255, 0, 0), 'l', 0, 12);
     o[87] = mk(o[84], 0, 26, 122, 18, 0);
     ui.reg_box("lib.r.0.k", o[87]);
     ui.reg_text("lib.r.0.k", txt(o[87], 53, 9, "5 步 · 3 h 30 min", 400, 13, 0x8792A0, 255, 0, 0), 'l', 0, 9);
-    o[89] = mk(o[82], 417, 34, 0, 0, 0);
-    o[90] = mk(o[82], 417, 25, 70, 18, 0);
+    o[89] = mk(o[82], 417, 32, 0, 0, 0);
+    o[90] = mk(o[82], 417, 23, 70, 18, 0);
     ui.reg_box("lib.r.0.t", o[90]);
     ui.reg_text("lib.r.0.t", txt(o[90], 35, 9, "11-23 20:14", 400, 13, 0x8792A0, 255, 0, 0), 'r', 70, 9);
-    o[92] = mk(o[70], 0, 116, 505, 68, 0);
+    o[92] = mk(o[70], 0, 112, 505, 64, 0);
     bg(o[92], 0xFFFFFF, 255);
     bd(o[92], 0xE8ECF1, 255, 1, LV_BORDER_SIDE_BOTTOM);
     ui.reg_box("lib.r.1", o[92]);
     ui.reg_act(o[92], "lib:sel:1");
-    o[93] = mk(o[92], 0, 0, 4, 68, 0);
+    o[93] = mk(o[92], 0, 0, 4, 64, 0);
     bg(o[93], 0x00559C, 255);
     ui.reg_box("lib.r.1.bar", o[93]);
-    o[94] = mk(o[92], 18, 12, 103, 44, 0);
+    o[94] = mk(o[92], 18, 10, 103, 44, 0);
     o[95] = mk(o[94], 0, 0, 103, 24, 0);
     ui.reg_box("lib.r.1.n", o[95]);
     ui.reg_text("lib.r.1.n", txt(o[95], 51, 12, "低温筛选-B3", 500, 17, 0x1F2A35, 255, 0, 0), 'l', 0, 12);
     o[97] = mk(o[94], 0, 26, 103, 18, 0);
     ui.reg_box("lib.r.1.k", o[97]);
     ui.reg_text("lib.r.1.k", txt(o[97], 52, 9, "3 步 · 2 h 10 min", 400, 13, 0x8792A0, 255, 0, 0), 'l', 0, 9);
-    o[99] = mk(o[92], 417, 34, 0, 0, 0);
-    o[100] = mk(o[92], 417, 25, 70, 18, 0);
+    o[99] = mk(o[92], 417, 32, 0, 0, 0);
+    o[100] = mk(o[92], 417, 23, 70, 18, 0);
     ui.reg_box("lib.r.1.t", o[100]);
     ui.reg_text("lib.r.1.t", txt(o[100], 35, 9, "11-22 16:40", 400, 13, 0x8792A0, 255, 0, 0), 'r', 70, 9);
-    o[102] = mk(o[70], 0, 184, 505, 68, 0);
+    o[102] = mk(o[70], 0, 176, 505, 64, 0);
     bg(o[102], 0xFFFFFF, 255);
     bd(o[102], 0xE8ECF1, 255, 1, LV_BORDER_SIDE_BOTTOM);
     ui.reg_box("lib.r.2", o[102]);
     ui.reg_act(o[102], "lib:sel:2");
-    o[103] = mk(o[102], 0, 0, 4, 68, 0);
+    o[103] = mk(o[102], 0, 0, 4, 64, 0);
     bg(o[103], 0x00559C, 255);
     ui.reg_box("lib.r.2.bar", o[103]);
-    o[104] = mk(o[102], 18, 12, 132, 44, 0);
+    o[104] = mk(o[102], 18, 10, 132, 44, 0);
     o[105] = mk(o[104], 0, 0, 132, 24, 0);
     ui.reg_box("lib.r.2.n", o[105]);
     ui.reg_text("lib.r.2.n", txt(o[105], 66, 12, "溶解度曲线-乙醇", 500, 17, 0x1F2A35, 255, 0, 0), 'l', 0, 12);
     o[107] = mk(o[104], 0, 26, 132, 18, 0);
     ui.reg_box("lib.r.2.k", o[107]);
     ui.reg_text("lib.r.2.k", txt(o[107], 53, 9, "6 步 · 4 h 02 min", 400, 13, 0x8792A0, 255, 0, 0), 'l', 0, 9);
-    o[109] = mk(o[102], 414, 34, 0, 0, 0);
-    o[110] = mk(o[102], 414, 25, 73, 18, 0);
+    o[109] = mk(o[102], 414, 32, 0, 0, 0);
+    o[110] = mk(o[102], 414, 23, 73, 18, 0);
     ui.reg_box("lib.r.2.t", o[110]);
     ui.reg_text("lib.r.2.t", txt(o[110], 37, 9, "11-20 09:05", 400, 13, 0x8792A0, 255, 0, 0), 'r', 73, 9);
-    o[112] = mk(o[70], 0, 252, 505, 68, 0);
+    o[112] = mk(o[70], 0, 240, 505, 64, 0);
     bg(o[112], 0xFFFFFF, 255);
     bd(o[112], 0xE8ECF1, 255, 1, LV_BORDER_SIDE_BOTTOM);
     ui.reg_box("lib.r.3", o[112]);
     ui.reg_act(o[112], "lib:sel:3");
-    o[113] = mk(o[112], 0, 0, 4, 68, 0);
+    o[113] = mk(o[112], 0, 0, 4, 64, 0);
     bg(o[113], 0x00559C, 255);
     ui.reg_box("lib.r.3.bar", o[113]);
-    o[114] = mk(o[112], 18, 12, 115, 44, 0);
+    o[114] = mk(o[112], 18, 10, 115, 44, 0);
     o[115] = mk(o[114], 0, 0, 115, 24, 0);
     ui.reg_box("lib.r.3.n", o[115]);
     ui.reg_text("lib.r.3.n", txt(o[115], 57, 12, "回流脱水-甲苯", 500, 17, 0x1F2A35, 255, 0, 0), 'l', 0, 12);
     o[117] = mk(o[114], 0, 26, 115, 18, 0);
     ui.reg_box("lib.r.3.k", o[117]);
     ui.reg_text("lib.r.3.k", txt(o[117], 53, 9, "4 步 · 2 h 45 min", 400, 13, 0x8792A0, 255, 0, 0), 'l', 0, 9);
-    o[119] = mk(o[112], 420, 34, 0, 0, 0);
-    o[120] = mk(o[112], 420, 25, 67, 18, 0);
+    o[119] = mk(o[112], 420, 32, 0, 0, 0);
+    o[120] = mk(o[112], 420, 23, 67, 18, 0);
     ui.reg_box("lib.r.3.t", o[120]);
     ui.reg_text("lib.r.3.t", txt(o[120], 33, 9, "11-18 14:22", 400, 13, 0x8792A0, 255, 0, 0), 'r', 67, 9);
-    o[122] = mk(o[70], 0, 320, 505, 68, 0);
+    o[122] = mk(o[70], 0, 304, 505, 64, 0);
     bg(o[122], 0xFFFFFF, 255);
     bd(o[122], 0xE8ECF1, 255, 1, LV_BORDER_SIDE_BOTTOM);
     ui.reg_box("lib.r.4", o[122]);
     ui.reg_act(o[122], "lib:sel:4");
-    o[123] = mk(o[122], 0, 0, 4, 68, 0);
+    o[123] = mk(o[122], 0, 0, 4, 64, 0);
     bg(o[123], 0x00559C, 255);
     ui.reg_box("lib.r.4.bar", o[123]);
-    o[124] = mk(o[122], 18, 12, 115, 44, 0);
+    o[124] = mk(o[122], 18, 10, 115, 44, 0);
     o[125] = mk(o[124], 0, 0, 115, 24, 0);
     ui.reg_box("lib.r.4.n", o[125]);
     ui.reg_text("lib.r.4.n", txt(o[125], 57, 12, "重结晶-乙醇水", 500, 17, 0x1F2A35, 255, 0, 0), 'l', 0, 12);
     o[127] = mk(o[124], 0, 26, 115, 18, 0);
     ui.reg_box("lib.r.4.k", o[127]);
     ui.reg_text("lib.r.4.k", txt(o[127], 53, 9, "5 步 · 3 h 05 min", 400, 13, 0x8792A0, 255, 0, 0), 'l', 0, 9);
-    o[129] = mk(o[122], 420, 34, 0, 0, 0);
-    o[130] = mk(o[122], 420, 25, 67, 18, 0);
+    o[129] = mk(o[122], 420, 32, 0, 0, 0);
+    o[130] = mk(o[122], 420, 23, 67, 18, 0);
     ui.reg_box("lib.r.4.t", o[130]);
     ui.reg_text("lib.r.4.t", txt(o[130], 33, 9, "11-15 10:30", 400, 13, 0x8792A0, 255, 0, 0), 'r', 67, 9);
-    o[132] = mk(o[70], 0, 388, 505, 68, 0);
+    o[132] = mk(o[70], 0, 368, 505, 64, 0);
     bg(o[132], 0xFFFFFF, 255);
     bd(o[132], 0xE8ECF1, 255, 1, LV_BORDER_SIDE_BOTTOM);
     ui.reg_box("lib.r.5", o[132]);
     ui.reg_act(o[132], "lib:sel:5");
-    o[133] = mk(o[132], 0, 0, 4, 68, 0);
+    o[133] = mk(o[132], 0, 0, 4, 64, 0);
     bg(o[133], 0x00559C, 255);
     ui.reg_box("lib.r.5.bar", o[133]);
-    o[134] = mk(o[132], 18, 12, 115, 44, 0);
+    o[134] = mk(o[132], 18, 10, 115, 44, 0);
     o[135] = mk(o[134], 0, 0, 115, 24, 0);
     ui.reg_box("lib.r.5.n", o[135]);
     ui.reg_text("lib.r.5.n", txt(o[135], 57, 12, "酯化回流-小试", 500, 17, 0x1F2A35, 255, 0, 0), 'l', 0, 12);
     o[137] = mk(o[134], 0, 26, 115, 18, 0);
     ui.reg_box("lib.r.5.k", o[137]);
     ui.reg_text("lib.r.5.k", txt(o[137], 53, 9, "4 步 · 2 h 20 min", 400, 13, 0x8792A0, 255, 0, 0), 'l', 0, 9);
-    o[139] = mk(o[132], 420, 34, 0, 0, 0);
-    o[140] = mk(o[132], 420, 25, 67, 18, 0);
+    o[139] = mk(o[132], 420, 32, 0, 0, 0);
+    o[140] = mk(o[132], 420, 23, 67, 18, 0);
     ui.reg_box("lib.r.5.t", o[140]);
     ui.reg_text("lib.r.5.t", txt(o[140], 33, 9, "11-12 10:20", 400, 13, 0x8792A0, 255, 0, 0), 'r', 67, 9);
-    o[142] = mk(o[70], 0, 456, 505, 68, 0);
+    o[142] = mk(o[70], 0, 432, 505, 64, 0);
     bg(o[142], 0xFFFFFF, 255);
     bd(o[142], 0xE8ECF1, 255, 1, LV_BORDER_SIDE_BOTTOM);
     ui.reg_box("lib.r.6", o[142]);
     ui.reg_act(o[142], "lib:sel:6");
-    o[143] = mk(o[142], 0, 0, 4, 68, 0);
+    o[143] = mk(o[142], 0, 0, 4, 64, 0);
     bg(o[143], 0x00559C, 255);
     ui.reg_box("lib.r.6.bar", o[143]);
-    o[144] = mk(o[142], 18, 12, 122, 44, 0);
+    o[144] = mk(o[142], 18, 10, 122, 44, 0);
     o[145] = mk(o[144], 0, 0, 122, 24, 0);
     ui.reg_box("lib.r.6.n", o[145]);
     ui.reg_text("lib.r.6.n", txt(o[145], 61, 12, "结晶工艺-0824", 500, 17, 0x1F2A35, 255, 0, 0), 'l', 0, 12);
     o[147] = mk(o[144], 0, 26, 122, 18, 0);
     ui.reg_box("lib.r.6.k", o[147]);
     ui.reg_text("lib.r.6.k", txt(o[147], 53, 9, "5 步 · 3 h 30 min", 400, 13, 0x8792A0, 255, 0, 0), 'l', 0, 9);
-    o[149] = mk(o[142], 417, 34, 0, 0, 0);
-    o[150] = mk(o[142], 417, 25, 70, 18, 0);
+    o[149] = mk(o[142], 417, 32, 0, 0, 0);
+    o[150] = mk(o[142], 417, 23, 70, 18, 0);
     ui.reg_box("lib.r.6.t", o[150]);
     ui.reg_text("lib.r.6.t", txt(o[150], 35, 9, "11-23 20:14", 400, 13, 0x8792A0, 255, 0, 0), 'r', 70, 9);
-    o[152] = mk(o[0], 522, 140, 750, 507, 0);
+    o[152] = mk(o[0], 522, 140, 750, 504, 0);
     bg(o[152], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[152], 10, 0);
     ol(o[152], 0x102A4C, 18, 1);
@@ -7782,12 +7782,12 @@ static void build_Files(lv_obj_t* scr, Ui& ui) {
     o[229] = mk(o[219], 651, 16, 51, 20, 0);
     ui.reg_box("lib.s.5.d", o[229]);
     ui.reg_text("lib.s.5.d", txt(o[229], 25, 10, "35 min", 400, 16, 0x8792A0, 255, 0, 0), 'r', 51, 10);
-    o[231] = mk(o[152], 24, 401, 702, 20, 0);
+    o[231] = mk(o[152], 24, 398, 702, 20, 0);
     im(o[231], -1, -1, "A:assets/img/Files_10_1.png");
     o[233] = mk(o[231], 28, 1, 238, 18, 0);
     ui.reg_box("lib.info", o[233]);
     ui.reg_text("lib.info", txt(o[233], 119, 9, "装入会替换该通道现在编着的全部步骤", 400, 14, 0x8792A0, 255, 0, 0), 'l', 0, 9);
-    o[235] = mk(o[152], 24, 435, 702, 52, 0);
+    o[235] = mk(o[152], 24, 432, 702, 52, 0);
     o[236] = mk(o[235], 0, 0, 176, 52, 0);
     bg(o[236], 0x00559C, 255);
     lv_obj_set_style_radius(o[236], 10, 0);
@@ -7814,7 +7814,7 @@ static void build_Files(lv_obj_t* scr, Ui& ui) {
     o[244] = mk(o[243], 57, 13, 32, 22, 0);
     ui.reg_box("lib.del.t", o[244]);
     ui.reg_text("lib.del.t", txt(o[244], 16, 11, "删除", 600, 16, 0xE5484D, 255, 0, 0), 'c', 16, 11);
-    o[246] = mk(o[0], 8, 655, 1264, 57, 0);
+    o[246] = mk(o[0], 8, 652, 1264, 60, 0);
     bg(o[246], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[246], 10, 0);
     ol(o[246], 0x102A4C, 18, 1);
@@ -7979,7 +7979,7 @@ static void build_Main(lv_obj_t* scr, Ui& ui) {
     im(o[74], 59, 7, "A:assets/img/Main_11_1.png");
     o[76] = mk(o[74], 42, 43, 66, 22, 0);
     txt(o[76], 33, 11, "曲线总览", 600, 16, 0x4F5B67, 255, 0, 0);
-    o[78] = mk(o[0], 8, 140, 628, 69, 1);
+    o[78] = mk(o[0], 8, 140, 628, 72, 1);
     bg(o[78], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[78], 10, 0);
     lv_obj_set_style_clip_corner(o[78], true, 0);
@@ -8013,19 +8013,19 @@ static void build_Main(lv_obj_t* scr, Ui& ui) {
     o[95] = mk(o[92], 364, 1, 184, 19, 0);
     ui.reg_box("main.1.r2", o[95]);
     ui.reg_text("main.1.r2", txt(o[95], 92, 9, "步骤 3 / 5 · 剩余 00:57:00", 400, 15, 0x8792A0, 255, 0, 0), 'r', 184, 9);
-    o[97] = mk(o[78], 0, 65, 628, 4, 0);
+    o[97] = mk(o[78], 0, 68, 628, 4, 0);
     bg(o[97], 0xDCE2E9, 255);
     ui.reg_box("main.1.bar", o[97]);
     o[98] = mk(o[97], 0, 0, 345, 4, 0);
     bg(o[98], 0x00559C, 255);
     ui.reg_box("main.1.fill", o[98]);
-    o[99] = mk(o[0], 8, 216, 628, 296, 1);
+    o[99] = mk(o[0], 8, 220, 628, 290, 1);
     bg(o[99], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[99], 10, 0);
     lv_obj_set_style_clip_corner(o[99], true, 0);
     ol(o[99], 0x102A4C, 18, 1);
     sh(o[99], 0x102A4C, 13, 3, 0, 1, 0);
-    o[100] = mk(o[99], 0, 272, 628, 24, 0);
+    o[100] = mk(o[99], 0, 252, 628, 38, 0);
     bg(o[100], 0xF3F6FA, 255);
     im(o[99], 225, 7, "A:assets/img/Main_14_1.png");
     o[102] = mk(o[99], 28, 24, 146, 60, 0);
@@ -8094,7 +8094,7 @@ static void build_Main(lv_obj_t* scr, Ui& ui) {
     o[137] = mk(o[134], 0, 21, 68, 20, 0);
     ui.reg_box("main.1.stir", o[137]);
     ui.reg_text("main.1.stir", txt(o[137], 34, 10, "300 rpm", 600, 16, 0x00559C, 255, 0, 0), 'l', 0, 10);
-    o[139] = mk(o[0], 8, 519, 628, 193, 0);
+    o[139] = mk(o[0], 8, 518, 628, 194, 0);
     bg(o[139], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[139], 10, 0);
     ol(o[139], 0x102A4C, 18, 1);
@@ -8177,7 +8177,7 @@ static void build_Main(lv_obj_t* scr, Ui& ui) {
     ui.reg_text("main.1.t5", txt(o[196], 28, 16, "+0.0", 600, 25, 0x1D3557, 255, 0, 0), 'r', 55, 16);
     o[198] = mk(o[195], 61, 11, 38, 18, 0);
     txt(o[198], 22, 9, "℃/min", 400, 14, 0x8792A0, 255, 0, 0);
-    o[200] = mk(o[0], 644, 140, 628, 69, 1);
+    o[200] = mk(o[0], 644, 140, 628, 72, 1);
     bg(o[200], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[200], 10, 0);
     lv_obj_set_style_clip_corner(o[200], true, 0);
@@ -8211,19 +8211,19 @@ static void build_Main(lv_obj_t* scr, Ui& ui) {
     o[217] = mk(o[214], 407, 1, 141, 19, 0);
     ui.reg_box("main.2.r2", o[217]);
     ui.reg_text("main.2.r2", txt(o[217], 70, 9, "方案已加载 · 共 3 步", 400, 15, 0x8792A0, 255, 0, 0), 'r', 141, 9);
-    o[219] = mk(o[200], 0, 65, 628, 4, 0);
+    o[219] = mk(o[200], 0, 68, 628, 4, 0);
     bg(o[219], 0xDCE2E9, 255);
     ui.reg_box("main.2.bar", o[219]);
     o[220] = mk(o[219], 0, 0, 7, 4, 0);
     bg(o[220], 0x00559C, 255);
     ui.reg_box("main.2.fill", o[220]);
-    o[221] = mk(o[0], 644, 216, 628, 296, 1);
+    o[221] = mk(o[0], 644, 220, 628, 290, 1);
     bg(o[221], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[221], 10, 0);
     lv_obj_set_style_clip_corner(o[221], true, 0);
     ol(o[221], 0x102A4C, 18, 1);
     sh(o[221], 0x102A4C, 13, 3, 0, 1, 0);
-    o[222] = mk(o[221], 0, 272, 628, 24, 0);
+    o[222] = mk(o[221], 0, 252, 628, 38, 0);
     bg(o[222], 0xF3F6FA, 255);
     im(o[221], 225, 7, "A:assets/img/Main_25_1.png");
     o[224] = mk(o[221], 28, 24, 147, 60, 0);
@@ -8292,7 +8292,7 @@ static void build_Main(lv_obj_t* scr, Ui& ui) {
     o[259] = mk(o[256], 0, 21, 31, 20, 0);
     ui.reg_box("main.2.stir", o[259]);
     ui.reg_text("main.2.stir", txt(o[259], 8, 10, "关", 600, 16, 0x00559C, 255, 0, 0), 'l', 0, 10);
-    o[261] = mk(o[0], 644, 519, 628, 193, 0);
+    o[261] = mk(o[0], 644, 518, 628, 194, 0);
     bg(o[261], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[261], 10, 0);
     ol(o[261], 0x102A4C, 18, 1);
@@ -8538,7 +8538,7 @@ static void build_Scheme(lv_obj_t* scr, Ui& ui) {
     lv_obj_set_style_radius(o[87], LV_RADIUS_CIRCLE, 0);
     ui.reg_box("sc.1.badge", o[87]);
     ui.reg_text("sc.1.badge", txt(o[87], 79, 15, "运行中 · 步骤 3 / 5", 600, 14, 0xFFFFFF, 255, 0, 0), 'r', 143, 15);
-    o[89] = mk(o[78], 24, 58, 1216, 226, 0);
+    o[89] = mk(o[78], 24, 58, 1216, 220, 0);
     ui.reg_box("sc.1.chart", o[89]);
     o[90] = mk(o[0], 8, 430, 1264, 282, 0);
     bg(o[90], 0xFFFFFF, 255);
@@ -8561,7 +8561,7 @@ static void build_Scheme(lv_obj_t* scr, Ui& ui) {
     lv_obj_set_style_radius(o[99], LV_RADIUS_CIRCLE, 0);
     ui.reg_box("sc.2.badge", o[99]);
     ui.reg_text("sc.2.badge", txt(o[99], 79, 15, "运行中 · 步骤 0 / 6", 600, 14, 0xFFFFFF, 255, 0, 0), 'r', 143, 15);
-    o[101] = mk(o[90], 24, 58, 1216, 226, 0);
+    o[101] = mk(o[90], 24, 58, 1216, 220, 0);
     ui.reg_box("sc.2.chart", o[101]);
 }
 
@@ -8731,8 +8731,8 @@ static void build_Trends(lv_obj_t* scr, Ui& ui) {
     bg(o[90], 0x9ADAD2, 255);
     lv_obj_set_style_radius(o[90], LV_RADIUS_CIRCLE, 0);
     txt(o[89], 55, 9, "Tj 通道 2", 400, 14, 0x4F5B67, 255, 0, 0);
-    o[92] = mk(o[78], 12, 68, 1240, 520, 0);
-    o[93] = mk(o[92], 0, 0, 1240, 520, 0);
+    o[92] = mk(o[78], 12, 68, 1240, 496, 0);
+    o[93] = mk(o[92], 0, 0, 1240, 496, 0);
     ui.reg_box("tv.chart", o[93]);
 }
 
@@ -9353,7 +9353,7 @@ static void build_Seq(lv_obj_t* scr, Ui& ui) {
     im(o[86], 90, 7, "A:assets/img/Seq_14_1.png");
     o[88] = mk(o[86], 73, 43, 66, 22, 0);
     txt(o[88], 33, 11, "PID 整定", 600, 16, 0x4F5B67, 255, 0, 0);
-    o[90] = mk(o[0], 8, 140, 1264, 69, 1);
+    o[90] = mk(o[0], 8, 140, 1264, 64, 1);
     bg(o[90], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[90], 10, 0);
     lv_obj_set_style_clip_corner(o[90], true, 0);
@@ -9471,7 +9471,7 @@ static void build_Seq(lv_obj_t* scr, Ui& ui) {
     ui.reg_act(o[140], "seq.end");
     im(o[140], 27, 12, "A:assets/img/Seq_15_1.png");
     txt(o[140], 89, 24, "结束序列", 600, 16, 0xFFFFFF, 255, 0, 0);
-    o[143] = mk(o[0], 8, 216, 1264, 431, 0);
+    o[143] = mk(o[0], 8, 212, 1264, 432, 0);
     bg(o[143], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[143], 10, 0);
     ol(o[143], 0x102A4C, 18, 1);
@@ -9732,7 +9732,7 @@ static void build_Seq(lv_obj_t* scr, Ui& ui) {
     txt(o[264], 9, 15, "+", 400, 30, 0x00559C, 255, 0, 0);
     o[266] = mk(o[262], 86, 66, 32, 22, 0);
     txt(o[266], 16, 11, "添加", 400, 16, 0x00559C, 255, 0, 0);
-    o[268] = mk(o[0], 8, 655, 1264, 57, 0);
+    o[268] = mk(o[0], 8, 652, 1264, 60, 0);
     bg(o[268], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[268], 10, 0);
     ol(o[268], 0x102A4C, 18, 1);
@@ -9938,7 +9938,7 @@ static void build_Seq_2(lv_obj_t* scr, Ui& ui) {
     im(o[86], 90, 7, "A:assets/img/Seq_2_14_1.png");
     o[88] = mk(o[86], 73, 43, 66, 22, 0);
     txt(o[88], 33, 11, "PID 整定", 600, 16, 0x4F5B67, 255, 0, 0);
-    o[90] = mk(o[0], 8, 140, 1264, 69, 1);
+    o[90] = mk(o[0], 8, 140, 1264, 64, 1);
     bg(o[90], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[90], 10, 0);
     lv_obj_set_style_clip_corner(o[90], true, 0);
@@ -10056,7 +10056,7 @@ static void build_Seq_2(lv_obj_t* scr, Ui& ui) {
     ui.reg_act(o[140], "seq.end");
     im(o[140], 27, 12, "A:assets/img/Seq_2_15_1.png");
     txt(o[140], 89, 24, "结束序列", 600, 16, 0xFFFFFF, 255, 0, 0);
-    o[143] = mk(o[0], 8, 216, 1264, 431, 0);
+    o[143] = mk(o[0], 8, 212, 1264, 432, 0);
     bg(o[143], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[143], 10, 0);
     ol(o[143], 0x102A4C, 18, 1);
@@ -10317,7 +10317,7 @@ static void build_Seq_2(lv_obj_t* scr, Ui& ui) {
     txt(o[264], 9, 15, "+", 400, 30, 0x00559C, 255, 0, 0);
     o[266] = mk(o[262], 86, 66, 32, 22, 0);
     txt(o[266], 16, 11, "添加", 400, 16, 0x00559C, 255, 0, 0);
-    o[268] = mk(o[0], 8, 655, 1264, 57, 0);
+    o[268] = mk(o[0], 8, 652, 1264, 60, 0);
     bg(o[268], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[268], 10, 0);
     ol(o[268], 0x102A4C, 18, 1);
@@ -10472,7 +10472,7 @@ static void build_StepDlg(lv_obj_t* scr, Ui& ui) {
 
 static void build_SeqTempPart(lv_obj_t* scr, Ui& ui) {
     static lv_obj_t* o[63];
-    o[0] = mk(scr, 28, 442, 1224, 189, 0);
+    o[0] = mk(scr, 28, 438, 1224, 190, 0);
     bg(o[0], 0xF3F7FC, 255);
     lv_obj_set_style_radius(o[0], 12, 0);
     bd(o[0], 0xC9D6E5, 255, 2, LV_BORDER_SIDE_FULL);
@@ -10584,7 +10584,7 @@ static void build_SeqTempPart(lv_obj_t* scr, Ui& ui) {
     bd(o[52], 0xCFD8E3, 255, 1, LV_BORDER_SIDE_FULL);
     ui.reg_act(o[52], "f:stir:keep");
     txt(o[52], 28, 23, "不变", 400, 15, 0x4F5B67, 255, 0, 0);
-    o[54] = mk(o[0], 18, 143, 1184, 34, 0);
+    o[54] = mk(o[0], 18, 144, 1184, 34, 0);
     o[55] = mk(o[54], 0, 8, 266, 18, 0);
     ui.reg_box("det.tip", o[55]);
     ui.reg_text("det.tip", txt(o[55], 133, 9, "点上面任意一步，这里就换成那一步的参数", 400, 14, 0x8792A0, 255, 0, 0), 'l', 0, 9);
@@ -10605,7 +10605,7 @@ static void build_SeqTempPart(lv_obj_t* scr, Ui& ui) {
 
 static void build_SeqRefluxPart(lv_obj_t* scr, Ui& ui) {
     static lv_obj_t* o[47];
-    o[0] = mk(scr, 28, 442, 1224, 189, 0);
+    o[0] = mk(scr, 28, 438, 1224, 190, 0);
     bg(o[0], 0xF3F7FC, 255);
     lv_obj_set_style_radius(o[0], 12, 0);
     bd(o[0], 0xC9D6E5, 255, 2, LV_BORDER_SIDE_FULL);
@@ -10673,7 +10673,7 @@ static void build_SeqRefluxPart(lv_obj_t* scr, Ui& ui) {
     bd(o[36], 0xCFD8E3, 255, 1, LV_BORDER_SIDE_FULL);
     ui.reg_act(o[36], "f:stir:keep");
     txt(o[36], 28, 23, "不变", 400, 15, 0x4F5B67, 255, 0, 0);
-    o[38] = mk(o[0], 18, 143, 1184, 34, 0);
+    o[38] = mk(o[0], 18, 144, 1184, 34, 0);
     o[39] = mk(o[38], 0, 8, 266, 18, 0);
     ui.reg_box("det.tip", o[39]);
     ui.reg_text("det.tip", txt(o[39], 133, 9, "点上面任意一步，这里就换成那一步的参数", 400, 14, 0x8792A0, 255, 0, 0), 'l', 0, 9);
@@ -10694,7 +10694,7 @@ static void build_SeqRefluxPart(lv_obj_t* scr, Ui& ui) {
 
 static void build_SeqWaitPart(lv_obj_t* scr, Ui& ui) {
     static lv_obj_t* o[27];
-    o[0] = mk(scr, 28, 442, 1224, 189, 0);
+    o[0] = mk(scr, 28, 438, 1224, 190, 0);
     bg(o[0], 0xF3F7FC, 255);
     lv_obj_set_style_radius(o[0], 12, 0);
     bd(o[0], 0xC9D6E5, 255, 2, LV_BORDER_SIDE_FULL);
@@ -10726,7 +10726,7 @@ static void build_SeqWaitPart(lv_obj_t* scr, Ui& ui) {
     ui.reg_text("f.minutes", txt(o[14], 14, 15, "45", 600, 22, 0x1F2A35, 255, 0, 0), 'l', 0, 15);
     o[16] = mk(o[13], 133, 15, 23, 20, 0);
     txt(o[16], 11, 10, "min", 400, 14, 0x8792A0, 255, 0, 0);
-    o[18] = mk(o[0], 18, 143, 1184, 34, 0);
+    o[18] = mk(o[0], 18, 144, 1184, 34, 0);
     o[19] = mk(o[18], 0, 8, 266, 18, 0);
     ui.reg_box("det.tip", o[19]);
     ui.reg_text("det.tip", txt(o[19], 133, 9, "点上面任意一步，这里就换成那一步的参数", 400, 14, 0x8792A0, 255, 0, 0), 'l', 0, 9);
@@ -10747,7 +10747,7 @@ static void build_SeqWaitPart(lv_obj_t* scr, Ui& ui) {
 
 static void build_SeqStirPart(lv_obj_t* scr, Ui& ui) {
     static lv_obj_t* o[27];
-    o[0] = mk(scr, 28, 442, 1224, 189, 0);
+    o[0] = mk(scr, 28, 438, 1224, 190, 0);
     bg(o[0], 0xF3F7FC, 255);
     lv_obj_set_style_radius(o[0], 12, 0);
     bd(o[0], 0xC9D6E5, 255, 2, LV_BORDER_SIDE_FULL);
@@ -10779,7 +10779,7 @@ static void build_SeqStirPart(lv_obj_t* scr, Ui& ui) {
     ui.reg_text("f.stir", txt(o[14], 21, 15, "300", 600, 22, 0x1F2A35, 255, 0, 0), 'l', 0, 15);
     o[16] = mk(o[13], 131, 15, 25, 20, 0);
     txt(o[16], 12, 10, "rpm", 400, 14, 0x8792A0, 255, 0, 0);
-    o[18] = mk(o[0], 18, 143, 1184, 34, 0);
+    o[18] = mk(o[0], 18, 144, 1184, 34, 0);
     o[19] = mk(o[18], 0, 8, 266, 18, 0);
     ui.reg_box("det.tip", o[19]);
     ui.reg_text("det.tip", txt(o[19], 133, 9, "点上面任意一步，这里就换成那一步的参数", 400, 14, 0x8792A0, 255, 0, 0), 'l', 0, 9);
@@ -10800,7 +10800,7 @@ static void build_SeqStirPart(lv_obj_t* scr, Ui& ui) {
 
 static void build_SeqDosePart(lv_obj_t* scr, Ui& ui) {
     static lv_obj_t* o[77];
-    o[0] = mk(scr, 28, 442, 1224, 189, 0);
+    o[0] = mk(scr, 28, 438, 1224, 190, 0);
     bg(o[0], 0xF3F7FC, 255);
     lv_obj_set_style_radius(o[0], 12, 0);
     bd(o[0], 0xC9D6E5, 255, 2, LV_BORDER_SIDE_FULL);
@@ -10946,7 +10946,7 @@ static void build_SeqDosePart(lv_obj_t* scr, Ui& ui) {
     lv_obj_set_style_radius(o[67], LV_RADIUS_CIRCLE, 0);
     sh(o[67], 0x000000, 71, 3, 0, 1, 0);
     ui.reg_box("sw.sync.k", o[67]);
-    o[68] = mk(o[0], 18, 143, 1184, 34, 0);
+    o[68] = mk(o[0], 18, 144, 1184, 34, 0);
     o[69] = mk(o[68], 0, 8, 266, 18, 0);
     ui.reg_box("det.tip", o[69]);
     ui.reg_text("det.tip", txt(o[69], 133, 9, "点上面任意一步，这里就换成那一步的参数", 400, 14, 0x8792A0, 255, 0, 0), 'l', 0, 9);
@@ -10967,7 +10967,7 @@ static void build_SeqDosePart(lv_obj_t* scr, Ui& ui) {
 
 static void build_SeqPhPart(lv_obj_t* scr, Ui& ui) {
     static lv_obj_t* o[86];
-    o[0] = mk(scr, 28, 442, 1224, 189, 0);
+    o[0] = mk(scr, 28, 438, 1224, 190, 0);
     bg(o[0], 0xF3F7FC, 255);
     lv_obj_set_style_radius(o[0], 12, 0);
     bd(o[0], 0xC9D6E5, 255, 2, LV_BORDER_SIDE_FULL);
@@ -11126,7 +11126,7 @@ static void build_SeqPhPart(lv_obj_t* scr, Ui& ui) {
     ui.reg_text("f.hold", txt(o[73], 14, 15, "60", 600, 22, 0x1F2A35, 255, 0, 0), 'l', 0, 15);
     o[75] = mk(o[72], 67, 15, 23, 20, 0);
     txt(o[75], 11, 10, "min", 400, 14, 0x8792A0, 255, 0, 0);
-    o[77] = mk(o[0], 18, 143, 1184, 34, 0);
+    o[77] = mk(o[0], 18, 144, 1184, 34, 0);
     o[78] = mk(o[77], 0, 8, 266, 18, 0);
     ui.reg_box("det.tip", o[78]);
     ui.reg_text("det.tip", txt(o[78], 133, 9, "点上面任意一步，这里就换成那一步的参数", 400, 14, 0x8792A0, 255, 0, 0), 'l', 0, 9);
@@ -11147,7 +11147,7 @@ static void build_SeqPhPart(lv_obj_t* scr, Ui& ui) {
 
 static void build_SeqCryPart(lv_obj_t* scr, Ui& ui) {
     static lv_obj_t* o[42];
-    o[0] = mk(scr, 28, 442, 1224, 189, 0);
+    o[0] = mk(scr, 28, 438, 1224, 190, 0);
     bg(o[0], 0xF3F7FC, 255);
     lv_obj_set_style_radius(o[0], 12, 0);
     bd(o[0], 0xC9D6E5, 255, 2, LV_BORDER_SIDE_FULL);
@@ -11203,7 +11203,7 @@ static void build_SeqCryPart(lv_obj_t* scr, Ui& ui) {
     ui.reg_act(o[30], "det:cry");
     im(o[30], 16, 10, "A:assets/img/SeqCryPart_0_1.png");
     txt(o[30], 78, 22, "编辑曲线", 600, 16, 0x00559C, 255, 0, 0);
-    o[33] = mk(o[0], 18, 143, 1184, 34, 0);
+    o[33] = mk(o[0], 18, 144, 1184, 34, 0);
     o[34] = mk(o[33], 0, 8, 266, 18, 0);
     ui.reg_box("det.tip", o[34]);
     ui.reg_text("det.tip", txt(o[34], 133, 9, "点上面任意一步，这里就换成那一步的参数", 400, 14, 0x8792A0, 255, 0, 0), 'l', 0, 9);
@@ -11224,7 +11224,7 @@ static void build_SeqCryPart(lv_obj_t* scr, Ui& ui) {
 
 static void build_SeqPausePart(lv_obj_t* scr, Ui& ui) {
     static lv_obj_t* o[25];
-    o[0] = mk(scr, 28, 442, 1224, 189, 0);
+    o[0] = mk(scr, 28, 438, 1224, 190, 0);
     bg(o[0], 0xF3F7FC, 255);
     lv_obj_set_style_radius(o[0], 12, 0);
     bd(o[0], 0xC9D6E5, 255, 2, LV_BORDER_SIDE_FULL);
@@ -11253,7 +11253,7 @@ static void build_SeqPausePart(lv_obj_t* scr, Ui& ui) {
     o[14] = mk(o[13], 12, 8, 122, 28, 0);
     ui.reg_box("f.msg", o[14]);
     ui.reg_text("f.msg", txt(o[14], 61, 14, "请确认后继续", 600, 20, 0x000000, 216, 0, 0), 'l', 0, 14);
-    o[16] = mk(o[0], 18, 143, 1184, 34, 0);
+    o[16] = mk(o[0], 18, 144, 1184, 34, 0);
     o[17] = mk(o[16], 0, 8, 266, 18, 0);
     ui.reg_box("det.tip", o[17]);
     ui.reg_text("det.tip", txt(o[17], 133, 9, "点上面任意一步，这里就换成那一步的参数", 400, 14, 0x8792A0, 255, 0, 0), 'l', 0, 9);
@@ -11274,7 +11274,7 @@ static void build_SeqPausePart(lv_obj_t* scr, Ui& ui) {
 
 static void build_CryViewPart(lv_obj_t* scr, Ui& ui) {
     static lv_obj_t* o[255];
-    o[0] = mk(scr, 339, 277, 933, 305, 0);
+    o[0] = mk(scr, 339, 276, 933, 312, 0);
     bg(o[0], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[0], 10, 0);
     ol(o[0], 0x102A4C, 18, 1);
@@ -11639,7 +11639,7 @@ static void build_CryViewPart(lv_obj_t* scr, Ui& ui) {
     o[191] = mk(o[0], 560, 54, 300, 150, 0);
     o[192] = mk(o[191], 0, 0, 300, 150, 0);
     ui.reg_box("cv.chart", o[192]);
-    o[193] = mk(o[0], 656, 227, 257, 64, 0);
+    o[193] = mk(o[0], 656, 234, 257, 64, 0);
     o[194] = mk(o[193], 0, 10, 110, 44, 0);
     bg(o[194], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[194], 10, 0);
@@ -11663,7 +11663,7 @@ static void build_CryViewPart(lv_obj_t* scr, Ui& ui) {
     o[202] = mk(o[199], 0, 25, 55, 18, 0);
     ui.reg_box("ctl.run.t2", o[202]);
     ui.reg_text("ctl.run.t2", txt(o[202], 26, 9, "点按停止", 400, 13, 0x8792A0, 255, 0, 0), 'c', 26, 9);
-    o[204] = mk(scr, 339, 590, 933, 122, 0);
+    o[204] = mk(scr, 339, 596, 933, 116, 0);
     bg(o[204], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[204], 10, 0);
     ol(o[204], 0x102A4C, 18, 1);
@@ -11674,7 +11674,7 @@ static void build_CryViewPart(lv_obj_t* scr, Ui& ui) {
     o[208] = mk(o[205], 51, 13, 348, 18, 0);
     ui.reg_box("ctl.stir.status2", o[208]);
     ui.reg_text("ctl.stir.status2", txt(o[208], 174, 9, "桨式 · 50–1000 rpm　·　实测 300 rpm · 电流 0.82 A", 400, 14, 0x8792A0, 255, 0, 0), 'l', 0, 9);
-    o[210] = mk(o[204], 24, 46, 889, 72, 0);
+    o[210] = mk(o[204], 24, 40, 889, 72, 0);
     o[211] = mk(o[210], 0, 0, 160, 72, 0);
     ui.reg_box("ctl.stir_set.box", o[211]);
     o[212] = mk(o[211], 0, 0, 160, 18, 0);
@@ -11756,7 +11756,7 @@ static void build_CryViewPart(lv_obj_t* scr, Ui& ui) {
 
 static void build_CryEditPart(lv_obj_t* scr, Ui& ui) {
     static lv_obj_t* o[232];
-    o[0] = mk(scr, 339, 277, 933, 435, 0);
+    o[0] = mk(scr, 339, 276, 933, 436, 0);
     bg(o[0], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[0], 10, 0);
     ol(o[0], 0x102A4C, 18, 1);
@@ -12165,7 +12165,7 @@ static void build_CryEditPart(lv_obj_t* scr, Ui& ui) {
     o[222] = mk(o[0], 606, 100, 250, 230, 0);
     o[223] = mk(o[222], 0, 0, 250, 230, 0);
     ui.reg_box("ce.chart", o[223]);
-    o[224] = mk(o[0], 679, 371, 234, 48, 0);
+    o[224] = mk(o[0], 679, 372, 234, 48, 0);
     o[225] = mk(o[224], 0, 0, 104, 48, 0);
     bg(o[225], 0xFFFFFF, 255);
     lv_obj_set_style_radius(o[225], 10, 0);
@@ -12177,7 +12177,7 @@ static void build_CryEditPart(lv_obj_t* scr, Ui& ui) {
     lv_obj_set_style_radius(o[227], 10, 0);
     ui.reg_act(o[227], "ce:ok");
     txt(o[227], 60, 24, "完成", 600, 16, 0xFFFFFF, 255, 0, 0);
-    o[229] = mk(o[0], 24, 399, 338, 16, 0);
+    o[229] = mk(o[0], 24, 400, 338, 16, 0);
     txt(o[229], 169, 8, "编辑时搅拌卡收起，搅拌照常运行；点「完成」回到上一页", 400, 13, 0x8792A0, 255, 0, 0);
 }
 
