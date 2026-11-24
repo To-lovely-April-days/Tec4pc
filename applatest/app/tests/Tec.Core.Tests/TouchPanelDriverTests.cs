@@ -429,10 +429,11 @@ public sealed class TouchPanelDriverTests
     /// <summary>
     /// 设备库是一张白名单（Tec.App 的 BenchViewModel.LibraryIds），不在名单里的驱动注册了也不出现。
     /// 2026-11-24 踩过：新主机注册了但没加进名单，用户在设备库里找不到。
+    /// 2026-11-25 又反过来：直连的那些要从名单里撤掉，但驱动不能删（老台面还要能打开）。
     /// Tec.App 是界面工程、测试工程不引它，所以这里直接看那段源码。
     /// </summary>
     [Fact]
-    public void 设备库名单里有这两台新主机()
+    public void 设备库名单里只剩这一台主机()
     {
         var f = new DirectoryInfo(AppContext.BaseDirectory);
         while (f is not null && !File.Exists(Path.Combine(f.FullName, "Tec.Studio.sln"))) f = f.Parent;
@@ -443,7 +444,10 @@ public sealed class TouchPanelDriverTests
         var list = text[text.IndexOf("LibraryIds =", StringComparison.Ordinal)..];
         list = list[..list.IndexOf("};", StringComparison.Ordinal)];
         Assert.Contains("TouchPanelDriver.DriverId", list);
-        // 直连那台从库里撤了（用户 2026-11-25：都带触摸屏），驱动还注册着好让老台面能打开
-        Assert.DoesNotContain("DualStation.DualStationDriver.DriverId", list);
+        // 直连的那些全从库里撤了（用户 2026-11-25：都带触摸屏，它们现在接在触摸屏上）。
+        // 驱动还注册着，好让老台面能打开——所以这里查的是「库里有没有」，不是「注册没注册」
+        foreach (var gone in new[] { "DualStation.DualStationDriver.DriverId", "YudianTrProbeDriver.DriverId",
+                                     "AqmdStirrerDriver.DriverId", "BhtPhProbeDriver.DriverId", "FeedSystemDriver.DriverId" })
+            Assert.DoesNotContain(gone, list);
     }
 }

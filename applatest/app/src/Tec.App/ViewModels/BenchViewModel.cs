@@ -1354,18 +1354,11 @@ public sealed class BenchViewModel : ViewModelBase
     /// </summary>
     private static readonly string[] LibraryIds =
     {
-        // 【本地改动】主机只有这一台了（用户 2026-11-25：所有机器都带触摸屏，不再有直连的机型）。
-        // 原来那台直连的（DualStationDriver）驱动还注册着、老台面还能打开，但库里不再有，拖不出新的
-        Tec.Drivers.TouchPanel.TouchPanelDriver.DriverId,
-        Tec.Drivers.DualStation.YudianTrProbeDriver.DriverId,
-        // 【本地改动】宇电 J4 那支「pH 玻璃电极」从库里撤了（用户 2026-11-09 定的：现场 pH 是下面那支数字电极，J4 模块没装）；
-        // 驱动照旧注册，老台面上摆过的还能开，只是库里不再有、拖不出新的
-        // 【本地改动】搅拌电机驱动器（爱控 AQMD2408BLS-M）：真机第四件，一个工位一台
-        Tec.Drivers.Aqmd.AqmdStirrerDriver.DriverId,
-        // 【本地改动】数字 pH 电极（BHT-DM100，自带变送器直接出 pH）：真机第五件，一个工位一支
-        Tec.Drivers.DualStation.BhtPhProbeDriver.DriverId,
-        // 【本地改动】两液一气进料系统（霍桐 HTLAB）：接在工位加料口上，管子画到釜盖
-        Tec.Drivers.Htlab.FeedSystemDriver.DriverId
+        // 【本地改动】库里只剩这一台（用户 2026-11-25：所有机器都带触摸屏，不再有直连的机型）。
+        // 探头、搅拌、pH 电极、进料系统现在都接在触摸屏上、由触摸屏管，工作站不再开它们的串口——
+        // 留在库里只会被误摆上去跟触摸屏抢串口，所以一并撤掉。
+        // 撤掉的只是「库里看不看得见」：这些驱动照旧注册（见 Workspace.Boot），老台面摆过的还能打开、还能跑
+        Tec.Drivers.TouchPanel.TouchPanelDriver.DriverId
     };
 
     public void Reload()
