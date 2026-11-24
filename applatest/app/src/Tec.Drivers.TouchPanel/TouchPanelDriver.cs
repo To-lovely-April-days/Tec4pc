@@ -31,7 +31,7 @@ public sealed class TouchPanelDriver : IDeviceDriver
     {
         ChannelsPerDevice = 2,
         SimulatorIncluded = false,
-        IconKey = "reactor",
+        IconKey = "rd105",      // 和旧版直连那台同一张图：物理上就是同一台主机，台面也是按这个键认「主机」的（BenchDock.IsHost）
         Description = "带触摸屏的机型：设备接在触摸屏上，工作站经网络连触摸屏。串口参数在触摸屏的「设置 → 通信设置」里配，这里只填触摸屏的地址和端口。",
         Capabilities = new[] { nameof(ITemperatureControl), nameof(IRefluxControl), nameof(IStirrer), nameof(IDosing), nameof(IScalarSensor) }
     };

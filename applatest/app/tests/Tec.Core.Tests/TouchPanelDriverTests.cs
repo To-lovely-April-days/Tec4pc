@@ -461,4 +461,41 @@ public sealed class TouchPanelDriverTests
         var again = await drv.ProbeAsync(cn, CancellationToken.None);         // 第二次：已经在跑，直接连
         Assert.True(again.Success, again.Message);
     }
+
+    /// <summary>
+    /// 台面摆得下、设备库看得见：这两台新主机要和旧版直连那台长一个样（同一张图、两个工位、带控温能力）。
+    /// 2026-11-24 踩过：图标键写成了 reactor，既没有这张图（库里是个空白格），
+    /// 台面又是按 rd105 这个键认「主机」的（BenchDock.IsHost），摆上去不算主机。
+    /// </summary>
+    [Fact]
+    public void 两台新主机_和旧版直连长一个样()
+    {
+        var old = new Tec.Drivers.DualStation.DualStationDriver().Info;
+        foreach (var info in new[] { new TouchPanelDriver().Info, new LocalCoreDriver().Info })
+        {
+            Assert.Equal(old.IconKey, info.IconKey);                         // 同一张图，也是台面认「主机」的那个键
+            Assert.Equal(2, info.ChannelsPerDevice);
+            Assert.Contains(nameof(ITemperatureControl), info.Capabilities);  // 设备库按这个分到「反应与控温」那一类
+        }
+    }
+
+    /// <summary>
+    /// 设备库是一张白名单（Tec.App 的 BenchViewModel.LibraryIds），不在名单里的驱动注册了也不出现。
+    /// 2026-11-24 踩过：两台新主机注册了但没加进名单，用户在设备库里找不到。
+    /// Tec.App 是界面工程、测试工程不引它，所以这里直接看那段源码。
+    /// </summary>
+    [Fact]
+    public void 设备库名单里有这两台新主机()
+    {
+        var f = new DirectoryInfo(AppContext.BaseDirectory);
+        while (f is not null && !File.Exists(Path.Combine(f.FullName, "Tec.Studio.sln"))) f = f.Parent;
+        if (f is null) return;                                               // 不是从仓库里跑的：跳过
+        var src = Path.Combine(f.FullName, "src", "Tec.App", "ViewModels", "BenchViewModel.cs");
+        if (!File.Exists(src)) return;
+        var text = File.ReadAllText(src);
+        var list = text[text.IndexOf("LibraryIds =", StringComparison.Ordinal)..];
+        list = list[..list.IndexOf("};", StringComparison.Ordinal)];
+        Assert.Contains("TouchPanelDriver.DriverId", list);
+        Assert.Contains("LocalCoreDriver.DriverId", list);
+    }
 }

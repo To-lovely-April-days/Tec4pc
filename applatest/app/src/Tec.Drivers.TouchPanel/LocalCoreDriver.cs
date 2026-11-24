@@ -28,7 +28,7 @@ public sealed class LocalCoreDriver : IDeviceDriver
     {
         ChannelsPerDevice = 2,
         SimulatorIncluded = false,
-        IconKey = "reactor",
+        IconKey = "rd105",      // 和旧版直连那台同一张图：物理上就是同一台主机，台面也是按这个键认「主机」的（BenchDock.IsHost）
         Description = "不带触摸屏的机型：串口线插在这台电脑上，由电脑自己跑控制核心去连设备。串口在「手动控制面板 → 设置 → 通信设置」里配。",
         Capabilities = new[] { nameof(ITemperatureControl), nameof(IRefluxControl), nameof(IStirrer), nameof(IDosing), nameof(IScalarSensor) }
     };
