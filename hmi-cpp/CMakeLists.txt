@@ -49,6 +49,8 @@ endif()
 
 # 控制核心主程序
 add_executable(tec_core apps/tec_core/main.cpp)
+# 出厂增益表拷到程序旁边：PC 工作站启动本机控制核心时，第一次从这里拷一份到数据目录里用
+add_custom_command(TARGET tec_core POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/testdata/gain-table-run1110.csv $<TARGET_FILE_DIR:tec_core>/gain-table.csv)
 target_link_libraries(tec_core PRIVATE tec_core_lib)
 
 # 界面程序。LVGL 整个源码目录编成一个库（用到哪些部件由 ui/lv_conf.h 定）；

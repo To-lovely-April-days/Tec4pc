@@ -93,6 +93,13 @@ public partial class BenchView : UserControl
     private void OnOpenHmi(object? sender, RoutedEventArgs e)
     {
         if (Vm is not { Selected: { } sel } vm || !vm.IsReactor) return;
+        // 【本地改动】带触摸屏 / 不带触摸屏这两种机型弹的是新界面（hmi-cpp 的 tec_hmi，一个单独的程序），让它连那台机器的控制核心；
+        // 用户 2026-11-24：不管是不是触摸屏，都应该是这个新界面。只有旧版直连的主机还开原来那扇窗
+        if (Tec.Drivers.TouchPanel.LocalPrograms.HmiEndpointOf(sel.Device.DriverId, sel.Device.Connection) is { } ep)
+        {
+            vm.ShowHint(Tec.Drivers.TouchPanel.LocalPrograms.StartHmi(ep.Host, ep.Port));
+            return;
+        }
         HmiWindow.Open(vm.Ws, sel.Id, sel.Title, sel.Channels.OrderBy(x => x).ToArray());
     }
 

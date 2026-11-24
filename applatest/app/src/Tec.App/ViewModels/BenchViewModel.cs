@@ -427,6 +427,8 @@ public sealed class BenchViewModel : ViewModelBase
     }
 
     public bool HasProbeResult => _probeResult.Length > 0;
+    /// <summary>【本地改动】在「连接结果」那一行显示一句话（新界面没打开时说原因）；空串就是清掉。</summary>
+    public void ShowHint(string text) => ProbeResult = text;
 
     public bool HasSelection => _selected is not null;
     /// <summary>空台面时画布上给一句提示，而不是一片空白。</summary>

@@ -125,9 +125,10 @@ public sealed class DualStationDriver : IDeviceDriver
     /// <summary>测试用的链路工厂：两条串口全换成假设备，整机逻辑不插硬件就能回归。</summary>
     public Func<ParameterSet, DuoLinks> LinksFactory { get; set; } = DuoLinks.Serial;
 
-    // 【本地改动】名字加「（不带触摸屏）」（用户 2026-11-24 定的叫法）：同一台主机在设备库里有两个版本——
-    // 不带触摸屏的是这台，工作站直接连串口；带触摸屏的是 Tec.Drivers.TouchPanel 里那台，工作站经网络连触摸屏
-    public DriverInfo Info { get; } = new(DriverId, "双工位反应主机（不带触摸屏）", "光测未来 + 艾莫迅", "1.0.0")
+    // 【本地改动】名字叫「（旧版直连）」（用户 2026-11-24）：现在带不带触摸屏都由控制核心 tec_core 控温、都用新界面——
+    // 带触摸屏的是 Tec.Drivers.TouchPanel 的 TouchPanelDriver，不带触摸屏的是那边的 LocalCoreDriver（PC 自己跑控制核心）。
+    // 这台是原来工作站自己开串口、自己控温的做法，代码留着没删（用户说过不能删），老台面文件照样能开，只是名字上分清楚
+    public DriverInfo Info { get; } = new(DriverId, "双工位反应主机（旧版直连）", "光测未来 + 艾莫迅", "1.0.0")
     {
         ChannelsPerDevice = 2,
         SimulatorIncluded = false,

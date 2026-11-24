@@ -158,7 +158,8 @@ public sealed class TouchPanelDriverTests
         Assert.Equal(2, drv.Info.ChannelsPerDevice);
         // 设备库里同一台主机两个版本，名字要一眼分得出（用户 2026-11-24 定的叫法）
         Assert.Equal("双工位反应主机（带触摸屏）", drv.Info.Name);
-        Assert.Equal("双工位反应主机（不带触摸屏）", new Tec.Drivers.DualStation.DualStationDriver().Info.Name);
+        Assert.Equal("双工位反应主机（不带触摸屏）", new LocalCoreDriver().Info.Name);
+        Assert.Equal("双工位反应主机（旧版直连）", new Tec.Drivers.DualStation.DualStationDriver().Info.Name);
         var cn = new ParameterSet().FillDefaults(drv.ConnectionSchema);
         Assert.Equal(5020, cn.Int(TouchPanelDriver.Fields.Port));
         Assert.Equal(2, cn.Count);                                           // 没有任何串口参数：串口在触摸屏上配
@@ -393,5 +394,71 @@ public sealed class TouchPanelDriverTests
             Assert.Contains(samples, x => x is { Channel: 4, Tag: "Tr", Quality: Quality.Good });
         }
         await s.StopAsync(CancellationToken.None);
+    }
+
+    // ── 不带触摸屏的机型：PC 自己跑控制核心（LocalCoreDriver）──
+
+    [Fact]
+    public async Task 不带触摸屏_本机核心已经在跑_直接连上不再启动()
+    {
+        await using var panel = new FakePanel();
+        var old = LocalPrograms.DirOverride;
+        LocalPrograms.DirOverride = Path.Combine(Path.GetTempPath(), "tec-no-such-dir-" + Guid.NewGuid().ToString("N"));      // 目录里什么程序都没有：真去启动就会报找不到
+        try
+        {
+            var drv = new LocalCoreDriver();
+            var cn = new ParameterSet { [LocalCoreDriver.Fields.Port] = panel.Port };
+            var probe = await drv.ProbeAsync(cn, CancellationToken.None);
+            Assert.True(probe.Success, probe.Message);
+            Assert.Contains("本机控制核心", probe.Message);
+            Assert.DoesNotContain("触摸屏", probe.Message);                   // 这台没有触摸屏，话里不能出现这三个字
+            Assert.Equal(1, new ParameterSet().FillDefaults(drv.ConnectionSchema).Count);      // 只有一个端口，没有串口参数
+        }
+        finally { LocalPrograms.DirOverride = old; }
+    }
+
+    [Fact]
+    public async Task 不带触摸屏_核心没在跑也没装程序_照实说缺什么()
+    {
+        var old = LocalPrograms.DirOverride;
+        LocalPrograms.DirOverride = Path.Combine(Path.GetTempPath(), "tec-no-such-dir-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            // 找一个现在没人听的端口
+            var l = new TcpListener(IPAddress.Loopback, 0); l.Start(); var port = ((IPEndPoint)l.LocalEndpoint).Port; l.Stop();
+            var drv = new LocalCoreDriver();
+            var probe = await drv.ProbeAsync(new ParameterSet { [LocalCoreDriver.Fields.Port] = port }, CancellationToken.None);
+            Assert.False(probe.Success);
+            Assert.Contains("没找到控制核心程序", probe.Message);
+            Assert.Contains("没找到界面程序", LocalPrograms.StartHmi("127.0.0.1", port));
+        }
+        finally { LocalPrograms.DirOverride = old; }
+    }
+
+    [Fact]
+    public void 手动控制面板_两种新机型开新界面_旧版直连还是老面板()
+    {
+        var panel = LocalPrograms.HmiEndpointOf(TouchPanelDriver.DriverId, new ParameterSet { [TouchPanelDriver.Fields.Host] = " 192.168.1.50 ", [TouchPanelDriver.Fields.Port] = 5021 });
+        Assert.Equal(("192.168.1.50", 5021), panel);
+        Assert.Equal(("127.0.0.1", 5020), LocalPrograms.HmiEndpointOf(LocalCoreDriver.DriverId, new ParameterSet()));
+        Assert.Null(LocalPrograms.HmiEndpointOf(Tec.Drivers.DualStation.DualStationDriver.DriverId, new ParameterSet()));
+    }
+
+    /// <summary>
+    /// 真的把控制核心启动起来连一遍。平时不跑：设环境变量 TEC_HMI_DIR 指到放着 tec_core 和 gain-table.csv 的目录才跑。
+    /// 启动的那个控制核心不会自己退（设计如此），跑完要手动把它停掉。
+    /// </summary>
+    [Fact]
+    public async Task 不带触摸屏_真的启动本机控制核心()
+    {
+        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("TEC_HMI_DIR"))) return;
+        var l = new TcpListener(IPAddress.Loopback, 0); l.Start(); var port = ((IPEndPoint)l.LocalEndpoint).Port; l.Stop();
+        var drv = new LocalCoreDriver();
+        var cn = new ParameterSet { [LocalCoreDriver.Fields.Port] = port };
+        var probe = await drv.ProbeAsync(cn, CancellationToken.None);
+        Assert.True(probe.Success, probe.Message);
+        Assert.True(File.Exists(Path.Combine(LocalPrograms.CoreDataDir, "gain-table.csv")));
+        var again = await drv.ProbeAsync(cn, CancellationToken.None);         // 第二次：已经在跑，直接连
+        Assert.True(again.Success, again.Message);
     }
 }
