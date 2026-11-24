@@ -282,9 +282,6 @@ public sealed class Workspace : IHmiHost
         // 【本地改动】触摸屏主机（网络，2026-11-24）：带触摸屏的机型，设备接在触摸屏上，工作站经 TCP 连触摸屏、不开串口。
         // 和上面那几台直连设备并存（用户定的：没买触摸屏的客户照旧直连）；同一个台面上两种不要混着摆——串口已经被触摸屏占着
         Drivers.RegisterBuiltin(new Tec.Drivers.TouchPanel.TouchPanelDriver());
-        // 【本地改动】不带触摸屏的机型（2026-11-24）：PC 自己跑一份控制核心去连串口，工作站经本机网络连它——
-        // 这样带不带触摸屏都是同一套控温、同一个新界面（用户定的）。原来直连的那台改名「旧版直连」，没删
-        Drivers.RegisterBuiltin(new Tec.Drivers.TouchPanel.LocalCoreDriver());
         // 第三方驱动包从 drivers/ 目录进
         Drivers.Discover(Path.Combine(AppContext.BaseDirectory, "drivers"));
         Drivers.LoadAll();

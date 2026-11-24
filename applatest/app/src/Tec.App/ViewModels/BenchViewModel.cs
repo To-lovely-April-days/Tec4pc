@@ -1354,13 +1354,9 @@ public sealed class BenchViewModel : ViewModelBase
     /// </summary>
     private static readonly string[] LibraryIds =
     {
-        // 【本地改动】同一台双工位主机现在有三种连法（用户 2026-11-24：不管是不是触摸屏，手动控制面板都要是新界面）：
-        //   带触摸屏    设备接在触摸屏上，工作站经网络连触摸屏
-        //   不带触摸屏  串口线插在这台电脑上，电脑自己跑控制核心去连
-        //   旧版直连    原来的做法（工作站自己开串口控温），留着当退路；新界面那条路在真机上站稳以后可以从库里撤掉
+        // 【本地改动】主机只有这一台了（用户 2026-11-25：所有机器都带触摸屏，不再有直连的机型）。
+        // 原来那台直连的（DualStationDriver）驱动还注册着、老台面还能打开，但库里不再有，拖不出新的
         Tec.Drivers.TouchPanel.TouchPanelDriver.DriverId,
-        Tec.Drivers.TouchPanel.LocalCoreDriver.DriverId,
-        Tec.Drivers.DualStation.DualStationDriver.DriverId,
         Tec.Drivers.DualStation.YudianTrProbeDriver.DriverId,
         // 【本地改动】宇电 J4 那支「pH 玻璃电极」从库里撤了（用户 2026-11-09 定的：现场 pH 是下面那支数字电极，J4 模块没装）；
         // 驱动照旧注册，老台面上摆过的还能开，只是库里不再有、拖不出新的

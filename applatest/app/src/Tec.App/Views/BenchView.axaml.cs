@@ -97,7 +97,7 @@ public partial class BenchView : UserControl
         // 触摸屏上跑的那套界面被编成一个库，装进工作站自己的窗口里（见 NativePanelView）。
         // 用户 2026-11-24：「要能做到控制面板还原」，同一份代码渲染，两边不会走样。
         // 只有旧版直连的主机还开原来那扇窗（它没有控制核心可连）
-        if (Tec.Drivers.TouchPanel.LocalPrograms.HmiEndpointOf(sel.Device.DriverId, sel.Device.Connection) is { } ep)
+        if (Tec.Drivers.TouchPanel.TouchPanelDriver.PanelEndpointOf(sel.Device.DriverId, sel.Device.Connection) is { } ep)
         {
             // 进去先看 A 孔（面板自己的 1 号工位），屏上也是这个落点
             vm.ShowHint(PanelWindow.Open(sel.Title, ep.Host, ep.Port, 1));

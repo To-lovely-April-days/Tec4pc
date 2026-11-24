@@ -4,11 +4,11 @@ using Tec.Driver.Abi;
 namespace Tec.Drivers.TouchPanel;
 
 /// <summary>
-/// 双工位反应主机（带触摸屏）。给买了触摸屏的客户用：设备都接在触摸屏上，由触摸屏自己控温、自己把着安全，
-/// 工作站不开任何串口，只经网络连过去看数据、下命令。
+/// 双工位反应主机。机器自带触摸屏，设备都接在触摸屏上，由触摸屏自己控温、跑序列、把着安全；
+/// 工作站不开任何串口，只经网络连过去看数据、下命令（用户 2026-11-25 定的：所有机器都带触摸屏，不再有直连的机型）。
 ///
-/// 没有触摸屏的客户仍旧用原来那几台直连串口的设备（双工位反应主机、探头、搅拌、进料系统）——两种连法并存
-/// （用户 2026-11-24 定的）。**同一个台面上两种不能混着摆**：串口已经被触摸屏占着，工作站再去开会抢口。
+/// 原来那套「工作站自己开串口控温」的驱动（DualStationDriver）代码还在、还能打开老台面，但设备库里不再有，
+/// 拖不出新的。**台面上有了这台，就不要再摆探头、搅拌、进料那几台直连设备**：串口已经被触摸屏占着，工作站再去开会抢口。
 ///
 /// 对上面它就是一台两个工位的主机，每个工位给出控温、蒸回流、搅拌、加料、pH 这几样能力；
 /// 配方里的温控 / 搅拌 / 加料步骤由它认领，执行时一步一步把命令发给触摸屏（配方还是工作站自己在跑）。
@@ -26,13 +26,13 @@ public sealed class TouchPanelDriver : IDeviceDriver
     public const string TagTr = "Tr", TagTj = "Tj", TagDt = "dT", TagTset = "Tset", TagDuty = "duty", TagTjSet = "Tjset",
                         TagPh = "pH", TagRpm = "rpm", TagVol = "vol";
 
-    // 名字是用户 2026-11-24 定的：设备库里同一台主机两个版本，「（带触摸屏）」是这台，「（不带触摸屏）」是直连串口的 DualStationDriver
-    public DriverInfo Info { get; } = new(DriverId, "双工位反应主机（带触摸屏）", "HTLAB", "1.0.0")
+    // 设备库里只有这一台主机了（用户 2026-11-25：都带触摸屏），所以名字不用再加后缀
+    public DriverInfo Info { get; } = new(DriverId, "双工位反应主机", "HTLAB", "1.0.0")
     {
         ChannelsPerDevice = 2,
         SimulatorIncluded = false,
         IconKey = "rd105",      // 和旧版直连那台同一张图：物理上就是同一台主机，台面也是按这个键认「主机」的（BenchDock.IsHost）
-        Description = "带触摸屏的机型：设备接在触摸屏上，工作站经网络连触摸屏。串口参数在触摸屏的「设置 → 通信设置」里配，这里只填触摸屏的地址和端口。",
+        Description = "设备接在机器自带的触摸屏上，工作站经网络连触摸屏。串口参数在触摸屏的「设置 → 通信设置」里配，这里只填触摸屏的地址和端口。",
         Capabilities = new[] { nameof(ITemperatureControl), nameof(IRefluxControl), nameof(IStirrer), nameof(IDosing), nameof(IScalarSensor) }
     };
 
@@ -84,4 +84,10 @@ public sealed class TouchPanelDriver : IDeviceDriver
 
     private static PanelClient ClientOf(ParameterSet connection)
         => new(connection.Str(Fields.Host, "127.0.0.1").Trim(), connection.Int(Fields.Port, 5020));
+
+    /// <summary>
+    /// 这台设备的「手动控制面板」该连哪里。不是这个机型就回 null（老台面上那台直连的，还开原来那扇窗）。
+    /// </summary>
+    public static (string Host, int Port)? PanelEndpointOf(string driverId, ParameterSet connection)
+        => driverId == DriverId ? (connection.Str(Fields.Host, "127.0.0.1").Trim(), connection.Int(Fields.Port, 5020)) : null;
 }
