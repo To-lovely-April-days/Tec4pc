@@ -45,12 +45,21 @@ class TcpClient {
 public:
     ~TcpClient();
     bool connect(const std::string& host, int port, int timeout_ms = 2000);
+    /// 不等的连接：调一次只往前走一步，立刻返回。回 true = 已经连上可以收发了。
+    /// 界面要用这个：界面嵌在 PC 工作站里跑，机器关着的时候一等就是整个工作站卡住。
+    /// 连失败了会自己歇一会儿再试，不用调用方管
+    bool connect_async(const std::string& host, int port);
     bool request(const std::string& line, std::string& reply, int timeout_ms = 3000);
     void close();
 
 private:
+    bool finish_connect();
+
     long long sock_ = -1;
     std::string buf_;
+    bool pending_ = false;          // 正在连、还没有结果
+    long long give_up_at_ = 0;      // 这次连接等到什么时候算了
+    long long retry_at_ = 0;        // 上次没连上，到这个时候才再试
 };
 
 }  // namespace tec

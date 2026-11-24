@@ -7,12 +7,52 @@
 namespace ui {
 
 // 字体：数字和英文用 Inter，中文落到思源黑体（Noto Sans SC）；同一字重同一字号只建一次。两套都是 OFL 开源许可，可以随产品交付
+// 资源目录，末尾带斜杠；空的就是当前目录
+static std::string g_assets;
+
+// 图片走 LVGL 的文件系统，盘符 A。自带的那个 stdio 驱动把目录写死在编译期，
+// 这里自己挂一个：盘符 A 下的相对路径都从 g_assets 底下开
+static void* fs_open(lv_fs_drv_t*, const char* path, lv_fs_mode_t mode) {
+    if (mode != LV_FS_MODE_RD) return nullptr;      // 界面只读图，不写
+    return std::fopen((g_assets + path).c_str(), "rb");
+}
+static lv_fs_res_t fs_close(lv_fs_drv_t*, void* f) { std::fclose(static_cast<std::FILE*>(f)); return LV_FS_RES_OK; }
+static lv_fs_res_t fs_read(lv_fs_drv_t*, void* f, void* buf, uint32_t want, uint32_t* got) {
+    *got = static_cast<uint32_t>(std::fread(buf, 1, want, static_cast<std::FILE*>(f)));
+    return LV_FS_RES_OK;
+}
+static lv_fs_res_t fs_seek(lv_fs_drv_t*, void* f, uint32_t pos, lv_fs_whence_t whence) {
+    const int w = whence == LV_FS_SEEK_SET ? SEEK_SET : whence == LV_FS_SEEK_CUR ? SEEK_CUR : SEEK_END;
+    return std::fseek(static_cast<std::FILE*>(f), static_cast<long>(pos), w) == 0 ? LV_FS_RES_OK : LV_FS_RES_UNKNOWN;
+}
+static lv_fs_res_t fs_tell(lv_fs_drv_t*, void* f, uint32_t* pos) {
+    *pos = static_cast<uint32_t>(std::ftell(static_cast<std::FILE*>(f)));
+    return LV_FS_RES_OK;
+}
+
+void set_assets_dir(const std::string& dir) {
+    g_assets = dir;
+    if (!g_assets.empty() && g_assets.back() != '/' && g_assets.back() != '\\') g_assets += '/';
+}
+
+void register_fs(void) {
+    static lv_fs_drv_t drv;                      // LVGL 只记地址，这块不能是临时的
+    static bool done = false;
+    if (done) return;
+    done = true;
+    lv_fs_drv_init(&drv);
+    drv.letter = 'A';
+    drv.cache_size = 64 * 1024;                  // 一次多读一点：解一张 PNG 要来回读很多小段
+    drv.open_cb = fs_open; drv.close_cb = fs_close; drv.read_cb = fs_read; drv.seek_cb = fs_seek; drv.tell_cb = fs_tell;
+    lv_fs_drv_register(&drv);
+}
+
 static const std::vector<unsigned char>& font_file(const std::string& path) {
     static std::map<std::string, std::vector<unsigned char>> files;      // 读进来就一直留着：字体引擎用的是这块内存本身
     auto it = files.find(path);
     if (it != files.end()) return it->second;
     std::vector<unsigned char>& v = files[path];
-    if (std::FILE* f = std::fopen(path.c_str(), "rb")) {
+    if (std::FILE* f = std::fopen((g_assets + path).c_str(), "rb")) {
         std::fseek(f, 0, SEEK_END); const long n = std::ftell(f); std::fseek(f, 0, SEEK_SET);
         if (n > 0) { v.resize(static_cast<size_t>(n)); if (std::fread(v.data(), 1, v.size(), f) != v.size()) v.clear(); }
         std::fclose(f);

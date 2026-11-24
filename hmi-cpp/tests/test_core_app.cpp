@@ -8,6 +8,8 @@
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
+#include <chrono>
+#include <thread>
 #include <fstream>
 using namespace tec;
 using json = nlohmann::json;
@@ -30,6 +32,26 @@ int main(int argc, char** argv) {
     TcpServer srv(0, [&](const std::string& line, bool) { return app.handle(line, true); });      // 测试里把 TCP 来的都当远程（PC）
     std::string err;
     CHECK(srv.start(&err));
+    // 连不上的地址要按时放弃，不能傻等：界面嵌在 PC 工作站里跑的时候，这一等就是整个工作站卡住。
+    // 192.0.2.1 是标准里留着「专门用来测试、永远不会真分给谁」的地址，连它通常石沉大海
+    {
+        TcpClient dead;
+        const auto t0 = std::chrono::steady_clock::now();
+        CHECK(!dead.connect("192.0.2.1", 5020, 300));
+        const double spent = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+        CHECK(spent < 2.0);
+        if (spent >= 2.0) std::printf("  连不上的地址等了 %.1f 秒才放弃\n", spent);
+    }
+    // 不等的连接：要能分好几次调着连上（界面就是这么用的，每帧往前走一步）。
+    // 踩过：调用方在没连上时顺手 close 了一把，正在进行的连接被掐掉，结果永远连不上
+    {
+        TcpClient step;
+        bool up = false;
+        for (int i = 0; i < 200 && !up; i++) { up = step.connect_async("127.0.0.1", srv.port()); if (!up) std::this_thread::sleep_for(std::chrono::milliseconds(10)); }
+        CHECK(up);
+        std::string r;
+        CHECK(step.request(json({{"cmd", "state"}}).dump(), r));      // 连上以后真的能用
+    }
     TcpClient pc;
     CHECK(pc.connect("127.0.0.1", srv.port()));
     auto remote = [&](const json& q) { std::string r; CHECK(pc.request(q.dump(), r)); return r.empty() ? json::object() : json::parse(r); };

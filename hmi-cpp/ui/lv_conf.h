@@ -716,7 +716,7 @@
 #define LV_FS_DEFAULT_DRIVE_LETTER '\0'
 
 /*API for fopen, fread, etc*/
-#define LV_USE_FS_STDIO 1 
+#define LV_USE_FS_STDIO 0      /* 自带的 stdio 驱动把目录写死在编译期；盘符 A 由 ui_kit.cpp 自己挂（可以运行时指目录） */
 #if LV_USE_FS_STDIO
     #define LV_FS_STDIO_LETTER 'A' /*Set an upper cased letter on which the drive will accessible (e.g. 'A')*/
     #define LV_FS_STDIO_PATH ""         /*Set the working directory. File/directory paths will be appended to it.*/

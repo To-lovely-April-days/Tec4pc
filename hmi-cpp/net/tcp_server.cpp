@@ -1,6 +1,8 @@
 #include "tcp_server.hpp"
 #include <chrono>
 #include <cstring>
+#include <cstdio>
+#include <cstdlib>
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -20,6 +22,7 @@ static void net_init() { static bool done = false; if (!done) { WSADATA w; WSASt
 #include <netinet/tcp.h>
 #include <sys/select.h>
 #include <sys/socket.h>
+#include <fcntl.h>
 #include <unistd.h>
 typedef int sock_t;
 static void sock_close(long long s) { ::close(static_cast<int>(s)); }
@@ -154,21 +157,96 @@ void TcpServer::client_loop(long long sock, std::string, bool local, size_t slot
 }
 
 TcpClient::~TcpClient() { close(); }
-void TcpClient::close() { if (sock_ >= 0) { sock_close(sock_); sock_ = -1; } buf_.clear(); }
+void TcpClient::close() { if (sock_ >= 0) { sock_close(sock_); sock_ = -1; } buf_.clear(); pending_ = false; }
 
-bool TcpClient::connect(const std::string& host, int port, int) {
+// 这个套接字设成「不等」模式：下面的 connect 发出去就返回，不在这儿干等
+static bool set_nonblocking(sock_t s, bool on) {
+#ifdef _WIN32
+    u_long v = on ? 1 : 0;
+    return ioctlsocket(s, FIONBIO, &v) == 0;
+#else
+    const int f = fcntl(s, F_GETFL, 0);
+    return f >= 0 && fcntl(s, F_SETFL, on ? (f | O_NONBLOCK) : (f & ~O_NONBLOCK)) == 0;
+#endif
+}
+
+bool TcpClient::connect(const std::string& host, int port, int timeout_ms) {
     net_init();
     close();
     const sock_t s = socket(AF_INET, SOCK_STREAM, 0);
     sockaddr_in a{};
     a.sin_family = AF_INET; a.sin_port = htons(static_cast<unsigned short>(port));
-    if (inet_pton(AF_INET, host.c_str(), &a.sin_addr) != 1 || ::connect(s, reinterpret_cast<sockaddr*>(&a), sizeof a) != 0) { sock_close(s); return false; }
+    if (inet_pton(AF_INET, host.c_str(), &a.sin_addr) != 1) { sock_close(s); return false; }
+    // 连不上的地址（机器关着、网线拔了）要是傻等，系统要拖几十秒才放弃。
+    // 界面嵌在 PC 工作站里跑的时候，这一等就是整个工作站卡住——所以这里限定时间：发出去、等这么久、不成就算了
+    bool ok = false;
+    if (set_nonblocking(s, true)) {
+        const int r = ::connect(s, reinterpret_cast<sockaddr*>(&a), sizeof a);
+        if (r == 0) ok = true;                                  // 本机连本机常常一下就通
+        else {
+            fd_set w; FD_ZERO(&w); FD_SET(s, &w);
+            fd_set e; FD_ZERO(&e); FD_SET(s, &e);
+            timeval tv; tv.tv_sec = timeout_ms / 1000; tv.tv_usec = (timeout_ms % 1000) * 1000;
+            if (select(static_cast<int>(s) + 1, nullptr, &w, &e, &tv) > 0 && FD_ISSET(s, &w)) {
+                int err = 0; socklen_t len = sizeof err;         // 可写了也可能是「连失败了」，要问一句到底成没成
+                ok = getsockopt(s, SOL_SOCKET, SO_ERROR, reinterpret_cast<char*>(&err), &len) == 0 && err == 0;
+            }
+        }
+        if (ok) ok = set_nonblocking(s, false);                  // 连上以后换回普通模式：后面的收发照原样走
+    }
+    if (!ok) { sock_close(s); return false; }
     int yes = 1;
     setsockopt(s, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&yes), sizeof yes);
 #ifdef SO_NOSIGPIPE
     setsockopt(s, SOL_SOCKET, SO_NOSIGPIPE, reinterpret_cast<const char*>(&yes), sizeof yes);
 #endif
     sock_ = static_cast<long long>(s);
+    return true;
+}
+
+bool TcpClient::connect_async(const std::string& host, int port) {
+    const long long now = now_ms();
+    static const bool trace = std::getenv("TEC_NET_TRACE") != nullptr;
+    if (trace) std::fprintf(stderr, "[net] async %s:%d pending=%d retry_in=%lld\n", host.c_str(), port, (int)pending_, retry_at_ - now);
+    if (!pending_) {
+        if (now < retry_at_) return false;                   // 刚连失败过，歇一会儿再说，别一直发
+        net_init();
+        close();
+        const sock_t s = socket(AF_INET, SOCK_STREAM, 0);
+        sockaddr_in a{};
+        a.sin_family = AF_INET; a.sin_port = htons(static_cast<unsigned short>(port));
+        if (inet_pton(AF_INET, host.c_str(), &a.sin_addr) != 1 || !set_nonblocking(s, true)) { sock_close(s); retry_at_ = now + 2000; return false; }
+        const int r = ::connect(s, reinterpret_cast<sockaddr*>(&a), sizeof a);
+        sock_ = static_cast<long long>(s);
+        if (r == 0) { pending_ = false; return finish_connect(); }      // 本机连本机常常一下就通
+        pending_ = true;
+        give_up_at_ = now + 3000;
+        return false;
+    }
+    // 连着呢：问一句通没通，一秒都不等
+    const sock_t s = static_cast<sock_t>(sock_);
+    fd_set w; FD_ZERO(&w); FD_SET(s, &w);
+    timeval tv{0, 0};
+    if (select(static_cast<int>(s) + 1, nullptr, &w, nullptr, &tv) > 0 && FD_ISSET(s, &w)) {
+        int err = 0; socklen_t len = sizeof err;              // 可写也可能是「连失败了」，要问一句到底成没成
+        pending_ = false;
+        if (getsockopt(s, SOL_SOCKET, SO_ERROR, reinterpret_cast<char*>(&err), &len) == 0 && err == 0) return finish_connect();
+        close(); retry_at_ = now + 2000; return false;
+    }
+    if (now >= give_up_at_) { pending_ = false; close(); retry_at_ = now + 2000; }
+    return false;
+}
+
+// 连上了：换回普通模式，该设的选项设上
+bool TcpClient::finish_connect() {
+    const sock_t s = static_cast<sock_t>(sock_);
+    if (!set_nonblocking(s, false)) { close(); retry_at_ = now_ms() + 2000; return false; }
+    int yes = 1;
+    setsockopt(s, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&yes), sizeof yes);
+#ifdef SO_NOSIGPIPE
+    setsockopt(s, SOL_SOCKET, SO_NOSIGPIPE, reinterpret_cast<const char*>(&yes), sizeof yes);
+#endif
+    buf_.clear();
     return true;
 }
 

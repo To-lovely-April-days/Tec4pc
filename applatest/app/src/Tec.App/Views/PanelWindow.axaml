@@ -1,0 +1,35 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ctl="clr-namespace:Tec.App.Controls"
+        x:Class="Tec.App.Views.PanelWindow"
+        Width="1280" Height="760" MinWidth="800" MinHeight="500"
+        WindowStartupLocation="CenterScreen"
+        Background="#0A2A55"
+        FontFamily="{StaticResource UiFont}" FontSize="12">
+
+  <!--
+    手动控制面板的窗子。里面那块就是触摸屏上那套界面本身（同一份代码，见 NativePanelView），
+    不是照着重写的一版——所以 PC 上和屏上长得一模一样。
+    窗子可以随便拉大小，里面那块按比例居中，不会拉变形。
+  -->
+
+  <Grid RowDefinitions="Auto,*">
+    <Border Grid.Row="0" Background="#0A2A55" Height="30">
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock Grid.Column="0" Name="TitleText" Margin="12,0,0,0"
+                   VerticalAlignment="Center" Foreground="#E8EEF6" FontSize="12" />
+        <TextBlock Grid.Column="1" Name="HintText" Margin="0,0,12,0"
+                   VerticalAlignment="Center" Foreground="#9FB3CC" FontSize="11" />
+      </Grid>
+    </Border>
+
+    <Panel Grid.Row="1">
+      <ctl:NativePanelView Name="Panel" />
+      <!-- 库没放好之类的，照实把原因写出来，不留一块黑的让人猜 -->
+      <TextBlock Name="ProblemText" IsVisible="False"
+                 HorizontalAlignment="Center" VerticalAlignment="Center"
+                 TextWrapping="Wrap" MaxWidth="560" TextAlignment="Center"
+                 Foreground="#FFD9D9" FontSize="14" />
+    </Panel>
+  </Grid>
+</Window>

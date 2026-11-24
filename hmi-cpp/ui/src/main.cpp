@@ -42,7 +42,9 @@ static struct { int x = 0, y = 0; bool down = false; } g_finger;
 #ifdef _WIN32
 #include "win_window.inc"
 #endif
+static bool g_dirty = false;         // 上次宿主取走画面之后，有没有重新画过
 static void flush(lv_display_t* d, const lv_area_t* a, uint8_t* px) {
+    g_dirty = true;
     const int w = a->x2 - a->x1 + 1;
     uint32_t* out = g_fb;
 #ifdef _WIN32
@@ -198,9 +200,13 @@ struct App {
 #include "sys_page.inc"
 
     json ask(const json& q) {
-        if (!connected) connected = link.connect(host, port);
+        // 不等的连接：机器关着 / 地址填错时，这里立刻回来，界面照常刷新——
+        // 界面嵌在 PC 工作站里跑，在这儿等就是整个工作站一卡一卡（用户 2026-11-24 踩到的那种卡）
+        if (!connected) connected = link.connect_async(host, port);
+        // 还在连：直接回「连不上」就走，**不能在这儿 close**——那会把正在进行的连接掐掉，于是永远连不上（踩过）
+        if (!connected) return json{{"ok", false}, {"error", "连不上控制核心"}};
         std::string r;
-        if (connected && link.request(q.dump(), r)) { const json j = json::parse(r, nullptr, false); if (!j.is_discarded()) return j; }
+        if (link.request(q.dump(), r)) { const json j = json::parse(r, nullptr, false); if (!j.is_discarded()) return j; }
         connected = false; link.close();
         return json{{"ok", false}, {"error", "连不上控制核心"}};
     }
@@ -465,10 +471,20 @@ struct App {
         char b[32];
         std::strftime(b, sizeof b, "%H:%M", &tm); u.set_text("top.clock", b);
         std::strftime(b, sizeof b, "%Y.%m.%d", &tm); u.set_text("top.date", b);
-        if (!st.is_object() || !st.contains("ch")) { u.set_text("top.water", connected ? "读取中…" : "未连上控制核心"); return; }
+        // 还没拿到过状态：页面上那些数字是设计稿里的样例值（65.0、结晶工艺-0824 之类），不是真的。
+        // 整页压暗，一眼看出「这不是实时数据」——顶栏那句红字容易被忽略，而面板在 PC 上是看远处机器的，
+        // 把样例值当读数会出事
+        if (!st.is_object() || !st.contains("ch")) {
+            u.set_text("top.water", connected ? "读取中…" : "未连上控制核心");
+            u.show("top.water.dot", false);      // 这句话比「冷却水已关」长，会盖到小圆点上；何况这时也没有冷却水状态可报
+            if (u.changed("live", false)) lv_obj_set_style_opa(it->second.scr, 70, 0);
+            return;
+        }
+        if (u.changed("live", true)) lv_obj_set_style_opa(it->second.scr, LV_OPA_COVER, 0);
         // 控温设备没连上（串口配错之类）：核心还活着但不能控温。顶栏这个位置平时写冷却水，这时换成红点和这句话，哪一页都看得见
         const bool offline = !st.value("offline", std::string()).empty();
         u.set_text("top.water", offline ? "设备未连接" : st.value("valve_open", false) ? "冷却水已开" : "冷却水已关");
+        u.show("top.water.dot", true);
         const int wd = offline ? 2 : st.value("valve_open", false) ? 1 : 0;
         if (lv_obj_t* d = u.box("top.water.dot")) if (u.changed("top.water.dot", wd)) bg(d, wd == 2 ? 0xFF5A5F : wd == 1 ? 0x5BF08A : 0x9AAABB, 255);
         alarm_refresh();
@@ -580,15 +596,123 @@ struct App {
     }
 };
 
+#ifdef TEC_HMI_LIB
+// ── 给别的程序嵌着用的接口 ──
+// PC 工作站（C#）里点「手动控制面板」，弹出来的就是这套界面本身，不是另写一遍、也不是另开一个程序：
+// 工作站把这个库装进自己的窗口，每帧问它要一张画面贴上去，把鼠标动作当手指喂回来。
+// 这样屏上和 PC 上是同一份代码渲染的，不会走样（用户 2026-11-24 定的「甲」方案）。
+//
+// 规矩：所有函数都要在同一个线程上调（工作站的界面线程）。LVGL 不是线程安全的。
+#ifdef _WIN32
+#define TEC_API extern "C" __declspec(dllexport)
+#else
+#define TEC_API extern "C" __attribute__((visibility("default")))
+#endif
+
+namespace {
+struct Embed {
+    std::unique_ptr<App> app;
+    bool ready = false;
+    long loops = 0;
+    std::chrono::steady_clock::time_point last_poll{};
+};
+Embed& em() { static Embed e; return e; }
+}  // namespace
+
+/// 起界面。assets_dir 是放着 assets 文件夹的那一层；host / port 是控制核心在哪。成功回 0
+TEC_API int tec_hmi_init(const char* assets_dir, const char* host, int port, int channel) {
+    Embed& e = em();
+    if (e.ready) return 0;                                  // 已经起过了
+    ui::set_assets_dir(assets_dir ? assets_dir : "");
+    lv_init();
+    ui::register_fs();                  // 要在 lv_init 之后：lv_init 会把驱动表重置
+    lv_tick_set_cb([]() -> uint32_t { return static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()); });
+    lv_display_t* d = lv_display_create(W, H);
+    if (!d) return 1;
+    static uint32_t buf[W * H];
+    lv_display_set_buffers(d, buf, nullptr, sizeof buf, LV_DISPLAY_RENDER_MODE_PARTIAL);
+    lv_display_set_flush_cb(d, flush);
+    lv_indev_t* touch = lv_indev_create();
+    lv_indev_set_type(touch, LV_INDEV_TYPE_POINTER);
+    lv_indev_set_read_cb(touch, [](lv_indev_t*, lv_indev_data_t* data) { data->point.x = g_finger.x; data->point.y = g_finger.y; data->state = g_finger.down ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED; });
+    e.app = std::make_unique<App>();
+    if (host && *host) e.app->host = host;
+    if (port > 0) e.app->port = port;
+    if (channel == 1 || channel == 2) e.app->channel = channel;
+    e.app->show("Ctl");
+    e.ready = true;
+    return 0;
+}
+
+/// 走一帧：该问状态就问一次，该重画就重画。回「下次最晚隔多少毫秒再叫我」
+TEC_API int tec_hmi_tick(void) {
+    Embed& e = em();
+    if (!e.ready) return 100;
+    const auto now = std::chrono::steady_clock::now();
+    if (now - e.last_poll >= std::chrono::milliseconds(500)) { e.last_poll = now; e.app->poll(); }
+    const uint32_t wait = lv_timer_handler();
+    // 趁没人按着屏幕，把还没看过的页先在内存里画一遍（第一次点进去就不用现算了）
+    if (++e.loops > 5 && !g_finger.down) e.app->warm_step();
+    return static_cast<int>(wait < 1 ? 1 : wait > 30 ? 30 : wait);
+}
+
+/// 画面那块内存。一个像素四个字节，顺序是蓝绿红透明（和 Windows / Avalonia 的 Bgra8888 一致）
+TEC_API const void* tec_hmi_pixels(void) { return g_fb; }
+TEC_API void tec_hmi_size(int* w, int* h) { if (w) *w = W; if (h) *h = H; }
+
+/// 自上次问过以后画面变没变。没变就不用再拷一遍
+TEC_API int tec_hmi_take_dirty(void) { const bool d = g_dirty; g_dirty = false; return d ? 1 : 0; }
+
+/// 手指（鼠标）在哪、按没按着。坐标就是画面自己的坐标，宿主负责从控件尺寸换算过来
+TEC_API void tec_hmi_pointer(int x, int y, int down) {
+    g_finger.x = x < 0 ? 0 : x >= W ? W - 1 : x;
+    g_finger.y = y < 0 ? 0 : y >= H ? H - 1 : y;
+    g_finger.down = down != 0;
+}
+
+/// 让界面跳到某一页 / 某个通道（工作站点的是哪台机器的哪个工位）
+TEC_API void tec_hmi_show(const char* page, int channel) {
+    Embed& e = em();
+    if (!e.ready) return;
+    if (channel == 1 || channel == 2) e.app->channel = channel;
+    e.app->show(page && *page ? page : "Ctl");
+}
+
+/// 换一台机器看。整个程序里只有一套界面（LVGL 是全局的），所以同时只能看一台；
+/// 工作站点了另一台机器的面板，就调这个把连接换过去，不是再开一个
+TEC_API void tec_hmi_connect(const char* host, int port, int channel) {
+    Embed& e = em();
+    if (!e.ready) return;
+    if (host && *host) e.app->host = host;
+    if (port > 0) e.app->port = port;
+    e.app->link.close();
+    e.app->connected = false;
+    e.app->st = json();                      // 上一台机器的读数别留在屏上
+    if (channel == 1 || channel == 2) e.app->channel = channel;
+    e.app->show("Ctl");
+    e.last_poll = {};                        // 马上问一次新机器的状态
+}
+
+TEC_API void tec_hmi_shutdown(void) {
+    Embed& e = em();
+    if (!e.ready) return;
+    e.ready = false;
+    e.app.reset();
+    // LVGL 不拆：这个库在宿主程序里只起一次，拆了再起反而容易出事
+}
+#endif  // TEC_HMI_LIB
+
+#ifndef TEC_HMI_LIB
 int main(int argc, char** argv) {
-    // 字体和图片按「当前目录下的 assets」找。从别的目录启动（比如开机自启、双击快捷方式）时当前目录不对，
-    // 界面会一个字都没有，所以这里先挪到程序自己旁边有 assets 的那一层。
+    // 字体和图片在哪：从程序自己旁边往上找带 assets 的那一层。从别的目录启动（开机自启、双击快捷方式）
+    // 当前目录是不对的，所以不靠当前目录，直接把找到的路径告诉界面
     {
         namespace fs = std::filesystem;
         std::error_code ec;
         fs::path d = fs::absolute(argv[0], ec).parent_path();
-        for (int i = 0; i < 3 && !fs::exists("assets/fonts", ec); i++, d = d.parent_path())
-            if (fs::exists(d / "assets" / "fonts", ec)) fs::current_path(d, ec);
+        std::string found;
+        for (int i = 0; i < 4 && found.empty(); i++, d = d.parent_path()) if (fs::exists(d / "assets" / "fonts", ec)) found = d.u8string();
+        ui::set_assets_dir(found);      // 找不到也要调：盘符 A 的文件驱动是在它里面挂上的
     }
     App app;
     std::string page = "Ctl", shot;
@@ -616,6 +740,7 @@ int main(int argc, char** argv) {
     }
     (void)only_1x;
     lv_init();
+    ui::register_fs();                  // 图片走的那个文件驱动：要在 lv_init 之后挂
     // LVGL 的钟用系统的单调钟：动画、长按判定都按真实时间走，不管一圈循环实际花了多久
     lv_tick_set_cb([]() -> uint32_t { return static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()); });
     using clock = std::chrono::steady_clock;
@@ -688,3 +813,4 @@ int main(int argc, char** argv) {
         }
     }
 }
+#endif  // TEC_HMI_LIB

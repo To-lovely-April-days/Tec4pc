@@ -96,6 +96,24 @@ if(EXISTS ${LVGL_DIR}/lvgl.h)
   endforeach()
   # 字体和图片拷到程序旁边：程序启动时按「自己旁边的 assets」找
   add_custom_command(TARGET tec_hmi POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/ui/assets $<TARGET_FILE_DIR:tec_hmi>/assets)
+
+  # 同一套界面再编一份动态库：PC 工作站（C#）把它装进自己的窗口，点「手动控制面板」弹出来的就是它。
+  # 和触摸屏上跑的是同一份代码，所以两边长得一模一样、改设计稿两边一起变（用户 2026-11-24 定的）。
+  # 按 2 倍画（2560×1440）：PC 屏幕大，缩下去显示比放大清楚
+  add_library(tec_hmi_core SHARED ui/src/main.cpp ui/src/ui_kit.cpp net/tcp_server.cpp)
+  target_compile_definitions(tec_hmi_core PRIVATE UI_SCALE=2 PAGES_INC="../gen/pages_2.inc" TEC_HMI_LIB=1)
+  target_include_directories(tec_hmi_core PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/ui)
+  target_link_libraries(tec_hmi_core PRIVATE lvgl)
+  set_target_properties(tec_hmi_core PROPERTIES C_VISIBILITY_PRESET hidden CXX_VISIBILITY_PRESET hidden)
+  if(WIN32)
+    target_link_libraries(tec_hmi_core PRIVATE ws2_32)
+  endif()
+  if(MSVC)
+    target_compile_options(tec_hmi_core PRIVATE /bigobj)
+  else()
+    target_compile_options(tec_hmi_core PRIVATE -Wno-unused-function -Wno-unused-parameter)
+  endif()
+  add_custom_command(TARGET tec_hmi_core POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/ui/assets $<TARGET_FILE_DIR:tec_hmi_core>/assets)
 else()
   message(STATUS "没找到 third_party/lvgl-9.2.2，这次不编界面程序 tec_hmi（下载方法见 README）")
 endif()

@@ -93,11 +93,14 @@ public partial class BenchView : UserControl
     private void OnOpenHmi(object? sender, RoutedEventArgs e)
     {
         if (Vm is not { Selected: { } sel } vm || !vm.IsReactor) return;
-        // 【本地改动】带触摸屏 / 不带触摸屏这两种机型弹的是新界面（hmi-cpp 的 tec_hmi，一个单独的程序），让它连那台机器的控制核心；
-        // 用户 2026-11-24：不管是不是触摸屏，都应该是这个新界面。只有旧版直连的主机还开原来那扇窗
+        // 【本地改动】这两种机型弹的是新界面本身——不是照着重写的一版，也不是另开一个程序：
+        // 触摸屏上跑的那套界面被编成一个库，装进工作站自己的窗口里（见 NativePanelView）。
+        // 用户 2026-11-24：「要能做到控制面板还原」，同一份代码渲染，两边不会走样。
+        // 只有旧版直连的主机还开原来那扇窗（它没有控制核心可连）
         if (Tec.Drivers.TouchPanel.LocalPrograms.HmiEndpointOf(sel.Device.DriverId, sel.Device.Connection) is { } ep)
         {
-            vm.ShowHint(Tec.Drivers.TouchPanel.LocalPrograms.StartHmi(ep.Host, ep.Port));
+            // 进去先看 A 孔（面板自己的 1 号工位），屏上也是这个落点
+            vm.ShowHint(PanelWindow.Open(sel.Title, ep.Host, ep.Port, 1));
             return;
         }
         HmiWindow.Open(vm.Ws, sel.Id, sel.Title, sel.Channels.OrderBy(x => x).ToArray());

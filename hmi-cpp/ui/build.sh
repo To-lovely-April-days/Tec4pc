@@ -5,6 +5,8 @@ set -e
 cd "$(dirname "$0")"
 L=../third_party/lvgl-9.2.2
 SC=${1:-1}
+# 改了 lv_conf.h 要把 LVGL 整个重编一遍，不然用的还是旧配置编出来的库（踩过：改了配置以为生效了，其实没有）
+if [ build/liblvgl.a -ot lv_conf.h ] 2>/dev/null; then rm -f build/liblvgl.a; fi
 if [ ! -f build/liblvgl.a ]; then
   mkdir -p build/obj
   find $L/src -name '*.c' | while read f; do o=build/obj/$(echo $f | sed 's|[/.]|_|g').o; echo "$f $o"; done > build/list.txt
