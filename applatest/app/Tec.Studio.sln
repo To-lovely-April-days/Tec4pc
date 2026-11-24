@@ -40,6 +40,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tec.Io8rTest", "src\Tec.Io8
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tec.Demo", "src\Tec.Demo\Tec.Demo.csproj", "{906D65E9-F8E4-4139-AC01-1EC5CCDDB813}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tec.Drivers.TouchPanel", "src\Tec.Drivers.TouchPanel\Tec.Drivers.TouchPanel.csproj", "{4ACA0BBE-DFD8-4EFD-A07B-1FA634F3BD47}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -114,6 +116,10 @@ Global
 		{906D65E9-F8E4-4139-AC01-1EC5CCDDB813}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{906D65E9-F8E4-4139-AC01-1EC5CCDDB813}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{906D65E9-F8E4-4139-AC01-1EC5CCDDB813}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4ACA0BBE-DFD8-4EFD-A07B-1FA634F3BD47}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4ACA0BBE-DFD8-4EFD-A07B-1FA634F3BD47}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4ACA0BBE-DFD8-4EFD-A07B-1FA634F3BD47}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4ACA0BBE-DFD8-4EFD-A07B-1FA634F3BD47}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -136,6 +142,7 @@ Global
 		{5A4C2E7D-9B1F-4C3A-8E6D-2F7B1C9A4D60} = {3C251A66-0C84-527C-B12F-21F6518914DC}
 		{7C2D9E11-3B4F-4A6C-9D0E-5F1A2B3C4D71} = {3C251A66-0C84-527C-B12F-21F6518914DC}
 		{906D65E9-F8E4-4139-AC01-1EC5CCDDB813} = {3C251A66-0C84-527C-B12F-21F6518914DC}
+		{4ACA0BBE-DFD8-4EFD-A07B-1FA634F3BD47} = {3C251A66-0C84-527C-B12F-21F6518914DC}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {FC2D90A0-0FEF-5234-A176-B4B89E7DF3C9}

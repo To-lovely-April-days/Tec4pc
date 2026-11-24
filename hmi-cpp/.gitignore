@@ -1,0 +1,9 @@
+# 第三方源码和工具各自从官方下载，不进仓库（版本见 README）
+third_party/
+build/
+trial_lvgl/build/
+# 试做时从这台 Mac 上拆出来的苹果字体：不能提交，也不能随产品交付
+trial_lvgl/assets/fonts/
+ui/build/
+# ui/assets/fonts（Inter 和裁小了的 Noto Sans SC，OFL 许可，可以交付）和 ui/assets/img（从设计稿生成的图标图片）、ui/gen（生成的页面代码）
+# 都进仓库：Windows 上拿到代码就能直接编，不用再装生成它们的那套工具

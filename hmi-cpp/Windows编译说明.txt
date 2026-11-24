@@ -1,0 +1,122 @@
+﻿触摸屏程序（hmi-cpp）Windows 编译说明
+====================================
+
+先说在前面：这套程序是在 Mac 上开发的，Windows 这一段（开窗口、触摸、串口）
+还没有在 Windows 上编译过、运行过。第一次编可能会报错，把报错的原文留下来，
+按报错改就行。下面是照代码写出来的正确步骤。
+
+编出来是两个程序：
+  tec_core.exe   控制核心：连设备、控温、跑序列、记数据，没有界面
+  tec_hmi.exe    触摸屏界面：经本机网络连控制核心
+
+
+一、要先装的东西（都是免费的）
+------------------------------
+1. Visual Studio 2022（社区版就行）
+   安装时勾上「使用 C++ 的桌面开发」这一项。它自带 C++ 编译器和 CMake。
+   下载：https://visualstudio.microsoft.com/zh-hans/downloads/
+
+2. （只在要编 PC 工作站时才需要）.NET 8 SDK
+   下载：https://dotnet.microsoft.com/zh-cn/download/dotnet/8.0
+
+
+二、下载两个第三方库，放进 hmi-cpp\third_party
+------------------------------------------------
+这两个库不在仓库里，要自己下载一次。放的位置和文件夹名字必须和下面一样。
+
+1. LVGL 9.2.2（画界面用的库，MIT 许可）
+   下载：https://github.com/lvgl/lvgl/archive/refs/tags/v9.2.2.zip
+   解压后把里面的文件夹改名为 lvgl-9.2.2，放成这样：
+       hmi-cpp\third_party\lvgl-9.2.2\lvgl.h
+       hmi-cpp\third_party\lvgl-9.2.2\src\...
+   （压缩包里的 docs、demos、examples、tests 用不到，留着删掉都可以）
+
+2. nlohmann/json 3.11.3（读写 JSON 用的，一个头文件，MIT 许可）
+   下载：https://github.com/nlohmann/json/releases/download/v3.11.3/json.hpp
+   放成这样：
+       hmi-cpp\third_party\nlohmann\json.hpp
+
+字体、图标图片、页面代码都已经在仓库里（ui\assets、ui\gen），不用另外准备。
+
+如果没放 LVGL，CMake 会提示「没找到 third_party/lvgl-9.2.2」，这时只编出
+tec_core.exe，没有界面程序。
+
+
+三、编译
+--------
+从开始菜单打开「x64 Native Tools Command Prompt for VS 2022」
+（一定要用这个命令行窗口，普通的 cmd 里找不到编译器），然后：
+
+    cd /d 仓库所在目录\hmi-cpp
+    cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+    cmake --build build --config Release
+
+编完以后程序在：
+    hmi-cpp\build\Release\tec_core.exe
+    hmi-cpp\build\Release\tec_hmi.exe
+    hmi-cpp\build\Release\assets\      （字体和图片，自动拷过来的，要和 tec_hmi.exe 放在一起）
+
+跑一遍自带的测试（17 项，一两分钟）：
+
+    ctest --test-dir build -C Release --output-on-failure
+
+
+四、先不接设备试一下
+--------------------
+开两个命令行窗口，都先 cd 到 hmi-cpp。
+
+窗口 1（控制核心，仿真模式）：
+    build\Release\tec_core.exe --sim --data data --gains testdata\gain-table-run1110.csv
+
+窗口 2（界面）：
+    build\Release\tec_hmi.exe
+
+界面会开一个 1280×720 的窗口，鼠标和触摸都能点。能看到两个通道的温度在动，
+就说明两个程序都是好的。
+
+
+五、接真设备运行
+----------------
+1. 控制核心（去掉 --sim）：
+       build\Release\tec_core.exe --data D:\TecData --gains testdata\gain-table-run1110.csv
+   --data   数据放哪（每一炉的记录、配方、设置、导出文件都在这下面），换成现场的目录
+   --gains  增益表文件。界面上「PID 整定」页改了参数会写回这个文件，
+            所以现场请先把它拷一份出来用，不要直接用 testdata 里那份
+   --port   对外的 TCP 端口，不写就是 5020（界面和 PC 工作站都连这个端口）
+
+2. 界面：
+       build\Release\tec_hmi.exe --fullscreen
+   --fullscreen   去掉标题栏铺满屏幕（现场这么开）
+   --zoom 150     整个界面放大到 150 %（屏幕分辨率比 1280×720 大时用）
+   --host 地址 --port 端口   控制核心不在本机时才要写
+
+3. 串口：第一次运行按缺省的串口号去连（温控器 COM7、继电器 COM8、Tr 探头 COM3、
+   搅拌 COM14 / COM11、pH COM12 / COM13、进料 COM15、冷水机 COM9）。
+   和现场不一样时，控制核心不会退出，界面顶栏会显示红点「设备未连接」；
+   到界面「设置 → 通信设置」里点对应的设备改串口，改完重启 tec_core.exe。
+
+4. 要先开 tec_core.exe，再开 tec_hmi.exe。界面关掉、崩掉都不影响控温，
+   重新打开界面就接着看。开机自动启动现在还没做，要手动开这两个程序。
+
+
+六、PC 工作站（原来的 C# 程序）
+-------------------------------
+    cd /d 仓库所在目录\applatest\app
+    dotnet build Tec.Studio.sln -c Release
+
+工作站的设备库里现在同一台主机有两个版本：
+  双工位反应主机（带触摸屏）    经网络连触摸屏上的 tec_core（填触摸屏的 IP 和端口 5020）
+  双工位反应主机（不带触摸屏）  和原来一样，PC 直接连各个串口
+
+
+七、常见问题
+------------
+- 界面打开一个字都没有：assets 文件夹没和 tec_hmi.exe 放在一起。
+- 界面顶栏写「未连上控制核心」：tec_core.exe 没开，或者端口不是 5020。
+- 中文注释、中文字符串报乱码类的编译错误：确认用的是上面的 CMake 命令
+  （工程里已经给 MSVC 加了 /utf-8），不要自己另建工程。
+- 编译报错：把完整的报错文字留下来。Windows 专有的代码集中在这几处：
+      ui\src\main.cpp 里 #ifdef _WIN32 的部分（开窗口、触摸）
+      ui\lv_conf.h 里 LV_USE_WINDOWS
+      io\win_serial.cpp（串口）
+      net\tcp_server.cpp（网络）

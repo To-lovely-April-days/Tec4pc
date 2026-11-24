@@ -279,6 +279,9 @@ public sealed class Workspace : IHmiHost
         Drivers.RegisterBuiltin(new Tec.Drivers.DualStation.BhtPhProbeDriver());
         // 【本地改动】两液一气进料系统（霍桐 HTLAB，2026-11-10 接入）：接在工位加料口上，泵 1 / 泵 2 认领配方「加料」
         Drivers.RegisterBuiltin(new Tec.Drivers.Htlab.FeedSystemDriver());
+        // 【本地改动】触摸屏主机（网络，2026-11-24）：带触摸屏的机型，设备接在触摸屏上，工作站经 TCP 连触摸屏、不开串口。
+        // 和上面那几台直连设备并存（用户定的：没买触摸屏的客户照旧直连）；同一个台面上两种不要混着摆——串口已经被触摸屏占着
+        Drivers.RegisterBuiltin(new Tec.Drivers.TouchPanel.TouchPanelDriver());
         // 第三方驱动包从 drivers/ 目录进
         Drivers.Discover(Path.Combine(AppContext.BaseDirectory, "drivers"));
         Drivers.LoadAll();

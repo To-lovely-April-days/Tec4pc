@@ -37,6 +37,7 @@
     <ProjectReference Include="..\Tec.Drivers.DualStation\Tec.Drivers.DualStation.csproj" />
     <ProjectReference Include="..\Tec.Drivers.Aqmd\Tec.Drivers.Aqmd.csproj" />
     <ProjectReference Include="..\Tec.Drivers.Htlab\Tec.Drivers.Htlab.csproj" />
+    <ProjectReference Include="..\Tec.Drivers.TouchPanel\Tec.Drivers.TouchPanel.csproj" />
     <!-- 【本地改动】演示模式（启动参数 demo）的演示工程 -->
     <ProjectReference Include="..\Tec.Demo\Tec.Demo.csproj" />
   </ItemGroup>

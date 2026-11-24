@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Tec.Drivers.TouchPanel</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 触摸屏主机（网络）：不开任何串口，经 TCP 连触摸屏上的控制核心（hmi-cpp 的 tec_core），
+         把它包成一台「两个工位的主机」。只认驱动契约，不引别的驱动——设备都在触摸屏那边连着。 -->
+    <ProjectReference Include="..\Tec.Driver.Abi\Tec.Driver.Abi.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 回归测试要一拍一拍地推轮询（PollOnceAsync），不靠真时钟 -->
+    <InternalsVisibleTo Include="Tec.Core.Tests" />
+  </ItemGroup>
+
+</Project>
