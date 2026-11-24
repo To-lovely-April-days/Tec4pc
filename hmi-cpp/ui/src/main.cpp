@@ -22,7 +22,9 @@
 #include <functional>
 
 #ifdef _WIN32
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 #include <windows.h>
 #endif
 
@@ -579,12 +581,14 @@ int main(int argc, char** argv) {
             SetWindowLongPtrW(hwnd, GWL_STYLE, WS_POPUP | WS_VISIBLE);
             SetWindowPos(hwnd, HWND_TOP, 0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN), SWP_FRAMECHANGED | SWP_SHOWWINDOW);
         }
-        app.show(page);
+        // 窗口有它自己的一条线程在收消息；我们在主线程里改界面时把 LVGL 的那把锁拿上，免得两边同时动
+        lv_lock(); app.show(page); lv_unlock();
+        const HWND win = lv_windows_get_display_window_handle(d);      // 先记下窗口：窗口关掉以后 LVGL 会把 d 一起销毁，那时不能再拿 d 去问
         for (;;) {
             const auto now = clock::now();
-            if (now - last_poll >= std::chrono::milliseconds(500)) { last_poll = now; app.poll(); }
-            const uint32_t wait = lv_timer_handler();           // 窗口消息也是在这里面处理的
-            if (!IsWindow(lv_windows_get_display_window_handle(d))) return 0;      // 窗口被关掉了
+            if (now - last_poll >= std::chrono::milliseconds(500)) { last_poll = now; lv_lock(); app.poll(); lv_unlock(); }
+            const uint32_t wait = lv_timer_handler();           // 点击之类的事件是在这里面分发的（它自己会拿那把锁）
+            if (!IsWindow(win)) return 0;      // 窗口被关掉了
             Sleep(wait < 1 ? 1 : wait > 10 ? 10 : wait);
         }
     }

@@ -3,8 +3,12 @@
 #include <cstring>
 
 #ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 #include <winsock2.h>
 #include <ws2tcpip.h>
 typedef SOCKET sock_t;
@@ -20,9 +24,11 @@ static void net_init() { static bool done = false; if (!done) { WSADATA w; WSASt
 typedef int sock_t;
 static void sock_close(long long s) { ::close(static_cast<int>(s)); }
 static void net_init() {}
+#endif
+// 「对方已经断开时别发信号把程序弄死」这个标志只有 Linux 有；Windows 和 macOS 上没有这个名字，当 0 用
+// （Windows 上发失败只是返回错误，不会弄死程序；macOS 用下面的 SO_NOSIGPIPE）
 #ifndef MSG_NOSIGNAL
 #define MSG_NOSIGNAL 0
-#endif
 #endif
 
 namespace tec {

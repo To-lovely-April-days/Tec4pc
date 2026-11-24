@@ -127,8 +127,8 @@ void refresh_pid(Ui& u, const json& c, int ci) {
     const bool run = c.value("running", false);
     const double tj_sp = c.value("tj_sp", 0.0), duty = c.value("duty", 0.0);
     // 此刻用的是表里哪一行附近：离夹套目标最近的那一行
-    int near = -1;
-    if (run && !pv.dirty) { double best = 1e9; for (int k = 0; k < n; k++) { const double d = std::fabs(pv.rows[k].value("temp", 0.0) - tj_sp); if (d < best) { best = d; near = k; } } }
+    int nearest = -1;      // 不能叫 near：Windows 的头文件把 near 定义成了一个空的宏
+    if (run && !pv.dirty) { double best = 1e9; for (int k = 0; k < n; k++) { const double d = std::fabs(pv.rows[k].value("temp", 0.0) - tj_sp); if (d < best) { best = d; nearest = k; } } }
     for (int k = 0; k < kPidRows; k++) {
         const std::string id = "pg.r." + std::to_string(k);
         u.show(id, k < n);
@@ -141,11 +141,11 @@ void refresh_pid(Ui& u, const json& c, int ci) {
             u.set_text(cid, cells[i]);
             if (lv_obj_t* box = u.box(cid)) if (lv_obj_t* lb = u.label(cid)) { lv_obj_update_layout(lb); lv_obj_set_width(box, lv_obj_get_width(lb) + 18 * UI_SCALE); }      // 小框跟着字的宽窄走
         }
-        u.show(id + ".bar", k == near);
-        if (lv_obj_t* o = u.box(id)) if (u.changed(id + "bg", k == near)) bg(o, 0xE3EEFA, k == near ? 255 : 0);
+        u.show(id + ".bar", k == nearest);
+        if (lv_obj_t* o = u.box(id)) if (u.changed(id + "bg", k == nearest)) bg(o, 0xE3EEFA, k == nearest ? 255 : 0);
     }
     const std::string info = !pv.msg.empty() ? pv.msg : pv.dirty ? "有改动还没应用（点「应用表格」才生效）"
-                           : std::to_string(n) + " 行" + (near >= 0 ? " · 在用 " + tnum(pv.rows[near].value("temp", 0.0)) + " ℃ 附近" : "");
+                           : std::to_string(n) + " 行" + (nearest >= 0 ? " · 在用 " + tnum(pv.rows[nearest].value("temp", 0.0)) + " ℃ 附近" : "");
     u.set_text("pg.info", info);
     u.show("pg.sub", pv.msg.empty() && !pv.dirty);        // 右边有话要说时把左边那句小字收起来，不然两句会叠在一起
     u.set_text_color("pg.info", !pv.msg.empty() ? 0x00559C : pv.dirty ? 0xE07B00 : 0x8792A0);

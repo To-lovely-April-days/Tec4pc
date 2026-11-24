@@ -9,6 +9,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 if(MSVC)
   add_compile_options(/W4 /utf-8)      # 源码里有中文注释和中文字符串，按 UTF-8 读
+  # NOMINMAX：Windows 的头文件会把 min / max 定义成宏，把 std::min / std::max 弄坏（LVGL 的窗口驱动会把 windows.h 带进来）
+  # _CRT_SECURE_NO_WARNINGS：不要为 fopen、getenv 这些标准函数报「不安全」的警告
+  add_compile_definitions(NOMINMAX _CRT_SECURE_NO_WARNINGS)
 else()
   add_compile_options(-Wall -Wextra)
 endif()
