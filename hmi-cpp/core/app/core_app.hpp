@@ -39,6 +39,9 @@ public:
     // 真串口只有 Windows 有，核心自己不建，由主程序接进来：自动检测要靠它一个口一个口地开。
     // 不接（仿真、测试）= 这台机器上没有真串口可扫，自动检测会如实说不能扫
     PortOpenFn open_serial;
+    // 退出控制核心（sys.exit）时调它：核心自己不知道怎么结束进程，由主程序把自己的主循环停掉。
+    // 不接 = 这个程序不支持退出（嵌在别人里跑的时候），sys.exit 会如实拒绝
+    std::function<void()> on_exit;
     // 不空 = 控温用的设备没连上（主程序开机时发现的），里面是原因。这时核心照常跑、照常答命令，只是不收开始控温 / 开始序列
     std::string offline_reason;
     static constexpr const char* kVersion = "0.1.0";      // 控制核心的版本号（系统设置页、PC 端都看它）

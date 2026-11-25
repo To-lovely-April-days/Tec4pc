@@ -224,6 +224,34 @@ int main(int argc, char** argv) {
         CHECK(l4({{"cmd", "state"}})["ch"][0]["running"] == false && l4({{"cmd", "state"}})["alarms_unacked"] == 0);     // 没在控温，读不到数也不该报警
         fs::remove_all(b4, ec);
     }
+    // ── 退出控制核心（触摸屏上「退出程序 → 连控制核心一起退」下的 sys.exit）──
+    // 要守住三件事：PC 下不了；有通道在控温或跑序列时不收；没接退出钩子时如实拒绝，不能假装退了
+    {
+        const fs::path b5 = base / "exit";
+        fs::create_directories(b5, ec);
+        SimHardware sim5;
+        CoreApp app5(sim5, sim5, b5.u8string(), gains_copy);
+        auto l5 = [&](const json& q) { return json::parse(app5.handle(q.dump(), false)); };
+        auto r5 = [&](const json& q) { return json::parse(app5.handle(q.dump(), true)); };
+        auto run5 = [&](int n) { for (int i = 0; i < n; i++) { app5.tick(); sim5.advance(0.5); } };
+        int called = 0;
+        CHECK(l5({{"cmd", "sys.exit"}})["ok"] == false);                              // 还没接钩子
+        app5.on_exit = [&]() { called++; };
+        CHECK(r5({{"cmd", "sys.exit"}})["ok"] == false && called == 0);               // PC 下的不收
+        CHECK(l5({{"cmd", "temp.start"}, {"ch", 1}, {"mode", "jacket"}, {"target", 30}})["ok"] == true);
+        run5(4);
+        CHECK(l5({{"cmd", "sys.exit"}})["ok"] == false && called == 0);               // 正在控温
+        CHECK(l5({{"cmd", "temp.stop"}, {"ch", 1}})["ok"] == true);
+        run5(4);
+        CHECK(l5({{"cmd", "seq.load"}, {"ch", 2}, {"steps", json::array({{{"kind", "wait"}, {"minutes", 5}}})}})["ok"] == true);
+        CHECK(l5({{"cmd", "seq.start"}, {"ch", 2}})["ok"] == true);
+        run5(4);
+        CHECK(l5({{"cmd", "sys.exit"}})["ok"] == false && called == 0);               // 正在跑序列
+        CHECK(l5({{"cmd", "seq.end"}, {"ch", 2}})["ok"] == true);
+        run5(4);
+        CHECK(l5({{"cmd", "sys.exit"}})["ok"] == true && called == 1);                // 都停了才退
+        fs::remove_all(b5, ec);
+    }
     // 服务端看得到这台 PC
     CHECK(srv.clients().size() == 1 && srv.clients()[0].address == "127.0.0.1" && srv.clients()[0].rx > 20);
     pc.close();

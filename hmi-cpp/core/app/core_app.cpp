@@ -164,6 +164,7 @@ std::string CoreApp::state_json() {
 //   lamp.set ch on（照明：只记状态）   mark.add ch [text]（时间标记）   trend.snapshot ch（把趋势数据存成 CSV 快照）
 //   drives.list（插着的 U 盘）   export.copy [dest]（把导出目录拷到 U 盘）   runs.export 可带 from_min / to_min
 //   sys.info（版本、已运行多久、数据目录、磁盘剩余、炉次数、配方数）
+//   sys.exit（退出控制核心；只收本机的，两个通道都停着才收）
 //   comm.status（各设备通信参数和连接状态、连着的 PC、本机地址）
 //   trend.get ch [after] [max]（最近 3 小时的读数，2 秒一点，趋势曲线用）
 //   profile.get ch   profile.set ch segments[…]（手动结晶曲线，存盘；temp.profile 不带 segments 就用它）
@@ -457,6 +458,19 @@ std::string CoreApp::handle(const std::string& line, bool remote) {
                 r["runs"] = RunRecorder::list(dir_).size();
                 r["recipes"] = recipes_.list().size();
                 r["gain_rows"] = table_.rows().size();
+            }
+            else if (cmd == "sys.exit") {
+                // 退出控制核心。触摸屏上「退出程序 → 连控制核心一起退」下的就是这条。
+                // 只收本机的：PC 要是能把核心关掉，现场没人知道炉子为什么不控了。
+                // 两个通道都停着才收——真正的停机动作在主程序的退出那一段（停序列、停控温、再跑两拍让「停」写到设备上），
+                // 这里只负责把主循环叫停，不自己去动设备。
+                const StationSnapshot snap = station_->snapshot();
+                bool busy = snap.ch[0].running || snap.ch[1].running;
+                for (int k = 0; k < 2; k++) { const SeqState q2 = ch_[k].seq->status().state; busy = busy || q2 == SeqState::Running || q2 == SeqState::WaitingConfirm; }
+                if (remote) r = fail("只有触摸屏上能退出控制核心");
+                else if (busy) r = fail("有通道正在控温或跑序列，停下来才能退出");
+                else if (!on_exit) r = fail("这个程序不支持退出");
+                else on_exit();
             }
             else if (cmd == "comm.status") {
                 // 各设备的通信参数 + 开机时连没连上；连着的 PC；本机地址。后面三样由主程序提供，没接（测试里）就只有参数

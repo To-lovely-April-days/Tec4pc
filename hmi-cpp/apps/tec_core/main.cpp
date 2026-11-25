@@ -91,6 +91,9 @@ int main(int argc, char** argv) {
     app.offline_reason = offline;
     // 自动检测要一个口一个口地开，核心自己不碰真串口（只有 Windows 有），上面建好了接进去
     app.open_serial = open_serial;
+    // 触摸屏上「退出程序 → 连控制核心一起退」走的就是这里：不另写一套停机动作，
+    // 只把主循环叫停，让下面那段现成的退出（停序列、停控温、再跑两拍写到设备上）照常走一遍
+    app.on_exit = []() { g_quit = true; };
     app.comm_info = [&]() {
         nlohmann::json j = {{"sim", sim}, {"address", tec::local_ip()}, {"clients", nlohmann::json::array()}, {"status", nlohmann::json::array()}};
         for (auto& c : srv.clients()) j["clients"].push_back({{"address", c.address}, {"connected_s", c.connected_s}, {"rx", c.rx}, {"tx", c.tx}});

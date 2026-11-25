@@ -872,6 +872,7 @@ int main(int argc, char** argv) {
     long loops = 0;
     for (;;) {
         const auto now = clock::now();
+        if (app.quit) return 0;                        // 设置页底下点了「退出」（见 sys_page.inc）
 #ifdef _WIN32
         if (windowed && !win::pump()) return 0;        // 窗口被关掉了
 #endif
