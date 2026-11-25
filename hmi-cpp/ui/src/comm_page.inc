@@ -52,6 +52,8 @@ void comm_dlg_show() {
 
 bool comm_action(const std::string& a) {
     if (a == "nav:settings") { cmv.msg.clear(); show("Comm"); return true; }
+    // 自动检测那两屏（扫描中 / 对照结果）自己一套动作
+    if (a == "cm:scan" || a.rfind("cs:", 0) == 0 || a.rfind("cr:", 0) == 0) return scan_action(a);
     const bool dlg = a.rfind("cd:", 0) == 0 || a.rfind("cdbaud:", 0) == 0 || a.rfind("cdpar:", 0) == 0 || a.rfind("cdstop:", 0) == 0;
     if (a.rfind("cm:", 0) != 0 && !dlg) return false;
     if (dlg) {
@@ -133,6 +135,7 @@ bool comm_action(const std::string& a) {
 
 void refresh_comm(Ui& u) {
     comm_fetch(false);
+    refresh_scan_running();      // 正在扫的话，每拍问一次进度（扫完它自己换到对照那一屏）
     // 还没从控制核心拿到设备清单：**必须把这几行藏掉**。原样不动的话，屏上留着的是设计稿里的示意值
     // （一排「正常」、一行「无应答」），看着像真的读数，点又点不动——用户 2026-11-25 就是被这一屏骗了
     if (!cmv.info.is_object()) {
@@ -150,6 +153,8 @@ void refresh_comm(Ui& u) {
         const json& d = devs[k];
         u.set_text(id + ".n", d.value("label", ""));
         u.set_text(id + ".p", d.value("port", ""));
+        // 带 USB 标记 = 这台记住了自己在哪个 USB 口，COM 号变了也能自己找回来
+        u.show(id + ".usb", !d.value("usb_id", std::string()).empty());
         u.set_text(id + ".b", std::to_string(d.value("baud", 9600)));
         u.set_text(id + ".a", std::to_string(d.value("station", 1)));
         const std::string stt = d.value("state", "unknown"), prob = d.value("problem", "");
@@ -161,7 +166,7 @@ void refresh_comm(Ui& u) {
     }
     // 控温设备没连上时，这一页就是来修它的地方：把话说在最显眼的这一行
     const bool offline = st.is_object() && !st.value("offline", std::string()).empty();
-    u.set_text("cm.msg", !cmv.msg.empty() ? cmv.msg : offline ? "温控器或继电器模块没连上：点红色的那一行改串口，改好后重启控制核心" : "点一行改它的串口、波特率、校验、站号；改了要重启控制核心才生效");
+    u.set_text("cm.msg", !cmv.msg.empty() ? cmv.msg : offline ? "温控器或继电器模块没连上：按右上角「自动检测」问一遍，或点红色的那一行改串口" : "点一行改它的串口、波特率、校验、站号；带 USB 标记的记住了插口位置，COM 号变了也能自己找回来");
     u.set_text_color("cm.msg", !cmv.msg.empty() ? 0x00559C : offline ? 0xD64545 : 0x8792A0);
     // 对外通信
     const std::string addr = cmv.info.value("address", "");
@@ -186,4 +191,247 @@ void refresh_comm(Ui& u) {
         u.set_text(id + ".io", "收 " + std::to_string(pcs[k].value("rx", 0L)) + " 条 · 发 " + std::to_string(pcs[k].value("tx", 0L)) + " 条");
         u.set_text(id + ".t", "已连 " + hms(pcs[k].value("connected_s", 0.0)));
     }
+}
+
+// ───────── 自动检测：这台设备接在哪个串口（用户 2026-11-25 要的）─────────
+//
+// 平时根本走不到这里：设备配置里记了 usb_id，控制核心开机就按 USB 口反查出今天的 COM 号。
+// 线被挪到别的插口、或者第一次装机还没标定过，才来按一下「自动检测」真的问一遍。
+// 界面按用户 2026-11-25 从三版里选的「乙：一屏对照」做：扫描一屏（CommScanRun），
+// 扫完换成对照一屏（CommScan），同型号的两路就在行里指派通道。
+//
+// 这一层只管显示和挑选，真正去问设备的是控制核心（ports.scan，只发读功能码）。
+
+static constexpr int kScanRows = 9;
+// 设备键 → 扫描认出来的类型。同型号的两路（pH、搅拌）认出来是同一个类型，分不出通道，所以要人指派
+static std::string scan_type_of(const std::string& key) {
+    if (key == "ph1" || key == "ph2") return "ph";
+    if (key == "stir1" || key == "stir2") return "stir";
+    return key;
+}
+
+struct ScanRow {
+    std::string key, label, old_port;
+    json hit;                 // 配到的那一条扫描结果；空 = 这台没扫到
+    bool take = true;
+    int pair = -1;            // 0 = pH 这一对，1 = 搅拌这一对；−1 = 不成对
+    int pair_slot = 0;        // 在这一对里本来排第几（0 = 通道 1）
+};
+struct ScanView {
+    bool open = false, running = false;
+    std::vector<ScanRow> rows;
+    bool swap[2] = {false, false};      // 这一对的两台是不是被人对调过
+    std::string msg;
+} scv;
+Page commscan, commscanrun;
+
+void scan_build_page(Page& pg, const char* name) {
+    if (pg.scr) return;
+    pg.scr = lv_obj_create(lv_layer_top());
+    lv_obj_remove_style_all(pg.scr);
+    lv_obj_set_size(pg.scr, W, H);
+    lv_obj_add_flag(pg.scr, LV_OBJ_FLAG_CLICKABLE);
+    pg.ui = std::make_unique<Ui>();
+    pg.ui->on_action = [this](const std::string& x) { action(x); };
+    for (const PageDef& d : kPages) if (std::string(d.name) == name) { d.build(pg.scr, *pg.ui); lv_obj_update_layout(pg.scr); }
+}
+void scan_show(Page& pg, bool on) {
+    if (!pg.scr) return;
+    if (on) { lv_obj_remove_flag(pg.scr, LV_OBJ_FLAG_HIDDEN); lv_obj_move_foreground(pg.scr); }
+    else lv_obj_add_flag(pg.scr, LV_OBJ_FLAG_HIDDEN);
+}
+
+// 把扫描结果配到九台设备上：一类一类配，同型号的两路按顺序先给通道 1 再给通道 2
+void scan_build_rows(const json& hits) {
+    scv.rows.clear();
+    scv.swap[0] = scv.swap[1] = false;
+    if (!cmv.info.is_object()) return;
+    std::map<std::string, std::vector<json>> by_type;
+    for (const json& h : hits) {
+        const std::string t = h.value("type", "");
+        if (!t.empty()) by_type[t].push_back(h);
+    }
+    std::map<std::string, int> used;
+    for (const json& d : cmv.info["devices"]) {
+        ScanRow r;
+        r.key = d.value("key", ""); r.label = d.value("label", ""); r.old_port = d.value("port", "");
+        if (r.key == "ph1" || r.key == "stir1") { r.pair = r.key == "ph1" ? 0 : 1; r.pair_slot = 0; }
+        if (r.key == "ph2" || r.key == "stir2") { r.pair = r.key == "ph2" ? 0 : 1; r.pair_slot = 1; }
+        const std::string ty = scan_type_of(r.key);
+        auto it = by_type.find(ty);
+        if (it != by_type.end() && used[ty] < static_cast<int>(it->second.size())) r.hit = it->second[used[ty]++];
+        r.take = !r.hit.is_null();
+        scv.rows.push_back(std::move(r));
+    }
+}
+
+// 这一行最后要用哪一条结果：成对的两路被人对调过就取对家的
+const json* scan_hit_of(int k) {
+    if (k < 0 || k >= static_cast<int>(scv.rows.size())) return nullptr;
+    const ScanRow& r = scv.rows[k];
+    if (r.pair >= 0 && scv.swap[r.pair]) {
+        for (size_t j = 0; j < scv.rows.size(); j++)
+            if (static_cast<int>(j) != k && scv.rows[j].pair == r.pair) return scv.rows[j].hit.is_null() ? nullptr : &scv.rows[j].hit;
+        return nullptr;
+    }
+    return r.hit.is_null() ? nullptr : &r.hit;
+}
+
+void refresh_scan_result() {
+    if (!commscan.ui) return;
+    Ui& u = *commscan.ui;
+    int found = 0, changed = 0, ask = 0;
+    for (int k = 0; k < kScanRows; k++) {
+        const std::string id = "cs.r." + std::to_string(k);
+        const bool on = k < static_cast<int>(scv.rows.size());
+        u.show(id, on);
+        if (!on) continue;
+        const ScanRow& r = scv.rows[k];
+        const json* h = scan_hit_of(k);
+        u.set_text(id + ".n", r.label);
+        u.set_text(id + ".old", r.old_port);
+        const std::string np = h ? h->value("port", "") : "";
+        const int slot = h ? h->value("slot", 0) : 0;
+        const bool diff = h && np != r.old_port;
+        if (h) found++;
+        if (diff) changed++;
+        u.show(id + ".u", h && slot > 0);
+        u.set_text(id + ".f", !h ? "—" : slot > 0 ? std::to_string(slot) + " 口 · " + np : np);
+        u.set_text_color(id + ".f", diff ? 0x00559C : 0x4F5B67);
+        const std::string prob = h ? h->value("problem", "") : "";
+        const std::string model = h ? h->value("model", "") : "";
+        u.set_text(id + ".m", !h ? "没扫到" : !prob.empty() ? prob : model);
+        u.set_text_color(id + ".m", !h ? 0x8792A0 : 0x1A2330);
+        const bool pair = r.pair >= 0 && h;
+        if (pair) ask++;
+        if (lv_obj_t* o = u.box(id + ".dot")) if (u.changed(id + ".dot", !h ? 0 : pair ? 2 : 1))
+            bg(o, !h ? 0xB8C4D0 : pair ? 0xC77700 : 0x00B368, 255);
+        // 采用那一格：普通行给一个勾，同型号的两路给「这台是通道 1 | 2」
+        u.show(id + ".take", h && !pair);
+        u.show(id + ".ch", pair);
+        if (h && !pair) {
+            // 勾上 / 不勾：同一个方块改底色、对勾跟着显隐（display:none 的元素运行时不存在，不能拿两个轮流出场）
+            if (lv_obj_t* o = u.box(id + ".cb")) if (u.changed(id + ".cb", r.take)) bg(o, r.take ? 0x00559C : 0xFFFFFF, 255);
+            u.show(id + ".cb.ck", r.take);
+        }
+        if (pair) {
+            const int sel = scv.swap[r.pair] ? 1 - r.pair_slot : r.pair_slot;
+            for (int i = 0; i < 2; i++) {
+                if (lv_obj_t* o = u.box(id + ".s" + std::to_string(i))) if (u.changed(id + ".s" + std::to_string(i), i == sel))
+                    bg(o, i == sel ? 0x00559C : 0xFFFFFF, 255);
+                u.set_text_color(id + ".s" + std::to_string(i) + "t", i == sel ? 0xFFFFFF : 0x4F5B67);
+            }
+        }
+    }
+    const int ports = scv.rows.empty() ? 0 : static_cast<int>(scv.rows.size());
+    (void)ports;
+    u.set_text("cs.sub", "认出 " + std::to_string(found) + " 台 · " + std::to_string(changed) + " 处和现在配的不一样" +
+                         (ask ? " · " + std::to_string(ask) + " 台同型号要你指派通道" : ""));
+    u.set_text("cs.apply", changed ? "应用这 " + std::to_string(changed) + " 处" : "应用");
+    if (!scv.msg.empty()) { u.set_text("cs.tip", scv.msg); u.set_text_color("cs.tip", 0xD64545); }
+    else { u.set_text("cs.tip", "只读地问过，没动任何输出；应用后要重启控制核心才生效"); u.set_text_color("cs.tip", 0x8792A0); }
+}
+
+// 扫描进行中那一屏：每拍问一次控制核心的进度。扫完自动换到对照那一屏
+void refresh_scan_running() {
+    if (!scv.running || !commscanrun.ui) return;
+    Ui& u = *commscanrun.ui;
+    const json r = ask({{"cmd", "ports.scan.status"}});
+    if (!r.value("ok", false)) { scv.running = false; scan_show(commscanrun, false); cmv.msg = r.value("error", std::string("检测没跑起来")); return; }
+    const int done = r.value("done", 0), total = r.value("total", 0);
+    u.set_text("cr.n", total ? "第 " + std::to_string(std::max(1, done)) + " 个口 / 共 " + std::to_string(total) + " 个" : "正在找串口…");
+    char el[24]; std::snprintf(el, sizeof el, "已用 %.1f s", r.value("elapsed_s", 0.0));
+    u.set_text("cr.t", el);
+    if (lv_obj_t* bar = u.box("cr.bar")) if (lv_obj_t* track = lv_obj_get_parent(bar)) {
+        const int full = lv_obj_get_width(track);
+        lv_obj_set_width(bar, total > 0 ? std::max(0, full * done / total) : 0);
+    }
+    const json& hits = r["hits"];
+    for (int k = 0; k < 8; k++) {
+        const std::string id = "cr.r." + std::to_string(k);
+        const bool on = k < total;
+        u.show(id, on);
+        if (!on) continue;
+        const bool have = k < static_cast<int>(hits.size());
+        const bool now = have && k == static_cast<int>(hits.size()) - 1 && r.value("running", false);
+        // 一个圆点改颜色：绿 = 认出来了、蓝 = 正在问、灰 = 还没问
+        if (lv_obj_t* o = u.box(id + ".dot")) if (u.changed(id + ".dot", !have ? 0 : now ? 1 : 2))
+            bg(o, !have ? 0xC3CCD6 : now ? 0x00559C : 0x00B368, 255);
+        if (!have) {
+            u.set_text(id + ".slot", std::to_string(k + 1) + " 口"); u.set_text(id + ".p", "—"); u.set_text(id + ".link", "—");
+            // 颜色也要盖掉：设计稿里这几行本来有一行是蓝的（画的是「正在问」那一行），不盖就留着别人的颜色
+            u.set_text(id + ".m", "还没问"); u.set_text_color(id + ".m", 0x8792A0);
+            continue;
+        }
+        const json& h = hits[k];
+        const int slot = h.value("slot", 0);
+        u.set_text(id + ".slot", slot > 0 ? std::to_string(slot) + " 口" : "—");
+        u.set_text(id + ".p", h.value("port", ""));
+        const int baud = h.value("baud", 0);
+        u.set_text(id + ".link", baud ? std::to_string(baud) + " · 站号 " + std::to_string(h.value("station", 0)) : "—");
+        const std::string prob = h.value("problem", ""), model = h.value("model", "");
+        u.set_text(id + ".m", !prob.empty() ? prob : !model.empty() ? model : "没认出来");
+        u.set_text_color(id + ".m", !prob.empty() ? 0xD64545 : !model.empty() ? 0x1A2330 : 0x8792A0);
+    }
+    if (!r.value("running", false)) {
+        scv.running = false;
+        scan_build_rows(r["hits"]);
+        scan_show(commscanrun, false);
+        scan_build_page(commscan, "CommScan");
+        scv.open = true;
+        refresh_scan_result();
+        scan_show(commscan, true);
+    }
+}
+
+bool scan_action(const std::string& a) {
+    if (a == "cm:scan" || a == "cs:again") {
+        const json r = ask({{"cmd", "ports.scan"}});
+        if (!r.value("ok", false)) { cmv.msg = r.value("error", std::string("检测没跑起来")); scv.msg = cmv.msg; if (scv.open) refresh_scan_result(); return true; }
+        scv.msg.clear(); cmv.msg.clear();
+        scan_show(commscan, false); scv.open = false;
+        scan_build_page(commscanrun, "CommScanRun");
+        scv.running = true;
+        scan_show(commscanrun, true);
+        refresh_scan_running();
+        return true;
+    }
+    if (a == "cr:close" || a == "cr:stop") { scv.running = false; scan_show(commscanrun, false); cmv.msg = "检测停了"; return true; }
+    if (a == "cs:close") { scv.open = false; scan_show(commscan, false); return true; }
+    if (a.rfind("cs:take:", 0) == 0) {
+        const int k = std::atoi(a.c_str() + 8);
+        if (k >= 0 && k < static_cast<int>(scv.rows.size()) && scv.rows[k].pair < 0) scv.rows[k].take = !scv.rows[k].take;
+        refresh_scan_result();
+        return true;
+    }
+    if (a.rfind("cs:ch:", 0) == 0) {
+        // 「这台是通道 1 / 2」：点的是对家那一边，就把这一对的两台对调
+        const size_t c = a.find(':', 6);
+        const int k = std::atoi(a.substr(6, c - 6).c_str()), want = std::atoi(a.c_str() + c + 1);
+        if (k >= 0 && k < static_cast<int>(scv.rows.size()) && scv.rows[k].pair >= 0) {
+            const ScanRow& r = scv.rows[k];
+            if (want != (scv.swap[r.pair] ? 1 - r.pair_slot : r.pair_slot)) scv.swap[r.pair] = !scv.swap[r.pair];
+        }
+        refresh_scan_result();
+        return true;
+    }
+    if (a == "cs:apply") {
+        json devs = json::array();
+        for (int k = 0; k < static_cast<int>(scv.rows.size()); k++) {
+            const ScanRow& r = scv.rows[k];
+            const json* h = scan_hit_of(k);
+            if (!h || (r.pair < 0 && !r.take)) continue;
+            if (!h->value("problem", std::string()).empty()) continue;     // 认不准的不写进去
+            devs.push_back({{"key", r.key}, {"port", h->value("port", "")}, {"usb_id", h->value("usb_id", "")},
+                            {"usb_name", h->value("usb_name", "")}, {"baud", h->value("baud", 9600)}, {"station", h->value("station", 1)}});
+        }
+        if (devs.empty()) { scv.msg = "没有可以应用的行"; refresh_scan_result(); return true; }
+        const json r = ask({{"cmd", "ports.apply"}, {"devices", devs}});
+        if (!r.value("ok", false)) { scv.msg = r.value("error", std::string("没存进去")); refresh_scan_result(); return true; }
+        scv.open = false; scan_show(commscan, false);
+        cmv.msg = "已按检测结果改了 " + std::to_string(r.value("applied", 0)) + " 台，并记住了它们的 USB 口；重启控制核心后生效";
+        comm_fetch(true); refresh();
+        return true;
+    }
+    return false;
 }

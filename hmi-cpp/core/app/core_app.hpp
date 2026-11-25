@@ -6,6 +6,7 @@
 // 命令和应答都是一行一条的 json。命令：{"cmd":"名字", ...参数, "id":可选}；应答：{"ok":true, ...} 或 {"ok":false,"error":"原因"}，带回 id。
 // 命令清单见 core_app.cpp 里 handle() 上面的表。
 #pragma once
+#include "port_scan.hpp"
 #include "../data/run_recorder.hpp"
 #include "../data/store.hpp"
 #include "../sequence/sequence.hpp"
@@ -17,6 +18,8 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
+#include <vector>
 
 namespace tec {
 
@@ -33,6 +36,9 @@ public:
     std::string data_dir() const { return dir_; }
     // 通信设置页要看的东西（各设备连没连上、连着哪些 PC、本机地址）核心自己不知道，由主程序接进来：返回一个 json 对象的文本
     std::function<std::string()> comm_info;
+    // 真串口只有 Windows 有，核心自己不建，由主程序接进来：自动检测要靠它一个口一个口地开。
+    // 不接（仿真、测试）= 这台机器上没有真串口可扫，自动检测会如实说不能扫
+    PortOpenFn open_serial;
     // 不空 = 控温用的设备没连上（主程序开机时发现的），里面是原因。这时核心照常跑、照常答命令，只是不收开始控温 / 开始序列
     std::string offline_reason;
     static constexpr const char* kVersion = "0.1.0";      // 控制核心的版本号（系统设置页、PC 端都看它）
@@ -56,6 +62,20 @@ private:
         std::deque<Mark> marks;                         // 操作人在趋势图上打的时间标记（最近 200 个，只在内存；这一炉在跑时同时记进事件日志）
         bool lamp = false;                              // 照明的开关状态。现在只记状态，还没接到哪一路输出上（用户 2026-11-24：通信以后再接）
     };
+    // 自动检测在自己的线程上跑（一个口几百毫秒，八个口几秒，不能卡住 0.5 s 一拍的控制循环）。
+    // 界面开扫以后每隔一会儿问一次 ports.scan.status 拿进度和结果。
+    struct Scanner {
+        std::thread th;
+        std::mutex mu;
+        bool running = false, want_stop = false, has_result = false;
+        int done = 0, total = 0;
+        std::string now_port;
+        double started = 0;
+        std::vector<ScanHit> hits;
+        ~Scanner() { if (th.joinable()) th.join(); }
+    };
+    Scanner scan_;
+
     void record(double t);
     void begin_run(int ch, const std::string& name, double t);
     std::string state_json();

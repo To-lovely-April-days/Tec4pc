@@ -39,7 +39,7 @@ Target target_from(const json& j) {
 }
 
 // 只看不改的命令。别的命令都会改变设备或存盘的状态，远程控制关着的时候 PC 不许下
-const std::set<std::string> kReadOnly = {"state", "seq.get", "recipe.list", "recipe.get", "alarm.list", "limits.get", "settings.get", "runs.list", "gains.get", "events", "profile.get", "trend.get", "comm.status", "sys.info", "drives.list"};
+const std::set<std::string> kReadOnly = {"state", "seq.get", "recipe.list", "recipe.get", "alarm.list", "limits.get", "settings.get", "runs.list", "gains.get", "events", "profile.get", "trend.get", "comm.status", "sys.info", "drives.list", "ports.list", "ports.scan.status"};
 }  // namespace
 
 CoreApp::CoreApp(ReactorHardware& hw, AuxHardware& aux, const std::string& data_dir, const std::string& gain_table_path)
@@ -295,7 +295,7 @@ std::string CoreApp::handle(const std::string& line, bool remote) {
                 r["tcp"] = {{"enabled", settings_.tcp.enabled}, {"port", settings_.tcp.port}, {"timeout_s", settings_.tcp.timeout_s}, {"allow_remote_control", settings_.tcp.allow_remote_control}};
                 r["fast_boost_max"] = settings_.fast_boost_max;
                 r["devices"] = json::array();
-                for (auto& d : settings_.devices) r["devices"].push_back({{"key", d.key}, {"label", d.label}, {"enabled", d.enabled}, {"port", d.port}, {"baud", d.baud}, {"parity", std::string(1, d.parity)}, {"stop_bits", d.stop_bits}, {"station", d.station}, {"poll_ms", d.poll_ms}});
+                for (auto& d : settings_.devices) r["devices"].push_back({{"key", d.key}, {"label", d.label}, {"enabled", d.enabled}, {"port", d.port}, {"usb_id", d.usb_id}, {"usb_name", d.usb_name}, {"baud", d.baud}, {"parity", std::string(1, d.parity)}, {"stop_bits", d.stop_bits}, {"station", d.station}, {"poll_ms", d.poll_ms}});
             }
             else if (cmd == "settings.set") {
                 if (remote) r = fail("通信和系统设置只能在触摸屏上改");     // PC 把触摸屏的端口改掉，自己就再也连不上了
@@ -314,6 +314,78 @@ std::string CoreApp::handle(const std::string& line, bool remote) {
                     }
                     if (r.value("ok", false) && !settings_.save(dir_)) r = fail("设置存不了盘");
                     else if (r.value("ok", false)) r["restart_needed"] = q.contains("device") || (q.contains("tcp") && q["tcp"].contains("port"));
+                }
+            }
+            // ── 自动检测：这台设备接在哪个串口 ──
+            // 平时根本用不到它：设备配置里记了 usb_id，开机就按 USB 口反查出今天的 COM 号（resolve_device_ports）。
+            // 线被挪到别的插口、或者第一次装机还没标定过，才来这里真的问一遍。
+            else if (cmd == "ports.list") {
+                r["ports"] = json::array();
+                for (const SerialPortInfo& p : list_serial_ports())
+                    r["ports"].push_back({{"port", p.port}, {"name", p.name}, {"usb_id", p.usb_id}, {"slot", p.slot}});
+            }
+            else if (cmd == "ports.scan") {
+                std::lock_guard<std::mutex> lk(scan_.mu);
+                if (remote) r = fail("自动检测只能在触摸屏上做");
+                else if (scan_.running) r = fail("正在检测，等它扫完");
+                else if (!open_serial) r = fail("这台机器上没有真串口可扫（仿真模式）");
+                else if (station_->snapshot().ch[0].running || station_->snapshot().ch[1].running) r = fail("有通道正在控制中。检测要占住串口、会打断轮询，先把两个通道都停下来再检测");
+                else {
+                    if (scan_.th.joinable()) scan_.th.join();
+                    scan_.running = true; scan_.want_stop = false; scan_.has_result = false;
+                    scan_.done = 0; scan_.total = 0; scan_.now_port.clear(); scan_.hits.clear();
+                    scan_.started = t;
+                    ScanOptions opt;
+                    if (q.contains("timeout_ms")) opt.timeout_ms = std::max(80, std::min(2000, q.value("timeout_ms", 300)));
+                    scan_.th = std::thread([this, opt]() {
+                        std::vector<ScanHit> hits;
+                        try {
+                            hits = scan_serial_ports(opt, open_serial, [this](int done, int total, const ScanHit& last) {
+                                std::lock_guard<std::mutex> g(scan_.mu);
+                                scan_.done = done; scan_.total = total; scan_.now_port = last.port;
+                                scan_.hits.push_back(last);
+                            });
+                        } catch (const std::exception&) {}
+                        std::lock_guard<std::mutex> g(scan_.mu);
+                        if (!hits.empty()) scan_.hits = hits;
+                        scan_.running = false; scan_.has_result = true;
+                    });
+                }
+            }
+            else if (cmd == "ports.scan.status") {
+                std::lock_guard<std::mutex> lk(scan_.mu);
+                r["running"] = scan_.running;
+                r["done"] = scan_.done; r["total"] = scan_.total; r["port"] = scan_.now_port;
+                r["elapsed_s"] = scan_.running || scan_.has_result ? std::max(0.0, t - scan_.started) : 0.0;
+                r["hits"] = json::array();
+                for (const ScanHit& h : scan_.hits)
+                    r["hits"].push_back({{"port", h.port}, {"usb_id", h.usb_id}, {"usb_name", h.usb_name}, {"slot", h.slot},
+                                         {"type", h.type}, {"type_label", scan_type_label(h.type)}, {"model", h.model},
+                                         {"baud", h.baud}, {"station", h.station}, {"problem", h.problem}});
+            }
+            else if (cmd == "ports.apply") {
+                // 人在检测结果那一屏点了「应用」：把选中的几行写进设备配置。
+                // 一起记下 usb_id——这才是重点，记住了以后 COM 号再变就不用再来检测一次了。
+                if (remote) r = fail("自动检测只能在触摸屏上做");
+                else if (!q.contains("devices") || !q["devices"].is_array()) r = fail("没给要改哪几台");
+                else {
+                    int n = 0;
+                    std::string missing;
+                    for (const json& dj : q["devices"]) {
+                        const std::string key = dj.value("key", "");
+                        DeviceComm* d = nullptr;
+                        for (auto& x : settings_.devices) if (x.key == key) d = &x;
+                        if (!d) { if (!missing.empty()) missing += "、"; missing += key; continue; }
+                        d->port = dj.value("port", d->port);
+                        d->usb_id = dj.value("usb_id", d->usb_id);
+                        d->usb_name = dj.value("usb_name", d->usb_name);
+                        d->baud = dj.value("baud", d->baud);
+                        d->station = dj.value("station", d->station);
+                        n++;
+                    }
+                    if (!missing.empty()) r = fail("设置里没有这些设备：" + missing);
+                    else if (!settings_.save(dir_)) r = fail("设置存不了盘");
+                    else { r["applied"] = n; r["restart_needed"] = n > 0; }
                 }
             }
             else if (cmd == "lamp.set") ch_[c].lamp = q.value("on", !ch_[c].lamp);      // 只记状态，不动任何输出
@@ -395,7 +467,7 @@ std::string CoreApp::handle(const std::string& line, bool remote) {
                 r["clients"] = extra.contains("clients") ? extra["clients"] : json::array();
                 r["devices"] = json::array();
                 for (auto& d : settings_.devices) {
-                    json one = {{"key", d.key}, {"label", d.label}, {"enabled", d.enabled}, {"port", d.port}, {"baud", d.baud}, {"parity", std::string(1, d.parity)}, {"stop_bits", d.stop_bits}, {"station", d.station}, {"poll_ms", d.poll_ms},
+                    json one = {{"key", d.key}, {"label", d.label}, {"enabled", d.enabled}, {"port", d.port}, {"usb_id", d.usb_id}, {"usb_name", d.usb_name}, {"baud", d.baud}, {"parity", std::string(1, d.parity)}, {"stop_bits", d.stop_bits}, {"station", d.station}, {"poll_ms", d.poll_ms},
                                 {"state", !d.enabled ? "off" : r["sim"].get<bool>() ? "sim" : "unknown"}, {"problem", ""}};
                     if (extra.contains("status")) for (auto& s2 : extra["status"]) if (s2.value("key", "") == d.key && d.enabled) { one["state"] = s2.value("ok", false) ? "ok" : "fail"; one["problem"] = s2.value("problem", ""); }
                     r["devices"].push_back(one);

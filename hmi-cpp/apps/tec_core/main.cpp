@@ -3,8 +3,13 @@
 //   --sim   不连真设备，用仿真的釜（开发界面、演示用）
 #include "../../third_party/nlohmann/json.hpp"
 #include "../../core/app/core_app.hpp"
+#include "../../core/app/port_scan.hpp"
 #include "../../core/app/real_devices.hpp"
+#ifdef _WIN32
+#include "../../io/win_serial.hpp"
+#endif
 #include "../../core/sim/sim_hardware.hpp"
+#include "../../core/sim/sim_ports.hpp"
 #include "../../core/util/utf8_file.hpp"
 #include "../../net/tcp_server.hpp"
 #include <atomic>
@@ -40,7 +45,23 @@ int main(int argc, char** argv) {
     }
     std::signal(SIGINT, on_signal);
     std::signal(SIGTERM, on_signal);
-    const tec::AppSettings settings = tec::AppSettings::load(data);
+    // 仿真模式的假串口要在读设置之前装好：下面开机第一件事就是按 USB 口反查 COM 号，
+    // 装晚了那一步问到的是「这台机器上一个串口都没有」，仿真里就验不出这条路通不通
+    tec::PortOpenFn open_serial;
+    if (sim) open_serial = tec::install_sim_ports();
+#ifdef _WIN32
+    else open_serial = [](const tec::SerialConfig& c) { return tec::make_win_serial(c); };
+#endif
+    tec::AppSettings settings = tec::AppSettings::load(data);
+    // 开机第一件事：按记住的 USB 口反查今天的 COM 号。
+    // COM 号是 Windows 按枚举顺序发的，换个 USB 插口 / 重装驱动 / 集线器枚举顺序一变就会整排平移；
+    // 标定过的设备认 usb_id，线不动就跟得上，不用人去改配置（用户 2026-11-25 要的）。
+    for (const tec::PortFix& f : tec::resolve_device_ports(settings)) {
+        std::printf("  %s 的串口变了：%s → %s%s%s\n", f.label.c_str(), f.from.c_str(), f.to.c_str(),
+                    f.usb_name.empty() ? "" : "（同一个 USB 口：", f.usb_name.empty() ? "" : (f.usb_name + "）").c_str());
+        settings.save(data);
+        std::fflush(stdout);     // 这几行是现场查「怎么又连不上」的第一手材料，输出重定向到文件时别卡在缓冲里
+    }
     std::unique_ptr<tec::SimHardware> simhw;
     std::unique_ptr<tec::RealDevices> real;
     std::unique_ptr<tec::OfflineReactorHardware> offline_hw;
@@ -68,6 +89,8 @@ int main(int argc, char** argv) {
     // 本机来的连接（触摸屏自己的界面程序）不算远程
     tec::TcpServer srv(port > 0 ? port : settings.tcp.port, [&](const std::string& line, bool local) { return app.handle(line, !local); }, settings.tcp.timeout_s);
     app.offline_reason = offline;
+    // 自动检测要一个口一个口地开，核心自己不碰真串口（只有 Windows 有），上面建好了接进去
+    app.open_serial = open_serial;
     app.comm_info = [&]() {
         nlohmann::json j = {{"sim", sim}, {"address", tec::local_ip()}, {"clients", nlohmann::json::array()}, {"status", nlohmann::json::array()}};
         for (auto& c : srv.clients()) j["clients"].push_back({{"address", c.address}, {"connected_s", c.connected_s}, {"rx", c.rx}, {"tx", c.tx}});

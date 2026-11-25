@@ -38,7 +38,9 @@ add_library(tec_core_lib STATIC
   core/app/core_app.cpp
   net/tcp_server.cpp
   core/app/real_devices.cpp
+  core/app/port_scan.cpp
   io/modbus_rtu.cpp
+  io/serial_ports.cpp
   drivers/rd105.cpp
   drivers/io8r.cpp
   drivers/chiller.cpp
@@ -50,7 +52,7 @@ add_library(tec_core_lib STATIC
 target_include_directories(tec_core_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 if(WIN32)
   target_sources(tec_core_lib PRIVATE io/win_serial.cpp)   # 真串口只有 Windows 版
-  target_link_libraries(tec_core_lib PUBLIC ws2_32)
+  target_link_libraries(tec_core_lib PUBLIC ws2_32 setupapi)   # setupapi：列串口时要拿设备管理器里的名字和 USB 实例 ID
 endif()
 
 # 控制核心主程序
@@ -172,3 +174,7 @@ add_test(NAME test_core_app COMMAND test_core_app ${CMAKE_CURRENT_SOURCE_DIR}/te
 add_executable(test_easymax tests/test_easymax.cpp)
 target_link_libraries(test_easymax PRIVATE tec_core_lib)
 add_test(NAME test_easymax COMMAND test_easymax ${CMAKE_CURRENT_SOURCE_DIR}/testdata/gain-table-run1110.csv)
+
+add_executable(test_port_scan tests/test_port_scan.cpp)
+target_link_libraries(test_port_scan PRIVATE tec_core_lib)
+add_test(NAME test_port_scan COMMAND test_port_scan)

@@ -42,6 +42,14 @@ struct DeviceComm {
     int stop_bits = 1;
     int station = 1;
     int poll_ms = 1000;
+    // 下面两项排在最后，是为了让 AppSettings::defaults() 里那张出厂接线表不用跟着改——
+    // 出厂本来就没有标定过 USB 口。
+    //
+    // usb_id：记住的 USB 口身份（设备实例 ID）。非空时开机先按它反查今天这台是哪个 COM——
+    // COM 号是 Windows 按枚举顺序发的，会平移；USB 的物理位置不会（见 io/serial_ports.hpp）。
+    // 空 = 还没标定过这台，只能认死上面那个 port
+    std::string usb_id;
+    std::string usb_name;       // 设备管理器里那串名字，只给人看（「USB-Enhanced-SERIAL-A CH344」）
 };
 
 struct TcpSettings {

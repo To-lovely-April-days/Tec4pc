@@ -208,16 +208,18 @@ bool RecipeStore::save_profile(int ch, const std::vector<ProfileSegment>& segs) 
 AppSettings AppSettings::defaults() {
     AppSettings s;
     // 现场那台的接线（原来 PC 台面上配的那一套，搬到这里）
+    // 后面两个空串是 usb_id / usb_name：出厂还没标定过 USB 口，开机只能认死这里写的 COM 号；
+    // 现场在「通信设置 → 自动检测」里标定一次之后，COM 号再变就能自己找回来
     s.devices = {
-        {"rd105", "TEC 温控器 RD105", true, "COM7", 38400, 'N', 1, 1, 500},
-        {"io8r", "切换继电器 IO8R", true, "COM8", 9600, 'N', 1, 1, 1000},
-        {"chiller", "冷水机", false, "COM9", 9600, 'N', 1, 1, 1000},
-        {"tr", "Tr 探头（宇电四路模块）", true, "COM3", 9600, 'N', 1, 1, 1000},
-        {"ph1", "pH 电极 · 通道 1", true, "COM12", 9600, 'N', 1, 1, 1000},
-        {"ph2", "pH 电极 · 通道 2", true, "COM13", 9600, 'N', 1, 1, 1000},
-        {"stir1", "搅拌 · 通道 1", true, "COM14", 9600, 'N', 2, 1, 500},
-        {"stir2", "搅拌 · 通道 2", true, "COM11", 9600, 'N', 2, 1, 500},
-        {"feed", "进料系统", true, "COM15", 9600, 'N', 1, 1, 1000},
+        {"rd105", "TEC 温控器 RD105", true, "COM7", 38400, 'N', 1, 1, 500, "", ""},
+        {"io8r", "切换继电器 IO8R", true, "COM8", 9600, 'N', 1, 1, 1000, "", ""},
+        {"chiller", "冷水机", false, "COM9", 9600, 'N', 1, 1, 1000, "", ""},
+        {"tr", "Tr 探头（宇电四路模块）", true, "COM3", 9600, 'N', 1, 1, 1000, "", ""},
+        {"ph1", "pH 电极 · 通道 1", true, "COM12", 9600, 'N', 1, 1, 1000, "", ""},
+        {"ph2", "pH 电极 · 通道 2", true, "COM13", 9600, 'N', 1, 1, 1000, "", ""},
+        {"stir1", "搅拌 · 通道 1", true, "COM14", 9600, 'N', 2, 1, 500, "", ""},
+        {"stir2", "搅拌 · 通道 2", true, "COM11", 9600, 'N', 2, 1, 500, "", ""},
+        {"feed", "进料系统", true, "COM15", 9600, 'N', 1, 1, 1000, "", ""},
     };
     return s;
 }
@@ -231,7 +233,7 @@ bool AppSettings::save(const std::string& data_dir) const {
     json j;
     j["devices"] = json::array();
     for (auto& d : devices)
-        j["devices"].push_back({{"key", d.key}, {"label", d.label}, {"enabled", d.enabled}, {"port", d.port}, {"baud", d.baud}, {"parity", std::string(1, d.parity)},
+        j["devices"].push_back({{"key", d.key}, {"label", d.label}, {"enabled", d.enabled}, {"port", d.port}, {"usb_id", d.usb_id}, {"usb_name", d.usb_name}, {"baud", d.baud}, {"parity", std::string(1, d.parity)},
                                 {"stop_bits", d.stop_bits}, {"station", d.station}, {"poll_ms", d.poll_ms}});
     j["tcp"] = {{"enabled", tcp.enabled}, {"port", tcp.port}, {"timeout_s", tcp.timeout_s}, {"allow_remote_control", tcp.allow_remote_control}};
     for (int c = 0; c < 2; c++) {
@@ -258,6 +260,7 @@ AppSettings AppSettings::load(const std::string& data_dir) {
             for (auto& d : s.devices)
                 if (d.key == jd.value("key", "")) {
                     d.enabled = jd.value("enabled", d.enabled); d.port = jd.value("port", d.port); d.baud = jd.value("baud", d.baud);
+                    d.usb_id = jd.value("usb_id", d.usb_id); d.usb_name = jd.value("usb_name", d.usb_name);
                     const std::string par = jd.value("parity", std::string(1, d.parity)); if (!par.empty()) d.parity = par[0];
                     d.stop_bits = jd.value("stop_bits", d.stop_bits); d.station = jd.value("station", d.station); d.poll_ms = jd.value("poll_ms", d.poll_ms);
                 }
