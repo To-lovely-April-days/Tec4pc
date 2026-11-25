@@ -1,0 +1,384 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:conv="using:HtlabHmi.Converters"
+             x:Class="HtlabHmi.Views.Overview.MainOverviewView">
+  <UserControl.Resources>
+    <conv:BoolToBrushConverter x:Key="ActiveDotBrush" TrueBrush="#00B368" FalseBrush="#BFC7CF" />
+    <conv:BoolToBrushConverter x:Key="PhValBrush" TrueBrush="#00B368" FalseBrush="#4F5B67" />
+    <conv:BoolToBrushConverter x:Key="TrValBrush" TrueBrush="#002B7F" FalseBrush="#4F5B67" />
+    <conv:BoolToBrushConverter x:Key="TileIconBrush" TrueBrush="#00559C" FalseBrush="#8792A0" />
+    <conv:BoolToBrushConverter x:Key="TileValBrush" TrueBrush="#1D3557" FalseBrush="#4F5B67" />
+    <conv:BoolToBrushConverter x:Key="LedBrush" TrueBrush="#2FD27A" FalseBrush="#C9D4E0" />
+    <conv:BoolToBrushConverter x:Key="BtnIconBrush" TrueBrush="#00559C" FalseBrush="#8792A0" />
+  </UserControl.Resources>
+
+  <Grid ColumnDefinitions="*,8,*">
+    <!-- ==================== CHANNEL 1 COLUMN (628px) ==================== -->
+    <Grid Grid.Column="0" RowDefinitions="72,8,310,8,202">
+      <!-- CH1 Header Card (628x72) -->
+      <Button Grid.Row="0" Command="{Binding NavigateSectionCommand}" CommandParameter="Ch1"
+              Padding="0" Background="Transparent" BorderThickness="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+              HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" Cursor="Hand">
+        <Border Classes="hmi-card">
+          <Canvas>
+            <!-- Top Row (left:24, right:56, top:10, height:28) -->
+            <DockPanel Canvas.Left="24" Canvas.Top="10" Width="548" Height="28">
+              <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <Ellipse Width="9" Height="9" Fill="{Binding Channel1.IsActive, Converter={StaticResource ActiveDotBrush}}" VerticalAlignment="Center" />
+                <TextBlock Text="通道 1" FontSize="19" Foreground="#4F5B67" Margin="10,0,0,0" VerticalAlignment="Center" />
+                <TextBlock Text="{Binding Channel1.SchemeName}" FontSize="20" FontWeight="SemiBold" Foreground="#00559C" Margin="14,0,0,0" VerticalAlignment="Center" />
+              </StackPanel>
+              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <PathIcon Data="{StaticResource IconClock}" Width="20" Height="20" Foreground="#8792A0" IsVisible="{Binding Channel1.IsActive}" />
+                <PathIcon Data="{StaticResource IconStandby}" Width="21" Height="21" Foreground="#8792A0" IsVisible="{Binding !Channel1.IsActive}" />
+                <TextBlock Text="{Binding Channel1.MainCardRightTop}" FontSize="20" FontWeight="Medium" Foreground="#1F2A35" />
+              </StackPanel>
+            </DockPanel>
+            <!-- Right Chevron Circle (right:8, top:16, 36x36) -->
+            <Border Canvas.Right="8" Canvas.Top="16" Width="36" Height="36" CornerRadius="18" Background="#F0F4F9">
+              <PathIcon Data="{StaticResource IconChevronRight}" Width="20" Height="20" Foreground="#00559C" />
+            </Border>
+            <!-- Bottom Row (left:24, top:41, height:20) -->
+            <DockPanel Canvas.Left="24" Canvas.Top="41" Width="548" Height="20">
+              <TextBlock Text="{Binding Channel1.MainCardModeLine}" FontSize="15" Foreground="#8792A0" VerticalAlignment="Center" />
+              <TextBlock DockPanel.Dock="Right" Text="{Binding Channel1.MainCardRightBottom}" FontSize="15" Foreground="#8792A0" VerticalAlignment="Center" />
+            </DockPanel>
+            <!-- Bottom 4px Progress Bar -->
+            <Border Canvas.Left="0" Canvas.Bottom="0" Width="628" Height="4" Background="#DCE2E9">
+              <Border HorizontalAlignment="Left" Height="4" Background="#00559C"
+                      Width="{Binding Channel1.OverallProgressPct, Converter={x:Static conv:PercentToWidthConverter.Instance}, ConverterParameter=628}" />
+            </Border>
+          </Canvas>
+        </Border>
+      </Button>
+
+      <!-- CH1 Reactor Stage Card (628x310) - 1:1 Canvas Coordinates from Main.dc.html -->
+      <Border Grid.Row="2" Classes="hmi-card">
+        <Canvas Width="628" Height="310">
+          <!-- Floor Plinth (top:272..310, #F3F6FA) -->
+          <Border Canvas.Left="0" Canvas.Top="272" Width="628" Height="38" Background="#F3F6FA" />
+
+          <!-- Real Reactor PNG (left:226, top:8, 132x295) -->
+          <Image Canvas.Left="226" Canvas.Top="8" Width="132" Height="295"
+                 Source="avares://HtlabHmi/Assets/reactor.png" Stretch="Uniform"
+                 Opacity="{Binding Channel1.ReactorOpacity}" />
+
+          <!-- pH Top-Left (left:28, top:24) -->
+          <StackPanel Canvas.Left="28" Canvas.Top="22" Orientation="Horizontal" Spacing="10">
+            <TextBlock Text="pH" FontSize="20" FontWeight="SemiBold" Foreground="#4F5B67" VerticalAlignment="Bottom" Margin="0,0,0,10" />
+            <TextBlock Text="{Binding Channel1.PhText}" FontSize="52" FontWeight="SemiBold"
+                       Foreground="{Binding Channel1.IsActive, Converter={StaticResource PhValBrush}}" />
+          </StackPanel>
+
+          <!-- Tr Top-Right (left:386, top:24) -->
+          <StackPanel Canvas.Left="386" Canvas.Top="22" Orientation="Horizontal">
+            <TextBlock Text="Tr" FontSize="20" FontWeight="SemiBold" Foreground="#4F5B67" VerticalAlignment="Bottom" Margin="0,0,10,10" />
+            <TextBlock Text="{Binding Channel1.TrText}" FontSize="52" FontWeight="SemiBold"
+                       Foreground="{Binding Channel1.IsActive, Converter={StaticResource TrValBrush}}" />
+            <TextBlock Text="℃" FontSize="18" Foreground="#8792A0" VerticalAlignment="Bottom" Margin="6,0,0,10" />
+          </StackPanel>
+
+          <!-- SP Clickable Box (left:386, top:94, 172x48) -->
+          <Button Canvas.Left="386" Canvas.Top="94" Width="172" Height="48"
+                  Command="{Binding EditMainSpCommand}" CommandParameter="1"
+                  Background="#F3F7FC" BorderBrush="#C9D6E5" BorderThickness="1.5" CornerRadius="10"
+                  Padding="12,0" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center" Cursor="Hand">
+            <DockPanel>
+              <TextBlock Text="SP" FontSize="15" FontWeight="SemiBold" Foreground="#8792A0" VerticalAlignment="Center" />
+              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="{Binding Channel1.TargetTempText}" FontSize="21" FontWeight="SemiBold" Foreground="#1F2A35" />
+                <TextBlock Text="℃" FontSize="14" Foreground="#8792A0" VerticalAlignment="Bottom" Margin="4,0,0,3" />
+              </StackPanel>
+            </DockPanel>
+          </Button>
+
+          <!-- Lamp 68x68 Circular Button (left:28, top:106) -->
+          <Button Canvas.Left="28" Canvas.Top="106" Width="170" Height="68"
+                  Command="{Binding ToggleLightCommand}" CommandParameter="1"
+                  Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left" Cursor="Hand">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <Panel Width="68" Height="68">
+                <Border Width="68" Height="68" CornerRadius="34" Background="#F3F7FC" BorderBrush="#DCE4ED" BorderThickness="3">
+                  <PathIcon Data="{StaticResource IconLamp}" Width="30" Height="30" Foreground="#00559C" />
+                </Border>
+                <Border Width="17" Height="17" CornerRadius="8.5" Background="{Binding Channel1.LightOn, Converter={StaticResource LedBrush}}"
+                        BorderBrush="#FFFFFF" BorderThickness="3" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,1,1,0" />
+              </Panel>
+              <StackPanel VerticalAlignment="Center" Spacing="2">
+                <TextBlock Text="照明" FontSize="15" FontWeight="Medium" Foreground="#4F5B67" />
+                <TextBlock Text="{Binding Channel1.LightText}" FontSize="16" FontWeight="SemiBold" Foreground="#00559C" />
+              </StackPanel>
+            </StackPanel>
+          </Button>
+
+          <!-- Stir 68x68 Circular Button (left:28, top:188) -->
+          <Button Canvas.Left="28" Canvas.Top="188" Width="170" Height="68"
+                  Command="{Binding ToggleStirCommand}" CommandParameter="1"
+                  Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left" Cursor="Hand">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <Panel Width="68" Height="68">
+                <Border Width="68" Height="68" CornerRadius="34" Background="#F3F7FC" BorderBrush="#DCE4ED" BorderThickness="3">
+                  <Path Data="{StaticResource IconStir}" Stroke="#00559C" StrokeThickness="1.7" StrokeLineCap="Round" StrokeJoin="Round"
+                        Width="34" Height="34" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <Border Width="17" Height="17" CornerRadius="8.5" Background="{Binding Channel1.StirRunning, Converter={StaticResource LedBrush}}"
+                        BorderBrush="#FFFFFF" BorderThickness="3" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,1,1,0" />
+              </Panel>
+              <StackPanel VerticalAlignment="Center" Spacing="2">
+                <TextBlock Text="搅拌" FontSize="15" FontWeight="Medium" Foreground="#4F5B67" />
+                <TextBlock Text="{Binding Channel1.StirButtonText}" FontSize="16" FontWeight="SemiBold" Foreground="#00559C" />
+              </StackPanel>
+            </StackPanel>
+          </Button>
+        </Canvas>
+      </Border>
+
+      <!-- CH1 Readings Card (628x202) - 2x3 Exact #F3F7FC Icon Tiles -->
+      <Border Grid.Row="4" Classes="hmi-card" Padding="16,12">
+        <UniformGrid Rows="3" Columns="2">
+          <!-- Tj -->
+          <Border Margin="0,0,6,6" Height="54" Background="#F3F7FC" CornerRadius="8" Padding="10,0">
+            <DockPanel>
+              <PathIcon Data="{StaticResource IconThermometer}" Width="24" Height="24" Foreground="{Binding Channel1.IsActive, Converter={StaticResource TileIconBrush}}" />
+              <TextBlock Text="Tj 夹套" FontSize="16" FontWeight="Medium" Foreground="#4F5B67" Margin="8,0,0,0" VerticalAlignment="Center" />
+              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="{Binding Channel1.TjText}" FontSize="25" FontWeight="SemiBold" Foreground="{Binding Channel1.IsActive, Converter={StaticResource TileValBrush}}" />
+                <TextBlock Text="℃" Width="40" Margin="6,0,0,3" FontSize="14" Foreground="#8792A0" VerticalAlignment="Bottom" />
+              </StackPanel>
+            </DockPanel>
+          </Border>
+          <!-- Tr - Tj -->
+          <Border Margin="6,0,0,6" Height="54" Background="#F3F7FC" CornerRadius="8" Padding="10,0">
+            <DockPanel>
+              <PathIcon Data="{StaticResource IconDeltaT}" Width="24" Height="24" Foreground="{Binding Channel1.IsActive, Converter={StaticResource TileIconBrush}}" />
+              <TextBlock Text="Tr − Tj" FontSize="16" FontWeight="Medium" Foreground="#4F5B67" Margin="8,0,0,0" VerticalAlignment="Center" />
+              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="{Binding Channel1.DeltaTText}" FontSize="25" FontWeight="SemiBold" Foreground="{Binding Channel1.IsActive, Converter={StaticResource TileValBrush}}" />
+                <TextBlock Text="K" Width="40" Margin="6,0,0,3" FontSize="14" Foreground="#8792A0" VerticalAlignment="Bottom" />
+              </StackPanel>
+            </DockPanel>
+          </Border>
+          <!-- R Stir -->
+          <Border Margin="0,3,6,3" Height="54" Background="#F3F7FC" CornerRadius="8" Padding="10,0">
+            <DockPanel>
+              <Path Data="{StaticResource IconStir}" Stroke="{Binding Channel1.IsActive, Converter={StaticResource TileIconBrush}}" StrokeThickness="1.7" StrokeLineCap="Round" Width="26" Height="26" Stretch="Uniform" VerticalAlignment="Center" />
+              <TextBlock Text="R 搅拌" FontSize="16" FontWeight="Medium" Foreground="#4F5B67" Margin="8,0,0,0" VerticalAlignment="Center" />
+              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="{Binding Channel1.Rpm}" FontSize="25" FontWeight="SemiBold" Foreground="{Binding Channel1.IsActive, Converter={StaticResource TileValBrush}}" />
+                <TextBlock Text="rpm" Width="40" Margin="6,0,0,3" FontSize="14" Foreground="#8792A0" VerticalAlignment="Bottom" />
+              </StackPanel>
+            </DockPanel>
+          </Border>
+          <!-- Dose -->
+          <Border Margin="6,3,0,3" Height="54" Background="#F3F7FC" CornerRadius="8" Padding="10,0">
+            <DockPanel>
+              <PathIcon Data="{StaticResource IconPump}" Width="24" Height="24" Foreground="{Binding Channel1.IsActive, Converter={StaticResource TileIconBrush}}" />
+              <TextBlock Text="加料" FontSize="16" FontWeight="Medium" Foreground="#4F5B67" Margin="8,0,0,0" VerticalAlignment="Center" />
+              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="{Binding Channel1.DosedMlText}" FontSize="25" FontWeight="SemiBold" Foreground="{Binding Channel1.IsActive, Converter={StaticResource TileValBrush}}" />
+                <TextBlock Text="mL" Width="40" Margin="6,0,0,3" FontSize="14" Foreground="#8792A0" VerticalAlignment="Bottom" />
+              </StackPanel>
+            </DockPanel>
+          </Border>
+          <!-- Tc -->
+          <Border Margin="0,6,6,0" Height="54" Background="#F3F7FC" CornerRadius="8" Padding="10,0">
+            <DockPanel>
+              <PathIcon Data="{StaticResource IconSnowflake}" Width="24" Height="24" Foreground="{Binding Channel1.IsActive, Converter={StaticResource TileIconBrush}}" />
+              <TextBlock Text="Tc 冷媒" FontSize="16" FontWeight="Medium" Foreground="#4F5B67" Margin="8,0,0,0" VerticalAlignment="Center" />
+              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="{Binding Channel1.TcText}" FontSize="25" FontWeight="SemiBold" Foreground="{Binding Channel1.IsActive, Converter={StaticResource TileValBrush}}" />
+                <TextBlock Text="℃" Width="40" Margin="6,0,0,3" FontSize="14" Foreground="#8792A0" VerticalAlignment="Bottom" />
+              </StackPanel>
+            </DockPanel>
+          </Border>
+          <!-- Ramp -->
+          <Border Margin="6,6,0,0" Height="54" Background="#F3F7FC" CornerRadius="8" Padding="10,0">
+            <DockPanel>
+              <PathIcon Data="{StaticResource IconRamp}" Width="24" Height="24" Foreground="{Binding Channel1.IsActive, Converter={StaticResource TileIconBrush}}" />
+              <TextBlock Text="变温" FontSize="16" FontWeight="Medium" Foreground="#4F5B67" Margin="8,0,0,0" VerticalAlignment="Center" />
+              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="{Binding Channel1.RampRateText}" FontSize="25" FontWeight="SemiBold" Foreground="{Binding Channel1.IsActive, Converter={StaticResource TileValBrush}}" />
+                <TextBlock Text="℃/min" Width="44" Margin="4,0,0,3" FontSize="13" Foreground="#8792A0" VerticalAlignment="Bottom" />
+              </StackPanel>
+            </DockPanel>
+          </Border>
+        </UniformGrid>
+      </Border>
+    </Grid>
+
+    <!-- ==================== CHANNEL 2 COLUMN (628px) ==================== -->
+    <Grid Grid.Column="2" RowDefinitions="72,8,310,8,202">
+      <!-- CH2 Header Card -->
+      <Button Grid.Row="0" Command="{Binding NavigateSectionCommand}" CommandParameter="Ch2"
+              Padding="0" Background="Transparent" BorderThickness="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+              HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" Cursor="Hand">
+        <Border Classes="hmi-card">
+          <Canvas>
+            <DockPanel Canvas.Left="24" Canvas.Top="10" Width="548" Height="28">
+              <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <Ellipse Width="9" Height="9" Fill="{Binding Channel2.IsActive, Converter={StaticResource ActiveDotBrush}}" VerticalAlignment="Center" />
+                <TextBlock Text="通道 2" FontSize="19" Foreground="#4F5B67" Margin="10,0,0,0" VerticalAlignment="Center" />
+                <TextBlock Text="{Binding Channel2.SchemeName}" FontSize="20" FontWeight="SemiBold" Foreground="#00559C" Margin="14,0,0,0" VerticalAlignment="Center" />
+              </StackPanel>
+              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <PathIcon Data="{StaticResource IconClock}" Width="20" Height="20" Foreground="#8792A0" IsVisible="{Binding Channel2.IsActive}" />
+                <PathIcon Data="{StaticResource IconStandby}" Width="21" Height="21" Foreground="#8792A0" IsVisible="{Binding !Channel2.IsActive}" />
+                <TextBlock Text="{Binding Channel2.MainCardRightTop}" FontSize="19" FontWeight="Medium" Foreground="#4F5B67" />
+              </StackPanel>
+            </DockPanel>
+            <Border Canvas.Right="8" Canvas.Top="16" Width="36" Height="36" CornerRadius="18" Background="#F0F4F9">
+              <PathIcon Data="{StaticResource IconChevronRight}" Width="20" Height="20" Foreground="#00559C" />
+            </Border>
+            <DockPanel Canvas.Left="24" Canvas.Top="41" Width="548" Height="20">
+              <TextBlock Text="{Binding Channel2.MainCardModeLine}" FontSize="15" Foreground="#8792A0" VerticalAlignment="Center" />
+              <TextBlock DockPanel.Dock="Right" Text="{Binding Channel2.MainCardRightBottom}" FontSize="15" Foreground="#8792A0" VerticalAlignment="Center" />
+            </DockPanel>
+            <Border Canvas.Left="0" Canvas.Bottom="0" Width="628" Height="4" Background="#DCE2E9">
+              <Border HorizontalAlignment="Left" Height="4" Background="#00559C"
+                      Width="{Binding Channel2.OverallProgressPct, Converter={x:Static conv:PercentToWidthConverter.Instance}, ConverterParameter=628}" />
+            </Border>
+          </Canvas>
+        </Border>
+      </Button>
+
+      <!-- CH2 Reactor Stage Card -->
+      <Border Grid.Row="2" Classes="hmi-card">
+        <Canvas Width="628" Height="310">
+          <Border Canvas.Left="0" Canvas.Top="272" Width="628" Height="38" Background="#F3F6FA" />
+          <Image Canvas.Left="226" Canvas.Top="8" Width="132" Height="295"
+                 Source="avares://HtlabHmi/Assets/reactor.png" Stretch="Uniform"
+                 Opacity="{Binding Channel2.ReactorOpacity}" />
+
+          <StackPanel Canvas.Left="28" Canvas.Top="22" Orientation="Horizontal" Spacing="10">
+            <TextBlock Text="pH" FontSize="20" FontWeight="SemiBold" Foreground="#4F5B67" VerticalAlignment="Bottom" Margin="0,0,0,10" />
+            <TextBlock Text="{Binding Channel2.PhText}" FontSize="52" FontWeight="SemiBold"
+                       Foreground="{Binding Channel2.IsActive, Converter={StaticResource PhValBrush}}" />
+          </StackPanel>
+
+          <StackPanel Canvas.Left="386" Canvas.Top="22" Orientation="Horizontal">
+            <TextBlock Text="Tr" FontSize="20" FontWeight="SemiBold" Foreground="#4F5B67" VerticalAlignment="Bottom" Margin="0,0,10,10" />
+            <TextBlock Text="{Binding Channel2.TrText}" FontSize="52" FontWeight="SemiBold"
+                       Foreground="{Binding Channel2.IsActive, Converter={StaticResource TrValBrush}}" />
+            <TextBlock Text="℃" FontSize="18" Foreground="#8792A0" VerticalAlignment="Bottom" Margin="6,0,0,10" />
+          </StackPanel>
+
+          <Button Canvas.Left="386" Canvas.Top="94" Width="172" Height="48"
+                  Command="{Binding EditMainSpCommand}" CommandParameter="2"
+                  Background="#F3F7FC" BorderBrush="#C9D6E5" BorderThickness="1.5" CornerRadius="10"
+                  Padding="12,0" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center" Cursor="Hand">
+            <DockPanel>
+              <TextBlock Text="SP" FontSize="15" FontWeight="SemiBold" Foreground="#8792A0" VerticalAlignment="Center" />
+              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="{Binding Channel2.TargetTempText}" FontSize="21" FontWeight="SemiBold" Foreground="#1F2A35" />
+                <TextBlock Text="℃" FontSize="14" Foreground="#8792A0" VerticalAlignment="Bottom" Margin="4,0,0,3" />
+              </StackPanel>
+            </DockPanel>
+          </Button>
+
+          <Button Canvas.Left="28" Canvas.Top="106" Width="170" Height="68"
+                  Command="{Binding ToggleLightCommand}" CommandParameter="2"
+                  Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left" Cursor="Hand">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <Panel Width="68" Height="68">
+                <Border Width="68" Height="68" CornerRadius="34" Background="#F3F7FC" BorderBrush="#DCE4ED" BorderThickness="3">
+                  <PathIcon Data="{StaticResource IconLamp}" Width="30" Height="30" Foreground="#00559C" />
+                </Border>
+                <Border Width="17" Height="17" CornerRadius="8.5" Background="{Binding Channel2.LightOn, Converter={StaticResource LedBrush}}"
+                        BorderBrush="#FFFFFF" BorderThickness="3" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,1,1,0" />
+              </Panel>
+              <StackPanel VerticalAlignment="Center" Spacing="2">
+                <TextBlock Text="照明" FontSize="15" FontWeight="Medium" Foreground="#4F5B67" />
+                <TextBlock Text="{Binding Channel2.LightText}" FontSize="16" FontWeight="SemiBold" Foreground="#00559C" />
+              </StackPanel>
+            </StackPanel>
+          </Button>
+
+          <Button Canvas.Left="28" Canvas.Top="188" Width="170" Height="68"
+                  Command="{Binding ToggleStirCommand}" CommandParameter="2"
+                  Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left" Cursor="Hand">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <Panel Width="68" Height="68">
+                <Border Width="68" Height="68" CornerRadius="34" Background="#F3F7FC" BorderBrush="#DCE4ED" BorderThickness="3">
+                  <Path Data="{StaticResource IconStir}" Stroke="#00559C" StrokeThickness="1.7" StrokeLineCap="Round" StrokeJoin="Round"
+                        Width="34" Height="34" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <Border Width="17" Height="17" CornerRadius="8.5" Background="{Binding Channel2.StirRunning, Converter={StaticResource LedBrush}}"
+                        BorderBrush="#FFFFFF" BorderThickness="3" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,1,1,0" />
+              </Panel>
+              <StackPanel VerticalAlignment="Center" Spacing="2">
+                <TextBlock Text="搅拌" FontSize="15" FontWeight="Medium" Foreground="#4F5B67" />
+                <TextBlock Text="{Binding Channel2.StirButtonText}" FontSize="16" FontWeight="SemiBold" Foreground="#00559C" />
+              </StackPanel>
+            </StackPanel>
+          </Button>
+        </Canvas>
+      </Border>
+
+      <!-- CH2 Readings Card -->
+      <Border Grid.Row="4" Classes="hmi-card" Padding="16,12">
+        <UniformGrid Rows="3" Columns="2">
+          <Border Margin="0,0,6,6" Height="54" Background="#F3F7FC" CornerRadius="8" Padding="10,0">
+            <DockPanel>
+              <PathIcon Data="{StaticResource IconThermometer}" Width="24" Height="24" Foreground="{Binding Channel2.IsActive, Converter={StaticResource TileIconBrush}}" />
+              <TextBlock Text="Tj 夹套" FontSize="16" FontWeight="Medium" Foreground="#4F5B67" Margin="8,0,0,0" VerticalAlignment="Center" />
+              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="{Binding Channel2.TjText}" FontSize="25" FontWeight="SemiBold" Foreground="{Binding Channel2.IsActive, Converter={StaticResource TileValBrush}}" />
+                <TextBlock Text="℃" Width="40" Margin="6,0,0,3" FontSize="14" Foreground="#8792A0" VerticalAlignment="Bottom" />
+              </StackPanel>
+            </DockPanel>
+          </Border>
+          <Border Margin="6,0,0,6" Height="54" Background="#F3F7FC" CornerRadius="8" Padding="10,0">
+            <DockPanel>
+              <PathIcon Data="{StaticResource IconDeltaT}" Width="24" Height="24" Foreground="{Binding Channel2.IsActive, Converter={StaticResource TileIconBrush}}" />
+              <TextBlock Text="Tr − Tj" FontSize="16" FontWeight="Medium" Foreground="#4F5B67" Margin="8,0,0,0" VerticalAlignment="Center" />
+              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="{Binding Channel2.DeltaTText}" FontSize="25" FontWeight="SemiBold" Foreground="{Binding Channel2.IsActive, Converter={StaticResource TileValBrush}}" />
+                <TextBlock Text="K" Width="40" Margin="6,0,0,3" FontSize="14" Foreground="#8792A0" VerticalAlignment="Bottom" />
+              </StackPanel>
+            </DockPanel>
+          </Border>
+          <Border Margin="0,3,6,3" Height="54" Background="#F3F7FC" CornerRadius="8" Padding="10,0">
+            <DockPanel>
+              <Path Data="{StaticResource IconStir}" Stroke="{Binding Channel2.IsActive, Converter={StaticResource TileIconBrush}}" StrokeThickness="1.7" StrokeLineCap="Round" Width="26" Height="26" Stretch="Uniform" VerticalAlignment="Center" />
+              <TextBlock Text="R 搅拌" FontSize="16" FontWeight="Medium" Foreground="#4F5B67" Margin="8,0,0,0" VerticalAlignment="Center" />
+              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="{Binding Channel2.Rpm}" FontSize="25" FontWeight="SemiBold" Foreground="{Binding Channel2.IsActive, Converter={StaticResource TileValBrush}}" />
+                <TextBlock Text="rpm" Width="40" Margin="6,0,0,3" FontSize="14" Foreground="#8792A0" VerticalAlignment="Bottom" />
+              </StackPanel>
+            </DockPanel>
+          </Border>
+          <Border Margin="6,3,0,3" Height="54" Background="#F3F7FC" CornerRadius="8" Padding="10,0">
+            <DockPanel>
+              <PathIcon Data="{StaticResource IconPump}" Width="24" Height="24" Foreground="{Binding Channel2.IsActive, Converter={StaticResource TileIconBrush}}" />
+              <TextBlock Text="加料" FontSize="16" FontWeight="Medium" Foreground="#4F5B67" Margin="8,0,0,0" VerticalAlignment="Center" />
+              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="{Binding Channel2.DosedMlText}" FontSize="25" FontWeight="SemiBold" Foreground="{Binding Channel2.IsActive, Converter={StaticResource TileValBrush}}" />
+                <TextBlock Text="mL" Width="40" Margin="6,0,0,3" FontSize="14" Foreground="#8792A0" VerticalAlignment="Bottom" />
+              </StackPanel>
+            </DockPanel>
+          </Border>
+          <Border Margin="0,6,6,0" Height="54" Background="#F3F7FC" CornerRadius="8" Padding="10,0">
+            <DockPanel>
+              <PathIcon Data="{StaticResource IconSnowflake}" Width="24" Height="24" Foreground="{Binding Channel2.IsActive, Converter={StaticResource TileIconBrush}}" />
+              <TextBlock Text="Tc 冷媒" FontSize="16" FontWeight="Medium" Foreground="#4F5B67" Margin="8,0,0,0" VerticalAlignment="Center" />
+              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="{Binding Channel2.TcText}" FontSize="25" FontWeight="SemiBold" Foreground="{Binding Channel2.IsActive, Converter={StaticResource TileValBrush}}" />
+                <TextBlock Text="℃" Width="40" Margin="6,0,0,3" FontSize="14" Foreground="#8792A0" VerticalAlignment="Bottom" />
+              </StackPanel>
+            </DockPanel>
+          </Border>
+          <Border Margin="6,6,0,0" Height="54" Background="#F3F7FC" CornerRadius="8" Padding="10,0">
+            <DockPanel>
+              <PathIcon Data="{StaticResource IconRamp}" Width="24" Height="24" Foreground="{Binding Channel2.IsActive, Converter={StaticResource TileIconBrush}}" />
+              <TextBlock Text="变温" FontSize="16" FontWeight="Medium" Foreground="#4F5B67" Margin="8,0,0,0" VerticalAlignment="Center" />
+              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="{Binding Channel2.RampRateText}" FontSize="25" FontWeight="SemiBold" Foreground="{Binding Channel2.IsActive, Converter={StaticResource TileValBrush}}" />
+                <TextBlock Text="℃/min" Width="44" Margin="4,0,0,3" FontSize="13" Foreground="#8792A0" VerticalAlignment="Bottom" />
+              </StackPanel>
+            </DockPanel>
+          </Border>
+        </UniformGrid>
+      </Border>
+    </Grid>
+  </Grid>
+</UserControl>

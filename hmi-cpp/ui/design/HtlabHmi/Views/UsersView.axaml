@@ -1,0 +1,45 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="HtlabHmi.Views.UsersView">
+  <Border Classes="hmi-card">
+    <Grid RowDefinitions="52,*">
+      <Border Grid.Row="0" Background="{StaticResource LightBlueTintBrush}" Padding="24,0">
+        <StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
+          <TextBlock Text="用户与权限管理" FontSize="17" FontWeight="SemiBold" />
+          <TextBlock Text="当前登录：admin（管理员权限，可执行控温、修改安全限值与 PID 整定）" FontSize="14" Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" />
+        </StackPanel>
+      </Border>
+      <StackPanel Grid.Row="1" Margin="24,16" Spacing="12">
+        <Border Padding="18,16" CornerRadius="10" Background="#F5F8FC" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1">
+          <DockPanel>
+            <StackPanel Spacing="3">
+              <TextBlock Text="admin（管理员）" FontSize="17" FontWeight="Bold" Foreground="{StaticResource PrimaryBlueBrush}" />
+              <TextBlock Text="全部操作权限：设备控制 · 任务序列 · 安全限值 · PID 整定 · 通信设置" FontSize="14" Foreground="{StaticResource TextSecondaryBrush}" />
+            </StackPanel>
+            <Border DockPanel.Dock="Right" Background="#E3F7ED" CornerRadius="8" Padding="14,6" VerticalAlignment="Center">
+              <TextBlock Text="当前在线" Foreground="#008A50" FontWeight="SemiBold" FontSize="14" />
+            </Border>
+          </DockPanel>
+        </Border>
+        <Border Padding="18,16" CornerRadius="10" Background="#FFFFFF" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1">
+          <DockPanel>
+            <StackPanel Spacing="3">
+              <TextBlock Text="operator（实验员）" FontSize="17" FontWeight="SemiBold" />
+              <TextBlock Text="常规实验权限：设备控制 · 配方装入 · 数据导出（不可修改 PID 与串口参数）" FontSize="14" Foreground="{StaticResource TextMutedBrush}" />
+            </StackPanel>
+            <TextBlock DockPanel.Dock="Right" Text="标准操作层" Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" />
+          </DockPanel>
+        </Border>
+        <Border Padding="18,16" CornerRadius="10" Background="#FFFFFF" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1">
+          <DockPanel>
+            <StackPanel Spacing="3">
+              <TextBlock Text="viewer（只读访客）" FontSize="17" FontWeight="SemiBold" />
+              <TextBlock Text="仅查看实时状态、趋势曲线和系统信息" FontSize="14" Foreground="{StaticResource TextMutedBrush}" />
+            </StackPanel>
+            <TextBlock DockPanel.Dock="Right" Text="只读层" Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" />
+          </DockPanel>
+        </Border>
+      </StackPanel>
+    </Grid>
+  </Border>
+</UserControl>

@@ -1,0 +1,1769 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>四工位控温合成平台 · 调度控制台 TC-4S Scheduler</title>
+<style>
+/* ============================================================
+   TC-4S Scheduler — 方向C 浅色现代工程风 (labCONSOL / Agilent 系)
+   ============================================================ */
+:root{
+  /* 中性色阶 */
+  --bg:#EDF0F3;            /* 应用画布 浅灰 */
+  --panel:#FFFFFF;         /* 面板 */
+  --subtle:#F7F8FA;        /* 次面板/工具条 */
+  --hover:#F0F3F6;
+  --active:#E8F1FA;
+  --line:#E5E7EB;          /* 主分割线 */
+  --line2:#D5D9DE;         /* 强分割线/控件边 */
+  --grid:#EFF1F3;          /* 次网格线 */
+  --t1:#1F2329; --t2:#646A73; --t3:#8F959E;
+  /* 品牌主色(唯一强调色) */
+  --brand:#0F6CBD; --brand-d:#0A5CA8; --brand-bg:#E8F1FA; --brand-line:#B9D6EE;
+  /* 语义状态色(色点+文字双编码) */
+  --ok:#2E9E5B;  --ok-bg:#E7F4EC;
+  --warn:#D97E00;--warn-bg:#FDF3E3;
+  --err:#D92D20; --err-bg:#FDECEA;
+  --idle:#8F959E;--idle-bg:#F0F1F3;
+  --off:#6B7280;
+  --today:#E5484D;
+  /* 设备类别色 (HSL 饱和 43-65% 明度 42-48%, 已跑通 CVD 校验) */
+  --c-station:#C2502A;  /* 反应工位 */
+  --c-robot:#4A3E9E;    /* 转运机械臂 */
+  --c-incub:#C99A2C;    /* 恒温培养箱 */
+  --c-seal:#B14A6E;     /* 封膜机 */
+  --c-reader:#3B6FB5;   /* 读板仪 */
+  --c-storage:#A66D2A;  /* 样品库 */
+  --c-liquid:#A33A86;   /* 母液站 */
+  --c-chiller:#3E8E4E;  /* 冷却循环器 */
+  --c-gas:#C77E1F;      /* 气路分配站 */
+  --r:3px; --r-card:4px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{
+  font-family:"Segoe UI",Inter,"Microsoft YaHei UI","Microsoft YaHei",system-ui,-apple-system,Arial,sans-serif;
+  font-size:12px;line-height:1.45;color:var(--t1);background:var(--bg);
+  font-variant-numeric:tabular-nums;overflow:hidden;
+}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+::-webkit-scrollbar{width:10px;height:10px;background:transparent}
+::-webkit-scrollbar-thumb{background:#CFD4DA;border-radius:6px;border:2px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-thumb:hover{background:#B4BBC3;border:2px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-corner{background:transparent}
+:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
+
+.app{display:grid;grid-template-rows:34px 46px minmax(0,1fr) 26px;height:100vh;min-width:1240px}
+
+/* ============ 窗口标题栏 ============ */
+.tb{background:#22303C;color:#E7ECF1;display:flex;align-items:center;padding:0 10px;gap:8px;font-size:11.5px;user-select:none}
+.tb .mark{display:grid;place-items:center}
+.tb .appname{font-weight:600;color:#fff;letter-spacing:.2px}
+.tb .file{color:#9FB0BE;display:flex;align-items:center;gap:6px}
+.tb .file svg{opacity:.7}
+.tb .sp{flex:1}
+.tb a{display:flex;align-items:center;gap:5px;color:#C6D2DC;padding:3px 8px;border-radius:3px;cursor:pointer}
+.tb a:hover{background:rgba(255,255,255,.1);color:#fff}
+.tb .win{display:flex;margin-left:6px}
+.tb .win button{width:36px;height:26px;display:grid;place-items:center;color:#E7ECF1;border-radius:0}
+.tb .win button:hover{background:rgba(255,255,255,.14)}
+.tb .win .x:hover{background:#D92D20}
+
+/* ============ 视图菜单栏 ============ */
+.mb{background:var(--panel);border-bottom:1px solid var(--line);display:flex;align-items:stretch;padding:0 10px 0 4px;gap:2px;user-select:none}
+.mv{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 14px;border-radius:4px;color:var(--t2);position:relative}
+.mv b{font-size:12.5px;font-weight:500;line-height:1.2}
+.mv i{font-style:normal;font-size:9.5px;color:var(--t3);line-height:1.2}
+.mv:hover{background:var(--hover);color:var(--t1)}
+.mv.on{color:var(--brand)}
+.mv.on b{font-weight:600}
+.mv.on::after{content:'';position:absolute;left:10px;right:10px;bottom:-1px;height:2px;background:var(--brand);border-radius:1px}
+.mb .sp{flex:1}
+/* 仿真控制 chip */
+.sim{display:flex;align-items:center;gap:9px;border:1px solid var(--line2);border-radius:4px;padding:0 10px;margin:8px 0;background:var(--subtle)}
+.sim .sd{width:7px;height:7px;border-radius:50%;background:var(--warn);flex-shrink:0}
+.sim.run .sd{background:var(--ok);animation:pulse 1.2s infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(46,158,91,.45)}50%{box-shadow:0 0 0 4px rgba(46,158,91,0)}}
+.sim .st{display:flex;flex-direction:column;line-height:1.15;margin-right:2px}
+.sim .st b{font-size:11px;font-weight:600;color:var(--t1)}
+.sim .st i{font-style:normal;font-size:9px;color:var(--t3)}
+.sim .vsep{width:1px;height:18px;background:var(--line2)}
+.sbtn{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;color:var(--t2);border:1px solid transparent}
+.sbtn:hover{background:#E2E6EA;color:var(--t1)}
+.sbtn.go{background:var(--ok);color:#fff}
+.sbtn.go:hover{background:#25854C}
+.sbtn.halt{background:#3E4C59;color:#fff}
+.sbtn.halt:hover{background:#2E3A45}
+.uz{display:flex;align-items:center;gap:8px;padding-left:12px;border-left:1px solid var(--line);margin-left:10px}
+.uz .ui{display:flex;flex-direction:column;line-height:1.2;align-items:flex-start}
+.uz .ui b{font-size:11px;font-weight:600}
+.uz .ui i{font-style:normal;font-size:9.5px;color:var(--t3)}
+.uz .caret{color:var(--t3)}
+
+/* ============ 状态栏 ============ */
+.sb{background:var(--panel);border-top:1px solid var(--line);display:flex;align-items:center;padding:0 12px;gap:14px;font-size:11px;color:var(--t2)}
+.sb .st{display:flex;align-items:center;gap:6px;font-weight:500;color:var(--t1)}
+.sb .dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.dot.ok{background:var(--ok)} .dot.warn{background:var(--warn)} .dot.err{background:var(--err)}
+.dot.idle{background:var(--idle)} .dot.off{background:var(--off)} .dot.brand{background:var(--brand)}
+.sb .ev{flex:1;text-align:center;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sb .r{display:flex;align-items:center;gap:14px;color:var(--t3)}
+.sb .r b{color:var(--t2);font-weight:500}
+.sb kbd{font-family:inherit}
+
+/* ============ 视图容器 ============ */
+.vp{position:relative;min-height:0}
+.view{position:absolute;inset:0;display:none;background:var(--bg)}
+.view.on{display:flex}
+
+/* ============ 通用组件 ============ */
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-card);display:flex;flex-direction:column;min-height:0;min-width:0}
+.card-h{padding:8px 12px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;flex-shrink:0}
+.card-h .en{font-weight:400;font-size:10px;color:var(--t3)}
+.card-h .sp{flex:1}
+.card-b{padding:10px 12px;min-height:0}
+.sech{display:flex;align-items:baseline;gap:8px;font-size:13px;font-weight:600;margin:0 0 10px}
+.sech .en{font-size:10.5px;font-weight:400;color:var(--t3)}
+.sech .rule{flex:1;height:1px;background:var(--line);align-self:center}
+.btn{height:26px;padding:0 12px;border:1px solid var(--line2);background:var(--panel);border-radius:var(--r);
+  font-size:12px;color:var(--t1);display:inline-flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap}
+.btn:hover{border-color:var(--brand);color:var(--brand)}
+.btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+.btn.primary:hover{background:var(--brand-d);color:#fff}
+.btn.danger{color:var(--err)}
+.btn.danger:hover{border-color:var(--err);background:var(--err-bg)}
+.btn:disabled,.btn.dis{color:var(--t3);border-color:var(--line);background:var(--subtle);cursor:not-allowed}
+.ibtn{width:26px;height:26px;border-radius:var(--r);display:grid;place-items:center;color:var(--t2);flex-shrink:0}
+.ibtn:hover{background:var(--hover);color:var(--t1)}
+.ibtn.on{color:var(--brand);background:var(--brand-bg)}
+.sel{height:26px;border:1px solid var(--line2);background:var(--panel);border-radius:var(--r);
+  font-size:12px;color:var(--t1);padding:0 22px 0 8px;appearance:none;min-width:0;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10'><path d='M2 3.6 5 6.6 8 3.6' fill='none' stroke='%23646A73' stroke-width='1.4' stroke-linecap='round'/></svg>");
+  background-repeat:no-repeat;background-position:right 7px center}
+.sel:hover{border-color:var(--brand)}
+.inp{height:26px;border:1px solid var(--line2);background:var(--panel);border-radius:var(--r);font-size:12px;color:var(--t1);padding:0 8px;min-width:0}
+.inp:hover{border-color:var(--brand)}
+.pill{display:inline-flex;align-items:center;gap:5px;height:18px;padding:0 8px;border-radius:9px;font-size:10.5px;font-weight:600;white-space:nowrap}
+.pill i{width:5px;height:5px;border-radius:50%;background:currentColor;font-style:normal}
+.pill.ok{color:#1E7B45;background:var(--ok-bg)}
+.pill.warn{color:#A85E00;background:var(--warn-bg)}
+.pill.err{color:var(--err);background:var(--err-bg)}
+.pill.idle{color:var(--t2);background:var(--idle-bg)}
+.pill.off{color:var(--off);background:#EDEFF2}
+.pill.brand{color:var(--brand);background:var(--brand-bg)}
+.pill.dark{color:#fff;background:#2E3A45}
+.kv{display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:12px}
+.kv>span:first-child{color:var(--t2)}
+.kv>span:last-child{color:var(--t1)}
+.vsep{width:1px;height:16px;background:var(--line2);flex-shrink:0}
+.chev{color:var(--t3)}
+
+/* ============================================================
+   START 开始
+   ============================================================ */
+.sn{width:228px;flex-shrink:0;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column}
+.sn-brand{padding:14px 14px 12px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:center}
+.sn-brand .tt b{font-size:12.5px;font-weight:600;display:block}
+.sn-brand .tt span{font-size:10px;color:var(--t3)}
+.sn nav{padding:8px;display:flex;flex-direction:column;gap:1px;overflow-y:auto}
+.snav{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:var(--r);font-size:12px;color:var(--t1);text-align:left}
+.snav svg{color:var(--t3);flex-shrink:0}
+.snav:hover{background:var(--hover)}
+.snav.on{background:var(--brand-bg);color:var(--brand);font-weight:500}
+.snav.on svg{color:var(--brand)}
+.snav-sep{height:1px;background:var(--line);margin:6px 10px}
+.smain{flex:1;min-width:0;overflow-y:auto;padding:20px 24px 32px}
+.hero{display:flex;align-items:center;gap:14px;margin-bottom:20px}
+.hero .hm{width:44px;height:44px;border-radius:8px;background:var(--brand);display:grid;place-items:center;flex-shrink:0;box-shadow:0 2px 6px rgba(15,108,189,.3)}
+.hero h1{font-size:17px;font-weight:600;letter-spacing:.2px}
+.hero .sub{font-size:11.5px;color:var(--t2);margin-top:2px}
+.hero .sub b{color:var(--t1);font-weight:500}
+.hero .chips{margin-left:auto;display:flex;gap:8px;flex-shrink:0}
+.hero .chip{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-card);padding:7px 12px;display:flex;flex-direction:column;line-height:1.25;min-width:86px}
+.hero .chip b{font-size:15px;font-weight:600}
+.hero .chip span{font-size:10px;color:var(--t3)}
+.recgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-bottom:22px}
+.rcard{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-card);overflow:hidden;cursor:pointer;transition:border-color .12s}
+.rcard:hover{border-color:var(--line2)}
+.rcard.on{border-color:var(--brand);box-shadow:0 0 0 1px var(--brand)}
+.rthumb{height:132px;background:var(--subtle);border-bottom:1px solid var(--line);position:relative}
+.rthumb svg{width:100%;height:100%;display:block}
+.rtag{position:absolute;left:8px;top:8px;height:18px;padding:0 8px;border-radius:9px;font-size:10.5px;font-weight:600;display:flex;align-items:center;gap:4px;background:rgba(255,255,255,.95);border:1px solid var(--line2);color:var(--t2)}
+.rtag.live{background:var(--ok-bg);border-color:#BFE3CC;color:#1E7B45}
+.rtag.draft{border-style:dashed;color:var(--t3)}
+.rpin{position:absolute;right:6px;top:6px;width:24px;height:24px;border-radius:var(--r);display:grid;place-items:center;color:var(--t3);background:rgba(255,255,255,.9);opacity:0;transition:opacity .1s}
+.rcard:hover .rpin{opacity:1}
+.rpin:hover{color:var(--brand)}
+.rpin.pinned{opacity:1;color:var(--brand)}
+.rbody{padding:10px 12px 11px}
+.rname{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rpath{font-size:10.5px;color:var(--t3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rnote{font-size:11.5px;color:var(--t2);margin-top:7px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:34px}
+.rmeta{display:flex;align-items:center;font-size:10.5px;color:var(--t3);margin-top:9px;padding-top:8px;border-top:1px solid var(--grid)}
+.rmeta .sep{width:3px;height:3px;border-radius:50%;background:var(--line2);margin:0 8px}
+.quickrow{display:flex;gap:10px;flex-wrap:wrap}
+.qcard{width:212px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-card);padding:12px 14px;cursor:pointer;display:flex;gap:12px;align-items:flex-start;text-align:left}
+.qcard:hover{border-color:var(--brand)}
+.qcard .qi{width:32px;height:32px;border-radius:6px;background:var(--brand-bg);color:var(--brand);display:grid;place-items:center;flex-shrink:0}
+.qcard b{font-size:12px;font-weight:600;display:block}
+.qcard span{font-size:10.5px;color:var(--t2);line-height:1.45;display:block;margin-top:3px}
+.sside{width:308px;flex-shrink:0;border-left:1px solid var(--line);background:var(--bg);padding:12px;overflow-y:auto;display:flex;flex-direction:column;gap:12px}
+.irow{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px}
+.irow .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ============================================================
+   LAYOUT 布局
+   ============================================================ */
+.lib{width:206px;flex-shrink:0;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;overflow-y:auto}
+.lib-h{padding:10px 12px 8px;font-size:12px;font-weight:600;display:flex;align-items:baseline;gap:6px;border-bottom:1px solid var(--line)}
+.lib-h .en{font-size:10px;color:var(--t3);font-weight:400}
+.lib-g{padding:10px 12px 4px;font-size:10px;color:var(--t3);font-weight:600;letter-spacing:.4px}
+.lib-item{margin:2px 10px 8px;padding:6px;border:1px solid var(--line);border-radius:var(--r-card);background:var(--panel);cursor:grab;text-align:center}
+.lib-item:hover{border-color:var(--brand-line)}
+.lib-item.on{border-color:var(--brand);background:var(--brand-bg)}
+.lib-item .thumb{height:46px;display:grid;place-items:center;background:var(--subtle);border-radius:2px;pointer-events:none}
+.lib-item .cap{font-size:10.5px;color:var(--t2);line-height:1.3;margin-top:5px;pointer-events:none}
+.stage{flex:1;min-width:0;position:relative;background:#FAFBFC;overflow:hidden}
+.stage svg{display:block;width:100%;height:100%}
+.stage .tag{position:absolute;left:12px;top:10px;display:flex;gap:8px;align-items:center;background:rgba(255,255,255,.92);border:1px solid var(--line);border-radius:var(--r);padding:4px 10px;font-size:11px;color:var(--t2);box-shadow:0 1px 3px rgba(20,30,40,.06)}
+.stage-tools{position:absolute;left:12px;bottom:12px;display:flex;gap:2px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-card);padding:3px;box-shadow:0 2px 8px rgba(20,30,40,.08)}
+.props{width:296px;flex-shrink:0;background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;overflow-y:auto}
+.props-h{padding:10px 14px 8px;border-bottom:1px solid var(--line);font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px}
+.props-h .en{font-weight:400;font-size:10px;color:var(--t3)}
+.props-b{padding:12px 14px;flex:1}
+.props .intro{font-size:11px;color:var(--t2);line-height:1.55;background:var(--subtle);border:1px solid var(--grid);border-radius:var(--r);padding:8px 10px;margin-bottom:12px}
+.acc{display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:600;color:var(--t3);letter-spacing:.4px;cursor:pointer;padding:6px 0;user-select:none}
+.acc svg{transition:transform .15s}
+.acc.open svg{transform:rotate(90deg)}
+.pdiv{height:1px;background:var(--line);margin:8px 0 12px}
+.prow{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.prow label{width:86px;flex-shrink:0;font-size:11.5px;color:var(--t2)}
+.prow .sel,.prow .inp{flex:1}
+.pcheck{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--t1);padding:3px 0 3px 94px}
+.pcheck input{accent-color:var(--brand);width:13px;height:13px}
+.devtitle{display:flex;align-items:center;gap:8px;margin:2px 0 10px}
+.devtitle .di{width:28px;height:28px;border-radius:4px;display:grid;place-items:center;color:#fff;flex-shrink:0}
+.devtitle b{font-size:13px;font-weight:600;display:block;line-height:1.2}
+.devtitle span{font-size:10px;color:var(--t3)}
+.props-f{flex-shrink:0;border-top:1px solid var(--line);padding:10px 14px;display:flex;gap:8px}
+.props-f .btn{flex:1}
+.swatch{width:44px;height:24px;border:1px solid var(--line2);border-radius:2px;cursor:pointer;flex-shrink:0}
+
+/* ============================================================
+   PROCESS 流程
+   ============================================================ */
+.pdlist{width:250px;flex-shrink:0;background:var(--panel);border-right:1px solid var(--line);overflow-y:auto}
+.pd-h{padding:10px 12px 8px;font-size:12px;font-weight:600;border-bottom:1px solid var(--line);display:flex;align-items:baseline;gap:6px}
+.pd-h .en{font-size:10px;color:var(--t3);font-weight:400}
+.pd{background:var(--panel);border-bottom:1px solid var(--grid);display:flex;align-items:center;gap:9px;padding:8px 12px;cursor:pointer;border-left:3px solid transparent}
+.pd:hover{background:var(--hover)}
+.pd.on{background:var(--brand-bg);border-left-color:var(--brand)}
+.pd .di{width:26px;height:26px;border-radius:4px;display:grid;place-items:center;color:#fff;flex-shrink:0}
+.pd .nm{flex:1;min-width:0}
+.pd .nm b{font-size:12px;font-weight:500;display:block;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pd .nm span{font-size:9.5px;color:var(--t3)}
+.pmid{flex:1;min-width:0;display:flex;flex-direction:column}
+.ptool{height:44px;flex-shrink:0;background:var(--panel);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:6px;padding:0 12px}
+.ptool .lbl{font-size:11.5px;color:var(--t2)}
+.pbody{flex:1;min-height:0;display:flex}
+.prail{width:148px;flex-shrink:0;border-right:1px solid var(--line);background:var(--subtle);padding:10px;display:flex;flex-direction:column;gap:8px;overflow-y:auto}
+.prail .sec{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-card);padding:8px 10px;cursor:pointer}
+.prail .sec:hover{border-color:var(--line2)}
+.prail .sec b{font-size:11.5px;font-weight:600;display:flex;align-items:center;gap:6px}
+.prail .sec span{font-size:10px;color:var(--t3);display:block;margin-top:3px;padding-left:22px}
+.lanes{flex:1;min-width:0;overflow:auto;padding:14px;display:flex;gap:12px;align-items:flex-start}
+.lane{width:196px;flex-shrink:0;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-card);overflow:hidden}
+.lane-h{padding:8px 10px;border-bottom:1px solid var(--line);background:var(--subtle)}
+.lane-h .r{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.lane-h .r:last-child{margin-bottom:0}
+.lane-h .k{font-size:10px;color:var(--t3);flex-shrink:0}
+.lane-h .v{font-size:11.5px;font-weight:600;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lane-b{padding:10px 10px 12px;display:flex;flex-direction:column;align-items:center}
+.link{width:1px;height:13px;background:var(--line2);position:relative}
+.link::after{content:'';position:absolute;left:-2.5px;bottom:0;border:3px solid transparent;border-top-color:var(--line2);border-bottom:none}
+.step{width:176px;background:var(--panel);border:1px solid var(--line2);border-radius:var(--r-card);cursor:pointer;transition:border-color .1s, box-shadow .1s}
+.step:hover{border-color:var(--brand);box-shadow:0 1px 4px rgba(15,108,189,.14)}
+.step .top{display:flex;align-items:center;gap:6px;padding:6px 8px;border-bottom:1px solid var(--grid)}
+.step .top i{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+.step .top span{font-size:9.5px;font-weight:600;color:var(--t2);letter-spacing:.3px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.step .top .rmark{width:14px;height:14px;border-radius:50%;background:var(--warn-bg);color:#A85E00;font-size:9px;font-weight:700;display:grid;place-items:center}
+.step .mid{display:flex;align-items:center;gap:9px;padding:8px}
+.step .mid .ic{width:34px;height:34px;border-radius:4px;background:var(--subtle);display:grid;place-items:center;flex-shrink:0}
+.step .mid .tx{flex:1;min-width:0}
+.step .mid .tx b{font-size:11.5px;font-weight:500;line-height:1.3;display:block}
+.step .mid .tx span{font-size:9.5px;color:var(--t3)}
+.step .fot{display:flex;align-items:center;gap:6px;padding:0 8px 7px}
+.step .fot .tg{height:16px;padding:0 6px;border-radius:8px;background:var(--idle-bg);color:var(--t2);font-size:9.5px;display:flex;align-items:center;gap:3px}
+.step .fot .sp{flex:1}
+.step .fot .del{width:20px;height:20px;border-radius:2px;display:grid;place-items:center;color:var(--t3);opacity:0}
+.step:hover .fot .del{opacity:1}
+.step .fot .del:hover{background:var(--err-bg);color:var(--err)}
+.step.dim{opacity:.38}
+.addlane{width:196px;flex-shrink:0;border:1.5px dashed var(--line2);border-radius:var(--r-card);background:transparent;color:var(--t3);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:18px 0;cursor:pointer;font-size:11px}
+.addlane:hover{border-color:var(--brand);color:var(--brand);background:var(--brand-bg)}
+.pscript{width:268px;flex-shrink:0;background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column}
+.scriptview{flex:1;margin:10px 12px;background:#232A31;color:#C7D3DD;border-radius:var(--r-card);padding:10px 12px;font-family:Consolas,"Courier New",monospace;font-size:10.5px;line-height:1.65;overflow:auto;white-space:pre}
+.scriptview .cm{color:#6E8595} .scriptview .kw{color:#7DBEFF} .scriptview .st{color:#A8D9A0}
+
+/* ============================================================
+   SCHEDULE 排程
+   ============================================================ */
+.srail{width:60px;flex-shrink:0;background:var(--panel);border-right:1px solid var(--line);padding:10px 0;display:flex;flex-direction:column;align-items:center;gap:8px}
+.rail-btn{width:42px;height:42px;border:1px solid var(--line2);border-radius:var(--r-card);background:var(--panel);display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--t2);font-size:11px;font-weight:600}
+.rail-btn span{font-size:8.5px;font-weight:400;color:var(--t3)}
+.rail-btn:hover{border-color:var(--brand);color:var(--brand)}
+.rail-btn.on{border-color:var(--brand);color:var(--brand);background:var(--brand-bg)}
+.schmid{flex:1;min-width:0;display:flex;flex-direction:column;padding:10px 12px 12px;gap:10px}
+.schtool{flex-shrink:0;display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-card);padding:6px 10px}
+.schtool .title{position:absolute;left:50%;transform:translateX(-50%);font-size:11.5px;color:var(--t2);font-weight:500}
+.seg{display:flex;border:1px solid var(--line2);border-radius:var(--r);overflow:hidden;background:var(--panel)}
+.seg button{height:24px;padding:0 10px;font-size:11.5px;color:var(--t2);border-right:1px solid var(--line);background:transparent;display:flex;align-items:center;gap:5px}
+.seg button:last-child{border-right:none}
+.seg button:hover{background:var(--hover);color:var(--t1)}
+.seg button.on{background:var(--brand-bg);color:var(--brand);font-weight:600}
+.chk{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--t2);cursor:pointer;white-space:nowrap}
+.chk input{accent-color:var(--brand);width:13px;height:13px}
+.calwrap{flex:1;min-height:0;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-card);display:flex;flex-direction:column;overflow:hidden}
+.cal{flex:1;min-height:0;display:flex;flex-direction:column}
+.cal-head{display:grid;grid-template-columns:48px repeat(7,1fr);border-bottom:1px solid var(--line2);flex-shrink:0;background:var(--subtle)}
+.cal-head>div{padding:6px 8px;font-size:11px;color:var(--t2);border-right:1px solid var(--grid);display:flex;flex-direction:column;line-height:1.3}
+.cal-head>div:last-child{border-right:none}
+.cal-head b{font-weight:600;color:var(--t1);font-size:11.5px;display:flex;align-items:center;gap:6px}
+.cal-head .today b{color:var(--brand)}
+.cal-head .tpill{font-size:9px;font-weight:600;color:var(--brand);background:var(--brand-bg);border-radius:7px;padding:1px 6px}
+.cal-scroll{flex:1;min-height:0;overflow-y:auto;position:relative}
+.cal-grid{display:grid;grid-template-columns:48px repeat(7,1fr);min-height:100%}
+.timecol{border-right:1px solid var(--line);position:relative;z-index:2;background:var(--panel)}
+.timecol .th{position:absolute;right:6px;transform:translateY(-50%);font-size:9.5px;color:var(--t3);background:var(--panel);padding:0 2px}
+.daycol{border-right:1px solid var(--grid);position:relative}
+.daycol:last-child{border-right:none}
+.daycol .ln{position:absolute;left:0;right:0;height:1px;background:var(--grid)}
+.daycol.today{background:rgba(15,108,189,.028);box-shadow:inset 2px 0 0 var(--brand)}
+.daycol .nl{position:absolute;left:0;right:0;height:1.5px;background:var(--today);z-index:4}
+.daycol .nl::before{content:'';position:absolute;left:-3px;top:-2.5px;width:7px;height:7px;border-radius:50%;background:var(--today)}
+.daycol .nlt{position:absolute;left:2px;transform:translateY(-50%);z-index:5;background:var(--today);color:#fff;font-size:9px;font-weight:600;padding:1px 5px;border-radius:2px}
+.jobb{position:absolute;left:4px;right:5px;background:var(--panel);border:1px solid var(--brand-line);border-left:3px solid var(--brand);border-radius:3px;padding:4px 7px;cursor:pointer;overflow:hidden;z-index:3;box-shadow:0 1px 3px rgba(20,40,60,.08)}
+.jobb:hover{border-color:var(--brand);background:var(--brand-bg)}
+.jobb b{font-size:10.5px;font-weight:600;display:block;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.jobb span{font-size:9.5px;color:var(--t2);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.runtable{flex-shrink:0;height:132px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-card);display:flex;flex-direction:column;overflow:hidden}
+.rt-h{display:grid;grid-template-columns:150px 1.3fr 100px 90px 100px 1.2fr 80px 130px 1fr;border-bottom:1px solid var(--line);background:var(--subtle);flex-shrink:0}
+.rt-h span{font-size:10px;font-weight:600;color:var(--t2);letter-spacing:.4px;padding:6px 10px;border-right:1px solid var(--grid);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rt-b{flex:1;overflow-y:auto}
+.rt-row{display:grid;grid-template-columns:150px 1.3fr 100px 90px 100px 1.2fr 80px 130px 1fr;border-bottom:1px solid var(--grid);font-size:11px}
+.rt-row:hover{background:var(--hover)}
+.rt-row>span{padding:6px 10px;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rt-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--t3);font-size:11px}
+.sjob{width:288px;flex-shrink:0;background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;overflow-y:auto}
+.sjob .card-h{border-bottom:1px solid var(--line)}
+.sjob-b{padding:14px;display:flex;flex-direction:column;gap:11px}
+.sj-row{display:flex;align-items:center;gap:8px}
+.sj-row label{width:64px;flex-shrink:0;font-size:11.5px;color:var(--t2)}
+.sj-row .sel,.sj-row .inp{flex:1}
+.strat{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+.strat button{border:1px solid var(--line2);border-radius:var(--r);background:var(--panel);padding:8px 4px 7px;display:flex;flex-direction:column;align-items:center;gap:5px;font-size:11px;color:var(--t2)}
+.strat button span{font-size:9px;color:var(--t3)}
+.strat button:hover{border-color:var(--brand)}
+.strat button.on{border-color:var(--brand);background:var(--brand-bg);color:var(--brand);font-weight:600}
+.strat button.on span{color:var(--brand)}
+
+/* ============================================================
+   RUN 运行
+   ============================================================ */
+#v-run{flex-direction:column}
+.rtop{height:42px;flex-shrink:0;background:var(--panel);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;padding:0 12px}
+.rtop .cur{display:flex;align-items:center;gap:8px;background:var(--subtle);border:1px solid var(--line);border-radius:var(--r);padding:3px 10px;font-size:11px;color:var(--t2)}
+.rtop .cur b{color:var(--t1);font-weight:600}
+.rbody{flex:1;min-height:0;display:flex;gap:10px;padding:10px 12px 12px}
+.rpanel{flex:1;min-width:0;display:flex;flex-direction:column}
+.rpanel-h{height:32px;flex-shrink:0;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:7px;padding:0 10px;font-size:12px;font-weight:600}
+.rpanel-h .en{font-weight:400;font-size:10px;color:var(--t3)}
+.rpanel-h .sp{flex:1}
+.rdeck{flex:1;min-height:0;position:relative;background:#FAFBFC;border-bottom:1px solid var(--line)}
+.rdeck svg{width:100%;height:100%;display:block}
+.rstats{flex-shrink:0;display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border-top:1px solid var(--line)}
+.stat{background:var(--panel);padding:8px 10px 9px;display:flex;flex-direction:column;gap:5px;cursor:pointer;border-top:2px solid transparent;position:relative}
+.stat:hover{background:var(--subtle)}
+.stat.on{background:var(--brand-bg);box-shadow:inset 0 0 0 1px var(--brand)}
+.stat .r1{display:flex;align-items:center;gap:6px}
+.stat .r1 i{width:8px;height:8px;border-radius:2px;font-style:normal}
+.stat .r1 b{font-size:11.5px;font-weight:600;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stat .kv2{display:flex;justify-content:space-between;font-size:10.5px;color:var(--t2)}
+.stat .kv2 b{color:var(--t1);font-weight:500}
+.stat .cbtn{position:absolute;right:6px;bottom:6px}
+.wfsub{flex-shrink:0;display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid var(--line);background:var(--subtle)}
+.wfsub .sel{flex:1}
+.wfbody{flex:1;min-height:0;overflow:auto;position:relative;background:
+  linear-gradient(var(--grid) 1px,transparent 1px) 0 0/100% 28px,
+  linear-gradient(90deg,var(--grid) 1px,transparent 1px) 0 0/28px 100%,#FCFDFE}
+.wf-inner{position:relative;width:420px;height:100%;min-height:560px;margin:0 auto}
+.wf-inner svg.wires{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.gtool{flex-shrink:0;display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--line);background:var(--subtle)}
+.gwrap{flex:1;min-height:0;display:flex;overflow:hidden}
+.gleft{width:186px;flex-shrink:0;overflow:hidden;border-right:1px solid var(--line);background:var(--panel)}
+.gscale-h{height:40px;border-bottom:1px solid var(--line2);position:relative;background:var(--subtle)}
+.gright{flex:1;min-width:0;overflow:auto;position:relative;background:var(--panel)}
+.g-time{height:40px;border-bottom:1px solid var(--line2);position:sticky;top:0;background:var(--subtle);z-index:6}
+.g-time .maj{position:absolute;top:4px;font-size:9.5px;color:var(--t2);transform:translateX(2px)}
+.g-time .min{position:absolute;bottom:3px;width:1px;height:8px;background:var(--line2)}
+.g-time .tick{position:absolute;bottom:0;width:1px;height:5px;background:var(--grid)}
+.grow2{position:relative;height:25px;border-bottom:1px solid var(--grid)}
+.grow2.grp{background:var(--subtle)}
+.glabel{height:25px;display:flex;align-items:center;gap:6px;font-size:11px;color:var(--t1);border-bottom:1px solid var(--grid);padding:0 10px;white-space:nowrap;overflow:hidden}
+.glabel.grp{font-weight:600;color:var(--t1)}
+.glabel.chld{padding-left:26px;color:var(--t2)}
+.glabel .exp{color:var(--t3);width:12px;flex-shrink:0;display:grid;place-items:center}
+.gbar{position:absolute;top:4px;height:16px;border-radius:3px;display:flex;align-items:center;padding:0 5px;font-size:9.5px;color:#fff;overflow:visible;white-space:nowrap}
+.gbar .in{overflow:hidden;text-overflow:ellipsis;line-height:1}
+.gprog{position:absolute;top:0;bottom:0;left:0;background:rgba(10,20,30,.25);border-radius:3px 0 0 3px;pointer-events:none}
+.gsum{position:absolute;top:8px;height:8px;border-radius:2px;opacity:.42}
+.gplay{position:absolute;top:0;bottom:0;width:1.5px;background:var(--today);z-index:5;display:none}
+.gplay::before{content:'';position:absolute;top:0;left:-3.5px;border:4px solid transparent;border-top:6px solid var(--today)}
+.gplay .pt{position:absolute;top:14px;left:5px;background:var(--today);color:#fff;font-size:9px;font-weight:600;padding:1px 5px;border-radius:2px;white-space:nowrap}
+
+/* workflow 节点 */
+.node{position:absolute}
+.n-begin,.n-end{width:58px;height:58px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:12px;font-weight:600;box-shadow:0 2px 6px rgba(20,40,30,.18)}
+.n-begin{background:var(--ok)} .n-end{background:var(--err)}
+.n-diamond{width:52px;height:52px;background:#FDF3E3;border:1.5px solid #E8B25E;border-radius:6px;transform:rotate(45deg);display:grid;place-items:center}
+.n-diamond span{transform:rotate(-45deg);font-size:17px;font-weight:700;color:#A85E00}
+.n-cmd{width:176px;background:var(--panel);border:1px solid var(--line2);border-left:3px solid var(--c-storage);border-radius:var(--r-card);padding:7px 9px;display:flex;gap:8px;align-items:center;box-shadow:0 1px 3px rgba(20,40,60,.08)}
+.n-cmd .ci{width:26px;height:26px;border-radius:3px;background:var(--subtle);display:grid;place-items:center;flex-shrink:0}
+.n-cmd b{font-size:11px;font-weight:600;line-height:1.3;display:block}
+.n-cmd span{font-size:9.5px;color:var(--t3)}
+.n-drop{width:176px;border:1.5px dashed var(--line2);border-radius:var(--r-card);color:var(--t3);font-size:10.5px;display:grid;place-items:center;padding:12px 0;background:rgba(247,248,250,.6)}
+.n-drop:hover{border-color:var(--brand);color:var(--brand)}
+
+/* ============================================================
+   ADVANCED 高级
+   ============================================================ */
+.atool{width:266px;flex-shrink:0;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;overflow:hidden}
+.at-h{padding:10px 12px 8px;font-size:12px;font-weight:600;border-bottom:1px solid var(--line);display:flex;align-items:baseline;gap:6px}
+.at-h .en{font-size:10px;color:var(--t3);font-weight:400}
+.cmdgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:10px;overflow-y:auto;align-content:start}
+.cmd{border:1px solid var(--line);border-radius:var(--r-card);background:var(--panel);padding:8px 2px 6px;display:flex;flex-direction:column;align-items:center;gap:5px;cursor:grab;min-height:58px}
+.cmd:hover{border-color:var(--brand-line);background:var(--brand-bg)}
+.cmd .ci{height:24px;display:grid;place-items:center;color:var(--t2)}
+.cmd .cn{font-size:9px;color:var(--t2);text-align:center;line-height:1.25}
+.agrp{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--subtle);border-top:1px solid var(--line);border-bottom:1px solid var(--line);cursor:pointer;flex-shrink:0;font-size:11px;font-weight:600;color:var(--t2)}
+.agrp:hover{color:var(--t1)}
+.agrp svg{transition:transform .15s}
+.agrp.closed svg.arr{transform:rotate(-90deg)}
+.amid{flex:1;min-width:0;display:flex;flex-direction:column}
+.abar{height:38px;flex-shrink:0;border-bottom:1px solid var(--line);background:var(--panel);display:flex;align-items:center;justify-content:flex-end;gap:4px;padding:0 10px}
+.atabs{display:flex;padding:8px 12px 0;gap:2px;flex-shrink:0}
+.atab{min-width:150px;height:30px;background:var(--subtle);border:1px solid var(--line);border-bottom:none;border-radius:4px 4px 0 0;display:flex;align-items:center;justify-content:center;gap:7px;position:relative;font-size:11.5px;font-weight:600;color:var(--t1)}
+.atab .dots{display:flex;gap:2px}
+.atab .dots i{width:3px;height:3px;background:#C6CCD3;border-radius:50%}
+.atab .x{width:18px;height:18px;border-radius:2px;display:grid;place-items:center;color:var(--t3)}
+.atab .x:hover{background:var(--hover);color:var(--t1)}
+.acanvas{flex:1;min-height:0;border-top:1px solid var(--line);background:var(--panel);overflow:auto;position:relative;
+  background-image:radial-gradient(#E3E7EB 1px,transparent 1px);background-size:22px 22px}
+.aexp{width:288px;flex-shrink:0;background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;overflow:hidden}
+.ex-tools{display:flex;gap:2px;padding:6px 10px;border-bottom:1px solid var(--line)}
+.ex-scroll{flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.exgroup{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-card)}
+.exgbar{display:flex;align-items:center;gap:7px;padding:7px 10px;cursor:pointer;font-size:11.5px;font-weight:600;color:var(--t1)}
+.exgbar .cnt{margin-left:auto;font-size:9.5px;color:var(--t3);font-weight:400}
+.exlist{border-top:1px solid var(--grid);padding:3px}
+.exli{display:flex;align-items:center;gap:7px;padding:5px 8px;border-radius:2px;font-size:11.5px;color:var(--t1);cursor:pointer}
+.exli:hover{background:var(--hover)}
+.exli.on{background:var(--brand-bg);color:var(--brand)}
+.exli .led{width:7px;height:7px;border-radius:50%;background:var(--ok);flex-shrink:0}
+.exli .sw{width:9px;height:9px;border-radius:2px;flex-shrink:0}
+.pcard{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-card)}
+.pcard .hd{padding:8px 10px;font-size:11.5px;font-weight:600;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:7px}
+.pcard .bd{padding:9px 10px 11px;font-size:11.5px}
+.colbox{border:1px solid var(--line);border-radius:2px;margin-top:5px}
+.colbox div{padding:4px 9px;font-size:11px;color:var(--t1);border-bottom:1px solid var(--grid);display:flex;justify-content:space-between}
+.colbox div:last-child{border-bottom:none}
+.colbox div span{color:var(--t3);font-size:9.5px}
+
+/* ============================================================
+   弹窗 Storage Content
+   ============================================================ */
+.overlay{position:fixed;inset:0;background:rgba(23,32,40,.36);display:none;z-index:50;align-items:flex-start;justify-content:center;padding-top:110px}
+.overlay.show{display:flex}
+.dlg{width:880px;max-width:94vw;background:var(--panel);border-radius:6px;box-shadow:0 12px 40px rgba(10,20,30,.3);display:flex;flex-direction:column;max-height:76vh;overflow:hidden}
+.dlg-h{height:36px;background:var(--subtle);border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 6px 0 14px;font-size:12px;font-weight:600;flex-shrink:0}
+.dlg-h .en{font-weight:400;color:var(--t3);font-size:10.5px;margin-left:8px}
+.dlg-h .sp{flex:1}
+.dlg-tabs{display:flex;gap:2px;padding:8px 14px 0;border-bottom:1px solid var(--line)}
+.dlg-tabs button{padding:6px 14px;font-size:12px;color:var(--t2);border:1px solid transparent;border-bottom:none;border-radius:4px 4px 0 0;margin-bottom:-1px}
+.dlg-tabs button:hover{color:var(--t1)}
+.dlg-tabs button.on{background:var(--panel);border-color:var(--line);color:var(--brand);font-weight:600}
+.dlg-b{flex:1;min-height:0;display:flex;padding:14px}
+.hotels{flex:1;display:flex;gap:26px;justify-content:center;overflow:auto}
+.hotel{display:flex;flex-direction:column;gap:3px}
+.hotel .cap{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;margin-bottom:4px}
+.hotel .cap label{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:500}
+.hotel .cap input{accent-color:var(--brand)}
+.slot{width:190px;height:18px;border-radius:2px;font-size:10px;display:flex;align-items:center;gap:6px;padding:0 6px;cursor:pointer;border:1px solid transparent}
+.slot em{font-style:normal;margin-left:auto;color:var(--t3);font-size:9px}
+.slot.empty{background:#F1F3F5;color:var(--t3)}
+.slot.empty:hover{background:#E9ECEF}
+.slot.filled{background:var(--panel);border-color:var(--brand-line);color:var(--t1)}
+.slot.filled:hover{border-color:var(--brand)}
+.slot i{width:6px;height:6px;border-radius:50%;font-style:normal;flex-shrink:0}
+.slot:hover{outline:1px solid var(--brand);outline-offset:-1px}
+.zones{width:120px;flex-shrink:0;border-left:1px solid var(--line);padding-left:14px;display:flex;flex-direction:column;gap:6px}
+.zones .z-h{font-size:11px;font-weight:600;margin-bottom:2px}
+.zones .zit{display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--t2);padding:4px 6px;border-radius:2px;border:1px solid var(--grid)}
+.zones .zit i{width:7px;height:7px;border-radius:2px;font-style:normal;flex-shrink:0}
+.dlg-f{flex-shrink:0;border-top:1px solid var(--line);background:var(--subtle);padding:10px 14px;display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--t2)}
+.dlg-f b{color:var(--t1);font-weight:600}
+.dlg-f .sp{flex:1}
+
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ===== 窗口标题栏 ===== -->
+  <header class="tb">
+    <span class="mark"><svg width="17" height="17" viewBox="0 0 18 18"><rect x="1" y="1" width="16" height="16" rx="4" fill="#0F6CBD"/><path d="M7.2 4.2v3.2l-2.4 5.2a1.3 1.3 0 0 0 1.2 1.9h5.9a1.3 1.3 0 0 0 1.2-1.9l-2.4-5.2V4.2M6.3 4.2h5.4M6.8 10.6h4.4" fill="none" stroke="#fff" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+    <span class="appname">TC-4S 调度控制台</span>
+    <span class="file"><svg width="11" height="11" viewBox="0 0 16 16"><path d="M2 3.5h5l1.6 2H14v7H2z" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>PR4_平行反应_24h.gbg</span>
+    <span class="sp"></span>
+    <a id="tbAbout"><svg width="13" height="13" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.4"/><rect x="7.2" y="7" width="1.6" height="4.4" fill="currentColor"/><rect x="7.2" y="4.4" width="1.6" height="1.6" fill="currentColor"/></svg>关于</a>
+    <a><svg width="13" height="13" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6 5 5M11 11l1.4 1.4M12.4 3.6 11 5M5 11l-1.4 1.4" stroke="currentColor" stroke-width="1.3"/></svg>设置</a>
+    <a><svg width="13" height="13" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M6 6.2a2 2 0 1 1 2.8 1.9c-.7.3-1 .8-1 1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><rect x="7.2" y="11.2" width="1.6" height="1.6" fill="currentColor"/></svg>帮助</a>
+    <a><svg width="13" height="13" viewBox="0 0 16 16"><path d="M11.2 2.2a3.4 3.4 0 0 0-4.4 4.3L2 11.3V14h2.7l4.8-4.8a3.4 3.4 0 0 0 4.3-4.4l-2.4 2.4-1.9-.5-.5-1.9z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>工具</a>
+    <span class="win">
+      <button title="最小化"><svg width="11" height="11" viewBox="0 0 12 12"><rect x="1.5" y="5.4" width="9" height="1.1" fill="currentColor"/></svg></button>
+      <button title="最大化"><svg width="11" height="11" viewBox="0 0 12 12"><rect x="1.8" y="1.8" width="8.4" height="8.4" fill="none" stroke="currentColor" stroke-width="1.1"/></svg></button>
+      <button class="x" title="关闭"><svg width="11" height="11" viewBox="0 0 12 12"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.2"/></svg></button>
+    </span>
+  </header>
+
+  <!-- ===== 视图菜单栏 ===== -->
+  <nav class="mb">
+    <button class="mv on" data-view="start"><b>开始</b><i>Start</i></button>
+    <button class="mv" data-view="layout"><b>布局</b><i>Layout</i></button>
+    <button class="mv" data-view="process"><b>流程</b><i>Process</i></button>
+    <button class="mv" data-view="schedule"><b>排程</b><i>Schedule</i></button>
+    <button class="mv" data-view="run"><b>运行</b><i>Run</i></button>
+    <button class="mv" data-view="advanced"><b>高级</b><i>Advanced</i></button>
+    <span class="sp"></span>
+    <div class="sim" id="simChip">
+      <span class="sd"></span>
+      <span class="st"><b>仿真模式</b><i>SIMULATION</i></span>
+      <span class="vsep"></span>
+      <button class="sbtn go" id="simRun" title="运行 Run"><svg width="11" height="11" viewBox="0 0 16 16"><path d="M4.6 2.6 12.8 8l-8.2 5.4z" fill="currentColor"/></svg></button>
+      <button class="sbtn halt" id="simStop" title="停止 Stop"><svg width="10" height="10" viewBox="0 0 16 16"><rect x="3.4" y="3.4" width="9.2" height="9.2" rx="1.4" fill="currentColor"/></svg></button>
+      <button class="sbtn" id="simPause" title="暂停 Pause"><svg width="10" height="10" viewBox="0 0 16 16"><rect x="3.6" y="3" width="3" height="10" rx="1" fill="currentColor"/><rect x="9.4" y="3" width="3" height="10" rx="1" fill="currentColor"/></svg></button>
+      <button class="sbtn" id="simIn" title="步入 Step in"><svg width="13" height="11" viewBox="0 0 18 14"><path d="M2.5 1.8v10.4M5.5 7h7" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M11.5 3.6 15.6 7l-4.1 3.4z" fill="currentColor"/></svg></button>
+      <button class="sbtn" id="simOut" title="步出 Step out"><svg width="13" height="11" viewBox="0 0 18 14"><path d="M15.5 1.8v10.4M2.4 7h7" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M6.4 3.6 2.3 7l4.1 3.4z" fill="currentColor"/></svg></button>
+    </div>
+    <div class="uz">
+      <svg width="26" height="24" viewBox="0 0 26 24" fill="none" stroke="#3E4C59" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 21h21M5 21v-8l7-7 5.5 5.5"/><rect x="15" y="10.5" width="7" height="5" rx="1"/><circle cx="12" cy="6" r="1.6" fill="#3E4C59" stroke="none"/><path d="M19 15.5V21"/></svg>
+      <span class="ui"><b>Administrator</b><i>管理员 · 已登录</i></span>
+      <svg class="caret" width="10" height="10" viewBox="0 0 10 10"><path d="M2 3.6 5 6.6 8 3.6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+    </div>
+  </nav>
+
+  <!-- ===== 视图区 ===== -->
+  <main class="vp">
+
+    <!-- ========== START 开始 ========== -->
+    <section class="view on" id="v-start">
+      <aside class="sn">
+        <div class="sn-brand">
+          <span class="mark"><svg width="26" height="26" viewBox="0 0 18 18"><rect x="1" y="1" width="16" height="16" rx="4" fill="#0F6CBD"/><path d="M7.2 4.2v3.2l-2.4 5.2a1.3 1.3 0 0 0 1.2 1.9h5.9a1.3 1.3 0 0 0 1.2-1.9l-2.4-5.2V4.2M6.3 4.2h5.4M6.8 10.6h4.4" fill="none" stroke="#fff" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <span class="tt"><b>调度控制台</b><span>TC-4S Scheduler · v4.2</span></span>
+        </div>
+        <nav id="snNav"></nav>
+      </aside>
+
+      <div class="smain">
+        <div class="hero">
+          <span class="hm"><svg width="24" height="24" viewBox="0 0 18 18"><path d="M7.2 4.2v3.2l-2.4 5.2a1.3 1.3 0 0 0 1.2 1.9h5.9a1.3 1.3 0 0 0 1.2-1.9l-2.4-5.2V4.2M6.3 4.2h5.4M6.8 10.6h4.4" fill="none" stroke="#fff" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <div>
+            <h1>四工位实验室自动控温合成反应平台</h1>
+            <p class="sub">当前工作台 <b>PR4_平行反应_24h</b> · 3 条流程 · 9 台设备 · 四工位独立控温，共用母液 / 冷却 / 气路</p>
+          </div>
+          <div class="chips">
+            <span class="chip"><b>1</b><span>今日已排任务</span></span>
+            <span class="chip"><b>8 / 9</b><span>设备在线</span></span>
+            <span class="chip"><b>24 h</b><span>本周期运行</span></span>
+          </div>
+        </div>
+
+        <div class="sech">最近程序<span class="en">Recent programs</span><span class="rule"></span></div>
+        <div class="recgrid" id="recGrid"></div>
+
+        <div class="sech">快速开始<span class="en">Quick start</span><span class="rule"></span></div>
+        <div class="quickrow" id="quickRow"></div>
+      </div>
+
+      <aside class="sside">
+        <div class="card">
+          <div class="card-h">工作台状态<span class="en">Workcell</span></div>
+          <div class="card-b">
+            <div class="kv"><span>模式</span><span class="pill dark"><i></i>仿真模式</span></div>
+            <div class="kv"><span>工作台</span><span>PR4_平行反应_24h</span></div>
+            <div class="kv"><span>登录用户</span><span>Administrator</span></div>
+            <div class="kv"><span>上次运行</span><span>11-12 10:40 – 16:40</span></div>
+            <div class="kv"><span>下个任务</span><span>PS261113104033.000</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-h">设备状态<span class="en">Instruments</span><span class="sp"></span><span style="font-size:10px;color:var(--t3)">8/9 在线</span></div>
+          <div class="card-b" id="ssInst"></div>
+        </div>
+        <div class="card">
+          <div class="card-h">关于<span class="en">About</span></div>
+          <div class="card-b">
+            <div class="kv"><span>软件版本</span><span>4.2.1830</span></div>
+            <div class="kv"><span>许可证</span><span>站点版 · 24 席位</span></div>
+            <div class="kv"><span>数据库</span><span class="pill ok"><i></i>已连接</span></div>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+    <!-- ========== LAYOUT 布局 ========== -->
+    <section class="view" id="v-layout">
+      <aside class="lib" id="libBox"></aside>
+      <div class="stage">
+        <span class="tag"><svg width="12" height="12" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="10" rx="1" fill="none" stroke="#646A73" stroke-width="1.2"/><path d="M5 14.5h6" stroke="#646A73" stroke-width="1.2"/></svg>工作台 PR4_平行反应_24h · 台面 1,240 × 820 mm · 点击设备查看属性</span>
+        <svg id="deckSvg" viewBox="0 0 960 620" preserveAspectRatio="xMidYMid meet"></svg>
+        <div class="stage-tools">
+          <button class="ibtn" title="放大"><svg width="14" height="14" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M4.9 7h4.2M7 4.9v4.2M10.3 10.3 13.8 13.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button>
+          <button class="ibtn" title="缩小"><svg width="14" height="14" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M4.9 7h4.2M10.3 10.3 13.8 13.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button>
+          <button class="ibtn" title="适配窗口"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M2 5.5V2h3.5M14 5.5V2h-3.5M2 10.5V14h3.5M14 10.5V14h-3.5" fill="none" stroke="currentColor" stroke-width="1.4"/></svg></button>
+          <button class="ibtn on" title="网格"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M2 2h12v12H2zM6 2v12M10 2v12M2 6h12M2 10h12" fill="none" stroke="currentColor" stroke-width="1.2"/></svg></button>
+        </div>
+      </div>
+      <aside class="props">
+        <div class="props-h">设备属性<span class="en">Properties</span></div>
+        <div class="props-b" id="propsBody"></div>
+        <div class="props-f">
+          <button class="btn">连接</button>
+          <button class="btn">初始化</button>
+          <button class="btn primary">保存</button>
+        </div>
+      </aside>
+    </section>
+
+    <!-- ========== PROCESS 流程 ========== -->
+    <section class="view" id="v-process">
+      <aside class="pdlist" id="pdList"></aside>
+      <div class="pmid">
+        <div class="ptool">
+          <span class="lbl">流程</span>
+          <select class="sel" style="width:210px"><option>平行反应主流程 Process 1</option><option>条件筛选流程 Process 2</option></select>
+          <span class="vsep"></span>
+          <button class="ibtn" title="新建"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M8 2.8v10.4M2.8 8h10.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+          <button class="ibtn" title="编辑"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M11.2 2.6l2.2 2.2L6.2 12 3 12.8l.8-3.2z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></button>
+          <button class="ibtn" title="导入"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M8 2.4v6M5.6 5.8 8 8.2l2.4-2.4M2.8 11.4h10.4V13H2.8z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <button class="ibtn" title="删除"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M3 4h10M6.4 4V2.8h3.2V4M4.4 4l.6 9.2h6l.6-9.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <button class="ibtn" title="时序"><svg width="14" height="14" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 4.8V8l2.4 1.6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button>
+          <button class="ibtn" title="工时计算"><svg width="14" height="14" viewBox="0 0 16 16"><rect x="3" y="1.8" width="10" height="12.4" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3"/><rect x="5" y="4" width="6" height="2.4" fill="currentColor"/><path d="M5.3 9h.01M8 9h.01M10.7 9h.01M5.3 11.4h.01M8 11.4h.01M10.7 11.4h.01" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+          <button class="ibtn" title="查找"><svg width="14" height="14" viewBox="0 0 16 16"><circle cx="6.8" cy="6.8" r="4.2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M10 10l3.6 3.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+          <button class="ibtn" title="更多"><svg width="14" height="14" viewBox="0 0 16 16"><circle cx="3.2" cy="8" r="1.2" fill="currentColor"/><circle cx="8" cy="8" r="1.2" fill="currentColor"/><circle cx="12.8" cy="8" r="1.2" fill="currentColor"/></svg></button>
+        </div>
+        <div class="pbody">
+          <div class="prail">
+            <div class="sec"><b><svg width="12" height="12" viewBox="0 0 16 16"><path d="M4.5 2.5h7v4h-7zM2.5 9.5h4v4h-4zM9.5 9.5h4v4h-4z" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>变量<span class="chev" style="margin-left:auto"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M3.6 2l3.2 3-3.2 3" fill="none" stroke="currentColor" stroke-width="1.4"/></svg></span></b><span>未定义变量</span></div>
+            <div class="sec"><b><svg width="12" height="12" viewBox="0 0 16 16"><path d="M3 3.5h10v9H3z" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M3 6.5h10" stroke="currentColor" stroke-width="1.2"/></svg>启动<span class="chev" style="margin-left:auto"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M3.6 2l3.2 3-3.2 3" fill="none" stroke="currentColor" stroke-width="1.4"/></svg></span></b><span>2 个步骤 · 恒温箱预热</span></div>
+            <div class="sec"><b><svg width="12" height="12" viewBox="0 0 16 16"><path d="M8 2.5v6M5.6 6.2 8 8.6l2.4-2.4M2.8 11.5h10.4V13H2.8z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>关闭<span class="chev" style="margin-left:auto"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M3.6 2l3.2 3-3.2 3" fill="none" stroke="currentColor" stroke-width="1.4"/></svg></span></b><span>1 个步骤 · 设备归位</span></div>
+          </div>
+          <div class="lanes" id="lanes"></div>
+        </div>
+      </div>
+      <aside class="pscript">
+        <div class="card-h">运行脚本<span class="en">Run script</span></div>
+        <div style="padding:10px 12px 0">
+          <select class="sel" style="width:100%"><option>Script Done.cs</option><option>Script Start.cs</option></select>
+        </div>
+        <div class="scriptview"><span class="cm">// 流程结束后执行</span>
+<span class="kw">foreach</span>(var st <span class="kw">in</span> Workcell.Stations){
+  st.HeatOff();
+  st.Stir(<span class="st">0</span>);
+}
+Robot.MoveToSafe();
+Storage.LogContent();</div>
+        <div style="padding:0 12px 12px;display:flex;flex-direction:column;gap:8px">
+          <button class="btn danger" style="width:100%" id="btnDelScript">删除脚本</button>
+          <span style="font-size:10px;color:var(--t3);line-height:1.5">删除后运行到此节点将跳过自定义动作。流程脚本共 2 个，由调度器在启动 / 结束时调用。</span>
+        </div>
+      </aside>
+    </section>
+
+    <!-- ========== SCHEDULE 排程 ========== -->
+    <section class="view" id="v-schedule">
+      <aside class="srail">
+        <button class="rail-btn on">预排<span>Pre</span></button>
+        <button class="rail-btn">批次<span>BP</span></button>
+      </aside>
+      <div class="schmid">
+        <div class="schtool" style="position:relative">
+          <div class="seg" id="segTab">
+            <button class="on">日历</button><button>任务</button>
+          </div>
+          <div class="seg" id="segScale">
+            <button>日</button><button class="on">周</button><button>月</button>
+          </div>
+          <button class="btn" style="height:24px;padding:0 10px;font-size:11.5px" id="btnToday">今天</button>
+          <span class="title">排程日历 · 2026-11-09 – 11-15 · 第 46 周</span>
+          <span style="flex:1"></span>
+          <label class="chk"><input type="checkbox" checked>显示工期</label>
+          <button class="ibtn" title="上一周"><svg width="12" height="12" viewBox="0 0 10 10"><path d="M6.4 1.6 3.6 5l2.8 3.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button>
+          <button class="ibtn" title="下一周"><svg width="12" height="12" viewBox="0 0 10 10"><path d="M3.6 1.6 6.4 5l-2.8 3.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button>
+        </div>
+        <div class="calwrap">
+          <div class="cal">
+            <div class="cal-head" id="calHead"></div>
+            <div class="cal-scroll"><div class="cal-grid" id="calGrid"></div></div>
+          </div>
+        </div>
+        <div class="runtable">
+          <div class="rt-h"><span>RUN ID</span><span>流程 WCP NAME</span><span>类型</span><span>模块</span><span>用户</span><span>信息</span><span>父流程</span><span>时间 WHEN</span><span>异常</span></div>
+          <div class="rt-b" id="rtBody">
+            <div class="rt-empty"><svg width="26" height="26" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5" fill="none" stroke="#C3CAD1" stroke-width="1.2"/><path d="M1.5 6h13M5 5h.01M8 5h.01M11 5h.01" stroke="#C3CAD1" stroke-width="1.2"/></svg>暂无运行记录。排程任务开始执行后将在此显示。</div>
+          </div>
+        </div>
+      </div>
+      <aside class="sjob">
+        <div class="card-h">新建排程任务<span class="en">Schedule new job</span></div>
+        <div class="sjob-b">
+          <div class="sj-row"><label>流程</label><select class="sel"><option>平行反应主流程 Process 1</option><option>条件筛选流程 Process 2</option></select></div>
+          <div class="sj-row"><label>预计时长</label><input class="inp" value="360"><span style="font-size:11px;color:var(--t3)">min</span></div>
+          <div class="sj-row"><label>开始时间</label>
+            <div style="position:relative;flex:1;display:flex">
+              <input class="inp" style="flex:1;padding-right:26px" value="2026-11-13 10:40">
+              <span style="position:absolute;right:6px;top:5px;color:var(--t3)"><svg width="13" height="13" viewBox="0 0 16 16"><rect x="1.8" y="3" width="12.4" height="11" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M1.8 6.4h12.4M5 1.6v2.6M11 1.6v2.6" stroke="currentColor" stroke-width="1.2"/></svg></span>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:11.5px;color:var(--t2);margin-bottom:6px">排程策略</div>
+            <div class="strat" id="strat">
+              <button class="on"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M3 2.6v10.8M6 8l7.4-4.4v8.8z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>尽快<span>ASAP</span></button>
+              <button><svg width="15" height="15" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.6" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 1.6v1.8M8 12.6v1.8M1.6 8h1.8M12.6 8h1.8M3.4 3.4l1.3 1.3M11.3 11.3l1.3 1.3M12.6 3.4l-1.3 1.3M4.7 11.3l-1.3 1.3" stroke="currentColor" stroke-width="1.2"/></svg>最优<span>Optimal</span></button>
+              <button><svg width="15" height="15" viewBox="0 0 16 16"><path d="M13 2.6v10.8M10 8 2.6 3.6v8.8z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>最晚<span>ALAP</span></button>
+            </div>
+          </div>
+          <div class="sj-row"><label>在此之后</label><select class="sel"><option></option><option>PS261113104033.000</option></select></div>
+          <div class="acc" id="accAdv"><svg width="11" height="11" viewBox="0 0 10 10"><path d="M3.4 2l3.2 3-3.2 3" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>高级选项</div>
+          <div style="display:flex;gap:8px;margin-top:2px">
+            <button class="btn primary" style="flex:1" id="btnAddJob">添加到排程</button>
+            <button class="btn">取消</button>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+    <!-- ========== RUN 运行 ========== -->
+    <section class="view" id="v-run">
+      <div class="rtop">
+        <span class="lbl" style="font-size:11.5px;color:var(--t2)">流程</span>
+        <select class="sel" style="width:220px"><option>平行反应主流程 Process 1</option></select>
+        <span class="vsep"></span>
+        <span class="cur">当前任务 <b>PS261113104033.000</b><span id="curProg">未开始</span></span>
+        <span class="cur" style="margin-left:auto">仿真时钟 <b id="simClock">14:32</b></span>
+      </div>
+      <div class="rbody">
+        <!-- 仪器 -->
+        <section class="card rpanel" style="flex:0 0 430px">
+          <div class="rpanel-h"><svg width="13" height="13" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" rx="1.5" fill="none" stroke="#4A3E9E" stroke-width="1.3"/><path d="M8 .8v2.2M8 13v2.2M.8 8h2.2M13 8h2.2" stroke="#4A3E9E" stroke-width="1.3"/></svg>仪器<span class="en">Instruments</span><span class="sp"></span><button class="ibtn" style="width:22px;height:22px"><svg width="11" height="11" viewBox="0 0 10 10"><path d="M6.4 2l-3.2 3 3.2 3" fill="none" stroke="currentColor" stroke-width="1.4"/></svg></button></div>
+          <div class="rdeck"><svg id="runDeck" viewBox="0 0 520 380" preserveAspectRatio="xMidYMid meet"></svg></div>
+          <div class="rstats" id="rstats"></div>
+        </section>
+        <!-- 流程视图 -->
+        <section class="card rpanel" style="flex:0 0 400px">
+          <div class="rpanel-h"><svg width="13" height="13" viewBox="0 0 16 16"><circle cx="3.6" cy="4" r="1.8" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="12.4" cy="4" r="1.8" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="12.4" r="1.8" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5 4.8 6.8 10.9M11 4.8 9.2 10.9M5.2 4h5.6" stroke="currentColor" stroke-width="1.2"/></svg>流程视图<span class="en">Workflow</span></div>
+          <div class="wfsub">
+            <select class="sel" id="wfSel">
+              <option value="a">样品库 · 编辑货位 Edit Hotels</option>
+              <option value="b">样品库 · 按条码查找 Find Plate</option>
+            </select>
+            <span class="pill ok" id="wfPill"><i></i>就绪</span>
+          </div>
+          <div class="wfbody">
+            <div class="wf-inner" id="wfA"></div>
+            <div class="wf-inner" id="wfB" style="display:none"></div>
+          </div>
+        </section>
+        <!-- 甘特 -->
+        <section class="card rpanel">
+          <div class="rpanel-h"><svg width="13" height="13" viewBox="0 0 16 16"><path d="M2 3.2h6M2 8h9M2 12.8h4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>甘特图 / 数据视图<span class="en">Gantt</span></div>
+          <div class="gtool">
+            <label class="chk"><input type="checkbox">禁用</label>
+            <select class="sel" style="width:190px"><option>甘特图（全部器皿）</option><option>数据视图</option></select>
+            <span style="flex:1"></span>
+            <label class="chk"><input type="checkbox">显示时间</label>
+          </div>
+          <div class="gwrap">
+            <div class="gleft" id="gleft"></div>
+            <div class="gright" id="gright"></div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ========== ADVANCED 高级 ========== -->
+    <section class="view" id="v-advanced">
+      <aside class="atool">
+        <div class="at-h">命令工具箱<span class="en">Commands</span></div>
+        <div style="flex:1;overflow:hidden;display:flex;flex-direction:column">
+          <div class="cmdgrid" id="cmdG" style="flex:1"></div>
+          <div class="agrp" id="agrp"><svg class="arr" width="11" height="11" viewBox="0 0 10 10"><path d="M3.4 2l3.2 3-3.2 3" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>转运机械臂<span class="cnt" style="margin-left:auto;font-size:9.5px;color:var(--t3)">16 条命令</span></div>
+          <div class="cmdgrid" id="cmdR" style="flex:1"></div>
+        </div>
+      </aside>
+      <div class="amid">
+        <div class="abar">
+          <button class="ibtn" title="撤销"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M3.2 7.6a5 5 0 1 1 1 3.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M3 4.2v3.6h3.6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <button class="ibtn" title="重做"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M12.8 7.6a5 5 0 1 0-1 3.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M13 4.2v3.6H9.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <button class="ibtn" title="定位"><svg width="15" height="15" viewBox="0 0 16 16"><circle cx="8" cy="8" r="4.6" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="8" r="1.4" fill="currentColor"/><path d="M8 1v2.2M8 12.8V15M1 8h2.2M12.8 8H15" stroke="currentColor" stroke-width="1.4"/></svg></button>
+          <button class="ibtn" title="更多"><svg width="12" height="12" viewBox="0 0 12 12"><path d="M2.4 4.4 6 8l3.6-3.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+        </div>
+        <div class="atabs">
+          <div class="atab"><span class="dots"><i></i><i></i><i></i><i></i><i></i></span>启动 Start<span class="x"><svg width="10" height="10" viewBox="0 0 12 12"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.3"/></svg></span></div>
+        </div>
+        <div class="acanvas">
+          <div style="position:relative;width:520px;height:100%;min-height:520px" id="advCanvas"></div>
+        </div>
+      </div>
+      <aside class="aexp">
+        <div class="card-h">资源浏览器<span class="en">Program Explorer</span></div>
+        <div class="ex-tools">
+          <button class="ibtn" title="新建界面"><svg width="14" height="14" viewBox="0 0 16 16"><rect x="1.6" y="2.6" width="12.8" height="10" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5 14h6" stroke="currentColor" stroke-width="1.3"/></svg></button>
+          <button class="ibtn" title="新建脚本"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M3.5 1.6h6.4l2.6 2.6v10.2H3.5z" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5.8 7.4h4.4M5.8 10h4.4M5.8 12.4h2.8" stroke="currentColor" stroke-width="1.2"/></svg></button>
+          <button class="ibtn" title="新建数据表"><svg width="14" height="14" viewBox="0 0 16 16"><rect x="1.8" y="2.4" width="12.4" height="11" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M1.8 6h12.4M6.2 6v7.4M10.6 6v7.4" stroke="currentColor" stroke-width="1.1"/></svg></button>
+          <button class="ibtn" title="新建变量"><svg width="14" height="14" viewBox="0 0 16 16"><rect x="2.2" y="3" width="11.6" height="10" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5.5 10.6 8 5.4l2.5 5.2M6.4 9h3.2" stroke="currentColor" stroke-width="1.1"/></svg></button>
+          <span style="flex:1"></span>
+          <button class="ibtn" title="帮助"><svg width="14" height="14" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M6 6.2a2 2 0 1 1 2.8 1.9c-.7.3-1 .8-1 1.5" fill="none" stroke="currentColor" stroke-width="1.2"/><rect x="7.2" y="11.2" width="1.6" height="1.6" fill="currentColor"/></svg></button>
+        </div>
+        <div class="ex-scroll">
+          <div class="exgroup"><div class="exgbar"><svg width="12" height="12" viewBox="0 0 16 16"><rect x="1.6" y="2.6" width="12.8" height="10" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5 14h6" stroke="currentColor" stroke-width="1.3"/></svg>界面<span class="cnt">Screens · 0</span></div></div>
+          <div class="exgroup"><div class="exgbar"><svg width="12" height="12" viewBox="0 0 16 16"><path d="M3.5 1.6h6.4l2.6 2.6v10.2H3.5z" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5.8 7.4h4.4M5.8 10h4.4" stroke="currentColor" stroke-width="1.2"/></svg>脚本<span class="cnt">Scripts · 2</span></div></div>
+          <div class="exgroup">
+            <div class="exgbar"><svg width="12" height="12" viewBox="0 0 10 10"><path d="M3.4 2l3.2 3-3.2 3" fill="none" stroke="currentColor" stroke-width="1.4"/></svg><svg width="12" height="12" viewBox="0 0 16 16"><rect x="1.8" y="2.4" width="12.4" height="11" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M1.8 6h12.4M6.2 6v7.4" stroke="currentColor" stroke-width="1.1"/></svg>数据表<span class="cnt">7</span></div>
+            <div class="exlist" id="dtList"></div>
+          </div>
+          <div class="exgroup">
+            <div class="exgbar"><svg width="12" height="12" viewBox="0 0 10 10"><path d="M3.4 2l3.2 3-3.2 3" fill="none" stroke="currentColor" stroke-width="1.4"/></svg><svg width="12" height="12" viewBox="0 0 16 16"><circle cx="5" cy="5" r="2.4" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="11" cy="11" r="2.4" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M6.8 6.8l2.4 2.4" stroke="currentColor" stroke-width="1.2"/></svg>设备<span class="cnt">5</span></div>
+            <div class="exlist" id="aiList"></div>
+          </div>
+          <div class="pcard">
+            <div class="hd"><svg width="13" height="13" viewBox="0 0 16 16"><rect x="1.8" y="2.4" width="12.4" height="11" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M1.8 6h12.4" stroke="currentColor" stroke-width="1.1"/></svg>属性 · Instrument_Utilization</div>
+            <div class="bd">
+              <div style="margin-bottom:8px;color:var(--t2)">数据表：设备利用率统计</div>
+              <label class="chk" style="margin-bottom:8px"><input type="checkbox" checked>运行开始时清空</label>
+              <div style="font-size:10.5px;color:var(--t3);margin-bottom:2px">列 Columns</div>
+              <div class="colbox">
+                <div>Instrument<span>仪器</span></div>
+                <div>Start<span>开始</span></div>
+                <div>End<span>结束</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </section>
+  </main>
+
+  <!-- ===== 底部状态栏 ===== -->
+  <footer class="sb">
+    <span class="st" id="sbState"><i class="dot ok" id="sbDot"></i><span id="sbText">就绪 · 仿真模式</span></span>
+    <span>用户 <b>Administrator</b></span>
+    <span class="ev" id="sbEvent">最近事件：任务 PS261113104033.000 已排程 · 周五 10:40 – 16:40</span>
+    <span class="r">
+      <span>数据库 <b>已连接</b></span>
+      <span>系统状态 <b>SIMULATION</b></span>
+      <span>2026-11-13 <b id="sbClock">14:32</b></span>
+      <span>v4.2.1830</span>
+    </span>
+  </footer>
+</div>
+
+<!-- ===== 货位内容弹窗 ===== -->
+<div class="overlay" id="overlay">
+  <div class="dlg">
+    <div class="dlg-h">货位内容<span class="en">Storage content — 样品库 Sample Storage</span><span class="sp"></span>
+      <button class="ibtn" onclick="closeDlg()"><svg width="13" height="13" viewBox="0 0 12 12"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.3"/></svg></button>
+    </div>
+    <div class="dlg-tabs">
+      <button class="on">基本 Basic</button>
+      <button>高级 Advanced</button>
+    </div>
+    <div class="dlg-b">
+      <div class="hotels">
+        <div class="hotel" id="hotel1"></div>
+        <div class="hotel" id="hotel2"></div>
+      </div>
+      <aside class="zones">
+        <div class="z-h">区域与器皿<span style="display:block;font-size:9px;color:var(--t3);font-weight:400">Zones &amp; labware</span></div>
+        <div class="zit"><i style="background:var(--c-liquid)"></i>母液板</div>
+        <div class="zit"><i style="background:var(--c-station)"></i>条件板</div>
+        <div class="zit"><i style="background:var(--c-reader)"></i>取样管</div>
+      </aside>
+    </div>
+    <div class="dlg-f">
+      <span>选中 <b id="selInfo">0</b> 个货位</span>
+      <span class="vsep"></span>
+      <span>条码</span>
+      <select class="sel" style="width:110px;height:24px;font-size:11.5px"><option>Plate 板</option><option>None 无</option></select>
+      <button class="btn" style="height:24px;font-size:11.5px" id="btnClear">清空</button>
+      <button class="btn" style="height:24px;font-size:11.5px" id="btnFill">填充</button>
+      <span class="sp"></span>
+      <button class="btn" onclick="closeDlg()">取消</button>
+      <button class="btn primary" onclick="closeDlg()">确定</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   图标库 — 统一 16 网格 / 1.5 线宽 / currentColor
+   ============================================================ */
+const IC = (p,s=14)=>`<svg width="${s}" height="${s}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+const ICN = (p,s=14)=>`<svg width="${s}" height="${s}" viewBox="0 0 16 16" fill="currentColor">${p}</svg>`;
+const ICON = {
+  open:IC('<path d="M1.8 4.2h4.6l1.5 2h6.3v6.4H1.8z"/><path d="M1.8 6.4h12.4"/>'),
+  new:IC('<path d="M3.4 1.8h6.2l3 3v9.4H3.4z"/><path d="M8 6.8v4M6 8.8h4"/>'),
+  save:IC('<path d="M2.4 2.4h8.2l3 3v8.2H2.4z"/><rect x="4.6" y="2.6" width="3.6" height="3" fill="currentColor" stroke="none"/><path d="M4.6 11.4h6.8"/>'),
+  saveas:IC('<path d="M2.4 2.4h7.4l2.8 2.8v8.4H2.4z"/><path d="M9.6 9l2.8 2.8-2.8 2.8M5.4 11.8h6.8" transform="translate(-1.4 -1.4) scale(.88)"/>'),
+  imp:IC('<path d="M8 2.2v5.4M5.8 5.2 8 7.4l2.2-2.2"/><path d="M2.6 10.6h10.8V13H2.6z"/>'),
+  exp:IC('<path d="M8 7.4V2.2M5.8 4.2 8 2l2.2 2.2"/><path d="M2.6 10.6h10.8V13H2.6z"/>'),
+  gear:IC('<circle cx="8" cy="8" r="2.1"/><path d="M8 1.8v1.9M8 12.3v1.9M1.8 8h1.9M12.3 8h1.9M3.6 3.6 5 5M11 11l1.4 1.4M12.4 3.6 11 5M5 11l-1.4 1.4"/>'),
+  info:IC('<circle cx="8" cy="8" r="6.2"/><rect x="7.2" y="7" width="1.6" height="4.4" fill="currentColor" stroke="none"/><rect x="7.2" y="4.4" width="1.6" height="1.6" fill="currentColor" stroke="none"/>'),
+  exit:IC('<path d="M6 2.2H2.8v11.6H6M7.4 8h6.2M11.6 5.4 14 8l-2.4 2.6"/>'),
+  pin:IC('<path d="M5.6 1.8h4.8l-.6 4 2.6 2.6H3.6l2.6-2.6z"/><path d="M8 8.4v6"/>'),
+  robot:ICN('<rect x="6.8" y="2" width="2.4" height="7" rx="1"/><rect x="4.4" y="9" height="1.8" width="7.2" rx=".9"/><rect x="5.2" y="10.8" width="1.6" height="3" rx=".6"/><rect x="9.2" y="10.8" width="1.6" height="3" rx=".6"/><rect x="7.3" y="4.2" width="1.4" height="1.4" rx=".3" fill="#fff"/>'),
+  station:IC('<path d="M6.2 1.8h3.6M6.7 1.8v3.4l-2.7 6a1.4 1.4 0 0 0 1.3 1.9h5.4a1.4 1.4 0 0 0 1.3-1.9l-2.7-6V1.8"/><path d="M5.4 9.6h5.2"/>'),
+  liquid:IC('<path d="M8 2.2s3.4 4.4 3.4 7a3.4 3.4 0 1 1-6.8 0c0-2.6 3.4-7 3.4-7z"/>'),
+  chiller:IC('<path d="M8 1.8v12.4M2.6 4.9l10.8 6.2M2.6 11.1l10.8-6.2"/><path d="M8 1.8 6.4 3.4M8 1.8l1.6 1.6M8 14.2l-1.6-1.6M8 14.2l1.6-1.6"/>'),
+  gas:IC('<path d="M8.6 1.6s2.6 2.8 2.6 5.4a2.8 2.8 0 1 1-5.6 0c0-1 .4-2 1-2.9.2 1 .8 1.7 1.6 1.9-.4-1.7-.1-3.4.4-4.4z"/>'),
+  incub:IC('<path d="M9.4 1.8a1.5 1.5 0 0 0-3 0v6a3.4 3.4 0 1 0 3 0z"/><path d="M9.4 4.6h-3"/>'),
+  storage:IC('<rect x="2.4" y="1.8" width="11.2" height="12.4" rx="1"/><path d="M2.4 6h11.2M2.4 10h11.2M10.8 3.8h.01M10.8 8h.01M10.8 12.2h.01" stroke-width="1.8"/>'),
+  seal:IC('<rect x="2" y="3" width="12" height="7" rx="1.2"/><circle cx="5.6" cy="6.5" r="1.4"/><circle cx="10.4" cy="6.5" r="1.4"/><path d="M4 10v2.4M8 10v2.4M12 10v2.4M2.4 13.8h11.2"/>'),
+  reader:IC('<path d="M2 5.6V2.8h2.8M14 5.6V2.8h-2.8M2 10.4v2.8h2.8M14 10.4v2.8h-2.8"/><path d="M4.6 8h6.8" stroke-width="1.7"/>'),
+  trash:IC('<path d="M3 4h10M6.4 4V2.8h3.2V4M4.4 4l.6 9.2h6l.6-9.2"/>'),
+  clock:IC('<circle cx="8" cy="8" r="5.8"/><path d="M8 4.6V8l2.6 1.7"/>'),
+  layers:IC('<path d="M8 1.8 13.8 4.8 8 7.8 2.2 4.8z"/><path d="M2.2 8.2 8 11.2l5.8-3M2.2 11.2 8 14.2l5.8-3"/>'),
+  pen:IC('<path d="M11.2 2.6l2.2 2.2L6.2 12 3 12.8l.8-3.2z"/>'),
+};
+
+/* ============================================================
+   数据模型 — 四工位控温合成平台
+   ============================================================ */
+const DEV = {
+  robot:  {name:'转运机械臂', en:'Transfer Robot', c:'var(--c-robot)'},
+  station:{name:'反应工位',   en:'Reactor Station',c:'var(--c-station)'},
+  liquid: {name:'母液供给站', en:'Bulk Liquid',    c:'var(--c-liquid)'},
+  chiller:{name:'冷却循环器', en:'Chiller',        c:'var(--c-chiller)'},
+  gas:    {name:'气路分配站', en:'Gas Manifold',   c:'var(--c-gas)'},
+  incub:  {name:'恒温培养箱', en:'Incubator',      c:'var(--c-incub)'},
+  storage:{name:'样品库',     en:'Sample Storage', c:'var(--c-storage)'},
+  seal:   {name:'封膜机',     en:'Sealer',         c:'var(--c-seal)'},
+  reader: {name:'读板仪',     en:'Plate Reader',   c:'var(--c-reader)'},
+};
+/* 设备状态: ok 就绪 / idle 空闲 / off 离线 */
+const PDEVS = [
+  {id:'robot', st:'ok', stt:'就绪'},
+  {id:'station', n:'反应工位 R1', st:'ok', stt:'就绪'},
+  {id:'station', n:'反应工位 R2', st:'ok', stt:'就绪'},
+  {id:'station', n:'反应工位 R3', st:'ok', stt:'就绪'},
+  {id:'station', n:'反应工位 R4', st:'ok', stt:'就绪'},
+  {id:'liquid', st:'ok', stt:'就绪'},
+  {id:'chiller', st:'ok', stt:'就绪'},
+  {id:'gas', st:'ok', stt:'就绪'},
+  {id:'incub', st:'idle', stt:'空闲'},
+];
+
+/* ============================================================
+   仿真状态与工具(前置声明, buildGantt 依赖)
+   ============================================================ */
+const sim={t:0,state:'stop',timer:null};
+function fmt(m){return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');}
+
+/* ============================================================
+   视图切换
+   ============================================================ */
+function goView(v){
+  document.querySelectorAll('.mv').forEach(b=>b.classList.toggle('on', b.dataset.view===v));
+  document.querySelectorAll('.view').forEach(x=>x.classList.remove('on'));
+  document.getElementById('v-'+v).classList.add('on');
+  if(v==='run') requestAnimationFrame(buildGantt); /* 面板隐藏期间宽度为 0, 显示后重算刻度 */
+}
+document.querySelectorAll('.mv').forEach(b=>b.addEventListener('click',()=>goView(b.dataset.view)));
+
+/* ============================================================
+   START 开始
+   ============================================================ */
+const SNAV = [
+  ['open','打开程序','on'],['new','新建程序'],['save','保存'],['saveas','另存为'],
+  '|',
+  ['imp','导入工作台'],['exp','导出工作台'],['gear','设置'],
+  '|',
+  ['info','关于'],['exit','退出'],
+];
+document.getElementById('snNav').innerHTML = SNAV.map(x=>{
+  if(x==='|') return '<div class="snav-sep"></div>';
+  const [i,n,on]=x;
+  return `<button class="snav ${on?'on':''}">${ICON[i]}${n}</button>`;
+}).join('');
+document.querySelectorAll('.snav').forEach(s=>s.addEventListener('click',()=>{
+  document.querySelectorAll('.snav').forEach(x=>x.classList.remove('on'));
+  s.classList.add('on');
+}));
+
+/* 最近程序卡片缩略图 */
+const THUMB = {
+  pr4:`<svg viewBox="0 0 280 132">
+    <g fill="none" stroke="#C9D2DA" stroke-width="1.2"><path d="M56 34h168M56 66h168M56 98h168" stroke-dasharray="3 3"/></g>
+    <g><rect x="30" y="20" width="44" height="30" rx="3" fill="#fff" stroke="#B8C0C8"/><rect x="30" y="52" width="44" height="30" rx="3" fill="#fff" stroke="#B8C0C8"/><rect x="30" y="84" width="44" height="30" rx="3" fill="#fff" stroke="#B8C0C8"/></g>
+    <g><rect x="88" y="20" width="44" height="30" rx="3" fill="#fff" stroke="#B8C0C8"/><rect x="88" y="52" width="44" height="30" rx="3" fill="#fff" stroke="#B8C0C8"/><rect x="88" y="84" width="44" height="30" rx="3" fill="#fff" stroke="#B8C0C8"/></g>
+    <g><rect x="146" y="20" width="44" height="30" rx="3" fill="#fff" stroke="#B8C0C8"/><rect x="146" y="52" width="44" height="30" rx="3" fill="#fff" stroke="#B8C0C8"/><rect x="146" y="84" width="44" height="30" rx="3" fill="#fff" stroke="#B8C0C8"/></g>
+    <g><rect x="204" y="20" width="44" height="30" rx="3" fill="#fff" stroke="#B8C0C8"/><rect x="204" y="52" width="44" height="30" rx="3" fill="#fff" stroke="#B8C0C8"/><rect x="204" y="84" width="44" height="30" rx="3" fill="#fff" stroke="#B8C0C8"/></g>
+    <g fill="#C2502A"><circle cx="52" cy="35" r="5"/><circle cx="110" cy="67" r="5"/><circle cx="168" cy="99" r="5"/><circle cx="226" cy="35" r="5"/></g>
+    <path d="M52 35h36l22 32h36l22 32" fill="none" stroke="#0F6CBD" stroke-width="1.6"/>
+    <circle cx="52" cy="35" r="2.4" fill="#0F6CBD"/><circle cx="226" cy="35" r="2.4" fill="#0F6CBD"/>
+  </svg>`,
+  flow:`<svg viewBox="0 0 280 132">
+    <rect x="16" y="24" width="52" height="84" rx="4" fill="#fff" stroke="#B8C0C8"/>
+    <circle cx="42" cy="44" r="11" fill="#EDF1F4" stroke="#B8C0C8"/><path d="M34 44h16M42 36v16" stroke="#9AA4AB" stroke-width="1.2"/>
+    <path d="M42 55v18" stroke="#9AA4AB" stroke-width="1.2"/><circle cx="42" cy="79" r="6" fill="none" stroke="#9AA4AB" stroke-width="1.2"/>
+    <path d="M68 66h22" stroke="#0F6CBD" stroke-width="1.6"/><circle cx="68" cy="66" r="2.4" fill="#0F6CBD"/>
+    <rect x="90" y="30" width="104" height="72" rx="4" fill="#fff" stroke="#B8C0C8"/>
+    <path d="M100 40c0 0 0 52 0 52M100 40h62c9 0 9 13 0 13h-52c-9 0-9 13 0 13h52c9 0 9 13 0 13h-52c-9 0-9 13 0 13h62" fill="none" stroke="#C2502A" stroke-width="2.2" stroke-linejoin="round"/>
+    <path d="M194 66h16" stroke="#C2502A" stroke-width="2"/>
+    <rect x="210" y="34" width="44" height="64" rx="4" fill="#F4F6F8" stroke="#B8C0C8"/>
+    <rect x="218" y="42" width="28" height="20" rx="2" fill="#2E3A45"/><path d="M222 52h20" stroke="#7DBEFF" stroke-width="1.6"/>
+    <path d="M222 72h20M222 80h14" stroke="#C3CAD1" stroke-width="1.4"/>
+  </svg>`,
+  pr8:`<svg viewBox="0 0 280 132">
+    <rect x="20" y="18" width="196" height="96" rx="6" fill="#F4F6F8" stroke="#B8C0C8"/>
+    <g fill="#fff" stroke="#B8C0C8"><circle cx="56" cy="48" r="15"/><circle cx="98" cy="48" r="15"/><circle cx="140" cy="48" r="15"/><circle cx="182" cy="48" r="15"/><circle cx="56" cy="84" r="15"/><circle cx="98" cy="84" r="15"/><circle cx="140" cy="84" r="15"/><circle cx="182" cy="84" r="15"/></g>
+    <g fill="#C2502A"><circle cx="56" cy="48" r="6"/><circle cx="140" cy="48" r="6"/><circle cx="98" cy="84" r="6"/><circle cx="182" cy="84" r="6"/></g>
+    <g fill="#8F959E"><circle cx="98" cy="48" r="6"/><circle cx="56" cy="84" r="6"/><circle cx="140" cy="84" r="6"/><circle cx="182" cy="48" r="6"/></g>
+    <rect x="228" y="18" width="36" height="96" rx="4" fill="#fff" stroke="#B8C0C8"/>
+    <rect x="235" y="26" width="22" height="18" rx="2" fill="#2E3A45"/><path d="M238 35h16" stroke="#7DBEFF" stroke-width="1.6"/>
+    <path d="M235 54h22M235 63h22M235 72h22M235 81h22M235 90h22M235 99h22" stroke="#D5D9DE" stroke-width="1.4"/>
+  </svg>`,
+  adme:`<svg viewBox="0 0 280 132">
+    <rect x="18" y="26" width="140" height="80" rx="4" fill="#fff" stroke="#B8C0C8"/>
+    <rect x="18" y="26" width="140" height="14" fill="#EDF1F4"/>
+    <rect x="28" y="50" width="36" height="26" rx="2" fill="#fff" stroke="#C9D2DA"/><rect x="70" y="50" width="36" height="26" rx="2" fill="#fff" stroke="#C9D2DA"/><rect x="112" y="50" width="36" height="26" rx="2" fill="#F4F9FD" stroke="#B9D6EE"/>
+    <g fill="#EDF1F4" stroke="#C9D2DA"><circle cx="36" cy="59" r="2.4"/><circle cx="45" cy="59" r="2.4"/><circle cx="54" cy="59" r="2.4"/><circle cx="36" cy="68" r="2.4"/><circle cx="45" cy="68" r="2.4"/><circle cx="54" cy="68" r="2.4"/><circle cx="78" cy="59" r="2.4"/><circle cx="87" cy="59" r="2.4"/><circle cx="96" cy="59" r="2.4"/><circle cx="78" cy="68" r="2.4"/><circle cx="87" cy="68" r="2.4"/><circle cx="96" cy="68" r="2.4"/></g>
+    <rect x="28" y="84" width="120" height="14" rx="2" fill="#EDF1F4" stroke="#C9D2DA"/>
+    <rect x="172" y="22" width="44" height="56" rx="4" fill="#fff" stroke="#B8C0C8"/><rect x="180" y="32" width="28" height="22" fill="#2E3A45"/><path d="M184 43h20" stroke="#7DBEFF" stroke-width="1.8"/><rect x="180" y="60" width="28" height="10" rx="2" fill="#D5D9DE"/>
+    <rect x="228" y="22" width="40" height="88" rx="4" fill="#fff" stroke="#B8C0C8"/>
+    <g fill="#F1F3F5" stroke="#C9D2DA"><rect x="234" y="30" width="28" height="16"/><rect x="234" y="52" width="28" height="16"/><rect x="234" y="74" width="28" height="16"/></g>
+    <circle cx="248" cy="38" r="3" fill="#A33A86"/><circle cx="248" cy="60" r="3" fill="#C2502A"/>
+  </svg>`,
+  empty:`<svg viewBox="0 0 280 132"><rect x="70" y="24" width="140" height="84" rx="5" fill="none" stroke="#D5D9DE" stroke-width="1.4" stroke-dasharray="6 5"/><path d="M140 54v26M127 67h26" stroke="#C9D2DA" stroke-width="2.2" stroke-linecap="round"/><text x="140" y="98" font-size="9.5" fill="#9AA4AB" text-anchor="middle" font-family="Segoe UI">empty deck</text></svg>`
+};
+const RECENTS = [
+  {n:'PR4_平行反应_24h', p:'D:\\TC4S\\Workcells\\PR4_平行反应_24h.tc4s', th:'pr4', tag:'当前打开', tc:'live', pin:true, on:true,
+   when:'今天 09:12', size:'2.4 MB', note:'上次运行 11-12 10:40 – 16:40。三条流程：母液板、条件板、在线取样，四工位独立控温。'},
+  {n:'Nitration_Flow_Pilot', p:'D:\\TC4S\\Workcells\\Nitration_Flow_Pilot.tc4s', th:'flow', tag:'连续流', tc:'', pin:false, on:false,
+   when:'昨天 17:40', size:'1.1 MB', note:'双泵连续硝化，在线红外监测与急冷回路。'},
+  {n:'PR8_Parallel_Reactor', p:'D:\\TC4S\\Workcells\\PR8_Parallel_Reactor.tc4s', th:'pr8', tag:'8 通道', tc:'', pin:false, on:false,
+   when:'11-08 14:03', size:'860 KB', note:'八路独立温控与搅拌，共用进料母液分配歧管。'},
+  {n:'ADME_Screen_v3', p:'D:\\Projects\\ADME\\ADME_Screen_v3.tc4s', th:'adme', tag:'筛选', tc:'', pin:true, on:false,
+   when:'11-06 08:55', size:'3.7 MB', note:'四批板卡跨恒温箱孵育、移液与读板。'},
+  {n:'新建程序', p:'（未保存）', th:'empty', tag:'草稿', tc:'draft', pin:false, on:false,
+   when:'11-05 11:20', size:'—', note:'台面上尚未放置任何设备。'},
+];
+document.getElementById('recGrid').innerHTML = RECENTS.map(r=>`
+  <div class="rcard ${r.on?'on':''}">
+    <div class="rthumb">${THUMB[r.th]}<span class="rtag ${r.tc}">${r.tag}</span><button class="rpin ${r.pin?'pinned':''}" title="置顶">${ICON.pin}</button></div>
+    <div class="rbody">
+      <div class="rname">${r.n}</div>
+      <div class="rpath" title="${r.p}">${r.p}</div>
+      <div class="rnote">${r.note}</div>
+      <div class="rmeta"><span>${r.when}</span><span class="sep"></span><span>${r.size}</span></div>
+    </div>
+  </div>`).join('');
+document.querySelectorAll('.rcard').forEach(c=>c.addEventListener('click',()=>{
+  document.querySelectorAll('.rcard').forEach(x=>x.classList.remove('on'));
+  c.classList.add('on');
+}));
+document.querySelectorAll('.rpin').forEach(p=>p.addEventListener('click',e=>{e.stopPropagation();p.classList.toggle('pinned');}));
+
+const QUICK = [
+  ['layout','搭建工作台','将反应工位与共用资源拖上台面，标定机械臂可达范围。','M2.5 2.5h5v5h-5zM8.5 2.5h5v5h-5zM2.5 8.5h5v5h-5zM8.5 8.5h5v5h-5z'],
+  ['process','定义反应流程','把器皿步骤串成可执行的流程：取样、控温、反应、回库。','M2.5 3.5h11M2.5 8h11M2.5 12.5h11'],
+  ['schedule','排程任务','选择开始时间与策略，由调度器把运行放进日历。','M2.8 3.2h10.4v10H2.8zM2.8 6.4h10.4M5.8 2v2.4M10.2 2v2.4'],
+  ['run','运行与监视','跟随甘特图与设备状态，观察四个工位的实时执行。','M2 13.6h12M3.4 13.6V9.6M6.6 13.6V6.4M9.8 13.6V3.8'],
+];
+document.getElementById('quickRow').innerHTML = QUICK.map(([v,t,d,p])=>`
+  <button class="qcard" data-go="${v}">
+    <span class="qi"><svg width="16" height="16" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="${p}"/></svg></span>
+    <span><b>${t}</b><span>${d}</span></span>
+  </button>`).join('');
+document.querySelectorAll('.qcard').forEach(c=>c.addEventListener('click',()=>goView(c.dataset.go)));
+
+/* 开始页设备状态 */
+const SINST = [
+  ['转运机械臂','ok','就绪'],['样品库','ok','就绪'],['母液供给站','ok','就绪'],
+  ['反应工位 R1','ok','就绪'],['反应工位 R2','ok','就绪'],['反应工位 R3','ok','就绪'],
+  ['冷却循环器','idle','空闲'],['恒温培养箱','idle','空闲'],['读板仪','off','离线'],
+];
+document.getElementById('ssInst').innerHTML = SINST.map(([n,s,t])=>`
+  <div class="irow"><span class="dot ${s}"></span><span class="nm">${n}</span><span class="pill ${s}"><i></i>${t}</span></div>`).join('');
+
+/* ============================================================
+   LAYOUT 布局
+   ============================================================ */
+const LIB = [
+  {g:'反应单元'}, {id:'station',n:'平行反应工位<br>R-Station'},
+  {g:'液体处理'}, {id:'liquid',n:'母液供给站<br>Bulk Liquid'},
+  {g:'环境控制'}, {id:'incub',n:'恒温培养箱<br>Incubator'}, {id:'chiller',n:'冷却循环器<br>Chiller'}, {id:'gas',n:'气路分配站<br>Gas Manifold'},
+  {g:'后处理'}, {id:'seal',n:'封膜机<br>Sealer'}, {id:'reader',n:'读板仪<br>Plate Reader'},
+  {g:'存储'}, {id:'storage',n:'样品库<br>Sample Storage'},
+];
+document.getElementById('libBox').innerHTML =
+  `<div class="lib-h">设备库<span class="en">Library · 8</span></div>` +
+  LIB.map(d=>{
+    if(d.g) return `<div class="lib-g">${d.g}</div>`;
+    return `<div class="lib-item ${d.id==='robot'?'':''}" data-dev="${d.id}" draggable="true" title="拖拽到台面添加">
+      <div class="thumb"><span style="color:${DEV[d.id].c}">${ICON[d.id]}</span></div>
+      <div class="cap">${d.n}</div></div>`;
+  }).join('');
+
+/* 台面 SVG —— 四工位平台俯视 */
+const NS = 'http://www.w3.org/2000/svg';
+function stationBlock(x,y,label,sel){
+  return `<g class="dkdev" data-dev="station" style="cursor:pointer">
+    <rect x="${x}" y="${y}" width="118" height="86" rx="5" fill="#fff" stroke="${sel?'var(--brand)':'#C9D2DA'}" stroke-width="${sel?1.8:1.2}"/>
+    <rect x="${x}" y="${y}" width="5" height="86" rx="2" fill="var(--c-station)"/>
+    <circle cx="${x+62}" cy="${y+36}" r="19" fill="#F4F6F8" stroke="#C9D2DA" stroke-width="1.2"/>
+    <circle cx="${x+62}" cy="${y+36}" r="9" fill="#E2E8ED" stroke="#C9D2DA"/>
+    <path d="M${x+62} ${y+23}v6M${x+62} ${y+43}v6M${x+49} ${y+36}h6M${x+69} ${y+36}h6" stroke="#B8C0C8" stroke-width="1.4"/>
+    <rect x="${x+14}" y="${y+62}" width="44" height="14" rx="2" fill="#2E3A45"/>
+    <text x="${x+36}" y="${y+72}" font-size="8.5" fill="#8FD3A8" text-anchor="middle" font-family="Consolas,monospace">80.0°</text>
+    <text x="${x+62}" y="${y+14}" font-size="9.5" fill="#646A73" text-anchor="middle" font-family="Segoe UI">${label}</text>
+    ${sel?`<rect x="${x-4}" y="${y-4}" width="126" height="94" rx="7" fill="none" stroke="var(--brand)" stroke-width="1.4" stroke-dasharray="4 3"/>`:''}
+  </g>`;
+}
+document.getElementById('deckSvg').innerHTML = `
+  <defs><pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#E8EBEF"/></pattern></defs>
+  <rect width="960" height="620" fill="#FAFBFC"/>
+  <rect width="960" height="620" fill="url(#dots)"/>
+  <rect x="40" y="36" width="880" height="548" rx="8" fill="none" stroke="#DDE3E9" stroke-width="1.4"/>
+  <!-- 走位曲线：工位 → 机械臂 → 样品库 / 母液 / 冷却 -->
+  <g fill="none" stroke="var(--brand)" stroke-width="1.6" opacity=".85">
+    <path d="M560 190 C 545 195 538 200 534 208"/>
+    <path d="M534 300 C 540 350 520 410 478 452"/>
+    <path d="M528 252 C 440 268 350 282 254 286"/>
+    <path d="M540 296 C 500 350 360 400 244 424"/>
+  </g>
+  <g fill="var(--brand)"><circle cx="560" cy="190" r="3"/><circle cx="254" cy="286" r="3"/><circle cx="244" cy="424" r="3"/><circle cx="478" cy="452" r="3"/></g>
+  <!-- 机械臂 + 可达半径 -->
+  <g class="dkdev" data-dev="robot" style="cursor:pointer">
+    <circle cx="560" cy="230" r="98" fill="none" stroke="#9AA4AB" stroke-width="1.2" stroke-dasharray="5 4"/>
+    <rect x="528" y="196" width="64" height="66" rx="5" fill="#fff" stroke="#C9D2DA" stroke-width="1.2"/>
+    <rect x="528" y="196" width="5" height="66" rx="2" fill="var(--c-robot)"/>
+    <rect x="540" y="206" width="20" height="46" rx="3" fill="#EDF1F4" stroke="#C9D2DA"/>
+    <rect x="564" y="212" width="20" height="34" rx="3" fill="#F4F6F8" stroke="#C9D2DA"/>
+    <rect x="546" y="262" width="28" height="40" rx="4" fill="#E2E8ED" stroke="#C9D2DA"/>
+    <circle cx="560" cy="230" r="10" fill="none" stroke="var(--c-robot)" stroke-width="2.2"/>
+    <text x="560" y="188" font-size="10" fill="#646A73" text-anchor="middle" font-family="Segoe UI">转运机械臂 RBT-400</text>
+    <rect id="sel-robot" x="522" y="190" width="76" height="118" rx="7" fill="none" stroke="var(--brand)" stroke-width="1.4" stroke-dasharray="4 3" style="display:none"/>
+  </g>
+  <!-- 四工位 -->
+  ${stationBlock(120,88,'反应工位 R1')}${stationBlock(268,88,'反应工位 R2')}${stationBlock(416,88,'反应工位 R3')}${stationBlock(564,88,'反应工位 R4')}
+  <!-- 母液站 -->
+  <g class="dkdev" data-dev="liquid" style="cursor:pointer">
+    <rect x="120" y="248" width="128" height="74" rx="5" fill="#fff" stroke="#C9D2DA" stroke-width="1.2"/>
+    <rect x="120" y="248" width="5" height="74" rx="2" fill="var(--c-liquid)"/>
+    <rect x="134" y="260" width="56" height="20" rx="2" fill="#F4F6F8" stroke="#C9D2DA"/><rect x="134" y="286" width="56" height="24" rx="2" fill="#EDF1F4" stroke="#C9D2DA"/>
+    <circle cx="216" cy="272" r="11" fill="#F4F6F8" stroke="#C9D2DA"/><path d="M216 264v16M208 272h16" stroke="#C9D2DA" stroke-width="1.2"/>
+    <text x="184" y="242" font-size="10" fill="#646A73" text-anchor="middle" font-family="Segoe UI">母液供给站</text>
+  </g>
+  <!-- 冷却循环器 -->
+  <g class="dkdev" data-dev="chiller" style="cursor:pointer">
+    <rect x="120" y="392" width="118" height="66" rx="5" fill="#fff" stroke="#C9D2DA" stroke-width="1.2"/>
+    <rect x="120" y="392" width="5" height="66" rx="2" fill="var(--c-chiller)"/>
+    <circle cx="150" cy="425" r="16" fill="#F4F6F8" stroke="#C9D2DA"/><path d="M150 413v24M138 425h24M150 413l-5 5M150 413l5 5M150 437l-5-5M150 437l5-5" stroke="#9AA4AB" stroke-width="1.2"/>
+    <rect x="176" y="408" width="48" height="34" rx="3" fill="#EDF1F4" stroke="#C9D2DA"/>
+    <text x="179" y="16" font-size="0" fill="none"></text>
+    <text x="179" y="428" font-size="8.5" fill="#646A73" font-family="Consolas,monospace">4.0°C</text>
+    <text x="179" y="386" font-size="10" fill="#646A73" text-anchor="middle" font-family="Segoe UI">冷却循环器</text>
+  </g>
+  <!-- 气路分配 -->
+  <g class="dkdev" data-dev="gas" style="cursor:pointer">
+    <rect x="742" y="96" width="118" height="60" rx="5" fill="#fff" stroke="#C9D2DA" stroke-width="1.2"/>
+    <rect x="742" y="96" width="5" height="60" rx="2" fill="var(--c-gas)"/>
+    <circle cx="770" cy="126" r="10" fill="#F4F6F8" stroke="#C9D2DA"/><circle cx="796" cy="126" r="10" fill="#F4F6F8" stroke="#C9D2DA"/><circle cx="822" cy="126" r="10" fill="#F4F6F8" stroke="#C9D2DA"/>
+    <path d="M770 120c2 3 2 6 0 9M796 120c2 3 2 6 0 9M822 120c2 3 2 6 0 9" stroke="#D97E00" stroke-width="1.2" fill="none"/>
+    <text x="801" y="90" font-size="10" fill="#646A73" text-anchor="middle" font-family="Segoe UI">气路分配站</text>
+  </g>
+  <!-- 恒温培养箱 -->
+  <g class="dkdev" data-dev="incub" style="cursor:pointer">
+    <rect x="742" y="212" width="118" height="74" rx="5" fill="#fff" stroke="#C9D2DA" stroke-width="1.2"/>
+    <rect x="742" y="212" width="5" height="74" rx="2" fill="var(--c-incub)"/>
+    <rect x="756" y="224" width="48" height="50" rx="3" fill="#EDF1F4" stroke="#C9D2DA"/><path d="M756 241h48M756 258h48" stroke="#D5D9DE"/>
+    <rect x="812" y="224" width="36" height="24" rx="2" fill="#2E3A45"/><text x="830" y="240" font-size="8.5" fill="#F2C879" text-anchor="middle" font-family="Consolas,monospace">37.0°</text>
+    <text x="801" y="206" font-size="10" fill="#646A73" text-anchor="middle" font-family="Segoe UI">恒温培养箱</text>
+  </g>
+  <!-- 封膜机 / 读板仪 -->
+  <g class="dkdev" data-dev="seal" style="cursor:pointer">
+    <rect x="742" y="342" width="118" height="56" rx="5" fill="#fff" stroke="#C9D2DA" stroke-width="1.2"/>
+    <rect x="742" y="342" width="5" height="56" rx="2" fill="var(--c-seal)"/>
+    <rect x="758" y="352" width="52" height="24" rx="2" fill="#EDF1F4" stroke="#C9D2DA"/><circle cx="772" cy="364" r="5" fill="#C9D2DA"/><circle cx="794" cy="364" r="5" fill="#C9D2DA"/>
+    <path d="M822 352v24M830 352v24" stroke="#C9D2DA" stroke-width="1.6"/>
+    <text x="801" y="336" font-size="10" fill="#646A73" text-anchor="middle" font-family="Segoe UI">封膜机</text>
+  </g>
+  <g class="dkdev" data-dev="reader" style="cursor:pointer">
+    <rect x="742" y="452" width="118" height="56" rx="5" fill="#fff" stroke="#C9D2DA" stroke-width="1.2"/>
+    <rect x="742" y="452" width="5" height="56" rx="2" fill="var(--c-reader)"/>
+    <rect x="758" y="462" width="44" height="24" rx="2" fill="#EDF1F4" stroke="#C9D2DA"/><path d="M764 474h32" stroke="#3B6FB5" stroke-width="1.6"/>
+    <path d="M814 462l20 0M814 470h20M814 478h12" stroke="#C9D2DA" stroke-width="1.4"/>
+    <text x="801" y="446" font-size="10" fill="#646A73" text-anchor="middle" font-family="Segoe UI">读板仪</text>
+  </g>
+  <!-- 样品库 -->
+  <g class="dkdev" data-dev="storage" style="cursor:pointer">
+    <rect x="292" y="430" width="180" height="120" rx="6" fill="#fff" stroke="#C9D2DA" stroke-width="1.2"/>
+    <rect x="292" y="430" width="5" height="120" rx="2" fill="var(--c-storage)"/>
+    ${[0,1,2,3].map(r=>[0,1].map(c=>`<rect x="${310+c*80}" y="${444+r*26}" width="68" height="20" rx="2" fill="#F4F6F8" stroke="#DDE3E9"/>`).join('')).join('')}
+    <circle cx="310" cy="449" r="3" fill="var(--c-liquid)"/><circle cx="390" cy="475" r="3" fill="var(--c-station)"/><circle cx="310" cy="501" r="3" fill="var(--c-reader)"/>
+    <text x="382" y="424" font-size="10" fill="#646A73" text-anchor="middle" font-family="Segoe UI">样品库 · 2 列 × 22 层</text>
+  </g>`;
+
+/* 属性面板 */
+const PROPS = {
+  robot:  {t:'转运机械臂 RBT-400', d:'6 轴 SCARA 机械臂，负责工位与样品库之间的器皿转运。', ip:'192.168.0.12', port:'10100', axes:'5'},
+  station:{t:'反应工位 R1', d:'独立控温反应工位，RT ~ 200 °C，磁搅拌 0 – 1,200 rpm。', ip:'192.168.0.21', port:'502', axes:'—'},
+  liquid: {t:'母液供给站', d:'六通道母液分配，精度 ±1 %。', ip:'192.168.0.31', port:'4001', axes:'—'},
+  chiller:{t:'冷却循环器', d:'外循环制冷，控温范围 −20 ~ 25 °C。', ip:'192.168.0.32', port:'4002', axes:'—'},
+  gas:    {t:'气路分配站', d:'氮气 / 氩气 / 空气三路切换，带流量监测。', ip:'192.168.0.33', port:'4003', axes:'—'},
+  incub:  {t:'恒温培养箱', d:'室温 + 5 ~ 65 °C， shaking 可选。', ip:'192.168.0.34', port:'4004', axes:'—'},
+  storage:{t:'样品库', d:'双列货架，44 个货位，条码识别。', ip:'192.168.0.11', port:'10000', axes:'—'},
+  seal:   {t:'封膜机', d:'铝箔热封，适配深孔板与 PCR 板。', ip:'192.168.0.35', port:'4005', axes:'—'},
+  reader: {t:'读板仪', d:'吸收光 / 荧光双模式， currently 离线。', ip:'192.168.0.36', port:'4006', axes:'—'},
+};
+function renderProps(id){
+  const d = PROPS[id], m = DEV[id];
+  document.getElementById('propsBody').innerHTML = `
+    <div class="intro">从左侧设备库拖拽设备到台面以添加；点击台面设备可在此查看和修改属性。</div>
+    <div class="acc" id="accSet"><svg width="11" height="11" viewBox="0 0 10 10"><path d="M3.4 2l3.2 3-3.2 3" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>高级设置</div>
+    <div class="pdiv"></div>
+    <div class="devtitle">
+      <span class="di" style="background:${m.c}">${ICON[id]}</span>
+      <span><b>${d.t}</b><span>${m.en} · 已连接</span></span>
+    </div>
+    <button class="btn" style="width:100%;margin-bottom:12px">示教模式 Teach Pendant</button>
+    <div class="prow"><label>IP 地址</label><input class="inp" value="${d.ip}"></div>
+    <div class="prow"><label>端口</label><input class="inp" value="${d.port}"></div>
+    <div class="prow"><label>轴数</label><input class="inp" value="${d.axes}"></div>
+    <div style="height:6px"></div>
+    <label class="pcheck"><input type="checkbox">轨道安装 On Rail</label>
+    <label class="pcheck"><input type="checkbox">条码扫描器 Barcode Scanner</label>
+    <label class="pcheck"><input type="checkbox">轨道独立 Rail Separate</label>
+    <div style="height:8px"></div>
+    <div class="prow"><label>配置</label><select class="sel"><option>扩展臂展 Extended</option><option>标准臂展 Standard</option></select></div>
+    <div class="prow"><label>背景</label><span class="swatch" style="background:linear-gradient(135deg,#EDF1F4,#DDE3E9)"></span></div>
+    <label class="pcheck"><input type="checkbox" checked>参与仿真 Simulate</label>
+    <div class="pdiv"></div>
+    <div class="acc" id="accMore"><svg width="11" height="11" viewBox="0 0 10 10"><path d="M3.4 2l3.2 3-3.2 3" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>更多</div>
+    <button class="btn" style="width:100%;margin-top:8px">执行命令 Execute Commands</button>`;
+  const a1=document.getElementById('accSet'); a1&&a1.addEventListener('click',()=>a1.classList.toggle('open'));
+  const a2=document.getElementById('accMore'); a2&&a2.addEventListener('click',()=>a2.classList.toggle('open'));
+}
+renderProps('robot');
+document.querySelectorAll('.lib-item').forEach(el=>el.addEventListener('click',()=>{
+  document.querySelectorAll('.lib-item').forEach(x=>x.classList.remove('on'));
+  el.classList.add('on');
+  renderProps(el.dataset.dev);
+}));
+document.querySelectorAll('#deckSvg .dkdev').forEach(g=>g.addEventListener('click',()=>{
+  const id=g.dataset.dev;
+  document.querySelectorAll('.lib-item').forEach(x=>x.classList.toggle('on', x.dataset.dev===id));
+  renderProps(id);
+  document.getElementById('sbEvent').textContent = '最近事件：已选中 '+DEV[id].name;
+}));
+document.querySelectorAll('.stage-tools .ibtn').forEach(b=>b.addEventListener('click',()=>b.classList.toggle('on')));
+
+/* ============================================================
+   PROCESS 流程
+   ============================================================ */
+document.getElementById('pdList').innerHTML =
+  `<div class="pd-h">设备<span class="en">Devices · 9</span></div>` +
+  PDEVS.map((d,i)=>`
+  <div class="pd" data-dev="${d.id}">
+    <span class="di" style="background:${DEV[d.id].c}">${ICON[d.id]}</span>
+    <span class="nm"><b>${d.n||DEV[d.id].name}</b><span>${DEV[d.id].en}</span></span>
+    <span class="pill ${d.st}"><i></i>${d.stt}</span>
+  </div>`).join('');
+
+const LANES = [
+  {name:'母液板 Source Plate', labware:'母液板 · 96 深孔', steps:[
+    {dev:'storage', t:'从货位取出', s:'Get From Hotel', d:'2 min', ic:'storage'},
+    {dev:'liquid',  t:'母液分装', s:'Dispense Sequence', d:'18 min', ic:'liquid'},
+    {dev:'incub',   t:'恒温孵育 37 °C', s:'Incubate', d:'80 min', ic:'incub'},
+    {dev:null,      t:'释放占位 · 等待工位', s:'Release Hold', d:'—', ic:'clock'},
+    {dev:'storage', t:'样品库暂存', s:'Hold', d:'60 min', ic:'storage'},
+    {dev:'station', t:'工位 R1 控温反应', s:'Run Protocol', d:'210 min', ic:'station', r:true},
+  ]},
+  {name:'条件板 Screen Plate', labware:'条件板 · 96 PCR', steps:[
+    {dev:'storage', t:'从货位取出', s:'Get From Hotel', d:'2 min', ic:'storage', r:true},
+    {dev:'seal',    t:'热封膜', s:'Seal', d:'14 min', ic:'seal'},
+    {dev:'liquid',  t:'条件移液', s:'Run Sequence', d:'28 min', ic:'liquid'},
+    {dev:'station', t:'工位 R2 梯度升温', s:'Heat & React', d:'92 min', ic:'station'},
+    {dev:'storage', t:'放回货位', s:'Put In Hotel', d:'2 min', ic:'storage'},
+  ]},
+  {name:'在线取样 Inline Sample', labware:'取样管 Vial', steps:[
+    {dev:'storage', t:'从货位取出', s:'Get From Hotel', d:'2 min', ic:'storage', r:true},
+    {dev:'liquid',  t:'稀释转移', s:'Dilute', d:'8 min', ic:'liquid'},
+    {dev:null,      t:'运行程序 · 离心澄清', s:'Run Procedure', d:'—', ic:'clock'},
+    {dev:'storage', t:'放回货位', s:'Put In Hotel', d:'2 min', ic:'storage'},
+  ]},
+];
+document.getElementById('lanes').innerHTML = LANES.map(l=>`
+  <div class="lane">
+    <div class="lane-h">
+      <div class="r"><span class="k">名称</span><span class="v">${l.name}</span><button class="ibtn" style="width:20px;height:20px" title="编辑">${ICON.pen}</button></div>
+      <div class="r"><span class="k">器皿</span><select class="sel" style="flex:1;height:22px;font-size:11px"><option>${l.labware}</option></select></div>
+    </div>
+    <div class="lane-b">
+      ${l.steps.map((s,i)=>`
+        ${i?'<div class="link"></div>':''}
+        <div class="step" data-dev="${s.dev||''}">
+          <div class="top"><i style="background:${s.dev?DEV[s.dev].c:'var(--t3)'}"></i><span>${s.dev?DEV[s.dev].name.toUpperCase():'PROCEDURE 流程'}</span>${s.r?'<span class="rmark" title="需要人工确认">R</span>':''}</div>
+          <div class="mid">
+            <span class="ic" style="color:${s.dev?DEV[s.dev].c:'var(--t3)'}">${ICON[s.ic]}</span>
+            <span class="tx"><b>${s.t}</b><span>${s.s}</span></span>
+          </div>
+          <div class="fot"><span class="tg">${ICON.clock} ${s.d}</span><span class="sp"></span><button class="del" title="删除步骤">${ICON.trash}</button></div>
+        </div>`).join('')}
+    </div>
+  </div>`).join('') +
+  `<button class="addlane">${ICN('<path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>',16)}添加流程 lane</button>`;
+
+/* 设备选中 → 步骤联动高亮 */
+document.querySelectorAll('.pd').forEach(row=>row.addEventListener('click',()=>{
+  const id = row.dataset.dev;
+  const wasOn = row.classList.contains('on');
+  document.querySelectorAll('.pd').forEach(x=>x.classList.remove('on'));
+  document.querySelectorAll('.step').forEach(s=>s.classList.remove('dim'));
+  if(wasOn) return;
+  row.classList.add('on');
+  document.querySelectorAll('.step').forEach(s=>{
+    if(s.dataset.dev !== id) s.classList.add('dim');
+  });
+  document.getElementById('sbEvent').textContent = '最近事件：流程中高亮 '+DEV[id].name+' 的步骤';
+}));
+
+/* ============================================================
+   SCHEDULE 排程
+   ============================================================ */
+const DAYS = [['周一','11-09'],['周二','11-10'],['周三','11-11'],['周四','11-12'],['周五','11-13'],['周六','11-14'],['周日','11-15']];
+const H0=8, H1=22, HH=40;
+const TODAY = 4; /* 周五 */
+document.getElementById('calHead').innerHTML = '<div style="justify-content:flex-end;text-align:right"><span style="font-size:9px">时间</span></div>' +
+  DAYS.map((d,i)=>`<div class="${i===TODAY?'today':''}"><b>${d[0]} ${d[1]}${i===TODAY?'<span class="tpill">今天</span>':''}</b></div>`).join('');
+let grid = '<div class="timecol">' + Array.from({length:H1-H0},(_,i)=>`<span class="th" style="top:${i*HH}px">${String(H0+i).padStart(2,'0')}:00</span>`).join('') + '</div>';
+for(let i=0;i<7;i++) grid += `<div class="daycol ${i===TODAY?'today':''}" id="dc${i}">${Array.from({length:H1-H0},(_,h)=>`<div class="ln" style="top:${h*HH}px"></div>`).join('')}</div>`;
+document.getElementById('calGrid').innerHTML = grid;
+const yOf = (h,m)=>((h-H0)*60+m)/60*HH;
+function placeJob(col, id, name, sh,sm, eh,em){
+  const el=document.createElement('div');
+  el.className='jobb'; el.style.top=yOf(sh,sm)+'px'; el.style.height=Math.max(20,yOf(eh,em)-yOf(sh,sm)-2)+'px';
+  el.title=`${id}\n${name}\n${String(sh).padStart(2,'0')}:${String(sm).padStart(2,'0')} – ${String(eh).padStart(2,'0')}:${String(em).padStart(2,'0')}`;
+  el.innerHTML=`<b>${id}</b><span>${name}</span><span>${String(sh).padStart(2,'0')}:${String(sm).padStart(2,'0')} – ${String(eh).padStart(2,'0')}:${String(em).padStart(2,'0')} · ${Math.round((yOf(eh,em)-yOf(sh,sm))/HH*60)} min</span>`;
+  document.getElementById('dc'+col).appendChild(el);
+  return el;
+}
+placeJob(TODAY,'PS261113104033.000','平行反应_24h · 流程 1',10,40,16,40);
+/* 今日当前时间线 14:32 */
+(function(){
+  const nl=document.createElement('div'); nl.className='nl'; nl.style.top=yOf(14,32)+'px';
+  nl.innerHTML=`<span class="nlt" style="top:0">14:32</span>`;
+  document.getElementById('dc'+TODAY).appendChild(nl);
+  document.getElementById('dc'+TODAY).style.height=(H1-H0)*HH+'px';
+  document.querySelectorAll('.daycol').forEach(d=>d.style.height=(H1-H0)*HH+'px');
+})();
+let jobSeq=1;
+document.getElementById('btnAddJob').addEventListener('click',()=>{
+  const col = TODAY + (jobSeq % 3); /* 周五/六/日 */
+  const sh = 9 + jobSeq*2;
+  if(sh+3 > H1) return;
+  const id = 'PS2611131040'+(33+jobSeq)+'.000';
+  placeJob(col, id, '平行反应_24h · 流程 1', sh,0, sh+3,0);
+  const rb=document.getElementById('rtBody');
+  if(jobSeq===1) rb.innerHTML='';
+  const row=document.createElement('div'); row.className='rt-row';
+  row.innerHTML=`<span>${id}</span><span>平行反应主流程 Process 1</span><span>Scheduled</span><span>—</span><span>Administrator</span><span>已排程 · 待执行</span><span>—</span><span>11-13 ${String(sh).padStart(2,'0')}:00</span><span>—</span>`;
+  rb.appendChild(row);
+  jobSeq++;
+  document.getElementById('sbEvent').textContent='最近事件：任务 '+id+' 已加入排程';
+});
+document.querySelectorAll('#segTab button,#segScale button').forEach(b=>b.addEventListener('click',()=>{
+  b.parentElement.querySelectorAll('button').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');
+}));
+document.getElementById('btnToday').addEventListener('click',()=>{document.querySelector('.cal-scroll').scrollTop=0;});
+document.querySelectorAll('#strat button').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('#strat button').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');
+}));
+document.getElementById('accAdv').addEventListener('click',function(){this.classList.toggle('open');});
+document.querySelectorAll('.rail-btn').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('.rail-btn').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');
+}));
+
+/* ============================================================
+   RUN 运行 — 仪器台面 / 状态 / 流程图 / 甘特
+   ============================================================ */
+function rstLabel(x,y,w,txt){return `<text x="${x}" y="${y}" font-size="9.5" fill="#646A73" text-anchor="middle" font-family="Segoe UI">${txt}</text>`}
+function rstRect(x,y,w,h,id,corner){return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="4" fill="#fff" stroke="#C9D2DA" stroke-width="1.1" data-dev="${id}"/><rect x="${x}" y="${y}" width="4" height="${h}" rx="2" fill="${corner}"/>`}
+document.getElementById('runDeck').innerHTML = `
+  <rect width="520" height="380" fill="#FAFBFC"/>
+  <rect width="520" height="380" fill="none"/>
+  <g id="dkpaths" fill="none" stroke="var(--brand)" stroke-width="1.5" opacity=".8">
+    <path d="M96 150 C 160 130 300 130 400 148"/>
+    <path d="M400 148 C 440 158 452 190 448 220"/>
+    <path d="M448 220 C 440 260 380 290 320 296"/>
+  </g>
+  <!-- 气路 / 母液 -->
+  <g class="dk" data-dev="gas" data-tile="2" style="cursor:pointer">${rstRect(28,42,96,54,'gas','var(--c-gas)')}<circle cx="56" cy="69" r="9" fill="#F4F6F8" stroke="#C9D2DA"/><circle cx="80" cy="69" r="9" fill="#F4F6F8" stroke="#C9D2DA"/><path d="M56 63c1.6 2.6 1.6 5.4 0 8M80 63c1.6 2.6 1.6 5.4 0 8" stroke="#D97E00" stroke-width="1.1" fill="none"/>${rstLabel(76,36,'','气路分配站')}</g>
+  <g class="dk" data-dev="liquid" data-tile="2" style="cursor:pointer">${rstRect(28,132,96,62,'liquid','var(--c-liquid)')}<rect x="40" y="144" width="40" height="16" rx="2" fill="#F4F6F8" stroke="#C9D2DA"/><rect x="40" y="164" width="40" height="18" rx="2" fill="#EDF1F4" stroke="#C9D2DA"/>${rstLabel(76,126,'','母液供给站')}</g>
+  <!-- 机械臂 -->
+  <g class="dk" data-dev="robot" data-tile="0" style="cursor:pointer">
+    <circle cx="200" cy="240" r="72" fill="none" stroke="#9AA4AB" stroke-width="1.1" stroke-dasharray="5 4"/>
+    ${rstRect(172,214,56,60,'robot','var(--c-robot)')}
+    <rect x="182" y="222" width="14" height="44" rx="3" fill="#EDF1F4" stroke="#C9D2DA"/>
+    <circle cx="200" cy="244" r="8" fill="none" stroke="var(--c-robot)" stroke-width="2"/>
+    ${rstLabel(200,208,'','转运机械臂')}
+  </g>
+  <!-- 四工位 -->
+  ${[0,1,2,3].map(i=>`<g class="dk" data-dev="station" data-tile="1" data-n="R${i+1}" style="cursor:pointer">
+    <rect x="${286+i*56}" y="128" width="50" height="66" rx="4" fill="#fff" stroke="#C9D2DA" stroke-width="1.1"/>
+    <rect x="${286+i*56}" y="128" width="4" height="66" rx="2" fill="var(--c-station)"/>
+    <circle cx="${311+i*56}" cy="152" r="12" fill="#F4F6F8" stroke="#C9D2DA"/>
+    <rect x="${294+i*56}" y="172" width="34" height="12" rx="2" fill="#2E3A45"/>
+    <text x="${311+i*56}" y="181" font-size="7.5" fill="#8FD3A8" text-anchor="middle" font-family="Consolas,monospace">${(78+i*2).toFixed(1)}°</text>
+    ${rstLabel(311+i*56,122,'','工位 R'+(i+1))}
+  </g>`).join('')}
+  <!-- 恒温箱 / 样品库 -->
+  <g class="dk" data-dev="incub" data-tile="3" style="cursor:pointer">${rstRect(430,40,72,54,'incub','var(--c-incub)')}<rect x="440" y="50" width="28" height="34" rx="2" fill="#EDF1F4" stroke="#C9D2DA"/><path d="M440 61h28M440 72h28" stroke="#D5D9DE"/><rect x="472" y="52" width="20" height="14" rx="2" fill="#2E3A45"/><text x="482" y="62" font-size="7" fill="#F2C879" text-anchor="middle" font-family="Consolas,monospace">37°</text>${rstLabel(466,34,'','恒温箱')}</g>
+  <g class="dk" data-dev="storage" data-tile="2" style="cursor:pointer">
+    ${rstRect(396,238,106,112,'storage','var(--c-storage)')}
+    ${[0,1,2].map(r=>[0,1].map(c=>`<rect x="${406+c*46}" y="${248+r*32}" width="38" height="24" rx="2" fill="#F4F6F8" stroke="#DDE3E9"/>`).join('')).join('')}
+    <circle cx="416" cy="260" r="2.6" fill="var(--c-liquid)"/><circle cx="462" cy="292" r="2.6" fill="var(--c-station)"/>
+    ${rstLabel(449,232,'','样品库 44 位')}
+  </g>
+  <g class="dk" data-dev="chiller" data-tile="2" style="cursor:pointer">${rstRect(28,238,96,54,'chiller','var(--c-chiller)')}<circle cx="52" cy="265" r="11" fill="#F4F6F8" stroke="#C9D2DA"/><path d="M52 254v22M41 265h22M52 254l-4 4M52 254l4 4M52 276l-4-4M52 276l4-4" stroke="#9AA4AB" stroke-width="1"/><rect x="70" y="254" width="40" height="22" rx="2" fill="#EDF1F4" stroke="#C9D2DA"/><text x="90" y="269" font-size="8" fill="#646A73" text-anchor="middle" font-family="Consolas,monospace">4.0°C</text>${rstLabel(76,232,'','冷却循环器')}</g>`;
+
+/* 状态卡片 */
+const STAT_RUN = 0;
+const RSTAT = [
+  {dev:'robot', n:'转运机械臂', kv:[['Status 状态','就绪'],['Gripper 夹爪','空']], pill:['ok','就绪'], id:0},
+  {dev:'station', n:'反应工位 R1', kv:[['Status 状态','就绪'],['设定 80.0 °C','实际 25.1 °C']], pill:['ok','就绪'], id:1},
+  {dev:'storage', n:'样品库', kv:[['Status 状态','就绪'],['Nest','母液板']], pill:['ok','就绪'], id:2, content:true},
+  {dev:'incub', n:'恒温培养箱', kv:[['Status 状态','空闲'],['温度','37.0 °C']], pill:['idle','空闲'], id:3},
+];
+function renderRStats(){
+  document.getElementById('rstats').innerHTML = RSTAT.map((s,i)=>`
+  <div class="stat" data-tile="${i}">
+    <div class="r1"><i style="background:${DEV[s.dev].c}"></i><b>${s.n}</b><span class="pill ${s.pill[0]}"><i></i>${s.pill[1]}</span></div>
+    ${s.kv.map(([k,v])=>`<div class="kv2"><span>${k}</span><b>${v}</b></div>`).join('')}
+    ${s.content?`<button class="btn cbtn" style="height:22px;font-size:11px;padding:0 10px" onclick="openDlg()">货位 Content</button>`:''}
+  </div>`).join('');
+  document.querySelectorAll('#rstats .stat').forEach(t=>t.addEventListener('click',()=>{
+    document.querySelectorAll('#rstats .stat').forEach(x=>x.classList.toggle('on', x===t));
+  }));
+}
+renderRStats();
+/* 卡片 ↔ 台面联动 */
+document.querySelectorAll('#runDeck .dk').forEach(g=>g.addEventListener('click',()=>{
+  const t=g.dataset.tile;
+  document.querySelectorAll('#rstats .stat').forEach(x=>x.classList.toggle('on', x.dataset.tile===t));
+  document.getElementById('sbEvent').textContent='最近事件：查看 '+ (g.dataset.n ? '反应工位 '+g.dataset.n : DEV[g.dataset.dev].name) +' 状态';
+}));
+
+/* 流程图 A / B */
+const wire=(d)=>`<path d="${d}" stroke="#9AA4AB" stroke-width="1.4" fill="none"/>`;
+document.getElementById('wfA').innerHTML = `
+  <svg class="wires" viewBox="0 0 420 640" preserveAspectRatio="none">
+    ${wire('M120 66 V100')}${wire('M120 214 V248')}${wire('M232 157 H300 V248')}${wire('M120 322 V360')}${wire('M300 322 V290 H120')}${wire('M120 436 V470')}${wire('M232 399 H300 V470')}${wire('M120 558 V600')}
+  </svg>
+  <div class="node" style="left:91px;top:8px"><div class="n-begin">begin</div></div>
+  <div class="node" style="left:94px;top:100px"><div class="n-diamond"><span>?</span></div></div>
+  <div class="node" style="left:30px;top:112px;font-size:11px;color:var(--t2);line-height:1.4">分支<br>Strategy = 启动货位编辑器</div>
+  <div class="node" style="left:32px;top:248px"><div class="n-drop">拖拽命令到此<br>Drop command</div></div>
+  <div class="node" style="left:212px;top:248px"><div class="n-cmd"><span class="ci" style="color:var(--c-storage)">${ICON.storage}</span><span><b>样品库 · 编辑货位</b><span>Storage - Edit Content</span></span></div></div>
+  <div class="node" style="left:94px;top:360px"><div class="n-diamond"><span>?</span></div></div>
+  <div class="node" style="left:30px;top:372px;font-size:11px;color:var(--t2);line-height:1.4">分支<br>Strategy = 从文件加载</div>
+  <div class="node" style="left:32px;top:470px"><div class="n-drop">拖拽命令到此<br>Drop command</div></div>
+  <div class="node" style="left:212px;top:470px"><div class="n-cmd"><span class="ci" style="color:var(--c-storage)">${ICON.storage}</span><span><b>样品库 · 从文件导入</b><span>Import Contents From File</span></span></div></div>
+  <div class="node" style="left:91px;top:600px"><div class="n-end">end</div></div>`;
+document.getElementById('wfB').innerHTML = `
+  <svg class="wires" viewBox="0 0 420 660" preserveAspectRatio="none">
+    ${wire('M120 62 V96')}${wire('M120 210 V244')}${wire('M232 153 H300 V244')}${wire('M120 318 V352')}${wire('M120 426 V460')}${wire('M120 538 V584')}${wire('M300 244 V200 H120')}${wire('M300 352 V470 H232')}
+  </svg>
+  <div class="node" style="left:91px;top:4px"><div class="n-begin">begin</div></div>
+  <div class="node" style="left:94px;top:96px"><div class="n-diamond"><span>?</span></div></div>
+  <div class="node" style="left:30px;top:108px;font-size:11px;color:var(--t2);line-height:1.4">分支<br>Strategy = 从工作列表</div>
+  <div class="node" style="left:32px;top:244px"><div class="n-cmd"><span class="ci" style="color:var(--c-storage)">${ICON.storage}</span><span><b>样品库 · 出列出条码</b><span>Dequeue Barcode from Table</span></span></div></div>
+  <div class="node" style="left:212px;top:244px"><div class="n-cmd"><span class="ci" style="color:var(--c-storage)">${ICON.storage}</span><span><b>样品库 · 按条码查找</b><span>Find In Hotel By Barcode</span></span></div></div>
+  <div class="node" style="left:32px;top:352px"><div class="n-cmd"><span class="ci" style="color:var(--c-storage)">${ICON.storage}</span><span><b>样品库 · 按区域查找</b><span>Find In Hotel By Zone</span></span></div></div>
+  <div class="node" style="left:32px;top:460px"><div class="n-cmd" style="border-left-color:var(--c-reader)"><span class="ci" style="color:var(--c-reader)">${ICON.reader}</span><span><b>器皿数据</b><span>Labware Data</span></span></div></div>
+  <div class="node" style="left:32px;top:584px"><div class="n-cmd" style="border-left-color:var(--c-robot)"><span class="ci" style="color:var(--c-robot)">${ICON.robot}</span><span><b>样品库 · 取板</b><span>Get Plate {Hotel}, {Shelf}</span></span></div></div>
+  <div class="node" style="left:91px;top:648px"><div class="n-end">end</div></div>`;
+document.getElementById('wfSel').addEventListener('change',e=>{
+  const a=e.target.value==='a';
+  document.getElementById('wfA').style.display=a?'block':'none';
+  document.getElementById('wfB').style.display=a?'none':'block';
+  setPill(a?'ok':'warn', a?'就绪':'占用');
+  document.getElementById('sbEvent').textContent='最近事件：切换流程视图 · '+(a?'编辑货位':'按条码查找');
+});
+function setPill(cls,txt){document.getElementById('wfPill').className='pill '+cls;document.getElementById('wfPill').innerHTML='<i></i>'+txt;}
+
+/* 甘特图 — 06:00~20:00, 分钟坐标 */
+const G0=6*60, G1=20*60;
+const GANTT = [
+  {type:'grp', name:'母液板 Source Plate', c:'var(--c-liquid)', sum:[0,540], kids:[
+    {name:'样品库_取出', c:'var(--c-storage)', x:0,  w:14, t:'取出'},
+    {name:'母液站_分装', c:'var(--c-liquid)',  x:22, w:18, t:'分装'},
+    {name:'恒温箱_孵育', c:'var(--c-incub)',   x:48, w:80, t:'孵育 37 °C'},
+    {name:'机械臂_转运', c:'var(--c-robot)',   x:132,w:12, t:'转运'},
+    {name:'工位R1_控温反应', c:'var(--c-station)', x:150,w:210,t:'控温反应 80 °C'},
+    {name:'冷却器_降温', c:'var(--c-chiller)', x:360,w:30, t:'降温'},
+    {name:'样品库_放回', c:'var(--c-storage)', x:392,w:14, t:'放回'},
+  ]},
+  {type:'grp', name:'条件板 Screen Plate', c:'var(--c-seal)', sum:[110,300], kids:[
+    {name:'样品库_取出', c:'var(--c-storage)', x:110,w:14, t:'取出'},
+    {name:'封膜机_封膜', c:'var(--c-seal)',    x:132,w:14, t:'封膜'},
+    {name:'工位R2_反应', c:'var(--c-station)', x:150,w:92, t:'梯度反应'},
+    {name:'母液站_补料', c:'var(--c-liquid)',  x:248,w:26, t:'补料'},
+    {name:'样品库_放回', c:'var(--c-storage)', x:284,w:14, t:'放回'},
+  ]},
+  {type:'grp', name:'在线取样 Inline', c:'var(--c-reader)', sum:[220,110], kids:[
+    {name:'样品库_取出', c:'var(--c-storage)', x:220,w:14, t:'取出'},
+    {name:'冷却器_恒温', c:'var(--c-chiller)', x:240,w:28, t:'恒温'},
+    {name:'读板仪_读数', c:'var(--c-reader)',  x:272,w:40, t:'读数'},
+    {name:'样品库_放回', c:'var(--c-storage)', x:314,w:14, t:'放回'},
+  ]},
+];
+let PPM = 1;
+function ganttX(m){return m*PPM;}
+function buildGantt(){
+  const right=document.getElementById('gright');
+  PPM = Math.max(.4,(right.clientWidth-8)/(G1-G0));
+  let scale='', ticks='';
+  for(let m=0;m<=G1-G0;m+=30){
+    const h=G0+m, x=ganttX(m);
+    if(h%60===0){ scale+=`<span class="maj" style="left:${x}px">${String(h/60).padStart(2,'0')}:00</span><span class="min" style="left:${x}px"></span>`; }
+    else ticks+=`<span class="tick" style="left:${x}px"></span>`;
+  }
+  let rows='', bars='';
+  rows+=`<div class="glabel grp" style="height:40px;border-bottom:1px solid var(--line2);background:var(--subtle);font-weight:400;color:var(--t3);font-size:10px">板条码 / 流程</div>`;
+  bars+=`<div class="g-time" style="width:${ganttX(G1-G0)+4}px">${scale}${ticks}</div>`;
+  GANTT.forEach(g=>{
+    rows+=`<div class="glabel grp"><span class="exp">−</span>${g.name}</div>`;
+    bars+=`<div class="grow2 grp" style="width:${ganttX(G1-G0)+4}px"><div class="gsum" style="left:${ganttX(g.sum[0])}px;width:${g.sum[1]*PPM}px;background:${g.c}"></div></div>`;
+    g.kids.forEach(k=>{
+      rows+=`<div class="glabel chld">${k.name}</div>`;
+      const label = k.w*PPM>52 ? `<span class="in">${k.t}</span>` : '';
+      bars+=`<div class="grow2" style="width:${ganttX(G1-G0)+4}px" title="${k.name}\n${k.t} · ${k.w} min">
+        <div class="gbar" data-x="${k.x}" data-w="${k.w}" style="left:${ganttX(k.x)}px;width:${k.w*PPM}px;background:${k.c}">${label}</div></div>`;
+    });
+  });
+  document.getElementById('gleft').innerHTML=rows;
+  right.innerHTML=bars+`<div class="gplay" id="gplay"><span class="pt">06:00</span></div>`;
+  updatePlayhead();
+}
+buildGantt();
+window.addEventListener('resize',()=>{const s=sim.t;buildGantt();sim.t=s;updatePlayhead();});
+
+/* ============================================================
+   ADVANCED 高级
+   ============================================================ */
+const G_ICONS = {
+  msg:ICN('<rect x="2.5" y="3" width="11" height="8" rx="1.2" fill="none" stroke="#646A73" stroke-width="1.1"/><path d="M5 11l-1.5 2.5L6.5 11" fill="none" stroke="#646A73" stroke-width="1.1"/><path d="M4.5 6h7M4.5 7.8h4.5" stroke="#646A73" stroke-width="1"/>'),
+  user:ICN('<circle cx="8" cy="5.2" r="2.2" fill="none" stroke="#646A73" stroke-width="1.1"/><path d="M3.4 12.6c.5-2.6 2.3-3.9 4.6-3.9s4.1 1.3 4.6 3.9" fill="none" stroke="#646A73" stroke-width="1.1"/>'),
+  dloop:ICN('<path d="M3.5 4.5h6l2 2v5.5h-6l-2-2z" fill="none" stroke="#646A73" stroke-width="1.1"/><path d="M10.5 9a3.4 3.4 0 1 1-1-2.4" fill="none" stroke="#2E9E5B" stroke-width="1.2"/><path d="M10.6 4.6l-.2 2.3-2.1-.7z" fill="#2E9E5B"/>'),
+  fwrite:ICN('<path d="M4 2.5h5l2.5 2.5v8.5H4z" fill="none" stroke="#646A73" stroke-width="1.1"/><path d="M9 2.5V5h2.5M6.4 8.6l3.4-3.4 1.2 1.2-3.4 3.4-1.6.4z" fill="#646A73" stroke="#646A73" stroke-width=".4"/>'),
+  copy:ICN('<rect x="3" y="3" width="8" height="10" rx="1" fill="none" stroke="#646A73" stroke-width="1.1"/><path d="M6 5h5l2 2v6H6z" fill="#fff" stroke="#646A73" stroke-width="1.1"/>'),
+  del:ICN('<path d="M4 2.5h5l2.5 2.5v8.5H4z" fill="none" stroke="#646A73" stroke-width="1.1"/><path d="M6.6 7.4l3 3M9.6 7.4l-3 3" stroke="#D92D20" stroke-width="1.3"/>'),
+  sound:ICN('<path d="M3 6.2h2.5L9 3.4v9.2L5.5 9.8H3z" fill="#646A73"/><path d="M10.6 5.6a3.6 3.6 0 0 1 0 4.8M12.6 4a6.4 6.4 0 0 1 0 8" fill="none" stroke="#646A73" stroke-width="1"/>'),
+  note:ICN('<path d="M4 2.5h5l2.5 2.5v8.5H4z" fill="#FBF3C9" stroke="#C9B45E" stroke-width="1"/>'),
+  mail:ICN('<rect x="2.5" y="4" width="11" height="8.5" rx="1" fill="#3B6FB5"/><path d="M3 4.8l5 3.8 5-3.8" fill="none" stroke="#fff" stroke-width="1"/>'),
+  eloop:ICN('<path d="M12 8a4.4 4.4 0 1 1-1.4-3.2" fill="none" stroke="#D92D20" stroke-width="1.6"/><path d="M12.4 2.4l.3 3.2-3-.6z" fill="#D92D20"/>'),
+  pdata:ICN('<rect x="2.5" y="4" width="11" height="8.5" rx="1" fill="none" stroke="#646A73" stroke-width="1.1"/><g fill="#646A73"><circle cx="5.4" cy="6.8" r=".9"/><circle cx="8" cy="6.8" r=".9"/><circle cx="10.6" cy="6.8" r=".9"/><circle cx="5.4" cy="9.8" r=".9"/><circle cx="8" cy="9.8" r=".9"/><circle cx="10.6" cy="9.8" r=".9"/></g>'),
+  sched:ICN('<rect x="2.5" y="3.5" width="11" height="9.5" rx="1" fill="#fff" stroke="#646A73" stroke-width="1.1"/><rect x="2.5" y="3.5" width="11" height="2.6" fill="#4A3E9E"/><text x="8" y="11.2" font-size="6" text-anchor="middle" fill="#1F2329" font-family="Segoe UI">12</text>'),
+  xport:ICN('<path d="M3.5 6h7l2 2v4.5h-7l-2-2z" fill="none" stroke="#646A73" stroke-width="1.1"/><path d="M12 9.5V13M10.4 11.6L12 13.2l1.6-1.6" fill="none" stroke="#2E9E5B" stroke-width="1.2"/>'),
+  bp:ICN('<rect x="2.5" y="4" width="11" height="8.5" rx="1" fill="none" stroke="#646A73" stroke-width="1.1"/><path d="M2.5 6.8h11M6.8 6.8v5.7M10.6 6.8v5.7" stroke="#646A73" stroke-width=".9"/>'),
+  exit:ICN('<path d="M10.5 3H13v10h-2.5M9.5 8H3M5.6 5.8 3.2 8l2.4 2.2" fill="none" stroke="#D92D20" stroke-width="1.2"/>'),
+  end:ICN('<circle cx="8" cy="8" r="5.6" fill="#D92D20"/><path d="M5.8 5.8l4.4 4.4M10.2 5.8l-4.4 4.4" stroke="#fff" stroke-width="1.4"/>'),
+  err:ICN('<path d="M8 2.6l6 10.8H2z" fill="#F6D989" stroke="#C9A12F" stroke-width="1"/><path d="M8 6.4v3" stroke="#8A2F22" stroke-width="1.3"/><circle cx="8" cy="11.2" r=".8" fill="#8A2F22"/>'),
+};
+const GEN_CMDS = [
+  ['消息框 Message',G_ICONS.msg],['用户输入 Input',G_ICONS.user],['数据文件循环',G_ICONS.dloop],
+  ['文件夹循环',G_ICONS.dloop],['写入文件',G_ICONS.fwrite],['复制文件',G_ICONS.copy],
+  ['删除文件',G_ICONS.del],['播放声音',G_ICONS.sound],['启动程序',G_ICONS.sched],
+  ['备注 Note',G_ICONS.note],['发送邮件',G_ICONS.mail],['结束循环',G_ICONS.eloop],
+  ['板卡数据',G_ICONS.pdata],['运行调度器',G_ICONS.sched],['数据导出',G_ICONS.xport],
+  ['设置批次',G_ICONS.bp],['退出流程',G_ICONS.exit],['结束程序',G_ICONS.end],['抛出错误',G_ICONS.err],
+];
+document.getElementById('cmdG').innerHTML = GEN_CMDS.map(([n,i])=>`<div class="cmd" draggable="true" title="${n}"><span class="ci">${i}</span><span class="cn">${n}</span></div>`).join('');
+const ROBOT_CMDS = ['发送命令','回零 Home','张开夹爪','闭合夹爪','移动至示教点','取板 Pick','放板 Place','执行序列','从货位取出','放入货位','计数堆叠','从堆叠取','放入堆叠','移至安全位','示教板位','初始化'];
+document.getElementById('cmdR').innerHTML = ROBOT_CMDS.map(n=>`<div class="cmd" draggable="true" title="${n}"><span class="ci" style="color:var(--c-robot)">${ICON.robot}</span><span class="cn">${n}</span></div>`).join('');
+document.getElementById('agrp').addEventListener('click',function(){
+  this.classList.toggle('closed');
+  const g=document.getElementById('cmdR'); g.style.display=g.style.display==='none'?'grid':'none';
+});
+/* Advanced 画布 */
+document.getElementById('advCanvas').innerHTML = `
+  <svg style="position:absolute;inset:0;width:100%;height:100%" viewBox="0 0 520 520" preserveAspectRatio="none">
+    <path d="M120 96 V140" stroke="#9AA4AB" stroke-width="1.4" fill="none"/>
+    <path d="M152 172 H260 V240" stroke="#9AA4AB" stroke-width="1.4" fill="none"/>
+    <path d="M260 306 V356 H120" stroke="#9AA4AB" stroke-width="1.4" fill="none"/>
+    <path d="M120 240 V400" stroke="#9AA4AB" stroke-width="1.4" fill="none"/>
+  </svg>
+  <div class="node" style="left:91px;top:38px"><div class="n-begin">begin</div></div>
+  <div class="node" style="left:93px;top:140px">
+    <svg width="56" height="56" viewBox="0 0 56 56"><circle cx="28" cy="28" r="20" fill="none" stroke="var(--ok)" stroke-width="9" stroke-linecap="round" stroke-dasharray="94 32" transform="rotate(60 28 28)"/><path d="M46 14l3 8-8-2z" fill="var(--ok)"/></svg>
+  </div>
+  <div class="node" style="left:163px;top:150px;font-size:11px;color:var(--t2);line-height:1.45;width:150px">循环 当 全部工作台流程完成 = 否<br><span style="font-size:9.5px;color:var(--t3)">Loop while All Processes Complete = False</span></div>
+  <div class="node" style="left:210px;top:240px">
+    <div class="n-cmd" style="border-left-color:var(--c-robot);width:150px"><span class="ci" style="color:var(--c-robot)">${G_ICONS.sched}</span><span><b>运行调度器</b><span>Run Scheduler</span></span></div>
+  </div>
+  <div class="node" style="left:91px;top:400px"><div class="n-end">end</div></div>`;
+/* 资源浏览器列表 */
+const DT = ['Instrument_Utilization','Job_Schedule','Sample_Hotels','Sample_Stacks','Sync_Variables','Process_1_Plate_Runtime','Process_1_Variables'];
+document.getElementById('dtList').innerHTML = DT.map((n,i)=>`<div class="exli ${i===0?'on':''}">${n}</div>`).join('');
+const AI = [['转运机械臂','var(--c-robot)'],['样品库','var(--c-storage)'],['母液供给站','var(--c-liquid)'],['冷却循环器','var(--c-chiller)'],['封膜机','var(--c-seal)']];
+document.getElementById('aiList').innerHTML = AI.map(([n,c])=>`<div class="exli"><span class="sw" style="background:${c}"></span>${n}</div>`).join('');
+document.querySelectorAll('.exli').forEach(li=>li.addEventListener('click',()=>{
+  li.parentElement.querySelectorAll('.exli').forEach(x=>x.classList.remove('on'));
+  li.classList.add('on');
+}));
+
+/* ============================================================
+   货位弹窗
+   ============================================================ */
+const CONTENT = {1:['母液板','var(--c-liquid)'],2:['条件板','var(--c-station)'],3:['取样管','var(--c-reader)']};
+let selCount = 0;
+function updSel(){document.getElementById('selInfo').textContent=selCount;}
+function buildHotel(id, filled){
+  let h=`<div class="cap"><label><input type="checkbox" checked> Hotel ${id} 货架</label><span style="font-size:10px;color:var(--t3)">22 层</span></div>`;
+  for(let i=1;i<=22;i++){
+    const f = filled && CONTENT[i];
+    h+=`<div class="slot ${f?'filled':'empty'}" data-i="${i}">${f?`<i style="background:${CONTENT[i][1]}"></i>${i} · ${CONTENT[i][0]}<em>已占用</em>`:`<em>${i}</em>`}</div>`;
+  }
+  return h;
+}
+document.getElementById('hotel1').innerHTML = buildHotel(1,true);
+document.getElementById('hotel2').innerHTML = buildHotel(2,false);
+function bindSlots(){
+  document.querySelectorAll('.slot').forEach(s=>s.onclick=()=>{
+    const was=s.classList.contains('filled');
+    s.classList.toggle('filled'); s.classList.toggle('empty');
+    const i=s.dataset.i;
+    if(!was){
+      const f=CONTENT[i]||['板卡','var(--t3)'];
+      s.innerHTML=`<i style="background:${f[1]}"></i>${i} · ${f[0]}<em>已占用</em>`;
+    } else s.innerHTML=`<em>${i}</em>`;
+    selCount+=was?-1:1; updSel();
+  });
+}
+bindSlots();
+document.getElementById('btnClear').onclick=()=>{document.querySelectorAll('.slot.filled').forEach(s=>{s.classList.add('empty');s.classList.remove('filled');s.innerHTML=`<em>${s.dataset.i}</em>`});selCount=0;updSel();};
+document.getElementById('btnFill').onclick=()=>{document.querySelectorAll('.slot.empty').forEach(s=>{s.classList.add('filled');s.classList.remove('empty');s.innerHTML=`<i style="background:var(--t3)"></i>${s.dataset.i} · 板卡<em>已占用</em>`});selCount=44;updSel();};
+function openDlg(){document.getElementById('overlay').classList.add('show');}
+function closeDlg(){document.getElementById('overlay').classList.remove('show');}
+document.getElementById('overlay').addEventListener('click',e=>{if(e.target.id==='overlay')closeDlg();});
+document.querySelectorAll('.dlg-tabs button').forEach(t=>t.addEventListener('click',()=>{
+  document.querySelectorAll('.dlg-tabs button').forEach(x=>x.classList.remove('on'));
+  t.classList.add('on');
+}));
+
+/* ============================================================
+   仿真播放
+   ============================================================ */
+function updatePlayhead(){
+  const p=document.getElementById('gplay'); if(!p) return;
+  const x=ganttX(sim.t);
+  p.style.display=sim.state==='stop'?'none':'block';
+  p.style.left=x+'px';
+  p.querySelector('.pt').textContent=fmt(sim.t+G0);
+  document.getElementById('simClock').textContent=fmt(14*60+32+sim.t);
+  /* 条进度 */
+  document.querySelectorAll('.gbar').forEach(b=>{
+    const bx=+b.dataset.x, bw=+b.dataset.w;
+    const done=Math.min(Math.max(sim.t-bx,0),bw);
+    let pg=b.querySelector('.gprog');
+    if(done>0){
+      if(!pg){pg=document.createElement('div');pg.className='gprog';b.appendChild(pg);}
+      pg.style.width=Math.min(done*PPM, bw*PPM)+'px';
+    } else if(pg) pg.remove();
+  });
+  /* 当前任务进度文本 */
+  const prog=document.getElementById('curProg');
+  if(sim.state!=='stop') prog.textContent='运行中 · '+Math.round(sim.t/(G1-G0)*100)+'%';
+  else prog.textContent='未开始';
+}
+function setRunningTiles(on){
+  const st=document.querySelectorAll('#rstats .stat');
+  const set=(i,cls,txt)=>{const p=st[i].querySelector('.pill');p.className='pill '+cls;p.innerHTML='<i></i>'+txt;};
+  if(on){
+    set(0,'ok','运行中'); set(1,'brand','升温中'); set(2,'warn','占用'); set(3,'idle','空闲');
+    st[1].querySelector('.kv2:last-child b').textContent='实际 62.4 °C';
+  } else {
+    set(0,'ok','就绪'); set(1,'ok','就绪'); set(2,'ok','就绪'); set(3,'idle','空闲');
+    st[1].querySelector('.kv2:last-child b').textContent='实际 25.1 °C';
+  }
+}
+function sbStatus(txt,cls){
+  document.getElementById('sbText').textContent=txt;
+  const d=document.getElementById('sbDot'); d.className='dot '+cls;
+}
+function simGo(){
+  if(sim.state==='run') return;
+  sim.state='run';
+  document.getElementById('simChip').classList.add('run');
+  sbStatus('运行中 · 仿真模式','ok');
+  setRunningTiles(true);
+  document.getElementById('sbEvent').textContent='最近事件：仿真开始执行任务 PS261113104033.000';
+  sim.timer=setInterval(()=>{
+    sim.t=Math.min(sim.t+2,G1-G0);
+    if(sim.t>=G1-G0){simHalt(true);return;}
+    updatePlayhead();
+  },110);
+  updatePlayhead();
+}
+function simHalt(finished){
+  clearInterval(sim.timer); sim.timer=null; sim.state='stop';
+  document.getElementById('simChip').classList.remove('run');
+  sbStatus(finished?'已完成 · 仿真模式':'就绪 · 仿真模式','ok');
+  setRunningTiles(false);
+  document.getElementById('sbEvent').textContent= finished?'最近事件：任务完成，用时 14:00':'最近事件：仿真已停止';
+  if(finished){sim.t=G1-G0;updatePlayhead();setTimeout(()=>{sim.t=0;updatePlayhead();},1200);}
+  else {sim.t=0;updatePlayhead();}
+}
+function simPause(){
+  if(sim.state==='run'){clearInterval(sim.timer);sim.timer=null;sim.state='pause';sbStatus('已暂停 · 仿真模式','warn');document.getElementById('sbEvent').textContent='最近事件：仿真已暂停 '+fmt(sim.t+G0);}
+  else if(sim.state==='pause'){sim.state='run';sbStatus('运行中 · 仿真模式','ok');sim.timer=setInterval(()=>{sim.t=Math.min(sim.t+2,G1-G0);if(sim.t>=G1-G0){simHalt(true);return;}updatePlayhead();},110);}
+}
+function simStep(d){
+  if(sim.state==='stop'){sim.state='pause';document.getElementById('simChip').classList.add('run');setRunningTiles(true);}
+  sim.t=Math.max(0,Math.min(sim.t+d,G1-G0)); updatePlayhead();
+  sbStatus(sim.state==='pause'?'已暂停 · 仿真模式':'运行中 · 仿真模式','warn');
+  document.getElementById('sbEvent').textContent='最近事件：单步 '+fmt(sim.t+G0);
+}
+document.getElementById('simRun').onclick=simGo;
+document.getElementById('simStop').onclick=()=>simHalt(false);
+document.getElementById('simPause').onclick=simPause;
+document.getElementById('simIn').onclick=()=>simStep(30);
+document.getElementById('simOut').onclick=()=>simStep(-30);
+
+/* 脚本删除按钮反馈 */
+document.getElementById('btnDelScript').onclick=function(){
+  this.textContent='已标记删除（演示）'; this.classList.add('danger');
+  document.getElementById('sbEvent').textContent='最近事件：脚本 Script Done.cs 待删除';
+};
+</script>
+</body>
+</html>

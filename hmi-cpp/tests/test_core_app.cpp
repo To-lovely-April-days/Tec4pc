@@ -3,6 +3,7 @@
 #include "../core/station/reactor_hardware.hpp"
 #include "../core/control/gain_table.hpp"
 #include "../core/sim/sim_hardware.hpp"
+#include "../core/util/utf8_file.hpp"
 #include "../net/tcp_server.hpp"
 #include "../third_party/nlohmann/json.hpp"
 #include <cmath>
@@ -19,11 +20,12 @@ static int fails = 0;
 
 int main(int argc, char** argv) {
     const std::string table = argc > 1 ? argv[1] : "testdata/gain-table-run1110.csv";
-    const fs::path base = fs::temp_directory_path() / "tec_core_app_test";
-    fs::remove_all(base);
-    fs::create_directories(base);
+    std::error_code ec;
+    const fs::path base = fs::temp_directory_path() / "tec_core_app_test_run";
+    fs::remove_all(base, ec);
+    fs::create_directories(base, ec);
     const std::string gains_copy = (base / "gains.csv").u8string();
-    fs::copy_file(table, gains_copy, fs::copy_options::overwrite_existing);
+    fs::copy_file(fs_path(table), fs_path(gains_copy), fs::copy_options::overwrite_existing);
     SimHardware sim;
     CoreApp app(sim, sim, base.u8string(), gains_copy);
     auto run = [&](double seconds) { for (int i = 0; i < seconds * 2; i++) { app.tick(); sim.advance(0.5); } };
@@ -205,7 +207,7 @@ int main(int argc, char** argv) {
     // 控温设备没连上（串口配错）时：核心照样起来、照样答命令、能改通信设置，只是不收开始控温和开始序列
     {
         const fs::path b4 = fs::temp_directory_path() / "tec_core_app_test_offline";
-        fs::remove_all(b4);
+        fs::remove_all(b4, ec);
         OfflineReactorHardware off("温控器没连上");
         SimHardware aux4;
         CoreApp app4(off, aux4, b4.u8string(), gains_copy);
@@ -220,13 +222,13 @@ int main(int argc, char** argv) {
         CHECK(l4({{"cmd", "comm.status"}})["devices"][0]["port"] == "COM21");
         for (int i = 0; i < 20; i++) app4.tick();
         CHECK(l4({{"cmd", "state"}})["ch"][0]["running"] == false && l4({{"cmd", "state"}})["alarms_unacked"] == 0);     // 没在控温，读不到数也不该报警
-        fs::remove_all(b4);
+        fs::remove_all(b4, ec);
     }
     // 服务端看得到这台 PC
     CHECK(srv.clients().size() == 1 && srv.clients()[0].address == "127.0.0.1" && srv.clients()[0].rx > 20);
     pc.close();
     srv.stop();
-    fs::remove_all(base);
+    fs::remove_all(base, ec);
     std::printf(fails ? "\n%d 项失败\n" : "控制核心端到端：全部通过\n", fails);
     return fails ? 1 : 0;
 }

@@ -168,3 +168,7 @@ add_test(NAME golden_channel COMMAND golden_channel ${CMAKE_CURRENT_SOURCE_DIR}/
 add_executable(test_core_app tests/test_core_app.cpp)
 target_link_libraries(test_core_app PRIVATE tec_core_lib)
 add_test(NAME test_core_app COMMAND test_core_app ${CMAKE_CURRENT_SOURCE_DIR}/testdata/gain-table-run1110.csv)
+
+add_executable(test_easymax tests/test_easymax.cpp)
+target_link_libraries(test_easymax PRIVATE tec_core_lib)
+add_test(NAME test_easymax COMMAND test_easymax ${CMAKE_CURRENT_SOURCE_DIR}/testdata/gain-table-run1110.csv)

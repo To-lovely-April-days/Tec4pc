@@ -1,0 +1,482 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:conv="using:HtlabHmi.Converters"
+             xmlns:ctrl="using:HtlabHmi.Controls"
+             x:Class="HtlabHmi.Views.Channel.CtlView">
+  <UserControl.Resources>
+    <conv:BoolToBrushConverter x:Key="RadioRingBrush" TrueBrush="#00559C" FalseBrush="#A9B7C6" />
+    <conv:BoolToBrushConverter x:Key="RadioDotBrush" TrueBrush="#00559C" FalseBrush="Transparent" />
+    <conv:BoolToBrushConverter x:Key="RadioTitleBrush" TrueBrush="#00559C" FalseBrush="#1F2A35" />
+    <conv:BoolToBrushConverter x:Key="RadioLabelBrush" TrueBrush="#00559C" FalseBrush="#4F5B67" />
+    <conv:BoolToBrushConverter x:Key="SwitchBg" TrueBrush="#00559C" FalseBrush="#C3CCD6" />
+    <conv:BoolToBrushConverter x:Key="RunCircleBg" TrueBrush="#00B368" FalseBrush="#F3F7FC" />
+    <conv:BoolToBrushConverter x:Key="RunCircleBorder" TrueBrush="#00B368" FalseBrush="#C9D6E5" />
+    <conv:BoolToBrushConverter x:Key="RunHaloBg" TrueBrush="#2E00B368" FalseBrush="Transparent" />
+    <conv:BoolToBrushConverter x:Key="RunIconFg" TrueBrush="#FFFFFF" FalseBrush="#00559C" />
+    <conv:BoolToBrushConverter x:Key="RunTitleFg" TrueBrush="#0A8A4F" FalseBrush="#00559C" />
+    <conv:BoolToBrushConverter x:Key="LedBrush" TrueBrush="#2FD27A" FalseBrush="#C9D4E0" />
+    <conv:BoolToBrushConverter x:Key="CryCurRowBg" TrueBrush="#EAF2FB" FalseBrush="#FFFFFF" />
+  </UserControl.Resources>
+
+  <!-- 1:1 Ctl.dc.html & CryViewPart.dc.html -->
+  <Grid ColumnDefinitions="322,9,*">
+    <!-- ==================== LEFT REACTOR CARD (322x520) ==================== -->
+    <Border Grid.Column="0" Classes="hmi-card">
+      <Canvas Width="322" Height="520">
+        <!-- Floor Plinth (top:368..520) -->
+        <Border Canvas.Left="0" Canvas.Top="368" Width="322" Height="152" Background="#F3F6FA" />
+
+        <!-- Top-Left Vessel Spec -->
+        <TextBlock Canvas.Left="20" Canvas.Top="16" Text="{Binding ActiveChannel.ReactorType}" FontSize="14" Foreground="#8792A0" />
+
+        <!-- Top-Right Tr Readout -->
+        <StackPanel Canvas.Right="20" Canvas.Top="14" Orientation="Horizontal" Spacing="6">
+          <TextBlock Text="Tr" FontSize="14" FontWeight="SemiBold" Foreground="#4F5B67" VerticalAlignment="Bottom" Margin="0,0,0,4" />
+          <TextBlock Text="{Binding ActiveChannel.TrText}" FontSize="24" FontWeight="SemiBold" Foreground="#002B7F" />
+          <TextBlock Text="℃" FontSize="13" Foreground="#8792A0" VerticalAlignment="Bottom" Margin="0,0,0,4" />
+        </StackPanel>
+
+        <!-- Reactor PNG (left:74, top:52, 152x339) -->
+        <Image Canvas.Left="74" Canvas.Top="52" Width="152" Height="339"
+               Source="avares://HtlabHmi/Assets/reactor.png" Stretch="Uniform"
+               Opacity="{Binding ActiveChannel.ReactorOpacity}" />
+
+        <!-- Bottom 2 Metric Cards (left:16, top:436, height:64) -->
+        <Grid Canvas.Left="16" Canvas.Top="436" Width="290" ColumnDefinitions="*,8,*">
+          <Border Grid.Column="0" Height="64" CornerRadius="10" Background="#FFFFFF" BorderBrush="#E0E7F0" BorderThickness="1" Padding="14,0">
+            <StackPanel VerticalAlignment="Center" Spacing="1">
+              <TextBlock Text="pH" FontSize="13" Foreground="#8792A0" />
+              <TextBlock Text="{Binding ActiveChannel.PhText}" FontSize="25" FontWeight="SemiBold" Foreground="#00B368" />
+            </StackPanel>
+          </Border>
+          <Border Grid.Column="2" Height="64" CornerRadius="10" Background="#FFFFFF" BorderBrush="#E0E7F0" BorderThickness="1" Padding="14,0">
+            <StackPanel VerticalAlignment="Center" Spacing="1">
+              <TextBlock Text="釜内 SP" FontSize="13" Foreground="#8792A0" />
+              <StackPanel Orientation="Horizontal" Spacing="5">
+                <TextBlock Text="{Binding ActiveChannel.TargetTempText}" FontSize="25" FontWeight="SemiBold" Foreground="#1D3557" />
+                <TextBlock Text="℃" FontSize="13" Foreground="#8792A0" VerticalAlignment="Bottom" Margin="0,0,0,4" />
+              </StackPanel>
+            </StackPanel>
+          </Border>
+        </Grid>
+      </Canvas>
+    </Border>
+
+    <!-- ==================== RIGHT COLUMN (933px) ==================== -->
+    <Grid Grid.Column="2" RowDefinitions="56,8,*">
+      <!-- 1. TOP 4-MODE HORIZONTAL RADIO STRIP (933x56) -->
+      <Border Grid.Row="0" Classes="hmi-card">
+        <UniformGrid Rows="1" Columns="4">
+          <Button Command="{Binding SetControlModeCommand}" CommandParameter="Tr" Background="Transparent" BorderThickness="0"
+                  Padding="20,0,0,0" HorizontalContentAlignment="Left" VerticalContentAlignment="Center" Cursor="Hand">
+            <StackPanel Orientation="Horizontal" Spacing="11">
+              <Border Width="24" Height="24" CornerRadius="12" Background="#FFFFFF" BorderBrush="{Binding ActiveChannel.IsModeTr, Converter={StaticResource RadioRingBrush}}" BorderThickness="2">
+                <Ellipse Width="14" Height="14" Fill="{Binding ActiveChannel.IsModeTr, Converter={StaticResource RadioDotBrush}}" />
+              </Border>
+              <StackPanel VerticalAlignment="Center" Spacing="1">
+                <TextBlock Text="釜内温度 Tr" FontSize="17" FontWeight="{Binding ActiveChannel.IsModeTr, Converter={x:Static conv:BoolToFontWeightConverter.Instance}}"
+                           Foreground="{Binding ActiveChannel.IsModeTr, Converter={StaticResource RadioTitleBrush}}" />
+                <TextBlock Text="反应热由夹套补偿" FontSize="13" Foreground="#8792A0" />
+              </StackPanel>
+            </StackPanel>
+          </Button>
+
+          <Button Command="{Binding SetControlModeCommand}" CommandParameter="Tj" Background="Transparent" BorderThickness="0"
+                  Padding="20,0,0,0" HorizontalContentAlignment="Left" VerticalContentAlignment="Center" Cursor="Hand">
+            <StackPanel Orientation="Horizontal" Spacing="11">
+              <Border Width="24" Height="24" CornerRadius="12" Background="#FFFFFF" BorderBrush="{Binding ActiveChannel.IsModeTj, Converter={StaticResource RadioRingBrush}}" BorderThickness="2">
+                <Ellipse Width="14" Height="14" Fill="{Binding ActiveChannel.IsModeTj, Converter={StaticResource RadioDotBrush}}" />
+              </Border>
+              <StackPanel VerticalAlignment="Center" Spacing="1">
+                <TextBlock Text="夹套温度 Tj" FontSize="17" FontWeight="{Binding ActiveChannel.IsModeTj, Converter={x:Static conv:BoolToFontWeightConverter.Instance}}"
+                           Foreground="{Binding ActiveChannel.IsModeTj, Converter={StaticResource RadioTitleBrush}}" />
+                <TextBlock Text="直接控恒温器" FontSize="13" Foreground="#8792A0" />
+              </StackPanel>
+            </StackPanel>
+          </Button>
+
+          <Button Command="{Binding SetControlModeCommand}" CommandParameter="Reflux" Background="Transparent" BorderThickness="0"
+                  Padding="20,0,0,0" HorizontalContentAlignment="Left" VerticalContentAlignment="Center" Cursor="Hand">
+            <StackPanel Orientation="Horizontal" Spacing="11">
+              <Border Width="24" Height="24" CornerRadius="12" Background="#FFFFFF" BorderBrush="{Binding ActiveChannel.IsModeReflux, Converter={StaticResource RadioRingBrush}}" BorderThickness="2">
+                <Ellipse Width="14" Height="14" Fill="{Binding ActiveChannel.IsModeReflux, Converter={StaticResource RadioDotBrush}}" />
+              </Border>
+              <StackPanel VerticalAlignment="Center" Spacing="1">
+                <TextBlock Text="蒸回流 Tj − Tr" FontSize="17" FontWeight="{Binding ActiveChannel.IsModeReflux, Converter={x:Static conv:BoolToFontWeightConverter.Instance}}"
+                           Foreground="{Binding ActiveChannel.IsModeReflux, Converter={StaticResource RadioTitleBrush}}" />
+                <TextBlock Text="沸点未知时使用" FontSize="13" Foreground="#8792A0" />
+              </StackPanel>
+            </StackPanel>
+          </Button>
+
+          <Button Command="{Binding SetControlModeCommand}" CommandParameter="Cry" Background="Transparent" BorderThickness="0"
+                  Padding="20,0,0,0" HorizontalContentAlignment="Left" VerticalContentAlignment="Center" Cursor="Hand">
+            <StackPanel Orientation="Horizontal" Spacing="11">
+              <Border Width="24" Height="24" CornerRadius="12" Background="#FFFFFF" BorderBrush="{Binding ActiveChannel.IsModeCry, Converter={StaticResource RadioRingBrush}}" BorderThickness="2">
+                <Ellipse Width="14" Height="14" Fill="{Binding ActiveChannel.IsModeCry, Converter={StaticResource RadioDotBrush}}" />
+              </Border>
+              <StackPanel VerticalAlignment="Center" Spacing="1">
+                <TextBlock Text="结晶" FontSize="17" FontWeight="{Binding ActiveChannel.IsModeCry, Converter={x:Static conv:BoolToFontWeightConverter.Instance}}"
+                           Foreground="{Binding ActiveChannel.IsModeCry, Converter={StaticResource RadioTitleBrush}}" />
+                <TextBlock Text="按分段曲线控温" FontSize="13" Foreground="#8792A0" />
+              </StackPanel>
+            </StackPanel>
+          </Button>
+        </UniformGrid>
+      </Border>
+
+      <!-- 2A. STANDARD MODE LAYOUT (Tr / Tj / Reflux): Two 224px cards -->
+      <Grid Grid.Row="2" IsVisible="{Binding !ActiveChannel.IsModeCry}" RowDefinitions="224,8,224">
+        <!-- Temperature Control Card (933x224) -->
+        <Border Grid.Row="0" Classes="hmi-card">
+          <Grid RowDefinitions="54,*,40" Margin="24,10,20,14">
+            <!-- Header + 2 iOS Pill Switches -->
+            <DockPanel Grid.Row="0">
+              <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                <TextBlock Text="温度控制" FontSize="19" FontWeight="SemiBold" />
+                <TextBlock Text="{Binding ActiveChannel.ControlModeShortName}" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+              </StackPanel>
+              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="22" VerticalAlignment="Center">
+                <Button Command="{Binding ToggleTrSensorCommand}" Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="Tr 传感器" FontSize="15" Foreground="#4F5B67" VerticalAlignment="Center" />
+                    <Border Width="54" Height="32" CornerRadius="16" Background="{Binding ActiveChannel.TrSensorEnabled, Converter={StaticResource SwitchBg}}">
+                      <Border Width="26" Height="26" CornerRadius="13" Background="#FFFFFF" HorizontalAlignment="Left" VerticalAlignment="Top"
+                              Margin="{Binding ActiveChannel.TrSensorEnabled, Converter={x:Static conv:BoolToKnobMarginConverter.Instance}}"
+                              BoxShadow="0 1 3 0 #47000000" />
+                    </Border>
+                  </StackPanel>
+                </Button>
+                <Button Command="{Binding TogglePhElectrodeCommand}" Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="pH 电极" FontSize="15" Foreground="#4F5B67" VerticalAlignment="Center" />
+                    <Border Width="54" Height="32" CornerRadius="16" Background="{Binding ActiveChannel.PhElectrodeEnabled, Converter={StaticResource SwitchBg}}">
+                      <Border Width="26" Height="26" CornerRadius="13" Background="#FFFFFF" HorizontalAlignment="Left" VerticalAlignment="Top"
+                              Margin="{Binding ActiveChannel.PhElectrodeEnabled, Converter={x:Static conv:BoolToKnobMarginConverter.Instance}}"
+                              BoxShadow="0 1 3 0 #47000000" />
+                    </Border>
+                  </StackPanel>
+                </Button>
+              </StackPanel>
+            </DockPanel>
+
+            <!-- Middle Controls Row -->
+            <DockPanel Grid.Row="1" VerticalAlignment="Center">
+              <StackPanel Orientation="Horizontal" Spacing="24" VerticalAlignment="Bottom">
+                <!-- Target Value Box (180x48) -->
+                <StackPanel Width="180" Spacing="6">
+                  <TextBlock Text="{Binding ActiveChannel.TargetLabel}" FontSize="14" Foreground="#8792A0" />
+                  <Button Command="{Binding EditActiveTargetTempCommand}" Height="48" Background="#F3F7FC"
+                          BorderBrush="#C9D6E5" BorderThickness="1.5" CornerRadius="10" Padding="12,0"
+                          HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center" Cursor="Hand">
+                    <DockPanel>
+                      <TextBlock Text="{Binding ActiveChannel.TargetTempText}" IsVisible="{Binding !ActiveChannel.IsModeReflux}" FontSize="22" FontWeight="SemiBold" Foreground="#1F2A35" VerticalAlignment="Center" />
+                      <TextBlock Text="{Binding ActiveChannel.RefluxDeltaK, StringFormat=+{0:F1}}" IsVisible="{Binding ActiveChannel.IsModeReflux}" FontSize="22" FontWeight="SemiBold" Foreground="#1F2A35" VerticalAlignment="Center" />
+                      <TextBlock DockPanel.Dock="Right" Text="℃" IsVisible="{Binding !ActiveChannel.IsModeReflux}" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+                      <TextBlock DockPanel.Dock="Right" Text="K" IsVisible="{Binding ActiveChannel.IsModeReflux}" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+                    </DockPanel>
+                  </Button>
+                </StackPanel>
+
+                <!-- Arrive Mode Circular Radios -->
+                <StackPanel Spacing="6">
+                  <TextBlock Text="到达方式" FontSize="14" Foreground="#8792A0" />
+                  <StackPanel Orientation="Horizontal" Spacing="22" Height="48">
+                    <Button Command="{Binding SetArriveModeCommand}" CommandParameter="Fast" Background="Transparent" BorderThickness="0" Padding="2,0" Cursor="Hand">
+                      <StackPanel Orientation="Horizontal" Spacing="7">
+                        <Border Width="23" Height="23" CornerRadius="11.5" Background="#FFFFFF" BorderBrush="{Binding ActiveChannel.IsArriveFast, Converter={StaticResource RadioRingBrush}}" BorderThickness="2">
+                          <Ellipse Width="13" Height="13" Fill="{Binding ActiveChannel.IsArriveFast, Converter={StaticResource RadioDotBrush}}" />
+                        </Border>
+                        <TextBlock Text="尽快" FontSize="17" FontWeight="{Binding ActiveChannel.IsArriveFast, Converter={x:Static conv:BoolToFontWeightConverter.Instance}}"
+                                   Foreground="{Binding ActiveChannel.IsArriveFast, Converter={StaticResource RadioLabelBrush}}" VerticalAlignment="Center" />
+                      </StackPanel>
+                    </Button>
+                    <Button Command="{Binding SetArriveModeCommand}" CommandParameter="Rate" Background="Transparent" BorderThickness="0" Padding="2,0" Cursor="Hand">
+                      <StackPanel Orientation="Horizontal" Spacing="7">
+                        <Border Width="23" Height="23" CornerRadius="11.5" Background="#FFFFFF" BorderBrush="{Binding ActiveChannel.IsArriveRate, Converter={StaticResource RadioRingBrush}}" BorderThickness="2">
+                          <Ellipse Width="13" Height="13" Fill="{Binding ActiveChannel.IsArriveRate, Converter={StaticResource RadioDotBrush}}" />
+                        </Border>
+                        <TextBlock Text="按速率" FontSize="17" FontWeight="{Binding ActiveChannel.IsArriveRate, Converter={x:Static conv:BoolToFontWeightConverter.Instance}}"
+                                   Foreground="{Binding ActiveChannel.IsArriveRate, Converter={StaticResource RadioLabelBrush}}" VerticalAlignment="Center" />
+                      </StackPanel>
+                    </Button>
+                    <Button Command="{Binding SetArriveModeCommand}" CommandParameter="Duration" Background="Transparent" BorderThickness="0" Padding="2,0" Cursor="Hand">
+                      <StackPanel Orientation="Horizontal" Spacing="7">
+                        <Border Width="23" Height="23" CornerRadius="11.5" Background="#FFFFFF" BorderBrush="{Binding ActiveChannel.IsArriveDuration, Converter={StaticResource RadioRingBrush}}" BorderThickness="2">
+                          <Ellipse Width="13" Height="13" Fill="{Binding ActiveChannel.IsArriveDuration, Converter={StaticResource RadioDotBrush}}" />
+                        </Border>
+                        <TextBlock Text="按时长" FontSize="17" FontWeight="{Binding ActiveChannel.IsArriveDuration, Converter={x:Static conv:BoolToFontWeightConverter.Instance}}"
+                                   Foreground="{Binding ActiveChannel.IsArriveDuration, Converter={StaticResource RadioLabelBrush}}" VerticalAlignment="Center" />
+                      </StackPanel>
+                    </Button>
+                  </StackPanel>
+                </StackPanel>
+              </StackPanel>
+
+              <!-- Right 64x64 Green Circular Control Toggle (1:1 Ctl.dc.html) -->
+              <Button DockPanel.Dock="Right" Command="{Binding ToggleTempControlCommand}"
+                      Background="Transparent" BorderThickness="0" Padding="0" VerticalAlignment="Center" Cursor="Hand">
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                  <Border Width="74" Height="74" CornerRadius="37" Background="{Binding ActiveChannel.TempControlRunning, Converter={StaticResource RunHaloBg}}" Padding="5">
+                    <Border Width="64" Height="64" CornerRadius="32"
+                            Background="{Binding ActiveChannel.TempControlRunning, Converter={StaticResource RunCircleBg}}"
+                            BorderBrush="{Binding ActiveChannel.TempControlRunning, Converter={StaticResource RunCircleBorder}}" BorderThickness="2.5">
+                      <PathIcon Data="{StaticResource IconThermoAuto}" Width="32" Height="32"
+                                Foreground="{Binding ActiveChannel.TempControlRunning, Converter={StaticResource RunIconFg}}" />
+                    </Border>
+                  </Border>
+                  <StackPanel VerticalAlignment="Center" Spacing="2">
+                    <TextBlock Text="{Binding ActiveChannel.TempControlButtonTitle}" FontSize="18" FontWeight="SemiBold"
+                               Foreground="{Binding ActiveChannel.TempControlRunning, Converter={StaticResource RunTitleFg}}" />
+                    <TextBlock Text="{Binding ActiveChannel.TempControlButtonSub}" FontSize="13" Foreground="#8792A0" />
+                  </StackPanel>
+                </StackPanel>
+              </Button>
+            </DockPanel>
+
+            <!-- Bottom Status Line -->
+            <TextBlock Grid.Row="2" Text="{Binding ActiveChannel.TempStatusLine}" FontSize="14" Foreground="#8792A0" VerticalAlignment="Bottom" />
+          </Grid>
+        </Border>
+
+        <!-- Stirring Control Card (933x224) -->
+        <Border Grid.Row="2" Classes="hmi-card">
+          <Grid RowDefinitions="54,*,40" Margin="24,10,20,14">
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+              <TextBlock Text="搅拌" FontSize="19" FontWeight="SemiBold" />
+              <TextBlock Text="桨式 · 50–1000 rpm" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+            </StackPanel>
+
+            <DockPanel Grid.Row="1" VerticalAlignment="Center">
+              <StackPanel Orientation="Horizontal" Spacing="20" VerticalAlignment="Bottom">
+                <StackPanel Width="160" Spacing="6">
+                  <TextBlock Text="转速" FontSize="14" Foreground="#8792A0" />
+                  <Button Command="{Binding EditActiveStirRpmCommand}" Height="48" Background="#F3F7FC"
+                          BorderBrush="#C9D6E5" BorderThickness="1.5" CornerRadius="10" Padding="12,0"
+                          HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center" Cursor="Hand">
+                    <DockPanel>
+                      <TextBlock Text="{Binding ActiveChannel.TargetRpm}" FontSize="22" FontWeight="SemiBold" Foreground="#1F2A35" VerticalAlignment="Center" />
+                      <TextBlock DockPanel.Dock="Right" Text="rpm" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+                    </DockPanel>
+                  </Button>
+                </StackPanel>
+
+                <StackPanel Width="160" Spacing="6">
+                  <TextBlock Text="斜坡终值" FontSize="14" Foreground="#8792A0" />
+                  <Border Height="48" Background="#F3F7FC" BorderBrush="#C9D6E5" BorderThickness="1.5" CornerRadius="10" Padding="12,0">
+                    <DockPanel>
+                      <TextBlock Text="—" FontSize="22" FontWeight="SemiBold" Foreground="#8792A0" VerticalAlignment="Center" />
+                      <TextBlock DockPanel.Dock="Right" Text="rpm" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+                    </DockPanel>
+                  </Border>
+                </StackPanel>
+
+                <StackPanel Width="160" Spacing="6">
+                  <TextBlock Text="斜坡时长" FontSize="14" Foreground="#8792A0" />
+                  <Border Height="48" Background="#F3F7FC" BorderBrush="#C9D6E5" BorderThickness="1.5" CornerRadius="10" Padding="12,0">
+                    <DockPanel>
+                      <TextBlock Text="—" FontSize="22" FontWeight="SemiBold" Foreground="#8792A0" VerticalAlignment="Center" />
+                      <TextBlock DockPanel.Dock="Right" Text="min" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+                    </DockPanel>
+                  </Border>
+                </StackPanel>
+              </StackPanel>
+
+              <!-- Right Two 60x60 Circular Icon + LED Buttons -->
+              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="22" VerticalAlignment="Center">
+                <Button Command="{Binding ToggleLightCommand}" CommandParameter="active" Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand">
+                  <StackPanel Orientation="Horizontal" Spacing="10">
+                    <Panel Width="60" Height="60">
+                      <Border Width="60" Height="60" CornerRadius="30" Background="#F3F7FC" BorderBrush="#DCE4ED" BorderThickness="3">
+                        <PathIcon Data="{StaticResource IconLamp}" Width="27" Height="27" Foreground="#00559C" />
+                      </Border>
+                      <Border Width="16" Height="16" CornerRadius="8" Background="{Binding ActiveChannel.LightOn, Converter={StaticResource LedBrush}}"
+                              BorderBrush="#FFFFFF" BorderThickness="3" HorizontalAlignment="Right" VerticalAlignment="Top" />
+                    </Panel>
+                    <StackPanel VerticalAlignment="Center" Width="34" Spacing="1">
+                      <TextBlock Text="照明" FontSize="14" FontWeight="Medium" Foreground="#4F5B67" />
+                      <TextBlock Text="{Binding ActiveChannel.LightText}" FontSize="15" FontWeight="SemiBold" Foreground="#00559C" />
+                    </StackPanel>
+                  </StackPanel>
+                </Button>
+
+                <Button Command="{Binding ToggleStirCommand}" CommandParameter="active" Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand">
+                  <StackPanel Orientation="Horizontal" Spacing="10">
+                    <Panel Width="60" Height="60">
+                      <Border Width="60" Height="60" CornerRadius="30" Background="#F3F7FC" BorderBrush="#DCE4ED" BorderThickness="3">
+                        <Path Data="{StaticResource IconStir}" Stroke="#00559C" StrokeThickness="1.7" StrokeLineCap="Round"
+                              Width="32" Height="32" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                      </Border>
+                      <Border Width="16" Height="16" CornerRadius="8" Background="{Binding ActiveChannel.StirRunning, Converter={StaticResource LedBrush}}"
+                              BorderBrush="#FFFFFF" BorderThickness="3" HorizontalAlignment="Right" VerticalAlignment="Top" />
+                    </Panel>
+                    <StackPanel VerticalAlignment="Center" Width="74" Spacing="1">
+                      <TextBlock Text="搅拌" FontSize="14" FontWeight="Medium" Foreground="#4F5B67" />
+                      <TextBlock Text="{Binding ActiveChannel.StirButtonText}" FontSize="15" FontWeight="SemiBold" Foreground="#00559C" />
+                    </StackPanel>
+                  </StackPanel>
+                </Button>
+              </StackPanel>
+            </DockPanel>
+
+            <TextBlock Grid.Row="2" Text="{Binding ActiveChannel.StirStatusLine}" FontSize="14" Foreground="#8792A0" VerticalAlignment="Bottom" />
+          </Grid>
+        </Border>
+      </Grid>
+
+      <!-- 2B. CRYSTALLIZATION MODE LAYOUT (1:1 CryViewPart.dc.html): 320px + 128px -->
+      <Grid Grid.Row="2" IsVisible="{Binding ActiveChannel.IsModeCry}" RowDefinitions="320,8,128">
+        <!-- 12-Segment Crystallization Card -->
+        <Border Grid.Row="0" Classes="hmi-card" Padding="24,10,20,12">
+          <Grid RowDefinitions="42,40,*">
+            <DockPanel Grid.Row="0">
+              <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                <TextBlock Text="结晶曲线" FontSize="19" FontWeight="SemiBold" />
+                <TextBlock Text="釜内 Tr · 共 12 段 · 3 h 10 min · 60 → 5 ℃" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+              </StackPanel>
+            </DockPanel>
+
+            <!-- Segment progress header -->
+            <Grid Grid.Row="1" ColumnDefinitions="536,*">
+              <StackPanel Grid.Column="0" Spacing="5">
+                <DockPanel>
+                  <StackPanel Orientation="Horizontal" Spacing="12">
+                    <TextBlock Text="第 7 / 12 段" FontSize="16" FontWeight="SemiBold" />
+                    <TextBlock Text="降到 38 ℃ · 给定 41.5 ℃" FontSize="14" Foreground="#4F5B67" VerticalAlignment="Center" />
+                  </StackPanel>
+                  <TextBlock DockPanel.Dock="Right" Text="本段剩 8 min" FontSize="15" FontWeight="SemiBold" Foreground="#00559C" />
+                </DockPanel>
+                <UniformGrid Rows="1" Columns="12" Height="6">
+                  <Border Margin="0,0,2,0" CornerRadius="3" Background="#00559C" />
+                  <Border Margin="1,0" CornerRadius="3" Background="#00559C" />
+                  <Border Margin="1,0" CornerRadius="3" Background="#00559C" />
+                  <Border Margin="1,0" CornerRadius="3" Background="#00559C" />
+                  <Border Margin="1,0" CornerRadius="3" Background="#00559C" />
+                  <Border Margin="1,0" CornerRadius="3" Background="#00559C" />
+                  <Border Margin="1,0" CornerRadius="3" Background="#8FB4D9" />
+                  <Border Margin="1,0" CornerRadius="3" Background="#C9D6E5" />
+                  <Border Margin="1,0" CornerRadius="3" Background="#C9D6E5" />
+                  <Border Margin="1,0" CornerRadius="3" Background="#C9D6E5" />
+                  <Border Margin="1,0" CornerRadius="3" Background="#C9D6E5" />
+                  <Border Margin="2,0,0,0" CornerRadius="3" Background="#C9D6E5" />
+                </UniformGrid>
+              </StackPanel>
+            </Grid>
+
+            <!-- Dual 6-Row Tables + Right Curve & Run Button -->
+            <Grid Grid.Row="2" ColumnDefinitions="262,12,262,14,*" Margin="0,4,0,0">
+              <!-- Table 1-6 -->
+              <Border Grid.Column="0" CornerRadius="10" BorderBrush="#D5DEE8" BorderThickness="1" ClipToBounds="True">
+                <Grid RowDefinitions="28,*">
+                  <Border Grid.Row="0" Background="#F1F4F8" Padding="12,0">
+                    <Grid ColumnDefinitions="26,56,60,*">
+                      <TextBlock Text="段" FontSize="12" Foreground="#4F5B67" VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="1" Text="目标" FontSize="12" Foreground="#4F5B67" VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="2" Text="用时" FontSize="12" Foreground="#4F5B67" VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="3" Text="℃/min" FontSize="12" Foreground="#4F5B67" VerticalAlignment="Center" />
+                    </Grid>
+                  </Border>
+                  <ItemsControl Grid.Row="1" ItemsSource="{Binding ActiveChannel.CrySegmentsLeft}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <Border Height="30" Padding="12,0" BorderBrush="#E8ECF1" BorderThickness="0,0,0,1">
+                          <Grid ColumnDefinitions="26,56,60,*">
+                            <TextBlock Text="{Binding Index}" FontSize="13" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="{Binding TargetLabel}" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="2" Text="{Binding DurationLabel}" FontSize="13" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="3" Text="{Binding RateLabel}" FontSize="12" Foreground="#8792A0" VerticalAlignment="Center" />
+                          </Grid>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </Grid>
+              </Border>
+
+              <!-- Table 7-12 -->
+              <Border Grid.Column="2" CornerRadius="10" BorderBrush="#D5DEE8" BorderThickness="1" ClipToBounds="True">
+                <Grid RowDefinitions="28,*">
+                  <Border Grid.Row="0" Background="#F1F4F8" Padding="12,0">
+                    <Grid ColumnDefinitions="26,56,60,*">
+                      <TextBlock Text="段" FontSize="12" Foreground="#4F5B67" VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="1" Text="目标" FontSize="12" Foreground="#4F5B67" VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="2" Text="用时" FontSize="12" Foreground="#4F5B67" VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="3" Text="℃/min" FontSize="12" Foreground="#4F5B67" VerticalAlignment="Center" />
+                    </Grid>
+                  </Border>
+                  <ItemsControl Grid.Row="1" ItemsSource="{Binding ActiveChannel.CrySegmentsRight}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <Border Height="30" Padding="12,0,6,0" Background="{Binding IsCurrent, Converter={StaticResource CryCurRowBg}}"
+                                BorderBrush="#E8ECF1" BorderThickness="0,0,0,1">
+                          <Grid ColumnDefinitions="26,54,56,*,Auto">
+                            <TextBlock Text="{Binding Index}" FontSize="13" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="{Binding TargetLabel}" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="2" Text="{Binding DurationLabel}" FontSize="13" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="3" Text="{Binding RateLabel}" FontSize="12" Foreground="#8792A0" VerticalAlignment="Center" />
+                            <Border Grid.Column="4" IsVisible="{Binding IsCurrent}" Height="20" Padding="6,0" CornerRadius="5" Background="#00559C" VerticalAlignment="Center">
+                              <TextBlock Text="当前" FontSize="11" FontWeight="SemiBold" Foreground="#FFFFFF" VerticalAlignment="Center" />
+                            </Border>
+                          </Grid>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </Grid>
+              </Border>
+
+              <!-- Right Mini Curve + Run Button -->
+              <Grid Grid.Column="4" RowDefinitions="*,Auto">
+                <ctrl:SchemeProfileChartControl Grid.Row="0" CompactMode="True"
+                                                Steps="{Binding ActiveChannel.Steps}"
+                                                CurrentStepIndex="{Binding ActiveChannel.CurrentStepIndex}"
+                                                IsRunning="True" />
+                <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="14" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                  <Button Command="{Binding ToggleTempControlCommand}" Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                      <Border Width="64" Height="64" CornerRadius="32"
+                              Background="{Binding ActiveChannel.TempControlRunning, Converter={StaticResource RunCircleBg}}"
+                              BorderBrush="{Binding ActiveChannel.TempControlRunning, Converter={StaticResource RunCircleBorder}}" BorderThickness="2.5">
+                        <PathIcon Data="{StaticResource IconThermoAuto}" Width="30" Height="30"
+                                  Foreground="{Binding ActiveChannel.TempControlRunning, Converter={StaticResource RunIconFg}}" />
+                      </Border>
+                      <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="{Binding ActiveChannel.TempControlButtonTitle}" FontSize="17" FontWeight="SemiBold"
+                                   Foreground="{Binding ActiveChannel.TempControlRunning, Converter={StaticResource RunTitleFg}}" />
+                        <TextBlock Text="{Binding ActiveChannel.TempControlButtonSub}" FontSize="12" Foreground="#8792A0" />
+                      </StackPanel>
+                    </StackPanel>
+                  </Button>
+                </StackPanel>
+              </Grid>
+            </Grid>
+          </Grid>
+        </Border>
+
+        <!-- Compact Stirring Card (128px) -->
+        <Border Grid.Row="2" Classes="hmi-card" Padding="24,10,20,10">
+          <DockPanel VerticalAlignment="Center">
+            <StackPanel Orientation="Horizontal" Spacing="20" VerticalAlignment="Center">
+              <StackPanel VerticalAlignment="Center" Spacing="2">
+                <TextBlock Text="搅拌" FontSize="18" FontWeight="SemiBold" />
+                <TextBlock Text="{Binding ActiveChannel.StirStatusLine}" FontSize="13" Foreground="#8792A0" />
+              </StackPanel>
+              <Button Command="{Binding EditActiveStirRpmCommand}" Width="140" Height="44" Background="#F3F7FC"
+                      BorderBrush="#C9D6E5" BorderThickness="1.5" CornerRadius="10" Padding="12,0"
+                      HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center" Cursor="Hand">
+                <DockPanel>
+                  <TextBlock Text="{Binding ActiveChannel.TargetRpm}" FontSize="20" FontWeight="SemiBold" Foreground="#1F2A35" VerticalAlignment="Center" />
+                  <TextBlock DockPanel.Dock="Right" Text="rpm" FontSize="13" Foreground="#8792A0" VerticalAlignment="Center" />
+                </DockPanel>
+              </Button>
+            </StackPanel>
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="18" VerticalAlignment="Center">
+              <Button Command="{Binding ToggleLightCommand}" CommandParameter="active" Classes="hmi-outline" Height="44" Content="{Binding ActiveChannel.LightText, StringFormat=照明：{0}}" />
+              <Button Command="{Binding ToggleStirCommand}" CommandParameter="active" Classes="hmi-primary" Height="44" Content="{Binding ActiveChannel.StirButtonText, StringFormat=搅拌：{0}}" />
+            </StackPanel>
+          </DockPanel>
+        </Border>
+      </Grid>
+    </Grid>
+  </Grid>
+</UserControl>

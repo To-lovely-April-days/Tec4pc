@@ -1,16 +1,11 @@
 // 执行机构这一层：加热棒和 TEC 之间怎么切、冷却水什么时候开关。一个工位一个。
 //
-// 规矩（除最后一条外都是从原来的程序搬过来的，经试算台 session.py 核对过真机 11-10 那一炉）：
-//   · 继电器跟功率符号走：占空比绝对值不到 1 % 不表态；指向另一侧连续 3 s 才扳（免得在零附近来回扳）
+// 硬件安全铁律（所有模式共同遵守）：
 //   · 接 TEC 之前先通水：开冷却水阀（有冷水机就一起开）→ 等 5 s → 关输出、断加热棒、合 TEC、开输出
-//     等水那 5 s 加热棒继电器还合着；等完了功率要是已经不指向 TEC 就不切，水收回去
-//   · 扳一次继电器输出关约 1 s，这段时间不算 PID；恢复时微分历史重置、积分留着
-//   · 回加热棒：断 TEC → 停冷水机 → 冷水机停稳了才关阀（冷水机还在转就关阀会憋泵）→ 合加热棒
-//   · 冷水机两次冷启动之间至少隔 60 s：没到点就先挂着（回路按只加热算），到点再接；这样接上的 TEC 至少留 60 s
-//   · 冷却水跟着 TEC 制冷自动开关，不问人（用户 2026-11-24 定的，取代了以前「第一次要制冷先弹窗问」那一条）
-//
-// 这一层只出「该在哪一侧、输出开不开、阀开不开、冷水机转不转」，不直接碰硬件。接到继电器模块上的时候注意：
-// 使能继电器 DO2 / DO3 程序绝不去关（用户定的）；所以写继电器只许一路一路写，不许用「八路全断」。
+//   · 扳继电器前必须关断温控器输出 1 s（不带载扳继电器），加热棒与 TEC 绝不同时吸合
+//   · 回加热棒：断 TEC → 停冷水机 → 等冷水机停稳（30 s）才关阀，绝不憋泵
+//   · 冷水机两次冷启动之间至少隔 60 s
+//   · 使能继电器 DO2 / DO3 程序绝不去碰；继电器只一路一路写（FC05）
 #pragma once
 #include <string>
 #include <vector>
@@ -37,12 +32,18 @@ struct SwitchEvent { double t; std::string text; };
 class HeatSourceSwitch {
 public:
     explicit HeatSourceSwitch(const SwitchParams& p = {}) : p_(p) {}
-    // 下发目标那一刻
+    // 独立模式（夹套直接控温 / 对拍基准 golden_switch）
     void start(double t, double sp, double tr);
-    // 每拍算 PID 之前调：推冷水机 / 阀、推进行中的切换。返回 true = 这一拍恢复输出，内环微分要重置
     bool pre(double t);
-    // 每拍算完 PID 之后调：demand = 这一拍的带符号占空比（正 = 加热棒，负 = TEC）
     void post(double t, double demand);
+
+    // EasyMax 串级三阶段水路与热源协同模式
+    void start_coordinated(double t, double sp, double tr, bool is_ramp);
+    int pre_coordinated(double t);   // −1 未完成切换，0 刚切到加热棒，1 刚切到 TEC
+    void post_coordinated(double t, double sp_cur, double tr_val, double tj, double tj_sp,
+                          double xr, double w2, double b_ctrl, double tau,
+                          double d_filt, double last_p_plus_i, double demand,
+                          bool in_boost, bool in_brake);
 
     HeatSide side() const { return side_; }
     bool output_enabled() const { return enabled_; }   // false = 正在扳继电器，这一拍别算 PID、输出给 0
@@ -50,6 +51,10 @@ public:
     bool valve_open() const { return valve_open_; }
     ChillerState chiller() const { return chiller_; }
     int flips() const { return flips_; }
+    int valve_opens() const { return valve_opens_; }
+    bool in_lead() const { return phase_ == Phase::Lead; }
+    double lead_until() const { return lead_until_; }
+    double chiller_since() const { return chiller_since_; }
     std::vector<SwitchEvent> take_events() { auto e = std::move(events_); events_.clear(); return e; }
 
 private:
@@ -80,6 +85,7 @@ private:
     bool have_cold_start_ = false; double last_cold_start_ = 0;
     double lead_until_ = -1e9;
     int flips_ = 0;
+    int valve_opens_ = 0;
     std::vector<SwitchEvent> events_;
 };
 

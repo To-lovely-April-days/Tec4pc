@@ -11,8 +11,12 @@ ChannelController::ChannelController(const GainTable& table, const ChannelConfig
 void ChannelController::begin(ControlMode mode) {
     mode_ = mode;
     k_ = 0;
+    OuterParams op = cfg_.outer;
+    if (op.fast.enabled && !op.fast.bias_start) {
+        op.fast.bias_start = [this](double t) { return table_.steady_bias_at(t).value_or(0.0); };
+    }
     // 每次开控都从干净的状态起：上一炉认出来的东西不带到这一炉（料可能换了）
-    outer_ = std::make_unique<OuterLoop>(cfg_.outer);
+    outer_ = std::make_unique<OuterLoop>(op);
     inner_ = std::make_unique<InnerLoop>(table_, cfg_.max_duty);
     sw_ = std::make_unique<HeatSourceSwitch>(cfg_.sw);
     tj_sp_ = pid_out_ = demand_ = 0;
@@ -100,6 +104,75 @@ ChannelCommand ChannelController::tick(double tj, std::optional<double> tr) {
     const double dt = cfg_.inner_period_s;
     const double t = k_ * dt;
     if (tr) tr_last_ = tr;
+
+    const bool cascade = mode_ == ControlMode::Reactor || mode_ == ControlMode::Crystal;
+    const bool easymax = cascade && cfg_.outer.fast.enabled && cfg_.outer.fast.boost_max > 0.0;
+
+    if (easymax) {
+        const double tr_val = tr_last_.value_or(tj);
+        advance_trajectory(t, tr_val);
+        const bool is_ramp = (sp_rate_ != 0.0) || (sp_now_ != sp_);
+        if (k_ == 0) {
+            sw_->start_coordinated(t, sp_, tr_val, is_ramp);
+        }
+        const int sw_done = sw_->pre_coordinated(t);
+        if (sw_done >= 0) {
+            inner_->on_side_switched(sw_done == 1, tj_sp_, sw_->valve_open());
+        }
+
+        if (k_ % outer_every_ == 0) {
+            OuterObs o;
+            o.t = t; o.dt = cfg_.outer_period_s; o.sp = sp_now_; o.tr = tr_last_; o.tj = tj; o.first = k_ == 0;
+            if (is_ramp) { o.sp_rate = sp_rate_; o.sp_final = sp_; }
+            o.cooling_side = sw_->side() == HeatSide::Tec;
+            o.inner_sat_low = inner_sat_low_;
+            o.tec_withheld = sw_->heat_only();
+            o.output_on = sw_->output_enabled();
+            o.heater_duty_frac = (sw_->output_enabled() && sw_->side() == HeatSide::Heater && demand_ > 0.0)
+                                     ? std::max(0.0, demand_ / cfg_.max_duty)
+                                     : 0.0;
+            o.tj_d_filt = inner_->d_filt();
+            o.in_lead = sw_->in_lead();
+            o.lead_until = sw_->lead_until();
+            o.chiller_state = static_cast<int>(sw_->chiller());
+            o.chiller_since = sw_->chiller_since();
+            if (o.first) outer_->reset(o);
+            const OuterOut out = outer_->step(o);
+            if (out.alarm) cmd.notes.push_back(*out.alarm);
+            tj_sp_ = std::min(cfg_.jacket_sp_max, std::max(cfg_.jacket_sp_min, out.tj_sp));
+        }
+
+        const FastStage stg = outer_->stage();
+        const bool in_boost = stg == FastStage::Boost;
+        const bool in_brake = stg == FastStage::Brake;
+
+        double heater = 0, tec = 0;
+        const InnerOut io = inner_->step_coordinated(
+            tj_sp_, tj, dt, sw_->output_enabled(), sw_->heat_only(), in_boost, in_brake, sw_->side() == HeatSide::Tec);
+        if (sw_->output_enabled()) {
+            pid_out_ = io.pid_out; demand_ = io.signed_duty; heater = io.heater_pct; tec = io.tec_pct;
+            inner_sat_low_ = io.sat_low;
+        } else {
+            demand_ = 0;
+        }
+
+        sw_->post_coordinated(t, sp_now_, tr_val, tj, tj_sp_, outer_->xr(), outer_->w2(), outer_->b_ctrl(), outer_->tau(),
+                              inner_->d_filt(), inner_->last_p_plus_i(), demand_, in_boost, in_brake);
+        for (auto& e : sw_->take_events()) cmd.notes.push_back(e.text);
+
+        const bool on = sw_->output_enabled();
+        const double h = on && sw_->side() == HeatSide::Heater ? heater : 0.0;
+        const double c = on && sw_->side() == HeatSide::Tec ? tec : 0.0;
+        cmd.device_duty = c > 0 ? c : -h;
+        cmd.output_on = on;
+        cmd.side = sw_->side();
+        cmd.valve_open = sw_->valve_open();
+        cmd.chiller = sw_->chiller();
+        cmd.jacket_sp = tj_sp_;
+        k_++;
+        return cmd;
+    }
+
     if (k_ == 0) {
         // 起步合哪一侧看被控量：釜内控温看釜内，夹套控温看夹套
         const double pv = mode_ == ControlMode::Jacket ? tj : tr_last_.value_or(tj);
@@ -107,7 +180,6 @@ ChannelCommand ChannelController::tick(double tj, std::optional<double> tr) {
         else sw_->start(t, sp_, pv);
     }
     const bool reset_d = sw_->pre(t);
-    const bool cascade = mode_ == ControlMode::Reactor || mode_ == ControlMode::Crystal;
     if (mode_ != ControlMode::Reflux) advance_trajectory(t, mode_ == ControlMode::Jacket ? tj : tr_last_.value_or(tj));
     if (cascade) {
         if (k_ % outer_every_ == 0) {

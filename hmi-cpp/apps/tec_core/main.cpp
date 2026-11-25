@@ -5,6 +5,7 @@
 #include "../../core/app/core_app.hpp"
 #include "../../core/app/real_devices.hpp"
 #include "../../core/sim/sim_hardware.hpp"
+#include "../../core/util/utf8_file.hpp"
 #include "../../net/tcp_server.hpp"
 #include <atomic>
 #include <chrono>
@@ -33,8 +34,8 @@ int main(int argc, char** argv) {
     for (int i = 1; i < argc; i++) {
         const std::string a = argv[i];
         if (a == "--sim") sim = true;
-        else if (a == "--data" && i + 1 < argc) data = argv[++i];
-        else if (a == "--gains" && i + 1 < argc) gains = argv[++i];
+        else if (a == "--data" && i + 1 < argc) data = tec::fs_path(argv[++i]).u8string();
+        else if (a == "--gains" && i + 1 < argc) gains = tec::fs_path(argv[++i]).u8string();
         else if (a == "--port" && i + 1 < argc) port = std::atoi(argv[++i]);
     }
     std::signal(SIGINT, on_signal);

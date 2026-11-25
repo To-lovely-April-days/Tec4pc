@@ -1,0 +1,118 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="HtlabHmi.Views.Channel.SafetyView">
+  <!-- 1:1 Safety.dc.html: 452px main card + 8px gap + 60px bottom card -->
+  <Grid RowDefinitions="452,8,60">
+    <Border Grid.Row="0" Classes="hmi-card">
+      <StackPanel>
+        <!-- Band 1: 反应釜 -->
+        <Border Height="48" Background="#EAF2FB" Padding="24,0">
+          <TextBlock Text="反应釜" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center" />
+        </Border>
+        <Border Height="52" Margin="24,0" BorderBrush="#E8ECF1" BorderThickness="0,0,0,1">
+          <DockPanel>
+            <TextBlock Text="反应釜类型" Width="200" FontSize="15" Foreground="#4F5B67" VerticalAlignment="Center" />
+            <TextBlock Text="{Binding ActiveChannel.ReactorType}" Width="220" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <TextBlock DockPanel.Dock="Right" Text="桨式搅拌 · Tr 探头 + pH 电极　·　规格在台面属性栏更换" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+          </DockPanel>
+        </Border>
+
+        <!-- Band 2: 安全限值 -->
+        <Border Height="48" Background="#EAF2FB" Padding="24,0" Margin="0,4,0,0">
+          <StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
+            <TextBlock Text="安全限值" FontSize="17" FontWeight="SemiBold" />
+            <TextBlock Text="点行修改（Tr 三行，操作人层）· 序列运行中不可修改" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+          </StackPanel>
+        </Border>
+
+        <!-- Tr min -->
+        <Button Command="{Binding EditSafetyLimitCommand}" CommandParameter="TrMin"
+                Padding="0" Background="Transparent" BorderThickness="0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Cursor="Hand">
+          <Border Height="48" Margin="24,0" BorderBrush="#E8ECF1" BorderThickness="0,0,0,1">
+            <DockPanel>
+              <StackPanel Orientation="Horizontal" Width="220" VerticalAlignment="Center">
+                <TextBlock Text="Tr min（操作人）" FontSize="15" Foreground="#4F5B67" VerticalAlignment="Center" />
+                <Border Margin="10,0,0,0" Height="22" Padding="8,0" CornerRadius="6" Background="#E3EEFA">
+                  <TextBlock Text="可改" FontSize="13" Foreground="#00559C" VerticalAlignment="Center" />
+                </Border>
+              </StackPanel>
+              <Border Height="34" Padding="12,0" CornerRadius="8" Background="#F3F7FC" BorderBrush="#C9D6E5" BorderThickness="1.5" VerticalAlignment="Center">
+                <TextBlock Text="{Binding ActiveChannel.TrMinText}" FontSize="17" FontWeight="SemiBold" Foreground="#1F2A35" VerticalAlignment="Center" />
+              </Border>
+              <TextBlock DockPanel.Dock="Right" Text="低于此值 → 停控并报警　·　设备底线 −40 ℃　·　已收紧" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+            </DockPanel>
+          </Border>
+        </Button>
+
+        <!-- Tr max -->
+        <Button Command="{Binding EditSafetyLimitCommand}" CommandParameter="TrMax"
+                Padding="0" Background="Transparent" BorderThickness="0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Cursor="Hand">
+          <Border Height="48" Margin="24,0" BorderBrush="#E8ECF1" BorderThickness="0,0,0,1">
+            <DockPanel>
+              <StackPanel Orientation="Horizontal" Width="220" VerticalAlignment="Center">
+                <TextBlock Text="Tr max（操作人）" FontSize="15" Foreground="#4F5B67" VerticalAlignment="Center" />
+                <Border Margin="10,0,0,0" Height="22" Padding="8,0" CornerRadius="6" Background="#E3EEFA">
+                  <TextBlock Text="可改" FontSize="13" Foreground="#00559C" VerticalAlignment="Center" />
+                </Border>
+              </StackPanel>
+              <Border Height="34" Padding="12,0" CornerRadius="8" Background="#F3F7FC" BorderBrush="#C9D6E5" BorderThickness="1.5" VerticalAlignment="Center">
+                <TextBlock Text="{Binding ActiveChannel.TrMaxText}" FontSize="17" FontWeight="SemiBold" Foreground="#1F2A35" VerticalAlignment="Center" />
+              </Border>
+              <TextBlock DockPanel.Dock="Right" Text="高于此值 → 停控并报警　·　设备底线 180 ℃" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+            </DockPanel>
+          </Border>
+        </Button>
+
+        <!-- Max Ramp -->
+        <Button Command="{Binding EditSafetyLimitCommand}" CommandParameter="MaxRamp"
+                Padding="0" Background="Transparent" BorderThickness="0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Cursor="Hand">
+          <Border Height="48" Margin="24,0" BorderBrush="#E8ECF1" BorderThickness="0,0,0,1">
+            <DockPanel>
+              <StackPanel Orientation="Horizontal" Width="220" VerticalAlignment="Center">
+                <TextBlock Text="变温速率上限" FontSize="15" Foreground="#4F5B67" VerticalAlignment="Center" />
+                <Border Margin="10,0,0,0" Height="22" Padding="8,0" CornerRadius="6" Background="#E3EEFA">
+                  <TextBlock Text="可改" FontSize="13" Foreground="#00559C" VerticalAlignment="Center" />
+                </Border>
+              </StackPanel>
+              <Border Height="34" Padding="12,0" CornerRadius="8" Background="#F3F7FC" BorderBrush="#C9D6E5" BorderThickness="1.5" VerticalAlignment="Center">
+                <TextBlock Text="{Binding ActiveChannel.MaxRampRateText}" FontSize="17" FontWeight="SemiBold" Foreground="#1F2A35" VerticalAlignment="Center" />
+              </Border>
+              <TextBlock DockPanel.Dock="Right" Text="点行填一个值就开始盯实测斜率，填 0 = 关" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+            </DockPanel>
+          </Border>
+        </Button>
+
+        <!-- Hardware limits -->
+        <Border Height="48" Margin="24,0" BorderBrush="#E8ECF1" BorderThickness="0,0,0,1">
+          <DockPanel>
+            <TextBlock Text="Tj（底线）" Width="220" FontSize="15" Foreground="#4F5B67" VerticalAlignment="Center" />
+            <TextBlock Text="−40 … 200 ℃" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <TextBlock DockPanel.Dock="Right" Text="夹套温度范围，越限 → 停控并报警" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+          </DockPanel>
+        </Border>
+        <Border Height="48" Margin="24,0" BorderBrush="#E8ECF1" BorderThickness="0,0,0,1">
+          <DockPanel>
+            <TextBlock Text="Tc（底线）" Width="220" FontSize="15" Foreground="#4F5B67" VerticalAlignment="Center" />
+            <TextBlock Text="≤ 45 ℃" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <TextBlock DockPanel.Dock="Right" Text="冷媒温度过高 → 停止制冷并报警" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+          </DockPanel>
+        </Border>
+      </StackPanel>
+    </Border>
+
+    <!-- Bottom 60px Card -->
+    <Border Grid.Row="2" Classes="hmi-card" Padding="16,0">
+      <DockPanel>
+        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <Border Height="40" Padding="14,0" CornerRadius="8" Background="#F3F7FC">
+            <TextBlock Text="限值只能在设备底线之内收紧" FontSize="14" Foreground="#4F5B67" VerticalAlignment="Center" />
+          </Border>
+          <Border Height="40" Padding="14,0" CornerRadius="8" Background="#F3F7FC">
+            <TextBlock Text="安全层 1 Hz 独立求值 · 动作见各行" FontSize="14" Foreground="#4F5B67" VerticalAlignment="Center" />
+          </Border>
+        </StackPanel>
+        <Button DockPanel.Dock="Right" Command="{Binding SimulateInterlockAlarmCommand}" Classes="hmi-outline-danger" Height="40" Content="模拟触发联锁报警" VerticalAlignment="Center" />
+      </DockPanel>
+    </Border>
+  </Grid>
+</UserControl>

@@ -1,0 +1,740 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:conv="using:HtlabHmi.Converters"
+             x:Class="HtlabHmi.Views.Dialogs.OverlaysHost">
+  <UserControl.Resources>
+    <conv:BoolToBrushConverter x:Key="SwitchBg" TrueBrush="#00559C" FalseBrush="#C3CCD6" />
+    <conv:EqualsStringToBrushConverter x:Key="EqTextBrush" TrueBrush="#00559C" FalseBrush="#4F5B67" />
+    <conv:EqualsStringToBrushConverter x:Key="EqRingBrush" TrueBrush="#00559C" FalseBrush="#A9B7C6" />
+    <conv:EqualsStringToBrushConverter x:Key="EqDotBrush" TrueBrush="#00559C" FalseBrush="Transparent" />
+  </UserControl.Resources>
+
+  <UserControl.Styles>
+    <!-- 1:1 Keypad Circular 80x80 Key Button -->
+    <Style Selector="Button.kp-round-key">
+      <Setter Property="Width" Value="80" />
+      <Setter Property="Height" Value="80" />
+      <Setter Property="CornerRadius" Value="40" />
+      <Setter Property="Background" Value="#F3F7FC" />
+      <Setter Property="Foreground" Value="#1F2A35" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="FontSize" Value="30" />
+      <Setter Property="FontWeight" Value="Medium" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.kp-round-key:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#E3EEF9" />
+    </Style>
+    <Style Selector="Button.kp-round-key:pressed /template/ ContentPresenter">
+      <Setter Property="Background" Value="#D4E4F7" />
+    </Style>
+
+    <!-- 1:1 Keypad Slider (8px track + #00559C fill + 38x38 ringed circular thumb) -->
+    <Style Selector="Slider.hmi-kp-slider">
+      <Setter Property="Height" Value="40" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Grid VerticalAlignment="Center" Height="40">
+            <Track Name="PART_Track"
+                   Minimum="{TemplateBinding Minimum}"
+                   Maximum="{TemplateBinding Maximum}"
+                   Value="{TemplateBinding Value, Mode=TwoWay}"
+                   Orientation="Horizontal">
+              <Track.DecreaseButton>
+                <RepeatButton Name="PART_DecreaseButton" Background="Transparent" BorderThickness="0" Padding="0" VerticalAlignment="Center" HorizontalAlignment="Stretch" MinHeight="8" Height="8">
+                  <RepeatButton.Template>
+                    <ControlTemplate>
+                      <Border Height="8" CornerRadius="4,0,0,4" Background="#00559C" />
+                    </ControlTemplate>
+                  </RepeatButton.Template>
+                </RepeatButton>
+              </Track.DecreaseButton>
+              <Track.IncreaseButton>
+                <RepeatButton Name="PART_IncreaseButton" Background="Transparent" BorderThickness="0" Padding="0" VerticalAlignment="Center" HorizontalAlignment="Stretch" MinHeight="8" Height="8">
+                  <RepeatButton.Template>
+                    <ControlTemplate>
+                      <Border Height="8" CornerRadius="0,4,4,0" Background="#DCE4ED" />
+                    </ControlTemplate>
+                  </RepeatButton.Template>
+                </RepeatButton>
+              </Track.IncreaseButton>
+              <Track.Thumb>
+                <Thumb Width="38" Height="38" Cursor="Hand">
+                  <Thumb.Template>
+                    <ControlTemplate>
+                      <Border Width="38" Height="38" CornerRadius="19" Background="#FFFFFF"
+                              BorderBrush="#00559C" BorderThickness="3"
+                              BoxShadow="0 2 6 0 #4D102A4C" />
+                    </ControlTemplate>
+                  </Thumb.Template>
+                </Thumb>
+              </Track.Thumb>
+            </Track>
+          </Grid>
+        </ControlTemplate>
+      </Setter>
+    </Style>
+
+    <!-- 1:1 TextDlg Keyboard Key (84x62 #F3F7FC) -->
+    <Style Selector="Button.tk-key">
+      <Setter Property="Width" Value="84" />
+      <Setter Property="Height" Value="62" />
+      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="Background" Value="#F3F7FC" />
+      <Setter Property="Foreground" Value="#1F2A35" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="FontSize" Value="26" />
+      <Setter Property="FontWeight" Value="Medium" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.tk-key:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#E3EEF9" />
+    </Style>
+
+    <!-- 1:1 TextDlg Modifier Key (#E3E9F1) -->
+    <Style Selector="Button.tk-mod">
+      <Setter Property="Height" Value="62" />
+      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="Background" Value="#E3E9F1" />
+      <Setter Property="Foreground" Value="#4F5B67" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="FontSize" Value="18" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.tk-mod:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#D6DFE9" />
+    </Style>
+  </UserControl.Styles>
+
+  <Panel>
+    <!-- ============================================================ -->
+    <!-- 1. COMM DEVICE DIALOG (1:1 CommDlg.dc.html, 780x496)         -->
+    <!-- ============================================================ -->
+    <Grid IsVisible="{Binding CommDialog.IsOpen}" Background="#8F0D1828">
+      <Border Width="780" Height="496" CornerRadius="24" Background="#FFFFFF"
+              HorizontalAlignment="Center" VerticalAlignment="Center" Padding="30,22"
+              BoxShadow="0 18 50 0 #59000000">
+        <Grid RowDefinitions="Auto,*,48">
+          <!-- Title Bar -->
+          <DockPanel Grid.Row="0" Margin="0,0,0,10">
+            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+              <TextBlock Text="{Binding CommDialog.DeviceName}" FontSize="20" FontWeight="SemiBold" Foreground="#1F2A35" />
+              <TextBlock Text="串口 · Modbus RTU" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+            </StackPanel>
+            <Button DockPanel.Dock="Right" Command="{Binding CommDialog.CancelCommand}"
+                    Width="44" Height="44" CornerRadius="22" Background="#F1F3F6" BorderThickness="0" Cursor="Hand">
+              <PathIcon Data="{StaticResource IconClose}" Width="22" Height="22" Foreground="#4F5B67" />
+            </Button>
+          </DockPanel>
+
+          <!-- Form Rows -->
+          <StackPanel Grid.Row="1" Spacing="0">
+            <!-- Port Row -->
+            <StackPanel Orientation="Horizontal" Height="56" VerticalAlignment="Center">
+              <TextBlock Text="串口" Width="92" FontSize="15" Foreground="#4F5B67" VerticalAlignment="Center" />
+              <Button Command="{Binding EditCommPortCommand}" Width="150" Height="44" Padding="12,0" CornerRadius="8"
+                      Background="#F3F7FC" BorderBrush="#C9D6E5" BorderThickness="1.5" HorizontalContentAlignment="Left" VerticalAlignment="Center" Cursor="Hand">
+                <TextBlock Text="{Binding CommDialog.Port}" FontSize="19" FontWeight="SemiBold" Foreground="#1F2A35" VerticalAlignment="Center" />
+              </Button>
+              <TextBlock Text="点一下填串口号（COM 后面的数字）" FontSize="14" Foreground="#8792A0" Margin="14,0,0,0" VerticalAlignment="Center" />
+            </StackPanel>
+            <Border Height="1" Background="#E8ECF1" Margin="0,4" />
+
+            <!-- Baud Rate Circular Radios -->
+            <StackPanel Orientation="Horizontal" Height="56" VerticalAlignment="Center">
+              <TextBlock Text="波特率" Width="92" FontSize="15" Foreground="#4F5B67" VerticalAlignment="Center" />
+              <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <Button Command="{Binding CommDialog.SetBaudCommand}" CommandParameter="9600" Width="124" Height="44" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left" Cursor="Hand">
+                  <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                    <Border Width="22" Height="22" CornerRadius="11" Background="#FFFFFF" BorderThickness="2"
+                            BorderBrush="{Binding CommDialog.BaudRate, Converter={StaticResource EqRingBrush}, ConverterParameter=9600}">
+                      <Ellipse Width="12" Height="12" Fill="{Binding CommDialog.BaudRate, Converter={StaticResource EqDotBrush}, ConverterParameter=9600}" />
+                    </Border>
+                    <TextBlock Text="9600" FontSize="16"
+                               Foreground="{Binding CommDialog.BaudRate, Converter={StaticResource EqTextBrush}, ConverterParameter=9600}"
+                               FontWeight="{Binding CommDialog.BaudRate, Converter={x:Static conv:EqualsStringToFontWeightConverter.Instance}, ConverterParameter=9600}" />
+                  </StackPanel>
+                </Button>
+                <Button Command="{Binding CommDialog.SetBaudCommand}" CommandParameter="19200" Width="124" Height="44" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left" Cursor="Hand">
+                  <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                    <Border Width="22" Height="22" CornerRadius="11" Background="#FFFFFF" BorderThickness="2"
+                            BorderBrush="{Binding CommDialog.BaudRate, Converter={StaticResource EqRingBrush}, ConverterParameter=19200}">
+                      <Ellipse Width="12" Height="12" Fill="{Binding CommDialog.BaudRate, Converter={StaticResource EqDotBrush}, ConverterParameter=19200}" />
+                    </Border>
+                    <TextBlock Text="19200" FontSize="16"
+                               Foreground="{Binding CommDialog.BaudRate, Converter={StaticResource EqTextBrush}, ConverterParameter=19200}"
+                               FontWeight="{Binding CommDialog.BaudRate, Converter={x:Static conv:EqualsStringToFontWeightConverter.Instance}, ConverterParameter=19200}" />
+                  </StackPanel>
+                </Button>
+                <Button Command="{Binding CommDialog.SetBaudCommand}" CommandParameter="38400" Width="124" Height="44" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left" Cursor="Hand">
+                  <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                    <Border Width="22" Height="22" CornerRadius="11" Background="#FFFFFF" BorderThickness="2"
+                            BorderBrush="{Binding CommDialog.BaudRate, Converter={StaticResource EqRingBrush}, ConverterParameter=38400}">
+                      <Ellipse Width="12" Height="12" Fill="{Binding CommDialog.BaudRate, Converter={StaticResource EqDotBrush}, ConverterParameter=38400}" />
+                    </Border>
+                    <TextBlock Text="38400" FontSize="16"
+                               Foreground="{Binding CommDialog.BaudRate, Converter={StaticResource EqTextBrush}, ConverterParameter=38400}"
+                               FontWeight="{Binding CommDialog.BaudRate, Converter={x:Static conv:EqualsStringToFontWeightConverter.Instance}, ConverterParameter=38400}" />
+                  </StackPanel>
+                </Button>
+                <Button Command="{Binding CommDialog.SetBaudCommand}" CommandParameter="57600" Width="124" Height="44" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left" Cursor="Hand">
+                  <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                    <Border Width="22" Height="22" CornerRadius="11" Background="#FFFFFF" BorderThickness="2"
+                            BorderBrush="{Binding CommDialog.BaudRate, Converter={StaticResource EqRingBrush}, ConverterParameter=57600}">
+                      <Ellipse Width="12" Height="12" Fill="{Binding CommDialog.BaudRate, Converter={StaticResource EqDotBrush}, ConverterParameter=57600}" />
+                    </Border>
+                    <TextBlock Text="57600" FontSize="16"
+                               Foreground="{Binding CommDialog.BaudRate, Converter={StaticResource EqTextBrush}, ConverterParameter=57600}"
+                               FontWeight="{Binding CommDialog.BaudRate, Converter={x:Static conv:EqualsStringToFontWeightConverter.Instance}, ConverterParameter=57600}" />
+                  </StackPanel>
+                </Button>
+                <Button Command="{Binding CommDialog.SetBaudCommand}" CommandParameter="115200" Width="124" Height="44" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left" Cursor="Hand">
+                  <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                    <Border Width="22" Height="22" CornerRadius="11" Background="#FFFFFF" BorderThickness="2"
+                            BorderBrush="{Binding CommDialog.BaudRate, Converter={StaticResource EqRingBrush}, ConverterParameter=115200}">
+                      <Ellipse Width="12" Height="12" Fill="{Binding CommDialog.BaudRate, Converter={StaticResource EqDotBrush}, ConverterParameter=115200}" />
+                    </Border>
+                    <TextBlock Text="115200" FontSize="16"
+                               Foreground="{Binding CommDialog.BaudRate, Converter={StaticResource EqTextBrush}, ConverterParameter=115200}"
+                               FontWeight="{Binding CommDialog.BaudRate, Converter={x:Static conv:EqualsStringToFontWeightConverter.Instance}, ConverterParameter=115200}" />
+                  </StackPanel>
+                </Button>
+              </StackPanel>
+            </StackPanel>
+            <Border Height="1" Background="#E8ECF1" Margin="0,4" />
+
+            <!-- Parity & Stop Bits Circular Radios -->
+            <StackPanel Orientation="Horizontal" Height="56" VerticalAlignment="Center">
+              <TextBlock Text="校验" Width="92" FontSize="15" Foreground="#4F5B67" VerticalAlignment="Center" />
+              <Button Command="{Binding CommDialog.SetParityCommand}" CommandParameter="无" Width="84" Height="44" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left" Cursor="Hand">
+                <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                  <Border Width="22" Height="22" CornerRadius="11" Background="#FFFFFF" BorderThickness="2"
+                          BorderBrush="{Binding CommDialog.Parity, Converter={StaticResource EqRingBrush}, ConverterParameter=无}">
+                    <Ellipse Width="12" Height="12" Fill="{Binding CommDialog.Parity, Converter={StaticResource EqDotBrush}, ConverterParameter=无}" />
+                  </Border>
+                  <TextBlock Text="无" FontSize="16"
+                             Foreground="{Binding CommDialog.Parity, Converter={StaticResource EqTextBrush}, ConverterParameter=无}"
+                             FontWeight="{Binding CommDialog.Parity, Converter={x:Static conv:EqualsStringToFontWeightConverter.Instance}, ConverterParameter=无}" />
+                </StackPanel>
+              </Button>
+              <Button Command="{Binding CommDialog.SetParityCommand}" CommandParameter="偶" Width="84" Height="44" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left" Cursor="Hand">
+                <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                  <Border Width="22" Height="22" CornerRadius="11" Background="#FFFFFF" BorderThickness="2"
+                          BorderBrush="{Binding CommDialog.Parity, Converter={StaticResource EqRingBrush}, ConverterParameter=偶}">
+                    <Ellipse Width="12" Height="12" Fill="{Binding CommDialog.Parity, Converter={StaticResource EqDotBrush}, ConverterParameter=偶}" />
+                  </Border>
+                  <TextBlock Text="偶" FontSize="16"
+                             Foreground="{Binding CommDialog.Parity, Converter={StaticResource EqTextBrush}, ConverterParameter=偶}"
+                             FontWeight="{Binding CommDialog.Parity, Converter={x:Static conv:EqualsStringToFontWeightConverter.Instance}, ConverterParameter=偶}" />
+                </StackPanel>
+              </Button>
+              <Button Command="{Binding CommDialog.SetParityCommand}" CommandParameter="奇" Width="84" Height="44" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left" Cursor="Hand">
+                <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                  <Border Width="22" Height="22" CornerRadius="11" Background="#FFFFFF" BorderThickness="2"
+                          BorderBrush="{Binding CommDialog.Parity, Converter={StaticResource EqRingBrush}, ConverterParameter=奇}">
+                    <Ellipse Width="12" Height="12" Fill="{Binding CommDialog.Parity, Converter={StaticResource EqDotBrush}, ConverterParameter=奇}" />
+                  </Border>
+                  <TextBlock Text="奇" FontSize="16"
+                             Foreground="{Binding CommDialog.Parity, Converter={StaticResource EqTextBrush}, ConverterParameter=奇}"
+                             FontWeight="{Binding CommDialog.Parity, Converter={x:Static conv:EqualsStringToFontWeightConverter.Instance}, ConverterParameter=奇}" />
+                </StackPanel>
+              </Button>
+
+              <TextBlock Text="停止位" Width="92" Margin="58,0,0,0" FontSize="15" Foreground="#4F5B67" VerticalAlignment="Center" />
+              <Button Command="{Binding CommDialog.SetStopBitsCommand}" CommandParameter="1" Width="84" Height="44" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left" Cursor="Hand">
+                <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                  <Border Width="22" Height="22" CornerRadius="11" Background="#FFFFFF" BorderThickness="2"
+                          BorderBrush="{Binding CommDialog.StopBits, Converter={StaticResource EqRingBrush}, ConverterParameter=1}">
+                    <Ellipse Width="12" Height="12" Fill="{Binding CommDialog.StopBits, Converter={StaticResource EqDotBrush}, ConverterParameter=1}" />
+                  </Border>
+                  <TextBlock Text="1" FontSize="16"
+                             Foreground="{Binding CommDialog.StopBits, Converter={StaticResource EqTextBrush}, ConverterParameter=1}"
+                             FontWeight="{Binding CommDialog.StopBits, Converter={x:Static conv:EqualsStringToFontWeightConverter.Instance}, ConverterParameter=1}" />
+                </StackPanel>
+              </Button>
+              <Button Command="{Binding CommDialog.SetStopBitsCommand}" CommandParameter="2" Width="84" Height="44" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Left" Cursor="Hand">
+                <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                  <Border Width="22" Height="22" CornerRadius="11" Background="#FFFFFF" BorderThickness="2"
+                          BorderBrush="{Binding CommDialog.StopBits, Converter={StaticResource EqRingBrush}, ConverterParameter=2}">
+                    <Ellipse Width="12" Height="12" Fill="{Binding CommDialog.StopBits, Converter={StaticResource EqDotBrush}, ConverterParameter=2}" />
+                  </Border>
+                  <TextBlock Text="2" FontSize="16"
+                             Foreground="{Binding CommDialog.StopBits, Converter={StaticResource EqTextBrush}, ConverterParameter=2}"
+                             FontWeight="{Binding CommDialog.StopBits, Converter={x:Static conv:EqualsStringToFontWeightConverter.Instance}, ConverterParameter=2}" />
+                </StackPanel>
+              </Button>
+            </StackPanel>
+            <Border Height="1" Background="#E8ECF1" Margin="0,4" />
+
+            <!-- Station & Poll Row -->
+            <StackPanel Orientation="Horizontal" Height="56" VerticalAlignment="Center">
+              <TextBlock Text="站号" Width="92" FontSize="15" Foreground="#4F5B67" VerticalAlignment="Center" />
+              <Button Command="{Binding EditCommStationCommand}" Width="110" Height="44" Padding="12,0" CornerRadius="8"
+                      Background="#F3F7FC" BorderBrush="#C9D6E5" BorderThickness="1.5" HorizontalContentAlignment="Left" VerticalAlignment="Center" Cursor="Hand">
+                <TextBlock Text="{Binding CommDialog.StationId}" FontSize="19" FontWeight="SemiBold" Foreground="#1F2A35" VerticalAlignment="Center" />
+              </Button>
+
+              <TextBlock Text="轮询周期" Width="92" Margin="116,0,0,0" FontSize="15" Foreground="#4F5B67" VerticalAlignment="Center" />
+              <Button Command="{Binding EditCommPollCommand}" Width="130" Height="44" Padding="12,0" CornerRadius="8"
+                      Background="#F3F7FC" BorderBrush="#C9D6E5" BorderThickness="1.5" HorizontalContentAlignment="Stretch" VerticalAlignment="Center" Cursor="Hand">
+                <DockPanel>
+                  <TextBlock Text="{Binding CommDialog.PollMs}" FontSize="19" FontWeight="SemiBold" Foreground="#1F2A35" VerticalAlignment="Center" />
+                  <TextBlock DockPanel.Dock="Right" Text="ms" FontSize="13" Foreground="#8792A0" VerticalAlignment="Center" />
+                </DockPanel>
+              </Button>
+            </StackPanel>
+          </StackPanel>
+
+          <!-- Footer: Switch + Hint + Cancel/Save -->
+          <DockPanel Grid.Row="2">
+            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+              <Button Command="{Binding CommDialog.ToggleEnabledCommand}" Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand">
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                  <TextBlock Text="启用这台设备" FontSize="15" Foreground="#4F5B67" VerticalAlignment="Center" />
+                  <Border Width="54" Height="32" CornerRadius="16" Background="{Binding CommDialog.Enabled, Converter={StaticResource SwitchBg}}">
+                    <Border Width="26" Height="26" CornerRadius="13" Background="#FFFFFF" HorizontalAlignment="Left" VerticalAlignment="Top"
+                            Margin="{Binding CommDialog.Enabled, Converter={x:Static conv:BoolToKnobMarginConverter.Instance}}"
+                            BoxShadow="0 1 3 0 #47000000" />
+                  </Border>
+                </StackPanel>
+              </Button>
+              <TextBlock Text="保存后要重启控制核心才生效" FontSize="14" Foreground="#8792A0" Margin="10,0,0,0" VerticalAlignment="Center" />
+            </StackPanel>
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+              <Button Command="{Binding CommDialog.CancelCommand}" Width="96" Height="48" CornerRadius="10"
+                      Background="#FFFFFF" BorderBrush="#CFD8E3" BorderThickness="1" Cursor="Hand">
+                <TextBlock Text="取消" FontSize="16" FontWeight="SemiBold" Foreground="#4F5B67" />
+              </Button>
+              <Button Command="{Binding CommDialog.SaveCommand}" Width="120" Height="48" CornerRadius="10"
+                      Background="#00559C" BorderThickness="0" Cursor="Hand">
+                <TextBlock Text="保存" FontSize="16" FontWeight="SemiBold" Foreground="#FFFFFF" />
+              </Button>
+            </StackPanel>
+          </DockPanel>
+        </Grid>
+      </Border>
+    </Grid>
+
+    <!-- ============================================================ -->
+    <!-- 2. STEP TYPE PICKER DIALOG (1:1 StepDlg.dc.html, 760x508)    -->
+    <!-- ============================================================ -->
+    <Grid IsVisible="{Binding StepTypeDialog.IsOpen}" Background="#8F0D1828">
+      <Border Width="760" Height="508" CornerRadius="24" Background="#FFFFFF"
+              HorizontalAlignment="Center" VerticalAlignment="Center" Padding="30,24"
+              BoxShadow="0 18 50 0 #59000000">
+        <StackPanel>
+          <!-- Header -->
+          <DockPanel Margin="0,0,0,14">
+            <TextBlock Text="{Binding StepTypeDialog.Title}" FontSize="20" FontWeight="SemiBold" Foreground="#1F2A35" VerticalAlignment="Center" />
+            <Button DockPanel.Dock="Right" Command="{Binding StepTypeDialog.CancelCommand}"
+                    Width="44" Height="44" CornerRadius="22" Background="#F1F3F6" BorderThickness="0" Cursor="Hand">
+              <PathIcon Data="{StaticResource IconClose}" Width="22" Height="22" Foreground="#4F5B67" />
+            </Button>
+          </DockPanel>
+
+          <!-- Group 1: 控温 -->
+          <TextBlock Text="控温" FontSize="14" Foreground="#8792A0" Margin="6,0,0,10" />
+          <StackPanel Orientation="Horizontal" Spacing="20">
+            <Button Command="{Binding StepTypeDialog.PickCommand}" CommandParameter="Tr" Width="150" Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand">
+              <StackPanel Spacing="7" HorizontalAlignment="Center">
+                <Border Width="92" Height="92" CornerRadius="46" Background="#F3F7FC">
+                  <PathIcon Data="{StaticResource IconThermoFill}" Width="44" Height="44" Foreground="#00559C" />
+                </Border>
+                <TextBlock Text="釜内温度" FontSize="17" FontWeight="SemiBold" Foreground="#1F2A35" HorizontalAlignment="Center" />
+                <TextBlock Text="Tr" FontSize="13" Foreground="#8792A0" HorizontalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button Command="{Binding StepTypeDialog.PickCommand}" CommandParameter="Tj" Width="150" Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand">
+              <StackPanel Spacing="7" HorizontalAlignment="Center">
+                <Border Width="92" Height="92" CornerRadius="46" Background="#F3F7FC">
+                  <PathIcon Data="{StaticResource IconThermometer}" Width="44" Height="44" Foreground="#00559C" />
+                </Border>
+                <TextBlock Text="夹套温度" FontSize="17" FontWeight="SemiBold" Foreground="#1F2A35" HorizontalAlignment="Center" />
+                <TextBlock Text="Tj" FontSize="13" Foreground="#8792A0" HorizontalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button Command="{Binding StepTypeDialog.PickCommand}" CommandParameter="Reflux" Width="150" Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand">
+              <StackPanel Spacing="7" HorizontalAlignment="Center">
+                <Border Width="92" Height="92" CornerRadius="46" Background="#F3F7FC">
+                  <PathIcon Data="{StaticResource IconSteam}" Width="44" Height="44" Foreground="#00559C" />
+                </Border>
+                <TextBlock Text="蒸回流" FontSize="17" FontWeight="SemiBold" Foreground="#1F2A35" HorizontalAlignment="Center" />
+                <TextBlock Text="TrTj" FontSize="13" Foreground="#8792A0" HorizontalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button Command="{Binding StepTypeDialog.PickCommand}" CommandParameter="Cry" Width="150" Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand">
+              <StackPanel Spacing="7" HorizontalAlignment="Center">
+                <Border Width="92" Height="92" CornerRadius="46" Background="#F3F7FC">
+                  <PathIcon Data="{StaticResource IconCryLine}" Width="44" Height="44" Foreground="#00559C" />
+                </Border>
+                <TextBlock Text="结晶" FontSize="17" FontWeight="SemiBold" Foreground="#1F2A35" HorizontalAlignment="Center" />
+                <TextBlock Text="分段曲线" FontSize="13" Foreground="#8792A0" HorizontalAlignment="Center" />
+              </StackPanel>
+            </Button>
+          </StackPanel>
+
+          <Border Height="1" Background="#E8ECF1" Margin="0,18,0,14" />
+
+          <!-- Group 2: 其他 -->
+          <TextBlock Text="其他" FontSize="14" Foreground="#8792A0" Margin="6,0,0,10" />
+          <StackPanel Orientation="Horizontal" Spacing="20">
+            <Button Command="{Binding StepTypeDialog.PickCommand}" CommandParameter="Stir" Width="150" Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand">
+              <StackPanel Spacing="7" HorizontalAlignment="Center">
+                <Border Width="92" Height="92" CornerRadius="46" Background="#F3F7FC">
+                  <Viewbox Width="46" Height="46">
+                    <Path Data="{StaticResource IconStir}" Stroke="#00559C" StrokeThickness="1.7" StrokeLineCap="Round" StrokeJoin="Round" />
+                  </Viewbox>
+                </Border>
+                <TextBlock Text="搅拌转速" FontSize="17" FontWeight="SemiBold" Foreground="#1F2A35" HorizontalAlignment="Center" />
+                <TextBlock Text="R" FontSize="13" Foreground="#8792A0" HorizontalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button Command="{Binding StepTypeDialog.PickCommand}" CommandParameter="Wait" Width="150" Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand">
+              <StackPanel Spacing="7" HorizontalAlignment="Center">
+                <Border Width="92" Height="92" CornerRadius="46" Background="#F3F7FC">
+                  <PathIcon Data="{StaticResource IconHourglass}" Width="44" Height="44" Foreground="#00559C" />
+                </Border>
+                <TextBlock Text="等待" FontSize="17" FontWeight="SemiBold" Foreground="#1F2A35" HorizontalAlignment="Center" />
+                <TextBlock Text="Wait" FontSize="13" Foreground="#8792A0" HorizontalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button Command="{Binding StepTypeDialog.PickCommand}" CommandParameter="Dose" Width="150" Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand">
+              <StackPanel Spacing="7" HorizontalAlignment="Center">
+                <Border Width="92" Height="92" CornerRadius="46" Background="#F3F7FC">
+                  <PathIcon Data="{StaticResource IconDroplet}" Width="44" Height="44" Foreground="#00559C" />
+                </Border>
+                <TextBlock Text="加料" FontSize="17" FontWeight="SemiBold" Foreground="#1F2A35" HorizontalAlignment="Center" />
+                <TextBlock Text="Dose" FontSize="13" Foreground="#8792A0" HorizontalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button Command="{Binding StepTypeDialog.PickCommand}" CommandParameter="Pause" Width="150" Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand">
+              <StackPanel Spacing="7" HorizontalAlignment="Center">
+                <Border Width="92" Height="92" CornerRadius="46" Background="#F3F7FC">
+                  <PathIcon Data="{StaticResource IconStandby}" Width="44" Height="44" Foreground="#00559C" />
+                </Border>
+                <TextBlock Text="暂停确认" FontSize="17" FontWeight="SemiBold" Foreground="#1F2A35" HorizontalAlignment="Center" />
+                <TextBlock Text="Pause" FontSize="13" Foreground="#8792A0" HorizontalAlignment="Center" />
+              </StackPanel>
+            </Button>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Grid>
+
+    <!-- ============================================================ -->
+    <!-- 3. ALARM LIST DIALOG (1:1 AlarmListDlg.dc.html, 860x560)     -->
+    <!-- ============================================================ -->
+    <Grid IsVisible="{Binding IsAlarmListOpen}" Background="#8F0D1828">
+      <Border Width="860" Height="560" CornerRadius="24" Background="#FFFFFF"
+              HorizontalAlignment="Center" VerticalAlignment="Center" Padding="30,22"
+              BoxShadow="0 18 50 0 #59000000">
+        <Grid RowDefinitions="Auto,*,54">
+          <DockPanel Grid.Row="0" Margin="0,0,0,10">
+            <StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
+              <TextBlock Text="报警记录" FontSize="20" FontWeight="SemiBold" Foreground="#1F2A35" />
+              <TextBlock Text="{Binding Alarms.Count, StringFormat=共 {0} 条 · 控制核心这次开机以来的}" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+            </StackPanel>
+            <Button DockPanel.Dock="Right" Command="{Binding CloseAlarmListCommand}"
+                    Width="44" Height="44" CornerRadius="22" Background="#F1F3F6" BorderThickness="0" Cursor="Hand">
+              <PathIcon Data="{StaticResource IconClose}" Width="22" Height="22" Foreground="#4F5B67" />
+            </Button>
+          </DockPanel>
+
+          <Border Grid.Row="1" CornerRadius="10" BorderBrush="#D5DEE8" BorderThickness="1" Padding="12,0" ClipToBounds="True">
+            <ScrollViewer>
+              <ItemsControl ItemsSource="{Binding Alarms}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border Height="46" Padding="4,0" BorderBrush="#E8ECF1" BorderThickness="0,0,0,1">
+                      <Grid ColumnDefinitions="138,74,*,Auto">
+                        <TextBlock Text="{Binding Timestamp}" FontSize="15" Foreground="#4F5B67" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="{Binding ChannelName}" FontSize="15" Foreground="#4F5B67" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="2" Text="{Binding Message}" FontSize="15" FontWeight="Medium" Foreground="#1F2A35" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="3" Text="{Binding StatusText}" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" Margin="12,0,0,0" />
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+          </Border>
+
+          <DockPanel Grid.Row="2" VerticalAlignment="Bottom">
+            <TextBlock Text="每一炉自己的报警也记在它的事件日志里，导出能看到" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+              <Button Command="{Binding SimulateInterlockAlarmCommand}" Height="38" Padding="14,0" CornerRadius="8"
+                      Background="#FFFFFF" BorderBrush="#E5484D" BorderThickness="1.2" Cursor="Hand">
+                <TextBlock Text="模拟联锁报警" FontSize="14" FontWeight="SemiBold" Foreground="#E5484D" />
+              </Button>
+              <Border Width="44" Height="38" CornerRadius="8" Background="#FFFFFF" BorderBrush="#CFD8E3" BorderThickness="1">
+                <TextBlock Text="‹" FontSize="18" Foreground="#4F5B67" HorizontalAlignment="Center" VerticalAlignment="Center" />
+              </Border>
+              <TextBlock Text="1 / 1" FontSize="14" Foreground="#4F5B67" Width="48" TextAlignment="Center" VerticalAlignment="Center" />
+              <Border Width="44" Height="38" CornerRadius="8" Background="#FFFFFF" BorderBrush="#CFD8E3" BorderThickness="1">
+                <TextBlock Text="›" FontSize="18" Foreground="#4F5B67" HorizontalAlignment="Center" VerticalAlignment="Center" />
+              </Border>
+            </StackPanel>
+          </DockPanel>
+        </Grid>
+      </Border>
+    </Grid>
+
+    <!-- ============================================================ -->
+    <!-- 4. TEXT INPUT DIALOG (1:1 TextDlg.dc.html, 1000x506)         -->
+    <!-- ============================================================ -->
+    <Grid IsVisible="{Binding TextDialog.IsOpen}" Background="#8F0D1828">
+      <Border Width="1000" Height="506" CornerRadius="24" Background="#FFFFFF"
+              HorizontalAlignment="Center" VerticalAlignment="Center" Padding="42,22"
+              BoxShadow="0 18 50 0 #59000000">
+        <StackPanel>
+          <!-- Title -->
+          <DockPanel Height="44">
+            <TextBlock Text="{Binding TextDialog.Title}" FontSize="17" Foreground="#4F5B67" VerticalAlignment="Center" />
+            <Button DockPanel.Dock="Right" Command="{Binding TextDialog.CancelCommand}"
+                    Width="44" Height="44" CornerRadius="22" Background="#F1F3F6" BorderThickness="0" Cursor="Hand">
+              <PathIcon Data="{StaticResource IconClose}" Width="22" Height="22" Foreground="#4F5B67" />
+            </Button>
+          </DockPanel>
+
+          <!-- Input Display Box (60px #F6F9FD, 1.5px #00559C border) -->
+          <Border Margin="0,8,0,0" Height="60" CornerRadius="12" Background="#F6F9FD" BorderBrush="#00559C" BorderThickness="1.5" Padding="18,0">
+            <DockPanel LastChildFill="True">
+              <TextBlock DockPanel.Dock="Right" Text="{Binding TextDialog.LengthCounter}" FontSize="13" Foreground="#8792A0" VerticalAlignment="Center" Margin="12,0,0,0" />
+              <TextBox Text="{Binding TextDialog.Text}" FontSize="26" FontWeight="SemiBold" Foreground="#002B7F"
+                       Background="Transparent" BorderThickness="0" Padding="0" VerticalContentAlignment="Center" MaxLength="30" />
+            </DockPanel>
+          </Border>
+
+          <!-- Pinyin + 8 Candidate Bar (52px) -->
+          <DockPanel LastChildFill="True" Margin="0,10,0,0" Height="52">
+            <TextBlock Text="{Binding TextDialog.Pinyin}" Width="118" FontSize="22" FontWeight="SemiBold" Foreground="#00559C" VerticalAlignment="Center" />
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+              <Border Width="48" Height="48" CornerRadius="10" Background="#E3E9F1">
+                <TextBlock Text="‹" FontSize="22" Foreground="#4F5B67" HorizontalAlignment="Center" VerticalAlignment="Center" />
+              </Border>
+              <Border Width="48" Height="48" CornerRadius="10" Background="#E3E9F1">
+                <TextBlock Text="›" FontSize="22" Foreground="#4F5B67" HorizontalAlignment="Center" VerticalAlignment="Center" />
+              </Border>
+            </StackPanel>
+            <ItemsControl ItemsSource="{Binding TextDialog.Candidates}" VerticalAlignment="Center">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="8" /></ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Button Command="{Binding $parent[UserControl].DataContext.TextDialog.PickCandidateCommand}" CommandParameter="{Binding}"
+                          Width="72" Height="48" CornerRadius="10" Background="#FFFFFF" BorderBrush="#CFD8E3" BorderThickness="1"
+                          FontSize="24" Foreground="#1F2A35" Content="{Binding}" Cursor="Hand" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </DockPanel>
+
+          <!-- 4-Row Touch QWERTY Keyboard (1:1 TextDlg.dc.html) -->
+          <StackPanel Margin="0,14,0,0" Spacing="8">
+            <!-- Row 0: q w e r t y u i o p -->
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button Classes="tk-key" Content="q" Command="{Binding TextDialog.TypeCharCommand}" CommandParameter="q" />
+              <Button Classes="tk-key" Content="w" Command="{Binding TextDialog.TypeCharCommand}" CommandParameter="w" />
+              <Button Classes="tk-key" Content="e" Command="{Binding TextDialog.TypeCharCommand}" CommandParameter="e" />
+              <Button Classes="tk-key" Content="r" Command="{Binding TextDialog.TypeCharCommand}" CommandParameter="r" />
+              <Button Classes="tk-key" Content="t" Command="{Binding TextDialog.TypeCharCommand}" CommandParameter="t" />
+              <Button Classes="tk-key" Content="y" Command="{Binding TextDialog.TypeCharCommand}" CommandParameter="y" />
+              <Button Classes="tk-key" Content="u" Command="{Binding TextDialog.TypeCharCommand}" CommandParameter="u" />
+              <Button Classes="tk-key" Content="i" Command="{Binding TextDialog.TypeCharCommand}" CommandParameter="i" />
+              <Button Classes="tk-key" Content="o" Command="{Binding TextDialog.TypeCharCommand}" CommandParameter="o" />
+              <Button Classes="tk-key" Content="p" Command="{Binding TextDialog.TypeCharCommand}" CommandParameter="p" />
+            </StackPanel>
+
+            <!-- Row 1: padding-left 46px + a s d f g h j k l -->
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="46,0,0,0">
+              <Button Classes="tk-key" Content="a" Command="{Binding TextDialog.TypeCharCommand}" CommandParameter="a" />
+              <Button Classes="tk-key" Content="s" Command="{Binding TextDialog.TypeCharCommand}" CommandParameter="s" />
+              <Button Classes="tk-key" Content="d" Command="{Binding TextDialog.TypeCharCommand}" CommandParameter="d" />
+              <Button Classes="tk-key" Content="f" Command="{Binding TextDialog.TypeCharCommand}" CommandParameter="f" />
+              <Button Classes="tk-key" Content="g" Command="{Binding TextDialog.TypeCharCommand}" CommandParameter="g" />
+              <Button Classes="tk-key" Content="h" Command="{Binding TextDialog.TypeCharCommand}" CommandParameter="h" />
+              <Button Classes="tk-key" Content="j" Command="{Binding TextDialog.TypeCharCommand}" CommandParameter="j" />
+              <Button Classes="tk-key" Content="k" Command="{Binding TextDialog.TypeCharCommand}" CommandParameter="k" />
+              <Button Classes="tk-key" Content="l" Command="{Binding TextDialog.TypeCharCommand}" CommandParameter="l" />
+            </StackPanel>
+
+            <!-- Row 2: 大写(130) + z x c v b n m + 退格(130) -->
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button Classes="tk-mod" Width="130" Content="大写" Command="{Binding TextDialog.ToggleUpperCommand}" />
+              <Button Classes="tk-key" Content="z" Command="{Binding TextDialog.TypeCharCommand}" CommandParameter="z" />
+              <Button Classes="tk-key" Content="x" Command="{Binding TextDialog.TypeCharCommand}" CommandParameter="x" />
+              <Button Classes="tk-key" Content="c" Command="{Binding TextDialog.TypeCharCommand}" CommandParameter="c" />
+              <Button Classes="tk-key" Content="v" Command="{Binding TextDialog.TypeCharCommand}" CommandParameter="v" />
+              <Button Classes="tk-key" Content="b" Command="{Binding TextDialog.TypeCharCommand}" CommandParameter="b" />
+              <Button Classes="tk-key" Content="n" Command="{Binding TextDialog.TypeCharCommand}" CommandParameter="n" />
+              <Button Classes="tk-key" Content="m" Command="{Binding TextDialog.TypeCharCommand}" CommandParameter="m" />
+              <Button Classes="tk-mod" Width="130" Content="退格" Command="{Binding TextDialog.BackspaceCommand}" />
+            </StackPanel>
+
+            <!-- Row 3: 123(130) + 中(130) + 空格(268) + -(84) + .(84) + 确定(175) -->
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button Classes="tk-mod" Width="130" Content="123" Command="{Binding TextDialog.ToggleNumericCommand}" />
+              <Button Classes="tk-mod" Width="130" Content="{Binding TextDialog.LangLabel}" Command="{Binding TextDialog.ToggleChineseCommand}" />
+              <Button Classes="tk-mod" Width="268" Content="空格" Command="{Binding TextDialog.InsertSpaceCommand}" />
+              <Button Classes="tk-key" Content="-" Command="{Binding TextDialog.TypeCharCommand}" CommandParameter="-" />
+              <Button Classes="tk-key" Content="." Command="{Binding TextDialog.TypeCharCommand}" CommandParameter="." />
+              <Button Width="175" Height="62" CornerRadius="12" Background="#00559C" Foreground="#FFFFFF" BorderThickness="0"
+                      FontSize="18" FontWeight="SemiBold" Content="确定" Command="{Binding TextDialog.ConfirmCommand}" Cursor="Hand" />
+            </StackPanel>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Grid>
+
+    <!-- ============================================================ -->
+    <!-- 5. NUMERIC KEYPAD DIALOG (1:1 KeypadDlg.dc.html, 800x468)    -->
+    <!-- ============================================================ -->
+    <Grid IsVisible="{Binding Keypad.IsOpen}" Background="#8F0D1828">
+      <Border Width="800" Height="468" CornerRadius="24" Background="#FFFFFF" ClipToBounds="True"
+              HorizontalAlignment="Center" VerticalAlignment="Center"
+              BoxShadow="0 18 50 0 #59000000">
+        <Grid ColumnDefinitions="392,408">
+          <!-- Left Display & Slider Pane (392x468 #F6F9FD) -->
+          <Border Grid.Column="0" Background="#F6F9FD" Padding="30,28">
+            <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,60">
+              <TextBlock Grid.Row="0" Text="{Binding Keypad.Title}" FontSize="16" Foreground="#4F5B67" />
+
+              <!-- Huge Value (62px #002B7F) + Unit (22px #8792A0) -->
+              <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                <TextBlock Text="{Binding Keypad.InputText}" FontSize="62" LineHeight="72" FontWeight="SemiBold" Foreground="#002B7F" />
+                <TextBlock Text="{Binding Keypad.Unit}" FontSize="22" Foreground="#8792A0" VerticalAlignment="Bottom" Margin="0,0,0,12" />
+              </StackPanel>
+
+              <!-- Interactive Slider with Measured Marker -->
+              <Grid Grid.Row="2" Margin="0,14,0,0" Height="40">
+                <Canvas IsHitTestVisible="False">
+                  <Border Canvas.Left="{Binding Keypad.MeasuredMarkerOffset}" Canvas.Top="10" Width="2" Height="20" Background="#4F5B67" />
+                </Canvas>
+                <Slider Classes="hmi-kp-slider"
+                        Minimum="{Binding Keypad.Min}"
+                        Maximum="{Binding Keypad.Max}"
+                        Value="{Binding Keypad.SliderValue, Mode=TwoWay}" />
+              </Grid>
+
+              <!-- Min / Current / Max Labels -->
+              <Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto" Margin="0,4,0,0">
+                <TextBlock Text="{Binding Keypad.MinText}" FontSize="13" Foreground="#8792A0" />
+                <TextBlock Grid.Column="1" Text="{Binding Keypad.CurrentBadgeText}" FontSize="13" Foreground="#8792A0" HorizontalAlignment="Center" />
+                <TextBlock Grid.Column="2" Text="{Binding Keypad.MaxText}" FontSize="13" Foreground="#8792A0" />
+              </Grid>
+
+              <!-- Previous & Measured Quick-Fill Lines + Validation Error -->
+              <StackPanel Grid.Row="4" Margin="0,22,0,0" Spacing="8">
+                <Button Command="{Binding Keypad.FillPreviousCommand}" Background="Transparent" BorderThickness="0" Padding="0" HorizontalAlignment="Left" Cursor="Hand">
+                  <StackPanel Orientation="Horizontal" Spacing="14">
+                    <TextBlock Text="上次设定" FontSize="15" Foreground="#4F5B67" />
+                    <TextBlock Text="{Binding Keypad.PreviousText}" FontSize="15" FontWeight="SemiBold" Foreground="#1F2A35" />
+                  </StackPanel>
+                </Button>
+                <Button Command="{Binding Keypad.FillMeasuredCommand}" Background="Transparent" BorderThickness="0" Padding="0" HorizontalAlignment="Left" Cursor="Hand">
+                  <StackPanel Orientation="Horizontal" Spacing="14">
+                    <TextBlock Text="当前实测" FontSize="15" Foreground="#4F5B67" />
+                    <TextBlock Text="{Binding Keypad.MeasuredText}" FontSize="15" FontWeight="SemiBold" Foreground="#1F2A35" />
+                  </StackPanel>
+                </Button>
+                <TextBlock Text="{Binding Keypad.ErrorText}" FontSize="13" Foreground="#E5484D" FontWeight="SemiBold" Margin="0,4,0,0" />
+              </StackPanel>
+
+              <!-- Bottom Pill Backspace (84x60) + Apply (flex 1, 60px) -->
+              <Grid Grid.Row="5" ColumnDefinitions="84,12,*">
+                <Button Grid.Column="0" Command="{Binding Keypad.PressKeyCommand}" CommandParameter="BS"
+                        Width="84" Height="60" CornerRadius="30" Background="#E9EEF5" BorderThickness="0" Cursor="Hand">
+                  <PathIcon Data="{StaticResource IconBackspace}" Width="26" Height="26" Foreground="#4F5B67" />
+                </Button>
+                <Button Grid.Column="2" Command="{Binding Keypad.ApplyCommand}"
+                        Height="60" CornerRadius="30" Background="#00559C" BorderThickness="0" HorizontalAlignment="Stretch" Cursor="Hand">
+                  <TextBlock Text="应用" FontSize="19" FontWeight="SemiBold" Foreground="#FFFFFF" />
+                </Button>
+              </Grid>
+            </Grid>
+          </Border>
+
+          <!-- Right Circular Keypad Pane (408x468 #FFFFFF) -->
+          <Canvas Grid.Column="1" Background="#FFFFFF">
+            <!-- Top-right Close Circle (44x44) -->
+            <Button Canvas.Right="18" Canvas.Top="16" Command="{Binding Keypad.CancelCommand}"
+                    Width="44" Height="44" CornerRadius="22" Background="#F1F3F6" BorderThickness="0" Cursor="Hand">
+              <PathIcon Data="{StaticResource IconClose}" Width="22" Height="22" Foreground="#4F5B67" />
+            </Button>
+
+            <!-- 3x4 Grid of 80x80 Circular Keys (gap 16px row, 32px col) -->
+            <StackPanel Canvas.Left="44" Canvas.Top="46" Spacing="16">
+              <StackPanel Orientation="Horizontal" Spacing="32">
+                <Button Classes="kp-round-key" Content="7" Command="{Binding Keypad.PressKeyCommand}" CommandParameter="7" />
+                <Button Classes="kp-round-key" Content="8" Command="{Binding Keypad.PressKeyCommand}" CommandParameter="8" />
+                <Button Classes="kp-round-key" Content="9" Command="{Binding Keypad.PressKeyCommand}" CommandParameter="9" />
+              </StackPanel>
+              <StackPanel Orientation="Horizontal" Spacing="32">
+                <Button Classes="kp-round-key" Content="4" Command="{Binding Keypad.PressKeyCommand}" CommandParameter="4" />
+                <Button Classes="kp-round-key" Content="5" Command="{Binding Keypad.PressKeyCommand}" CommandParameter="5" />
+                <Button Classes="kp-round-key" Content="6" Command="{Binding Keypad.PressKeyCommand}" CommandParameter="6" />
+              </StackPanel>
+              <StackPanel Orientation="Horizontal" Spacing="32">
+                <Button Classes="kp-round-key" Content="1" Command="{Binding Keypad.PressKeyCommand}" CommandParameter="1" />
+                <Button Classes="kp-round-key" Content="2" Command="{Binding Keypad.PressKeyCommand}" CommandParameter="2" />
+                <Button Classes="kp-round-key" Content="3" Command="{Binding Keypad.PressKeyCommand}" CommandParameter="3" />
+              </StackPanel>
+              <StackPanel Orientation="Horizontal" Spacing="32">
+                <Button Classes="kp-round-key" Content="±" Command="{Binding Keypad.PressKeyCommand}" CommandParameter="±" />
+                <Button Classes="kp-round-key" Content="0" Command="{Binding Keypad.PressKeyCommand}" CommandParameter="0" />
+                <Button Classes="kp-round-key" Content="." Command="{Binding Keypad.PressKeyCommand}" CommandParameter="." />
+              </StackPanel>
+            </StackPanel>
+          </Canvas>
+        </Grid>
+      </Border>
+    </Grid>
+
+    <!-- ============================================================ -->
+    <!-- 6. SAFETY INTERLOCK ALARM DIALOG (1:1 AlarmDlg.dc.html, 620) -->
+    <!-- ============================================================ -->
+    <Grid IsVisible="{Binding IsAlarmInterlockOpen}" Background="#9E780E12">
+      <Border Width="620" CornerRadius="14" Background="#FFFFFF" ClipToBounds="True"
+              HorizontalAlignment="Center" VerticalAlignment="Center"
+              BoxShadow="0 18 50 0 #66000000">
+        <StackPanel>
+          <!-- 64px Red Header -->
+          <Border Height="64" Background="#E5484D" Padding="24,0">
+            <DockPanel>
+              <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                <PathIcon Data="{StaticResource IconWarning}" Width="28" Height="28" Foreground="#FFFFFF" />
+                <TextBlock Text="安全联锁 · 停止控温" FontSize="20" FontWeight="SemiBold" Foreground="#FFFFFF" VerticalAlignment="Center" />
+              </StackPanel>
+              <TextBlock DockPanel.Dock="Right" Text="{Binding ActiveAlarmWhenText}" FontSize="14" Foreground="#E6FFFFFF" VerticalAlignment="Center" />
+            </DockPanel>
+          </Border>
+
+          <!-- Body -->
+          <StackPanel Margin="24,22,24,0" Spacing="12">
+            <TextBlock Text="{Binding ActiveInterlockAlarm.Message}" FontSize="19" FontWeight="SemiBold" Foreground="#1F2A35" TextWrapping="Wrap" />
+            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+              <Ellipse Width="9" Height="9" Fill="#00B368" />
+              <TextBlock Text="{Binding ActiveInterlockAlarm.RecoveredText}" FontSize="15" Foreground="#0A8A4F" />
+            </StackPanel>
+            <TextBlock Text="{Binding ActiveInterlockAlarm.ActionTaken}" FontSize="15" Foreground="#4F5B67" />
+            <TextBlock Text="点外面关不掉这个框；确认后才能继续操作" FontSize="14" Foreground="#8792A0" />
+          </StackPanel>
+
+          <!-- Footer Buttons -->
+          <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" Margin="24,22">
+            <Button Command="{Binding AcknowledgeAllAlarmsCommand}" Classes="hmi-outline-danger" Width="130" Height="52" Content="全部确认" />
+            <Button Command="{Binding AcknowledgeInterlockCommand}" Classes="hmi-danger" Width="170" Height="52" Content="复位（确认）" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Grid>
+  </Panel>
+</UserControl>

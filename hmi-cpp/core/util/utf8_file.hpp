@@ -11,10 +11,21 @@
 
 #include <cstdio>
 #include <cstring>
+#include <exception>
 #include <filesystem>
 #include <string>
 
 namespace tec {
+
+// 兼容 UTF-8 字符串与 Windows 命令行本地编码（GBK / ACP）路径，不抛异常、不引入 windows.h 宏污染
+inline std::filesystem::path fs_path(const std::string& s) {
+    if (s.empty()) return {};
+    try {
+        return std::filesystem::u8path(s);
+    } catch (const std::exception&) {
+        return std::filesystem::path(s);
+    }
+}
 
 inline std::FILE* open_file(const std::filesystem::path& p, const char* mode) {
 #ifdef _WIN32
@@ -25,9 +36,9 @@ inline std::FILE* open_file(const std::filesystem::path& p, const char* mode) {
 #endif
 }
 
-/// 路径是 UTF-8 字符串时用这个
+/// 路径是 UTF-8（或命令行本地编码）字符串时用这个
 inline std::FILE* open_file_u8(const std::string& utf8_path, const char* mode) {
-    return open_file(std::filesystem::u8path(utf8_path), mode);
+    return open_file(fs_path(utf8_path), mode);
 }
 
 }  // namespace tec

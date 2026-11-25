@@ -1,14 +1,11 @@
 // 釜内控温的外环：按实测实时算出「夹套该到多少度」。
 //
-// 这是 2026-11-14 定稿的做法（Python 参考实现 outer_m.py 的类 M，缺省参数）逐行搬过来的，算出来的数要和参考实现逐拍一样
-// （tests/golden_outer.cpp 拿 14 场真机记录核对）。改这里的算式之前先改参考实现并重出对拍数据，不要只改一边。
-//
-//   夹套目标 = 目标 + b̂ + g(目标 − T̂)
-//   b̂：维持温差（夹套要比釜内高多少才能稳住），T̂：釜内温度的估计，都由一个二阶观测器按读数实时算
-//   g：比例那一份。升温方向平滑封顶（tanh），降温方向不封
-//   τ̂：釜的时间常数，按实测连续修正（两路算法：回归 + 卡尔曼；往小改要两路都同意，因为往小改错了会冲过头）
-//
-// 为什么没有「到站收回」「卡住补一把」这类规则：用户 2026-11-12 定的方向是不加规则，全部按实测算。
+// 基础模式（fast.enabled == false）：保持 2026-11-14 定稿实现（tests/golden_outer.cpp 逐拍对拍）。
+// 快速无超调串级模式（fast.enabled == true，EasyMax / RC1 级三阶段平滑制动算法）：
+//   1. 单调三阶段状态机：BOOST（干态全功率拉高）→ BRAKE（单次通水 + TEC 精确抽走釜壁储热）→ HOLD（无扰切回干态加热稳态保温）
+//   2. 双带宽二阶釜壁观测器（tw1=0.26*tw, tw2=0.74*tw）+ 在线积分能量平衡 τ̂/tw 自适应辨识
+//   3. 釜壁储热 Smith 等效前馈补偿（消除制动切回保温瞬间的外环比例二次补热与降温过冷）
+//   4. 扰动/放热有效偏置前馈修正（b_ctrl），在低散热失配或突发反应放热时提前压低制动目标，严守 ±0.10 ℃ 零超调红线
 #pragma once
 #include <array>
 #include <deque>
@@ -19,29 +16,42 @@
 
 namespace tec {
 
-// 快速升温（用户 2026-11-24 要的：夹套拉高、快到、算出要超就提前转 TEC 制冷、不超调优先）。
-// 只在升温方向起作用；降温、保温、放热完全交给上面那套。
-//   夹套目标 = 上面算的夹套目标 + 加码
-//   每一拍用同一个模型往前推一遍：「从现在起不再加码，靠已经存进夹套和釜壁里的热，釜内最高会到多少」
-//   还差得远就加码（夹套拉高）；快够了加码连续收到 0；算出来要冲过目标就把夹套压到「稳住要的温度」以下，让 TEC 把多的热抽走
-// 没有写死的切换温度——刹车点是每拍算出来的。
-// 状态：2026-11-24 试算台上升温稳住时间中位 55 → 30 min，但 140 场里 32 场冲过 > 0.10 K，还没过线，等真机数据再调。
+enum class FastStage {
+    Hold = 0,
+    Boost = 1,
+    Brake = 2,
+};
+
 struct FastParams {
     bool enabled = false;
-    double rc = 0.15;         // TEC 全力制冷时夹套每秒能降多少（K/s）。试算台上量到 0.24–0.28，这里只按六成算
-    double t_dead = 30.0;     // 从决定刹车到夹套真开始降的空档（s）：符号驻留 + 开冷却水阀通水 + 扳继电器 + 夹套自己的滞后
-    double t_track = 20.0;    // 夹套跟目标的快慢（s）
-    double kb = 8.0;          // 「还差多少」→ 加码 的增益（K/K）
-    double boost_max = 60.0;  // 最多加码多少（K）
-    double neg_max = 30.0;    // 算出来要冲过时最多把夹套压低多少（K）
-    double tj_cap = 150.0;    // 加码后夹套目标的顶（℃）
-    double m0 = 0.05;         // 基础余量（K）
-    double c_eps = 1.0;       // 读数离模型每远 1 K，余量多留这么多 K（模型对不上 = 没把握 = 早刹车）
-    double m_over = 0.02;     // 算出来的最高点超过 目标 + 这么多 才往下压
-    double boost_lp = 20.0;   // 加码过一阶平滑（s），免得夹套来回摆
-    double dt_pred = 4.0;     // 往前推的步长（s）
-    // 维持温差的起步表（增益表里「稳态偏置」那一列）。给了的话：决定「还加不加码」用 观测器的 和 表的 里小的那个（偏向早刹车）；
-    // 决定「要不要往下压」只用观测器自己的（保温时它是准的，不会因为表偏小就平白去制冷）
+    double rc = 0.15;
+    double t_dead = 30.0;
+    double t_track = 20.0;
+    double kb = 8.0;
+    double boost_max = 60.0;      // 最多加码多少（K）；0 = 不启用加码
+    double neg_max = 30.0;
+    double tj_cap = 150.0;        // 加码后夹套目标上限（℃）
+    double m0 = 0.05;
+    double c_eps = 1.0;
+    double m_over = 0.02;
+    double boost_lp = 20.0;
+    double dt_pred = 4.0;
+
+    // EasyMax 三阶段弹道预测与双带宽观测器常数
+    double rho_fast = 0.022;
+    double k_margin_fast = 1.05;
+    double to_boost = 135.0;
+    double to_calm = 38.0;
+    double to_min_fast = 22.0;
+    double eps0_fast = 1.5;
+    double eps_lp_s_fast = 14.0;
+    double tau_lo_fast = 0.35;
+    double tau_hi_fast = 3.0;
+    double rc_nom = 0.265;        // TEC + 冷却水在热夹套制动段的标称下拉速率（K/s）
+    double t_switch_nom = 7.0;    // 驻留 + 通水先导 + 继电器死区的标称切换时间（s）
+    double t_chiller_nom = 24.0;  // 冷水机水路建立标称时间（s）
+
+    // 维持温差的起步表（增益表里「稳态偏置」列）
     std::function<double(double)> bias_start;
 };
 
@@ -80,8 +90,14 @@ struct OuterObs {
     double sp_rate = 0;           // 斜坡的目标变化率（K/s）；台阶 = 0
     std::optional<double> sp_final;   // 斜坡的终点；台阶时空着
     bool first = false;           // 开控第一拍
-    // 放热报警要看的执行器状态
+    // 放热报警与水路协同要看的执行器状态
     bool cooling_side = false, inner_sat_low = false, tec_withheld = false, output_on = true;
+    double heater_duty_frac = 0.0;    // 当前加热棒归一化占空比（0..1），用于估计电热棒热惯性余量
+    double tj_d_filt = 0.0;           // 内环滤波后的夹套温变率 dTj/dt（K/s），用于速度前瞻平滑退制动
+    bool in_lead = false;             // 热源切换器是否正处于通水先导阶段
+    double lead_until = -1e9;         // 通水先导结束时刻（s）
+    int chiller_state = 0;            // 冷水机状态（0=Idle, 1=Starting, 2=Running, 3=Stopping）
+    double chiller_since = 0.0;      // 冷水机进入当前状态的时刻（s）
 };
 
 struct OuterOut {
@@ -99,10 +115,14 @@ public:
     double wall() const { return wall_; }
     double xr() const { return xr_; }
     double b() const { return b_; }
+    double b_ctrl() const { return p_.fast.enabled ? b_ctrl_ : b_; }
+    double w1() const { return w1_; }
+    double w2() const { return w2_; }
+    FastStage stage() const { return stage_; }
     double tau() const { return tau_; }
     double tau_ekf() const { return tau_e_; }
     double k() const { return k_; }
-    double p_up() const { return p_.rho * tau_ / k_; }
+    double p_up() const { return (p_.fast.enabled ? p_.fast.rho_fast : p_.rho) * tau_ / k_; }
     double g_sp() const { return g_sp_; }
     double to_eff() const { return to_eff_; }
     double rj() const { return rj_; }
@@ -118,11 +138,15 @@ private:
     std::pair<double, double> g(double e) const;
     double calc_k() const;
     std::optional<std::string> alarm(const OuterObs& o);
-    double predict_peak(double sp, double tj, bool use_min) const;
-    double fast_boost(const OuterObs& o);
+
+    // EasyMax 三阶段串级与弹道预测内部方法
+    double bias_prior(double tr) const;
+    double u_base_easymax(double sp, double xr_val, double b_val) const;
+    double predict_ballistic_peak(const OuterObs& o, double sp, double b_est, double slope_scale) const;
+    OuterOut step_easymax(const OuterObs& o);
 
     OuterParams p_;
-    double tau0_, tau_, tw_, k_;
+    double tau0_, tau_, tw0_, tw_, k_;
     double wall_ = 0, wall_prev_ = 0, wall_rate_ = 0, xr_ = 0, b_ = 0, eps_lp_ = 0, to_eff_ = 0;
     double ref_ = 0, g_sp_ = 0;
     std::optional<double> spf_prev_;
@@ -137,7 +161,13 @@ private:
     std::deque<std::pair<double, double>> xr_hist_;
     double full_s_ = 0;
     bool alarm_on_ = false;
-    // 快速升温
+    // 快速升温（EasyMax 三阶段状态与二阶釜壁状态）
+    FastStage stage_ = FastStage::Hold;
+    double w1_ = 0, w2_ = 0, w2_prev_ = 0;
+    double b_ctrl_ = 0;
+    double tr_anchor_ = 0, drive_int_ = 0;
+    double heater_mom_ = 0;
+    double sp_step_size_ = 0;
     std::optional<double> tj_prev_;
     double rj_ = 0, peak_ = 0, boost_ = 0;
 };

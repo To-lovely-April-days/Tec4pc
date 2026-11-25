@@ -1,0 +1,55 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctrl="using:HtlabHmi.Controls"
+             x:Class="HtlabHmi.Views.Overview.SchemeOverviewView">
+  <!-- 1:1 Scheme.dc.html: Two stacked full-width 296px cards with temperature profile charts -->
+  <Grid RowDefinitions="296,8,296">
+    <!-- Channel 1 Card -->
+    <Button Grid.Row="0" Command="{Binding NavigateSectionCommand}" CommandParameter="Ch1"
+            Padding="0" Background="Transparent" BorderThickness="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+            HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" Cursor="Hand">
+      <Border Classes="hmi-card">
+        <Grid RowDefinitions="54,*">
+          <DockPanel Grid.Row="0" Margin="24,10,20,4">
+            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+              <TextBlock Text="通道 1" FontSize="18" Foreground="#4F5B67" VerticalAlignment="Center" />
+              <TextBlock Text="{Binding Channel1.SchemeName}" FontSize="19" FontWeight="SemiBold" Foreground="#00559C" VerticalAlignment="Center" />
+              <TextBlock Text="{Binding Channel1.SchemeOverviewMeta}" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+            </StackPanel>
+            <Border DockPanel.Dock="Right" Height="30" CornerRadius="15" Background="#00559C" Padding="14,0" VerticalAlignment="Center">
+              <TextBlock Text="{Binding Channel1.SchemeOverviewBadge}" FontSize="14" FontWeight="SemiBold" Foreground="#FFFFFF" VerticalAlignment="Center" />
+            </Border>
+          </DockPanel>
+          <ctrl:SchemeProfileChartControl Grid.Row="1" Margin="24,4,24,12"
+                                          Steps="{Binding Channel1.Steps}"
+                                          CurrentStepIndex="{Binding Channel1.CurrentStepIndex}"
+                                          IsRunning="{Binding Channel1.IsSequenceRunning}" />
+        </Grid>
+      </Border>
+    </Button>
+
+    <!-- Channel 2 Card -->
+    <Button Grid.Row="2" Command="{Binding NavigateSectionCommand}" CommandParameter="Ch2"
+            Padding="0" Background="Transparent" BorderThickness="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+            HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" Cursor="Hand">
+      <Border Classes="hmi-card">
+        <Grid RowDefinitions="54,*">
+          <DockPanel Grid.Row="0" Margin="24,10,20,4">
+            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+              <TextBlock Text="通道 2" FontSize="18" Foreground="#4F5B67" VerticalAlignment="Center" />
+              <TextBlock Text="{Binding Channel2.SchemeName}" FontSize="19" FontWeight="SemiBold" Foreground="#00559C" VerticalAlignment="Center" />
+              <TextBlock Text="{Binding Channel2.SchemeOverviewMeta}" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+            </StackPanel>
+            <Border DockPanel.Dock="Right" Height="30" CornerRadius="15" Background="#00559C" Padding="14,0" VerticalAlignment="Center">
+              <TextBlock Text="{Binding Channel2.SchemeOverviewBadge}" FontSize="14" FontWeight="SemiBold" Foreground="#FFFFFF" VerticalAlignment="Center" />
+            </Border>
+          </DockPanel>
+          <ctrl:SchemeProfileChartControl Grid.Row="1" Margin="24,4,24,12"
+                                          Steps="{Binding Channel2.Steps}"
+                                          CurrentStepIndex="{Binding Channel2.CurrentStepIndex}"
+                                          IsRunning="{Binding Channel2.IsSequenceRunning}" />
+        </Grid>
+      </Border>
+    </Button>
+  </Grid>
+</UserControl>

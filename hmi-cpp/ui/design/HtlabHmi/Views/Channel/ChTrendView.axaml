@@ -1,0 +1,201 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:conv="using:HtlabHmi.Converters"
+             xmlns:ctrl="using:HtlabHmi.Controls"
+             x:Class="HtlabHmi.Views.Channel.ChTrendView">
+  <UserControl.Resources>
+    <conv:BoolToBrushConverter x:Key="TrBar" TrueBrush="#E5645A" FalseBrush="#DCE2E9" />
+    <conv:BoolToBrushConverter x:Key="TjBar" TrueBrush="#19B5A5" FalseBrush="#DCE2E9" />
+    <conv:BoolToBrushConverter x:Key="SpBar" TrueBrush="#F2A33A" FalseBrush="#DCE2E9" />
+    <conv:BoolToBrushConverter x:Key="DtBar" TrueBrush="#7C5CFF" FalseBrush="#DCE2E9" />
+    <conv:BoolToBrushConverter x:Key="PhBar" TrueBrush="#00B368" FalseBrush="#DCE2E9" />
+    <conv:BoolToBrushConverter x:Key="RpmBar" TrueBrush="#00559C" FalseBrush="#DCE2E9" />
+    <conv:BoolToBrushConverter x:Key="ValFg" TrueBrush="#1D3557" FalseBrush="#8792A0" />
+    <conv:BoolToBrushConverter x:Key="LblFg" TrueBrush="#4F5B67" FalseBrush="#8792A0" />
+    <conv:BoolToBrushConverter x:Key="RadioRing" TrueBrush="#00559C" FalseBrush="#A9B7C6" />
+    <conv:BoolToBrushConverter x:Key="RadioDot" TrueBrush="#00559C" FalseBrush="Transparent" />
+    <conv:BoolToBrushConverter x:Key="RadioTxt" TrueBrush="#00559C" FalseBrush="#4F5B67" />
+  </UserControl.Resources>
+
+  <!-- 1:1 ChTrend.dc.html: 1264x520 single white card -->
+  <Border Classes="hmi-card">
+    <Grid RowDefinitions="76,52,*">
+      <!-- Row 0: 6 Series Toggle Buttons with 3px colored bottom bar -->
+      <UniformGrid Grid.Row="0" Rows="1" Columns="6" Margin="24,14,24,0">
+        <Button Command="{Binding ToggleTrendSeriesCommand}" CommandParameter="0" Margin="0,0,14,0"
+                Background="Transparent" Padding="2,0,4,0" BorderThickness="0,0,0,3"
+                BorderBrush="{Binding ActiveChannel.ShowTr, Converter={StaticResource TrBar}}"
+                HorizontalAlignment="Stretch" VerticalAlignment="Stretch" HorizontalContentAlignment="Left" Cursor="Hand">
+          <StackPanel Spacing="1">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <Ellipse Width="8" Height="8" Fill="{Binding ActiveChannel.ShowTr, Converter={StaticResource TrBar}}" VerticalAlignment="Center" />
+              <TextBlock Text="Tr 釜内温度" FontSize="13" Foreground="{Binding ActiveChannel.ShowTr, Converter={StaticResource LblFg}}" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="5">
+              <TextBlock Text="{Binding ActiveChannel.TrText}" FontSize="25" FontWeight="SemiBold" Foreground="{Binding ActiveChannel.ShowTr, Converter={StaticResource ValFg}}" />
+              <TextBlock Text="℃" FontSize="13" Foreground="#8792A0" VerticalAlignment="Bottom" Margin="0,0,0,4" />
+            </StackPanel>
+          </StackPanel>
+        </Button>
+
+        <Button Command="{Binding ToggleTrendSeriesCommand}" CommandParameter="1" Margin="0,0,14,0"
+                Background="Transparent" Padding="2,0,4,0" BorderThickness="0,0,0,3"
+                BorderBrush="{Binding ActiveChannel.ShowTj, Converter={StaticResource TjBar}}"
+                HorizontalAlignment="Stretch" VerticalAlignment="Stretch" HorizontalContentAlignment="Left" Cursor="Hand">
+          <StackPanel Spacing="1">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <Ellipse Width="8" Height="8" Fill="{Binding ActiveChannel.ShowTj, Converter={StaticResource TjBar}}" VerticalAlignment="Center" />
+              <TextBlock Text="Tj 夹套温度" FontSize="13" Foreground="{Binding ActiveChannel.ShowTj, Converter={StaticResource LblFg}}" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="5">
+              <TextBlock Text="{Binding ActiveChannel.TjText}" FontSize="25" FontWeight="SemiBold" Foreground="{Binding ActiveChannel.ShowTj, Converter={StaticResource ValFg}}" />
+              <TextBlock Text="℃" FontSize="13" Foreground="#8792A0" VerticalAlignment="Bottom" Margin="0,0,0,4" />
+            </StackPanel>
+          </StackPanel>
+        </Button>
+
+        <Button Command="{Binding ToggleTrendSeriesCommand}" CommandParameter="2" Margin="0,0,14,0"
+                Background="Transparent" Padding="2,0,4,0" BorderThickness="0,0,0,3"
+                BorderBrush="{Binding ActiveChannel.ShowTjSp, Converter={StaticResource SpBar}}"
+                HorizontalAlignment="Stretch" VerticalAlignment="Stretch" HorizontalContentAlignment="Left" Cursor="Hand">
+          <StackPanel Spacing="1">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <Ellipse Width="8" Height="8" Fill="{Binding ActiveChannel.ShowTjSp, Converter={StaticResource SpBar}}" VerticalAlignment="Center" />
+              <TextBlock Text="Tj 设定（内环）" FontSize="13" Foreground="{Binding ActiveChannel.ShowTjSp, Converter={StaticResource LblFg}}" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="5">
+              <TextBlock Text="{Binding ActiveChannel.TjSpText}" FontSize="25" FontWeight="SemiBold" Foreground="{Binding ActiveChannel.ShowTjSp, Converter={StaticResource ValFg}}" />
+              <TextBlock Text="℃" FontSize="13" Foreground="#8792A0" VerticalAlignment="Bottom" Margin="0,0,0,4" />
+            </StackPanel>
+          </StackPanel>
+        </Button>
+
+        <Button Command="{Binding ToggleTrendSeriesCommand}" CommandParameter="3" Margin="0,0,14,0"
+                Background="Transparent" Padding="2,0,4,0" BorderThickness="0,0,0,3"
+                BorderBrush="{Binding ActiveChannel.ShowDeltaT, Converter={StaticResource DtBar}}"
+                HorizontalAlignment="Stretch" VerticalAlignment="Stretch" HorizontalContentAlignment="Left" Cursor="Hand">
+          <StackPanel Spacing="1">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <Ellipse Width="8" Height="8" Fill="{Binding ActiveChannel.ShowDeltaT, Converter={StaticResource DtBar}}" VerticalAlignment="Center" />
+              <TextBlock Text="Tr−Tj 内外温差" FontSize="13" Foreground="{Binding ActiveChannel.ShowDeltaT, Converter={StaticResource LblFg}}" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="5">
+              <TextBlock Text="{Binding ActiveChannel.DeltaTText}" FontSize="25" FontWeight="SemiBold" Foreground="{Binding ActiveChannel.ShowDeltaT, Converter={StaticResource ValFg}}" />
+              <TextBlock Text="K" FontSize="13" Foreground="#8792A0" VerticalAlignment="Bottom" Margin="0,0,0,4" />
+            </StackPanel>
+          </StackPanel>
+        </Button>
+
+        <Button Command="{Binding ToggleTrendSeriesCommand}" CommandParameter="4" Margin="0,0,14,0"
+                Background="Transparent" Padding="2,0,4,0" BorderThickness="0,0,0,3"
+                BorderBrush="{Binding ActiveChannel.ShowPh, Converter={StaticResource PhBar}}"
+                HorizontalAlignment="Stretch" VerticalAlignment="Stretch" HorizontalContentAlignment="Left" Cursor="Hand">
+          <StackPanel Spacing="1">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <Ellipse Width="8" Height="8" Fill="{Binding ActiveChannel.ShowPh, Converter={StaticResource PhBar}}" VerticalAlignment="Center" />
+              <TextBlock Text="pH" FontSize="13" Foreground="{Binding ActiveChannel.ShowPh, Converter={StaticResource LblFg}}" />
+            </StackPanel>
+            <TextBlock Text="{Binding ActiveChannel.PhText}" FontSize="25" FontWeight="SemiBold" Foreground="{Binding ActiveChannel.ShowPh, Converter={StaticResource ValFg}}" />
+          </StackPanel>
+        </Button>
+
+        <Button Command="{Binding ToggleTrendSeriesCommand}" CommandParameter="5"
+                Background="Transparent" Padding="2,0,4,0" BorderThickness="0,0,0,3"
+                BorderBrush="{Binding ActiveChannel.ShowRpm, Converter={StaticResource RpmBar}}"
+                HorizontalAlignment="Stretch" VerticalAlignment="Stretch" HorizontalContentAlignment="Left" Cursor="Hand">
+          <StackPanel Spacing="1">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <Ellipse Width="8" Height="8" Fill="{Binding ActiveChannel.ShowRpm, Converter={StaticResource RpmBar}}" VerticalAlignment="Center" />
+              <TextBlock Text="R 转速" FontSize="13" Foreground="{Binding ActiveChannel.ShowRpm, Converter={StaticResource LblFg}}" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="5">
+              <TextBlock Text="{Binding ActiveChannel.Rpm}" FontSize="25" FontWeight="SemiBold" Foreground="{Binding ActiveChannel.ShowRpm, Converter={StaticResource ValFg}}" />
+              <TextBlock Text="rpm" FontSize="13" Foreground="#8792A0" VerticalAlignment="Bottom" Margin="0,0,0,4" />
+            </StackPanel>
+          </StackPanel>
+        </Button>
+      </UniformGrid>
+
+      <!-- Row 1: Action Toolbar ABOVE Chart (exact top:88 in ChTrend.dc.html) -->
+      <DockPanel Grid.Row="1" Margin="16,8,16,0" VerticalAlignment="Center">
+        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <Button Command="{Binding AddTrendMarkerCommand}" Classes="hmi-outline" Height="40" Padding="16,0">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <PathIcon Data="{StaticResource IconFlag}" Width="19" Height="19" Foreground="#8792A0" />
+              <TextBlock Text="时间标记" FontSize="15" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Command="{Binding TakeTrendSnapshotCommand}" Classes="hmi-outline" Height="40" Padding="16,0">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <PathIcon Data="{StaticResource IconCamera}" Width="19" Height="19" Foreground="#8792A0" />
+              <TextBlock Text="拍快照" FontSize="15" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Command="{Binding DoExportCsvCommand}" Classes="hmi-outline" Height="40" Padding="16,0">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <PathIcon Data="{StaticResource IconUpload}" Width="19" Height="19" Foreground="#8792A0" />
+              <TextBlock Text="导出快照" FontSize="15" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <TextBlock Text="窗口 150 min" FontSize="14" Foreground="#8792A0" Margin="10,0,0,0" VerticalAlignment="Center" />
+        </StackPanel>
+
+        <!-- Right Circular Radio Axis Selectors -->
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+          <TextBlock Text="横轴" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+          <Button Command="{Binding SetTrendXAxisCommand}" CommandParameter="clock" Background="Transparent" BorderThickness="0" Padding="2,0" Cursor="Hand">
+            <StackPanel Orientation="Horizontal" Spacing="7">
+              <Border Width="21" Height="21" CornerRadius="10.5" Background="#FFFFFF" BorderBrush="{Binding ActiveChannel.XAxisClock, Converter={StaticResource RadioRing}}" BorderThickness="2">
+                <Ellipse Width="11" Height="11" Fill="{Binding ActiveChannel.XAxisClock, Converter={StaticResource RadioDot}}" />
+              </Border>
+              <TextBlock Text="时钟" FontSize="15" FontWeight="{Binding ActiveChannel.XAxisClock, Converter={x:Static conv:BoolToFontWeightConverter.Instance}}"
+                         Foreground="{Binding ActiveChannel.XAxisClock, Converter={StaticResource RadioTxt}}" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Command="{Binding SetTrendXAxisCommand}" CommandParameter="elapsed" Background="Transparent" BorderThickness="0" Padding="2,0" Cursor="Hand">
+            <StackPanel Orientation="Horizontal" Spacing="7">
+              <Border Width="21" Height="21" CornerRadius="10.5" Background="#FFFFFF" BorderBrush="{Binding !ActiveChannel.XAxisClock, Converter={StaticResource RadioRing}}" BorderThickness="2">
+                <Ellipse Width="11" Height="11" Fill="{Binding !ActiveChannel.XAxisClock, Converter={StaticResource RadioDot}}" />
+              </Border>
+              <TextBlock Text="实验时间" FontSize="15" FontWeight="{Binding !ActiveChannel.XAxisClock, Converter={x:Static conv:BoolToFontWeightConverter.Instance}}"
+                         Foreground="{Binding !ActiveChannel.XAxisClock, Converter={StaticResource RadioTxt}}" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+
+          <TextBlock Text="纵轴" FontSize="14" Foreground="#8792A0" Margin="12,0,0,0" VerticalAlignment="Center" />
+          <Button Command="{Binding SetTrendYAxisCommand}" CommandParameter="all" Background="Transparent" BorderThickness="0" Padding="2,0" Cursor="Hand">
+            <StackPanel Orientation="Horizontal" Spacing="7">
+              <Border Width="21" Height="21" CornerRadius="10.5" Background="#FFFFFF" BorderBrush="{Binding ActiveChannel.YAxisAll, Converter={StaticResource RadioRing}}" BorderThickness="2">
+                <Ellipse Width="11" Height="11" Fill="{Binding ActiveChannel.YAxisAll, Converter={StaticResource RadioDot}}" />
+              </Border>
+              <TextBlock Text="全部" FontSize="15" FontWeight="{Binding ActiveChannel.YAxisAll, Converter={x:Static conv:BoolToFontWeightConverter.Instance}}"
+                         Foreground="{Binding ActiveChannel.YAxisAll, Converter={StaticResource RadioTxt}}" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Command="{Binding SetTrendYAxisCommand}" CommandParameter="zoom" Background="Transparent" BorderThickness="0" Padding="2,0" Cursor="Hand">
+            <StackPanel Orientation="Horizontal" Spacing="7">
+              <Border Width="21" Height="21" CornerRadius="10.5" Background="#FFFFFF" BorderBrush="{Binding !ActiveChannel.YAxisAll, Converter={StaticResource RadioRing}}" BorderThickness="2">
+                <Ellipse Width="11" Height="11" Fill="{Binding !ActiveChannel.YAxisAll, Converter={StaticResource RadioDot}}" />
+              </Border>
+              <TextBlock Text="设定值附近" FontSize="15" FontWeight="{Binding !ActiveChannel.YAxisAll, Converter={x:Static conv:BoolToFontWeightConverter.Instance}}"
+                         Foreground="{Binding !ActiveChannel.YAxisAll, Converter={StaticResource RadioTxt}}" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+        </StackPanel>
+      </DockPanel>
+
+      <!-- Row 2: Live Chart -->
+      <ctrl:TrendChartControl Grid.Row="2" Margin="8,4,8,8"
+                              DualChannelMode="False"
+                              PrimarySamples="{Binding ActiveChannel.TrendHistory}"
+                              Markers="{Binding ActiveChannel.TrendMarkers}"
+                              Revision="{Binding ActiveChannel.ChartRevision}"
+                              XAxisClock="{Binding ActiveChannel.XAxisClock}"
+                              YAxisAll="{Binding ActiveChannel.YAxisAll}"
+                              ShowTr="{Binding ActiveChannel.ShowTr}"
+                              ShowTj="{Binding ActiveChannel.ShowTj}"
+                              ShowTjSp="{Binding ActiveChannel.ShowTjSp}"
+                              ShowDeltaT="{Binding ActiveChannel.ShowDeltaT}" />
+    </Grid>
+  </Border>
+</UserControl>

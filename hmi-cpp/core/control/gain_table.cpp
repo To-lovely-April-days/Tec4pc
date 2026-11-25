@@ -1,4 +1,5 @@
 #include "gain_table.hpp"
+#include "../util/utf8_file.hpp"
 #include <filesystem>
 #include <algorithm>
 #include <cmath>
@@ -13,7 +14,7 @@ GainTable::GainTable(std::vector<GainRow> rows) : rows_(std::move(rows)) {
 }
 
 GainTable GainTable::load(const std::string& path) {
-    std::ifstream in(std::filesystem::u8path(path));
+    std::ifstream in(fs_path(path));
     std::vector<GainRow> rows;
     std::string line;
     while (std::getline(in, line)) {
@@ -36,16 +37,18 @@ GainTable GainTable::load(const std::string& path) {
 }
 
 bool GainTable::save(const std::string& path) const {
+    const std::filesystem::path p_dst = fs_path(path);
+    const std::filesystem::path p_bak = fs_path(path).concat(fs_path(".原始备份").native());
     {
-        namespace fs = std::filesystem;
-        std::ifstream old(fs::u8path(path), std::ios::binary);
-        std::ifstream bak(fs::u8path(path + ".原始备份"), std::ios::binary);
-        if (old && !bak) { std::ofstream o(fs::u8path(path + ".原始备份"), std::ios::binary); o << old.rdbuf(); }
+        std::ifstream old(p_dst, std::ios::binary);
+        std::ifstream bak(p_bak, std::ios::binary);
+        if (old && !bak) { std::ofstream o(p_bak, std::ios::binary); o << old.rdbuf(); }
     }
     // 先写临时文件再改名：写到一半断电，原来那份还在
-    const std::string tmp = path + ".tmp";
+    std::filesystem::path p_tmp = p_dst;
+    p_tmp += ".tmp";
     {
-        std::ofstream o(std::filesystem::u8path(tmp), std::ios::binary);
+        std::ofstream o(p_tmp, std::ios::binary);
         if (!o) return false;
         o << "温度(℃),Kp,Ki,Kd,Ku,Tu(s),外环Kp,外环Ki,外环Kd,偏置上限(℃),稳态偏置(℃),加热比\n";
         o << "# 这张表是触摸屏 / PC 端改过以后由控制核心存的；原来的文件在同目录的「.原始备份」里\n";
@@ -54,11 +57,9 @@ bool GainTable::save(const std::string& path) const {
             o << num(r.temp) << ',' << num(r.kp) << ',' << num(r.ki) << ',' << num(r.kd) << ",,,,,,," << (r.steady_bias ? num(*r.steady_bias) : "") << ',' << (r.heat_ratio ? num(*r.heat_ratio) : "") << "\n";
         if (!o) return false;
     }
-    // 同样要走 filesystem：窄字符那套在 Windows 上按本地编码解释路径，中文路径会对不上
-    namespace fs = std::filesystem;
     std::error_code ec;
-    fs::remove(fs::u8path(path), ec);
-    fs::rename(fs::u8path(tmp), fs::u8path(path), ec);
+    std::filesystem::remove(p_dst, ec);
+    std::filesystem::rename(p_tmp, p_dst, ec);
     return !ec;
 }
 

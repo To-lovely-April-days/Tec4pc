@@ -1,0 +1,230 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:conv="using:HtlabHmi.Converters"
+             x:Class="HtlabHmi.Views.Channel.SeqView">
+  <UserControl.Resources>
+    <conv:BoolToBrushConverter x:Key="SelNodeBg" TrueBrush="#EEF5FD" FalseBrush="Transparent" />
+    <conv:BoolToBrushConverter x:Key="RadioRing" TrueBrush="#00559C" FalseBrush="#A9B7C6" />
+    <conv:BoolToBrushConverter x:Key="RadioDot" TrueBrush="#00559C" FalseBrush="Transparent" />
+    <conv:BoolToBrushConverter x:Key="RadioTxt" TrueBrush="#00559C" FalseBrush="#4F5B67" />
+  </UserControl.Resources>
+
+  <!-- 1:1 Seq.dc.html + SeqTempPart.dc.html: 452px main card + 8px gap + 60px bottom card -->
+  <Grid RowDefinitions="452,8,60">
+    <Border Grid.Row="0" Classes="hmi-card">
+      <Grid RowDefinitions="56,162,*">
+        <!-- Row 0: Header -->
+        <DockPanel Grid.Row="0" Margin="24,12,16,0">
+          <StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
+            <TextBlock Text="任务序列" FontSize="18" FontWeight="SemiBold" />
+            <TextBlock Text="{Binding ActiveChannel.SeqHeaderMeta}" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+          </StackPanel>
+          <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <Button Command="{Binding NewSequenceCommand}" Classes="hmi-outline" Height="40" Content="新建序列…" />
+            <Button Command="{Binding GoToRecipeLibraryCommand}" Classes="hmi-outline" Height="40">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <PathIcon Data="{StaticResource IconFiles}" Width="18" Height="18" Foreground="#8792A0" />
+                <TextBlock Text="从配方库" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+          </StackPanel>
+        </DockPanel>
+
+        <!-- Row 1: Horizontal Connected Stepper Timeline (1:1 Seq.dc.html) -->
+        <Grid Grid.Row="1" Margin="28,12,28,0">
+          <!-- Connecting Line -->
+          <Border Height="4" Background="#C9D6E5" VerticalAlignment="Top" Margin="94,31,94,0" />
+          <StackPanel Orientation="Horizontal">
+            <ItemsControl ItemsSource="{Binding ActiveChannel.Steps}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Orientation="Horizontal" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Button Command="{Binding $parent[UserControl].DataContext.SelectSequenceStepCommand}" CommandParameter="{Binding}"
+                          Width="198" Height="142" Padding="0" CornerRadius="12" BorderThickness="0"
+                          Background="{Binding IsSelected, Converter={StaticResource SelNodeBg}}" Cursor="Hand">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Top" Spacing="4">
+                      <!-- 62x62 Node Circle (Done / Running / Todo) -->
+                      <Panel Width="62" Height="62">
+                        <!-- Completed: 46x46 blue circle + check -->
+                        <Border IsVisible="{Binding IsCompleted}" Width="46" Height="46" CornerRadius="23" Background="#00559C"
+                                HorizontalAlignment="Center" VerticalAlignment="Center">
+                          <PathIcon Data="{StaticResource IconCheck}" Width="24" Height="24" Foreground="#FFFFFF" />
+                        </Border>
+                        <!-- Running: 62x62 white circle + 5px #D5DEE8 ring + step# + pct -->
+                        <Border IsVisible="{Binding IsRunning}" Width="62" Height="62" CornerRadius="31" Background="#FFFFFF"
+                                BorderBrush="#00559C" BorderThickness="4">
+                          <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding StepNumber}" FontSize="20" FontWeight="Bold" Foreground="#00559C" HorizontalAlignment="Center" LineHeight="21" />
+                            <TextBlock Text="{Binding ProgressPct, StringFormat={}{0:F0}%}" FontSize="11" FontWeight="SemiBold" Foreground="#00559C" HorizontalAlignment="Center" />
+                          </StackPanel>
+                        </Border>
+                        <!-- Todo: 46x46 white circle + 2px #B8C4D0 border -->
+                        <Border IsVisible="{Binding IsTodo}" Width="46" Height="46" CornerRadius="23" Background="#FFFFFF"
+                                BorderBrush="#B8C4D0" BorderThickness="2" HorizontalAlignment="Center" VerticalAlignment="Center">
+                          <TextBlock Text="{Binding StepNumber}" FontSize="19" FontWeight="SemiBold" Foreground="#8792A0"
+                                     HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                      </Panel>
+                      <TextBlock Text="{Binding KindBadge}" FontSize="19" FontWeight="SemiBold" Foreground="#1F2A35" HorizontalAlignment="Center" />
+                      <TextBlock Text="{Binding MainActionText}" FontSize="14" Foreground="#4F5B67" HorizontalAlignment="Center" />
+                      <TextBlock Text="{Binding SubDetailText}" FontSize="13" Foreground="#8792A0" HorizontalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- + Add Step Circle Node -->
+            <Button Command="{Binding OpenAddStepDialogCommand}" Width="168" Height="142" Padding="0"
+                    Background="Transparent" BorderThickness="0" Cursor="Hand">
+              <StackPanel HorizontalAlignment="Center" VerticalAlignment="Top" Spacing="6">
+                <Border Width="46" Height="46" Margin="0,8,0,8" CornerRadius="23" Background="#FFFFFF" BorderBrush="#9FB2C8" BorderThickness="2">
+                  <TextBlock Text="+" FontSize="28" Foreground="#00559C" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-2,0,0" />
+                </Border>
+                <TextBlock Text="添加" FontSize="16" Foreground="#00559C" HorizontalAlignment="Center" />
+              </StackPanel>
+            </Button>
+          </StackPanel>
+        </Grid>
+
+        <!-- Row 2: Embedded #F3F7FC Parameter Panel (1:1 SeqTempPart.dc.html) -->
+        <Border Grid.Row="2" Margin="20,4,20,16" CornerRadius="12" Background="#F3F7FC" BorderBrush="#C9D6E5" BorderThickness="1.5" Padding="20,12,20,10">
+          <Grid RowDefinitions="32,*,34">
+            <!-- Panel Header -->
+            <DockPanel Grid.Row="0">
+              <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                <TextBlock Text="{Binding ActiveChannel.SelectedStep.StepNumber, StringFormat=第 {0} 步 ·}" FontSize="18" FontWeight="SemiBold" />
+                <TextBlock Text="{Binding ActiveChannel.SelectedStep.KindFullTitle}" FontSize="18" FontWeight="SemiBold" />
+                <Border Height="26" Padding="10,0" CornerRadius="13" Background="#00559C" VerticalAlignment="Center">
+                  <TextBlock Text="{Binding ActiveChannel.SelectedStep.StatusBadgeText}" FontSize="13" FontWeight="SemiBold" Foreground="#FFFFFF" VerticalAlignment="Center" />
+                </Border>
+              </StackPanel>
+              <TextBlock DockPanel.Dock="Right" Text="{Binding ActiveChannel.MainCardRightTop, StringFormat=已走 {0}}" FontSize="15" Foreground="#4F5B67" VerticalAlignment="Center" />
+            </DockPanel>
+
+            <!-- Parameter Fields -->
+            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="18" VerticalAlignment="Center">
+              <StackPanel Width="166" Spacing="6">
+                <TextBlock Text="目标温度" FontSize="14" Foreground="#8792A0" />
+                <Button Command="{Binding EditSelectedStepParamCommand}" CommandParameter="Temp" Height="48"
+                        Background="#FFFFFF" BorderBrush="#C9D6E5" BorderThickness="1.5" CornerRadius="10" Padding="12,0"
+                        HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center" Cursor="Hand">
+                  <DockPanel>
+                    <TextBlock Text="{Binding ActiveChannel.SelectedStep.TargetTemp, StringFormat={}{0:F1}}" FontSize="22" FontWeight="SemiBold" Foreground="#1F2A35" VerticalAlignment="Center" />
+                    <TextBlock DockPanel.Dock="Right" Text="℃" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+                  </DockPanel>
+                </Button>
+              </StackPanel>
+
+              <StackPanel Spacing="6">
+                <TextBlock Text="到达方式" FontSize="14" Foreground="#8792A0" />
+                <StackPanel Orientation="Horizontal" Spacing="20" Height="48">
+                  <Button Command="{Binding SetSelectedStepArriveCommand}" CommandParameter="Fast" Background="Transparent" BorderThickness="0" Padding="2,0" Cursor="Hand">
+                    <StackPanel Orientation="Horizontal" Spacing="7">
+                      <Border Width="23" Height="23" CornerRadius="11.5" Background="#FFFFFF" BorderBrush="{Binding ActiveChannel.SelectedStep.IsArriveFast, Converter={StaticResource RadioRing}}" BorderThickness="2">
+                        <Ellipse Width="13" Height="13" Fill="{Binding ActiveChannel.SelectedStep.IsArriveFast, Converter={StaticResource RadioDot}}" />
+                      </Border>
+                      <TextBlock Text="尽快" FontSize="17" FontWeight="{Binding ActiveChannel.SelectedStep.IsArriveFast, Converter={x:Static conv:BoolToFontWeightConverter.Instance}}"
+                                 Foreground="{Binding ActiveChannel.SelectedStep.IsArriveFast, Converter={StaticResource RadioTxt}}" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                  <Button Command="{Binding SetSelectedStepArriveCommand}" CommandParameter="Rate" Background="Transparent" BorderThickness="0" Padding="2,0" Cursor="Hand">
+                    <StackPanel Orientation="Horizontal" Spacing="7">
+                      <Border Width="23" Height="23" CornerRadius="11.5" Background="#FFFFFF" BorderBrush="{Binding ActiveChannel.SelectedStep.IsArriveRate, Converter={StaticResource RadioRing}}" BorderThickness="2">
+                        <Ellipse Width="13" Height="13" Fill="{Binding ActiveChannel.SelectedStep.IsArriveRate, Converter={StaticResource RadioDot}}" />
+                      </Border>
+                      <TextBlock Text="按速率" FontSize="17" FontWeight="{Binding ActiveChannel.SelectedStep.IsArriveRate, Converter={x:Static conv:BoolToFontWeightConverter.Instance}}"
+                                 Foreground="{Binding ActiveChannel.SelectedStep.IsArriveRate, Converter={StaticResource RadioTxt}}" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                  <Button Command="{Binding SetSelectedStepArriveCommand}" CommandParameter="Duration" Background="Transparent" BorderThickness="0" Padding="2,0" Cursor="Hand">
+                    <StackPanel Orientation="Horizontal" Spacing="7">
+                      <Border Width="23" Height="23" CornerRadius="11.5" Background="#FFFFFF" BorderBrush="{Binding ActiveChannel.SelectedStep.IsArriveDuration, Converter={StaticResource RadioRing}}" BorderThickness="2">
+                        <Ellipse Width="13" Height="13" Fill="{Binding ActiveChannel.SelectedStep.IsArriveDuration, Converter={StaticResource RadioDot}}" />
+                      </Border>
+                      <TextBlock Text="按时长" FontSize="17" FontWeight="{Binding ActiveChannel.SelectedStep.IsArriveDuration, Converter={x:Static conv:BoolToFontWeightConverter.Instance}}"
+                                 Foreground="{Binding ActiveChannel.SelectedStep.IsArriveDuration, Converter={StaticResource RadioTxt}}" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                </StackPanel>
+              </StackPanel>
+
+              <StackPanel Width="166" Spacing="6">
+                <TextBlock Text="速率" FontSize="14" Foreground="#8792A0" />
+                <Button Command="{Binding EditSelectedStepParamCommand}" CommandParameter="Rate" Height="48"
+                        Background="#FFFFFF" BorderBrush="#C9D6E5" BorderThickness="1.5" CornerRadius="10" Padding="12,0"
+                        HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center" Cursor="Hand">
+                  <DockPanel>
+                    <TextBlock Text="{Binding ActiveChannel.SelectedStep.Rate, StringFormat={}{0:F2}}" FontSize="22" FontWeight="SemiBold" Foreground="#1F2A35" VerticalAlignment="Center" />
+                    <TextBlock DockPanel.Dock="Right" Text="℃/min" FontSize="13" Foreground="#8792A0" VerticalAlignment="Center" />
+                  </DockPanel>
+                </Button>
+              </StackPanel>
+
+              <StackPanel Width="150" Spacing="6">
+                <TextBlock Text="搅拌" FontSize="14" Foreground="#8792A0" />
+                <Button Command="{Binding EditSelectedStepParamCommand}" CommandParameter="Stir" Height="48"
+                        Background="#FFFFFF" BorderBrush="#C9D6E5" BorderThickness="1.5" CornerRadius="10" Padding="12,0"
+                        HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center" Cursor="Hand">
+                  <DockPanel>
+                    <TextBlock Text="{Binding ActiveChannel.SelectedStep.StirRpm}" FontSize="22" FontWeight="SemiBold" Foreground="#1F2A35" VerticalAlignment="Center" />
+                    <TextBlock DockPanel.Dock="Right" Text="rpm" FontSize="13" Foreground="#8792A0" VerticalAlignment="Center" />
+                  </DockPanel>
+                </Button>
+              </StackPanel>
+
+              <StackPanel Spacing="6">
+                <TextBlock Text=" " FontSize="14" />
+                <Button Command="{Binding SetSelectedStepStirKeepCommand}" Height="48" Padding="14,0" CornerRadius="10"
+                        Background="#FFFFFF" BorderBrush="#CFD8E3" BorderThickness="1" Foreground="#4F5B67" FontSize="15" Content="不变" Cursor="Hand" />
+              </StackPanel>
+            </StackPanel>
+
+            <!-- Bottom Tip + Type/Delete -->
+            <DockPanel Grid.Row="2">
+              <TextBlock Text="点上面任意一步，这里就换成那一步的参数" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <Button Command="{Binding ChangeSelectedStepKindCommand}" Height="34" Padding="14,0" CornerRadius="8"
+                        Background="#FFFFFF" BorderBrush="#CFD8E3" BorderThickness="1" Foreground="#4F5B67" FontSize="14" Content="换类型" Cursor="Hand" />
+                <Button Command="{Binding DeleteSelectedStepCommand}" Height="34" Padding="14,0" CornerRadius="8"
+                        Background="#FFFFFF" BorderBrush="#CFD8E3" BorderThickness="1" Foreground="#4F5B67" FontSize="14" Content="删除这一步" Cursor="Hand" />
+              </StackPanel>
+            </DockPanel>
+          </Grid>
+        </Border>
+      </Grid>
+    </Border>
+
+    <!-- Bottom 60px Card (1:1 Seq.dc.html) -->
+    <Border Grid.Row="2" Classes="hmi-card" Padding="16,0">
+      <DockPanel>
+        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <Border Height="40" Padding="14,0" CornerRadius="8" Background="#F3F7FC">
+            <TextBlock Text="已开始的序列不可增改" FontSize="14" Foreground="#4F5B67" VerticalAlignment="Center" />
+          </Border>
+          <Border Height="40" Padding="14,0" CornerRadius="8" Background="#F3F7FC">
+            <TextBlock Text="序列存在设备本机 · 最多 6 步" FontSize="14" Foreground="#4F5B67" VerticalAlignment="Center" />
+          </Border>
+        </StackPanel>
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <Button IsVisible="{Binding !ActiveChannel.IsSequenceRunning}" Command="{Binding ClearAllStepsCommand}" Width="150" Height="44" CornerRadius="10"
+                  Background="#FFFFFF" Foreground="#00559C" BorderBrush="#00559C" BorderThickness="1.5"
+                  FontSize="16" FontWeight="SemiBold" Content="清除全部步骤" Cursor="Hand" />
+          <Button IsVisible="{Binding !ActiveChannel.IsSequenceRunning}" Command="{Binding StartSequenceCommand}" Width="130" Height="44" CornerRadius="10"
+                  Background="#00B368" Foreground="#FFFFFF" BorderThickness="0"
+                  FontSize="16" FontWeight="SemiBold" Content="开始序列" Cursor="Hand" />
+          <Button IsVisible="{Binding ActiveChannel.IsSequenceRunning}" Command="{Binding EndSequenceCommand}" Height="44" Padding="18,0" Classes="hmi-danger">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <PathIcon Data="{StaticResource IconStop}" Width="18" Height="18" Foreground="#FFFFFF" />
+              <TextBlock Text="结束序列…" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+        </StackPanel>
+      </DockPanel>
+    </Border>
+  </Grid>
+</UserControl>

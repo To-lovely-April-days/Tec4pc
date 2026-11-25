@@ -1,0 +1,188 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:conv="using:HtlabHmi.Converters"
+             x:Class="HtlabHmi.Views.Channel.PidView">
+  <UserControl.Resources>
+    <conv:BoolToBrushConverter x:Key="ActiveRowBar" TrueBrush="#00559C" FalseBrush="Transparent" />
+    <conv:BoolToBrushConverter x:Key="ActiveRowBg" TrueBrush="#F3F8FE" FalseBrush="#FFFFFF" />
+  </UserControl.Resources>
+
+  <!-- 1:1 Pid.dc.html: Left 752px Gain Table + 5 Circular Buttons | Right 503px 3 Cards -->
+  <Grid ColumnDefinitions="752,9,*">
+    <!-- Left Gain Table Card (752x520) -->
+    <Border Grid.Column="0" Classes="hmi-card" Padding="16,12,16,12">
+      <Grid RowDefinitions="46,*,78">
+        <DockPanel Grid.Row="0">
+          <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+            <TextBlock Text="增益表" FontSize="18" FontWeight="SemiBold" />
+            <TextBlock Text="双向挡 · 加热制冷、两个通道共用这一张" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+          </StackPanel>
+          <TextBlock DockPanel.Dock="Right" Text="{Binding PidRows.Count, StringFormat={}{0} 行 · 在用 40 ℃ 附近}" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+        </DockPanel>
+
+        <!-- Bordered Rounded Table (#D5DEE8) -->
+        <Border Grid.Row="1" CornerRadius="10" BorderBrush="#D5DEE8" BorderThickness="1" ClipToBounds="True" Margin="0,4,0,8">
+          <Grid RowDefinitions="36,*">
+            <Border Grid.Row="0" Background="#F1F4F8" Padding="22,0,12,0">
+              <Grid ColumnDefinitions="86,92,100,92,110,80,*">
+                <TextBlock Text="温度 ℃" FontSize="13" Foreground="#4F5B67" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1" Text="Kp" FontSize="13" Foreground="#4F5B67" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="2" Text="Ki" FontSize="13" Foreground="#4F5B67" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="3" Text="Kd" FontSize="13" Foreground="#4F5B67" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="4" Text="稳态偏置 K" FontSize="13" Foreground="#4F5B67" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="5" Text="加热比" FontSize="13" Foreground="#4F5B67" VerticalAlignment="Center" />
+              </Grid>
+            </Border>
+
+            <ScrollViewer Grid.Row="1">
+              <ItemsControl ItemsSource="{Binding PidRows}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border Height="40" Background="{Binding IsActiveRow, Converter={StaticResource ActiveRowBg}}"
+                            BorderBrush="#E8ECF1" BorderThickness="0,0,0,1">
+                      <Grid ColumnDefinitions="4,*">
+                        <Border Grid.Column="0" Background="{Binding IsActiveRow, Converter={StaticResource ActiveRowBar}}" />
+                        <Grid Grid.Column="1" Margin="10,0,6,0" ColumnDefinitions="86,92,100,92,110,80,*">
+                          <Button Command="{Binding $parent[UserControl].DataContext.EditPidTempCommand}" CommandParameter="{Binding}"
+                                  Height="30" Padding="9,0" Margin="0,0,12,0" CornerRadius="7" Background="#FFFFFF" BorderBrush="#D5DEE8" BorderThickness="1" HorizontalAlignment="Left" VerticalAlignment="Center" Cursor="Hand">
+                            <TextBlock Text="{Binding Temp, StringFormat={}{0:F0}}" FontSize="15" FontWeight="SemiBold" Foreground="#1F2A35" VerticalAlignment="Center" />
+                          </Button>
+                          <Button Grid.Column="1" Command="{Binding $parent[UserControl].DataContext.EditPidKpCommand}" CommandParameter="{Binding}"
+                                  Height="30" Padding="9,0" CornerRadius="7" Background="#FFFFFF" BorderBrush="#D5DEE8" BorderThickness="1" HorizontalAlignment="Left" VerticalAlignment="Center" Cursor="Hand">
+                            <TextBlock Text="{Binding Kp, StringFormat={}{0:F2}}" FontSize="15" Foreground="#1F2A35" VerticalAlignment="Center" />
+                          </Button>
+                          <Button Grid.Column="2" Command="{Binding $parent[UserControl].DataContext.EditPidKiCommand}" CommandParameter="{Binding}"
+                                  Height="30" Padding="9,0" CornerRadius="7" Background="#FFFFFF" BorderBrush="#D5DEE8" BorderThickness="1" HorizontalAlignment="Left" VerticalAlignment="Center" Cursor="Hand">
+                            <TextBlock Text="{Binding Ki, StringFormat={}{0:F4}}" FontSize="15" Foreground="#1F2A35" VerticalAlignment="Center" />
+                          </Button>
+                          <Button Grid.Column="3" Command="{Binding $parent[UserControl].DataContext.EditPidKdCommand}" CommandParameter="{Binding}"
+                                  Height="30" Padding="9,0" CornerRadius="7" Background="#FFFFFF" BorderBrush="#D5DEE8" BorderThickness="1" HorizontalAlignment="Left" VerticalAlignment="Center" Cursor="Hand">
+                            <TextBlock Text="{Binding Kd, StringFormat={}{0:F1}}" FontSize="15" Foreground="#1F2A35" VerticalAlignment="Center" />
+                          </Button>
+                          <Button Grid.Column="4" Command="{Binding $parent[UserControl].DataContext.EditPidSteadyBiasCommand}" CommandParameter="{Binding}"
+                                  Height="30" Padding="9,0" CornerRadius="7" Background="#FFFFFF" BorderBrush="#D5DEE8" BorderThickness="1" HorizontalAlignment="Left" VerticalAlignment="Center" Cursor="Hand">
+                            <TextBlock Text="{Binding SteadyBiasText}" FontSize="15" Foreground="#1F2A35" VerticalAlignment="Center" />
+                          </Button>
+                          <Button Grid.Column="5" Command="{Binding $parent[UserControl].DataContext.EditPidHeatRatioCommand}" CommandParameter="{Binding}"
+                                  Height="30" Padding="9,0" CornerRadius="7" Background="#FFFFFF" BorderBrush="#D5DEE8" BorderThickness="1" HorizontalAlignment="Left" VerticalAlignment="Center" Cursor="Hand">
+                            <TextBlock Text="{Binding HeatRatio, StringFormat={}{0:F2}}" FontSize="15" Foreground="#1F2A35" VerticalAlignment="Center" />
+                          </Button>
+                          <Button Grid.Column="6" Command="{Binding $parent[UserControl].DataContext.DeletePidRowCommand}" CommandParameter="{Binding}"
+                                  Width="36" Height="36" Background="Transparent" BorderThickness="0" HorizontalAlignment="Right" Cursor="Hand">
+                            <PathIcon Data="{StaticResource IconClose}" Width="16" Height="16" Foreground="#8792A0" />
+                          </Button>
+                        </Grid>
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+          </Grid>
+        </Border>
+
+        <!-- Bottom 5 Circular 48x48 Action Buttons (1:1 Pid.dc.html) -->
+        <UniformGrid Grid.Row="2" Rows="1" Columns="5" VerticalAlignment="Center">
+          <Button Command="{Binding AddPidRowCommand}" Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand">
+            <StackPanel Spacing="5" HorizontalAlignment="Center">
+              <Border Width="48" Height="48" CornerRadius="24" Background="#FFFFFF" BorderBrush="#C9D6E5" BorderThickness="1.5">
+                <PathIcon Data="{StaticResource IconPlus}" Width="22" Height="22" Foreground="#00559C" />
+              </Border>
+              <TextBlock Text="新增行" FontSize="13" Foreground="#4F5B67" HorizontalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Command="{Binding ApplyPidTableCommand}" Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand">
+            <StackPanel Spacing="5" HorizontalAlignment="Center">
+              <Border Width="48" Height="48" CornerRadius="24" Background="#00559C" BoxShadow="0 3 8 0 #4D00559C">
+                <PathIcon Data="{StaticResource IconCheck}" Width="22" Height="22" Foreground="#FFFFFF" />
+              </Border>
+              <TextBlock Text="应用表格" FontSize="13" Foreground="#4F5B67" HorizontalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Command="{Binding UndoPidTableCommand}" Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand">
+            <StackPanel Spacing="5" HorizontalAlignment="Center">
+              <Border Width="48" Height="48" CornerRadius="24" Background="#FFFFFF" BorderBrush="#C9D6E5" BorderThickness="1.5">
+                <PathIcon Data="{StaticResource IconUndo}" Width="22" Height="22" Foreground="#00559C" />
+              </Border>
+              <TextBlock Text="放弃修改" FontSize="13" Foreground="#4F5B67" HorizontalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Command="{Binding ReloadPidTableCommand}" Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand">
+            <StackPanel Spacing="5" HorizontalAlignment="Center">
+              <Border Width="48" Height="48" CornerRadius="24" Background="#FFFFFF" BorderBrush="#C9D6E5" BorderThickness="1.5">
+                <PathIcon Data="{StaticResource IconReload}" Width="22" Height="22" Foreground="#00559C" />
+              </Border>
+              <TextBlock Text="从盘上重读" FontSize="13" Foreground="#4F5B67" HorizontalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Command="{Binding ClearPidTableCommand}" Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand">
+            <StackPanel Spacing="5" HorizontalAlignment="Center">
+              <Border Width="48" Height="48" CornerRadius="24" Background="#FFFFFF" BorderBrush="#F0B4B6" BorderThickness="1.5">
+                <PathIcon Data="{StaticResource IconTrash}" Width="22" Height="22" Foreground="#E5484D" />
+              </Border>
+              <TextBlock Text="清空这张表" FontSize="13" Foreground="#E5484D" HorizontalAlignment="Center" />
+            </StackPanel>
+          </Button>
+        </UniformGrid>
+      </Grid>
+    </Border>
+
+    <!-- Right 3 Diagnostic Cards (503px: 150 + 8 + 94 + 8 + 260) -->
+    <Grid Grid.Column="2" RowDefinitions="150,8,94,8,260">
+      <Border Grid.Row="0" Classes="hmi-card" Padding="16,12">
+        <Grid RowDefinitions="Auto,*,Auto">
+          <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="12">
+            <TextBlock Text="此刻在用" FontSize="18" FontWeight="SemiBold" />
+            <TextBlock Text="内环（夹套）· 按夹套目标在表里插值" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+          </StackPanel>
+          <StackPanel Grid.Row="1" Spacing="4" VerticalAlignment="Center">
+            <TextBlock Text="{Binding PidLiveParamsText}" FontSize="14" Foreground="#4F5B67" />
+            <TextBlock Text="{Binding PidLiveOutputText}" FontSize="14" Foreground="#4F5B67" />
+          </StackPanel>
+          <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <TextBlock Text="看某温度" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+            <Button Command="{Binding EditPidLookupTempCommand}" Width="76" Height="36"
+                    Background="#F3F7FC" BorderBrush="#C9D6E5" BorderThickness="1.5" CornerRadius="8"
+                    FontSize="16" FontWeight="SemiBold" Foreground="#1F2A35"
+                    Content="{Binding PidLookupTemp, StringFormat={}{0:F0}}" Cursor="Hand" />
+            <TextBlock Text="{Binding PidLookupResultText}" FontSize="13" Foreground="#4F5B67" VerticalAlignment="Center" />
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <Border Grid.Row="2" Classes="hmi-card" Padding="16,12">
+        <StackPanel Spacing="6">
+          <TextBlock Text="实时 · 稳定度" FontSize="18" FontWeight="SemiBold" />
+          <TextBlock Text="{Binding PidStabilityLine1}" FontSize="14" Foreground="#4F5B67" />
+          <TextBlock Text="{Binding PidStabilityLine2}" FontSize="14" Foreground="#4F5B67" />
+        </StackPanel>
+      </Border>
+
+      <Border Grid.Row="4" Classes="hmi-card" Padding="16,12">
+        <Grid RowDefinitions="Auto,*,1,Auto,Auto">
+          <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="12">
+            <TextBlock Text="外环（釜温）" FontSize="18" FontWeight="SemiBold" />
+            <TextBlock Text="靠这一炉的实测现算，不查表" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+          </StackPanel>
+          <StackPanel Grid.Row="1" Spacing="5" VerticalAlignment="Center">
+            <TextBlock Text="{Binding PidOuterLoopLine1}" FontSize="14" Foreground="#4F5B67" />
+            <TextBlock Text="{Binding PidOuterLoopLine2}" FontSize="14" Foreground="#4F5B67" />
+            <TextBlock Text="稳态偏置那一列只当起点，开控以后以实测为准" FontSize="14" Foreground="#4F5B67" />
+          </StackPanel>
+          <Border Grid.Row="2" Background="#E8ECF1" />
+          <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="12" Margin="0,12,0,8">
+            <StackPanel Width="150" Spacing="4">
+              <TextBlock Text="快速升温加码上限 K" FontSize="13" Foreground="#8792A0" />
+              <Button Command="{Binding EditPidBoostLimitCommand}" Height="44"
+                      Background="#F3F7FC" BorderBrush="#C9D6E5" BorderThickness="1.5" CornerRadius="8"
+                      FontSize="18" FontWeight="SemiBold" Foreground="#1F2A35"
+                      Content="{Binding PidBoostLimitK, StringFormat={}{0:F0}}" Cursor="Hand" />
+            </StackPanel>
+            <TextBlock Text="0 = 不加码（稳妥，升温慢一些）" FontSize="13" Foreground="#8792A0" VerticalAlignment="Bottom" Margin="0,0,0,12" />
+          </StackPanel>
+          <TextBlock Grid.Row="4" Text="改了以后要重启控制核心才生效" FontSize="13" Foreground="#8792A0" />
+        </Grid>
+      </Border>
+    </Grid>
+  </Grid>
+</UserControl>

@@ -1,0 +1,45 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="HtlabHmi.Views.Settings.SysView">
+  <Border Classes="hmi-card">
+    <Grid RowDefinitions="52,*">
+      <Border Grid.Row="0" Background="{StaticResource LightBlueTintBrush}" Padding="24,0">
+        <StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
+          <TextBlock Text="本机情况" FontSize="17" FontWeight="SemiBold" />
+          <TextBlock Text="这一页只看不改；能改的在「通信设置」和各通道页里" FontSize="14" Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" />
+        </StackPanel>
+      </Border>
+      <ScrollViewer Grid.Row="1">
+        <StackPanel Margin="24,0">
+          <Border Height="52" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
+            <DockPanel><TextBlock Text="时间" Width="200" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" /><TextBlock Text="{Binding FullDateTimeText}" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center" /><TextBlock DockPanel.Dock="Right" Text="跟这台电脑的系统时间" FontSize="14" Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" /></DockPanel>
+          </Border>
+          <Border Height="52" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
+            <DockPanel><TextBlock Text="控制核心" Width="200" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" /><TextBlock Text="{Binding UptimeText}" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center" /><TextBlock DockPanel.Dock="Right" Text="仿真控制核心 · 设备都连上了" FontSize="14" Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" /></DockPanel>
+          </Border>
+          <Border Height="52" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
+            <DockPanel><TextBlock Text="界面程序" Width="200" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" /><TextBlock Text="0.1.0 · Avalonia UI 11.3 (.NET 9)" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center" /><TextBlock DockPanel.Dock="Right" Text="{Binding TcpPort, StringFormat=连着本机的控制核心 · 端口 {0}}" FontSize="14" Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" /></DockPanel>
+          </Border>
+          <Border Height="52" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
+            <DockPanel><TextBlock Text="本机存储" Width="200" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" /><TextBlock Text="剩余 12.4 GB / 共 128 GB" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center" /><TextBlock DockPanel.Dock="Right" Text="数据放在 D:\TEC\data" FontSize="14" Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" /></DockPanel>
+          </Border>
+          <Border Height="52" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
+            <DockPanel><TextBlock Text="数据记录" Width="200" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" /><TextBlock Text="{Binding Recipes.Count, StringFormat=128 炉 · 配方 {0} 个}" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center" /><TextBlock DockPanel.Dock="Right" Text="导出在「通道 → 数据导出」，配方在「文件」" FontSize="14" Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" /></DockPanel>
+          </Border>
+          <Border Height="52" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
+            <DockPanel><TextBlock Text="增益表" Width="200" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" /><TextBlock Text="{Binding PidRows.Count, StringFormat={}{0} 行 · 双向挡}" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center" /><TextBlock DockPanel.Dock="Right" Text="在「通道 → PID 整定」里改" FontSize="14" Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" /></DockPanel>
+          </Border>
+          <Border Height="52" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
+            <DockPanel><TextBlock Text="冷却水" Width="200" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" /><TextBlock Text="{Binding SysCoolingText}" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center" /><TextBlock DockPanel.Dock="Right" Text="跟着 TEC 制冷自动开关，不用人管" FontSize="14" Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" /></DockPanel>
+          </Border>
+          <Border Height="52" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
+            <DockPanel><TextBlock Text="对外通信" Width="200" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" /><TextBlock Text="{Binding TcpPort, StringFormat=192.168.1.50 : {0} · 3 台 PC 连着}" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center" /><TextBlock DockPanel.Dock="Right" Text="在旁边的「通信设置」里改" FontSize="14" Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" /></DockPanel>
+          </Border>
+          <Border Height="52" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1">
+            <DockPanel><TextBlock Text="语言" Width="200" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" /><TextBlock Text="简体中文" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center" /><TextBlock DockPanel.Dock="Right" Text="这一版只有中文界面" FontSize="14" Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" /></DockPanel>
+          </Border>
+        </StackPanel>
+      </ScrollViewer>
+    </Grid>
+  </Border>
+</UserControl>

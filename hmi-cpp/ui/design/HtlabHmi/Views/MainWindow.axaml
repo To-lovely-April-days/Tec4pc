@@ -1,0 +1,223 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:conv="using:HtlabHmi.Converters"
+        xmlns:ov="using:HtlabHmi.Views.Overview"
+        xmlns:ch="using:HtlabHmi.Views.Channel"
+        xmlns:set="using:HtlabHmi.Views.Settings"
+        xmlns:views="using:HtlabHmi.Views"
+        xmlns:dlg="using:HtlabHmi.Views.Dialogs"
+        x:Class="HtlabHmi.Views.MainWindow"
+        Title="HTLAB · 四工位实验室自动控温合成反应平台 HMI"
+        Width="1280" Height="720"
+        MinWidth="1280" MinHeight="720"
+        WindowStartupLocation="CenterScreen">
+  <Window.Resources>
+    <conv:BoolToBrushConverter x:Key="HeaderCircleBg" TrueBrush="#FFFFFF" FalseBrush="#24FFFFFF" />
+    <conv:BoolToBrushConverter x:Key="HeaderCircleIcon" TrueBrush="#00559C" FalseBrush="#FFFFFF" />
+    <conv:BoolToBrushConverter x:Key="HeaderLabelFg" TrueBrush="#FFFFFF" FalseBrush="#D9FFFFFF" />
+    <conv:BoolToBrushConverter x:Key="ChTitleFg" TrueBrush="#00559C" FalseBrush="#FFFFFF" />
+    <conv:BoolToBrushConverter x:Key="ChSubFg" TrueBrush="#8792A0" FalseBrush="#D9FFFFFF" />
+    <conv:BoolToBrushConverter x:Key="ChTempFg" TrueBrush="#002B7F" FalseBrush="#FFFFFF" />
+    <conv:BoolToBrushConverter x:Key="ChDotActive" TrueBrush="#00B368" FalseBrush="#80FFFFFF" />
+    <conv:BoolToBrushConverter x:Key="WaterDot" TrueBrush="#5BF08A" FalseBrush="#94A3B8" />
+    <conv:BoolToBrushConverter x:Key="TabIconBrush" TrueBrush="#FFFFFF" FalseBrush="#8792A0" />
+  </Window.Resources>
+
+  <Panel Background="{StaticResource CanvasBgBrush}">
+    <Grid RowDefinitions="60,52,*">
+      <!-- ==================== TOP PRIMARY HEADER (60px) ==================== -->
+      <Border Grid.Row="0" Background="{StaticResource HeaderBgBrush}">
+        <DockPanel LastChildFill="False">
+          <!-- Brand Logo -->
+          <TextBlock Text="HTLAB" Width="88" TextAlignment="Center" FontSize="16" FontWeight="Bold"
+                     LetterSpacing="1" Foreground="#FFFFFF" VerticalAlignment="Center" />
+
+          <!-- Channel 1 Card Button -->
+          <Button Command="{Binding NavigateSectionCommand}" CommandParameter="Ch1"
+                  Classes="header-ch" Classes.active="{Binding IsSectionCh1}" Margin="0,0,8,0">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+              <PathIcon Grid.Column="0" Data="{StaticResource IconReactor}" Width="20" Height="28"
+                        Foreground="{Binding IsSectionCh1, Converter={StaticResource ChTitleFg}}" Margin="0,0,10,0" />
+              <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                <TextBlock Text="通道 1" FontSize="16" FontWeight="Bold"
+                           Foreground="{Binding IsSectionCh1, Converter={StaticResource ChTitleFg}}" />
+                <StackPanel Orientation="Horizontal" Spacing="5">
+                  <Ellipse Width="7" Height="7" Fill="{Binding Channel1.IsActive, Converter={StaticResource ChDotActive}}" VerticalAlignment="Center" />
+                  <TextBlock Text="{Binding Channel1.TopStateText}" FontSize="12"
+                             Foreground="{Binding IsSectionCh1, Converter={StaticResource ChSubFg}}" />
+                </StackPanel>
+              </StackPanel>
+              <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Spacing="2">
+                <TextBlock Text="{Binding Channel1.TrText}" FontSize="23" FontWeight="Bold"
+                           Foreground="{Binding IsSectionCh1, Converter={StaticResource ChTempFg}}" />
+                <TextBlock Text="℃" FontSize="12" Foreground="{Binding IsSectionCh1, Converter={StaticResource ChSubFg}}" VerticalAlignment="Bottom" Margin="0,0,0,3" />
+              </StackPanel>
+            </Grid>
+          </Button>
+
+          <!-- Channel 2 Card Button -->
+          <Button Command="{Binding NavigateSectionCommand}" CommandParameter="Ch2"
+                  Classes="header-ch" Classes.active="{Binding IsSectionCh2}" Margin="0,0,12,0">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+              <PathIcon Grid.Column="0" Data="{StaticResource IconReactor}" Width="20" Height="28"
+                        Foreground="{Binding IsSectionCh2, Converter={StaticResource ChTitleFg}}" Margin="0,0,10,0" />
+              <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                <TextBlock Text="通道 2" FontSize="16" FontWeight="Bold"
+                           Foreground="{Binding IsSectionCh2, Converter={StaticResource ChTitleFg}}" />
+                <StackPanel Orientation="Horizontal" Spacing="5">
+                  <Ellipse Width="7" Height="7" Fill="{Binding Channel2.IsActive, Converter={StaticResource ChDotActive}}" VerticalAlignment="Center" />
+                  <TextBlock Text="{Binding Channel2.TopStateText}" FontSize="12"
+                             Foreground="{Binding IsSectionCh2, Converter={StaticResource ChSubFg}}" />
+                </StackPanel>
+              </StackPanel>
+              <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Spacing="2">
+                <TextBlock Text="{Binding Channel2.TrText}" FontSize="23" FontWeight="Bold"
+                           Foreground="{Binding IsSectionCh2, Converter={StaticResource ChTempFg}}" />
+                <TextBlock Text="℃" FontSize="12" Foreground="{Binding IsSectionCh2, Converter={StaticResource ChSubFg}}" VerticalAlignment="Bottom" Margin="0,0,0,3" />
+              </StackPanel>
+            </Grid>
+          </Button>
+
+          <!-- Circular Nav Buttons: Overview / Files / Settings / Users -->
+          <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <Button Command="{Binding NavigateSectionCommand}" CommandParameter="Overview" Classes="header-nav">
+              <StackPanel Spacing="1" HorizontalAlignment="Center">
+                <Border Width="34" Height="34" CornerRadius="17" Background="{Binding IsSectionOverview, Converter={StaticResource HeaderCircleBg}}">
+                  <PathIcon Data="{StaticResource IconOverview}" Width="20" Height="20" Foreground="{Binding IsSectionOverview, Converter={StaticResource HeaderCircleIcon}}" />
+                </Border>
+                <TextBlock Text="总览" FontSize="11" HorizontalAlignment="Center" Foreground="{Binding IsSectionOverview, Converter={StaticResource HeaderLabelFg}}" />
+              </StackPanel>
+            </Button>
+
+            <Button Command="{Binding NavigateSectionCommand}" CommandParameter="Files" Classes="header-nav">
+              <StackPanel Spacing="1" HorizontalAlignment="Center">
+                <Border Width="34" Height="34" CornerRadius="17" Background="{Binding IsSectionFiles, Converter={StaticResource HeaderCircleBg}}">
+                  <PathIcon Data="{StaticResource IconFiles}" Width="20" Height="20" Foreground="{Binding IsSectionFiles, Converter={StaticResource HeaderCircleIcon}}" />
+                </Border>
+                <TextBlock Text="文件" FontSize="11" HorizontalAlignment="Center" Foreground="{Binding IsSectionFiles, Converter={StaticResource HeaderLabelFg}}" />
+              </StackPanel>
+            </Button>
+
+            <Button Command="{Binding NavigateSectionCommand}" CommandParameter="Settings" Classes="header-nav">
+              <StackPanel Spacing="1" HorizontalAlignment="Center">
+                <Border Width="34" Height="34" CornerRadius="17" Background="{Binding IsSectionSettings, Converter={StaticResource HeaderCircleBg}}">
+                  <PathIcon Data="{StaticResource IconSettings}" Width="20" Height="20" Foreground="{Binding IsSectionSettings, Converter={StaticResource HeaderCircleIcon}}" />
+                </Border>
+                <TextBlock Text="设置" FontSize="11" HorizontalAlignment="Center" Foreground="{Binding IsSectionSettings, Converter={StaticResource HeaderLabelFg}}" />
+              </StackPanel>
+            </Button>
+
+            <Button Command="{Binding NavigateSectionCommand}" CommandParameter="Users" Classes="header-nav">
+              <StackPanel Spacing="1" HorizontalAlignment="Center">
+                <Border Width="34" Height="34" CornerRadius="17" Background="{Binding IsSectionUsers, Converter={StaticResource HeaderCircleBg}}">
+                  <PathIcon Data="{StaticResource IconUsers}" Width="20" Height="20" Foreground="{Binding IsSectionUsers, Converter={StaticResource HeaderCircleIcon}}" />
+                </Border>
+                <TextBlock Text="用户" FontSize="11" HorizontalAlignment="Center" Foreground="{Binding IsSectionUsers, Converter={StaticResource HeaderLabelFg}}" />
+              </StackPanel>
+            </Button>
+          </StackPanel>
+
+          <!-- Right Status Area -->
+          <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="12" Margin="0,0,18,0" VerticalAlignment="Center">
+            <Button Command="{Binding ToggleWaterCoolingCommand}" Background="Transparent" BorderThickness="0" Padding="4" Cursor="Hand">
+              <StackPanel Orientation="Horizontal" Spacing="7">
+                <Ellipse Width="9" Height="9" Fill="{Binding WaterCoolingOn, Converter={StaticResource WaterDot}}" VerticalAlignment="Center" />
+                <TextBlock Text="{Binding WaterCoolingText}" FontSize="14" FontWeight="Medium" Foreground="#FFFFFF" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+
+            <!-- Alarm Bell + Red Counter Badge -->
+            <Button Command="{Binding OpenAlarmsCommand}" Width="40" Height="40" Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand">
+              <Panel>
+                <PathIcon Data="{StaticResource IconBell}" Width="23" Height="23" Foreground="#FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                <Border IsVisible="{Binding HasUnreadAlarms}" MinWidth="18" Height="18" CornerRadius="9"
+                        Background="{StaticResource BadgeRedBrush}" BorderBrush="{StaticResource PrimaryBlueBrush}" BorderThickness="2"
+                        HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,2,2,0" Padding="3,0">
+                  <TextBlock Text="{Binding UnreadAlarmCount}" FontSize="11" FontWeight="Bold" Foreground="#FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+              </Panel>
+            </Button>
+
+            <Button Command="{Binding OpenAlarmListCommand}" Width="36" Height="36" Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand" ToolTip.Tip="报警记录">
+              <PathIcon Data="{StaticResource IconGlobe}" Width="21" Height="21" Foreground="#FFFFFF" />
+            </Button>
+
+            <Button Command="{Binding NavigateSectionCommand}" CommandParameter="Users" Background="Transparent" BorderThickness="0" Padding="4,0" Cursor="Hand">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <PathIcon Data="{StaticResource IconAccountCircle}" Width="24" Height="24" Foreground="#FFFFFF" />
+                <TextBlock Text="{Binding CurrentUser}" FontSize="15" Foreground="#FFFFFF" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+
+            <Border Width="1" Height="22" Background="#42FFFFFF" />
+
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Right">
+              <TextBlock Text="{Binding ClockTimeText}" FontSize="16" FontWeight="SemiBold" Foreground="#FFFFFF" HorizontalAlignment="Right" />
+              <TextBlock Text="{Binding ClockDateText}" FontSize="12" Foreground="#CCFFFFFF" HorizontalAlignment="Right" />
+            </StackPanel>
+          </StackPanel>
+        </DockPanel>
+      </Border>
+
+      <!-- ==================== SECONDARY TAB BAR (44px) ==================== -->
+      <Border Grid.Row="1" Classes="hmi-card" Margin="8,4,8,4" Height="44">
+        <ItemsControl ItemsSource="{Binding SecondaryTabs}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Orientation="Horizontal" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Button Command="{Binding $parent[Window].DataContext.SelectSecondaryTabCommand}" CommandParameter="{Binding Index}"
+                      Classes="sec-tab" Classes.active="{Binding IsSelected}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <PathIcon Data="{Binding IconKey, Converter={x:Static conv:ResourceKeyToGeometryConverter.Instance}}"
+                            Width="20" Height="20"
+                            Foreground="{Binding IsSelected, Converter={StaticResource TabIconBrush}}" />
+                  <TextBlock Text="{Binding Title}" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </Border>
+
+      <!-- ==================== MAIN CONTENT AREA ==================== -->
+      <Grid Grid.Row="2" Margin="8,0,8,8">
+        <!-- Overview Views -->
+        <ov:MainOverviewView IsVisible="{Binding ShowMainOverview}" />
+        <ov:SchemeOverviewView IsVisible="{Binding ShowSchemeOverview}" />
+        <ov:TrendsOverviewView IsVisible="{Binding ShowTrendsOverview}" />
+
+        <!-- Channel Views (Shared 72px ChannelHeaderBar + 6 Tabs) -->
+        <Grid IsVisible="{Binding IsSectionChannel}" RowDefinitions="72,8,*">
+          <ch:ChannelHeaderBar Grid.Row="0" />
+          <Panel Grid.Row="2">
+            <ch:CtlView IsVisible="{Binding ShowChannelCtl}" />
+            <ch:ChTrendView IsVisible="{Binding ShowChannelTrend}" />
+            <ch:SeqView IsVisible="{Binding ShowChannelSeq}" />
+            <ch:SafetyView IsVisible="{Binding ShowChannelSafety}" />
+            <ch:ExportView IsVisible="{Binding ShowChannelExport}" />
+            <ch:PidView IsVisible="{Binding ShowChannelPid}" />
+          </Panel>
+        </Grid>
+
+        <!-- Files / Settings / Users Views -->
+        <views:FilesView IsVisible="{Binding ShowFiles}" />
+        <set:SysView IsVisible="{Binding ShowSettingsSys}" />
+        <set:CommView IsVisible="{Binding ShowSettingsComm}" />
+        <views:UsersView IsVisible="{Binding ShowUsers}" />
+      </Grid>
+    </Grid>
+
+    <!-- Floating Toast Notification -->
+    <Border IsVisible="{Binding IsToastVisible}" Background="#E60A2A55" CornerRadius="10" Padding="20,10"
+            HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,22" IsHitTestVisible="False">
+      <TextBlock Text="{Binding ToastMessage}" FontSize="15" FontWeight="SemiBold" Foreground="#FFFFFF" />
+    </Border>
+
+    <!-- All Interactive Modal Overlays -->
+    <dlg:OverlaysHost />
+  </Panel>
+</Window>

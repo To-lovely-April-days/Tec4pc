@@ -1,0 +1,136 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:conv="using:HtlabHmi.Converters"
+             x:Class="HtlabHmi.Views.FilesView">
+  <UserControl.Resources>
+    <conv:BoolToBrushConverter x:Key="RowSelBg" TrueBrush="#EAF2FB" FalseBrush="#FFFFFF" />
+    <conv:BoolToBrushConverter x:Key="BarSelBrush" TrueBrush="#00559C" FalseBrush="Transparent" />
+    <conv:BoolToBrushConverter x:Key="LoadCh1Bg" TrueBrush="#B8C4D0" FalseBrush="#00559C" />
+    <conv:BoolToBrushConverter x:Key="LoadCh2Bg" TrueBrush="#B8C4D0" FalseBrush="#00559C" />
+  </UserControl.Resources>
+
+  <!-- 1:1 Files.dc.html: Top 532px (505.2 + 8.6 + 750.2) + 8px gap + Bottom 60px -->
+  <Grid RowDefinitions="*,8,60">
+    <Grid Grid.Row="0" ColumnDefinitions="505,9,*">
+      <!-- Left Recipe List (505x532) -->
+      <Border Grid.Column="0" Classes="hmi-card">
+        <Grid RowDefinitions="48,*">
+          <!-- Header with 1 / 1 Pager (1:1 Files.dc.html) -->
+          <Border Grid.Row="0" Background="#F1F4F8" Padding="18,0">
+            <DockPanel>
+              <TextBlock Text="{Binding Recipes.Count, StringFormat=配方库 · {0} 个}" FontSize="14" Foreground="#4F5B67" VerticalAlignment="Center" />
+              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <Border Width="40" Height="34" CornerRadius="8" Background="#FFFFFF" BorderBrush="#CFD8E3" BorderThickness="1">
+                  <TextBlock Text="‹" FontSize="18" Foreground="#4F5B67" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <TextBlock Text="1 / 1" FontSize="14" Foreground="#4F5B67" Width="44" TextAlignment="Center" VerticalAlignment="Center" />
+                <Border Width="40" Height="34" CornerRadius="8" Background="#FFFFFF" BorderBrush="#CFD8E3" BorderThickness="1">
+                  <TextBlock Text="›" FontSize="18" Foreground="#4F5B67" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+              </StackPanel>
+            </DockPanel>
+          </Border>
+
+          <ScrollViewer Grid.Row="1">
+            <ItemsControl ItemsSource="{Binding Recipes}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Button Command="{Binding $parent[UserControl].DataContext.SelectRecipeCommand}" CommandParameter="{Binding}"
+                          Padding="0" Background="Transparent" BorderThickness="0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Cursor="Hand">
+                    <Border Height="68" Background="{Binding IsSelected, Converter={StaticResource RowSelBg}}"
+                            BorderBrush="#E8ECF1" BorderThickness="0,0,0,1">
+                      <Grid ColumnDefinitions="4,*,Auto">
+                        <Border Grid.Column="0" Background="{Binding IsSelected, Converter={StaticResource BarSelBrush}}" />
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="14,0" Spacing="2">
+                          <TextBlock Text="{Binding Name}" FontSize="17" FontWeight="Medium" Foreground="#1F2A35" />
+                          <TextBlock Text="{Binding MetaText}" FontSize="13" Foreground="#8792A0" />
+                        </StackPanel>
+                        <TextBlock Grid.Column="2" Text="{Binding SavedAt}" FontSize="13" Foreground="#8792A0" VerticalAlignment="Center" Margin="0,0,18,0" />
+                      </Grid>
+                    </Border>
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </Grid>
+      </Border>
+
+      <!-- Right Recipe Detail (750x532) -->
+      <Border Grid.Column="2" Classes="hmi-card" Padding="24,20">
+        <Grid RowDefinitions="Auto,*,Auto,52">
+          <StackPanel Grid.Row="0" Spacing="4">
+            <TextBlock Text="{Binding SelectedRecipe.Name}" FontSize="22" FontWeight="SemiBold" Foreground="#1F2A35" />
+            <TextBlock Text="{Binding SelectedRecipe.DetailSubText}" FontSize="14" Foreground="#8792A0" />
+          </StackPanel>
+
+          <ScrollViewer Grid.Row="1" Margin="0,10,0,10">
+            <ItemsControl ItemsSource="{Binding SelectedRecipe.Steps}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border Height="52" BorderBrush="#E8ECF1" BorderThickness="0,0,0,1">
+                    <Grid ColumnDefinitions="44,78,264,*,Auto">
+                      <Border Width="30" Height="30" CornerRadius="15" BorderBrush="#B8C4D0" BorderThickness="2" HorizontalAlignment="Left" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding StepNumber}" FontSize="14" Foreground="#8792A0" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                      </Border>
+                      <TextBlock Grid.Column="1" Text="{Binding KindBadge}" FontSize="16" FontWeight="SemiBold" Foreground="#1F2A35" VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="2" Text="{Binding MainActionText}" FontSize="16" Foreground="#4F5B67" VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="3" Text="{Binding StirSummary}" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="4" Text="{Binding SubDetailText}" FontSize="16" Foreground="#8792A0" VerticalAlignment="Center" />
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+
+          <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8" Margin="0,0,0,14" VerticalAlignment="Center">
+            <PathIcon Data="{StaticResource IconInfo}" Width="20" Height="20" Foreground="#8792A0" />
+            <TextBlock Text="装入会替换该通道现在编着的全部步骤" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+          </StackPanel>
+
+          <DockPanel Grid.Row="3">
+            <StackPanel Orientation="Horizontal" Spacing="10">
+              <Button Command="{Binding LoadRecipeToChannelCommand}" CommandParameter="1"
+                      Width="176" Height="52" CornerRadius="10" BorderThickness="0" Cursor="Hand"
+                      Background="{Binding Channel1.IsSequenceRunning, Converter={StaticResource LoadCh1Bg}}">
+                <TextBlock Text="{Binding Ch1LoadBtnText}" FontSize="16" FontWeight="SemiBold" Foreground="#FFFFFF" />
+              </Button>
+              <Button Command="{Binding LoadRecipeToChannelCommand}" CommandParameter="2"
+                      Width="176" Height="52" CornerRadius="10" BorderThickness="0" Cursor="Hand"
+                      Background="{Binding Channel2.IsSequenceRunning, Converter={StaticResource LoadCh2Bg}}">
+                <TextBlock Text="{Binding Ch2LoadBtnText}" FontSize="16" FontWeight="SemiBold" Foreground="#FFFFFF" />
+              </Button>
+            </StackPanel>
+            <Button DockPanel.Dock="Right" Command="{Binding DeleteSelectedRecipeCommand}"
+                    Classes="hmi-outline-danger" Width="150" Height="52" Content="删除" />
+          </DockPanel>
+        </Grid>
+      </Border>
+    </Grid>
+
+    <!-- Bottom Action Card (60px) -->
+    <Border Grid.Row="2" Classes="hmi-card" Padding="16,0">
+      <DockPanel>
+        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <Button Command="{Binding SaveChannelAsRecipeCommand}" CommandParameter="1"
+                  Height="44" Padding="18,0" CornerRadius="10" Background="#FFFFFF" BorderBrush="#CFD8E3" BorderThickness="1" Cursor="Hand">
+            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+              <PathIcon Data="{StaticResource IconPlus}" Width="20" Height="20" Foreground="#8792A0" />
+              <TextBlock Text="存通道 1 的序列" FontSize="16" FontWeight="SemiBold" Foreground="#4F5B67" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Command="{Binding SaveChannelAsRecipeCommand}" CommandParameter="2"
+                  Height="44" Padding="18,0" CornerRadius="10" Background="#FFFFFF" BorderBrush="#CFD8E3" BorderThickness="1" Cursor="Hand">
+            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+              <PathIcon Data="{StaticResource IconPlus}" Width="20" Height="20" Foreground="#8792A0" />
+              <TextBlock Text="存通道 2 的序列" FontSize="16" FontWeight="SemiBold" Foreground="#4F5B67" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+        </StackPanel>
+        <TextBlock DockPanel.Dock="Right" Text="配方存在设备本机，不分通道，两个通道都能装　·　与工作站配方各自独立"
+                   FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+      </DockPanel>
+    </Border>
+  </Grid>
+</UserControl>

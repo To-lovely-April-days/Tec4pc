@@ -1,0 +1,184 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:conv="using:HtlabHmi.Converters"
+             x:Class="HtlabHmi.Views.Channel.ExportView">
+  <UserControl.Resources>
+    <conv:BoolToBrushConverter x:Key="RadioRing" TrueBrush="#00559C" FalseBrush="#A9B7C6" />
+    <conv:BoolToBrushConverter x:Key="RadioDot" TrueBrush="#00559C" FalseBrush="Transparent" />
+    <conv:BoolToBrushConverter x:Key="RadioTxt" TrueBrush="#00559C" FalseBrush="#4F5B67" />
+    <conv:BoolToBrushConverter x:Key="CheckBg" TrueBrush="#00559C" FalseBrush="#FFFFFF" />
+    <conv:BoolToBrushConverter x:Key="CheckBorder" TrueBrush="#00559C" FalseBrush="#B8C4D0" />
+    <conv:BoolToBrushConverter x:Key="StatusPillBg" TrueBrush="#00B368" FalseBrush="#EDF0F4" />
+    <conv:BoolToBrushConverter x:Key="StatusPillFg" TrueBrush="#FFFFFF" FalseBrush="#4F5B67" />
+  </UserControl.Resources>
+
+  <!-- 1:1 Export.dc.html: 452px card + 8px gap + 60px bottom card -->
+  <Grid RowDefinitions="452,8,60">
+    <Border Grid.Row="0" Classes="hmi-card">
+      <Grid RowDefinitions="48,52,48,48,40,*">
+        <!-- Band 1: 导出 -->
+        <Border Grid.Row="0" Background="#EAF2FB" Padding="24,0">
+          <TextBlock Text="导出" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center" />
+        </Border>
+
+        <!-- Sampling Interval (Circular Radios) -->
+        <Border Grid.Row="1" Margin="24,0" BorderBrush="#E8ECF1" BorderThickness="0,0,0,1">
+          <DockPanel>
+            <TextBlock Text="导出采样间隔" Width="220" FontSize="15" Foreground="#4F5B67" VerticalAlignment="Center" />
+            <StackPanel Orientation="Horizontal" Spacing="20" VerticalAlignment="Center">
+              <Button Command="{Binding SetExportIntervalCommand}" CommandParameter="1" Background="Transparent" BorderThickness="0" Padding="2,0" Cursor="Hand">
+                <StackPanel Orientation="Horizontal" Spacing="7">
+                  <Border Width="21" Height="21" CornerRadius="10.5" Background="#FFFFFF" BorderBrush="{Binding IsExportInterval1, Converter={StaticResource RadioRing}}" BorderThickness="2">
+                    <Ellipse Width="11" Height="11" Fill="{Binding IsExportInterval1, Converter={StaticResource RadioDot}}" />
+                  </Border>
+                  <TextBlock Text="1 s" FontSize="15" FontWeight="{Binding IsExportInterval1, Converter={x:Static conv:BoolToFontWeightConverter.Instance}}"
+                             Foreground="{Binding IsExportInterval1, Converter={StaticResource RadioTxt}}" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+              <Button Command="{Binding SetExportIntervalCommand}" CommandParameter="10" Background="Transparent" BorderThickness="0" Padding="2,0" Cursor="Hand">
+                <StackPanel Orientation="Horizontal" Spacing="7">
+                  <Border Width="21" Height="21" CornerRadius="10.5" Background="#FFFFFF" BorderBrush="{Binding IsExportInterval10, Converter={StaticResource RadioRing}}" BorderThickness="2">
+                    <Ellipse Width="11" Height="11" Fill="{Binding IsExportInterval10, Converter={StaticResource RadioDot}}" />
+                  </Border>
+                  <TextBlock Text="10 s" FontSize="15" FontWeight="{Binding IsExportInterval10, Converter={x:Static conv:BoolToFontWeightConverter.Instance}}"
+                             Foreground="{Binding IsExportInterval10, Converter={StaticResource RadioTxt}}" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+              <Button Command="{Binding SetExportIntervalCommand}" CommandParameter="60" Background="Transparent" BorderThickness="0" Padding="2,0" Cursor="Hand">
+                <StackPanel Orientation="Horizontal" Spacing="7">
+                  <Border Width="21" Height="21" CornerRadius="10.5" Background="#FFFFFF" BorderBrush="{Binding IsExportInterval60, Converter={StaticResource RadioRing}}" BorderThickness="2">
+                    <Ellipse Width="11" Height="11" Fill="{Binding IsExportInterval60, Converter={StaticResource RadioDot}}" />
+                  </Border>
+                  <TextBlock Text="60 s" FontSize="15" FontWeight="{Binding IsExportInterval60, Converter={x:Static conv:BoolToFontWeightConverter.Instance}}"
+                             Foreground="{Binding IsExportInterval60, Converter={StaticResource RadioTxt}}" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+            </StackPanel>
+            <TextBlock DockPanel.Dock="Right" Text="间隔越大文件越小" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+          </DockPanel>
+        </Border>
+
+        <!-- Export Range (Circular Radios + from/to boxes) -->
+        <Border Grid.Row="2" Margin="24,0" BorderBrush="#E8ECF1" BorderThickness="0,0,0,1">
+          <DockPanel>
+            <TextBlock Text="导出范围" Width="220" FontSize="15" Foreground="#4F5B67" VerticalAlignment="Center" />
+            <StackPanel Orientation="Horizontal" Spacing="20" VerticalAlignment="Center">
+              <Button Command="{Binding SetExportRangeCommand}" CommandParameter="all" Background="Transparent" BorderThickness="0" Padding="2,0" Cursor="Hand">
+                <StackPanel Orientation="Horizontal" Spacing="7">
+                  <Border Width="21" Height="21" CornerRadius="10.5" Background="#FFFFFF" BorderBrush="{Binding ExportRangeAll, Converter={StaticResource RadioRing}}" BorderThickness="2">
+                    <Ellipse Width="11" Height="11" Fill="{Binding ExportRangeAll, Converter={StaticResource RadioDot}}" />
+                  </Border>
+                  <TextBlock Text="整炉全程" FontSize="15" FontWeight="{Binding ExportRangeAll, Converter={x:Static conv:BoolToFontWeightConverter.Instance}}"
+                             Foreground="{Binding ExportRangeAll, Converter={StaticResource RadioTxt}}" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+              <Button Command="{Binding SetExportRangeCommand}" CommandParameter="custom" Background="Transparent" BorderThickness="0" Padding="2,0" Cursor="Hand">
+                <StackPanel Orientation="Horizontal" Spacing="7">
+                  <Border Width="21" Height="21" CornerRadius="10.5" Background="#FFFFFF" BorderBrush="{Binding ExportRangeCustom, Converter={StaticResource RadioRing}}" BorderThickness="2">
+                    <Ellipse Width="11" Height="11" Fill="{Binding ExportRangeCustom, Converter={StaticResource RadioDot}}" />
+                  </Border>
+                  <TextBlock Text="自定义" FontSize="15" FontWeight="{Binding ExportRangeCustom, Converter={x:Static conv:BoolToFontWeightConverter.Instance}}"
+                             Foreground="{Binding ExportRangeCustom, Converter={StaticResource RadioTxt}}" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+
+              <StackPanel Orientation="Horizontal" Spacing="8" Margin="14,0,0,0" VerticalAlignment="Center">
+                <TextBlock Text="从第" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+                <Button Command="{Binding EditExportTimeCommand}" CommandParameter="from" Width="84" Height="36"
+                        Background="#F3F7FC" BorderBrush="#C9D6E5" BorderThickness="1.5" CornerRadius="8"
+                        FontSize="16" FontWeight="SemiBold" Foreground="#1F2A35" Content="{Binding ExportFromMin}" Cursor="Hand" />
+                <TextBlock Text="min 到第" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+                <Button Command="{Binding EditExportTimeCommand}" CommandParameter="to" Width="84" Height="36"
+                        Background="#F3F7FC" BorderBrush="#C9D6E5" BorderThickness="1.5" CornerRadius="8"
+                        FontSize="16" FontWeight="SemiBold" Foreground="#1F2A35" Content="{Binding ExportToMin}" Cursor="Hand" />
+                <TextBlock Text="min" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+              </StackPanel>
+            </StackPanel>
+            <TextBlock DockPanel.Dock="Right" Text="时间从每一炉开始时算起" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+          </DockPanel>
+        </Border>
+
+        <!-- Band 2: 本机数据记录 -->
+        <Border Grid.Row="3" Background="#EAF2FB" Padding="24,0,18,0">
+          <DockPanel>
+            <StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
+              <TextBlock Text="本机数据记录" FontSize="17" FontWeight="SemiBold" />
+              <TextBlock Text="活批次 + 归档目录里的每一炉" FontSize="14" Foreground="#8792A0" VerticalAlignment="Center" />
+            </StackPanel>
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+              <TextBlock Text="{Binding ExportSelectedCountText}" FontSize="14" Foreground="#4F5B67" VerticalAlignment="Center" />
+            </StackPanel>
+          </DockPanel>
+        </Border>
+
+        <!-- Select All Header (40px #F7F9FB) -->
+        <Button Grid.Row="4" Command="{Binding ToggleSelectAllBatchesCommand}" Padding="24,0" Background="#F7F9FB"
+                BorderBrush="#E8ECF1" BorderThickness="0,0,0,1" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Cursor="Hand">
+          <DockPanel>
+            <StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
+              <Border Width="26" Height="26" CornerRadius="7" Background="#00559C" Margin="0,0,18,0">
+                <Border Width="12" Height="3" CornerRadius="1.5" Background="#FFFFFF" />
+              </Border>
+              <TextBlock Text="全选" Width="250" FontSize="14" FontWeight="SemiBold" Foreground="#1F2A35" VerticalAlignment="Center" />
+              <TextBlock Text="通道 / 状态" Width="170" FontSize="14" Foreground="#4F5B67" VerticalAlignment="Center" />
+              <TextBlock Text="时长" FontSize="14" Foreground="#4F5B67" VerticalAlignment="Center" />
+            </StackPanel>
+            <TextBlock DockPanel.Dock="Right" Text="日期" FontSize="14" Foreground="#4F5B67" VerticalAlignment="Center" />
+          </DockPanel>
+        </Button>
+
+        <!-- Batch Rows (48px) -->
+        <ScrollViewer Grid.Row="5">
+          <ItemsControl ItemsSource="{Binding ExportBatches}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Button Command="{Binding $parent[UserControl].DataContext.ToggleExportBatchCommand}" CommandParameter="{Binding}"
+                        Padding="24,0" Height="48" Background="#FFFFFF" BorderBrush="#E8ECF1" BorderThickness="0,0,0,1"
+                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Cursor="Hand">
+                  <DockPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
+                      <Border Width="26" Height="26" CornerRadius="7" Margin="0,0,18,0"
+                              Background="{Binding IsSelected, Converter={StaticResource CheckBg}}"
+                              BorderBrush="{Binding IsSelected, Converter={StaticResource CheckBorder}}" BorderThickness="2">
+                        <PathIcon Data="{StaticResource IconCheck}" Width="18" Height="18" Foreground="#FFFFFF" IsVisible="{Binding IsSelected}" />
+                      </Border>
+                      <TextBlock Text="{Binding Name}" Width="250" FontSize="16" FontWeight="Medium" Foreground="#1F2A35" VerticalAlignment="Center" />
+                      <Border Height="28" Padding="12,0" CornerRadius="8" BorderBrush="#C3CCD6" BorderThickness="1" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding ChannelName}" FontSize="14" Foreground="#4F5B67" VerticalAlignment="Center" />
+                      </Border>
+                      <Border Height="28" Padding="12,0" CornerRadius="8" Background="{Binding IsRunningStatus, Converter={StaticResource StatusPillBg}}" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Status}" FontSize="14" Foreground="{Binding IsRunningStatus, Converter={StaticResource StatusPillFg}}" VerticalAlignment="Center" />
+                      </Border>
+                      <TextBlock Text="{Binding Duration}" Margin="12,0,0,0" FontSize="15" Foreground="#4F5B67" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <TextBlock DockPanel.Dock="Right" Text="{Binding Date}" FontSize="15" Foreground="#8792A0" VerticalAlignment="Center" />
+                  </DockPanel>
+                </Button>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </Grid>
+    </Border>
+
+    <!-- Bottom 60px Card -->
+    <Border Grid.Row="2" Classes="hmi-card" Padding="16,0">
+      <DockPanel>
+        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <Border Height="40" Padding="14,0" CornerRadius="8" Background="#F3F7FC">
+            <TextBlock Text="3 个 CSV：执行记录 · 事件日志 · 采样宽表" FontSize="14" Foreground="#4F5B67" VerticalAlignment="Center" />
+          </Border>
+          <Border Height="40" Padding="14,0" CornerRadius="8" Background="#F3F7FC">
+            <TextBlock Text="插着 U 盘就一并拷过去，没插先存本机" FontSize="14" Foreground="#4F5B67" VerticalAlignment="Center" />
+          </Border>
+        </StackPanel>
+        <Button DockPanel.Dock="Right" Command="{Binding DoExportCsvCommand}" Classes="hmi-primary" Width="180" Height="44">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <PathIcon Data="{StaticResource IconExport}" Width="19" Height="19" Foreground="#FFFFFF" />
+            <TextBlock Text="{Binding ExportButtonText}" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
+      </DockPanel>
+    </Border>
+  </Grid>
+</UserControl>

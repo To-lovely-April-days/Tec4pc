@@ -1,0 +1,71 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:conv="using:HtlabHmi.Converters"
+             x:Class="HtlabHmi.Views.Channel.ChannelHeaderBar">
+  <UserControl.Resources>
+    <conv:BoolToBrushConverter x:Key="ActiveDotBrush" TrueBrush="#00B368" FalseBrush="#A9B4C0" />
+    <conv:BoolToBrushConverter x:Key="SegTextBrush" TrueBrush="#00559C" FalseBrush="#8792A0" />
+  </UserControl.Resources>
+
+  <Border Classes="hmi-card" Height="72" Padding="20,0,16,0">
+    <Grid ColumnDefinitions="360,*,140,156">
+      <!-- Left Channel Identity -->
+      <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="4">
+        <StackPanel Orientation="Horizontal" Spacing="10">
+          <Ellipse Width="9" Height="9" Fill="{Binding ActiveChannel.IsActive, Converter={StaticResource ActiveDotBrush}}" VerticalAlignment="Center" />
+          <TextBlock Text="{Binding ActiveChannel.ChannelTitle}" FontSize="19" Foreground="{StaticResource TextSecondaryBrush}" />
+          <TextBlock Text="{Binding ActiveChannel.SchemeName}" FontSize="20" FontWeight="SemiBold" Foreground="{StaticResource PrimaryBlueBrush}" />
+        </StackPanel>
+        <TextBlock Text="{Binding ActiveChannel.HeaderModeLine}" FontSize="14" Foreground="{StaticResource TextMutedBrush}" TextTrimming="CharacterEllipsis" />
+      </StackPanel>
+
+      <!-- Middle Step Progress Segments -->
+      <ItemsControl Grid.Column="1" ItemsSource="{Binding ActiveChannel.Steps}" VerticalAlignment="Center" Margin="14,0">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <UniformGrid Rows="1" />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <StackPanel Margin="3,0" Spacing="6">
+              <Border Height="8" CornerRadius="4" Background="{StaticResource TrackBgBrush}" ClipToBounds="True">
+                <Border HorizontalAlignment="Left" Background="{StaticResource PrimaryBlueBrush}"
+                        Width="{Binding ProgressPct, Converter={x:Static conv:PercentToWidthConverter.Instance}, ConverterParameter=92}" />
+              </Border>
+              <TextBlock Text="{Binding ShortLabel}" FontSize="12" TextTrimming="CharacterEllipsis"
+                         Foreground="{Binding IsRunning, Converter={StaticResource SegTextBrush}}" />
+            </StackPanel>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <!-- Right Step Counter -->
+      <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,16,0" Spacing="3">
+        <TextBlock Text="{Binding ActiveChannel.StepCounterText}" FontSize="17" FontWeight="SemiBold" HorizontalAlignment="Right" />
+        <StackPanel Orientation="Horizontal" Spacing="5" HorizontalAlignment="Right">
+          <TextBlock Text="本步剩余" FontSize="13" Foreground="{StaticResource TextMutedBrush}" />
+          <TextBlock Text="{Binding ActiveChannel.StepRemainText}" FontSize="13" FontWeight="SemiBold" />
+        </StackPanel>
+      </StackPanel>
+
+      <!-- End / Start Sequence Button -->
+      <Panel Grid.Column="3" VerticalAlignment="Center">
+        <Button IsVisible="{Binding ActiveChannel.IsSequenceRunning}" Command="{Binding EndSequenceCommand}"
+                Classes="hmi-danger" Width="150" Height="48">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <PathIcon Data="{StaticResource IconStop}" Width="18" Height="18" Foreground="#FFFFFF" />
+            <TextBlock Text="结束序列" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
+        <Button IsVisible="{Binding !ActiveChannel.IsSequenceRunning}" Command="{Binding StartSequenceCommand}"
+                Classes="hmi-primary" Width="150" Height="48">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <PathIcon Data="{StaticResource IconPlay}" Width="16" Height="16" Foreground="#FFFFFF" />
+            <TextBlock Text="开始序列" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
+      </Panel>
+    </Grid>
+  </Border>
+</UserControl>
