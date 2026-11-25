@@ -218,8 +218,60 @@ lv_font_t* font(int weight, float css_px) {
 // 设计稿里文字和小圆点常常比包着它的元素大一点；LVGL 默认按父元素边界裁，这里给不裁剪的元素留出余量
 static void ext_cb(lv_event_t* e) { lv_event_set_ext_draw_size(e, 120 * UI_SCALE); }
 
+// 多语言自适应排版用的几张小账本：
+//   · g_row_push[parent]：同一行里前一个按钮因为译文变长往右涨了多少，紧挨着它的下一个元素跟着往右让；
+//   · g_init_shift[label]：搭页面那一下 txta_shift 已经往右让了多少（三段连排 A→B→C 时 C 要连 A 的份一起算）；
+//   · g_absorbed[label]：这段字把自己的外壳撑宽了多少（后面的邻居已经跟着外壳让过了，别在 txta_shift 里再算一遍）；
+//   · g_box_dw[box]：这个外壳搭的时候加宽了多少（居中文字记坐标时要把中心点跟着挪过去）
+struct RowPush { int orig_right = 0, cy = 0, push = 0; };
+static std::map<lv_obj_t*, RowPush> g_row_push;
+static std::map<lv_obj_t*, int> g_init_shift;
+static std::map<lv_obj_t*, int> g_absorbed;
+static std::map<lv_obj_t*, int> g_box_dw;
+
+// 某块靠右的元素往左加宽或伸出左边界以后，如果撞到同一行左边紧挨着的兄弟，把左边的兄弟也往左推开
+static void push_left_siblings(lv_obj_t* o, int old_left, int new_left) {
+    lv_obj_t* gp = lv_obj_get_parent(o);
+    if (!gp || new_left >= old_left) return;
+    const int cy = lv_obj_get_y(o) + lv_obj_get_height(o) / 2;
+    const uint32_t cnt = lv_obj_get_child_count(gp);
+    int idx = -1;
+    for (uint32_t i = 0; i < cnt; i++) if (lv_obj_get_child(gp, i) == o) { idx = static_cast<int>(i); break; }
+    int cur_old_l = old_left, cur_new_l = new_left;
+    for (int i = idx - 1; i >= 0; i--) {
+        lv_obj_t* sib = lv_obj_get_child(gp, static_cast<uint32_t>(i));
+        const int sw = lv_obj_get_width(sib), sh = lv_obj_get_height(sib);
+        if (sw <= 0 || sh <= 0) continue;
+        if (std::abs((lv_obj_get_y(sib) + sh / 2) - cy) > 18 * UI_SCALE) continue;
+        const int sx = lv_obj_get_x(sib), sr = sx + sw;
+        const int gap = cur_old_l - sr;
+        if (gap < -2 * UI_SCALE || gap > 40 * UI_SCALE) break;
+        const int want_r = cur_new_l - std::max(8 * UI_SCALE, gap);
+        if (sr <= want_r) break;
+        const int nx = want_r - sw;
+        lv_obj_set_x(sib, nx);
+        cur_old_l = sx;
+        cur_new_l = nx;
+    }
+}
+
 lv_obj_t* mk(lv_obj_t* p, int x, int y, int w, int h, int clip) {
+    auto rp = g_row_push.find(p);
+    int pushed = 0;
+    if (rp != g_row_push.end() && rp->second.push > 0 && w > 0 && h > 0) {
+        const int cy = y + h / 2;
+        if (std::abs(cy - rp->second.cy) <= 18 * UI_SCALE && x >= rp->second.orig_right - 2 * UI_SCALE && x <= rp->second.orig_right + 36 * UI_SCALE) {
+            pushed = rp->second.push;
+            x += pushed;
+            rp->second.orig_right = (x - pushed) + w;
+            rp->second.cy = cy;
+        } else {
+            g_row_push.erase(rp);
+        }
+    }
     lv_obj_t* o = lv_obj_create(p);
+    g_box_dw[o] = 0;
+    g_row_push.erase(o);
     lv_obj_remove_style_all(o);
     lv_obj_set_pos(o, x, y); lv_obj_set_size(o, w, h);
     lv_obj_remove_flag(o, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE));   // 缺省不接点击：点到它身上的要落到后面真正能点的元素上
@@ -261,6 +313,8 @@ lv_obj_t* txta(lv_obj_t* p, int ax, int cy, char anchor, const char* s0, int wei
     const std::string& S = tr(key);
     const char* s = S.c_str();
     lv_obj_t* l = lv_label_create(p);
+    g_init_shift[l] = 0;
+    g_absorbed[l] = 0;
     lv_obj_remove_style_all(l);
     lv_obj_set_style_text_font(l, font(weight, px), 0); lv_obj_set_style_text_color(l, lv_color_hex(c), 0); lv_obj_set_style_text_opa(l, static_cast<lv_opa_t>(a), 0);
     lv_obj_set_style_text_letter_space(l, ls, 0);
@@ -268,19 +322,100 @@ lv_obj_t* txta(lv_obj_t* p, int ax, int cy, char anchor, const char* s0, int wei
     lv_label_set_text(l, s);
     int w = 0, h = 0;
     text_size(l, s, wrap_w, w, h);
-    lv_obj_set_pos(l, anchor == 'l' ? ax : anchor == 'r' ? ax - w : ax - w / 2, cy - h / 2);
+    int rx = anchor == 'l' ? ax : anchor == 'r' ? ax - w : ax - w / 2;
+    lv_obj_set_pos(l, rx, cy - h / 2);
+
+    // 按钮 / 小牌子里的字换成外语变长以后，把外壳跟着撑宽，免得字伸出框外或压住隔壁按钮
+    if (p && !wrap_w) {
+        const int pw = lv_obj_get_width(p), ph = lv_obj_get_height(p);
+        const bool styled = lv_obj_get_style_bg_opa(p, 0) > 0 || lv_obj_get_style_border_width(p, 0) > 0;
+        if (styled && pw >= 28 * UI_SCALE && pw <= 280 * UI_SCALE && ph >= 18 * UI_SCALE && ph <= 56 * UI_SCALE) {
+            if (anchor == 'l') {
+                const int rpad = std::min(ax, 16 * UI_SCALE);
+                const int need_w = ax + w + rpad;
+                if (need_w > pw) {
+                    const int dw = need_w - pw;
+                    lv_obj_t* box = p;
+                    const int px0 = lv_obj_get_x(p);
+                    lv_obj_set_width(p, need_w);
+                    g_box_dw[p] = dw;
+                    g_absorbed[l] = dw;
+                    lv_obj_t* gp = lv_obj_get_parent(p);
+                    // 有些按钮外面还包着一层同宽的透明壳（比如「不变」外面包着「搅拌」那一列）
+                    if (gp && lv_obj_get_style_bg_opa(gp, 0) == 0 && std::abs(lv_obj_get_width(gp) - pw) <= 2 * UI_SCALE) {
+                        const int gpx0 = lv_obj_get_x(gp), gpw0 = lv_obj_get_width(gp);
+                        lv_obj_set_width(gp, gpw0 + dw);
+                        if (lv_obj_t* ggp = lv_obj_get_parent(gp)) {
+                            auto& rp = g_row_push[ggp];
+                            rp.orig_right = gpx0 + gpw0 - rp.push;
+                            rp.cy = lv_obj_get_y(gp) + lv_obj_get_height(gp) / 2;
+                            rp.push += dw;
+                        }
+                    } else if (gp) {
+                        auto& rp = g_row_push[gp];
+                        rp.orig_right = px0 + pw - rp.push;
+                        rp.cy = lv_obj_get_y(box) + ph / 2;
+                        rp.push += dw;
+                    }
+                }
+            } else if (anchor == 'c') {
+                const int need_w = w + 28 * UI_SCALE;
+                if (need_w > pw) {
+                    const int dw = need_w - pw;
+                    lv_obj_set_width(p, need_w);
+                    g_box_dw[p] = dw;
+                    lv_obj_set_x(l, (need_w - w) / 2);
+                }
+            } else if (anchor == 'r') {
+                const bool has_icon = lv_obj_get_child_count(p) > 1 && lv_obj_get_child(p, 0) != l;
+                const int lpad = has_icon ? (lv_obj_get_x(lv_obj_get_child(p, 0)) + 26 * UI_SCALE) : std::max(7 * UI_SCALE, pw - ax);
+                const int rpad = std::max(7 * UI_SCALE, pw - ax);
+                const int need_w = lpad + w + rpad;
+                if (need_w > pw) {
+                    const int dw = need_w - pw;
+                    const int old_x = lv_obj_get_x(p), new_x = old_x - dw;
+                    lv_obj_set_x(p, new_x);
+                    lv_obj_set_width(p, need_w);
+                    g_box_dw[p] = dw;
+                    lv_obj_set_x(l, lpad);
+                    push_left_siblings(p, old_x, new_x);
+                }
+            }
+        } else if (!styled && anchor == 'r' && rx < 0 && ph <= 56 * UI_SCALE) {
+            // 右对齐的开关文字往左变长（如 pH electrode）：把左边紧挨着的那颗开关往左让开
+            const int old_x = lv_obj_get_x(p);
+            push_left_siblings(p, old_x, old_x + rx);
+        }
+    }
     return l;
 }
 lv_obj_t* txta_shift(lv_obj_t* p, int ax, int cy, lv_obj_t* prev, int prev_w, const char* s, int weight, float px, uint32_t c, int a, int ls, int wrap_w) {
     lv_obj_t* l = txta(p, ax, cy, 'l', s, weight, px, c, a, ls, wrap_w);
-    const int extra = prev ? label_w(prev) - prev_w : 0;      // 前一段比设计稿里宽出来多少
-    if (extra > 0) lv_obj_set_x(l, lv_obj_get_x(l) + extra);
+    const int raw_extra = prev ? label_w(prev) - prev_w - g_absorbed[prev] : 0;      // 前一段比设计稿里宽出来多少（扣掉外壳已经替它让过的部分）
+    const int extra = (raw_extra > 0 ? raw_extra : 0) + (prev ? g_init_shift[prev] : 0);
+    g_init_shift[l] = extra;
+    if (p && lv_obj_get_style_bg_opa(p, 0) > 0 && lv_obj_get_child_count(p) == 1 && lv_obj_get_width(p) <= 350 * UI_SCALE && lv_obj_get_height(p) <= 56 * UI_SCALE) {
+        // 带底色的小标签（「可改」、底部提示条）：挪外壳本身并把外壳放宽，不要让字自己跑出底色块外面
+        if (extra > 0) lv_obj_set_x(p, lv_obj_get_x(p) + extra);
+        const int need_w = ax * 2 + label_w(l);
+        if (need_w > lv_obj_get_width(p)) lv_obj_set_width(p, need_w);
+    } else if (extra > 0) {
+        lv_obj_set_x(l, lv_obj_get_x(l) + extra);
+    }
     return l;
 }
 
 lv_obj_t* im(lv_obj_t* p, int x, int y, const char* path) { lv_obj_t* i = lv_image_create(p); lv_image_set_src(i, path); lv_obj_set_pos(i, x, y); return i; }
 
-void Ui::reg_text(const char* id, lv_obj_t* label, char anchor, int ax, int cy) { texts_[id] = T{label, anchor, ax, cy, lv_label_get_text(label)}; }
+void Ui::reg_text(const char* id, lv_obj_t* label, char anchor, int ax, int cy) {
+    lv_obj_t* p = label ? lv_obj_get_parent(label) : nullptr;
+    if (p && g_box_dw[p] > 0) {
+        if (anchor == 'c') ax += g_box_dw[p] / 2;
+        else if (anchor == 'r') ax += g_box_dw[p];
+    }
+    texts_[id] = T{label, anchor, ax, cy, lv_label_get_text(label)};
+    if (label) id_of_[label] = id;
+}
 
 void Ui::reg_act(lv_obj_t* obj, const char* action) {
     lv_obj_add_flag(obj, LV_OBJ_FLAG_CLICKABLE);
@@ -315,17 +450,20 @@ void Ui::set_text_raw(const std::string& id, const std::string& s) {
     T& t = it->second;
     t.cur = s;
     lv_label_set_text(t.label, s.c_str());
-    // 后面还跟着一段字的话，这一段变长变短它得跟着挪
-    auto f = follower_of_.find(t.label);
-    if (f != follower_of_.end()) place(f->second);
     int w = 0, h = 0;
     // 设计稿里要折行的那几段是定了宽度的；其余的宽度是「跟着字走」，按不折行量
     const int32_t sw = lv_obj_get_style_width(t.label, 0);
     text_size(t.label, s.c_str(), sw == LV_SIZE_CONTENT ? 0 : sw, w, h);
-    const int x = (t.anchor == 'l' ? t.ax : t.anchor == 'r' ? t.ax - w : t.ax - w / 2) + follow_shift(t);
+    lv_obj_t* par = lv_obj_get_parent(t.label);
+    const bool pill_par = par && lv_obj_get_style_bg_opa(par, 0) > 0 && lv_obj_get_child_count(par) == 1 && lv_obj_get_width(par) <= 350 * UI_SCALE && lv_obj_get_height(par) <= 56 * UI_SCALE;
+    const int shift = pill_par ? 0 : follow_shift(t);
+    int x = (t.anchor == 'l' ? t.ax : t.anchor == 'r' ? t.ax - w : t.ax - w / 2) + shift;
+    if (pill_par && t.anchor == 'l') {
+        const int need_w = t.ax * 2 + w;
+        if (need_w > lv_obj_get_width(par)) lv_obj_set_width(par, need_w);
+    }
     lv_obj_set_pos(t.label, x, t.cy - h / 2);
     // 新的字比设计稿里那句长很多时，会伸出包着它的那个元素太远而被裁掉；包着它的元素只是个不带底色的壳，就跟着放宽
-    lv_obj_t* par = lv_obj_get_parent(t.label);
     if (t.anchor == 'l' && par && lv_obj_get_style_bg_opa(par, 0) == 0 && x + w > lv_obj_get_width(par)) lv_obj_set_width(par, x + w);
     // 靠右对齐的字变长是往左伸的。不去挪那个壳（它里面可能还有别的东西，比如前面的小圆点），
     // 只把它「允许画出去多远」放大到够用：缺省只留了 120 像素的余量，再长就被裁掉开头
@@ -333,16 +471,28 @@ void Ui::set_text_raw(const std::string& id, const std::string& s) {
         lv_obj_add_event_cb(par, [](lv_event_t* e) { lv_event_set_ext_draw_size(e, 700 * UI_SCALE); }, LV_EVENT_REFR_EXT_DRAW_SIZE, nullptr);
         lv_obj_refresh_ext_draw_size(par);
     }
+    // 后面还跟着一段字的话，这一段变长变短它得跟着挪（先摆好自己再通知后面）
+    auto f = follower_of_.find(t.label);
+    if (f != follower_of_.end()) place(f->second);
 }
 
-// 跟在别人后面的那一段，该往右让多少
+// 跟在别人后面的那一段，该往右让多少（支持多段串联：A→B→C）
 int Ui::follow_shift(const T& t) const {
     if (!t.prev) return 0;
-    const int extra = label_w(t.prev) - t.prev_w;
-    return extra > 0 ? extra : 0;
+    const int raw = label_w(t.prev) - t.prev_w - g_absorbed[t.prev];
+    int s = raw > 0 ? raw : 0;
+    auto pit = id_of_.find(t.prev);
+    if (pit != id_of_.end()) {
+        auto tit = texts_.find(pit->second);
+        if (tit != texts_.end()) s += follow_shift(tit->second);
+    } else {
+        auto sit = g_init_shift.find(t.prev);
+        if (sit != g_init_shift.end()) s += sit->second;
+    }
+    return s;
 }
 
-// 位置重算一遍（前面那一段的字换了，这一段要跟着挪）
+// 位置重算一遍（前面那一段的字换了，这一段要跟着挪，再继续通知它后面那一段）
 void Ui::place(const std::string& id) {
     auto it = texts_.find(id);
     if (it == texts_.end()) return;
@@ -350,8 +500,13 @@ void Ui::place(const std::string& id) {
     int w = 0, h = 0;
     const int32_t sw = lv_obj_get_style_width(t.label, 0);
     text_size(t.label, lv_label_get_text(t.label), sw == LV_SIZE_CONTENT ? 0 : sw, w, h);
-    const int x = (t.anchor == 'l' ? t.ax : t.anchor == 'r' ? t.ax - w : t.ax - w / 2) + follow_shift(t);
+    lv_obj_t* par = lv_obj_get_parent(t.label);
+    const bool pill_par = par && lv_obj_get_style_bg_opa(par, 0) > 0 && lv_obj_get_child_count(par) == 1 && lv_obj_get_width(par) <= 350 * UI_SCALE && lv_obj_get_height(par) <= 56 * UI_SCALE;
+    const int shift = pill_par ? 0 : follow_shift(t);
+    const int x = (t.anchor == 'l' ? t.ax : t.anchor == 'r' ? t.ax - w : t.ax - w / 2) + shift;
     lv_obj_set_pos(t.label, x, t.cy - h / 2);
+    auto f = follower_of_.find(t.label);
+    if (f != follower_of_.end()) place(f->second);
 }
 
 void Ui::set_text_color(const std::string& id, uint32_t c) {

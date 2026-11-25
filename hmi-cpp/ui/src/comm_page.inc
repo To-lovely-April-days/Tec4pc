@@ -48,6 +48,13 @@ void comm_dlg_show() {
     u.set_text("cd.station", std::to_string(d.value("station", 1)));
     u.set_text("cd.poll", std::to_string(d.value("poll_ms", 1000)));
     set_switch(u, "cd:enabled", d.value("enabled", true));
+    if (lv_obj_t* sw = u.box("sw.cd:enabled")) if (lv_obj_t* sw_par = lv_obj_get_parent(sw)) if (lv_obj_get_child_count(sw_par) > 0) {
+        const int sx = label_w(lv_obj_get_child(sw_par, 0)) + 10 * UI_SCALE;
+        if (sx > lv_obj_get_x(sw)) {
+            lv_obj_set_x(sw, sx); lv_obj_set_width(sw_par, sx + 54 * UI_SCALE);
+            if (lv_obj_t* mb = u.box("cd.msg")) lv_obj_set_x(mb, sx + 78 * UI_SCALE);
+        }
+    }
 }
 
 bool comm_action(const std::string& a) {
@@ -63,7 +70,7 @@ bool comm_action(const std::string& a) {
         if (a == "cd:save") {
             const json r = ask({{"cmd", "settings.set"}, {"device", d}});
             if (!r.value("ok", false)) { commdlg.ui->set_text("cd.msg", r.value("error", std::string("没存进去"))); return true; }
-            cmv.msg = "「" + d.value("label", "") + "」的参数已保存，重启控制核心后生效";
+            cmv.msg = ui::fmt("「{0}」的参数已保存，重启控制核心后生效", {ui::tr(d.value("label", ""))});
             ced_dev.open = false; lv_obj_add_flag(commdlg.scr, LV_OBJ_FLAG_HIDDEN);
             comm_fetch(true); refresh();
             return true;
@@ -76,17 +83,17 @@ bool comm_action(const std::string& a) {
             // 串口号只填 COM 后面的数字。原来的名字不是 COMn 这种（开发机上）就从 1 起
             const std::string com = d.value("port", "");
             const double cur_n = com.rfind("COM", 0) == 0 ? std::atof(com.c_str() + 3) : 1;
-            open_keypad(d.value("label", "") + " · 串口号", "COM", cur_n, 1, 64, com, "—", [this](double x) { ced_dev.dev["port"] = "COM" + std::to_string(static_cast<int>(x)); comm_dlg_show(); }, 0);
+            open_keypad(ui::fmt("{0} · 串口号", {ui::tr(d.value("label", ""))}), "COM", cur_n, 1, 64, com, "—", [this](double x) { ced_dev.dev["port"] = "COM" + std::to_string(static_cast<int>(x)); comm_dlg_show(); }, 0);
             lv_obj_move_foreground(kp.scr);          // 键盘要盖在这个弹窗上面
             return true;
         }
         else if (a == "cd:station") {
-            open_keypad(d.value("label", "") + " · 站号", "", d.value("station", 1), 1, 247, std::to_string(d.value("station", 1)), "—", [this](double x) { ced_dev.dev["station"] = static_cast<int>(x); comm_dlg_show(); }, 0);
+            open_keypad(ui::fmt("{0} · 站号", {ui::tr(d.value("label", ""))}), "", d.value("station", 1), 1, 247, std::to_string(d.value("station", 1)), "—", [this](double x) { ced_dev.dev["station"] = static_cast<int>(x); comm_dlg_show(); }, 0);
             lv_obj_move_foreground(kp.scr);
             return true;
         }
         else if (a == "cd:poll") {
-            open_keypad(d.value("label", "") + " · 轮询周期", "ms", d.value("poll_ms", 1000), 100, 5000, std::to_string(d.value("poll_ms", 1000)) + " ms", "—", [this](double x) { ced_dev.dev["poll_ms"] = static_cast<int>(x); comm_dlg_show(); }, 0);
+            open_keypad(ui::fmt("{0} · 轮询周期", {ui::tr(d.value("label", ""))}), "ms", d.value("poll_ms", 1000), 100, 5000, std::to_string(d.value("poll_ms", 1000)) + " ms", "—", [this](double x) { ced_dev.dev["poll_ms"] = static_cast<int>(x); comm_dlg_show(); }, 0);
             lv_obj_move_foreground(kp.scr);
             return true;
         }
@@ -340,8 +347,7 @@ void refresh_scan_running() {
     if (!r.value("ok", false)) { scv.running = false; scan_show(commscanrun, false); cmv.msg = r.value("error", std::string("检测没跑起来")); return; }
     const int done = r.value("done", 0), total = r.value("total", 0);
     u.set_text_raw("cr.n", total ? ui::fmt("第 {0} 个口 / 共 {1} 个", {std::to_string(std::max(1, done)), std::to_string(total)}) : ui::tr("正在找串口…"));
-    char el[24]; std::snprintf(el, sizeof el, "已用 %.1f s", r.value("elapsed_s", 0.0));
-    u.set_text("cr.t", el);
+    u.set_text_raw("cr.t", ui::fmt("已用 {0} s", {f1(r.value("elapsed_s", 0.0))}));
     if (lv_obj_t* bar = u.box("cr.bar")) if (lv_obj_t* track = lv_obj_get_parent(bar)) {
         const int full = lv_obj_get_width(track);
         lv_obj_set_width(bar, total > 0 ? std::max(0, full * done / total) : 0);
@@ -429,7 +435,7 @@ bool scan_action(const std::string& a) {
         const json r = ask({{"cmd", "ports.apply"}, {"devices", devs}});
         if (!r.value("ok", false)) { scv.msg = r.value("error", std::string("没存进去")); refresh_scan_result(); return true; }
         scv.open = false; scan_show(commscan, false);
-        cmv.msg = "已按检测结果改了 " + std::to_string(r.value("applied", 0)) + " 台，并记住了它们的 USB 口；重启控制核心后生效";
+        cmv.msg = ui::fmt("已按检测结果改了 {0} 台，并记住了它们的 USB 口；重启控制核心后生效", {std::to_string(r.value("applied", 0))});
         comm_fetch(true); refresh();
         return true;
     }

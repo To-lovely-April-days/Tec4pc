@@ -72,9 +72,10 @@ bool export_action(const std::string& a) {
                 if (cut != std::string::npos && cut > 0) cut = dir.rfind('/', cut - 1);
                 if (cut != std::string::npos) dir = "…" + dir.substr(cut);
                 // 导完顺手拷到 U 盘：屏上没有文件管理器，数据留在本机拿不走
+                const std::string cnt = std::to_string(r.value("exported", 0));
                 const json dr = ask({{"cmd", "drives.list"}});
-                if (dr.value("ok", false) && dr["drives"].is_array() && !dr["drives"].empty()) exv.msg = "已导出 " + std::to_string(r.value("exported", 0)) + " 炉　·　" + copy_to_usb();
-                else exv.msg = "已导出 " + std::to_string(r.value("exported", 0)) + " 炉，放在本机 " + dir + "　·　没插 U 盘，插上再点一次";
+                if (dr.value("ok", false) && dr["drives"].is_array() && !dr["drives"].empty()) exv.msg = ui::fmt("已导出 {0} 炉　·　{1}", {cnt, copy_to_usb()});
+                else exv.msg = ui::fmt("已导出 {0} 炉，放在本机 {1}　·　没插 U 盘，插上再点一次", {cnt, dir});
             }
             else exv.msg = r.value("error", std::string("没导出来"));
         }
@@ -116,6 +117,18 @@ void refresh_export(Ui& u) {
         u.set_text_color(id + ".s", running ? 0xFFFFFF : 0x4F5B67);
         if (lv_obj_t* o = u.box(id + ".s")) if (u.changed(id + ".s", running)) bg(o, running ? 0x00B368 : 0xEDF0F4, 255);
         u.set_text(id + ".d", hms(x.value("duration_s", 0.0)));
+        if (lv_obj_t* cb = u.box(id + ".c")) if (lv_obj_t* cl = u.label(id + ".c")) {
+            const int cw = label_w(cl) + 24 * UI_SCALE;
+            lv_obj_set_width(cb, cw); lv_obj_set_x(cl, 12 * UI_SCALE);
+            if (lv_obj_t* sb = u.box(id + ".s")) if (lv_obj_t* sl = u.label(id + ".s")) {
+                const int sx = lv_obj_get_x(cb) + cw + 14 * UI_SCALE, sw = label_w(sl) + 24 * UI_SCALE;
+                lv_obj_set_x(sb, sx); lv_obj_set_width(sb, sw); lv_obj_set_x(sl, 12 * UI_SCALE);
+                if (lv_obj_t* db = u.box(id + ".d")) {
+                    lv_obj_set_x(db, sx + sw + 34 * UI_SCALE);
+                    if (lv_obj_t* dl = u.label(id + ".d")) lv_obj_set_x(dl, 0);
+                }
+            }
+        }
         const std::string started = x.value("started", "");
         u.set_text_raw(id + ".t", started.rfind(today, 0) == 0 ? ui::fmt("今天 {0}", {started.size() >= 16 ? started.substr(11, 5) : std::string()})
                                                                  : started.substr(0, std::min<size_t>(16, started.size())));

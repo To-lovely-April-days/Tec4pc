@@ -49,13 +49,13 @@ bool lib_action(const std::string& a) {
     else if (a.rfind("lib:load:", 0) == 0) {
         const int ch = a[9] - '0', ci = ch - 1;
         if (lib.sel.empty()) lib.msg = "还没有配方";
-        else if (seq_locked(ci)) lib.msg = "通道 " + std::to_string(ch) + " 的序列正在跑，结束了才能装";
+        else if (seq_locked(ci)) lib.msg = ui::fmt("通道 {0} 的序列正在跑，结束了才能装", {std::to_string(ch)});
         else {
             const json r = ask({{"cmd", "seq.load"}, {"ch", ch}, {"steps", lib.steps}});
             if (!r.value("ok", false)) lib.msg = r.value("error", std::string("没装进去"));
             else {
                 // 装好了直接带到那个通道的任务序列页，让人马上看到装进去的是什么
-                sv[ci].key.clear(); sv[ci].sel = 0; sv[ci].msg = "已装入配方「" + lib.sel + "」"; sv[ci].name = lib.sel;
+                sv[ci].key.clear(); sv[ci].sel = 0; sv[ci].msg = ui::fmt("已装入配方「{0}」", {lib.sel}); sv[ci].name = lib.sel;
                 channel = ch; ch_tab = 2;
                 poll();
                 show(channel_page());
@@ -67,14 +67,14 @@ bool lib_action(const std::string& a) {
         else if (!lib.del_armed) lib.del_armed = true;           // 删了找不回来：要点两次
         else {
             const json r = ask({{"cmd", "recipe.delete"}, {"name", lib.sel}});
-            lib.msg = r.value("ok", false) ? "已删除「" + lib.sel + "」" : r.value("error", std::string("没删掉"));
+            lib.msg = r.value("ok", false) ? ui::fmt("已删除「{0}」", {lib.sel}) : r.value("error", std::string("没删掉"));
             lib.del_armed = false; lib.sel.clear(); lib.steps_of = "\x01";
             lib_fetch(true);
         }
     } else if (a.rfind("lib:save:", 0) == 0) {
         const int ch = a[9] - '0';
         const json g = ask({{"cmd", "seq.get"}, {"ch", ch}});
-        if (!g.value("ok", false) || !g["steps"].is_array() || g["steps"].empty()) lib.msg = "通道 " + std::to_string(ch) + " 现在没有编好的序列";
+        if (!g.value("ok", false) || !g["steps"].is_array() || g["steps"].empty()) lib.msg = ui::fmt("通道 {0} 现在没有编好的序列", {std::to_string(ch)});
         else {
             // 起名字：默认给这条序列自己的名字，没有就留空让人填
             const json steps = g["steps"];
@@ -83,7 +83,7 @@ bool lib_action(const std::string& a) {
                 bool had = false;
                 for (auto& x : lib.list) if (x.value("name", "") == name) had = true;
                 const json r = ask({{"cmd", "recipe.save"}, {"name", name}, {"steps", steps}});
-                if (r.value("ok", false)) { lib.msg = "已存为「" + name + "」" + (had ? "（覆盖了同名的旧配方）" : ""); lib.sel = name; lib.steps_of = "\x01"; lib.page = 0; }
+                if (r.value("ok", false)) { lib.msg = had ? ui::fmt("已存为「{0}」（覆盖了同名的旧配方）", {name}) : ui::fmt("已存为「{0}」", {name}); lib.sel = name; lib.steps_of = "\x01"; lib.page = 0; }
                 else lib.msg = r.value("error", std::string("没存进去"));
                 lib_fetch(true);
                 refresh();
@@ -136,9 +136,9 @@ void refresh_lib(Ui& u) {
         step_lines(s, k, a, d);
         const double stir = s.value("stir_rpm", -1.0), m = step_minutes(s);
         const std::string kind = s.value("kind", "");
-        u.set_text(id + ".a", k);
+        u.set_text_raw(id + ".a", k);
         const bool timed = kind == "wait" || kind == "reflux" || kind == "crystal";       // 这几种第三行字就是时长，右边已经有了，不重复写
-        u.set_text(id + ".b", d.empty() || timed ? a : a + " · " + d);
+        u.set_text_raw(id + ".b", d.empty() || timed ? a : a + " · " + d);
         u.set_text_raw(id + ".c", kind != "stir" && stir >= 0 ? ui::fmt("搅拌 {0} rpm", {f0(stir)}) : "");
         u.set_text(id + ".d", m > 0 ? dur_text(m) : "");
     }

@@ -90,10 +90,16 @@ void draw_scheme(lv_obj_t* box, int ci, const json& steps, const json& q) {
         step_lines(steps[i], k, a, d);
         if (steps[i].value("kind", "") == "dose") continue;       // 加料另外用标记画
         const int stt = (on || done) ? (i < idx ? 2 : i == idx ? 1 : 0) : 0;
-        const int w = (x1 - x0) / S;
-        const std::string name = std::to_string(i + 1) + " " + k + (a.empty() ? "" : " " + a);
-        const std::string shown = w > static_cast<int>(utf8_count(name)) * 13 + 20 ? name : w > 46 ? std::to_string(i + 1) + " " + k : std::to_string(i + 1);
-        label(L + (x0 + x1) / 2, 14 * S, shown, stt == 1 ? 0x00559C : stt == 2 ? 0x8792A0 : 0x4F5B67, stt == 1 ? 600 : 400, 14);
+        const int col_w = x1 - x0;
+        const std::string full_s = std::to_string(i + 1) + " " + k + (a.empty() ? "" : " " + a);
+        const std::string mid_s = std::to_string(i + 1) + " " + k;
+        const std::string num_s = std::to_string(i + 1);
+        lv_obj_t* sl = label(L + (x0 + x1) / 2, 14 * S, full_s, stt == 1 ? 0x00559C : stt == 2 ? 0x8792A0 : 0x4F5B67, stt == 1 ? 600 : 400, 14);
+        if (label_w(sl) > col_w - 10 * S) {
+            lv_label_set_text(sl, mid_s.c_str());
+            if (label_w(sl) > col_w - 8 * S) lv_label_set_text(sl, num_s.c_str());
+            lv_obj_set_x(sl, L + (x0 + x1 - label_w(sl)) / 2);
+        }
     }
     // 计划曲线：整条先画浅色，走过的部分再用深色描
     std::vector<lv_point_precise_t> all, past;
@@ -133,9 +139,9 @@ void draw_scheme(lv_obj_t* box, int ci, const json& steps, const json& q) {
         std::string k, a, d;
         step_lines(steps[i], k, a, d);
         // 标记靠右边太近时字写在左边，免得伸出图外
-        const bool left = xm > L + pw - 190 * S;
-        lv_obj_t* l1 = label(0, top + 8 * S, std::to_string(i + 1) + " 加料 " + a, 0x00559C, 600, 14);
-        lv_obj_t* l2 = label(0, top + 25 * S, "在 " + f1(seg[i].v1) + " ℃ 加" + (d.empty() ? "" : " · " + d), 0x4F5B67, 400, 13);
+        lv_obj_t* l1 = label(0, top + 8 * S, ui::fmt("{0} 加料 {1}", {std::to_string(i + 1), a}), 0x00559C, 600, 14);
+        lv_obj_t* l2 = label(0, top + 25 * S, d.empty() ? ui::fmt("在 {0} ℃ 加", {f1(seg[i].v1)}) : ui::fmt("在 {0} ℃ 加 · {1}", {f1(seg[i].v1), d}), 0x4F5B67, 400, 13);
+        const bool left = xm + std::max(label_w(l1), label_w(l2)) + 24 * S > L + pw;
         lv_obj_set_x(l1, left ? xm - 20 * S - label_w(l1) : xm + 20 * S);
         lv_obj_set_x(l2, left ? xm - 20 * S - label_w(l2) : xm + 20 * S);
     }
@@ -164,9 +170,9 @@ void refresh_scheme(Ui& u) {
         // 总时长和图上的横轴用同一个算法（算不出时长的步骤按估的算），所以写「约」
         double total = 0, tv = sc_t0[ci];
         for (auto& s : v.steps) { bool g; total += plan_minutes(s, tv, g); const std::string k = s.value("kind", ""); if (k == "reactor" || k == "jacket") tv = s.value("target", tv); else if (k == "crystal" && s.contains("profile") && !s["profile"].empty()) tv = s["profile"].back().value("target", tv); }
-        std::string sub = ns == 0 ? "" : std::to_string(ns) + " 步" + (total > 0 ? " · 共约 " + dur_text(total) : "");
-        if (on || qs == "done") sub += " · 已走 " + dur_text(q.value("total_elapsed_s", 0.0) / 60.0);
-        u.set_text(id + ".sub", sub);
+        std::string sub = ns == 0 ? "" : ui::fmt("{0} 步", {std::to_string(ns)}) + (total > 0 ? ui::fmt(" · 共约 {0}", {dur_text(total)}) : "");
+        if (on || qs == "done") sub += ui::fmt(" · 已走 {0}", {dur_text(q.value("total_elapsed_s", 0.0) / 60.0)});
+        u.set_text_raw(id + ".sub", sub);
         // 右上角的状态牌：字有长有短，牌子跟着变宽，右边缘不动
         const int code = qs == "running" ? 1 : qs == "waiting_confirm" ? 2 : qs == "done" ? 3 : 0;
         u.set_text_raw(id + ".badge", code == 1 ? ui::fmt("运行中 · 步骤 {0} / {1}", {std::to_string(q.value("index", 0) + 1), std::to_string(q.value("count", 0))})
@@ -257,7 +263,7 @@ void draw_overview_trend(lv_obj_t* box) {
             last_x = x;
         }
         flush();
-        if (!d.t.empty() && std::isfinite(v.back())) tags.push_back({Y(v.back()), s.color == 0x9ADAD2 ? 0x5FBFB4u : s.color == 0xF0A9A4 ? 0xD98F89u : s.color, std::string(s.name) + " " + f1(v.back())});
+        if (!d.t.empty() && std::isfinite(v.back())) tags.push_back({Y(v.back()), s.color == 0x9ADAD2 ? 0x5FBFB4u : s.color == 0xF0A9A4 ? 0xD98F89u : s.color, ui::tr(s.name) + " " + f1(v.back())});
     }
     if (xn < pw) bg(mk(plot, xn, 0, S, ph, 0), 0x55616C, 255);
     bd(mk(box, L, T, pw, ph, 0), 0xB8C4D0, 255, S, LV_BORDER_SIDE_FULL);
@@ -266,10 +272,11 @@ void draw_overview_trend(lv_obj_t* box) {
     for (size_t i = 0; i < tags.size(); i++) { tags[i].y = std::max(11 * S, tags[i].y); if (i > 0 && tags[i].y < tags[i - 1].y + 24 * S) tags[i].y = tags[i - 1].y + 24 * S; }
     for (size_t i = tags.size(); i-- > 0;) { if (tags[i].y > ph - 11 * S) tags[i].y = ph - 11 * S; if (i + 1 < tags.size() && tags[i].y > tags[i + 1].y - 24 * S) tags[i].y = tags[i + 1].y - 24 * S; }
     for (const Tag& g : tags) {
-        const int w = static_cast<int>(utf8_count(g.text) * 8.4 + 22) * S, h = 22 * S;
-        lv_obj_t* b = mk(box, L + xn + 8 * S, T + g.y - h / 2, w, h, 0);
+        const int h = 22 * S;
+        lv_obj_t* b = mk(box, L + xn + 8 * S, T + g.y - h / 2, 10 * S, h, 0);
         bg(b, g.color, 255); lv_obj_set_style_radius(b, 5 * S, 0);
-        txt(b, w / 2, h / 2, g.text.c_str(), 600, 12.5f, 0xFFFFFF, 255, 0, 0);
+        lv_obj_t* lb = txta(b, 8 * S, h / 2, 'l', g.text.c_str(), 600, 12.5f, 0xFFFFFF, 255, 0, 0);
+        lv_obj_set_width(b, label_w(lb) + 16 * S);
     }
 }
 

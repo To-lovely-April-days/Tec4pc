@@ -52,10 +52,10 @@ static bool pid_interp(const json& rows, double t, const char* key, double& out)
 static std::string f4(double v) { char b[32]; std::snprintf(b, sizeof b, "%.4f", v); return b; }
 static std::string pid_gains_text(const json& rows, double t, bool with_ratio = true) {
     double kp = 0, ki = 0, kd = 0, hr = 0;
-    if (!pid_interp(rows, t, "kp", kp)) return "表是空的";
+    if (!pid_interp(rows, t, "kp", kp)) return ui::tr("表是空的");
     pid_interp(rows, t, "ki", ki); pid_interp(rows, t, "kd", kd);
     std::string s = "Kp " + f2(kp) + " · Ki " + f4(ki) + " · Kd " + f1(kd);
-    if (with_ratio && pid_interp(rows, t, "heat_ratio", hr)) s += " · 加热比 " + f2(hr);
+    if (with_ratio && pid_interp(rows, t, "heat_ratio", hr)) s += ui::fmt(" · 加热比 {0}", {f2(hr)});
     return s;
 }
 
@@ -66,7 +66,7 @@ bool pid_action(const std::string& a) {
     pv.msg.clear();
     const bool too_many = n > kPidRows;
     const bool edit = a.rfind("pg:cell:", 0) == 0 || a.rfind("pg:del:", 0) == 0 || a == "pg:add" || a == "pg:clear" || a == "pg:apply";
-    if (edit && too_many) { pv.msg = "表里有 " + std::to_string(n) + " 行，屏上只放得下 8 行，这张表请在 PC 端改"; refresh(); return true; }
+    if (edit && too_many) { pv.msg = ui::fmt("表里有 {0} 行，屏上只放得下 8 行，这张表请在 PC 端改", {std::to_string(n)}); refresh(); return true; }
     if (a.rfind("pg:cell:", 0) == 0 && a.size() >= 11) {
         const int k = a[8] - '0', i = a[10] - '0';
         if (k < 0 || k >= n || i < 0 || i > 5) return true;
@@ -77,7 +77,7 @@ bool pid_action(const std::string& a) {
         const double cur_v = pv.rows[k].contains(c.key) && pv.rows[k][c.key].is_number() ? pv.rows[k][c.key].get<double>() : 0.0;
         char last[48]; std::snprintf(last, sizeof last, "%.*f %s", c.dec, cur_v, c.unit);
         const std::string key = c.key;
-        open_keypad(tnum(pv.rows[k].value("temp", 0.0)) + " ℃ 这一行 · " + c.title, c.unit, cur_v, c.lo, c.hi, last, "—",
+        open_keypad(ui::fmt("{0} ℃ 这一行 · {1}", {tnum(pv.rows[k].value("temp", 0.0)), ui::tr(c.title)}), c.unit, cur_v, c.lo, c.hi, last, "—",
                     [this, k, key](double x) { if (k < static_cast<int>(pv.rows.size())) { pv.rows[k][key] = x; pv.dirty = true; } refresh(); }, c.dec);
         return true;
     }
@@ -144,16 +144,17 @@ void refresh_pid(Ui& u, const json& c, int ci) {
         u.show(id + ".bar", k == nearest);
         if (lv_obj_t* o = u.box(id)) if (u.changed(id + "bg", k == nearest)) bg(o, 0xE3EEFA, k == nearest ? 255 : 0);
     }
-    const std::string info = !pv.msg.empty() ? pv.msg : pv.dirty ? "有改动还没应用（点「应用表格」才生效）"
-                           : std::to_string(n) + " 行" + (nearest >= 0 ? " · 在用 " + tnum(pv.rows[nearest].value("temp", 0.0)) + " ℃ 附近" : "");
-    u.set_text("pg.info", info);
+    const std::string info = !pv.msg.empty() ? ui::tr(pv.msg) : pv.dirty ? ui::tr("有改动还没应用（点「应用表格」才生效）")
+                           : nearest >= 0 ? ui::fmt("{0} 行 · 在用 {1} ℃ 附近", {std::to_string(n), tnum(pv.rows[nearest].value("temp", 0.0))})
+                                          : ui::fmt("{0} 行", {std::to_string(n)});
+    u.set_text_raw("pg.info", info);
     u.show("pg.sub", pv.msg.empty() && !pv.dirty);        // 右边有话要说时把左边那句小字收起来，不然两句会叠在一起
     u.set_text_color("pg.info", !pv.msg.empty() ? 0x00559C : pv.dirty ? 0xE07B00 : 0x8792A0);
     u.set_text("pg.clear.t", pv.clear_armed ? "再点一次确认" : "清空这张表");
 
     // 此刻在用
     if (run) {
-        u.set_text("pg.use.1", pid_gains_text(pv.rows, tj_sp));
+        u.set_text_raw("pg.use.1", pid_gains_text(pv.rows, tj_sp));
         u.set_text_raw("pg.use.2", ui::fmt("夹套目标 {0} ℃ · 出力 {1} %（{2}）", {f1(tj_sp), f0(std::fabs(duty)), ui::tr(duty > 0 ? "TEC 制冷" : "加热棒")}));
     } else { u.set_text("pg.use.1", "没在控温"); u.set_text("pg.use.2", "开始控温以后，这里显示当时按夹套目标插值出来的那组增益"); }
     u.set_text("pg.look.t", tnum(pv.look_t));
@@ -161,18 +162,19 @@ void refresh_pid(Ui& u, const json& c, int ci) {
 
     // 稳定度：拿趋势数据里最近 5 分钟的釜温算
     const TrendData& d = tdat[ci];
-    std::string s1 = "数据还不够（要攒够半分钟）", s2 = run ? "" : "没在控温";
+    std::string s1 = ui::tr("数据还不够（要攒够半分钟）"), s2 = run ? "" : ui::tr("没在控温");
     if (d.t.size() >= 2) {
         const double now = d.t.back();
         double lo = 1e9, hi = -1e9, sum = 0; int cnt = 0; double first = now;
         for (size_t i = d.t.size(); i-- > 0 && now - d.t[i] <= 300.0;) if (std::isfinite(d.tr[i])) { lo = std::min(lo, d.tr[i]); hi = std::max(hi, d.tr[i]); sum += d.tr[i]; cnt++; first = d.t[i]; }
         if (cnt >= 2 && now - first >= 30.0) {
             const double span = now - first;
-            s1 = std::string(span >= 290 ? "近 5 min" : "近 " + f0(span) + " s") + "：Tr 平均 " + f2(sum / cnt) + " ℃，波动 ±" + f2((hi - lo) / 2) + " ℃";
+            const std::string win_s = span >= 290 ? ui::tr("近 5 min") : ui::fmt("近 {0} s", {f0(span)});
+            s1 = ui::fmt("{0}：Tr 平均 {1} ℃，波动 ±{2} ℃", {win_s, f2(sum / cnt), f2((hi - lo) / 2)});
         }
     }
-    if (run) s2 = "出力 " + f0(std::fabs(duty)) + " %，" + (std::fabs(duty) >= 89.5 ? "已经顶到头了（再大也加不上去）" : "没有顶到头");
-    u.set_text("pg.st.1", s1); u.set_text("pg.st.2", s2);
+    if (run) s2 = ui::fmt("出力 {0} %，{1}", {f0(std::fabs(duty)), ui::tr(std::fabs(duty) >= 89.5 ? "已经顶到头了（再大也加不上去）" : "没有顶到头")});
+    u.set_text_raw("pg.st.1", s1); u.set_text_raw("pg.st.2", s2);
 
     // 外环
     if (run) {

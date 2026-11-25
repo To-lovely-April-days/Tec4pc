@@ -193,6 +193,7 @@ void refresh_cry(const json& c, int ci) {
         u.set_text("ctl.run.t1", any_run ? "控温中" : "未控温");
         u.set_text("ctl.run.t2", any_run ? "点按停止" : "点按启动");
         u.set_text_color("ctl.run.t1", any_run ? 0x0A8A4F : 0x5A6675);
+        fit_run_btn(u);
         if (lv_obj_t* ic = u.box("ctl.run.icon")) if (u.changed("ctl.run.icon", any_run)) { lv_obj_set_style_image_recolor(ic, lv_color_hex(0x8792A0), 0); lv_obj_set_style_image_recolor_opa(ic, any_run ? 0 : 255, 0); }      // 没控温时圆是白的，白图标染成灰的
         if (lv_obj_t* o = u.box("ctl.run.circle")) if (u.changed("ctl.run.circle", any_run)) { bg(o, any_run ? 0x00B368 : 0xFFFFFF, 255); bd(o, any_run ? 0x00B368 : 0xC3CCD6, 255, 3 * UI_SCALE, LV_BORDER_SIDE_FULL); ol(o, 0x00B368, any_run ? 46 : 0, 5 * UI_SCALE); }
     }
@@ -271,7 +272,7 @@ bool cry_action(const std::string& a) {
         else {
             const bool temp = a[3] == 't';
             const double cur_v = p[k].value(temp ? "target" : "minutes", 0.0);
-            open_keypad("第 " + std::to_string(k + 1) + " 段 · " + (temp ? "目标温度" : "用时"), temp ? "℃" : "min", cur_v, temp ? -40 : 1, temp ? 180 : 600,
+            open_keypad(ui::fmt(temp ? "第 {0} 段 · 目标温度" : "第 {0} 段 · 用时", {std::to_string(k + 1)}), temp ? "℃" : "min", cur_v, temp ? -40 : 1, temp ? 180 : 600,
                         (temp ? tnum(cur_v) : f0(cur_v)) + (temp ? " ℃" : " min"), "—",
                         [this, k, temp](double x) { if (k < static_cast<int>(ced.prof.size())) ced.prof[k][temp ? "target" : "minutes"] = x; refresh(); }, temp ? 1 : 0);
         }

@@ -51,7 +51,15 @@ void lang_dlg_show() {
         if (u.changed(id + ".tag", look)) {
             u.set_text(id + ".tag", look == 0 ? "完整" : look == 1 ? "未齐" : look == 2 ? "未译" : "缺字体");
             u.set_text_color(id + ".tag", look == 0 ? 0x0A8A4F : look == 1 ? 0xC77700 : 0x8792A0);
-            if (lv_obj_t* t = u.box(id + ".tag")) bg(t, look == 0 ? 0xE7F6EE : look == 1 ? 0xFDF3E3 : 0xF1F3F6, 255);
+            if (lv_obj_t* t = u.box(id + ".tag")) {
+                bg(t, look == 0 ? 0xE7F6EE : look == 1 ? 0xFDF3E3 : 0xF1F3F6, 255);
+                if (lv_obj_t* lb = u.label(id + ".tag")) {
+                    const int tw = label_w(lb), bw = tw + 16 * UI_SCALE;
+                    lv_obj_set_width(t, bw);
+                    lv_obj_set_x(t, 500 * UI_SCALE - bw);      // 右边缘对齐在圆圈左边 14 px 处
+                    lv_obj_set_x(lb, (bw - tw) / 2);
+                }
+            }
         }
     }
     u.set_text("lg.msg", lang_msg.empty() ? "点一下马上就换，不合适再点回来。标「未齐」的，没译到的条目显示英文" : lang_msg);
@@ -112,7 +120,7 @@ bool lang_action(const std::string& a) {
     const std::string code = kLangs[i].code;
     if (!ui::language_has_font(code)) {
         // 字体没放进来：换过去只能看见一屏方框，不如不换，并且说清楚缺的是什么
-        lang_msg = std::string(kLangs[i].flag_native) + "：这台机器上没有它要的字体，放进 assets/fonts 才能用";
+        lang_msg = ui::fmt("{0}：这台机器上没有它要的字体，放进 assets/fonts 才能用", {kLangs[i].flag_native});
         lang_dlg_show();
         return true;
     }

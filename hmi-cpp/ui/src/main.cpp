@@ -228,7 +228,7 @@ struct App {
         // 还在连：直接回「连不上」就走，**不能在这儿 close**——那会把正在进行的连接掐掉，于是永远连不上（踩过）
         if (!connected) return json{{"ok", false}, {"error", "连不上控制核心"}};
         std::string r;
-        if (link.request(q.dump(), r)) { const json j = json::parse(r, nullptr, false); if (!j.is_discarded()) return j; }
+        if (link.request(q.dump(), r, host == "127.0.0.1" ? 800 : 3000)) { const json j = json::parse(r, nullptr, false); if (!j.is_discarded()) return j; }
         connected = false; link.close();
         return json{{"ok", false}, {"error", "连不上控制核心"}};
     }
@@ -333,16 +333,30 @@ struct App {
         return std::string(tabs[ch_tab]) + (channel == 2 ? "_2" : "");
     }
 
+    // 控温启停圆键右边的两行字（控温中 / 点按停止）：换成英文变宽时整颗键往左让，右边贴齐卡片边、左边不撞圆圈
+    void fit_run_btn(Ui& u) {
+        lv_obj_t *cir = u.box("ctl.run.circle"), *l1 = u.label("ctl.run.t1"), *l2 = u.label("ctl.run.t2");
+        if (!cir || !l1 || !l2) return;
+        lv_obj_t* btn = lv_obj_get_parent(cir);
+        lv_obj_t* wrap = btn ? lv_obj_get_parent(btn) : nullptr;
+        if (!btn || !wrap) return;
+        const int need_w = std::max(131 * UI_SCALE, 76 * UI_SCALE + std::max(label_w(l1), label_w(l2)));
+        const int right = lv_obj_get_width(wrap), bx = right - need_w;
+        lv_obj_set_x(btn, bx);
+        lv_obj_set_width(btn, need_w);
+        if (lv_obj_t* ed = u.box("cv.edit")) lv_obj_set_x(ed, bx - 16 * UI_SCALE - lv_obj_get_width(ed));
+    }
+
     static std::string step_label(const json& s) {
         const std::string k = s.value("kind", "");
         if (k == "reactor") return "Tr " + f1(s.value("target", 0.0));
         if (k == "jacket") return "Tj " + f1(s.value("target", 0.0));
-        if (k == "reflux") return "回流";
-        if (k == "crystal") return "结晶";
+        if (k == "reflux") return ui::tr("回流");
+        if (k == "crystal") return ui::tr("结晶");
         if (k == "stir") return "R " + f0(s.value("stir_rpm", 0.0));
         if (k == "wait") return "Wait";
-        if (k == "dose") return "加料";
-        return "暂停";
+        if (k == "dose") return ui::tr("加料");
+        return ui::tr("暂停");
     }
 
     void action(const std::string& a) {
@@ -369,19 +383,19 @@ struct App {
             if (mode[ci] == 2) {
                 // 蒸回流填的不是目标温度，是「夹套比釜内高多少」。已经在回流时核心不收改动，先停再改
                 if (run) { ctl_msg[ci] = "蒸回流进行中改不了温差：先停下，改好再开"; refresh(); return; }
-                open_keypad("通道 " + std::to_string(channel) + " · 蒸回流：夹套比釜内高", "K", reflux_dk[ci], 1, 30, f1(reflux_dk[ci]) + " K",
+                open_keypad(ui::fmt("通道 {0} · 蒸回流：夹套比釜内高", {std::to_string(channel)}), "K", reflux_dk[ci], 1, 30, f1(reflux_dk[ci]) + " K",
                             c["tr"].is_number() ? f1(c.value("tj", 0.0) - c["tr"].get<double>()) + " K" : "—", [this, ci](double v) { reflux_dk[ci] = v; refresh(); }, 1);
                 return;
             }
             const bool jk = mode[ci] == 1;       // 夹套控温：目标是夹套温度，上限按夹套的 200 ℃
             const json& nowv = jk ? c["tj"] : c["tr"];
-            open_keypad("通道 " + std::to_string(channel) + (jk ? " · 目标 Tj" : " · 目标 Tr"), "℃", now_sp, -40, jk ? 200 : 180, f1(now_sp) + " ℃", nowv.is_number() ? f1(nowv.get<double>()) + " ℃" : "—",
+            open_keypad(ui::fmt(jk ? "通道 {0} · 目标 Tj" : "通道 {0} · 目标 Tr", {std::to_string(channel)}), "℃", now_sp, -40, jk ? 200 : 180, f1(now_sp) + " ℃", nowv.is_number() ? f1(nowv.get<double>()) + " ℃" : "—",
                         [this, ci, run](double v) { pending_sp[ci] = v; if (run) ask({{"cmd", "temp.setpoint"}, {"ch", ci + 1}, {"target", v}}); poll(); });
             return;
         }
         if (a == "edit:stir" && st.is_object()) {
             const json& c = st["ch"][ci];
-            open_keypad("通道 " + std::to_string(channel) + " · 搅拌转速", "rpm", c["stir"].value("set", 0.0), 0, 1000, f0(c["stir"].value("set", 0.0)) + " rpm", f0(c["stir"].value("rpm", 0.0)) + " rpm",
+            open_keypad(ui::fmt("通道 {0} · 搅拌转速", {std::to_string(channel)}), "rpm", c["stir"].value("set", 0.0), 0, 1000, f0(c["stir"].value("set", 0.0)) + " rpm", f0(c["stir"].value("rpm", 0.0)) + " rpm",
                         [this, ci](double v) { ask({{"cmd", "stir.set"}, {"ch", ci + 1}, {"rpm", v}}); poll(); });
             return;
         }
@@ -662,6 +676,7 @@ struct App {
         u.set_text("ctl.run.t1", run ? "控温中" : "未控温");
         u.set_text("ctl.run.t2", run ? "点按停止" : "点按启动");
         u.set_text_color("ctl.run.t1", run ? 0x0A8A4F : 0x5A6675);
+        fit_run_btn(u);
         // 圆键里的图标是一张白色的图：控温中圆是绿的，白图标正好；没控温时圆是白的，要把图标染成灰的才看得见
         if (lv_obj_t* ic = u.box("ctl.run.icon")) if (u.changed("ctl.run.icon", run)) { lv_obj_set_style_image_recolor(ic, lv_color_hex(0x8792A0), 0); lv_obj_set_style_image_recolor_opa(ic, run ? 0 : 255, 0); }
         if (lv_obj_t* o = u.box("ctl.run.circle")) if (u.changed("ctl.run.circle", run)) { bg(o, run ? 0x00B368 : 0xFFFFFF, 255); bd(o, run ? 0x00B368 : 0xC3CCD6, 255, 3 * UI_SCALE, LV_BORDER_SIDE_FULL); ol(o, 0x00B368, run ? 46 : 0, 5 * UI_SCALE); }
@@ -884,6 +899,7 @@ int main(int argc, char** argv) {
     app.show(page);
     int frames = 0, tap_phase = 0;
     long loops = 0;
+    auto last_warm = t0;
     for (;;) {
         const auto now = clock::now();
         if (app.quit) return 0;                        // 设置页底下点了「退出」（见 sys_page.inc）
@@ -899,8 +915,12 @@ int main(int argc, char** argv) {
             if (timing && ms > 50) if (std::FILE* f = std::fopen("tec_hmi_time.log", "a")) { std::fprintf(f, "%s %.0f ms（当前页 %s）\n", what, ms, app.cur.c_str()); std::fclose(f); }
         };
         note_slow("画一圈", now);
-        // 提前准备别的页：第一页已经画出来（过了头几圈）、手指没按着的时候，一圈备一页
-        if (++loops > 5 && !g_finger.down && (shot.empty() || std::getenv("UI_WARM"))) { const auto w0 = clock::now(); if (app.warm_step()) note_slow("提前准备一页", w0); }
+        // 提前准备别的页：第一页已经画出来（过了头几圈）、没有鼠标/触摸活动的时候，隔一小段空当备一页
+        bool can_warm = ++loops > 5 && !g_finger.down && (shot.empty() || std::getenv("UI_WARM"));
+#ifdef _WIN32
+        if (windowed && (win::input_recent(400) || now - last_warm < std::chrono::milliseconds(80))) can_warm = false;
+#endif
+        if (can_warm) { last_warm = now; const auto w0 = clock::now(); if (app.warm_step()) note_slow("提前准备一页", w0); }
 #ifdef _WIN32
         if (windowed) { win::idle(wait < 1 ? 1 : wait > 10 ? 10 : wait); continue; }      // 开着窗口：下面那些是不开窗口时自查用的，用不着
 #endif

@@ -37,12 +37,13 @@ void exit_dlg_show() {
         if (t.is_number()) { temp = t.get<double>(); has_t = true; }
     }
     const bool run = nrun > 0;
-    std::string line = nrun == 0   ? "两个通道都待机，没有在跑的炉子"
-                     : nrun == 2   ? "两个通道都在控温 —— 退出后这块屏上看不到了，炉子照常控"
-                     : "通道 " + std::to_string(one) + " 正在控温" + (has_t ? " " + f1(temp) + " ℃" : "") + " —— 退出后这块屏上看不到了，炉子照常控";
-    if (!connected) line = "连不上控制核心：这块屏现在看到的不是实时的";
-    if (!exit_err.empty()) line = exit_err;
-    u.set_text("xq.run", line);
+    std::string line = !exit_err.empty() ? ui::tr(exit_err)
+                     : !connected ? ui::tr("连不上控制核心：这块屏现在看到的不是实时的")
+                     : nrun == 0 ? ui::tr("两个通道都待机，没有在跑的炉子")
+                     : nrun == 2 ? ui::tr("两个通道都在控温 —— 退出后这块屏上看不到了，炉子照常控")
+                     : has_t ? ui::fmt("通道 {0} 正在控温 {1} ℃ —— 退出后这块屏上看不到了，炉子照常控", {std::to_string(one), f1(temp)})
+                             : ui::fmt("通道 {0} 正在控温 —— 退出后这块屏上看不到了，炉子照常控", {std::to_string(one)});
+    u.set_text_raw("xq.run", line);
     // 几种样子不是几套元素，是同一个元素换颜色（设计稿里 display:none 的东西运行时根本不存在，见 ui/tools/dump.js）
     const int look = !exit_err.empty() ? 1 : !connected ? 2 : run ? 1 : 0;
     if (u.changed("xq.look", look)) {
@@ -124,7 +125,7 @@ void refresh_sys(Ui& u) {
     u.set_text("sy.v.6", valve ? (chiller ? "已开 · 冷水机运行中" : "已开 · 冷水机没在运行")
                                : (chiller ? "已关 · 冷水机运行中" : "已关 · 冷水机没在运行"));
     // 语言那一行：写现在用的这一种，名字按它本来的样子写
-    for (int i = 0; i < kLangN; i++) if (lang_code == kLangs[i].code) u.set_text_raw("sy.v.8", kLangs[i].flag_native);
+    for (int li = 0; li < kLangN; li++) if (lang_code == kLangs[li].code) u.set_text_raw("sy.v.8", kLangs[li].flag_native);
     u.set_text("sy.n.8", "点一下换；顶栏那颗地球也能换");
     if (syv.comm.is_object()) {
         int pcs = 0;

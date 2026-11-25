@@ -63,7 +63,7 @@ R 转速	R speed
 实验时间	Run time						
 纵轴	Y axis						
 全部	All						
-设定值附近	Near setpoint						
+设定值附近	Near SP						
 反应釜	Reactor						
 反应釜类型	Reactor type						
 桨式搅拌 · Tr 探头 + pH 电极　·　规格在台面属性栏更换	Paddle stirrer · Tr probe + pH electrode　·　change spec in the property bar						
@@ -120,19 +120,19 @@ min 到第	min to
 从盘上重读	Reload from disk						
 清空这张表	Clear the table						
 此刻在用	In use now						
-内环（夹套）· 按夹套目标在表里插值	Inner loop (jacket) · interpolated from the table by jacket target						
+内环（夹套）· 按夹套目标在表里插值	Inner loop (jacket) · interpolated by Tj target						
 Kp 9.40 · Ki 0.0370 · Kd 171.0 · 加热比 2.10	Kp 9.40 · Ki 0.0370 · Kd 171.0 · heat ratio 2.10						
 夹套目标 40.0 ℃ · 出力 31 %（TEC 制冷）	Jacket target 40.0 ℃ · output 31 % (TEC cooling)						
-看某温度	Look up a temperature						
+看某温度	At						
 ℃ 会用：Kp 14.84 · Ki 0.0541 · Kd 294.8	℃ would use: Kp 14.84 · Ki 0.0541 · Kd 294.8						
 实时 · 稳定度	Live · stability						
 近 5 min：Tr 60.02 ℃，波动 ±0.03 ℃	Last 5 min: Tr 60.02 ℃, swing ±0.03 ℃						
 出力 31 %，没有顶到头	Output 31 %, not saturated						
 外环（釜温）	Outer loop (reactor)						
-靠这一炉的实测现算，不查表	Computed live from this run's measurements, not from a table						
+靠这一炉的实测现算，不查表	Estimated live from this run, no table						
 维持温差（估）+3.4 K　·　釜的时间常数（估）388 s	Holding offset (est.) +3.4 K　·　reactor time constant (est.) 388 s						
 快速升温此刻加码 +0.0 K　·　夹套目标 63.4 ℃	Fast heat-up boost now +0.0 K　·　jacket target 63.4 ℃						
-稳态偏置那一列只当起点，开控以后以实测为准	The steady-bias column is only a starting point; once control starts the measurement rules						
+稳态偏置那一列只当起点，开控以后以实测为准	Steady bias is only initial; live data takes over						
 快速升温加码上限 K	Fast heat-up boost limit K						
 0 = 不加码（稳妥，升温慢一些）	0 = no boost (safe, slower heat-up)						
 改了以后要重启控制核心才生效	Takes effect after the control core restarts						
@@ -229,7 +229,7 @@ Tr 探头（两通道共用）	Tr probe (shared)
 宇电 AI-8848G · 四路	Yudian AI-8848G · 4 channel						
 4 口 · COM23	Port 4 · COM23						
 BHT pH 电极	BHT pH electrode						
-这台是通道	This one is channel						
+这台是通道	Channel						
 5 口 · COM24	Port 5 · COM24						
 6 口 · COM25	Port 6 · COM25						
 7 口 · COM26	Port 7 · COM26						
@@ -259,10 +259,10 @@ BHT pH 电极	BHT pH electrode
 退出程序	Quit						
 退出界面程序，回到 Windows 桌面	Quit the HMI program and go back to the Windows desktop						
 控制核心不退：控温、搅拌、加料照常进行	The control core stays up: temperature control, stirring and dosing keep running						
-通道 1 正在控温 60.0 ℃ —— 退出后这块屏上看不到了，炉子照常控	Channel 1 is controlling at 60.0 ℃ — after quitting you lose this screen, but the run keeps being controlled						
+通道 1 正在控温 60.0 ℃ —— 退出后这块屏上看不到了，炉子照常控	Ch 1 controlling at 60.0 ℃ — screen closes, reactor keeps running						
 要再看屏，双击桌面上的「HTLAB 多工位反应平台」	To get the screen back, double-click HTLAB Multi-Station Reactor Platform on the desktop						
 连控制核心一起退	Quit the core too						
-两个通道都待机时才能点	Only when both channels are idle						
+两个通道都待机时才能点	Both channels must be idle						
 退出界面	Quit the HMI						
 语言　Language	Language						
 完整	Complete						
@@ -279,7 +279,7 @@ Tr 超过上限 180.0 ℃（实测 180.6 ℃）	Tr above the 180.0 ℃ limit (me
 报警记录	Alarm log						
 共 2 条 · 控制核心这次开机以来的	2 entries · since the control core started						
 已确认	Acknowledged						
-冷媒温度过高 46.2 ℃（上限 45.0 ℃，TEC 的热排不出去）	Coolant too hot 46.2 ℃ (limit 45.0 ℃, the TEC cannot dump its heat)						
+冷媒温度过高 46.2 ℃（上限 45.0 ℃，TEC 的热排不出去）	Coolant 46.2 ℃ > limit 45.0 ℃ (TEC cannot reject heat)						
 每一炉自己的报警也记在它的事件日志里，导出能看到	Each run also keeps its own alarms in its event log, visible in the export						
 未连上控制核心	Not connected to the control core						
 机器上的控制核心（tec_core）是不是在运行	Check whether the control core (tec_core) is running on this machine						
@@ -379,12 +379,12 @@ Tj 通道 2	Tj channel 2
 泵 2	Pump 2						
 加入方式	How to add						
 一次加入	All at once						
-pH 反馈	pH feedback						
+pH 反馈	pH hold						
 料液	Feed liquid						
 未填	Not set						
 加料体积	Volume						
 流量	Flow rate						
-与控温同步	In step with temperature control						
+与控温同步	Sync with temp						
 调节泵	Regulating pump						
 目标 pH	Target pH						
 死区	Deadband						
@@ -455,7 +455,7 @@ Tr 探头（宇电四路模块）	Tr probe (Yudian 4-ch)
 设置里没有这些设备：	These devices are not in the settings: 						
 时间标记：	Time marker: 						
 快照存不了（导出目录写不进去）	The snapshot could not be saved (the export folder is not writable)						
-时刻,釜内Tr(℃),夹套Tj(℃),夹套目标(℃),当前目标(℃),pH,搅拌(rpm),在控温	Time,Reactor Tr(℃),Jacket Tj(℃),Jacket target(℃),Setpoint(℃),pH,Stir(rpm),Controlling						
+时刻,釜内Tr(℃),夹套Tj(℃),夹套目标(℃),当前目标(℃),pH,搅拌(rpm),在控温
 							
 没找到 U 盘：插上以后再点一次	No USB drive found: plug one in and tap again						
 TEC导出	TEC export						
@@ -477,7 +477,7 @@ Kp 要大于 0，Ki、Kd 不能是负的	Kp must be above 0; Ki and Kd cannot be
 开始夹套控温	Jacket control started						
 停止控温，搅拌保持	Control stopped, stirring kept						
 安全联锁：	Safety interlock: 						
-冷媒温度过高 {0} ℃（上限 {1} ℃，TEC 的热排不出去）	Coolant too hot {0} ℃ (limit {1} ℃, the TEC cannot dump its heat)						
+冷媒温度过高 {0} ℃（上限 {1} ℃，TEC 的热排不出去）	Coolant {0} ℃ > limit {1} ℃ (TEC cannot reject heat)						
 Tj 超过上限 {0} ℃（实测 {1} ℃）	Tj above the {0} ℃ limit (measured {1} ℃)						
 Tj 低于下限 {0} ℃（实测 {1} ℃）	Tj below the {0} ℃ limit (measured {1} ℃)						
 Tr 超过上限 {0} ℃（实测 {1} ℃）	Tr above the {0} ℃ limit (measured {1} ℃)						
@@ -522,10 +522,16 @@ Tr 低于下限 {0} ℃（实测 {1} ℃）	Tr below the {0} ℃ limit (measured
 应用这 {0} 处	Apply these {0}						
 第 {0} 个口 / 共 {1} 个	Port {0} of {1}						
 正在找串口…	Looking for ports…						
+已用 {0} s	Elapsed {0} s						
 {0} 口	Port {0}						
 {0} · 站号 {1}	{0} · station {1}						
 没认出来	Not identified						
 检测没跑起来	The scan did not start						
+「{0}」的参数已保存，重启控制核心后生效	Saved "{0}"; restart core to apply						
+{0} · 串口号	{0} · COM port						
+{0} · 站号	{0} · Slave ID						
+{0} · 轮询周期	{0} · Poll period						
+已按检测结果改了 {0} 台，并记住了它们的 USB 口；重启控制核心后生效	Updated {0} device(s) and remembered USB ports; restart core to apply						
 还没有曲线，点「编辑曲线」添加	No curve yet; tap Edit profile to add one						
 釜内 Tr · 共 {0} 段 · {1} · {2} → {3} ℃	Reactor Tr · {0} segments · {1} · {2} → {3} ℃						
 正在按曲线控温	Following the profile						
@@ -553,9 +559,12 @@ Tr 低于下限 {0} ℃（实测 {1} ℃）	Tr below the {0} ℃ limit (measured
 今天 {0}	Today {0}						
 导出所选（{0}）	Export selected ({0})						
 没导出来	Not exported						
+已导出 {0} 炉　·　{1}	Exported {0} run(s) · {1}						
+已导出 {0} 炉，放在本机 {1}　·　没插 U 盘，插上再点一次	Exported {0} run(s) to {1} · No USB drive; plug in and tap again						
 未齐	Partial						
 未译	Not translated						
 缺字体	Font missing						
+{0}：这台机器上没有它要的字体，放进 assets/fonts 才能用	{0}: font missing on this machine; place it in assets/fonts first						
 配方库 · {0} 个	Recipes · {0}						
 {0} 步 · 约 {1}	{0} steps · about {1}						
 {0} 步	{0} steps						
@@ -570,7 +579,18 @@ Tr 低于下限 {0} ℃（实测 {1} ℃）	Tr below the {0} ℃ limit (measured
 删了找不回来。确定要删就再点一次「删除」	Deleting cannot be undone. Tap Delete again to confirm						
 没装进去	Not loaded						
 没删掉	Not deleted						
+通道 {0} 的序列正在跑，结束了才能装	Ch {0} sequence is running; stop it before loading						
+已装入配方「{0}」	Loaded recipe "{0}"						
+已删除「{0}」	Deleted "{0}"						
+通道 {0} 现在没有编好的序列	Channel {0} has no sequence yet						
+已存为「{0}」（覆盖了同名的旧配方）	Saved as "{0}" (overwrote existing recipe)						
+已存为「{0}」	Saved as "{0}"						
 还没有序列	No sequence yet						
+{0} 加料 {1}	{0} Dose {1}						
+在 {0} ℃ 加	At {0} ℃						
+在 {0} ℃ 加 · {1}	At {0} ℃ · {1}						
+ · 共约 {0}	 · ~{0}						
+ · 已走 {0}	 · {0} elapsed						
 运行中 · 步骤 {0} / {1}	Running · step {0} / {1}						
 夹套目标 {0} ℃ · 出力 {1} %（{2}）	Jacket target {0} ℃ · output {1} % ({2})						
 TEC 制冷	TEC cooling						
@@ -582,8 +602,20 @@ TEC 制冷	TEC cooling
 升温时夹套最多比稳妥算法多拉高这么多；0 = 不加码	How much higher than the safe algorithm the jacket may be driven while heating; 0 = no boost						
 没应用成	Not applied						
 没读成	Not read						
+ · 加热比 {0}	 · Heat ratio {0}						
+表里有 {0} 行，屏上只放得下 8 行，这张表请在 PC 端改	Table has {0} rows (screen fits max 8); edit on PC						
+{0} ℃ 这一行 · {1}	Row {0} ℃ · {1}						
+{0} 行 · 在用 {1} ℃ 附近	{0} rows · using near {1} ℃						
+{0} 行	{0} rows						
+近 {0} s	Last {0} s						
+{0}：Tr 平均 {1} ℃，波动 ±{2} ℃	{0}: Tr avg {1} ℃, ±{2} ℃						
+出力 {0} %，{1}	Output {0}%, {1}						
 维持温差（估）{0} K　·　釜的时间常数（估）{1} s	Holding offset (est.) {0} K　·　reactor time constant (est.) {1} s						
 快速升温此刻加码 {0} K　·　夹套目标 {1} ℃	Fast heat-up boost now {0} K　·　jacket target {1} ℃						
+表是空的	Table is empty						
+有改动还没应用（点「应用表格」才生效）	Unsaved edits (tap Apply table to save)						
+数据还不够（要攒够半分钟）	Need ≥ 30 s of data						
+近 5 min	Last 5 min						
 还没拿到控制核心的安全限值	No safety limits from the control core yet						
 低于此值 → 停控并报警　·　设备底线 −40 ℃	Below → stop and alarm　·　hardware −40 ℃						
 高于此值 → 停控并报警　·　设备底线 180 ℃　·　已收紧	Above → stop and alarm　·　hardware 180 ℃　·　tightened						
@@ -604,7 +636,23 @@ TEC 制冷	TEC cooling
 目标 Tj	Target Tj						
 共 {0} 段 · {1} · 最后到 {2} ℃	{0} segments · {1} · ends at {2} ℃						
 开始不了	Could not start						
+到 {0} ℃	to {0} ℃						
+按时长 {0}	in {0}						
+夹套高 {0} K	Tj +{0} K						
+{0} 段	{0} seg						
+维持 {0}	Hold {0}						
 第 {0} 步 · {1}	Step {0} · {1}						
+第 {0} 步做什么？	Step {0}: choose action						
+第 {0} 步换成什么？	Step {0}: change action						
+第 {0} 步 · 加的是什么料液	Step {0} · Liquid name						
+第 {0} 步 · 停下来时给操作人看的提示	Step {0} · Prompt shown when paused						
+{0} / 6 步	{0} / 6 steps						
+　·　预计约 {0}	 · ~{0}						
+　·　已走 {0}	 · {0} elapsed						
+回流	Reflux						
+保持现状	Keep						
+暂停	Pause						
+等人确认	Wait confirm						
 炉子会停，设备不再受控	The run stops and the equipment is no longer controlled						
 连不上控制核心	Cannot reach the control core						
 读取中…	Reading…						
@@ -624,7 +672,12 @@ TEC 制冷	TEC cooling
 {0} : {1} · {2} 台 PC 连着	{0} : {1} · {2} PC connected						
 {0} : {1} · 没有 PC 连着	{0} : {1} · no PC connected						
 控制核心没退	The control core did not quit						
+通道 {0} 正在控温 {1} ℃ —— 退出后这块屏上看不到了，炉子照常控	Ch {0} controlling at {1} ℃ — screen closes, reactor keeps running						
+通道 {0} 正在控温 —— 退出后这块屏上看不到了，炉子照常控	Ch {0} controlling — screen closes, reactor keeps running						
 数据放在 {0}	Data is kept in {0}						
+连不上控制核心：这块屏现在看到的不是实时的	Control core offline: readings shown are not live						
+两个通道都待机，没有在跑的炉子	Both channels idle; no active reaction						
+两个通道都在控温 —— 退出后这块屏上看不到了，炉子照常控	Both channels controlling — screen closes, reactors keep running						
 小写	Lower						
 字母	ABC						
 中	CN						
@@ -634,6 +687,10 @@ TEC 制冷	TEC cooling
 不知道为什么	Reason unknown						
 标记没加上	The marker was not added						
 快照没存成	The snapshot was not saved						
+拷到 U 盘没成功：{0}	USB copy failed: {0}						
+已拷到 U 盘 {0}（{1} 个文件）	Copied to USB {0} ({1} files)						
+已加第 {0} 个时间标记	Added time mark #{0}						
+没插 U 盘：已存在本机，插上再点一次	No USB drive: saved locally; plug in and tap again						
 和控制核心断开了	Lost the control core						
 手动运行	Manual run						
 未在运行	Not running						
@@ -654,6 +711,8 @@ TEC 制冷	TEC cooling
 夹套控温 Tj	Jacket control Tj						
 起界面时出错：	Error while building the screen: 						
 刷新界面时出错：	Error while refreshing the screen: 						
+通道 {0} · 蒸回流：夹套比釜内高	Channel {0} · Reflux: Tj − Tr						
+通道 {0} · 搅拌转速	Channel {0} · Stir speed						
 步骤 {0} / {1}	Step {0} / {1}						
 运行中 · {0} / {1}	Running · {0} / {1}						
 　·　夹套目标 {0} ℃　·　出力 {1} %（{2}）	　·　jacket target {0} ℃　·　output {1} % ({2})						

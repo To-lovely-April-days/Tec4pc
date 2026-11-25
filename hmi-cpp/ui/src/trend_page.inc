@@ -22,12 +22,12 @@ void tr_say(int ci, const std::string& s) { tr_msg[ci] = s; tr_msg_at[ci] = std:
 // 触摸屏上没有文件管理器，数据只留在本机等于拿不走，所以「导出」这件事做到 U 盘上才算完
 std::string copy_to_usb() {
     const json d = ask({{"cmd", "drives.list"}});
-    if (!d.value("ok", false) || !d["drives"].is_array() || d["drives"].empty()) return "没插 U 盘：已存在本机，插上再点一次";
+    if (!d.value("ok", false) || !d["drives"].is_array() || d["drives"].empty()) return ui::tr("没插 U 盘：已存在本机，插上再点一次");
     const json r = ask({{"cmd", "export.copy"}});
-    if (!r.value("ok", false)) return "拷到 U 盘没成功：" + r.value("error", std::string("不知道为什么"));
+    if (!r.value("ok", false)) return ui::fmt("拷到 U 盘没成功：{0}", {ui::tr(r.value("error", std::string("不知道为什么")))});
     std::string to = r.value("to", std::string());
     for (char& ch : to) if (ch == '\\') ch = '/';
-    return "已拷到 U 盘 " + to + "（" + std::to_string(r.value("files", 0)) + " 个文件）";
+    return ui::fmt("已拷到 U 盘 {0}（{1} 个文件）", {to, std::to_string(r.value("files", 0))});
 }
 struct TrendPlot { std::string key; std::deque<std::vector<lv_point_precise_t>> lines; };
 std::map<lv_obj_t*, TrendPlot> tplots;          // 每个画图的框一份：线的坐标要一直留着
@@ -231,10 +231,11 @@ void draw_trend(lv_obj_t* box, int ci, Ui& u) {
     }
     for (const Tag& g : tags) {
         if (!g.on) continue;
-        const int w = static_cast<int>(g.text.size() * 7.6 + 14) * S, h = 22 * S;
-        lv_obj_t* b = mk(box, L + xn + 8 * S, T + g.y - h / 2, w, h, 0);
+        const int h = 22 * S;
+        lv_obj_t* b = mk(box, L + xn + 8 * S, T + g.y - h / 2, 10 * S, h, 0);
         bg(b, g.color, 255); lv_obj_set_style_radius(b, 5 * S, 0);
-        txt(b, w / 2, h / 2, g.text.c_str(), 600, 12.5f, 0xFFFFFF, 255, 0, 0);
+        lv_obj_t* lb = txta(b, 8 * S, h / 2, 'l', g.text.c_str(), 600, 12.5f, 0xFFFFFF, 255, 0, 0);
+        lv_obj_set_width(b, label_w(lb) + 16 * S);
     }
 }
 
@@ -246,7 +247,7 @@ bool trend_action(const std::string& a) {
     if (a == "tr:mark") {
         // 时间标记：记下「现在」这一刻。核心在趋势图上竖一道线，这一炉在跑的话同时写进它的事件日志（导出能看到）
         const json r = ask({{"cmd", "mark.add"}, {"ch", ci + 1}});
-        tr_say(ci, r.value("ok", false) ? "已加第 " + std::to_string(r.value("count", 0)) + " 个时间标记" : r.value("error", std::string("标记没加上")));
+        tr_say(ci, r.value("ok", false) ? ui::fmt("已加第 {0} 个时间标记", {std::to_string(r.value("count", 0))}) : r.value("error", std::string("标记没加上")));
         tdat[ci].asked = {};          // 马上重新要一次数据，标记线立刻出来
         refresh(); return true;
     }

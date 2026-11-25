@@ -14,10 +14,12 @@
 namespace win {
 
 static HWND hwnd = nullptr;
+static HCURSOR arrow_cur = nullptr;
 static HDC mem = nullptr;                 // 内存里的那张画布（LVGL 往它上面写，窗口从它上面拷）
 static uint32_t* bits = nullptr;
 static int zoom = 100, ox = 0, oy = 0;    // 放大百分比；全屏时画面居中，左边和上边空出多少
 static bool closed = false;
+static ULONGLONG last_input_ms = 0;       // 最近一次收到鼠标 / 触摸的时刻，免得人正动鼠标时后台去画预热页卡住窗口
 
 static void blit(HDC dc, int x1, int y1, int x2, int y2) {
     if (zoom == 100) { BitBlt(dc, ox + x1, oy + y1, x2 - x1 + 1, y2 - y1 + 1, mem, x1, y1, SRCCOPY); return; }
@@ -37,6 +39,7 @@ static void present(int x1, int y1, int x2, int y2) {
 
 // 鼠标 / 手指的位置（屏幕坐标）换成界面上的坐标，记给 LVGL 去读
 static void pointer(LPARAM lp, bool screen_coords, int down) {
+    last_input_ms = GetTickCount64();
     POINT p{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
     if (screen_coords) ScreenToClient(hwnd, &p);
     g_finger.x = (p.x - ox) * 100 / zoom;
@@ -44,9 +47,17 @@ static void pointer(LPARAM lp, bool screen_coords, int down) {
     if (down >= 0) g_finger.down = down != 0;
 }
 
+static bool is_mouse_pointer(WPARAM wp) {
+    POINTER_INPUT_TYPE pt = PT_TOUCH;
+    return GetPointerType(GET_POINTERID_WPARAM(wp), &pt) && pt == PT_MOUSE;
+}
+
 static LRESULT CALLBACK proc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
     switch (m) {
     case WM_ERASEBKGND: return 1;                 // 不让系统先刷一遍底色：会闪
+    case WM_SETCURSOR:
+        if (LOWORD(lp) == HTCLIENT && arrow_cur) { SetCursor(arrow_cur); return TRUE; }
+        break;
     case WM_PAINT: {
         PAINTSTRUCT ps; HDC dc = BeginPaint(h, &ps);
         if (ox > 0 || oy > 0) FillRect(dc, &ps.rcPaint, static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
@@ -54,15 +65,17 @@ static LRESULT CALLBACK proc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
         EndPaint(h, &ps);
         return 0;
     }
-    // 触摸和鼠标都走「指针」这一套消息（下面 EnableMouseInPointer 打开以后鼠标也算指针），坐标是屏幕坐标
-    case WM_POINTERDOWN:   pointer(lp, true, 1); return 0;
-    case WM_POINTERUP:     pointer(lp, true, 0); return 0;
-    case WM_POINTERUPDATE: pointer(lp, true, IS_POINTER_INCONTACT_WPARAM(wp) ? 1 : 0); return 0;
-    case WM_POINTERCAPTURECHANGED: g_finger.down = false; return 0;
-    // 老系统上没有指针消息时的退路：普通鼠标消息，坐标已经是窗口里的
+    // 真触摸屏走 WM_POINTER*（系统原生就会发，千万别开 EnableMouseInPointer：在高分屏缩放 + 后台渲染时
+    // 会把真鼠标塞进同步指针队列，造成鼠标移进窗口时偶尔消失、冻住几秒才恢复）
+    case WM_POINTERDOWN:   if (is_mouse_pointer(wp)) break; pointer(lp, true, 1); return 0;
+    case WM_POINTERUP:     if (is_mouse_pointer(wp)) break; pointer(lp, true, 0); return 0;
+    case WM_POINTERUPDATE: if (is_mouse_pointer(wp)) break; pointer(lp, true, IS_POINTER_INCONTACT_WPARAM(wp) ? 1 : 0); return 0;
+    case WM_POINTERCAPTURECHANGED: if (is_mouse_pointer(wp)) break; g_finger.down = false; return 0;
+    // 鼠标和触控板走标准鼠标消息：内核异步移动光标，绝不会冻住，光标形状也由 WM_SETCURSOR 正常维护
     case WM_LBUTTONDOWN: SetCapture(h); pointer(lp, false, 1); return 0;
     case WM_LBUTTONUP:   ReleaseCapture(); pointer(lp, false, 0); return 0;
     case WM_MOUSEMOVE:   pointer(lp, false, -1); return 0;
+    case WM_CAPTURECHANGED: g_finger.down = false; return 0;
     case WM_CLOSE: closed = true; DestroyWindow(h); return 0;
     case WM_DESTROY: closed = true; hwnd = nullptr; return 0;
     }
@@ -114,7 +127,6 @@ static bool hand_over_to_2x(bool fullscreen) {
 // 开窗口。want_zoom：0 = 自己定（窗口时 100 %，全屏时放大到屏幕放得下的最大）；frame：要不要系统的标题栏和边框
 static bool open(int want_zoom, bool fullscreen, bool frame) {
     own_dpi();
-    EnableMouseInPointer(TRUE);
 
     BITMAPINFO bi{};
     bi.bmiHeader.biSize = sizeof bi.bmiHeader;
@@ -127,9 +139,10 @@ static bool open(int want_zoom, bool fullscreen, bool frame) {
     SelectObject(mem, bmp);
     bits = static_cast<uint32_t*>(p);
 
+    arrow_cur = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));       // 32512 = 普通箭头（IDC_ARROW；那个名字在没开 UNICODE 时是窄字符的，这里直接写编号）
     WNDCLASSW wc{};
     wc.lpfnWndProc = proc; wc.hInstance = GetModuleHandleW(nullptr); wc.lpszClassName = L"TecHmiWindow";
-    wc.hCursor = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));      // 32512 = 普通箭头（IDC_ARROW；那个名字在没开 UNICODE 时是窄字符的，这里直接写编号）
+    wc.hCursor = arrow_cur;
     RegisterClassW(&wc);
 
     int sw, sh, sl, st; usable(fullscreen, sw, sh, sl, st);
@@ -164,5 +177,10 @@ static bool pump() {
 
 // 歇一小会儿；有鼠标 / 触摸消息来就马上醒，点下去不用等
 static void idle(uint32_t ms) { MsgWaitForMultipleObjects(0, nullptr, FALSE, ms, QS_ALLINPUT); }
+
+// 刚刚动过鼠标 / 手指，或者消息队列里还有输入没取走：这时别去跑预热渲染
+static bool input_recent(ULONGLONG within_ms = 400) {
+    return g_finger.down || HIWORD(GetQueueStatus(QS_INPUT)) != 0 || GetTickCount64() - last_input_ms < within_ms;
+}
 
 }  // namespace win

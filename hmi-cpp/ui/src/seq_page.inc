@@ -54,28 +54,28 @@ static double step_minutes(const json& s) {
     }
     return 0.0;
 }
-// 步骤格里的三行字：类型、做什么、怎么做
+// 步骤格里的三行字：类型、做什么、怎么做（直接翻译好交出去：任务序列页、配方库、方案总览三处都直接写上屏）
 static void step_lines(const json& s, std::string& k, std::string& a, std::string& d) {
     const std::string kind = s.value("kind", "wait");
     a.clear(); d.clear();
     if (kind == "reactor" || kind == "jacket") {
         k = kind == "reactor" ? "Tr" : "Tj";
-        a = "到 " + f1(s.value("target", 0.0)) + " ℃";
+        a = ui::fmt("到 {0} ℃", {f1(s.value("target", 0.0))});
         const std::string ar = s.value("arrive", "fast");
-        d = ar == "rate" ? f2(s.value("rate_k_per_min", 0.0)) + " ℃/min" : ar == "duration" ? "按时长 " + dur_text(s.value("duration_min", 0.0)) : "尽快";
-    } else if (kind == "reflux") { k = "回流"; a = "夹套高 " + f1(s.value("delta_k", 8.0)) + " K"; d = dur_text(s.value("minutes", 0.0)); }
-    else if (kind == "wait") { k = "Wait"; a = "保持现状"; d = dur_text(s.value("minutes", 0.0)); }
+        d = ar == "rate" ? f2(s.value("rate_k_per_min", 0.0)) + " ℃/min" : ar == "duration" ? ui::fmt("按时长 {0}", {dur_text(s.value("duration_min", 0.0))}) : ui::tr("尽快");
+    } else if (kind == "reflux") { k = ui::tr("回流"); a = ui::fmt("夹套高 {0} K", {f1(s.value("delta_k", 8.0))}); d = dur_text(s.value("minutes", 0.0)); }
+    else if (kind == "wait") { k = "Wait"; a = ui::tr("保持现状"); d = dur_text(s.value("minutes", 0.0)); }
     else if (kind == "stir") { k = "R"; a = f0(s.value("stir_rpm", 0.0)) + " rpm"; }
     else if (kind == "crystal") {
-        k = "结晶";
+        k = ui::tr("结晶");
         const int n = s.contains("profile") ? static_cast<int>(s["profile"].size()) : 0;
-        a = std::to_string(n) + " 段"; d = dur_text(step_minutes(s));
+        a = ui::fmt("{0} 段", {std::to_string(n)}); d = dur_text(step_minutes(s));
     } else if (kind == "dose") {
-        k = "加料";
+        k = ui::tr("加料");
         const json d0 = s.value("dose", json::object()); const std::string md = d0.value("mode", "rate");
-        if (md == "ph_hold") { a = "pH " + f2(d0.value("ph_target", 7.0)) + " ± " + f2(d0.value("ph_band", 0.2)); d = "维持 " + dur_text(d0.value("hold_min", 0.0)); }
-        else { a = f1(d0.value("volume_ml", 0.0)) + " mL"; d = md == "rate" ? f2(d0.value("rate_ml_min", 0.0)) + " mL/min" : "一次加入"; }
-    } else { k = "暂停"; a = "等人确认"; }
+        if (md == "ph_hold") { a = "pH " + f2(d0.value("ph_target", 7.0)) + " ± " + f2(d0.value("ph_band", 0.2)); d = ui::fmt("维持 {0}", {dur_text(d0.value("hold_min", 0.0))}); }
+        else { a = f1(d0.value("volume_ml", 0.0)) + " mL"; d = md == "rate" ? f2(d0.value("rate_ml_min", 0.0)) + " mL/min" : ui::tr("一次加入"); }
+    } else { k = ui::tr("暂停"); a = ui::tr("等人确认"); }
 }
 
 bool seq_locked(int ci) const {
@@ -159,7 +159,7 @@ bool seq_edit_field(int ci, const std::string& key) {
         const double shown = name == "target" ? from.value(name, 0.0) : curv;
         char last[48]; std::snprintf(last, sizeof last, "%.*f %s", f.dec, shown, f.unit);
         const int idx = v.sel;
-        open_keypad("第 " + std::to_string(idx + 1) + " 步 · " + f.title, f.unit, shown, f.lo, f.hi, last, "—",
+        open_keypad(ui::fmt("第 {0} 步 · {1}", {std::to_string(idx + 1), ui::tr(f.title)}), f.unit, shown, f.lo, f.hi, last, "—",
                     [this, ci, idx, where, name](double x) {
                         SeqView& w = sv[ci];
                         if (idx >= static_cast<int>(w.steps.size())) return;
@@ -179,8 +179,8 @@ bool seq_action(const std::string& a) {
     if (edit && seq_locked(ci)) { v.msg = "已开始的序列不可增改"; refresh(); return true; }
     const int n = static_cast<int>(v.steps.size());
     if (a.rfind("sq:sel:", 0) == 0) { const int i = a[7] - '0'; if (i < n) v.sel = i; refresh(); return true; }
-    if (a == "sq:add") { if (n < 6) open_stepdlg(-1, "第 " + std::to_string(n + 1) + " 步做什么？"); return true; }
-    if (a == "det:type") { if (n > 0) open_stepdlg(v.sel, "第 " + std::to_string(v.sel + 1) + " 步换成什么？"); return true; }
+    if (a == "sq:add") { if (n < 6) open_stepdlg(-1, ui::fmt("第 {0} 步做什么？", {std::to_string(n + 1)})); return true; }
+    if (a == "det:type") { if (n > 0) open_stepdlg(v.sel, ui::fmt("第 {0} 步换成什么？", {std::to_string(v.sel + 1)})); return true; }
     if (a == "det:del") { if (n > 0) { v.steps.erase(v.sel); seq_push(ci); } return true; }
     if (a == "st:close") { if (stepdlg.scr) lv_obj_add_flag(stepdlg.scr, LV_OBJ_FLAG_HIDDEN); return true; }
     if (a.rfind("st:pick:", 0) == 0) {
@@ -193,13 +193,13 @@ bool seq_action(const std::string& a) {
     }
     if (a == "f:liquid" && n > 0) {
         const int idx = v.sel;
-        open_text_kb("第 " + std::to_string(idx + 1) + " 步 · 加的是什么料液", v.steps[idx].value("dose", json::object()).value("liquid", ""), 12,
+        open_text_kb(ui::fmt("第 {0} 步 · 加的是什么料液", {std::to_string(idx + 1)}), v.steps[idx].value("dose", json::object()).value("liquid", ""), 12,
                      [this, ci, idx](const std::string& s) { SeqView& w = sv[ci]; if (idx < static_cast<int>(w.steps.size())) { w.steps[idx]["dose"]["liquid"] = s; seq_push(ci); } });
         return true;
     }
     if (a == "f:msg" && n > 0) {
         const int idx = v.sel;
-        open_text_kb("第 " + std::to_string(idx + 1) + " 步 · 停下来时给操作人看的提示", v.steps[idx].value("message", ""), 24,
+        open_text_kb(ui::fmt("第 {0} 步 · 停下来时给操作人看的提示", {std::to_string(idx + 1)}), v.steps[idx].value("message", ""), 24,
                      [this, ci, idx](const std::string& s) { SeqView& w = sv[ci]; if (idx < static_cast<int>(w.steps.size())) { w.steps[idx]["message"] = s; seq_push(ci); } });
         return true;
     }
@@ -267,6 +267,16 @@ void seq_build_parts(const std::string& page, Ui& u, lv_obj_t* scr) {
         P.ui[p] = std::make_unique<Ui>();
         P.ui[p]->on_action = [this](const std::string& a) { action(a); };
         for (const PageDef& d : kPages) if (std::string(d.name) == names[p]) { d.build(P.scr[p], *P.ui[p]); lv_obj_update_layout(P.scr[p]); }
+        if (lv_obj_t* sw = P.ui[p]->box("sw.sync")) if (lv_obj_t* par = lv_obj_get_parent(sw)) if (lv_obj_get_child_count(par) > 0) {
+            const int sx = label_w(lv_obj_get_child(par, 0)) + 10 * UI_SCALE;
+            if (sx > lv_obj_get_x(sw)) {
+                const int right = lv_obj_get_x(lv_obj_get_parent(par)) + lv_obj_get_width(par);
+                lv_obj_set_x(sw, sx); lv_obj_set_width(par, sx + 54 * UI_SCALE);
+                // 保持整颗开关不越过参数卡右边缘
+                if (lv_obj_t* col = lv_obj_get_parent(par)) if (lv_obj_get_x(col) + sx + 54 * UI_SCALE > 1184 * UI_SCALE)
+                    lv_obj_set_x(col, std::max(right - (sx + 54 * UI_SCALE), 984 * UI_SCALE));
+            }
+        }
     }
     // 当前步外圈那道跟着进度走的蓝弧：设计稿里画不出「会动的弧」，这里用 LVGL 的弧形控件叠在那个圆上
     for (int i = 0; i < 6; i++) {
@@ -293,7 +303,15 @@ void seq_fill_part(Ui& d, const json& s, int i, int state, double elapsed_s) {
     const std::string kind = s.value("kind", "wait");
     d.set_text_raw("det.title", ui::fmt("第 {0} 步 · {1}", {std::to_string(i + 1), ui::tr(kind_title(kind))}));
     d.set_text("det.badge", state == 1 ? "进行中" : state == 2 ? "已完成" : "未开始");
-    if (lv_obj_t* b = d.box("det.badge")) if (d.changed("badge", state)) bg(b, state == 1 ? 0x00559C : state == 2 ? 0x8792A0 : 0xDCE4ED, 255);
+    if (lv_obj_t* b = d.box("det.badge")) {
+        if (d.changed("badge", state)) bg(b, state == 1 ? 0x00559C : state == 2 ? 0x8792A0 : 0xDCE4ED, 255);
+        if (lv_obj_t* lb = d.label("det.badge")) if (lv_obj_t* tl = d.label("det.title")) {
+            const int bw = label_w(lb) + 20 * UI_SCALE;
+            lv_obj_set_x(b, label_w(tl) + 12 * UI_SCALE);
+            lv_obj_set_width(b, bw);
+            lv_obj_set_x(lb, 10 * UI_SCALE);
+        }
+    }
     d.set_text_color("det.badge", state == 0 ? 0x5A6675 : 0xFFFFFF);
     d.set_text_raw("det.right", state == 1 ? ui::fmt("这一步已走 {0}", {hms(elapsed_s)}) : "");
     const double stir = s.value("stir_rpm", -1.0);
@@ -369,10 +387,10 @@ void refresh_seq(Ui& u, const json& c, int ci) {
 
     double total = 0;
     for (auto& s : v.steps) total += step_minutes(s);
-    std::string sum = (v.name.empty() ? "" : "「" + v.name + "」　·　") + std::to_string(n) + " / 6 步";
-    if (n > 0) sum += "　·　预计约 " + dur_text(total);
-    if (started) sum += "　·　已走 " + dur_text(q.value("total_elapsed_s", 0.0) / 60.0);
-    u.set_text("seq.sum", sum);
+    std::string sum = (v.name.empty() ? "" : "「" + v.name + "」　·　") + ui::fmt("{0} / 6 步", {std::to_string(n)});
+    if (n > 0) sum += ui::fmt("　·　预计约 {0}", {dur_text(total)});
+    if (started) sum += ui::fmt("　·　已走 {0}", {dur_text(q.value("total_elapsed_s", 0.0) / 60.0)});
+    u.set_text_raw("seq.sum", sum);
 
     for (int i = 0; i < 6; i++) {
         const std::string id = "sq." + std::to_string(i);
@@ -388,7 +406,7 @@ void refresh_seq(Ui& u, const json& c, int ci) {
         if (stt == 1) { u.set_text(id + ".pct", std::to_string(pct) + "%"); if (P.arc[i]) lv_arc_set_value(P.arc[i], pct); }
         std::string k, a, d;
         step_lines(v.steps[i], k, a, d);
-        u.set_text(id + ".k", k); u.set_text(id + ".a", a); u.set_text(id + ".d", d);
+        u.set_text_raw(id + ".k", k); u.set_text_raw(id + ".a", a); u.set_text_raw(id + ".d", d);
         u.set_text_color(id + ".k", stt == 1 ? 0x00559C : stt == 2 ? 0x8792A0 : 0x1F2A35);
         u.set_text_color(id + ".a", stt == 2 ? 0x8792A0 : 0x5A6675);
         if (lv_obj_t* o = u.box(id)) if (u.changed("sel" + std::to_string(i), i == v.sel)) {

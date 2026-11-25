@@ -32,7 +32,7 @@ bool safety_action(const std::string& a) {
     // 键盘的范围就按规矩给：下限只能在 −40 和现在的上限之间，上限只能在现在的下限和 180 之间
     const double kmin = k == 0 ? -40 : k == 1 ? std::ceil(lo + 1) : 0, kmax = k == 0 ? std::floor(hi - 1) : k == 1 ? 180 : 20;
     const std::string unit = k == 2 ? "℃/min" : "℃";
-    open_keypad("通道 " + std::to_string(channel) + " · " + title[k], unit, cur_v, kmin, kmax, (k == 2 ? f2(cur_v) : f1(cur_v)) + " " + unit, "—",
+    open_keypad(ui::fmt("通道 {0} · {1}", {std::to_string(channel), ui::tr(title[k])}), unit, cur_v, kmin, kmax, (k == 2 ? f2(cur_v) : f1(cur_v)) + " " + unit, "—",
                 [this, ci, k](double x) {
                     const json r = ask({{"cmd", "limits.set"}, {"ch", ci + 1}, {field[k], x}});
                     sfv[ci].msg = r.value("ok", false) ? "已保存" : r.value("error", std::string("没改成"));

@@ -90,6 +90,7 @@ private:
     int follow_shift(const T& t) const;
     void place(const std::string& id);
     std::map<std::string, T> texts_;
+    std::map<lv_obj_t*, std::string> id_of_;            // 反查：这个 label 在 texts_ 里叫什么名字
     std::map<lv_obj_t*, std::string> follower_of_;      // 这一段字后面跟着谁
 
     std::map<std::string, long long> seen_;
