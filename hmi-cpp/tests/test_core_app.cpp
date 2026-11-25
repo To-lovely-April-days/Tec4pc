@@ -234,6 +234,12 @@ int main(int argc, char** argv) {
         auto l5 = [&](const json& q) { return json::parse(app5.handle(q.dump(), false)); };
         auto r5 = [&](const json& q) { return json::parse(app5.handle(q.dump(), true)); };
         auto run5 = [&](int n) { for (int i = 0; i < n; i++) { app5.tick(); sim5.advance(0.5); } };
+        // 界面语言存在设置里，核心只替它存着：换一种、存进盘、重读还是那一种
+        CHECK(l5({{"cmd", "settings.get"}})["ui_lang"] == "zh");
+        CHECK(l5({{"cmd", "settings.set"}, {"ui_lang", "de"}})["ok"] == true);
+        CHECK(l5({{"cmd", "settings.get"}})["ui_lang"] == "de");
+        CHECK(AppSettings::load(b5.u8string()).ui_lang == "de");
+
         int called = 0;
         CHECK(l5({{"cmd", "sys.exit"}})["ok"] == false);                              // 还没接钩子
         app5.on_exit = [&]() { called++; };

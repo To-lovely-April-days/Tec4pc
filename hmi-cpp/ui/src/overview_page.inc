@@ -169,7 +169,8 @@ void refresh_scheme(Ui& u) {
         u.set_text(id + ".sub", sub);
         // 右上角的状态牌：字有长有短，牌子跟着变宽，右边缘不动
         const int code = qs == "running" ? 1 : qs == "waiting_confirm" ? 2 : qs == "done" ? 3 : 0;
-        u.set_text(id + ".badge", code == 1 ? "运行中 · 步骤 " + std::to_string(q.value("index", 0) + 1) + " / " + std::to_string(q.value("count", 0)) : code == 2 ? "等待确认" : code == 3 ? "已完成" : "未启动");
+        u.set_text_raw(id + ".badge", code == 1 ? ui::fmt("运行中 · 步骤 {0} / {1}", {std::to_string(q.value("index", 0) + 1), std::to_string(q.value("count", 0))})
+                                      : ui::tr(code == 2 ? "等待确认" : code == 3 ? "已完成" : "未启动"));
         u.set_text_color(id + ".badge", code == 0 ? 0x4F5B67 : 0xFFFFFF);
         if (lv_obj_t* b = u.box(id + ".badge")) {
             if (u.changed(id + ".badge", code)) { bg(b, code == 1 ? 0x00559C : code == 2 ? 0xF08C00 : code == 3 ? 0x8792A0 : 0xE9EEF5, 255); }

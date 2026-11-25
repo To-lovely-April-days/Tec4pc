@@ -66,6 +66,122 @@ static const std::vector<unsigned char>& font_file(const std::string& path) {
     return v;
 }
 
+// ── 界面语言 ──
+static std::string g_lang = "zh";
+static std::map<std::string, std::string> g_tr;      // 中文 → 当前语言；中文本身是空表
+
+// 表里一行一条，用制表符分开：中文、en、ja、ko、de、fr、es、ru。
+// 为什么用制表符不用逗号：界面上的句子里逗号多得很，用逗号分列一改就错；制表符一个都没有。
+// 开头的 BOM 是给 Excel 认 UTF-8 用的，读的时候跳过
+static void load_table(const std::string& code) {
+    g_tr.clear();
+    if (code == "zh") return;
+    std::FILE* f = tec::open_file_u8(g_assets + "assets/lang/strings.tsv", "rb");
+    if (!f) return;
+    std::string all;
+    char buf[8192];
+    size_t n;
+    while ((n = std::fread(buf, 1, sizeof buf, f)) > 0) all.append(buf, n);
+    std::fclose(f);
+    size_t p = 0;
+    if (all.size() >= 3 && static_cast<unsigned char>(all[0]) == 0xEF) p = 3;
+    int col = -1, en_col = -1, row = 0;
+    while (p <= all.size()) {
+        size_t e = all.find('\n', p);
+        if (e == std::string::npos) e = all.size();
+        std::string line = all.substr(p, e - p);
+        p = e + 1;
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.empty()) { if (e >= all.size()) break; continue; }
+        std::vector<std::string> cell;
+        size_t q = 0;
+        for (;;) { const size_t t = line.find('\t', q); cell.push_back(line.substr(q, t == std::string::npos ? t : t - q)); if (t == std::string::npos) break; q = t + 1; }
+        if (row++ == 0) {                        // 表头：找出这种语言是第几列，顺带记下英文那一列（回落用）
+            for (size_t i = 1; i < cell.size(); i++) { if (cell[i] == code) col = static_cast<int>(i); if (cell[i] == "en") en_col = static_cast<int>(i); }
+            if (col < 0) return;                 // 表里没有这种语言：整张表不要，全显示中文
+            continue;
+        }
+        if (cell.empty() || cell[0].empty()) continue;
+        std::string v = col < static_cast<int>(cell.size()) ? cell[col] : std::string();
+        if (v.empty() && en_col > 0 && en_col < static_cast<int>(cell.size())) v = cell[en_col];      // 这一句还没译：先用英文
+        if (!v.empty() && v != cell[0]) g_tr[cell[0]] = v;
+        if (e >= all.size()) break;
+    }
+}
+
+// 整张表读进来，每种语言各数一遍：一共多少条、填了多少条。只数一次
+static const std::map<std::string, int>& percents() {
+    static std::map<std::string, int> m;
+    static bool done = false;
+    if (done) return m;
+    done = true;
+    std::FILE* f = tec::open_file_u8(g_assets + "assets/lang/strings.tsv", "rb");
+    if (!f) return m;
+    std::string all;
+    char buf[8192];
+    size_t n;
+    while ((n = std::fread(buf, 1, sizeof buf, f)) > 0) all.append(buf, n);
+    std::fclose(f);
+    size_t p = all.size() >= 3 && static_cast<unsigned char>(all[0]) == 0xEF ? 3 : 0;
+    std::vector<std::string> head;
+    std::vector<int> done_n;
+    int rows = 0;
+    while (p <= all.size()) {
+        size_t e = all.find('\n', p);
+        if (e == std::string::npos) e = all.size();
+        std::string line = all.substr(p, e - p);
+        const bool last = e >= all.size();
+        p = e + 1;
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (!line.empty() && line[0] != '#') {
+            std::vector<std::string> cell;
+            size_t q = 0;
+            for (;;) { const size_t t = line.find('\t', q); cell.push_back(line.substr(q, t == std::string::npos ? t : t - q)); if (t == std::string::npos) break; q = t + 1; }
+            if (head.empty()) { head.assign(cell.begin() + (cell.empty() ? 0 : 1), cell.end()); done_n.assign(head.size(), 0); }
+            else if (!cell.empty() && !cell[0].empty()) {
+                rows++;
+                for (size_t i = 0; i < head.size(); i++) if (i + 1 < cell.size() && !cell[i + 1].empty()) done_n[i]++;
+            }
+        }
+        if (last) break;
+    }
+    m["zh"] = 100;
+    for (size_t i = 0; i < head.size(); i++) m[head[i]] = rows > 0 ? static_cast<int>(done_n[i] * 100.0 / rows + 0.5) : 0;
+    return m;
+}
+
+int language_percent(const std::string& code) {
+    const std::map<std::string, int>& m = percents();
+    auto it = m.find(code);
+    return it == m.end() ? 0 : it->second;
+}
+
+void set_language(const std::string& code) { g_lang = code.empty() ? "zh" : code; load_table(g_lang); }
+const std::string& language() { return g_lang; }
+
+const std::string& tr(const std::string& zh) {
+    auto it = g_tr.find(zh);
+    return it == g_tr.end() ? zh : it->second;
+}
+
+std::string fmt(const std::string& zh, std::initializer_list<std::string> args) {
+    std::string out = tr(zh);
+    int n = 0;
+    for (const std::string& a : args) {
+        const std::string mark = "{" + std::to_string(n++) + "}";
+        for (size_t p = out.find(mark); p != std::string::npos; p = out.find(mark, p + a.size()))
+            out.replace(p, mark.size(), a);
+    }
+    return out;
+}
+
+bool language_has_font(const std::string& code) {
+    // 拉丁字母和西里尔字母 Inter 本来就带（德法西葡意俄都够），汉字在思源黑体里；
+    // 假名和谚文这两套都没有，要另外放字体文件进来
+    const char* need = code == "ja" ? "assets/fonts/noto_jp_400.ttf" : code == "ko" ? "assets/fonts/noto_kr_400.ttf" : nullptr;
+    return !need || !font_file(need).empty();
+}
+
 lv_font_t* font(int weight, float css_px) {
     static struct { int w, px; lv_font_t* f; } cache[96];
     static int n = 0;
@@ -84,6 +200,17 @@ lv_font_t* font(int weight, float css_px) {
     const std::vector<unsigned char>& b = font_file(p);
     lv_font_t* cjk = b.empty() ? nullptr : lv_tiny_ttf_create_data_ex(b.data(), b.size(), px, LV_FONT_KERNING_NONE, LV_TINY_TTF_CACHE_GLYPH_CNT);
     if (f) f->fallback = cjk; else f = cjk;
+    // 日文假名、韩文谚文：字体文件放进来了就接在链子后面，没放就当没有这两种语言（选择框里会标「缺字体」）
+    lv_font_t* tail = cjk ? cjk : f;
+    for (const char* name : {"noto_jp_%d.ttf", "noto_kr_%d.ttf"}) {
+        std::snprintf(p, sizeof p, (std::string("assets/fonts/") + name).c_str(), w);
+        const std::vector<unsigned char>& x = font_file(p);
+        if (x.empty()) continue;
+        lv_font_t* g2 = lv_tiny_ttf_create_data_ex(x.data(), x.size(), px, LV_FONT_KERNING_NONE, LV_TINY_TTF_CACHE_GLYPH_CNT);
+        if (!g2) continue;
+        if (tail) tail->fallback = g2; else f = g2;
+        tail = g2;
+    }
     if (n < 96) { cache[n].w = w; cache[n].px = px; cache[n].f = f; n++; }
     return f;
 }
@@ -122,6 +249,17 @@ static void text_size(lv_obj_t* l, const char* s, int wrap_w, int& w, int& h) {
 int label_w(lv_obj_t* label) { int w = 0, h = 0; text_size(label, lv_label_get_text(label), 0, w, h); return w; }
 
 lv_obj_t* txt(lv_obj_t* p, int cx, int cy, const char* s, int weight, float px, uint32_t c, int a, int ls, int wrap_w) {
+    return txta(p, cx, cy, 'c', s, weight, px, c, a, ls, wrap_w);
+}
+
+lv_obj_t* txta(lv_obj_t* p, int ax, int cy, char anchor, const char* s0, int weight, float px, uint32_t c, int a, int ls, int wrap_w) {
+    // 设计稿翻出来的页面代码里，每一句都是从这儿画的——语言就在这儿换，
+    // 所以 ui/gen/pages_*.inc 那两万行一个字都不用动。
+    // key 这个局部变量不能省：tr() 查不到时返回的是「传进去的那个串」的引用，
+    // 直接写 tr(s0) 的话那是个用完就没的临时对象，拿到的引用是悬的（第一次自查时屏上冒出一串乱码就是这么来的）
+    const std::string key = s0;
+    const std::string& S = tr(key);
+    const char* s = S.c_str();
     lv_obj_t* l = lv_label_create(p);
     lv_obj_remove_style_all(l);
     lv_obj_set_style_text_font(l, font(weight, px), 0); lv_obj_set_style_text_color(l, lv_color_hex(c), 0); lv_obj_set_style_text_opa(l, static_cast<lv_opa_t>(a), 0);
@@ -130,9 +268,16 @@ lv_obj_t* txt(lv_obj_t* p, int cx, int cy, const char* s, int weight, float px, 
     lv_label_set_text(l, s);
     int w = 0, h = 0;
     text_size(l, s, wrap_w, w, h);
-    lv_obj_set_pos(l, cx - w / 2, cy - h / 2);
+    lv_obj_set_pos(l, anchor == 'l' ? ax : anchor == 'r' ? ax - w : ax - w / 2, cy - h / 2);
     return l;
 }
+lv_obj_t* txta_shift(lv_obj_t* p, int ax, int cy, lv_obj_t* prev, int prev_w, const char* s, int weight, float px, uint32_t c, int a, int ls, int wrap_w) {
+    lv_obj_t* l = txta(p, ax, cy, 'l', s, weight, px, c, a, ls, wrap_w);
+    const int extra = prev ? label_w(prev) - prev_w : 0;      // 前一段比设计稿里宽出来多少
+    if (extra > 0) lv_obj_set_x(l, lv_obj_get_x(l) + extra);
+    return l;
+}
+
 lv_obj_t* im(lv_obj_t* p, int x, int y, const char* path) { lv_obj_t* i = lv_image_create(p); lv_image_set_src(i, path); lv_obj_set_pos(i, x, y); return i; }
 
 void Ui::reg_text(const char* id, lv_obj_t* label, char anchor, int ax, int cy) { texts_[id] = T{label, anchor, ax, cy, lv_label_get_text(label)}; }
@@ -152,17 +297,32 @@ void Ui::reg_act(lv_obj_t* obj, const char* action) {
     lv_obj_set_style_opa(obj, LV_OPA_70, LV_STATE_PRESSED);
 }
 
-void Ui::set_text(const std::string& id, const std::string& s) {
+// 运行时写上去的字也过一道词表。拼出来的句子（「通道 」+ 号 + 「 正在控温」）表里对不上，
+// 原样显示中文——这些要一条条改成带占位符的整句才能翻
+void Ui::set_text(const std::string& id, const std::string& s0) { set_text_raw(id, tr(s0)); }
+
+void Ui::reg_follow(const std::string& id, lv_obj_t* prev, int prev_w) {
+    auto it = texts_.find(id);
+    if (it == texts_.end() || !prev) return;
+    it->second.prev = prev;
+    it->second.prev_w = prev_w;
+    follower_of_[prev] = id;
+}
+
+void Ui::set_text_raw(const std::string& id, const std::string& s) {
     auto it = texts_.find(id);
     if (it == texts_.end() || it->second.cur == s) return;      // 没变就不动：不变的字不重画
     T& t = it->second;
     t.cur = s;
     lv_label_set_text(t.label, s.c_str());
+    // 后面还跟着一段字的话，这一段变长变短它得跟着挪
+    auto f = follower_of_.find(t.label);
+    if (f != follower_of_.end()) place(f->second);
     int w = 0, h = 0;
     // 设计稿里要折行的那几段是定了宽度的；其余的宽度是「跟着字走」，按不折行量
     const int32_t sw = lv_obj_get_style_width(t.label, 0);
     text_size(t.label, s.c_str(), sw == LV_SIZE_CONTENT ? 0 : sw, w, h);
-    const int x = t.anchor == 'l' ? t.ax : t.anchor == 'r' ? t.ax - w : t.ax - w / 2;
+    const int x = (t.anchor == 'l' ? t.ax : t.anchor == 'r' ? t.ax - w : t.ax - w / 2) + follow_shift(t);
     lv_obj_set_pos(t.label, x, t.cy - h / 2);
     // 新的字比设计稿里那句长很多时，会伸出包着它的那个元素太远而被裁掉；包着它的元素只是个不带底色的壳，就跟着放宽
     lv_obj_t* par = lv_obj_get_parent(t.label);
@@ -173,6 +333,25 @@ void Ui::set_text(const std::string& id, const std::string& s) {
         lv_obj_add_event_cb(par, [](lv_event_t* e) { lv_event_set_ext_draw_size(e, 700 * UI_SCALE); }, LV_EVENT_REFR_EXT_DRAW_SIZE, nullptr);
         lv_obj_refresh_ext_draw_size(par);
     }
+}
+
+// 跟在别人后面的那一段，该往右让多少
+int Ui::follow_shift(const T& t) const {
+    if (!t.prev) return 0;
+    const int extra = label_w(t.prev) - t.prev_w;
+    return extra > 0 ? extra : 0;
+}
+
+// 位置重算一遍（前面那一段的字换了，这一段要跟着挪）
+void Ui::place(const std::string& id) {
+    auto it = texts_.find(id);
+    if (it == texts_.end()) return;
+    T& t = it->second;
+    int w = 0, h = 0;
+    const int32_t sw = lv_obj_get_style_width(t.label, 0);
+    text_size(t.label, lv_label_get_text(t.label), sw == LV_SIZE_CONTENT ? 0 : sw, w, h);
+    const int x = (t.anchor == 'l' ? t.ax : t.anchor == 'r' ? t.ax - w : t.ax - w / 2) + follow_shift(t);
+    lv_obj_set_pos(t.label, x, t.cy - h / 2);
 }
 
 void Ui::set_text_color(const std::string& id, uint32_t c) {

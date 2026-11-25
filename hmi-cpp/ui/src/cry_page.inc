@@ -134,7 +134,8 @@ void refresh_cry(const json& c, int ci) {
         const json& prof = cry_shown(c);
         const int n = std::min(kCryMax, static_cast<int>(prof.size()));
         const double total = prof_minutes(prof);
-        u.set_text("cry.sum", n == 0 ? "还没有曲线，点「编辑曲线」添加" : "釜内 Tr · 共 " + std::to_string(n) + " 段 · " + dur_text(total) + " · " + tnum(cry_t0[ci]) + " → " + tnum(prof[n - 1].value("target", 0.0)) + " ℃");
+        u.set_text_raw("cry.sum", n == 0 ? ui::tr("还没有曲线，点「编辑曲线」添加")
+                                  : ui::fmt("釜内 Tr · 共 {0} 段 · {1} · {2} → {3} ℃", {std::to_string(n), dur_text(total), tnum(cry_t0[ci]), tnum(prof[n - 1].value("target", 0.0))}));
         const int seg = !run ? -1 : c.value("profile_done", false) ? n : std::min(n - 1, c.value("segment", 0));
         double done_min = -1;
         if (run && n > 0) {
@@ -144,13 +145,13 @@ void refresh_cry(const json& c, int ci) {
         }
         if (!cry_msg[ci].empty()) { u.set_text("cv.seg", cry_msg[ci]); u.set_text("cv.desc", ""); u.set_text("cv.left", ""); }
         // 正在按曲线控温但状态里没带曲线：只会在连着旧版控制核心时出现，说明一下，别去取不存在的段
-        else if (run && n == 0) { u.set_text("cv.seg", "正在按曲线控温"); u.set_text("cv.desc", "给定 " + f1(c.value("sp_now", 0.0)) + " ℃"); u.set_text("cv.left", ""); }
+        else if (run && n == 0) { u.set_text("cv.seg", "正在按曲线控温"); u.set_text_raw("cv.desc", ui::fmt("给定 {0} ℃", {f1(c.value("sp_now", 0.0))})); u.set_text("cv.left", ""); }
         else if (!run) { u.set_text("cv.seg", n == 0 ? "没有曲线" : "未开始"); u.set_text("cv.desc", n == 0 ? "" : "点右边的圆键开始"); u.set_text("cv.left", ""); }
-        else if (seg >= n) { u.set_text("cv.seg", "曲线走完了"); u.set_text("cv.desc", "保持在 " + tnum(c.value("sp", 0.0)) + " ℃"); u.set_text("cv.left", ""); }
+        else if (seg >= n) { u.set_text("cv.seg", "曲线走完了"); u.set_text_raw("cv.desc", ui::fmt("保持在 {0} ℃", {tnum(c.value("sp", 0.0))})); u.set_text("cv.left", ""); }
         else {
-            u.set_text("cv.seg", "第 " + std::to_string(seg + 1) + " / " + std::to_string(n) + " 段");
-            u.set_text("cv.desc", "到 " + tnum(prof[seg].value("target", 0.0)) + " ℃ · 给定 " + f1(c.value("sp_now", 0.0)) + " ℃");
-            u.set_text("cv.left", "本段剩 " + dur_text(std::ceil(c.value("segment_remaining_s", 0.0) / 60.0)));
+            u.set_text_raw("cv.seg", ui::fmt("第 {0} / {1} 段", {std::to_string(seg + 1), std::to_string(n)}));
+            u.set_text_raw("cv.desc", ui::fmt("到 {0} ℃ · 给定 {1} ℃", {tnum(prof[seg].value("target", 0.0)), f1(c.value("sp_now", 0.0))}));
+            u.set_text_raw("cv.left", ui::fmt("本段剩 {0}", {dur_text(std::ceil(c.value("segment_remaining_s", 0.0) / 60.0))}));
         }
         // 各段的进度条：每段的宽度按它的用时占总时长的比例
         if (lv_obj_t* bar = u.box("cv.pbar")) {
@@ -176,7 +177,8 @@ void refresh_cry(const json& c, int ci) {
             const double T = prof[k].value("target", 0.0), d = prof[k].value("minutes", 0.0), prev = k == 0 ? cry_t0[ci] : prof[k - 1].value("target", 0.0);
             u.set_text(id + ".t", tnum(T) + " ℃");
             u.set_text(id + ".d", f0(d) + " min");
-            u.set_text(id + ".c", std::fabs(T - prev) < 0.05 || d <= 0 ? "保温" : std::string(T < prev ? "降 " : "升 ") + f2(std::fabs(T - prev) / d));
+            u.set_text_raw(id + ".c", std::fabs(T - prev) < 0.05 || d <= 0 ? ui::tr("保温")
+                                      : ui::fmt(T < prev ? "降 {0}" : "升 {0}", {f2(std::fabs(T - prev) / d)}));
             const int stt = k < seg ? 2 : k == seg ? 1 : 0;
             u.show(id + ".cur", stt == 1);
             if (lv_obj_t* o = u.box(id)) if (u.changed(id + "bg", stt)) bg(o, 0xE3EEFA, stt == 1 ? 255 : 0);
@@ -198,8 +200,10 @@ void refresh_cry(const json& c, int ci) {
         Ui& u = *P.ui[1];
         const json& prof = ced.prof;
         const int n = static_cast<int>(prof.size());
-        u.set_text("cry.sum", n == 0 ? "还没有曲线" : std::string(ced.from_seq ? "任务序列第 " + std::to_string(ced.step + 1) + " 步" : "釜内 Tr") + " · 共 " + std::to_string(n) + " 段 · " + dur_text(prof_minutes(prof)) + " · " + tnum(cry_t0[ci]) + " → " + tnum(prof[n - 1].value("target", 0.0)) + " ℃");
-        u.set_text("ce.count", "点格子改温度和用时，变化看右边曲线　·　已有 " + std::to_string(n) + " 段（最多 " + std::to_string(kCryMax) + " 段）");
+        const std::string whose = ced.from_seq ? ui::fmt("任务序列第 {0} 步", {std::to_string(ced.step + 1)}) : ui::tr("釜内 Tr");
+        u.set_text_raw("cry.sum", n == 0 ? ui::tr("还没有曲线")
+                                  : ui::fmt("{0} · 共 {1} 段 · {2} · {3} → {4} ℃", {whose, std::to_string(n), dur_text(prof_minutes(prof)), tnum(cry_t0[ci]), tnum(prof[n - 1].value("target", 0.0))}));
+        u.set_text_raw("ce.count", ui::fmt("点格子改温度和用时，变化看右边曲线　·　已有 {0} 段（最多 {1} 段）", {std::to_string(n), std::to_string(kCryMax)}));
         for (int k = 0; k < kCryMax; k++) {
             const std::string id = "ce.r." + std::to_string(k);
             u.show(id, k < n);

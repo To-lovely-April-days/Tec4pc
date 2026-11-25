@@ -1,0 +1,698 @@
+﻿中文	en	ja	ko	de	fr	es	ru
+通道 1	Channel 1						
+运行中 · 3 / 5	Running · 3 / 5						
+通道 2	Channel 2						
+待机	Idle						
+总览	Overview						
+文件	Files						
+设置	Settings						
+用户	User						
+冷却水已开	Water on						
+设备控制	Control						
+趋势曲线	Trends						
+任务序列	Sequence						
+反应釜与安全	Reactor & safety						
+数据导出	Export						
+PID 整定	PID Tuning						
+结晶工艺-0824	Crystallization-0824						
+程序控制 · 加热中 · 釜内控温 Tr · 热源 TEC	Program · heating · reactor Tr · TEC						
+4 加料	4 Dosing						
+步骤 3 / 5	Step 3 / 5						
+本步剩余	Step left						
+结束序列	End sequence						
+250 mL 玻璃釜	250 mL glass reactor						
+釜内 SP	Reactor SP						
+釜内温度 Tr	Reactor Tr						
+反应热由夹套补偿	Jacket offsets reaction heat						
+夹套温度 Tj	Jacket Tj						
+直接控恒温器	Thermostat direct						
+蒸回流 Tj − Tr	Reflux Tj − Tr						
+沸点未知时使用	When b.p. unknown						
+结晶	Crystallize						
+按分段曲线控温	Segmented profile						
+温度控制	Temperature						
+釜内控温 Tr	Control on Tr						
+Tr 传感器	Tr sensor						
+pH 电极	pH electrode						
+目标 Tr	Target Tr						
+到达方式	Approach						
+尽快	Fastest						
+按速率	By rate						
+按时长	By time						
+控温中	Controlling						
+点按停止	Tap to stop						
+尽快：不限速，按最大能力到达　·　Tj 63.4 ℃　·　Tr − Tj −3.4 K　·　Tc 20.5 ℃ · 冷媒正常	As fast as possible: no rate limit, full capability　·　Tj 63.4 ℃　·　Tr − Tj −3.4 K　·　Tc 20.5 ℃ · coolant normal						
+搅拌	Stirring						
+桨式 · 50–1000 rpm	Paddle · 50–1000 rpm						
+转速	Speed						
+斜坡终值	Ramp target						
+斜坡时长	Ramp time						
+照明	Light						
+实测 300 rpm　·　电流 0.82 A	Measured 300 rpm　·　current 0.82 A						
+Tr 釜内温度	Tr reactor temp						
+Tj 夹套温度	Tj jacket temp						
+Tj 设定（内环）	Tj setpoint (inner loop)						
+Tr−Tj 内外温差	Tr−Tj difference						
+R 转速	R speed						
+时间标记	Time marker						
+拍快照	Snapshot						
+导出快照	Export snapshot						
+窗口 150 min	Window 150 min						
+横轴	X axis						
+时钟	Clock						
+实验时间	Run time						
+纵轴	Y axis						
+全部	All						
+设定值附近	Near setpoint						
+反应釜	Reactor						
+反应釜类型	Reactor type						
+桨式搅拌 · Tr 探头 + pH 电极　·　规格在台面属性栏更换	Paddle stirrer · Tr probe + pH electrode　·　change spec in the property bar						
+安全限值	Safety limits						
+点行修改（Tr 三行，操作人层）· 序列运行中不可修改	Tap a row to edit (3 Tr rows, operator) · locked while running						
+Tr min（操作人）	Tr min (operator)						
+可改	Editable						
+低于此值 → 停控并报警　·　设备底线 −40 ℃　·　已收紧	Below → stop and alarm　·　hardware −40 ℃　·　tightened						
+Tr max（操作人）	Tr max (operator)						
+高于此值 → 停控并报警　·　设备底线 180 ℃	Above → stop and alarm　·　hardware 180 ℃						
+变温速率上限	Ramp rate limit						
+关（不检测）	Off (not checked)						
+点行填一个值就开始盯实测斜率，填 0 = 关	Tap the row and enter a value to watch the measured slope; 0 = off						
+Tj（底线）	Tj (hardware)						
+夹套温度范围，越限 → 停控并报警	Jacket range; outside → stop and alarm						
+Tc（底线）	Tc (hardware)						
+冷媒温度过高 → 停止制冷并报警	Coolant too hot → stop cooling, alarm						
+限值只能在设备底线之内收紧	Limits tighten only inside the hardware range						
+安全层 1 Hz 独立求值 · 动作见各行	Safety layer runs at 1 Hz · action per row						
+导出	Export						
+导出采样间隔	Export sample interval						
+间隔越大文件越小	Larger interval, smaller file						
+导出范围	Export range						
+整炉全程	Whole run						
+自定义	Custom						
+从第	From						
+min 到第	min to						
+时间从每一炉开始时算起	Time is counted from the start of each run						
+本机数据记录	Local records						
+活批次 + 归档目录里的每一炉	Live batch + every run in the archive						
+已选 2 / 4	2 / 4 selected						
+全选	Select all						
+通道 / 状态	Channel / state						
+时长	Duration						
+日期	Date						
+运行中	Running						
+今天	Today						
+结晶工艺-0823	Crystallization-0823						
+已完成	Finished						
+晶型筛选-低温-B2	Polymorph screen-low temp-B2						
+溶解度曲线-乙醇	Solubility curve-ethanol						
+3 个 CSV：执行记录 · 事件日志 · 采样宽表	3 CSV files: run log · event log · wide sample table						
+插着 U 盘就一并拷过去，没插先存本机	Copied to the USB drive if one is plugged in; otherwise kept on this machine						
+导出所选（2）	Export selected (2)						
+增益表	Gain table						
+双向挡 · 加热制冷、两个通道共用这一张	Bidirectional · heating and cooling, shared by both channels						
+8 行 · 在用 40 ℃ 附近	8 rows · using the 40 ℃ area						
+温度 ℃	Temperature ℃						
+稳态偏置 K	Steady bias K						
+加热比	Heat ratio						
+新增行	Add row						
+应用表格	Apply table						
+放弃修改	Discard changes						
+从盘上重读	Reload from disk						
+清空这张表	Clear the table						
+此刻在用	In use now						
+内环（夹套）· 按夹套目标在表里插值	Inner loop (jacket) · interpolated from the table by jacket target						
+Kp 9.40 · Ki 0.0370 · Kd 171.0 · 加热比 2.10	Kp 9.40 · Ki 0.0370 · Kd 171.0 · heat ratio 2.10						
+夹套目标 40.0 ℃ · 出力 31 %（TEC 制冷）	Jacket target 40.0 ℃ · output 31 % (TEC cooling)						
+看某温度	Look up a temperature						
+℃ 会用：Kp 14.84 · Ki 0.0541 · Kd 294.8	℃ would use: Kp 14.84 · Ki 0.0541 · Kd 294.8						
+实时 · 稳定度	Live · stability						
+近 5 min：Tr 60.02 ℃，波动 ±0.03 ℃	Last 5 min: Tr 60.02 ℃, swing ±0.03 ℃						
+出力 31 %，没有顶到头	Output 31 %, not saturated						
+外环（釜温）	Outer loop (reactor)						
+靠这一炉的实测现算，不查表	Computed live from this run's measurements, not from a table						
+维持温差（估）+3.4 K　·　釜的时间常数（估）388 s	Holding offset (est.) +3.4 K　·　reactor time constant (est.) 388 s						
+快速升温此刻加码 +0.0 K　·　夹套目标 63.4 ℃	Fast heat-up boost now +0.0 K　·　jacket target 63.4 ℃						
+稳态偏置那一列只当起点，开控以后以实测为准	The steady-bias column is only a starting point; once control starts the measurement rules						
+快速升温加码上限 K	Fast heat-up boost limit K						
+0 = 不加码（稳妥，升温慢一些）	0 = no boost (safe, slower heat-up)						
+改了以后要重启控制核心才生效	Takes effect after the control core restarts						
+系统设置	System						
+通信设置	Communication						
+本机情况	This machine						
+这一页只看不改；能改的在「通信设置」和各通道页里	Read-only · editable settings are under Communication						
+时间	Time						
+跟这台电脑的系统时间	Follows this PC's system clock						
+控制核心	Control core						
+0.1.0 · 已运行 1 h 12 min	0.1.0 · up 1 h 12 min						
+真机 · 设备都连上了	Real hardware · all devices connected						
+界面程序	HMI program						
+连着本机的控制核心 · 端口 5020	Local control core · port 5020						
+本机存储	Local storage						
+剩余 12.4 GB / 共 128 GB	12.4 GB free / 128 GB total						
+数据放在 D:\TEC\data	Data is kept in D:\TEC\data						
+数据记录	Records						
+128 炉 · 配方 6 个	128 runs · 6 recipes						
+导出在「通道 → 数据导出」，配方在「文件」	Export under Channel; recipes under Files						
+8 行 · 双向挡	8 rows · bidirectional						
+在「通道 → PID 整定」里改	Edit under Channel → PID Tuning						
+冷却水	Cooling water						
+已开 · 冷水机运行中	On · chiller running						
+跟着 TEC 制冷自动开关，不用人管	Follows TEC cooling automatically						
+对外通信	External link						
+192.168.1.50 : 5020 · 1 台 PC 连着	192.168.1.50 : 5020 · 1 PC connected						
+在旁边的「通信设置」里改	Edit under Communication						
+语言	Language						
+点一下换；顶栏那颗地球也能换	Tap to change · the globe above does it too						
+更改	Change						
+退出界面程序	Quit the HMI program						
+回到 Windows 桌面。控制核心另跑一个程序，炉子不会停	Back to the Windows desktop · the control core keeps the run going						
+退出	Quit						
+硬件通信	Device links						
+本机直接连各设备 · 串口 Modbus	Direct to the devices · Modbus serial						
+自动检测	Auto-detect						
+设备	Device						
+串口	Port						
+波特率	Baud						
+站号	Station						
+状态	State						
+TEC 温控器 RD105	TEC controller RD105						
+正常	OK						
+切换继电器 IO8R	Switch relay IO8R						
+冷水机	Chiller						
+未启用	Disabled						
+Tr 探头（两个通道共用）	Tr probe (shared by both channels)						
+pH 电极 · 通道 1	pH electrode · channel 1						
+pH 电极 · 通道 2	pH electrode · channel 2						
+无应答	No reply						
+搅拌 · 通道 1	Stirrer · channel 1						
+搅拌 · 通道 2	Stirrer · channel 2						
+进料系统	Dosing system						
+点一行改它的串口、波特率、校验、站号；带 USB 标记的记住了插口位置，COM 号变了也能自己找回来	Tap a row to edit its port, baud, parity, station · USB rows remember the socket						
+TCP · 给 PC 工作站连	TCP · for the PC workstation						
+本机地址	This machine						
+只读	Read-only						
+监听端口	Listen port						
+断线超时	Link timeout						
+超过就算 PC 掉线	Over this = PC dropped						
+允许远程控制	Remote control						
+关掉后 PC 只能看	Off = the PC can only watch						
+PC 断开不影响本机控温和序列	A dropped PC does not affect local control						
+已连上的 PC	Connected PCs						
+1 台	1						
+收 12.4 k 条 · 发 12.6 k 条	rx 12.4 k · tx 12.6 k						
+已连 01:12:40	up 01:12:40						
+收 3.1 k 条 · 发 3.1 k 条	rx 3.1 k · tx 3.1 k						
+已连 00:20:05	up 00:20:05						
+收 0.4 k 条 · 发 0.4 k 条	rx 0.4 k · tx 0.4 k						
+已连 00:02:11	up 00:02:11						
+串口 · Modbus RTU	Serial · Modbus RTU						
+点一下填串口号（COM 后面的数字）	Tap to enter the port number (the digits after COM)						
+校验	Parity						
+停止位	Stop bits						
+轮询周期	Poll interval						
+启用这台设备	Enable this device						
+保存后要重启控制核心才生效	Takes effect after the control core restarts						
+取消	Cancel						
+保存	Save						
+自动检测设备	Auto-detect devices						
+扫完 8 个口 · 认出 8 台 · 8 处和现在配的不一样 · 用时 6.2 s	8 ports scanned · 8 devices identified · 8 differ from the current setup · 6.2 s						
+现在配的	Configured						
+检测到的	Found						
+认出的型号	Identified as						
+采用	Use						
+1 口 · COM20	Port 1 · COM20						
+RD105 · 固件 1.3.0	RD105 · firmware 1.3.0						
+2 口 · COM21	Port 2 · COM21						
+未启用 · 没扫	Disabled · not scanned						
+Tr 探头（两通道共用）	Tr probe (shared)						
+3 口 · COM22	Port 3 · COM22						
+宇电 AI-8848G · 四路	Yudian AI-8848G · 4 channel						
+4 口 · COM23	Port 4 · COM23						
+BHT pH 电极	BHT pH electrode						
+这台是通道	This one is channel						
+5 口 · COM24	Port 5 · COM24						
+6 口 · COM25	Port 6 · COM25						
+7 口 · COM26	Port 7 · COM26						
+8 口 · COM27	Port 8 · COM27						
+进料系统主板	Dosing system board						
+只读地问过，没动任何输出；应用后要重启控制核心才生效	Read-only probing, no output was touched; applying takes effect after the control core restarts						
+重新检测	Scan again						
+应用这 8 处	Apply these 8						
+一个口一个口地问，问到谁答得上来为止	Asking one port after another until something answers						
+第 7 个口 / 共 8 个	Port 7 of 8						
+已用 5.4 s	5.4 s so far						
+1 口	Port 1						
+38400 · 站号 1	38400 · station 1						
+2 口	Port 2						
+9600 · 站号 1	9600 · station 1						
+3 口	Port 3						
+4 口	Port 4						
+5 口	Port 5						
+6 口	Port 6						
+9600 · 站号 2	9600 · station 2						
+7 口	Port 7						
+正在问 AQMD 搅拌驱动…	Asking the AQMD stirrer drive…						
+8 口	Port 8						
+还没问	Not asked yet						
+只发读指令（FC01/02/03/04），不会动继电器、不会改任何参数	Read commands only (FC01/02/03/04); no relay is switched and no parameter is changed						
+停止	Stop						
+退出程序	Quit						
+退出界面程序，回到 Windows 桌面	Quit the HMI program and go back to the Windows desktop						
+控制核心不退：控温、搅拌、加料照常进行	The control core stays up: temperature control, stirring and dosing keep running						
+通道 1 正在控温 60.0 ℃ —— 退出后这块屏上看不到了，炉子照常控	Channel 1 is controlling at 60.0 ℃ — after quitting you lose this screen, but the run keeps being controlled						
+要再看屏，双击桌面上的「HTLAB 多工位反应平台」	To get the screen back, double-click HTLAB Multi-Station Reactor Platform on the desktop						
+连控制核心一起退	Quit the core too						
+两个通道都待机时才能点	Only when both channels are idle						
+退出界面	Quit the HMI						
+语言　Language	Language						
+完整	Complete						
+点一下马上就换，不合适再点回来。标「未齐」的，没译到的条目显示英文	Tap and it switches at once; tap back if it does not suit. For the ones marked Partial, anything untranslated shows in English						
+完成	Done						
+安全联锁 · 停止控温	Safety interlock · stopped						
+通道 1 · 21:57:42 · 第 1 回	Channel 1 · 21:57:42 · time 1						
+Tr 超过上限 180.0 ℃（实测 180.6 ℃）	Tr above the 180.0 ℃ limit (measured 180.6 ℃)						
+条件已恢复：实测 176.2 ℃	Condition cleared: measured 176.2 ℃						
+安全层已执行：停止控温，搅拌保持	Safety layer acted: control stopped, stirring kept						
+点外面关不掉这个框；确认后才能继续操作	Tapping outside will not close this; acknowledge to carry on						
+全部确认	Acknowledge all						
+复位（确认）	Reset (acknowledge)						
+报警记录	Alarm log						
+共 2 条 · 控制核心这次开机以来的	2 entries · since the control core started						
+已确认	Acknowledged						
+冷媒温度过高 46.2 ℃（上限 45.0 ℃，TEC 的热排不出去）	Coolant too hot 46.2 ℃ (limit 45.0 ℃, the TEC cannot dump its heat)						
+每一炉自己的报警也记在它的事件日志里，导出能看到	Each run also keeps its own alarms in its event log, visible in the export						
+未连上控制核心	Not connected to the control core						
+机器上的控制核心（tec_core）是不是在运行	Check whether the control core (tec_core) is running on this machine						
+地址和端口对不对，网络通不通	Check the address and port, and that the network is up						
+正在自动重试 · · ·	Retrying · · ·						
+配方库	Recipes						
+配方库 · 6 个	Recipes · 6						
+5 步 · 3 h 30 min	5 steps · 3 h 30 min						
+低温筛选-B3	LowTemp screen-B3						
+3 步 · 2 h 10 min	3 steps · 2 h 10 min						
+6 步 · 4 h 02 min	6 steps · 4 h 02 min						
+回流脱水-甲苯	Reflux dewatering-toluene						
+4 步 · 2 h 45 min	4 steps · 2 h 45 min						
+重结晶-乙醇水	Recrystallization-ethanol/water						
+5 步 · 3 h 05 min	5 steps · 3 h 05 min						
+酯化回流-小试	Esterification reflux-lab scale						
+4 步 · 2 h 20 min	4 steps · 2 h 20 min						
+3 步 · 预计 2 h 10 min · 保存于 11-22 16:40	3 steps · about 2 h 10 min · saved 11-22 16:40						
+降到 −10.0 ℃ · 1.00 ℃/min	Cool to −10.0 ℃ · 1.00 ℃/min						
+搅拌 300 rpm	Stir 300 rpm						
+保持 −10.0 ℃	Hold −10.0 ℃						
+升到 20.0 ℃ · 按时长	Heat to 20.0 ℃ · by duration						
+装入会替换该通道现在编着的全部步骤	Loading replaces every step currently edited on that channel						
+通道 1 运行中	Channel 1 running						
+装入通道 2	Load into channel 2						
+删除	Delete						
+存通道 1 的序列	Save channel 1's sequence						
+存通道 2 的序列	Save channel 2's sequence						
+配方存在设备本机，不分通道，两个通道都能装　·　与工作站配方各自独立	Recipes live on this machine, not per channel, and load into either one　·　separate from the workstation's recipes						
+装置总览	Plant overview						
+方案总览	Program overview						
+曲线总览	Trend overview						
+程序模式 · 釜内控温	Program mode · reactor control						
+步骤 3 / 5 · 剩余 00:57:00	Step 3 / 5 · 00:57:00 left						
+Tj 夹套	Tj jacket						
+R 搅拌	R stir						
+加料	Dosing						
+Tc 冷媒	Tc coolant						
+变温	Ramping						
+手动模式 · 夹套控温 Tj	Manual mode · jacket control Tj						
+方案已加载 · 共 3 步	Program loaded · 3 steps						
+5 步 · 共 3 h 30 min · 已走 1 h 37 min · 剩 1 h 53 min	5 steps · 3 h 30 min total · 1 h 37 min done · 1 h 53 min left						
+运行中 · 步骤 3 / 5	Running · step 3 / 5						
+6 步 · 共 2 h 40 min	6 steps · 2 h 40 min total						
+运行中 · 步骤 0 / 6	Running · step 0 / 6						
+Tr 通道 1	Tr channel 1						
+Tj 通道 1	Tj channel 1						
+Tr 通道 2	Tr channel 2						
+Tj 通道 2	Tj channel 2						
+通道 1 · 目标 Tr	Channel 1 · target Tr						
+当前 60.0	Now 60.0						
+上次设定	Last set						
+当前实测	Measured now						
+应用	Apply						
+给这个配方起个名字	Name this recipe						
+大写	Caps						
+退格	Back						
+空格	Space						
+确定	OK						
+5 / 6 步　·　预计 3 h 30 min　·　已走 1 h 37 min	5 / 6 steps　·　about 3 h 30 min　·　1 h 37 min done						
+新建序列…	New sequence…						
+从配方库	From recipes						
+升到 65.0 ℃	Heat to 65.0 ℃						
+按时长 12 min	By duration 12 min						
+保持 65.0 ℃	Hold 65.0 ℃						
+降到 20.0 ℃	Cool to 20.0 ℃						
+保持 20.0 ℃	Hold 20.0 ℃						
+添加	Add						
+已开始的序列不可增改	A running sequence cannot be edited						
+序列存在设备本机 · 最多 6 步	Sequences live on this machine · 6 steps max						
+清除全部步骤	Clear all steps						
+确认继续	Confirm and continue						
+开始序列	Start sequence						
+结束序列…	End sequence…						
+第 6 步做什么？	What does step 6 do?						
+控温	Temperature						
+釜内温度	Reactor temperature						
+夹套温度	Jacket temperature						
+蒸回流	Reflux						
+分段曲线	Profile						
+其他	Other						
+搅拌转速	Stir speed						
+等待	Wait						
+暂停确认	Pause for confirmation						
+第 3 步 · Tr 釜内温度	Step 3 · Tr reactor temperature						
+进行中	In progress						
+已走 00:41:00	00:41:00 done						
+速率	Rate						
+不变	Unchanged						
+点上面任意一步，这里就换成那一步的参数	Tap any step above and its parameters appear here						
+换类型	Change type						
+删除这一步	Delete this step						
+夹套比釜内高	Jacket above reactor						
+等待时长	Wait time						
+加料泵	Dosing pump						
+泵 1	Pump 1						
+泵 2	Pump 2						
+加入方式	How to add						
+一次加入	All at once						
+pH 反馈	pH feedback						
+料液	Feed liquid						
+未填	Not set						
+加料体积	Volume						
+流量	Flow rate						
+与控温同步	In step with temperature control						
+调节泵	Regulating pump						
+目标 pH	Target pH						
+死区	Deadband						
+最大流量	Max flow rate						
+最大总量	Max total						
+维持时长	Hold time						
+共 4 段 · 2 h 40 min · 60 → 5 ℃	4 segments · 2 h 40 min · 60 → 5 ℃						
+编辑曲线	Edit profile						
+给操作人看的提示（点一下改）	Note for the operator (tap to edit)						
+请确认后继续	Please acknowledge to continue						
+结晶曲线	Crystallization profile						
+釜内 Tr · 共 12 段 · 3 h 10 min · 60 → 5 ℃	Reactor Tr · 12 segments · 3 h 10 min · 60 → 5 ℃						
+第 7 / 12 段	Segment 7 / 12						
+降到 38 ℃ · 给定 41.5 ℃	Cool to 38 ℃ · setpoint 41.5 ℃						
+本段剩 8 min	8 min left in this segment						
+目标	Target						
+用时	Time						
+降 0.50	−0.50						
+当前	Now						
+保温	Hold						
+降 0.40	−0.40						
+降 0.25	−0.25						
+桨式 · 50–1000 rpm　·　实测 300 rpm · 电流 0.82 A	Paddle · 50–1000 rpm　·　measured 300 rpm · current 0.82 A						
+正在编辑	Editing						
+点格子改温度和用时，变化看右边曲线　·　已有 12 段	Tap a cell to change temperature and time; watch the curve on the right　·　12 segments so far						
+新增一段	Add a segment						
+目标温度	Target temperature						
+编辑时搅拌卡收起，搅拌照常运行；点「完成」回到上一页	The stirring card is folded away while editing; stirring keeps running. Tap Done to go back						
+手动控温	Manual control						
+Tr 探头（宇电四路模块）	Tr probe (Yudian 4-ch)						
+安全联锁	Safety interlock						
+进入第 	Entering step 						
+这一炉结束	Run finished						
+不是一条合法的 json 命令	Not a valid JSON command						
+触摸屏上关了「允许远程控制」，PC 只能看	Remote control is off on the touchscreen; the PC can only watch						
+通道只能是 1 或 2	The channel must be 1 or 2						
+这个通道正在跑序列，先结束序列再手动操作	This channel is running a sequence; end it before operating by hand						
+开始控温，目标 	Control started, target 						
+开始蒸回流	Reflux started						
+结晶曲线要 1 到 12 段	A crystallization profile needs 1 to 12 segments						
+开始结晶曲线	Crystallization profile started						
+结晶曲线最多 12 段	A crystallization profile takes at most 12 segments						
+曲线没存进去	The profile was not saved						
+改目标为 	Target changed to 						
+停止控温	Control stopped						
+搅拌设为 	Stirring set to 						
+加料参数不对	Bad dosing parameters						
+开始加料	Dosing started						
+停止加料	Dosing stopped						
+步骤不对，或者超过了 6 步	A step is wrong, or there are more than 6						
+序列已经开始，不能增改	The sequence has started and cannot be edited						
+序列是空的	The sequence is empty						
+这个通道正在手动控温，先停止控温再开始序列	This channel is under manual control; stop it before starting a sequence						
+未命名序列	Unnamed sequence						
+序列开始不了	The sequence could not start						
+没有这个配方	No such recipe						
+存不了：名字是空的，或者步骤不对	Cannot save: the name is empty or a step is wrong						
+序列运行中不能改安全限值	Safety limits cannot be changed while a sequence runs						
+限值只能在设备底线（−40 … 180 ℃）之内，而且下限要小于上限	Limits must stay inside the hardware range (−40 … 180 ℃) and the low one must be below the high one						
+通信和系统设置只能在触摸屏上改	Communication and system settings can only be changed on the touchscreen						
+没有这台设备	No such device						
+设置存不了盘	The settings could not be written to disk						
+自动检测只能在触摸屏上做	Auto-detect can only be run on the touchscreen						
+正在检测，等它扫完	A scan is already running; wait for it to finish						
+这台机器上没有真串口可扫（仿真模式）	This machine has no real serial port to scan (simulation)						
+有通道正在控制中。检测要占住串口、会打断轮询，先把两个通道都停下来再检测	A channel is under control. The scan takes over the ports and interrupts polling; stop both channels first						
+没给要改哪几台	No devices were given to change						
+设置里没有这些设备：	These devices are not in the settings: 						
+时间标记：	Time marker: 						
+快照存不了（导出目录写不进去）	The snapshot could not be saved (the export folder is not writable)						
+时刻,釜内Tr(℃),夹套Tj(℃),夹套目标(℃),当前目标(℃),pH,搅拌(rpm),在控温	Time,Reactor Tr(℃),Jacket Tj(℃),Jacket target(℃),Setpoint(℃),pH,Stir(rpm),Controlling						
+							
+没找到 U 盘：插上以后再点一次	No USB drive found: plug one in and tap again						
+TEC导出	TEC export						
+只有触摸屏上能退出控制核心	Only the touchscreen can quit the control core						
+有通道正在控温或跑序列，停下来才能退出	A channel is controlling or running a sequence; stop it before quitting						
+这个程序不支持退出	This program does not support quitting						
+导出范围不对：结束要比开始晚	Bad export range: the end must be later than the start						
+有通道正在控温或跑序列，停下来才能换增益表	A channel is controlling or running a sequence; stop it before changing the gain table						
+盘上的增益表读不出来	The gain table on disk cannot be read						
+增益表要 1 到 16 行	The gain table needs 1 to 16 rows						
+温度要在 −60 … 250 ℃ 之间	The temperature must be between −60 and 250 ℃						
+Kp 要大于 0，Ki、Kd 不能是负的	Kp must be above 0; Ki and Kd cannot be negative						
+加热比要大于 0	The heat ratio must be above 0						
+有两行是同一个温度	Two rows have the same temperature						
+增益表没存进去（文件写不了）	The gain table was not saved (the file could not be written)						
+不认识的命令：	Unknown command: 						
+处理命令时出错：	Error while handling the command: 						
+开始釜内控温	Reactor control started						
+开始夹套控温	Jacket control started						
+停止控温，搅拌保持	Control stopped, stirring kept						
+安全联锁：	Safety interlock: 						
+冷媒温度过高 {0} ℃（上限 {1} ℃，TEC 的热排不出去）	Coolant too hot {0} ℃ (limit {1} ℃, the TEC cannot dump its heat)						
+Tj 超过上限 {0} ℃（实测 {1} ℃）	Tj above the {0} ℃ limit (measured {1} ℃)						
+Tj 低于下限 {0} ℃（实测 {1} ℃）	Tj below the {0} ℃ limit (measured {1} ℃)						
+Tr 超过上限 {0} ℃（实测 {1} ℃）	Tr above the {0} ℃ limit (measured {1} ℃)						
+Tr 低于下限 {0} ℃（实测 {1} ℃）	Tr below the {0} ℃ limit (measured {1} ℃)						
+釜内变温速率超过上限 {0} K/min（实测 {1} K/min）	Reactor ramp above the {0} K/min limit (measured {1} K/min)						
+釜内温度连续 {0} s 读不到	No reactor reading for {0} s						
+读不到温控器：	Cannot read the controller: 						
+连续读不到温控器，已停止控温	The controller stopped responding; control was stopped						
+写设备出错：	Error writing to the device: 						
+写冷却水出错：	Error writing the cooling water: 						
+泵号只能是 1 或 2	The pump must be 1 or 2						
+这台泵另一个通道正在用	The other channel is using this pump						
+加料体积要大于 0	The dosing volume must be above 0						
+超过了单次最大体积	Over the maximum volume for one dose						
+流量要大于 0	The flow rate must be above 0						
+加料被停止	Dosing was stopped						
+读不到进料系统，加料已停止	The dosing system stopped responding; dosing was stopped						
+进料系统报警：	Dosing system alarm: 						
+读不到 pH，暂停加料	No pH reading; dosing paused						
+已加到最大总量，不再加	The maximum total has been dosed; no more will be added						
+写进料系统出错：	Error writing to the dosing system: 						
+操作人结束了序列	The operator ended the sequence						
+等待操作人确认	Waiting for the operator to acknowledge						
+控温被停止，序列中断在第 	Control was stopped; the sequence broke off at step 						
+序列已完成，温度保持中	Sequence finished; temperature is being held						
+没存进去	Could not save						
+没连上：{0}	Not connected: {0}						
+还没拿到控制核心的设备清单	No device list from the control core yet						
+没连上	Not connected						
+仿真（没连真设备）	Simulated						
+未知	Unknown						
+温控器或继电器模块没连上：按右上角「自动检测」问一遍，或点红色的那一行改串口	The temperature controller or the relay module is not connected: run Auto-detect at the top right, or tap the red row to fix its port						
+没连网	No network						
+现在没有 PC 连着	No PC connected						
+{0} 台	{0}						
+收 {0} 条 · 发 {1} 条	rx {0} · tx {1}						
+已连 {0}	up {0}						
+{0} 口 · {1}	Port {0} · {1}						
+没扫到	Not found						
+认出 {0} 台 · {1} 处和现在配的不一样 · {2} 台同型号要你指派通道	{0} identified · {1} differ from the current setup · {2} same-model devices need a channel						
+认出 {0} 台 · {1} 处和现在配的不一样	{0} identified · {1} differ from the current setup						
+应用这 {0} 处	Apply these {0}						
+第 {0} 个口 / 共 {1} 个	Port {0} of {1}						
+正在找串口…	Looking for ports…						
+{0} 口	Port {0}						
+{0} · 站号 {1}	{0} · station {1}						
+没认出来	Not identified						
+检测没跑起来	The scan did not start						
+还没有曲线，点「编辑曲线」添加	No curve yet; tap Edit profile to add one						
+釜内 Tr · 共 {0} 段 · {1} · {2} → {3} ℃	Reactor Tr · {0} segments · {1} · {2} → {3} ℃						
+正在按曲线控温	Following the profile						
+给定 {0} ℃	Setpoint {0} ℃						
+没有曲线	No curve						
+未开始	Not started						
+点右边的圆键开始	Tap the round button on the right to start						
+曲线走完了	Profile finished						
+保持在 {0} ℃	Holding at {0} ℃						
+到 {0} ℃ · 给定 {1} ℃	To {0} ℃ · setpoint {1} ℃						
+本段剩 {0}	{0} left in this segment						
+降 {0}	−{0}						
+升 {0}	+{0}						
+未控温	Not controlling						
+点按启动	Tap to start						
+还没有曲线	No curve yet						
+{0} · 共 {1} 段 · {2} · {3} → {4} ℃	{0} · {1} segments · {2} · {3} → {4} ℃						
+点格子改温度和用时，变化看右边曲线　·　已有 {0} 段（最多 {1} 段）	Tap a cell to change temperature and time; watch the curve on the right　·　{0} segments ({1} max)						
+第 {0} / {1} 段	Segment {0} / {1}						
+任务序列第 {0} 步	Sequence step {0}						
+釜内 Tr	Reactor Tr						
+还没有记录	No records yet						
+已选 {0} / {1}	{0} / {1} selected						
+通道 {0}	Channel {0}						
+今天 {0}	Today {0}						
+导出所选（{0}）	Export selected ({0})						
+没导出来	Not exported						
+未齐	Partial						
+未译	Not translated						
+缺字体	Font missing						
+配方库 · {0} 个	Recipes · {0}						
+{0} 步 · 约 {1}	{0} steps · about {1}						
+{0} 步	{0} steps						
+{0} 步 · 预计约 {1} · 保存于 {2}	{0} steps · about {1} · saved {2}						
+{0} 步 · 保存于 {1}	{0} steps · saved {1}						
+配方库是空的	No recipes yet						
+在任务序列页编好序列，再回来点下面的「存通道的序列」	Build the sequence on the Sequence page, then come back and tap Save this channel's sequence						
+搅拌 {0} rpm	Stir {0} rpm						
+通道 {0} 运行中	Channel {0} running						
+装入通道 {0}	Load into channel {0}						
+再点一次确认	Tap again to confirm						
+删了找不回来。确定要删就再点一次「删除」	Deleting cannot be undone. Tap Delete again to confirm						
+没装进去	Not loaded						
+没删掉	Not deleted						
+还没有序列	No sequence yet						
+运行中 · 步骤 {0} / {1}	Running · step {0} / {1}						
+夹套目标 {0} ℃ · 出力 {1} %（{2}）	Jacket target {0} ℃ · output {1} % ({2})						
+TEC 制冷	TEC cooling						
+加热棒	Heater						
+没在控温	Not controlling						
+开始控温以后，这里显示当时按夹套目标插值出来的那组增益	Once control starts, this shows the gains interpolated for the jacket target at that moment						
+℃ 会用：{0}	℃ would use: {0}						
+开始控温以后，这里显示外环此刻估出来的维持温差和时间常数	Once control starts, this shows the holding offset and time constant the outer loop estimates						
+升温时夹套最多比稳妥算法多拉高这么多；0 = 不加码	How much higher than the safe algorithm the jacket may be driven while heating; 0 = no boost						
+没应用成	Not applied						
+没读成	Not read						
+维持温差（估）{0} K　·　釜的时间常数（估）{1} s	Holding offset (est.) {0} K　·　reactor time constant (est.) {1} s						
+快速升温此刻加码 {0} K　·　夹套目标 {1} ℃	Fast heat-up boost now {0} K　·　jacket target {1} ℃						
+还没拿到控制核心的安全限值	No safety limits from the control core yet						
+低于此值 → 停控并报警　·　设备底线 −40 ℃	Below → stop and alarm　·　hardware −40 ℃						
+高于此值 → 停控并报警　·　设备底线 180 ℃　·　已收紧	Above → stop and alarm　·　hardware 180 ℃　·　tightened						
+釜内最近一分钟变温比这个快 → 停控并报警；填 0 = 关	If the reactor changes faster than this over the last minute → stop control and alarm; 0 = off						
+点左边的框填一个值就开始盯实测斜率，填 0 = 关	Enter a value in the box on the left to start watching the measured slope; 0 = off						
+冷水机水温现在 {0} ℃　·　TEC 制冷时高于此值 → 停控并报警	Chiller water is {0} ℃ now　·　above this while TEC cools → stop and alarm						
+没读到冷水机水温（没接或没通上），读到以后才检测这一项	No chiller water reading (not connected or not responding); this check starts once there is one						
+通道 {0} · {1} · 还有 {2} 条	Channel {0} · {1} · {2} more						
+通道 {0} · {1}	Channel {0} · {1}						
+安全层已执行：{0}	Safety layer acted: {0}						
+现在实测：Tr {0} ℃　Tj {1} ℃	Measured now: Tr {0} ℃　Tj {1} ℃						
+现在实测：Tj {0} ℃	Measured now: Tj {0} ℃						
+控制核心这次开机以来没有报过警	No alarms since the control core started						
+共 {0} 条 · 控制核心这次开机以来的	{0} entries · since the control core started						
+未确认	Not acknowledged						
+没改成	Not changed						
+这一步已走 {0}	{0} into this step						
+目标 Tj	Target Tj						
+共 {0} 段 · {1} · 最后到 {2} ℃	{0} segments · {1} · ends at {2} ℃						
+开始不了	Could not start						
+第 {0} 步 · {1}	Step {0} · {1}						
+炉子会停，设备不再受控	The run stops and the equipment is no longer controlled						
+连不上控制核心	Cannot reach the control core						
+读取中…	Reading…						
+界面程序连不上控制核心：看看它有没有在运行	The HMI cannot reach the control core: check whether it is running						
+{0} · 已运行 {1}	{0} · up {1}						
+仿真模式：没有连任何真设备	Simulation: no real device is connected						
+真机 · 控温设备没连上，去「通信设置」核对串口	Real hardware · the control device is not connected; check its port under Communication						
+真机 · 控温设备连着	Real hardware · control device connected						
+连着 {0} 的控制核心 · 端口 {1}	Connected to the control core at {0} · port {1}						
+剩余 {0} GB / 共 {1} GB	{0} GB free / {1} GB total						
+读不到	Cannot read						
+{0} 炉 · 配方 {1} 个	{0} runs · {1} recipes						
+{0} 行 · 双向挡	{0} rows · bidirectional						
+已开 · 冷水机没在运行	On · chiller not running						
+已关 · 冷水机运行中	Off · chiller running						
+已关 · 冷水机没在运行	Off · chiller not running						
+{0} : {1} · {2} 台 PC 连着	{0} : {1} · {2} PC connected						
+{0} : {1} · 没有 PC 连着	{0} : {1} · no PC connected						
+控制核心没退	The control core did not quit						
+数据放在 {0}	Data is kept in {0}						
+小写	Lower						
+字母	ABC						
+中	CN						
+英	EN						
+窗口 —	Window —						
+窗口 {0} min	Window {0} min						
+不知道为什么	Reason unknown						
+标记没加上	The marker was not added						
+快照没存成	The snapshot was not saved						
+和控制核心断开了	Lost the control core						
+手动运行	Manual run						
+未在运行	Not running						
+程序模式	Program mode						
+手动模式	Manual mode						
+开	On						
+关	Off						
+实测 {0} rpm　·　电流 {1} A	Measured {0} rpm　·　current {1} A						
+桨式 · 50–1000 rpm　·　实测 {0} rpm · 电流 {1} A	Paddle · 50–1000 rpm　·　measured {0} rpm · current {1} A						
+设备未连接	Device not connected						
+冷却水已关	Water off						
+程序控制	Program						
+手动控制	Manual						
+加热中	Heating						
+制冷中	Cooling						
+保温中	Holding						
+本步已走	Step elapsed						
+夹套控温 Tj	Jacket control Tj						
+起界面时出错：	Error while building the screen: 						
+刷新界面时出错：	Error while refreshing the screen: 						
+步骤 {0} / {1}	Step {0} / {1}						
+运行中 · {0} / {1}	Running · {0} / {1}						
+　·　夹套目标 {0} ℃　·　出力 {1} %（{2}）	　·　jacket target {0} ℃　·　output {1} % ({2})						
+等待确认后继续	Acknowledge to continue						
+无序列	No sequence						
+
+# 下面这些界面上已经没有了，留着免得以后改回来又要重翻；要清掉直接删行
+# 时刻,釜内Tr(℃),夹套Tj(℃),夹套目标(℃),当前目标(℃),pH,搅拌(rpm),在控温							
+# 冷媒温度过高 							
+#  ℃（上限 							
+#  ℃，TEC 的热排不出去）							
+# Tj 超过上限 							
+#  ℃（实测 							
+# Tj 低于下限 							
+# Tr 超过上限 							
+# Tr 低于下限 							
+# 釜内变温速率超过上限 							
+#  K/min（实测 							
+# 釜内温度连续 							
+#  s 读不到							
+# ), a.dump(2));							
+# }							
+# AppSettings AppSettings::defaults() {							
+#     AppSettings s;							
+#     // 现场那台的接线（原来 PC 台面上配的那一套，搬到这里）							
+#     // 后面两个空串是 usb_id / usb_name：出厂还没标定过 USB 口，开机只能认死这里写的 COM 号；							
+#     // 现场在「通信设置 → 自动检测」里标定一次之后，COM 号再变就能自己找回来							
+#     s.devices = {							
+#         {							
+# );							
+#     if (!in) return s;							
+#     const json j = json::parse(in, nullptr, false);							
+#     if (j.is_discarded() || !j.is_object()) return s;							
+#     // 逐项读、读不到的留缺省：以后加了新设置，老的设置文件照样能用							
+#     if (j.contains(							
+# , L.tr_lost_grace_s);							
+#                 // 夹套的两条是设备底线：文件里写得再宽也不许超过出厂的范围							
+#                 L.tj_min = std::max(SafetyLimits().tj_min, l.value(							
+# , s.do_map.water);							
+#         // DO2 / DO3 是使能继电器，程序绝不许碰：设置文件里要是把哪一路配到了 2 或 3，整张表退回缺省							
+#         for (int v : {s.do_map.heater[0], s.do_map.heater[1], s.do_map.tec[0], s.do_map.tec[1], s.do_map.water}) if (v == 2 || v == 3 || v < 0 || v > 7) { s.do_map = DoMap(); break; } }							
+#     s.fast_boost_max = std::max(0.0, j.value(							

@@ -99,7 +99,7 @@ void refresh_lib(Ui& u) {
     lib_fetch(false);
     const int n = static_cast<int>(lib.list.size());
     const int npages = std::max(1, (n + kLibRows - 1) / kLibRows);
-    u.set_text("lib.count", "配方库 · " + std::to_string(n) + " 个");
+    u.set_text_raw("lib.count", ui::fmt("配方库 · {0} 个", {std::to_string(n)}));
     u.show("lib.pager", npages > 1);
     u.set_text("lib.page", std::to_string(lib.page + 1) + " / " + std::to_string(npages));
     json cur_item;
@@ -113,7 +113,8 @@ void refresh_lib(Ui& u) {
         u.set_text(id + ".n", x.value("name", ""));
         // 「尽快到温」这类步骤事先算不出要多久；整个配方都算不出时就不写时长，免得写个「0 min」
         const double est = x.value("est_minutes", 0.0);
-        u.set_text(id + ".k", std::to_string(x.value("steps", 0)) + " 步" + (est > 0 ? " · 约 " + dur_text(est) : ""));
+        u.set_text_raw(id + ".k", est > 0 ? ui::fmt("{0} 步 · 约 {1}", {std::to_string(x.value("steps", 0)), dur_text(est)})
+                                            : ui::fmt("{0} 步", {std::to_string(x.value("steps", 0))}));
         u.set_text(id + ".t", x.value("saved", ""));
         u.show(id + ".bar", on);
         if (lv_obj_t* o = u.box(id)) if (u.changed(id + "bg", on)) bg(o, on ? 0xE3EEFA : 0xFFFFFF, 255);
@@ -122,7 +123,8 @@ void refresh_lib(Ui& u) {
     if (cur_item.is_object()) {
         u.set_text("lib.name", lib.sel);
         const double est = cur_item.value("est_minutes", 0.0);
-        u.set_text("lib.sub", std::to_string(cur_item.value("steps", 0)) + " 步" + (est > 0 ? " · 预计约 " + dur_text(est) : "") + " · 保存于 " + cur_item.value("saved", ""));
+        u.set_text_raw("lib.sub", est > 0 ? ui::fmt("{0} 步 · 预计约 {1} · 保存于 {2}", {std::to_string(cur_item.value("steps", 0)), dur_text(est), cur_item.value("saved", "")})
+                                            : ui::fmt("{0} 步 · 保存于 {1}", {std::to_string(cur_item.value("steps", 0)), cur_item.value("saved", "")}));
     } else { u.set_text("lib.name", "配方库是空的"); u.set_text("lib.sub", "在任务序列页编好序列，再回来点下面的「存通道的序列」"); }
     const int ns = static_cast<int>(lib.steps.size());
     for (int i = 0; i < kLibSteps; i++) {
@@ -137,14 +139,14 @@ void refresh_lib(Ui& u) {
         u.set_text(id + ".a", k);
         const bool timed = kind == "wait" || kind == "reflux" || kind == "crystal";       // 这几种第三行字就是时长，右边已经有了，不重复写
         u.set_text(id + ".b", d.empty() || timed ? a : a + " · " + d);
-        u.set_text(id + ".c", kind != "stir" && stir >= 0 ? "搅拌 " + f0(stir) + " rpm" : "");
+        u.set_text_raw(id + ".c", kind != "stir" && stir >= 0 ? ui::fmt("搅拌 {0} rpm", {f0(stir)}) : "");
         u.set_text(id + ".d", m > 0 ? dur_text(m) : "");
     }
     // 两个「装入」键：那个通道的序列正在跑就变淡并写明
     for (int ch = 1; ch <= 2; ch++) {
         const std::string id = "lib.load" + std::to_string(ch);
         const bool busy = seq_locked(ch - 1);
-        u.set_text(id + ".t", busy ? "通道 " + std::to_string(ch) + " 运行中" : "装入通道 " + std::to_string(ch));
+        u.set_text_raw(id + ".t", busy ? ui::fmt("通道 {0} 运行中", {std::to_string(ch)}) : ui::fmt("装入通道 {0}", {std::to_string(ch)}));
         if (lv_obj_t* o = u.box(id)) if (u.changed(id, busy || !cur_item.is_object())) lv_obj_set_style_opa(o, busy || !cur_item.is_object() ? 115 : 255, 0);
     }
     u.set_text("lib.del.t", lib.del_armed ? "再点一次确认" : "删除");

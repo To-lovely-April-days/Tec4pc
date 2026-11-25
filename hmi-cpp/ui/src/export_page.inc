@@ -91,7 +91,7 @@ void refresh_export(Ui& u) {
     set_radio(u, "exrange", 2, exv.range);
     u.show("ex.range.box", exv.range == 1);
     u.set_text("ex.from", f0(exv.from_min)); u.set_text("ex.to", f0(exv.to_min));
-    u.set_text("ex.count", n == 0 ? "还没有记录" : "已选 " + std::to_string(np) + " / " + std::to_string(n));
+    u.set_text_raw("ex.count", n == 0 ? ui::tr("还没有记录") : ui::fmt("已选 {0} / {1}", {std::to_string(np), std::to_string(n)}));
     u.show("ex.pager", page_count > 1);
     u.set_text("ex.page", std::to_string(exv.page + 1) + " / " + std::to_string(page_count));
     u.show("ex.all.on", n > 0 && np == n); u.show("ex.all.part", np > 0 && np < n); u.show("ex.all.off", np == 0 || n == 0);
@@ -111,17 +111,18 @@ void refresh_export(Ui& u) {
         const json& x = exv.runs[k];
         const bool on = exv.picked.count(x.value("id", "")) > 0, running = x.value("running", false);
         u.set_text(id + ".n", x.value("name", ""));
-        u.set_text(id + ".c", "通道 " + std::to_string(x.value("channel", 1)));
+        u.set_text_raw(id + ".c", ui::fmt("通道 {0}", {std::to_string(x.value("channel", 1))}));
         u.set_text(id + ".s", running ? "运行中" : "已完成");
         u.set_text_color(id + ".s", running ? 0xFFFFFF : 0x4F5B67);
         if (lv_obj_t* o = u.box(id + ".s")) if (u.changed(id + ".s", running)) bg(o, running ? 0x00B368 : 0xEDF0F4, 255);
         u.set_text(id + ".d", hms(x.value("duration_s", 0.0)));
         const std::string started = x.value("started", "");
-        u.set_text(id + ".t", started.rfind(today, 0) == 0 ? "今天 " + (started.size() >= 16 ? started.substr(11, 5) : std::string()) : started.substr(0, std::min<size_t>(16, started.size())));
+        u.set_text_raw(id + ".t", started.rfind(today, 0) == 0 ? ui::fmt("今天 {0}", {started.size() >= 16 ? started.substr(11, 5) : std::string()})
+                                                                 : started.substr(0, std::min<size_t>(16, started.size())));
         u.show(id + ".on", on); u.show(id + ".off", !on);
         if (lv_obj_t* o = u.box(id)) if (u.changed(id + "bg", on)) bg(o, on ? 0xEEF4FB : 0xFFFFFF, 255);
     }
-    u.set_text("ex.go.t", "导出所选（" + std::to_string(np) + "）");
+    u.set_text_raw("ex.go.t", ui::fmt("导出所选（{0}）", {std::to_string(np)}));
     if (lv_obj_t* o = u.box("ex.go")) if (u.changed("go", np > 0)) lv_obj_set_style_opa(o, np > 0 ? 255 : 115, 0);
     // 左下角：平时写导出的是什么，有话要说（导出结果、出错）时换成那句话
     const std::string tip = !exv.msg.empty() ? exv.msg : "3 个 CSV：执行记录 · 事件日志 · 采样宽表";

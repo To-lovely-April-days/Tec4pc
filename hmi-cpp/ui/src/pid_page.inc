@@ -154,10 +154,10 @@ void refresh_pid(Ui& u, const json& c, int ci) {
     // 此刻在用
     if (run) {
         u.set_text("pg.use.1", pid_gains_text(pv.rows, tj_sp));
-        u.set_text("pg.use.2", "夹套目标 " + f1(tj_sp) + " ℃ · 出力 " + f0(std::fabs(duty)) + " %（" + (duty > 0 ? "TEC 制冷" : "加热棒") + "）");
+        u.set_text_raw("pg.use.2", ui::fmt("夹套目标 {0} ℃ · 出力 {1} %（{2}）", {f1(tj_sp), f0(std::fabs(duty)), ui::tr(duty > 0 ? "TEC 制冷" : "加热棒")}));
     } else { u.set_text("pg.use.1", "没在控温"); u.set_text("pg.use.2", "开始控温以后，这里显示当时按夹套目标插值出来的那组增益"); }
     u.set_text("pg.look.t", tnum(pv.look_t));
-    u.set_text("pg.look.r", "℃ 会用：" + pid_gains_text(pv.rows, pv.look_t, false));      // 这一行地方窄，只写三项增益
+    u.set_text_raw("pg.look.r", ui::fmt("℃ 会用：{0}", {pid_gains_text(pv.rows, pv.look_t, false)}));      // 这一行地方窄，只写三项增益
 
     // 稳定度：拿趋势数据里最近 5 分钟的釜温算
     const TrendData& d = tdat[ci];
@@ -176,8 +176,10 @@ void refresh_pid(Ui& u, const json& c, int ci) {
 
     // 外环
     if (run) {
-        u.set_text("pg.out.1", "维持温差（估）" + std::string(c.value("b_hat", 0.0) >= 0 ? "+" : "") + f1(c.value("b_hat", 0.0)) + " K　·　釜的时间常数（估）" + f0(c.value("tau_hat", 0.0)) + " s");
-        u.set_text("pg.out.2", "快速升温此刻加码 " + std::string(c.value("boost", 0.0) >= 0 ? "+" : "") + f1(c.value("boost", 0.0)) + " K　·　夹套目标 " + f1(tj_sp) + " ℃");
+        u.set_text_raw("pg.out.1", ui::fmt("维持温差（估）{0} K　·　釜的时间常数（估）{1} s",
+                                            {std::string(c.value("b_hat", 0.0) >= 0 ? "+" : "") + f1(c.value("b_hat", 0.0)), f0(c.value("tau_hat", 0.0))}));
+        u.set_text_raw("pg.out.2", ui::fmt("快速升温此刻加码 {0} K　·　夹套目标 {1} ℃",
+                                            {std::string(c.value("boost", 0.0) >= 0 ? "+" : "") + f1(c.value("boost", 0.0)), f1(tj_sp)}));
     } else { u.set_text("pg.out.1", "没在控温"); u.set_text("pg.out.2", "开始控温以后，这里显示外环此刻估出来的维持温差和时间常数"); }
     u.set_text("pg.boost", tnum(pv.boost));
     u.set_text("pg.boost.n", pv.boost > 0 ? "升温时夹套最多比稳妥算法多拉高这么多；0 = 不加码" : "0 = 不加码（稳妥，升温慢一些）");

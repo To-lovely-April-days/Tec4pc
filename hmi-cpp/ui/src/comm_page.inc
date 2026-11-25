@@ -112,7 +112,7 @@ bool comm_action(const std::string& a) {
         // 原因太长就截一段：这一行右边是按钮，放不下整句
         std::string shown = prob;
         if (utf8_count(shown) > 22) { while (utf8_count(shown) > 21) utf8_pop(shown); shown += "…"; }
-        commdlg.ui->set_text("cd.msg", prob.empty() ? "保存后要重启控制核心才生效" : "没连上：" + shown);
+        commdlg.ui->set_text_raw("cd.msg", prob.empty() ? ui::tr("保存后要重启控制核心才生效") : ui::fmt("没连上：{0}", {shown}));
         commdlg.ui->set_text_color("cd.msg", prob.empty() ? 0x8792A0 : 0xD64545);
         lv_obj_remove_flag(commdlg.scr, LV_OBJ_FLAG_HIDDEN);
         comm_dlg_show();
@@ -182,14 +182,14 @@ void refresh_comm(Ui& u) {
     // 已连上的 PC：本机自己的界面程序（127.0.0.1）不算
     std::vector<json> pcs;
     for (auto& c : cmv.info["clients"]) if (c.value("address", std::string()).rfind("127.", 0) != 0) pcs.push_back(c);
-    u.set_text("cm.count", pcs.empty() ? "现在没有 PC 连着" : std::to_string(pcs.size()) + " 台");
+    u.set_text_raw("cm.count", pcs.empty() ? ui::tr("现在没有 PC 连着") : ui::fmt("{0} 台", {std::to_string(pcs.size())}));
     for (int k = 0; k < kCommClients; k++) {
         const std::string id = "cm.c." + std::to_string(k);
         u.show(id, k < static_cast<int>(pcs.size()));
         if (k >= static_cast<int>(pcs.size())) continue;
         u.set_text(id + ".ip", pcs[k].value("address", ""));
-        u.set_text(id + ".io", "收 " + std::to_string(pcs[k].value("rx", 0L)) + " 条 · 发 " + std::to_string(pcs[k].value("tx", 0L)) + " 条");
-        u.set_text(id + ".t", "已连 " + hms(pcs[k].value("connected_s", 0.0)));
+        u.set_text_raw(id + ".io", ui::fmt("收 {0} 条 · 发 {1} 条", {std::to_string(pcs[k].value("rx", 0L)), std::to_string(pcs[k].value("tx", 0L))}));
+        u.set_text_raw(id + ".t", ui::fmt("已连 {0}", {hms(pcs[k].value("connected_s", 0.0))}));
     }
 }
 
@@ -296,7 +296,7 @@ void refresh_scan_result() {
         if (h) found++;
         if (diff) changed++;
         u.show(id + ".u", h && slot > 0);
-        u.set_text(id + ".f", !h ? "—" : slot > 0 ? std::to_string(slot) + " 口 · " + np : np);
+        u.set_text_raw(id + ".f", !h ? "—" : slot > 0 ? ui::fmt("{0} 口 · {1}", {std::to_string(slot), np}) : np);
         u.set_text_color(id + ".f", diff ? 0x00559C : 0x4F5B67);
         const std::string prob = h ? h->value("problem", "") : "";
         const std::string model = h ? h->value("model", "") : "";
@@ -325,9 +325,9 @@ void refresh_scan_result() {
     }
     const int ports = scv.rows.empty() ? 0 : static_cast<int>(scv.rows.size());
     (void)ports;
-    u.set_text("cs.sub", "认出 " + std::to_string(found) + " 台 · " + std::to_string(changed) + " 处和现在配的不一样" +
-                         (ask ? " · " + std::to_string(ask) + " 台同型号要你指派通道" : ""));
-    u.set_text("cs.apply", changed ? "应用这 " + std::to_string(changed) + " 处" : "应用");
+    u.set_text_raw("cs.sub", ask ? ui::fmt("认出 {0} 台 · {1} 处和现在配的不一样 · {2} 台同型号要你指派通道", {std::to_string(found), std::to_string(changed), std::to_string(ask)})
+                                 : ui::fmt("认出 {0} 台 · {1} 处和现在配的不一样", {std::to_string(found), std::to_string(changed)}));
+    u.set_text_raw("cs.apply", changed ? ui::fmt("应用这 {0} 处", {std::to_string(changed)}) : ui::tr("应用"));
     if (!scv.msg.empty()) { u.set_text("cs.tip", scv.msg); u.set_text_color("cs.tip", 0xD64545); }
     else { u.set_text("cs.tip", "只读地问过，没动任何输出；应用后要重启控制核心才生效"); u.set_text_color("cs.tip", 0x8792A0); }
 }
@@ -339,7 +339,7 @@ void refresh_scan_running() {
     const json r = ask({{"cmd", "ports.scan.status"}});
     if (!r.value("ok", false)) { scv.running = false; scan_show(commscanrun, false); cmv.msg = r.value("error", std::string("检测没跑起来")); return; }
     const int done = r.value("done", 0), total = r.value("total", 0);
-    u.set_text("cr.n", total ? "第 " + std::to_string(std::max(1, done)) + " 个口 / 共 " + std::to_string(total) + " 个" : "正在找串口…");
+    u.set_text_raw("cr.n", total ? ui::fmt("第 {0} 个口 / 共 {1} 个", {std::to_string(std::max(1, done)), std::to_string(total)}) : ui::tr("正在找串口…"));
     char el[24]; std::snprintf(el, sizeof el, "已用 %.1f s", r.value("elapsed_s", 0.0));
     u.set_text("cr.t", el);
     if (lv_obj_t* bar = u.box("cr.bar")) if (lv_obj_t* track = lv_obj_get_parent(bar)) {
@@ -358,17 +358,17 @@ void refresh_scan_running() {
         if (lv_obj_t* o = u.box(id + ".dot")) if (u.changed(id + ".dot", !have ? 0 : now ? 1 : 2))
             bg(o, !have ? 0xC3CCD6 : now ? 0x00559C : 0x00B368, 255);
         if (!have) {
-            u.set_text(id + ".slot", std::to_string(k + 1) + " 口"); u.set_text(id + ".p", "—"); u.set_text(id + ".link", "—");
+            u.set_text_raw(id + ".slot", ui::fmt("{0} 口", {std::to_string(k + 1)})); u.set_text(id + ".p", "—"); u.set_text(id + ".link", "—");
             // 颜色也要盖掉：设计稿里这几行本来有一行是蓝的（画的是「正在问」那一行），不盖就留着别人的颜色
             u.set_text(id + ".m", "还没问"); u.set_text_color(id + ".m", 0x8792A0);
             continue;
         }
         const json& h = hits[k];
         const int slot = h.value("slot", 0);
-        u.set_text(id + ".slot", slot > 0 ? std::to_string(slot) + " 口" : "—");
+        u.set_text_raw(id + ".slot", slot > 0 ? ui::fmt("{0} 口", {std::to_string(slot)}) : "—");
         u.set_text(id + ".p", h.value("port", ""));
         const int baud = h.value("baud", 0);
-        u.set_text(id + ".link", baud ? std::to_string(baud) + " · 站号 " + std::to_string(h.value("station", 0)) : "—");
+        u.set_text_raw(id + ".link", baud ? ui::fmt("{0} · 站号 {1}", {std::to_string(baud), std::to_string(h.value("station", 0))}) : "—");
         const std::string prob = h.value("problem", ""), model = h.value("model", "");
         u.set_text(id + ".m", !prob.empty() ? prob : !model.empty() ? model : "没认出来");
         u.set_text_color(id + ".m", !prob.empty() ? 0xD64545 : !model.empty() ? 0x1A2330 : 0x8792A0);

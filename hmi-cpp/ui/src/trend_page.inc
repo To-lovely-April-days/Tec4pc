@@ -103,7 +103,7 @@ void draw_trend(lv_obj_t* box, int ci, Ui& u) {
         win = w * 60.0; x0 = aligned;
         if (now - aligned <= 0.85 * win) break;
     }
-    u.set_text("tr.win", "窗口 " + f0(win / 60.0) + " min");
+    u.set_text_raw("tr.win", ui::fmt("窗口 {0} min", {f0(win / 60.0)}));
     size_t i0 = 0;
     while (i0 + 1 < d.t.size() && d.t[i0] < x0) i0++;
     auto X = [&](double t) { return static_cast<int>((t - x0) / win * pw + 0.5); };

@@ -104,8 +104,13 @@ if(EXISTS ${LVGL_DIR}/lvgl.h)
   # 撞上的那个目标就没有产出——踩过两次，而且 CMake 报的是大写的 Error，在一堆输出里很容易漏看
   # 挂在界面程序上拷一次就够：三个产物在同一个输出目录。用它自己的 POST_BUILD、不另立一个目标——
   # 另立目标在 Visual Studio 那种「一个目标一个工程」的生成器上，改完 CMakeLists 第一次编可能还轮不到它
-  add_custom_command(TARGET tec_hmi POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/ui/assets $<TARGET_FILE_DIR:tec_hmi>/assets)
-  add_dependencies(tec_hmi_2x tec_hmi)
+  # 挂在 tec_hmi 的 POST_BUILD 上有个坑：只改了 assets 里的文件（比如语言词表）而没动代码时，
+  # 这个目标不重新链接，这条命令就不跑，程序旁边还是旧的 assets——改完词表编一遍，界面上还是老样子
+  #（2026-11-25 踩过：英文都填好了，屏上一半还是中文）。所以单立一个 ALL 目标，每次编译都拷一遍。
+  # 还是只有这一处在拷：三个产物在同一个输出目录，两处往同一个地方拷并行时会撞车
+  add_custom_target(tec_hmi_assets ALL COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/ui/assets $<TARGET_FILE_DIR:tec_hmi>/assets)
+  add_dependencies(tec_hmi_assets tec_hmi)
+  add_dependencies(tec_hmi_2x tec_hmi_assets)
 
   # 同一套界面再编一份动态库：PC 工作站（C#）把它装进自己的窗口，点「手动控制面板」弹出来的就是它。
   # 和触摸屏上跑的是同一份代码，所以两边长得一模一样、改设计稿两边一起变（用户 2026-11-24 定的）。
@@ -123,7 +128,7 @@ if(EXISTS ${LVGL_DIR}/lvgl.h)
   else()
     target_compile_options(tec_hmi_core PRIVATE -Wno-unused-function -Wno-unused-parameter)
   endif()
-  add_dependencies(tec_hmi_core tec_hmi)      # 等它把 assets 拷好；也保证只有一处在拷，不会撞车
+  add_dependencies(tec_hmi_core tec_hmi_assets)      # 等它把 assets 拷好；也保证只有一处在拷，不会撞车
 else()
   message(STATUS "没找到 third_party/lvgl-9.2.2，这次不编界面程序 tec_hmi（下载方法见 README）")
 endif()

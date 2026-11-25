@@ -62,12 +62,12 @@ void refresh_safety(Ui& u, const json& c, int ci) {
         // 前三行的数值外面有个框：字变长变短，框跟着走
         if (i < 3) if (lv_obj_t* box = u.box(id)) if (lv_obj_t* lb = u.label(id)) { lv_obj_update_layout(lb); lv_obj_set_width(box, lv_obj_get_width(lb) + 24 * UI_SCALE); }
     }
-    u.set_text("sf.n.0", std::string("低于此值 → 停控并报警　·　设备底线 −40 ℃") + (lo > -40 ? "　·　已收紧" : ""));
-    u.set_text("sf.n.1", std::string("高于此值 → 停控并报警　·　设备底线 180 ℃") + (hi < 180 ? "　·　已收紧" : ""));
+    u.set_text("sf.n.0", lo > -40 ? "低于此值 → 停控并报警　·　设备底线 −40 ℃　·　已收紧" : "低于此值 → 停控并报警　·　设备底线 −40 ℃");
+    u.set_text("sf.n.1", hi < 180 ? "高于此值 → 停控并报警　·　设备底线 180 ℃　·　已收紧" : "高于此值 → 停控并报警　·　设备底线 180 ℃");
     u.set_text("sf.n.2", rate > 0 ? "釜内最近一分钟变温比这个快 → 停控并报警；填 0 = 关" : "点左边的框填一个值就开始盯实测斜率，填 0 = 关");
     // 冷媒温度 = 冷水机的冷却水温度（用户 2026-11-24）。只在这个通道正用 TEC 制冷时才会因为它停控：水太热，TEC 的热排不出去
-    u.set_text("sf.n.4", st["coolant_c"].is_number() ? "冷水机水温现在 " + f1(st["coolant_c"].get<double>()) + " ℃　·　TEC 制冷时高于此值 → 停控并报警"
-                                                      : "没读到冷水机水温（没接或没通上），读到以后才检测这一项");
+    u.set_text_raw("sf.n.4", st["coolant_c"].is_number() ? ui::fmt("冷水机水温现在 {0} ℃　·　TEC 制冷时高于此值 → 停控并报警", {f1(st["coolant_c"].get<double>())})
+                                                          : ui::tr("没读到冷水机水温（没接或没通上），读到以后才检测这一项"));
     const std::string tip = !v.msg.empty() ? v.msg : seq_locked(ci) ? "序列运行中不可修改" : "限值只能在设备底线之内收紧";
     u.set_text("sf.chip", tip);
     lv_obj_t* chip = u.box("sf.chip"); lv_obj_t* chip2 = u.box("sf.chip2");
@@ -79,6 +79,22 @@ void refresh_safety(Ui& u, const json& c, int ci) {
 }
 
 // ── 报警弹窗 ──
+// 报警那句话：核心给的是「原句 + 数」两件（title_t / args），按原句查词表、再把数填回去。
+// 老版本的核心只给填好的中文 title，那就照原样显示
+std::string alarm_title(const json& a) {
+    const std::string t = a.value("title_t", std::string());
+    if (t.empty()) return ui::tr(a.value("title", std::string()));
+    std::vector<std::string> args;
+    if (a["args"].is_array()) for (auto& x : a["args"]) args.push_back(x.is_string() ? x.get<std::string>() : std::string());
+    std::string out = ui::tr(t);
+    for (size_t i = 0; i < args.size(); i++) {
+        const std::string mark = "{" + std::to_string(i) + "}";
+        for (size_t q = out.find(mark); q != std::string::npos; q = out.find(mark, q + args[i].size()))
+            out.replace(q, mark.size(), args[i]);
+    }
+    return out;
+}
+
 Page aldlg;
 struct AlarmView { json list = json::array(); int shown_id = -1; int count = -1; std::chrono::steady_clock::time_point asked{}; };
 AlarmView alv;
@@ -110,12 +126,14 @@ void alarm_refresh() {
     const int ch = shown->value("ch", 1);
     // 报警记的是核心的时间，换成墙上的钟点：现在几点，减去「核心现在的时间 − 报警那一刻」
     const long long wall = static_cast<long long>(std::time(nullptr)) - static_cast<long long>(std::llround(st.value("t", 0.0) - shown->value("t", 0.0)));
-    u.set_text("al.when", "通道 " + std::to_string(ch) + " · " + clock_text(wall) + (na > 1 ? " · 还有 " + std::to_string(na - 1) + " 条" : ""));
-    u.set_text("al.title", shown->value("title", ""));
-    u.set_text("al.action", "安全层已执行：" + shown->value("action", ""));
+    u.set_text_raw("al.when", na > 1 ? ui::fmt("通道 {0} · {1} · 还有 {2} 条", {std::to_string(ch), clock_text(wall), std::to_string(na - 1)})
+                                      : ui::fmt("通道 {0} · {1}", {std::to_string(ch), clock_text(wall)}));
+    u.set_text_raw("al.title", alarm_title(*shown));
+    u.set_text_raw("al.action", ui::fmt("安全层已执行：{0}", {ui::tr(shown->value("action", ""))}));
     if (ch >= 1 && ch <= 2 && st.contains("ch")) {
         const json& c = st["ch"][ch - 1];
-        u.set_text("al.now", std::string("现在实测：") + (c["tr"].is_number() ? "Tr " + f1(c["tr"].get<double>()) + " ℃　" : "") + "Tj " + f1(c.value("tj", 0.0)) + " ℃");
+        u.set_text_raw("al.now", c["tr"].is_number() ? ui::fmt("现在实测：Tr {0} ℃　Tj {1} ℃", {f1(c["tr"].get<double>()), f1(c.value("tj", 0.0))})
+                                                       : ui::fmt("现在实测：Tj {0} ℃", {f1(c.value("tj", 0.0))}));
     }
     u.show("al.all", na > 1);
 }
@@ -132,7 +150,7 @@ void alarmlist_fill() {
     const int n = static_cast<int>(alv.list.size());
     const int page_count = std::max(1, (n + kAl2Rows - 1) / kAl2Rows);
     al2_page = std::max(0, std::min(al2_page, page_count - 1));
-    u.set_text("al2.sub", n == 0 ? "控制核心这次开机以来没有报过警" : "共 " + std::to_string(n) + " 条 · 控制核心这次开机以来的");
+    u.set_text_raw("al2.sub", n == 0 ? ui::tr("控制核心这次开机以来没有报过警") : ui::fmt("共 {0} 条 · 控制核心这次开机以来的", {std::to_string(n)}));
     u.set_text("al2.page", std::to_string(al2_page + 1) + " / " + std::to_string(page_count));
     for (int i = 0; i < kAl2Rows; i++) {
         const std::string id = "al2.r." + std::to_string(i);
@@ -150,8 +168,8 @@ void alarmlist_fill() {
         char b[32]; std::strftime(b, sizeof b, "%m-%d %H:%M:%S", &tm);
         const bool acked = a.value("acked", false);
         u.set_text(id + ".t", b);
-        u.set_text(id + ".c", "通道 " + std::to_string(a.value("ch", 1)));
-        u.set_text(id + ".n", a.value("title", ""));
+        u.set_text_raw(id + ".c", ui::fmt("通道 {0}", {std::to_string(a.value("ch", 1))}));
+        u.set_text_raw(id + ".n", alarm_title(a));
         u.set_text(id + ".s", acked ? "已确认" : "未确认");
         u.set_text_color(id + ".s", acked ? 0x8792A0 : 0xD64545);
     }

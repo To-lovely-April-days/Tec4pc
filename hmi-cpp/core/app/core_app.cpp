@@ -277,7 +277,10 @@ std::string CoreApp::handle(const std::string& line, bool remote) {
             else if (cmd == "recipe.delete") { if (!recipes_.remove(q.value("name", ""))) r = fail("没有这个配方"); }
             else if (cmd == "alarm.list") {
                 r["alarms"] = json::array();
-                for (auto& al : station_->alarms()) r["alarms"].push_back({{"id", al.id}, {"t", al.t}, {"ch", al.ch + 1}, {"title", al.title}, {"action", al.action}, {"acked", al.acked}});
+                // title 是填好数的中文（记录、PC 端直接用）；title_t + args 是「原句 + 数」，
+                // 触摸屏换了别的语言时按原句查词表、再把数填回去
+                for (auto& al : station_->alarms())
+                    r["alarms"].push_back({{"id", al.id}, {"t", al.t}, {"ch", al.ch + 1}, {"title", al.title}, {"title_t", al.title_t}, {"args", al.args}, {"action", al.action}, {"acked", al.acked}});
             }
             else if (cmd == "alarm.ack") station_->ack_alarm(q.value("id", -1));
             else if (cmd == "limits.get") { const SafetyLimits L = station_->limits(c); r["limits"] = {{"tr_min", L.tr_min}, {"tr_max", L.tr_max}, {"tj_min", L.tj_min}, {"tj_max", L.tj_max}, {"rate_max_k_per_min", L.rate_max_k_per_min}, {"tc_max", L.tc_max}}; }
@@ -295,6 +298,7 @@ std::string CoreApp::handle(const std::string& line, bool remote) {
             else if (cmd == "settings.get") {
                 r["tcp"] = {{"enabled", settings_.tcp.enabled}, {"port", settings_.tcp.port}, {"timeout_s", settings_.tcp.timeout_s}, {"allow_remote_control", settings_.tcp.allow_remote_control}};
                 r["fast_boost_max"] = settings_.fast_boost_max;
+                r["ui_lang"] = settings_.ui_lang;
                 r["devices"] = json::array();
                 for (auto& d : settings_.devices) r["devices"].push_back({{"key", d.key}, {"label", d.label}, {"enabled", d.enabled}, {"port", d.port}, {"usb_id", d.usb_id}, {"usb_name", d.usb_name}, {"baud", d.baud}, {"parity", std::string(1, d.parity)}, {"stop_bits", d.stop_bits}, {"station", d.station}, {"poll_ms", d.poll_ms}});
             }
@@ -303,6 +307,8 @@ std::string CoreApp::handle(const std::string& line, bool remote) {
                 else {
                     if (q.contains("tcp")) { const json& tj = q["tcp"]; TcpSettings& T = settings_.tcp; T.enabled = tj.value("enabled", T.enabled); T.port = tj.value("port", T.port); T.timeout_s = tj.value("timeout_s", T.timeout_s); T.allow_remote_control = tj.value("allow_remote_control", T.allow_remote_control); }
                     if (q.contains("fast_boost_max")) settings_.fast_boost_max = std::max(0.0, q.value("fast_boost_max", settings_.fast_boost_max));
+                    // 触摸屏的界面语言。核心只是替它存着，重启以后还是上次那一种
+                    if (q.contains("ui_lang")) settings_.ui_lang = q.value("ui_lang", settings_.ui_lang);
                     if (q.contains("device")) {
                         const json& dj = q["device"]; bool found = false;
                         for (auto& d : settings_.devices) if (d.key == dj.value("key", "")) {

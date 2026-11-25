@@ -69,6 +69,9 @@ struct AppSettings {
     // 快速升温：最多加码多少（K）。0 = 不加码，就是原来稳妥的算法；上真机先从小的试起
     double fast_boost_max = 60.0;
     std::string vessel[2] = {"250 mL 玻璃釜", "250 mL 玻璃釜"};
+    // 触摸屏界面用哪种语言（zh / en / ja / ko / de / fr / es / ru）。核心自己不看它，只负责存着，
+    // 好让界面重启、换人开机以后还是上次那一种。PC 工作站有自己的语言设置，不跟这个走
+    std::string ui_lang = "zh";
 
     static AppSettings defaults();                                 // 现场那台的接线（COM7 / COM8 / COM3 / COM12 / COM13 / COM14 / COM11 / COM15）
     static AppSettings load(const std::string& data_dir);          // 文件没有或坏了就用缺省值

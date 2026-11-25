@@ -291,11 +291,11 @@ void seq_build_parts(const std::string& page, Ui& u, lv_obj_t* scr) {
 
 void seq_fill_part(Ui& d, const json& s, int i, int state, double elapsed_s) {
     const std::string kind = s.value("kind", "wait");
-    d.set_text("det.title", "第 " + std::to_string(i + 1) + " 步 · " + kind_title(kind));
+    d.set_text_raw("det.title", ui::fmt("第 {0} 步 · {1}", {std::to_string(i + 1), ui::tr(kind_title(kind))}));
     d.set_text("det.badge", state == 1 ? "进行中" : state == 2 ? "已完成" : "未开始");
     if (lv_obj_t* b = d.box("det.badge")) if (d.changed("badge", state)) bg(b, state == 1 ? 0x00559C : state == 2 ? 0x8792A0 : 0xDCE4ED, 255);
     d.set_text_color("det.badge", state == 0 ? 0x5A6675 : 0xFFFFFF);
-    d.set_text("det.right", state == 1 ? "这一步已走 " + hms(elapsed_s) : "");
+    d.set_text_raw("det.right", state == 1 ? ui::fmt("这一步已走 {0}", {hms(elapsed_s)}) : "");
     const double stir = s.value("stir_rpm", -1.0);
     d.set_text("f.stir", kind == "stir" ? f0(std::max(0.0, stir)) : stir < 0 ? "不变" : f0(stir));
     std::string tip = "点上面任意一步，这里就换成那一步的参数";
@@ -342,7 +342,7 @@ void seq_fill_part(Ui& d, const json& s, int i, int state, double elapsed_s) {
     } else if (kind == "crystal") {
         const json pf = s.value("profile", json::array());
         if (pf.empty()) d.set_text("f.cry", "还没有曲线");
-        else d.set_text("f.cry", "共 " + std::to_string(pf.size()) + " 段 · " + dur_text(step_minutes(s)) + " · 最后到 " + f1(pf.back().value("target", 0.0)) + " ℃");
+        else d.set_text_raw("f.cry", ui::fmt("共 {0} 段 · {1} · 最后到 {2} ℃", {std::to_string(pf.size()), dur_text(step_minutes(s)), f1(pf.back().value("target", 0.0))}));
         tip = "结晶就是分段曲线控温：点「编辑曲线」改各段的目标温度和用时，第一段从当时的釜温走起";
     } else {
         const std::string m = s.value("message", "");

@@ -36,7 +36,8 @@
         var b = rg.getBoundingClientRect();
         var t = { i: out.length, p: rec.i, tag: '#text', text: n.nodeValue.replace(/[ \t\r\n]+/g, ' ').replace(/^ +| +$/g, ''), x: b.left, y: b.top, w: b.width, h: b.height, lines: rs.length, opa: o,
                   color: cs.color, fs: px(cs.fontSize), fw: parseInt(cs.fontWeight), ls: px(cs.letterSpacing), id: '', anchor: 'c' };
-        if (firstText && rec.id) { t.id = rec.id; t.anchor = anchorOf(n); }
+        t.anchor = anchorOf(n);          // 每一段都量：设计稿写死的字换语言以后也要按原来那一边对齐
+        if (firstText && rec.id) { t.id = rec.id; }
         firstText = false;
         out.push(t);
       } else if (n.nodeType === 1) walk(n, rec.i, o);

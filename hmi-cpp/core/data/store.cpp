@@ -245,6 +245,7 @@ bool AppSettings::save(const std::string& data_dir) const {
     j["aux"] = {{"pump_max_rate_ml_min", aux.pump_max_rate_ml_min}, {"single_max_volume_ml", aux.single_max_volume_ml}, {"stir_min_rpm", aux.stir_min_rpm}, {"stir_max_rpm", aux.stir_max_rpm}};
     j["do_map"] = {{"heater", {do_map.heater[0], do_map.heater[1]}}, {"tec", {do_map.tec[0], do_map.tec[1]}}, {"water", do_map.water}};
     j["fast_boost_max"] = fast_boost_max;
+    j["ui_lang"] = ui_lang;
     return write_text(fs::u8path(data_dir) / "settings.json", j.dump(2));
 }
 
@@ -283,6 +284,7 @@ AppSettings AppSettings::load(const std::string& data_dir) {
         // DO2 / DO3 是使能继电器，程序绝不许碰：设置文件里要是把哪一路配到了 2 或 3，整张表退回缺省
         for (int v : {s.do_map.heater[0], s.do_map.heater[1], s.do_map.tec[0], s.do_map.tec[1], s.do_map.water}) if (v == 2 || v == 3 || v < 0 || v > 7) { s.do_map = DoMap(); break; } }
     s.fast_boost_max = std::max(0.0, j.value("fast_boost_max", s.fast_boost_max));
+    s.ui_lang = j.value("ui_lang", s.ui_lang);
     return s;
 }
 

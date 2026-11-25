@@ -58,7 +58,11 @@ struct Alarm {
     int id = 0;
     double t = 0;
     int ch = 0;
-    std::string title;      // 如「Tr 超过上限 180.0 ℃（实测 180.6 ℃）」
+    std::string title;      // 填好数的中文，如「Tr 超过上限 180.0 ℃（实测 180.6 ℃）」。记录和日志用这一份
+    // 同一句话的「原句 + 数」两件：触摸屏换了别的语言时，界面拿原句去查词表，再把数填回去。
+    // 核心自己不认得语言，只负责把原句和数分开交出去
+    std::string title_t;    // 如「Tr 超过上限 {0} ℃（实测 {1} ℃）」
+    std::vector<std::string> args;
     std::string action;     // 安全层做了什么，如「停止控温，搅拌保持」
     bool acked = false;
 };
@@ -92,7 +96,7 @@ private:
     void stop_locked(int ch, const std::string& why);
     void started_locked(int ch, const char* what);
     void check_safety(int ch, double t, const ReactorReadings& r);
-    void trip(int ch, double t, const std::string& title);
+    void trip(int ch, double t, const std::string& title_t, const std::vector<std::string>& args = {});
     SafetyLimits lim_[2];
     std::vector<Alarm> alarms_;
     int next_alarm_ = 1;

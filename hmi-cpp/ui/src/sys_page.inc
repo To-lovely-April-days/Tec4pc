@@ -106,25 +106,33 @@ void refresh_sys(Ui& u) {
     if (!syv.info.is_object()) { u.set_text("sy.v.1", connected ? "读取中…" : "没连上"); u.set_text("sy.n.1", "界面程序连不上控制核心：看看它有没有在运行"); return; }
     const json& i = syv.info;
     const bool offline = st.is_object() && !st.value("offline", std::string()).empty();
-    u.set_text("sy.v.1", i.value("version", "") + " · 已运行 " + dur_text(i.value("uptime_s", 0.0) / 60.0));
+    u.set_text_raw("sy.v.1", ui::fmt("{0} · 已运行 {1}", {i.value("version", ""), dur_text(i.value("uptime_s", 0.0) / 60.0)}));
     u.set_text("sy.n.1", i.value("sim", false) ? "仿真模式：没有连任何真设备" : offline ? "真机 · 控温设备没连上，去「通信设置」核对串口" : "真机 · 控温设备连着");
     u.set_text_color("sy.n.1", offline ? 0xD64545 : 0x8792A0);
     u.set_text("sy.v.2", std::string(kUiVersion) + " · LVGL " + std::to_string(LVGL_VERSION_MAJOR) + "." + std::to_string(LVGL_VERSION_MINOR) + "." + std::to_string(LVGL_VERSION_PATCH));
-    u.set_text("sy.n.2", "连着 " + host + " 的控制核心 · 端口 " + std::to_string(port));
-    u.set_text("sy.v.3", i["disk_free_gb"].is_number() ? "剩余 " + f1(i["disk_free_gb"].get<double>()) + " GB / 共 " + f0(i.value("disk_total_gb", 0.0)) + " GB" : "读不到");
+    u.set_text_raw("sy.n.2", ui::fmt("连着 {0} 的控制核心 · 端口 {1}", {host, std::to_string(port)}));
+    u.set_text_raw("sy.v.3", i["disk_free_gb"].is_number() ? ui::fmt("剩余 {0} GB / 共 {1} GB", {f1(i["disk_free_gb"].get<double>()), f0(i.value("disk_total_gb", 0.0))}) : ui::tr("读不到"));
     // 数据目录的路径可能很长：只写最后两级
     std::string dir = i.value("data_dir", "");
     for (char& ch : dir) if (ch == '\\') ch = '/';
     size_t cut = dir.rfind('/'); if (cut != std::string::npos && cut > 0) cut = dir.rfind('/', cut - 1);
-    u.set_text("sy.n.3", "数据放在 " + (cut != std::string::npos && cut > 0 ? "…" + dir.substr(cut) : dir));
-    u.set_text("sy.v.4", std::to_string(i.value("runs", 0)) + " 炉 · 配方 " + std::to_string(i.value("recipes", 0)) + " 个");
-    u.set_text("sy.v.5", std::to_string(i.value("gain_rows", 0)) + " 行 · 双向挡");
+    u.set_text_raw("sy.n.3", ui::fmt("数据放在 {0}", {cut != std::string::npos && cut > 0 ? "…" + dir.substr(cut) : dir}));
+    u.set_text_raw("sy.v.4", ui::fmt("{0} 炉 · 配方 {1} 个", {std::to_string(i.value("runs", 0)), std::to_string(i.value("recipes", 0))}));
+    u.set_text_raw("sy.v.5", ui::fmt("{0} 行 · 双向挡", {std::to_string(i.value("gain_rows", 0))}));
     const bool valve = st.is_object() && st.value("valve_open", false), chiller = st.is_object() && st.value("chiller_run", false);
-    u.set_text("sy.v.6", std::string(valve ? "已开" : "已关") + " · 冷水机" + (chiller ? "运行中" : "没在运行"));
+    // 四种说法各写成一整句：拼出来的半截话翻不了，而且别的语言语序不一样
+    u.set_text("sy.v.6", valve ? (chiller ? "已开 · 冷水机运行中" : "已开 · 冷水机没在运行")
+                               : (chiller ? "已关 · 冷水机运行中" : "已关 · 冷水机没在运行"));
+    // 语言那一行：写现在用的这一种，名字按它本来的样子写
+    for (int i = 0; i < kLangN; i++) if (lang_code == kLangs[i].code) u.set_text_raw("sy.v.8", kLangs[i].flag_native);
+    u.set_text("sy.n.8", "点一下换；顶栏那颗地球也能换");
     if (syv.comm.is_object()) {
         int pcs = 0;
         for (auto& c : syv.comm["clients"]) if (c.value("address", std::string()).rfind("127.", 0) != 0) pcs++;
         const std::string addr = syv.comm.value("address", "");
-        u.set_text("sy.v.7", (addr.empty() ? "没连网" : addr + " : " + std::to_string(cmv.tcp.is_object() ? cmv.tcp.value("port", port) : port)) + (pcs > 0 ? " · " + std::to_string(pcs) + " 台 PC 连着" : " · 没有 PC 连着"));
+        const std::string ap = std::to_string(cmv.tcp.is_object() ? cmv.tcp.value("port", port) : port);
+        u.set_text_raw("sy.v.7", addr.empty() ? ui::tr("没连网")
+                                 : pcs > 0 ? ui::fmt("{0} : {1} · {2} 台 PC 连着", {addr, ap, std::to_string(pcs)})
+                                           : ui::fmt("{0} : {1} · 没有 PC 连着", {addr, ap}));
     }
 }

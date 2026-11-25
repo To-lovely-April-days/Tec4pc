@@ -55,15 +55,30 @@ void Station::ack_alarm(int id) {
     for (auto& a : alarms_) if (id < 0 || a.id == id) a.acked = true;
 }
 
-void Station::trip(int ch, double t, const std::string& title) {
-    Alarm a;
-    a.id = next_alarm_++; a.t = t; a.ch = ch; a.title = title; a.action = "停止控温，搅拌保持";
-    alarms_.push_back(a);
-    if (alarms_.size() > 200) alarms_.erase(alarms_.begin());
-    stop_locked(ch, "安全联锁：" + title);
+static std::string f1(double v) { char b[32]; std::snprintf(b, sizeof b, "%.1f", v); return b; }
+
+// 把 {0} {1} … 换成给的数。核心只用它拼中文那一份；界面那边拿原句查完词表再填一遍
+static std::string fill(const std::string& tmpl, const std::vector<std::string>& args) {
+    std::string out = tmpl;
+    for (size_t i = 0; i < args.size(); i++) {
+        const std::string mark = "{" + std::to_string(i) + "}";
+        for (size_t p = out.find(mark); p != std::string::npos; p = out.find(mark, p + args[i].size()))
+            out.replace(p, mark.size(), args[i]);
+    }
+    return out;
 }
 
-static std::string f1(double v) { char b[32]; std::snprintf(b, sizeof b, "%.1f", v); return b; }
+// 报警的话分成「原句 + 数」两件交出去：屏上换了语言，界面按原句查词表、把数填回去。
+// 不这么分的话，拼好的整句对不上任何一条词条，德语界面上也只能看见一句中文
+void Station::trip(int ch, double t, const std::string& title_t, const std::vector<std::string>& args) {
+    Alarm a;
+    a.id = next_alarm_++; a.t = t; a.ch = ch;
+    a.title_t = title_t; a.args = args; a.title = fill(title_t, args);
+    a.action = "停止控温，搅拌保持";
+    alarms_.push_back(a);
+    if (alarms_.size() > 200) alarms_.erase(alarms_.begin());
+    stop_locked(ch, "安全联锁：" + a.title);
+}
 
 // 安全层：和控温算法分开，只看读数和限值。算法出了错、目标给错了，这一层照样拦得住。
 void Station::check_safety(int ch, double t, const ReactorReadings& r) {
@@ -72,25 +87,25 @@ void Station::check_safety(int ch, double t, const ReactorReadings& r) {
     const double tj = r.tj[ch];
     // 冷媒过热只在这一路正用 TEC 制冷时才算数：加热棒升温用不着冷却水，水温高低和它没关系
     if (r.coolant_c && *r.coolant_c > L.tc_max && snap_.ch[ch].side == HeatSide::Tec && snap_.ch[ch].output_on && snap_.ch[ch].duty > 0)
-        return trip(ch, t, "冷媒温度过高 " + f1(*r.coolant_c) + " ℃（上限 " + f1(L.tc_max) + " ℃，TEC 的热排不出去）");
-    if (tj > L.tj_max) return trip(ch, t, "Tj 超过上限 " + f1(L.tj_max) + " ℃（实测 " + f1(tj) + " ℃）");
-    if (tj < L.tj_min) return trip(ch, t, "Tj 低于下限 " + f1(L.tj_min) + " ℃（实测 " + f1(tj) + " ℃）");
+        return trip(ch, t, "冷媒温度过高 {0} ℃（上限 {1} ℃，TEC 的热排不出去）", {f1(*r.coolant_c), f1(L.tc_max)});
+    if (tj > L.tj_max) return trip(ch, t, "Tj 超过上限 {0} ℃（实测 {1} ℃）", {f1(L.tj_max), f1(tj)});
+    if (tj < L.tj_min) return trip(ch, t, "Tj 低于下限 {0} ℃（实测 {1} ℃）", {f1(L.tj_min), f1(tj)});
     if (r.tr[ch]) {
         const double tr = *r.tr[ch];
         tr_missing_since_[ch] = -1;
-        if (tr > L.tr_max) return trip(ch, t, "Tr 超过上限 " + f1(L.tr_max) + " ℃（实测 " + f1(tr) + " ℃）");
-        if (tr < L.tr_min) return trip(ch, t, "Tr 低于下限 " + f1(L.tr_min) + " ℃（实测 " + f1(tr) + " ℃）");
+        if (tr > L.tr_max) return trip(ch, t, "Tr 超过上限 {0} ℃（实测 {1} ℃）", {f1(L.tr_max), f1(tr)});
+        if (tr < L.tr_min) return trip(ch, t, "Tr 低于下限 {0} ℃（实测 {1} ℃）", {f1(L.tr_min), f1(tr)});
         auto& hst = tr_hist_[ch];
         hst.push_back({t, tr});
         while (hst.front().first < t - 60.0) hst.pop_front();
         if (L.rate_max_k_per_min > 0 && t - hst.front().first >= 30.0) {      // 至少攒够 30 s 才算，免得一两个读数的抖动就跳
             const double rate = (tr - hst.front().second) / (t - hst.front().first) * 60.0;
-            if (std::fabs(rate) > L.rate_max_k_per_min) return trip(ch, t, "釜内变温速率超过上限 " + f1(L.rate_max_k_per_min) + " K/min（实测 " + f1(rate) + " K/min）");
+            if (std::fabs(rate) > L.rate_max_k_per_min) return trip(ch, t, "釜内变温速率超过上限 {0} K/min（实测 {1} K/min）", {f1(L.rate_max_k_per_min), f1(rate)});
         }
     } else if (ctl_[ch].mode() != ControlMode::Jacket) {
         // 釜内控温、蒸回流、结晶都要釜内读数；夹套控温不要
         if (tr_missing_since_[ch] < 0) tr_missing_since_[ch] = t;
-        else if (t - tr_missing_since_[ch] >= L.tr_lost_grace_s) return trip(ch, t, "釜内温度连续 " + f1(L.tr_lost_grace_s) + " s 读不到");
+        else if (t - tr_missing_since_[ch] >= L.tr_lost_grace_s) return trip(ch, t, "釜内温度连续 {0} s 读不到", {f1(L.tr_lost_grace_s)});
     }
 }
 

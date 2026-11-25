@@ -54,7 +54,7 @@ for name in pages:
                 po[x, y] = tuple(min(255, round(pk[x, y][i] * 255 / a)) for i in range(3)) + (a,) if a else (0, 0, 0, 0)
         if S == 1: out = out.resize((out.size[0] // 2, out.size[1] // 2), Image.LANCZOS)
         f = IMG / f'{name}_{n["img"]}_{S}.png'; out.save(f); return f'A:assets/img/{f.name}', -1 * S
-    L = []; emit = L.append; info = {}
+    L = []; emit = L.append; info = {}; last_text = None
     for n in D:
         i, p = n['i'], n['p']; par = info.get(p, {'ax': 0, 'ay': 0, 'bl': 0, 'bt': 0})
         ax, ay = R(n['x']), R(n['y']); rx, ry = ax - par['ax'] - par['bl'], ay - par['ay'] - par['bt']
@@ -62,11 +62,23 @@ for name in pages:
         if n['tag'] == '#text':
             c, a = col(n['color'])
             cx, cy = R(n['x'] + n['w'] / 2) - par['ax'] - par['bl'], R(n['y'] + n['h'] / 2) - par['ay'] - par['bt']
-            call = f'txt({P}, {cx}, {cy}, "{cstr(n["text"])}", {int(n["fw"])}, {n["fs"]:g}, {c}, {int(a * opa * 255 + .5)}, {R(n["ls"])}, {w if n["lines"] > 1 else 0})'
+            anc = n.get('anchor', 'c'); axx = {'l': rx, 'r': rx + w, 'c': cx}[anc]
+            args = f'"{cstr(n["text"])}", {int(n["fw"])}, {n["fs"]:g}, {c}, {int(a * opa * 255 + .5)}, {R(n["ls"])}, {w if n["lines"] > 1 else 0}'
+            # 同一行里紧跟在前一段字后面的（卡片标题后面那句小字之类）：位置不写死，跟着前一段走。
+            # 换成英文以后前面那段变长，写死的话就被压住了（2026-11-25 出图看到的「Device links」压着那句小字）
+            prev = last_text
+            after = (prev and anc == 'l' and n['lines'] == 1 and prev['lines'] == 1
+                     and abs(prev['cy'] - n['y'] - n['h'] / 2) < 3 and 0 <= n['x'] - prev['right'] <= 48)
+            if after:
+                call = f'txta_shift({P}, {axx}, {cy}, t[{prev["i"]}], {R(prev["w"])}, {args})'
+            else:
+                call = f'txta({P}, {axx}, {cy}, \'{anc}\', {args})'
+            emit(f't[{i}] = ' + call + ';')
             if n['id']:
-                anc = n['anchor']; axx = {'l': rx, 'r': rx + w, 'c': cx}[anc]
-                emit(f'ui.reg_text("{cstr(n["id"])}", {call}, \'{anc}\', {axx}, {cy});')
-            else: emit(call + ';')
+                emit(f'ui.reg_text("{cstr(n["id"])}", t[{i}], \'{anc}\', {axx}, {cy});')
+                # 跟着前一段走的：把这层关系也告诉界面，前一段的字一换（「通道 1」→ Channel 1），这一段自己往右让
+                if after: emit(f'ui.reg_follow("{cstr(n["id"])}", t[{prev["i"]}], {R(prev["w"])});')
+            last_text = {'i': i, 'right': n['x'] + n['w'], 'cy': n['y'] + n['h'] / 2, 'lines': n['lines'], 'w': n['w']}
             continue
         if 'img' in n:
             f, d = cut(n); call = f'im({P}, {rx + d}, {ry + d}, "{f}")'
@@ -95,7 +107,7 @@ for name in pages:
             else: emit(f'sh(o[{i}], {c}, {A}, {R(blur)}, {R(x)}, {R(y)}, {R(spread)});')
         if n['id']: emit(f'ui.reg_box("{cstr(n["id"])}", o[{i}]);')
         if n['act']: emit(f'ui.reg_act(o[{i}], "{cstr(n["act"])}");')
-    code.append(f'static void build_{name}(lv_obj_t* scr, Ui& ui) {{\n    static lv_obj_t* o[{len(D) + 1}];\n    ' + '\n    '.join(L) + '\n}\n')
+    code.append(f'static void build_{name}(lv_obj_t* scr, Ui& ui) {{\n    static lv_obj_t* o[{len(D) + 1}];\n    static lv_obj_t* t[{len(D) + 1}];\n    (void)t;\n    ' + '\n    '.join(L) + '\n}\n')
     print(f'{name}: {len(D)} 个元素，{sum(1 for n in D if n.get("id"))} 处可改，{sum(1 for n in D if n.get("act"))} 处可点')
 code.append('static const PageDef kPages[] = {\n' + ''.join(f'    {{"{n}", build_{n}}},\n' for n in pages) + '};\n')
 (UI / 'gen' / f'pages_{S}.inc').write_text('\n'.join(code), encoding='utf-8')
