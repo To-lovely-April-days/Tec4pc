@@ -7,8 +7,9 @@
 
 namespace tec {
 
-// 列出系统里现有的串口名（"COM3"、"COM7"…），给通信设置页的「扫描串口」用
-std::vector<std::string> list_serial_ports();
+// 列串口的事搬去 io/serial_ports.hpp 了：那边除了口名还给 USB 身份（设备实例 ID），
+// 设备配置认的是它、不是 COM 号。这里原来那个只给口名的版本留着会和新的撞车
+//（返回类型不同、名字一样，MSVC 直接报 C2556；Mac 上这个文件不参与编译，看不见）。
 
 // 打不开（口不存在、被别的程序占着）时 open() 抛 std::runtime_error，文字里带系统给的原因
 std::unique_ptr<SerialTransport> make_win_serial(const SerialConfig& cfg);

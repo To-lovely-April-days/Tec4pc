@@ -89,15 +89,8 @@ private:
 
 }  // namespace
 
-std::vector<std::string> list_serial_ports() {
-    std::vector<std::string> out;
-    char target[512];
-    for (int i = 1; i <= 256; i++) {
-        const std::string name = "COM" + std::to_string(i);
-        if (QueryDosDeviceA(name.c_str(), target, sizeof target) != 0) out.push_back(name);
-    }
-    return out;
-}
+// 列串口的实现搬去 io/serial_ports.cpp 了（那边还要取 USB 身份）。
+// QueryDosDevice 挨个问 COM1..COM256 这条退路也搬过去了，当 SetupAPI 一个口都给不出时用。
 
 std::unique_ptr<SerialTransport> make_win_serial(const SerialConfig& cfg) { return std::make_unique<WinSerial>(cfg); }
 

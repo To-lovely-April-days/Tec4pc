@@ -130,10 +130,10 @@ void alarmlist_fill() {
     if (!allist.scr || lv_obj_has_flag(allist.scr, LV_OBJ_FLAG_HIDDEN)) return;
     Ui& u = *allist.ui;
     const int n = static_cast<int>(alv.list.size());
-    const int pages = std::max(1, (n + kAl2Rows - 1) / kAl2Rows);
-    al2_page = std::max(0, std::min(al2_page, pages - 1));
+    const int page_count = std::max(1, (n + kAl2Rows - 1) / kAl2Rows);
+    al2_page = std::max(0, std::min(al2_page, page_count - 1));
     u.set_text("al2.sub", n == 0 ? "控制核心这次开机以来没有报过警" : "共 " + std::to_string(n) + " 条 · 控制核心这次开机以来的");
-    u.set_text("al2.page", std::to_string(al2_page + 1) + " / " + std::to_string(pages));
+    u.set_text("al2.page", std::to_string(al2_page + 1) + " / " + std::to_string(page_count));
     for (int i = 0; i < kAl2Rows; i++) {
         const std::string id = "al2.r." + std::to_string(i);
         const int k = n - 1 - (al2_page * kAl2Rows + i);        // 最近的在上

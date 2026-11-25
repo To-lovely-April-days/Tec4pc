@@ -1,10 +1,16 @@
 #include "serial_ports.hpp"
 #include <algorithm>
 #include <cstdlib>
+#include <iterator>   // std::size
 
 #ifdef _WIN32
+// 现场的 CMake 已经在命令行上给了这两个，直接再 #define 一遍 MSVC 会报 C4005 宏重定义
+#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 #include <windows.h>
 #include <setupapi.h>
 #else
@@ -36,6 +42,7 @@ std::string to_utf8(const wchar_t* w) {
 // 「USB-Enhanced-SERIAL-A CH344 (COM16)」→ 名字 "USB-Enhanced-SERIAL-A CH344"、口 "COM16"。
 // 括号里不是 COMn 的（并口之类）不要
 bool split_friendly(const std::string& text, std::string* name, std::string* port) {
+    if (text.empty()) return false;                      // 名字取不到就是空串，back() 不能对空串用
     const size_t open = text.rfind('(');
     if (open == std::string::npos || text.back() != ')') return false;
     const std::string inner = text.substr(open + 1, text.size() - open - 2);
@@ -54,7 +61,7 @@ std::vector<SerialPortInfo> ask_system() {
     std::vector<SerialPortInfo> out;
     GUID ports_class = {0x4D36E978, 0xE325, 0x11CE, {0xBF, 0xC1, 0x08, 0x00, 0x2B, 0xE1, 0x03, 0x18}};  // GUID_DEVCLASS_PORTS
     HDEVINFO dev = SetupDiGetClassDevsW(&ports_class, nullptr, nullptr, DIGCF_PRESENT);
-    if (dev == INVALID_HANDLE_VALUE) return out;
+    if (dev == INVALID_HANDLE_VALUE || dev == nullptr) return out;
     SP_DEVINFO_DATA info{};
     info.cbSize = sizeof(info);
     for (DWORD i = 0; SetupDiEnumDeviceInfo(dev, i, &info); i++) {

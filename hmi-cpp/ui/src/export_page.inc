@@ -27,8 +27,8 @@ void export_fetch(bool force) {
     std::set<std::string> alive;
     for (auto& x : exv.runs) alive.insert(x.value("id", ""));
     for (auto it = exv.picked.begin(); it != exv.picked.end();) it = alive.count(*it) ? std::next(it) : exv.picked.erase(it);
-    const int pages = std::max(1, (static_cast<int>(exv.runs.size()) + kExpRows - 1) / kExpRows);
-    exv.page = std::max(0, std::min(exv.page, pages - 1));
+    const int page_count = std::max(1, (static_cast<int>(exv.runs.size()) + kExpRows - 1) / kExpRows);
+    exv.page = std::max(0, std::min(exv.page, page_count - 1));
 }
 
 bool export_action(const std::string& a) {
@@ -44,10 +44,10 @@ bool export_action(const std::string& a) {
     }
     if (a.rfind("ex:", 0) != 0) return false;
     const int n = static_cast<int>(exv.runs.size());
-    const int pages = std::max(1, (n + kExpRows - 1) / kExpRows);
+    const int page_count = std::max(1, (n + kExpRows - 1) / kExpRows);
     exv.msg.clear();
     if (a == "ex:prev") exv.page = std::max(0, exv.page - 1);
-    else if (a == "ex:next") exv.page = std::min(pages - 1, exv.page + 1);
+    else if (a == "ex:next") exv.page = std::min(page_count - 1, exv.page + 1);
     else if (a.rfind("ex:tog:", 0) == 0) {
         const int k = exv.page * kExpRows + (a[7] - '0');
         if (k < n) { const std::string id = exv.runs[k].value("id", ""); if (!exv.picked.erase(id)) exv.picked.insert(id); }
@@ -86,14 +86,14 @@ bool export_action(const std::string& a) {
 void refresh_export(Ui& u) {
     export_fetch(false);
     const int n = static_cast<int>(exv.runs.size()), np = static_cast<int>(exv.picked.size());
-    const int pages = std::max(1, (n + kExpRows - 1) / kExpRows);
+    const int page_count = std::max(1, (n + kExpRows - 1) / kExpRows);
     set_radio(u, "exint", 3, exv.interval);
     set_radio(u, "exrange", 2, exv.range);
     u.show("ex.range.box", exv.range == 1);
     u.set_text("ex.from", f0(exv.from_min)); u.set_text("ex.to", f0(exv.to_min));
     u.set_text("ex.count", n == 0 ? "还没有记录" : "已选 " + std::to_string(np) + " / " + std::to_string(n));
-    u.show("ex.pager", pages > 1);
-    u.set_text("ex.page", std::to_string(exv.page + 1) + " / " + std::to_string(pages));
+    u.show("ex.pager", page_count > 1);
+    u.set_text("ex.page", std::to_string(exv.page + 1) + " / " + std::to_string(page_count));
     u.show("ex.all.on", n > 0 && np == n); u.show("ex.all.part", np > 0 && np < n); u.show("ex.all.off", np == 0 || n == 0);
     // 今天的日期，用来把今天开始的炉次写成「今天」
     const std::time_t now = std::time(nullptr); std::tm tm{};
