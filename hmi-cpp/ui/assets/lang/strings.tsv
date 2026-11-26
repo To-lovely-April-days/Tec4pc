@@ -434,6 +434,8 @@ Tr 探头（宇电四路模块）	Tr probe (Yudian 4-ch)
 曲线没存进去	The profile was not saved						
 改目标为 	Target changed to 						
 停止控温	Control stopped						
+搅拌电机没连上，开不了	Stirrer not connected — cannot start it						
+搅拌电机开不了：{0}	Cannot start the stirrer: {0}						
 搅拌设为 	Stirring set to 						
 加料参数不对	Bad dosing parameters						
 开始加料	Dosing started						
@@ -517,14 +519,14 @@ Tr 探头	Tr probe
 认不准：{0} 都对得上，请人工指定	Ambiguous: {0} matches — pick one by hand						
 这个通道没有接搅拌驱动器	No stirrer drive on this channel						
 没有接进料系统	No dosing system connected						
-温控器或继电器模块没连上，不能控温。到「设置 → 通信设置」核对串口，改好后重启控制核心	Controller or relay not connected — no control. Check the ports under Settings → Communication, then restart the core
+温控器或继电器模块没连上，不能控温。到「设置 → 通信设置」核对串口，改好后重启控制核心	Controller or relay not connected — no control. Check the ports under Settings → Communication, then restart the core						
 打不开串口 {0}{1}	Cannot open {0}{1}						
 读不到串口 {0} 的参数{1}	Cannot read the {0} settings{1}						
 设不了串口 {0} 的参数{1}	Cannot set the {0} settings{1}						
 串口 {0} 写不出去{1}	Write to {0} failed{1}						
 串口 {0} 读出错{1}	Read from {0} failed{1}						
 写入的回声对不上：发的和从站答回来的不是同一个地址 / 值	Write echo mismatch: the slave answered with a different address or value						
-{0} ms 内没等到完整{1}——从站没上电、站号 / 波特率不对，或者线断了	No {1} within {0} ms — slave off, wrong station or baud, or a broken wire
+{0} ms 内没等到完整{1}——从站没上电、站号 / 波特率不对，或者线断了	No {1} within {0} ms — slave off, wrong station or baud, or a broken wire						
 应答烂尾：{0}收到一半后没有新字节——多半是 485 上的干扰把这一帧掐断了	Truncated: {0} stopped mid-frame — most likely RS-485 interference						
 应答站号不对：问的是 {0} 号，答话的是 {1} 号——查一下站号和波特率	Wrong station in reply: asked {0}, answered {1} — check station and baud						
 应答校验（CRC）不过：这一帧在线上被打坏了	Reply CRC failed: the frame was corrupted on the wire						
@@ -797,10 +799,13 @@ pH 电极测、调节泵加，把 pH 维持在目标附近；走满维持时长�
 加热中	Heating						
 制冷中	Cooling						
 保温中	Holding						
+未连接	No device						
 关	Off						
 开	On						
 实测 {0} rpm　·　电流 {1} A	Measured {0} rpm　·　current {1} A						
+搅拌没有连上：在设置 → 通信里配好搅拌电机的串口	Stirrer not connected — set its port under Settings → Communication						
 桨式 · 50–1000 rpm　·　实测 {0} rpm · 电流 {1} A	Paddle · 50–1000 rpm　·　measured {0} rpm · current {1} A						
+桨式 · 50–1000 rpm　·　搅拌没有连上	Paddle · 50–1000 rpm　·　stirrer not connected						
 设备未连接	No device						
 冷却水已关	Water off						
 运行中 · {0} / {1}	Running · {0} / {1}						

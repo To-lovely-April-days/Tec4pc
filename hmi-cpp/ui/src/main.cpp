@@ -449,6 +449,9 @@ struct App {
             refresh();
             return;
         }
+        // 下面这几个动作都要读最近一次的状态。还没连上核心时屏上盖着「未连上控制核心」那一层，手指点不到，
+        // 但 --do 这种直接喊动作名的绕过了那一层：没状态就什么也不做，别拿空的去取值（会当场崩）
+        if ((a == "temp.toggle" || a == "stir.toggle" || a == "lamp.toggle" || a == "seq.end") && (!st.is_object() || !st.contains("ch"))) return;
         if (a == "nav:ch1" || a == "nav:ch2") { channel = a == "nav:ch1" ? 1 : 2; show(channel_page()); }
         else if (a == "nav:overview") show("Main");
         else if (a.rfind("tab:", 0) == 0 && (cur.rfind("Ctl", 0) == 0 || cur.rfind("Seq", 0) == 0 || cur.rfind("ChTrend", 0) == 0 || cur.rfind("Safety", 0) == 0 || cur.rfind("Export", 0) == 0 || cur.rfind("Pid", 0) == 0)) {
@@ -516,7 +519,18 @@ struct App {
         return h.size() < 2 || h.back().first - h.front().first < 5.0 ? 0.0 : (h.back().second - h.front().second) / (h.back().first - h.front().first) * 60.0;
     }
 
+    // 总览上那两张釜体图：设计稿里通道 1 画的是跑着的样子（釜里一汪蓝）、通道 2 是停着的样子（灰的），
+    // 两张一样大、摆在一样的位置。开机第一次刷新时把这两张记下来，之后按各自通道在不在跑换着贴。
+    // 为什么不在代码里写死图的文件名：图是从设计稿里现翻出来的，名字按出现顺序编号，设计一改就串位
+    std::string vessel_img[2];
     void refresh_main(Ui& u) {
+        // 控温设备没连上时核心给的温度是没读过的 0，不是读数：底下那六格里跟温度有关的一律空着
+        const bool offline = !st.value("offline", std::string()).empty();
+        if (vessel_img[0].empty())
+            for (int n = 1; n <= 2; n++)
+                if (lv_obj_t* v = u.box("main." + std::to_string(n) + ".vessel"))
+                    if (lv_image_src_get_type(lv_image_get_src(v)) == LV_IMAGE_SRC_FILE)
+                        vessel_img[n - 1] = static_cast<const char*>(lv_image_get_src(v));
         for (int n = 1; n <= 2; n++) {
             const json& c = st["ch"][n - 1];
             const std::string k = "main." + std::to_string(n);
@@ -527,6 +541,7 @@ struct App {
             const bool live = run || seq_on;
             const double duty = c.value("duty", 0.0);
             if (lv_obj_t* d = u.box(k + ".dot")) if (u.changed(k + ".dot", live)) bg(d, live ? 0x00B368 : 0xBFC7CF, 255);
+            if (lv_obj_t* v = u.box(k + ".vessel")) if (u.changed(k + ".vessel", live) && !vessel_img[live ? 0 : 1].empty()) lv_image_set_src(v, vessel_img[live ? 0 : 1].c_str());
             const std::string name = c.contains("run") && c["run"].is_string() ? c["run"].get<std::string>() : "";      // 没在跑序列时核心给的是空值，不是空字符串
             u.set_text(k + ".name", !name.empty() ? name : live ? "手动运行" : "未在运行");
             u.set_text(k + ".r1", seq_on ? hms(q.value("total_elapsed_s", 0.0)) : run ? "控温中" : "待机");
@@ -547,33 +562,38 @@ struct App {
             u.set_text_color(k + ".tr", live ? 0x0A2A6B : 0x5A6675);
             u.set_text(k + ".sp", run ? f1(c.value("sp", 0.0)) : f1(pending_sp[n - 1]));
             const double set = c["stir"].value("set", 0.0), rpm = c["stir"].value("rpm", 0.0);
-            u.set_text(k + ".stir", set > 0 ? f0(rpm) + " rpm" : "关");
-            set_ring(u, k + ".stir", k + ".stir", set > 0);
+            // 搅拌读不到（没接、串口不通）就直说。写「关」会让人以为点一下就能开，核心那边其实是拒绝的
+            const bool stir_ok = c["stir"].value("ok", false);
+            u.set_text(k + ".stir", !stir_ok ? "未连接" : set > 0 ? f0(rpm) + " rpm" : "关");
+            set_ring(u, k + ".stir", k + ".stir", stir_ok && set > 0);
             const bool lamp = c.value("lamp", false);
             u.set_text(k + ".lamp", lamp ? "开" : "关");
             set_ring(u, k + ".lamp", k + ".lamp", lamp);
-            u.set_text(k + ".t0", f1(tj));
+            u.set_text(k + ".t0", offline ? "—" : f1(tj));
             const double dt = tr - tj;
-            u.set_text(k + ".t1", has_tr ? (dt >= 0 ? "+" : "") + f1(dt) : "—");
-            u.set_text(k + ".t2", f0(rpm));
+            u.set_text(k + ".t1", has_tr && !offline ? (dt >= 0 ? "+" : "") + f1(dt) : "—");
+            u.set_text(k + ".t2", stir_ok ? f0(rpm) : "—");
             u.set_text(k + ".t3", f1(c["dose"].value("dosed_ml", 0.0)));
             u.set_text(k + ".t4", st["coolant_c"].is_number() ? f1(st["coolant_c"].get<double>()) : "—");      // 冷媒温度 = 冷水机的冷却水温度（两个通道共用一台冷水机）；没读到就空着
             const double rt = rate_of(n - 1, st.value("t", 0.0), tr);
-            u.set_text(k + ".t5", (rt >= 0 ? "+" : "") + f1(rt));
+            u.set_text(k + ".t5", offline ? "—" : (rt >= 0 ? "+" : "") + f1(rt));
         }
     }
 
     // 搅拌卡上的三处读数。设备控制页和结晶查看那一块各有一张搅拌卡，两处都用它
     void refresh_stir(Ui& u, const json& c) {
         const double stir_set = c["stir"].value("set", 0.0), rpm = c["stir"].value("rpm", 0.0);
+        const bool stir_ok = c["stir"].value("ok", false);      // 搅拌读得到读数没有；读不到时这张卡上的数都不算数
         u.set_text("ctl.stir_set", f0(stir_set));
-        u.set_text("ctl.stir.val", stir_set > 0 ? f0(rpm) + " rpm" : "关");
-        set_ring(u, "ctl.stir", "ctl.stir.val", stir_set > 0);
+        u.set_text("ctl.stir.val", !stir_ok ? "未连接" : stir_set > 0 ? f0(rpm) + " rpm" : "关");
+        set_ring(u, "ctl.stir", "ctl.stir.val", stir_ok && stir_set > 0);
         const bool lamp = c.value("lamp", false);
         u.set_text("ctl.lamp.val", lamp ? "开" : "关");
         set_ring(u, "ctl.lamp", "ctl.lamp.val", lamp);
-        u.set_text_raw("ctl.stir.status", ui::fmt("实测 {0} rpm　·　电流 {1} A", {f0(rpm), f2(c["stir"].value("current_a", 0.0))}));
-        u.set_text_raw("ctl.stir.status2", ui::fmt("桨式 · 50–1000 rpm　·　实测 {0} rpm · 电流 {1} A", {f0(rpm), f2(c["stir"].value("current_a", 0.0))}));      // 结晶那一块里的搅拌卡矮一些，读数并在标题那一行
+        u.set_text_raw("ctl.stir.status", stir_ok ? ui::fmt("实测 {0} rpm　·　电流 {1} A", {f0(rpm), f2(c["stir"].value("current_a", 0.0))}) : ui::tr("搅拌没有连上：在设置 → 通信里配好搅拌电机的串口"));
+        u.set_text_raw("ctl.stir.status2", stir_ok ? ui::fmt("桨式 · 50–1000 rpm　·　实测 {0} rpm · 电流 {1} A", {f0(rpm), f2(c["stir"].value("current_a", 0.0))}) : ui::tr("桨式 · 50–1000 rpm　·　搅拌没有连上"));      // 结晶那一块里的搅拌卡矮一些，读数并在标题那一行
+        u.set_text_color("ctl.stir.status", stir_ok ? 0x8792A0 : 0xD64545);
+        u.set_text_color("ctl.stir.status2", stir_ok ? 0x8792A0 : 0xD64545);
     }
 
     // 把最近一次的状态刷到当前这一页上。只改有名字的文字；没变的不动
@@ -869,7 +889,8 @@ int main(int argc, char** argv) {
         }
     }
     App app;
-    std::string page = "Ctl", shot;
+    // 开机先到总览：两个通道一屏看全。要从别的页面起来就 --page（出图自查常用）
+    std::string page = "Main", shot;
     std::vector<std::string> todo;             // --do 动作名：开发时自查用，代替手指点一下
     std::vector<std::pair<int, int>> taps;     // --tap x,y：模拟手指在那个位置点一下（不开窗口时用）
     int zoom = 0;                              // --zoom：Windows 上整个界面放大多少（百分比）；不写 = 窗口时 100，全屏时放大到屏幕放得下的最大

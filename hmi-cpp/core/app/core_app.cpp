@@ -254,7 +254,14 @@ std::string CoreApp::handle(const std::string& line, bool remote) {
             }
             else if (cmd == "temp.setpoint") { station_->set_setpoint(c, q.value("target", 0.0)); note("改目标为 " + std::to_string(q.value("target", 0.0))); }
             else if (cmd == "temp.stop") { note("停止控温"); station_->stop(c); }
-            else if (cmd == "stir.set") { aux_->set_stir(c, q.value("rpm", 0.0)); note("搅拌设为 " + std::to_string(static_cast<int>(q.value("rpm", 0.0))) + " rpm"); }
+            else if (cmd == "stir.set") {
+                // 搅拌没连上就别装作开起来了。停（0 rpm）任何时候都收，要开之前先看这一秒读得到读数没有。
+                // 为什么拦在核心这儿：触摸屏和 PC 端走的是同一条命令，拦在这里两边都不会出现「点了有反应、机器没动」
+                const double rpm = q.value("rpm", 0.0);
+                const auto sr = aux_->snapshot().stir[c];
+                if (rpm > 0 && !sr.ok) r = sr.fault_text.empty() ? fail("搅拌电机没连上，开不了") : fail(compose("搅拌电机开不了：{0}", {val(sr.fault_text)}));
+                else { aux_->set_stir(c, rpm); note("搅拌设为 " + std::to_string(static_cast<int>(rpm)) + " rpm"); }
+            }
             else if (cmd == "dose.start") {
                 std::vector<Step> one;
                 json st = {{"kind", "dose"}, {"dose", q.value("dose", json::object())}};
