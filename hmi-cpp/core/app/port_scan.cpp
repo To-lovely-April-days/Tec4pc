@@ -108,6 +108,50 @@ std::string scan_type_label(const std::string& type) {
     return type;
 }
 
+namespace {
+
+// 先问一句最便宜的，探这一组参数上有没有人。
+// 为什么要这一步：帧格式也要试以后，组合数是波特率 × 帧格式 × 站号，每组再把七类设备挨个问一遍的话
+// 一个空口要等小半分钟。先一枪探出有没有人，有人才细问是谁
+enum class Probe { Yes, Silent, Garbled };
+
+Probe probe_once(ModbusRtu& m, bool coils) {
+    try {
+        if (coils) m.read_coils(0, 1); else m.read_holding_registers(0, 1);
+        return Probe::Yes;
+    } catch (const ModbusError& e) {
+        if (e.code) return Probe::Yes;                     // 回了异常码（这个地址不给读）：人在
+        return e.timeout ? Probe::Silent : Probe::Garbled;
+    } catch (const std::exception&) { return Probe::Silent; }
+}
+
+bool anyone_there(ModbusRtu& m) {
+    const Probe a = probe_once(m, false);
+    if (a == Probe::Yes) return true;
+    if (a == Probe::Garbled) return false;                 // 收到字节了但对不上：多半帧格式 / 波特率不对，换下一组
+    return probe_once(m, true) == Probe::Yes;              // 一声不吭：再问一句位功能码——有的继电器板不答 FC03
+}
+
+// 一个口要试的参数组合：先是设置里给这个口写好的那一套（现场九成第一枪就中），
+// 再按波特率 × 帧格式铺开
+struct Combo {
+    int baud;
+    char parity;
+    int stop_bits;
+    std::vector<int> stations;
+};
+
+std::vector<Combo> combos_for(const std::string& port, const ScanOptions& opt) {
+    std::vector<Combo> out;
+    for (const ScanGuess& g : opt.guesses)
+        if (g.port == port) out.push_back({g.baud, g.parity, g.stop_bits, {g.station}});
+    for (int baud : opt.bauds)
+        for (const auto& fr : opt.framings) out.push_back({baud, fr.first, fr.second, opt.stations});
+    return out;
+}
+
+}  // namespace
+
 std::vector<ScanHit> scan_serial_ports(const ScanOptions& opt, const PortOpenFn& open, const ScanProgressFn& on_progress) {
     std::vector<SerialPortInfo> ports = list_serial_ports();
     if (!opt.only_ports.empty()) {
@@ -123,20 +167,22 @@ std::vector<ScanHit> scan_serial_ports(const ScanOptions& opt, const PortOpenFn&
         const SerialPortInfo& p = ports[i];
         ScanHit hit;
         hit.port = p.port; hit.usb_id = p.usb_id; hit.usb_name = p.name; hit.slot = p.slot;
+        Text answered;          // 有人答话但认不出是谁；这个口全试完都没认出来才报它
 
-        for (int baud : opt.bauds) {
+        for (const Combo& cb : combos_for(p.port, opt)) {
             if (!hit.type.empty() || !hit.problem.t.empty()) break;
-            SerialConfig sc; sc.port = p.port; sc.baud = baud; sc.parity = 'N'; sc.stop_bits = 1;
+            SerialConfig sc; sc.port = p.port; sc.baud = cb.baud; sc.parity = cb.parity; sc.stop_bits = cb.stop_bits;
             std::unique_ptr<SerialTransport> tr;
             try { tr = open(sc); if (tr) tr->open(); }
             catch (const std::exception& e) { hit.problem = text_of(e); break; }     // 口打不开（被别的程序占着）：这个口就别试了
             if (!tr) continue;
 
-            for (int station : opt.stations) {
+            for (int station : cb.stations) {
                 ModbusRtu m(*tr, static_cast<uint8_t>(station), opt.timeout_ms);
                 // 扫描时不重试：每个不通的口都要白等几倍超时，八个口就是几十秒
                 m.timeout_retries = 0;
                 m.corrupt_retries = 0;
+                if (!anyone_there(m)) continue;                    // 这一组上没人，换下一组
 
                 std::vector<Found> matched;
                 for (IdFn f : kIdentifiers) {
@@ -144,22 +190,30 @@ std::vector<ScanHit> scan_serial_ports(const ScanOptions& opt, const PortOpenFn&
                     catch (const ModbusError&) {}          // 这一类不是它，换下一类
                     catch (const std::exception&) {}
                 }
-                if (matched.empty()) continue;
+                if (matched.empty()) {
+                    // 有人答话，可是七类都对不上。先记着别声张：同一条总线上别的站号可能才是我们要找的那台，
+                    // 一直到这个口全试完还是没认出来，才把这句话报出去——总比让人以为这口是空的强
+                    if (answered.t.empty())
+                        answered = compose("这个口上有设备在答话（{0} / {1}{2} / 站号 {3}），但不是我们认识的那七类",
+                                           {val(std::to_string(cb.baud)), val(std::string(1, cb.parity)),
+                                            val(std::to_string(cb.stop_bits)), val(std::to_string(station))});
+                    continue;
+                }
+                hit.baud = cb.baud; hit.parity = cb.parity; hit.stop_bits = cb.stop_bits; hit.station = station;
                 if (matched.size() > 1) {
                     // 两类以上都对上了：不挑。把都对上的列出来，让人自己定
                     // 名字一个一个单独占坑（不是拼成一串）：界面翻的时候每个设备名都能查到词表
                     Text who = val(scan_type_label(matched[0].type));
                     for (size_t k = 1; k < matched.size(); k++) who = compose("{0}、{1}", {who, val(scan_type_label(matched[k].type))});
                     hit.problem = compose("认不准：{0} 都对得上，请人工指定", {who});
-                    hit.baud = baud; hit.station = station;
                     break;
                 }
                 hit.type = matched[0].type; hit.model = matched[0].model; hit.firmware = matched[0].firmware;
-                hit.baud = baud; hit.station = station;
                 break;
             }
             try { tr->close(); } catch (const std::exception&) {}
         }
+        if (hit.type.empty() && hit.problem.t.empty()) hit.problem = answered;
         out.push_back(hit);
         if (on_progress) on_progress(i + 1, total, hit);
     }

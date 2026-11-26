@@ -432,8 +432,11 @@ bool scan_action(const std::string& a) {
             const json* h = scan_hit_of(k);
             if (!h || (r.pair < 0 && !r.take)) continue;
             if (!h->value("problem", std::string()).empty()) continue;     // 认不准的不写进去
+            // 校验和停止位也一起写：搅拌驱动要 8N2，别的是 8N1，这两项不对照样连不上
             devs.push_back({{"key", r.key}, {"port", h->value("port", "")}, {"usb_id", h->value("usb_id", "")},
-                            {"usb_name", h->value("usb_name", "")}, {"baud", h->value("baud", 9600)}, {"station", h->value("station", 1)}});
+                            {"usb_name", h->value("usb_name", "")}, {"baud", h->value("baud", 9600)},
+                            {"parity", h->value("parity", std::string("N"))}, {"stop_bits", h->value("stop_bits", 1)},
+                            {"station", h->value("station", 1)}});
         }
         if (devs.empty()) { scv.msg = "没有可以应用的行"; refresh_scan_result(); return true; }
         const json r = ask({{"cmd", "ports.apply"}, {"devices", devs}});

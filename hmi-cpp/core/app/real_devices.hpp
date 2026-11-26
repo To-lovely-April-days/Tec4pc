@@ -23,6 +23,13 @@ public:
     AuxHardware& aux();
     const std::vector<DeviceStatus>& status() const { return status_; }
 
+    // 自动检测串口要独占端口，可这些口都在我们手上开着（Windows 上串口是独占打开的，同一个进程
+    // 再开一次照样被拒）。不先让开，扫描看见的只有「打不开」，恰恰是接着设备的那几个口。
+    // release_ports() 把手上的口全关掉（驱动对象留着，别的什么都不动），扫完 reopen_ports() 按
+    // 原来的参数开回来。中间这段时间不要去问设备——调用方负责把轮询停下（见 CoreApp::tick）
+    void release_ports();
+    bool reopen_ports();                          // 返回是不是全都开回来了
+
 private:
     struct Impl;
     std::unique_ptr<Impl> d_;

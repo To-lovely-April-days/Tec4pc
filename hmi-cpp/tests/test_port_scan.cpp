@@ -114,11 +114,12 @@ int main() {
         std::map<std::string, Regs> slaves;
         slaves["COM20"] = aqmd_slave(2);
         slaves["COM21"] = bht_slave(1);
-        slaves["COM22"] = Regs{1, {}};
         int opened = 0;
         auto open = [&](const SerialConfig& c) -> std::unique_ptr<SerialTransport> {
             if (c.port == "COM23") throw std::runtime_error("口被别的程序占着");
             opened++;
+            if (!slaves.count(c.port))      // 什么都没接的口：一声不吭（不是「回异常码」，那是有人在）
+                return std::make_unique<FakeSerial>([](const std::vector<uint8_t>&) { return std::vector<uint8_t>{}; });
             const Regs g = slaves.at(c.port);
             return std::make_unique<FakeSerial>([g](const std::vector<uint8_t>& q) { return g(q); });
         };
@@ -141,6 +142,7 @@ int main() {
         bool wrote = false;
         auto open_watch = [&](const SerialConfig& c) -> std::unique_ptr<SerialTransport> {
             const Regs g = slaves.count(c.port) ? slaves.at(c.port) : Regs{1, {}};
+            (void)0;
             return std::make_unique<FakeSerial>([g, &wrote](const std::vector<uint8_t>& q) {
                 if (q.size() > 1 && (q[1] == 0x05 || q[1] == 0x06 || q[1] == 0x0F || q[1] == 0x10)) wrote = true;
                 return g(q);
@@ -168,6 +170,53 @@ int main() {
         check(hits[0].problem.filled().find("认不准") != std::string::npos, "说清是认不准");
         check(hits[0].problem.filled().find("pH 电极") != std::string::npos && hits[0].problem.filled().find("进料系统") != std::string::npos,
               "把都对上的那几类列出来给人看");
+    }
+
+    // ── 4. 帧格式也要试：搅拌驱动要 8N2 才通（只按 8N1 问的话永远认不出来）──
+    {
+        set_port_lister([] { return std::vector<SerialPortInfo>{{"COM40", "S", "USB\\S", 1}}; });
+        const Regs g = aqmd_slave(1);
+        auto open = [g](const SerialConfig& c) -> std::unique_ptr<SerialTransport> {
+            // 参数不对就一声不吭，和真设备一样
+            if (!(c.parity == 'N' && c.stop_bits == 2 && c.baud == 9600))
+                return std::make_unique<FakeSerial>([](const std::vector<uint8_t>&) { return std::vector<uint8_t>{}; });
+            return std::make_unique<FakeSerial>([g](const std::vector<uint8_t>& q) { return g(q); });
+        };
+        ScanOptions opt; opt.timeout_ms = 20; opt.bauds = {38400, 9600};
+        const std::vector<ScanHit> hits = scan_serial_ports(opt, open);
+        check(hits.size() == 1 && hits[0].type == "stir", "8N2 的搅拌驱动能认出来");
+        check(hits[0].parity == 'N' && hits[0].stop_bits == 2 && hits[0].baud == 9600, "顺带记下它是 9600 / 8N2");
+    }
+
+    // ── 5. 设置里已经写好的参数先试一枪 ──
+    {
+        set_port_lister([] { return std::vector<SerialPortInfo>{{"COM41", "G", "USB\\G", 1}}; });
+        std::vector<SerialConfig> tried;
+        const Regs g = bht_slave(2);
+        auto open = [&](const SerialConfig& c) -> std::unique_ptr<SerialTransport> {
+            tried.push_back(c);
+            return std::make_unique<FakeSerial>([g](const std::vector<uint8_t>& q) { return g(q); });
+        };
+        ScanOptions opt; opt.timeout_ms = 20;
+        opt.guesses.push_back(ScanGuess{"COM41", 19200, 'E', 1, 2});
+        const std::vector<ScanHit> hits = scan_serial_ports(opt, open);
+        check(!tried.empty() && tried[0].baud == 19200 && tried[0].parity == 'E' && tried[0].stop_bits == 1,
+              "第一枪按设置里写的参数问");
+        check(hits.size() == 1 && hits[0].type == "ph" && hits[0].station == 2, "第一枪就中，站号也对");
+        check(tried.size() == 1, "中了就不再往下试别的组合");
+    }
+
+    // ── 6. 有人答话、可七类都对不上：也要说出来，别让人以为这口是空的 ──
+    {
+        set_port_lister([] { return std::vector<SerialPortInfo>{{"COM42", "U", "USB\\U", 1}}; });
+        Regs g; g.station = 1; g.v[7] = 123;          // 只有 7 号地址有数：七类谁都对不上
+        auto open = [g](const SerialConfig&) -> std::unique_ptr<SerialTransport> {
+            return std::make_unique<FakeSerial>([g](const std::vector<uint8_t>& q) { return g(q); });
+        };
+        ScanOptions opt; opt.timeout_ms = 20; opt.bauds = {9600};
+        const std::vector<ScanHit> hits = scan_serial_ports(opt, open);
+        check(hits.size() == 1 && hits[0].type.empty(), "认不出来就是认不出来");
+        check(hits[0].problem.filled().find("答话") != std::string::npos, "但要说清楚「这个口上有东西在答话」");
     }
 
     set_port_lister(nullptr);

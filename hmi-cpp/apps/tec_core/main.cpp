@@ -91,6 +91,12 @@ int main(int argc, char** argv) {
     app.offline_reason = offline;
     // 自动检测要一个口一个口地开，核心自己不碰真串口（只有 Windows 有），上面建好了接进去
     app.open_serial = open_serial;
+    // 扫之前把手上的串口全让开、扫完再开回来。不让的话扫描一个接着设备的口都开不了：
+    // Windows 上串口是独占打开的，同一个进程再开一次照样被拒（仿真模式没有 real，不用让）
+    if (real) app.lend_ports = [&real](bool release) {
+        if (release) real->release_ports();
+        else if (!real->reopen_ports()) std::printf("自动检测结束，有串口没能重新打开——重启控制核心\n");
+    };
     // 触摸屏上「退出程序 → 连控制核心一起退」走的就是这里：不另写一套停机动作，
     // 只把主循环叫停，让下面那段现成的退出（停序列、停控温、再跑两拍写到设备上）照常走一遍
     app.on_exit = []() { g_quit = true; };

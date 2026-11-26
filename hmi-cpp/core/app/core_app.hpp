@@ -13,6 +13,7 @@
 #include "../station/aux_runner.hpp"
 #include "../station/station.hpp"
 #include <chrono>
+#include <atomic>
 #include <functional>
 #include <deque>
 #include <memory>
@@ -39,6 +40,10 @@ public:
     // 真串口只有 Windows 有，核心自己不建，由主程序接进来：自动检测要靠它一个口一个口地开。
     // 不接（仿真、测试）= 这台机器上没有真串口可扫，自动检测会如实说不能扫
     PortOpenFn open_serial;
+    // 自动检测要独占串口，可那些口平时都在主程序手上开着（Windows 上串口是独占打开的，同一个进程
+    // 再开一次也会被拒）。扫之前调一次 (true) 让主程序把口全关掉，扫完调一次 (false) 开回来。
+    // 不接（仿真、测试）= 本来就没有占着谁，扫描照跑
+    std::function<void(bool release)> lend_ports;
     // 退出控制核心（sys.exit）时调它：核心自己不知道怎么结束进程，由主程序把自己的主循环停掉。
     // 不接 = 这个程序不支持退出（嵌在别人里跑的时候），sys.exit 会如实拒绝
     std::function<void()> on_exit;
@@ -78,6 +83,8 @@ private:
         ~Scanner() { if (th.joinable()) th.join(); }
     };
     Scanner scan_;
+    // 扫描期间串口全让给扫描了，这段时间一拍也不要去问设备（问了只会一路报读不到，还会白记一堆没用的点）
+    std::atomic<bool> scanning_{false};
 
     void record(double t);
     void begin_run(int ch, const std::string& name, double t);

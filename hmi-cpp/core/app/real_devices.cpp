@@ -83,6 +83,20 @@ RealDevices::RealDevices(const AppSettings& s) : d_(std::make_unique<Impl>()) {
 }
 
 RealDevices::~RealDevices() = default;
+
+void RealDevices::release_ports() {
+    for (auto& kv : d_->ports) if (kv.second) { try { kv.second->close(); } catch (const std::exception&) {} }
+}
+
+bool RealDevices::reopen_ports() {
+    bool all = true;
+    for (auto& kv : d_->ports) {
+        if (!kv.second) continue;
+        try { kv.second->open(); } catch (const std::exception&) { all = false; }
+    }
+    return all;
+}
+
 bool RealDevices::can_control() const { return d_->reactor != nullptr; }
 ReactorHardware& RealDevices::reactor() { if (!d_->reactor) throw std::runtime_error("温控器或继电器模块没连上"); return *d_->reactor; }
 AuxHardware& RealDevices::aux() { return *d_->aux; }

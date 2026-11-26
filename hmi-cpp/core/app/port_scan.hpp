@@ -20,6 +20,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace tec {
@@ -34,17 +35,33 @@ struct ScanHit {
     // 固件版本单放一格，不拼进 model：拼起来中间那个「固件」是中文，界面翻不了（句子由界面拼）
     std::string firmware;
     int baud = 0;            // 问通了的波特率
+    char parity = 'N';       // 问通了的校验（搅拌驱动是偶校验 / 无校验 2 停止位，别的是 8N1）
+    int stop_bits = 1;
     int station = 0;         // 问通了的站号
     // 非空 = 口打不开、或者认不准（文字里说清是哪几类都对上了）。
     // 存「原句 + 值」两件，不先拼成一句：触摸屏要按原句查词表才翻得了（见 core/util/text_error.hpp）
     Text problem;
 };
 
+// 一台设备在设置里已经写好的通信参数。扫到这个口时先按它问一枪——现场九成是「线换了插口」，
+// 参数没变，第一枪就中，不用把下面那些组合全试一遍
+struct ScanGuess {
+    std::string port;
+    int baud = 9600;
+    char parity = 'N';
+    int stop_bits = 1;
+    int station = 1;
+};
+
 struct ScanOptions {
     int timeout_ms = 300;                                    // 一问一答等多久（扫描要快，正常轮询用 500）
     std::vector<int> bauds{38400, 9600, 19200};              // 现场九台只用到这三种；先试 38400 是因为温控器在这一档
+    // 帧格式也要试：温控器 / 继电器 / pH / 探头是 8N1，搅拌驱动现场实测要 8N2 才通
+    //（它自己报 8E1，8E1 和 8N2 都是 11 位，CH344 按 8N2 收发通）。只按 8N1 问的话搅拌永远认不出来
+    std::vector<std::pair<char, int>> framings{{'N', 1}, {'N', 2}, {'E', 1}};
     std::vector<int> stations{1, 2};                         // 搅拌是 2，其余是 1；pH 手册写 2 例子写 1
     std::vector<std::string> only_ports;                     // 空 = 系统上有几个口就扫几个
+    std::vector<ScanGuess> guesses;                          // 设置里已经写好的参数，按口先试
 };
 
 using PortOpenFn = std::function<std::unique_ptr<SerialTransport>(const SerialConfig&)>;

@@ -81,6 +81,9 @@ void CoreApp::begin_run(int ch, const std::string& name, double t) {
 }
 
 void CoreApp::tick() {
+    // 自动检测把串口全借走了：这段时间一拍也不问设备。问了只会一路报读不到，
+    // 还会把一堆没有的读数记进趋势（扫描本来就要求两个通道都停着，停一会儿轮询没关系）
+    if (scanning_) return;
     station_->step();
     const StationSnapshot s = station_->snapshot();
     std::lock_guard<std::mutex> g(m_);
@@ -360,6 +363,13 @@ std::string CoreApp::handle(const std::string& line, bool remote) {
                     scan_.started = t;
                     ScanOptions opt;
                     if (q.contains("timeout_ms")) opt.timeout_ms = std::max(80, std::min(2000, q.value("timeout_ms", 300)));
+                    // 设置里给每个口写好的参数：扫到那个口时先按它问一枪。现场九成是「线换了插口」，
+                    // 参数一个没变，第一枪就中，不用把波特率 × 帧格式 × 站号全试一遍
+                    for (const DeviceComm& d : settings_.devices)
+                        if (!d.port.empty()) opt.guesses.push_back(ScanGuess{d.port, d.baud, d.parity, d.stop_bits, d.station});
+                    // 串口现在都在主程序手上开着，不还回来扫描只会看见一片「打不开」
+                    scanning_ = true;
+                    if (lend_ports) lend_ports(true);
                     scan_.th = std::thread([this, opt]() {
                         std::vector<ScanHit> hits;
                         try {
@@ -369,6 +379,8 @@ std::string CoreApp::handle(const std::string& line, bool remote) {
                                 scan_.hits.push_back(last);
                             });
                         } catch (const std::exception&) {}
+                        if (lend_ports) lend_ports(false);      // 口还回去，轮询接着跑
+                        scanning_ = false;
                         std::lock_guard<std::mutex> g(scan_.mu);
                         if (!hits.empty()) scan_.hits = hits;
                         scan_.running = false; scan_.has_result = true;
@@ -384,7 +396,8 @@ std::string CoreApp::handle(const std::string& line, bool remote) {
                 for (const ScanHit& h : scan_.hits)
                     r["hits"].push_back({{"port", h.port}, {"usb_id", h.usb_id}, {"usb_name", h.usb_name}, {"slot", h.slot},
                                          {"type", h.type}, {"type_label", scan_type_label(h.type)}, {"model", h.model}, {"firmware", h.firmware},
-                                         {"baud", h.baud}, {"station", h.station}, {"problem", h.problem.filled()},
+                                         {"baud", h.baud}, {"parity", std::string(1, h.parity)}, {"stop_bits", h.stop_bits},
+                                         {"station", h.station}, {"problem", h.problem.filled()},
                                          {"problem_t", h.problem.t}, {"problem_args", h.problem.args}});
             }
             else if (cmd == "ports.apply") {
@@ -404,6 +417,10 @@ std::string CoreApp::handle(const std::string& line, bool remote) {
                         d->usb_id = dj.value("usb_id", d->usb_id);
                         d->usb_name = dj.value("usb_name", d->usb_name);
                         d->baud = dj.value("baud", d->baud);
+                        // 校验和停止位也要跟着写：搅拌驱动是 8N2，别的是 8N1，写错了照样连不上
+                        const std::string par = dj.value("parity", std::string(1, d->parity));
+                        if (!par.empty()) d->parity = par[0];
+                        d->stop_bits = dj.value("stop_bits", d->stop_bits) == 2 ? 2 : 1;
                         d->station = dj.value("station", d->station);
                         n++;
                     }
