@@ -139,13 +139,21 @@ static int fit(const std::string& path, const ui::PageDef* pages, size_t np, int
 
     // 先搭一遍每一页，记下「哪个位置在哪一页上」。一个位置只在一页上有
     std::map<std::string, size_t> where;
+    size_t nfit = 0;
+    const char* const* fids = ui::fit_ids(nfit);
+    std::vector<std::string> lost(fids, fids + nfit);        // 「拦长句」的名单里，哪些名字已经对不上页面了
     for (size_t k = 0; k < np; k++) {
         lv_obj_t* scr = lv_obj_create(nullptr);
         lv_obj_remove_style_all(scr); lv_obj_set_size(scr, W, H);
         ui::Ui u; pages[k].build(scr, u);
         for (const Job& jb : jobs) if (!where.count(jb.id) && u.has_text(jb.id)) where[jb.id] = k;
+        for (size_t q = 0; q < lost.size();) {
+            if (u.has_text(lost[q])) lost.erase(lost.begin() + static_cast<long>(q)); else q++;
+        }
         lv_obj_delete(scr);
     }
+    // 名单里的名字页面上没有 = 那个位置改了名，长句不再被拦着，会重新画到别人身上去
+    for (const std::string& t : lost) std::printf("── 拦长句的名单里「%s」在哪一页上都找不到（ui_kit.cpp 的 kFitIds）\n", t.c_str());
 
     int bad = 0, done = 0;
     std::vector<std::string> nowhere;

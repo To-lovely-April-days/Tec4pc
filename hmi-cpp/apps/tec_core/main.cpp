@@ -78,7 +78,10 @@ int main(int argc, char** argv) {
         if (real->can_control()) rh = &real->reactor();
         else {
             // 不退出：退出了触摸屏就连不上核心，也就没法进「通信设置」把串口改对
-            offline = "温控器或继电器模块没连上，不能控温。到「设置 → 通信设置」核对串口，改好后重启控制核心";
+            // 这句话会摆到界面上几个很窄的位置里去（结晶卡上那一行最窄，536 px）：
+            // 长了就只能被点成「…」，正好把「去哪儿改」这半句吃掉。所以剪到放得下为止。
+            //「改好后要重启控制核心」不在这儿说了——真到了「通信设置」那一页，那页自己会说
+            offline = "温控器或继电器没连上，不能控温。去「设置 → 通信设置」核对串口";
             std::printf("%s\n", offline.c_str());
             offline_hw = std::make_unique<tec::OfflineReactorHardware>(offline);
             rh = offline_hw.get();

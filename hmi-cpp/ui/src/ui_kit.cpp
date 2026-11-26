@@ -1,4 +1,5 @@
 #include "ui_kit.hpp"
+#include <cstring>
 #include "../../core/util/utf8_file.hpp"
 #include <cstdio>
 #include <map>
@@ -246,6 +247,12 @@ static void text_size(lv_obj_t* l, const char* s, int wrap_w, int& w, int& h) {
     w = wrap_w ? wrap_w : sz.x; h = sz.y;
 }
 
+// 长度不可控的那种话占几行。就一行：这些位置在设计稿里都是一行，底下紧挨着别的东西
+//（结晶卡那句下面就是分段进度条），折成两行等于把下面那行盖了——躲开右边又压住下边，没意义。
+// 所以装不下的尾巴点成「…」，句子本身要短到放得下——最长的那句「温控器或继电器没连上…」
+// 就是照最窄的那个位置（结晶卡的 536 px）剪过的
+static const int kFitLines = 1;
+
 // 「这段字本来就写在图上」：拿对象自带的那个闲置指针当记号（这套界面别处没用它）
 static int on_art_tag;
 void mark_on_art(lv_obj_t* label) { if (label) lv_obj_set_user_data(label, &on_art_tag); }
@@ -334,8 +341,33 @@ lv_obj_t* txta_shift(lv_obj_t* p, int ax, int cy, char anchor, lv_obj_t* prev, i
 
 lv_obj_t* im(lv_obj_t* p, int x, int y, const char* path) { lv_obj_t* i = lv_image_create(p); lv_image_set_src(i, path); lv_obj_set_pos(i, x, y); return i; }
 
+// 「这个位置摆的是控制核心说什么就是什么的话」——命令被拒的理由、报警句、串口那边抛上来的错。
+// 界面既不知道它会有多长，也管不着（核心在改，译文更长）。所以这些位置的字一律拦一道：
+// 放得下照旧，放不下就在自己那一栏的边上收住，尾巴点成「…」。
+// 不拦的话长句就直愣愣地画过去，把右边的东西盖了——2026-11-27 现场：结晶卡上那句
+// 「温控器或继电器没连上，不能控温……」横着压过了右边的曲线图。
+//
+// 名单从哪来：python3 ui/tools/fit.py 把「哪一句话会摆到哪个位置上」抽一遍，
+// 核心的话能流到的位置就是这些。改了界面代码要再抽一遍对一对；
+// 名字写错、页面改了名的，--fit 会报「没找到这些位置」。
+static const char* kFitIds[] = {
+    "cv.seg",            // 结晶卡：第几段 / 出错时的那句
+    "ctl.temp.status",   // 设备控制页状态行
+    "cm.tip", "cm.msg",  // 通信设置
+    "cs.tip",            // 自动检测结果
+    "cd.msg",            // 改某一台设备的弹窗
+    "pg.msg", "pg.info", // PID 整定
+    "lib.info",          // 方案库
+    "seq.chip", "ex.chip",  // 序列页、导出页下面那个胶囊（它的宽度是按字长现算的，字不拦住胶囊就撑出卡片）
+    "xq.run",            // 退出控制核心的弹窗
+    "tr.win",            // 通道趋势：平时写「窗口 … min」，临时拿来说一句话
+};
+
+const char* const* fit_ids(size_t& n) { n = sizeof kFitIds / sizeof kFitIds[0]; return kFitIds; }
+
 void Ui::reg_text(const char* id, lv_obj_t* label, char anchor, int ax, int cy) {
     texts_[id] = T{label, anchor, ax, cy, lv_label_get_text(label)};
+    for (const char* f : kFitIds) if (std::strcmp(f, id) == 0) { texts_[id].fit = true; break; }
     if (label) id_of_[label] = id;       // 反查：算「跟着前面让多少」时要顺着链子往前找
 }
 
@@ -366,18 +398,53 @@ void Ui::reg_follow(const std::string& id, lv_obj_t* prev, int prev_w) {
     follower_of_[prev] = id;
 }
 
+// 一句长度不可控的话，最宽能摆到哪儿：到它所在那一栏的边上。
+// 哪一栏？包着这段字的那层壳是跟着字长走的空壳（设计稿里它就只有这句话那么宽），不算数；
+// 外面那一层才是设计稿里量好的一栏。左边留了多少，右边也给它留多少——
+// 不然塞进「卡片里的一行」这种壳的时候，右边的内边距就被吃掉了
+int Ui::fit_room(T& t) const {
+    if (t.room) return t.room;
+    lv_obj_t* par = lv_obj_get_parent(t.label);
+    lv_obj_t* col = par ? lv_obj_get_parent(par) : nullptr;
+    if (!col) return 0;
+    const int px = lv_obj_get_x(par), cw = lv_obj_get_width(col);
+    const int room = t.anchor == 'r' ? px + t.ax : cw - px - 2 * t.ax;
+    // 还没排过版的时候量出来是 0：这一拍先不管它，下一拍（每半秒一次）再量
+    if (room < 60 * UI_SCALE) return 0;
+    t.room = room;
+    return room;
+}
+
 void Ui::set_text_raw(const std::string& id, const std::string& s) {
     auto it = texts_.find(id);
     if (it == texts_.end() || it->second.cur == s) return;      // 没变就不动：不变的字不重画
     T& t = it->second;
     t.cur = s;
-    lv_label_set_text(t.label, s.c_str());
-    int w = 0, h = 0;
-    // 设计稿里要折行的那几段是定了宽度的；其余的宽度是「跟着字走」，按不折行量
-    const int32_t sw = lv_obj_get_style_width(t.label, 0);
-    text_size(t.label, s.c_str(), sw == LV_SIZE_CONTENT ? 0 : sw, w, h);
+    int w = 0, h = 0, line_h = 0;
+    if (t.fit) {
+        // 长度不可控的那种位置（见上面的 kFitIds）：先按不折行量，放得下就当什么都没发生
+        text_size(t.label, s.c_str(), 0, w, h);
+        line_h = h;
+        const int room = fit_room(t);
+        if (room && w > room) {
+            lv_obj_set_size(t.label, room, h * kFitLines);
+            lv_label_set_long_mode(t.label, LV_LABEL_LONG_DOT);   // 装不下的尾巴由 LVGL 点成「…」
+            w = room;
+        } else {
+            lv_obj_set_size(t.label, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+            lv_label_set_long_mode(t.label, LV_LABEL_LONG_WRAP);
+        }
+        lv_label_set_text(t.label, s.c_str());
+    } else {
+        lv_label_set_text(t.label, s.c_str());
+        // 设计稿里要折行的那几段是定了宽度的；其余的宽度是「跟着字走」，按不折行量
+        const int32_t sw = lv_obj_get_style_width(t.label, 0);
+        text_size(t.label, s.c_str(), sw == LV_SIZE_CONTENT ? 0 : sw, w, h);
+        line_h = h;
+    }
     const int x = (t.anchor == 'l' ? t.ax : t.anchor == 'r' ? t.ax - w : t.ax - w / 2) + follow_shift(t);
-    lv_obj_set_pos(t.label, x, t.cy - h / 2);
+    // 第一行永远留在设计稿里那一行上（kFitLines 要是改成多行，是往下长，不往上跑）
+    lv_obj_set_pos(t.label, x, t.cy - line_h / 2);
     // 新的字比设计稿里那句长很多时，会伸出包着它的那个元素太远而被裁掉；包着它的元素只是个不带底色的壳，就跟着放宽
     lv_obj_t* par = lv_obj_get_parent(t.label);
     if (t.anchor == 'l' && par && lv_obj_get_style_bg_opa(par, 0) == 0 && x + w > lv_obj_get_width(par)) lv_obj_set_width(par, x + w);

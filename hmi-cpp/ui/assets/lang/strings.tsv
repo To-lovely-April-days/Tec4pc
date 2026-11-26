@@ -524,7 +524,7 @@ Tr 探头	Tr probe
 认不准：{0} 都对得上，请人工指定	Ambiguous: {0} matches — pick one by hand						
 这个通道没有接搅拌驱动器	No stirrer drive on this channel						
 没有接进料系统	No dosing system connected						
-温控器或继电器模块没连上，不能控温。到「设置 → 通信设置」核对串口，改好后重启控制核心	Controller or relay not connected — no control. Check the ports under Settings → Communication, then restart the core						
+温控器或继电器没连上，不能控温。去「设置 → 通信设置」核对串口	No controller or relay — check Settings → Communication						
 打不开串口 {0}{1}	Cannot open {0}{1}						
 读不到串口 {0} 的参数{1}	Cannot read the {0} settings{1}						
 设不了串口 {0} 的参数{1}	Cannot set the {0} settings{1}						

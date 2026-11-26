@@ -92,7 +92,7 @@ def collect():
                 if 4 <= len(lit) < 90 and '%' not in lit:
                     add(lit)
 
-    # 「温控器或继电器模块没连上，不能控温……」这一句写在控制核心的 main 里（设备连不上时
+    # 「温控器或继电器没连上，不能控温……」这一句写在控制核心的 main 里（设备连不上时
     # 当作 offline_reason 交给界面，设备控制页的状态行上直接显示）。那个文件里别的话都是
     # 开机时打在控制台上的，不上屏，所以只收赋给 offline 的那几句
     for line in (ROOT / 'apps/tec_core/main.cpp').read_text(encoding='utf-8').splitlines():

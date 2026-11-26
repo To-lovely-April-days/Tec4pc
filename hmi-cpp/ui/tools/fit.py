@@ -16,7 +16,10 @@
 #     这里搭页面不跑那段代码，所以按设计稿的宽度量，必然说「出框」
 #   · ctl.target / ctl.target.u / f.arr / f.arr.u —— 这几处只放数（f1 / f0 / f2），
 #     抽到它名下的那些句子是同文件里别的同名变量带进来的，屏上进不去
-#   · cv.desc —— 跟它并排的 cv.left 真显示的时候是空的（见 cry_page.inc），这里没清，量出来是假重叠
+#   · cv.desc / cv.seg —— 跟它们并排的 cv.desc、cv.left 真显示那一句的时候是空的（见 cry_page.inc），
+#     这里没清，量出来是假重叠。cv.seg 还是「拦长句」的位置（ui_kit.cpp 的 kFitIds）：
+#     放不下的时候它就占满自己那一栏，于是必然压到那两段空字上
+#   · seq.chip —— 和 ex.chip 一样是现算宽度的胶囊
 import pathlib, re, sys, collections
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -55,10 +58,24 @@ FILL = {
     '「{0}」的参数已保存，重启控制核心后生效': '釜内温控器',
 }
 DEFAULT_FILL = '180.0'
+# 这几个位置量不出有用的东西，别往表里放（放了就是上千条假警报，真的那条反而翻不着）：
+#   · seq.chip / ex.chip —— 胶囊的宽度是页面代码按字长现算的，搭一页不跑那段代码
+#   · cv.seg —— 它是「拦长句」的位置，长了就占满自己那一栏；而并排的 cv.desc、cv.left
+#     真显示那一句的时候是空的（这里没清），于是每一条都报「压字」
+# 这三处不靠这张表看，靠 ui_kit.cpp 的 kFitIds：名字还在不在，--fit 自己会报
+#   · 只放数的那些格子（ctl.target、f.arr、f.stir…）—— 抽到它们名下的句子是同一个文件里
+#     别的同名变量带进来的，屏上进不去；det.title 同理
+#   · pg.info —— 右边有话要说的时候，页面代码把左边那句小字收起来了（pid_page.inc 的 pg.sub），
+#     这里没收，量出来是假重叠
+#   · det.badge —— 牌子的宽度也是现算的；ctl.temp.status.sub 只摆得下「釜内控温 Tr」那三句，
+#     抽到它名下的长句是同文件里别的变量带进来的
+NOISY = {'seq.chip', 'ex.chip', 'cv.seg', 'pg.info', 'det.badge', 'ctl.temp.status.sub',
+         'ctl.target', 'ctl.target.u', 'ctl.target.l', 'ctl.run.t1', 'sf.chip', 'cv.desc',
+         'f.arr', 'f.arr.u', 'f.arr.l', 'f.stir', 'f.target.l', 'det.title'}
 # 不是 set_text("位置名", "整句") 这么写的，抽不着，手工补上
 EXTRA = {
     # 设备连不上时状态行上那一句：核心当作 offline 交过来（apps/tec_core/main.cpp）
-    'ctl.temp.status': ['温控器或继电器模块没连上，不能控温。到「设置 → 通信设置」核对串口，改好后重启控制核心'],
+    'ctl.temp.status': ['温控器或继电器没连上，不能控温。去「设置 → 通信设置」核对串口'],
 }
 
 
@@ -85,6 +102,10 @@ def core_messages():
               'core/station/aux_hardware.cpp', 'core/app/port_scan.cpp'):
         take((ROOT / f).read_text(encoding='utf-8'),
              r'throw (?:TextError|ModbusError|std::runtime_error)\(([^;]*)')
+    # 「控温设备没连上」那一句不是直接写在 fail() 里的：开机时存进 offline_reason，
+    # 之后每条开始控温的命令都拿它当拒绝理由（core_app.cpp 的 fail(offline_reason)）。
+    # 它又是全工程最长的一句，漏掉它等于这张表白量 —— 所以单独捞一下。
+    take((ROOT / 'apps/tec_core/main.cpp').read_text(encoding='utf-8'), r'\boffline\s*=\s*("[^"]*")')
     return out
 
 
@@ -99,6 +120,7 @@ def main():
         # 这个文件里，哪个变量被赋过哪些整句。一个文件一张表：同名的局部变量（msg、tip、sub）
         # 到处都有，全工程混成一张的话每个位置都会多出几十条别处的话
         var = collections.defaultdict(list)
+        asgn = []
         for m in re.finditer(r'([A-Za-z_]\w*(?:\[[^\]]*\])?(?:\.[A-Za-z_]\w*(?:\[[^\]]*\])?)*)\s*=\s*([^;]*);', src):
             key = re.sub(r'\[[^\]]*\]', '', m.group(1))
             for l in lits(m.group(2)):
@@ -106,6 +128,22 @@ def main():
                     var[key].append(l)
             if re.search(r'"error"|e\.what', m.group(2)):
                 var[key].append('@CORE@')          # 这儿会摆核心给的话，最坏情况全试
+            asgn.append((key, m.group(2)))
+        # 核心的话常常是转一道手才摆上去的：msg 里装的是核心给的理由，
+        # 再 tip = msg.empty() ? … : msg，屏上写的是 tip。不往下传的话，
+        # 导出页、序列页、PID 页那几处就白白漏掉了（2026-11-27 查「长句压住右边的图」时发现的）
+        for _ in range(4):
+            grew = False
+            for key, rhs in asgn:
+                # 只往「本来就装整句话」的变量里传：同一行里赋过中文整句的才算。
+                # 不加这条的话 x = y + 1 这种也跟着染上，数字格子也会被当成会摆长句的位置
+                if '@CORE@' in var.get(key, ()) or not any(v != '@CORE@' for v in var.get(key, ())):
+                    continue
+                for v in re.finditer(r'[A-Za-z_]\w*(?:\[[^\]]*\])?(?:\.[A-Za-z_]\w*(?:\[[^\]]*\])?)*', rhs):
+                    if '@CORE@' in var.get(re.sub(r'\[[^\]]*\]', '', v.group(0)), ()):
+                        var[key].append('@CORE@'); grew = True; break
+            if not grew:
+                break
         for m in re.finditer(r'set_text(?:_raw)?\(\s*"([^"]+)"\s*,([^;]*?)\)\s*;', src):
             wid, expr = m.group(1), m.group(2)
             for l in lits(expr):
@@ -120,6 +158,8 @@ def main():
         cand[wid].extend(lst)
     rows, n = [], 0
     for wid in sorted(cand):
+        if wid in NOISY:
+            continue
         seen = set()
         for s in cand[wid]:
             for one in (core if s == '@CORE@' else [s]):

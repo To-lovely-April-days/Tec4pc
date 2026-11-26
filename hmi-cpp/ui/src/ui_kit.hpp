@@ -75,6 +75,9 @@ std::vector<lv_point_precise_t> stair_line(const std::vector<lv_point_precise_t>
 void mark_on_art(lv_obj_t* label);
 bool is_on_art(lv_obj_t* label);
 
+// 「摆核心给的话」的那些位置的名字（见 ui_kit.cpp 的 kFitIds）。--fit 用它对一对名字还在不在
+const char* const* fit_ids(size_t& n);
+
 // 一页上所有「有名字的东西」
 class Ui {
 public:
@@ -99,8 +102,10 @@ public:
     bool has_text(const std::string& id) const { return texts_.count(id) != 0; }
 
 private:
-    struct T { lv_obj_t* label; char anchor; int ax, cy; std::string cur; lv_obj_t* prev = nullptr; int prev_w = 0; };
+    struct T { lv_obj_t* label; char anchor; int ax, cy; std::string cur; lv_obj_t* prev = nullptr; int prev_w = 0;
+               bool fit = false; int room = 0; };     // fit：长度不可控的那种位置；room：量出来的栏宽（量一次就记住）
     int follow_shift(const T& t) const;
+    int fit_room(T& t) const;
     void place(const std::string& id);
     std::map<std::string, T> texts_;
     std::map<lv_obj_t*, std::string> id_of_;            // 反查：这个 label 在 texts_ 里叫什么名字
