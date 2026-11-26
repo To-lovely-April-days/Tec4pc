@@ -62,6 +62,11 @@ lv_obj_t* im(lv_obj_t* p, int x, int y, const char* path);
 // 一段文字现在多宽（按字体直接量，不用先让整页重排一遍）
 int label_w(lv_obj_t* label);
 
+// 「这段字本来就写在图上」。排版自查（--lint）把图片也当成「别人的地盘」，压上去要报；
+// 可釜盖右上角的通道号就是画在釜体照片上的，不标一下每次自查都是一堆假警报
+void mark_on_art(lv_obj_t* label);
+bool is_on_art(lv_obj_t* label);
+
 // 一页上所有「有名字的东西」
 class Ui {
 public:

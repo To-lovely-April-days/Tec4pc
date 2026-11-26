@@ -129,9 +129,18 @@ if(EXISTS ${LVGL_DIR}/lvgl.h)
     target_compile_options(tec_hmi_core PRIVATE -Wno-unused-function -Wno-unused-parameter)
   endif()
   add_dependencies(tec_hmi_core tec_hmi_assets)      # 等它把 assets 拷好；也保证只有一处在拷，不会撞车
+
+  # 打包：Visual Studio 里生成 INSTALL 这个工程（或者命令行 cmake --install build --prefix 某个目录），
+  # 拷出来的就是能直接拿去装机的一份 —— 三个程序、字体、图片、语言词表、出厂增益表，一样不少。
+  # 字体和图片必须跟着走：少了 assets，程序能起来但界面是一片灰（见 ui_kit.hpp 里 assets_ok 那段）
+  install(TARGETS tec_hmi tec_hmi_2x tec_hmi_core RUNTIME DESTINATION . LIBRARY DESTINATION . ARCHIVE DESTINATION lib)
+  install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/ui/assets/ DESTINATION assets)
 else()
   message(STATUS "没找到 third_party/lvgl-9.2.2，这次不编界面程序 tec_hmi（下载方法见 README）")
 endif()
+
+install(TARGETS tec_core RUNTIME DESTINATION .)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/testdata/gain-table-run1110.csv DESTINATION . RENAME gain-table.csv)
 
 enable_testing()
 add_executable(golden_outer tests/golden_outer.cpp)

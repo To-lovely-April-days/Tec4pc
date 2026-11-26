@@ -95,6 +95,7 @@ void relayout_for_language() {
     cry_parts.clear();
     curves.clear();
     ovplots.clear();
+    vfx.clear();                                    // 釜上的外圈和搅拌桨也是长在那些页面上的（见 vessel_fx.inc）
     warm_next = 0;                                  // 提前准备那一轮也要重来：字形换了一套
     cur.clear();
     show(keep);                                     // 搭一张新的并挂上去

@@ -246,6 +246,11 @@ static void text_size(lv_obj_t* l, const char* s, int wrap_w, int& w, int& h) {
     w = wrap_w ? wrap_w : sz.x; h = sz.y;
 }
 
+// 「这段字本来就写在图上」：拿对象自带的那个闲置指针当记号（这套界面别处没用它）
+static int on_art_tag;
+void mark_on_art(lv_obj_t* label) { if (label) lv_obj_set_user_data(label, &on_art_tag); }
+bool is_on_art(lv_obj_t* label) { return label && lv_obj_get_user_data(label) == &on_art_tag; }
+
 int label_w(lv_obj_t* label) { int w = 0, h = 0; text_size(label, lv_label_get_text(label), 0, w, h); return w; }
 
 lv_obj_t* txt(lv_obj_t* p, int cx, int cy, const char* s, int weight, float px, uint32_t c, int a, int ls, int wrap_w) {

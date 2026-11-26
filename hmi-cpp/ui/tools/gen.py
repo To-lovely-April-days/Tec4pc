@@ -53,7 +53,10 @@ for name in pages:
                 a = max(0, min(255, 255 - max(pw[x, y][i] - pk[x, y][i] for i in range(3))))
                 po[x, y] = tuple(min(255, round(pk[x, y][i] * 255 / a)) for i in range(3)) + (a,) if a else (0, 0, 0, 0)
         if S == 1: out = out.resize((out.size[0] // 2, out.size[1] // 2), Image.LANCZOS)
-        f = IMG / f'{name}_{n["img"]}_{S}.png'; out.save(f); return f'A:assets/img/{f.name}', -1 * S
+        # data-id 以 fx. 打头的（釜上的加热带、虚线圈、搅拌桨这些贴图）：文件名照名字取，不按出现顺序编号。
+        # 程序要按名字直接贴它们，用顺序编号的话设计稿一改就串位
+        stem = 'fx_' + n['id'][3:].replace('.', '_') if n.get('id', '').startswith('fx.') else f'{name}_{n["img"]}'
+        f = IMG / f'{stem}_{S}.png'; out.save(f); return f'A:assets/img/{f.name}', -1 * S
     L = []; emit = L.append; info = {}; last_text = None
     byi = {n['i']: n for n in D}
 
@@ -148,7 +151,10 @@ for name in pages:
             else: emit(f'sh(o[{i}], {c}, {A}, {R(blur)}, {R(x)}, {R(y)}, {R(spread)});')
         if n['id']: emit(f'ui.reg_box("{cstr(n["id"])}", o[{i}]);')
         if n['act']: emit(f'ui.reg_act(o[{i}], "{cstr(n["act"])}");')
-    code.append(f'static void build_{name}(lv_obj_t* scr, Ui& ui) {{\n    static lv_obj_t* o[{len(D) + 1}];\n    static lv_obj_t* t[{len(D) + 1}];\n    (void)t;\n    ' + '\n    '.join(L) + '\n}\n')
+    # Fx 打头的是「贴图稿」：只要它出的图（釜上的加热带、虚线圈、搅拌桨），不要页面代码——
+    # 那是一页排开的素材，不是给人看的页面，进了页面表还要白白预热一遍
+    if not name.startswith('Fx'):
+        code.append(f'static void build_{name}(lv_obj_t* scr, Ui& ui) {{\n    static lv_obj_t* o[{len(D) + 1}];\n    static lv_obj_t* t[{len(D) + 1}];\n    (void)t;\n    ' + '\n    '.join(L) + '\n}\n')
     print(f'{name}: {len(D)} 个元素，{sum(1 for n in D if n.get("id"))} 处可改，{sum(1 for n in D if n.get("act"))} 处可点')
-code.append('static const PageDef kPages[] = {\n' + ''.join(f'    {{"{n}", build_{n}}},\n' for n in pages) + '};\n')
+code.append('static const PageDef kPages[] = {\n' + ''.join(f'    {{"{n}", build_{n}}},\n' for n in pages if not n.startswith('Fx')) + '};\n')
 (UI / 'gen' / f'pages_{S}.inc').write_text('\n'.join(code), encoding='utf-8')

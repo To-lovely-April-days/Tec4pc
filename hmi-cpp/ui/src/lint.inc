@@ -97,7 +97,7 @@ static int one(const char* page, lv_obj_t* root, int slack, lv_obj_t* only = nul
             const int ov = overlap(v[i].a, v[j].a);
             if (ov <= slack) continue;
             if (v[j].label) say("压字", "「" + brief(v[i].o) + "」 × 「" + brief(v[j].o) + "」 " + std::to_string(ov) + " px");
-            else say("压控件", "「" + brief(v[i].o) + "」 压住一块控件 " + std::to_string(ov) + " px");
+            else if (!ui::is_on_art(v[i].o)) say("压控件", "「" + brief(v[i].o) + "」 压住一块控件 " + std::to_string(ov) + " px");
         }
     }
     return bad;

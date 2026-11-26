@@ -246,6 +246,7 @@ struct App {
 #include "overview_page.inc"
 #include "sys_page.inc"
 #include "lang_page.inc"
+#include "vessel_fx.inc"
 
     // 弹窗和满屏那几页不在 pages 那张表里，各自是一个 Page。换语言时要连它们一起拆掉重搭
     std::vector<Page*> aux_pages() { return {&kp, &tkb, &nolink, &commdlg, &exitdlg, &stepdlg, &aldlg, &allist, &langdlg}; }
@@ -273,6 +274,10 @@ struct App {
             p.ui = std::make_unique<Ui>();
             p.ui->on_action = [this](const std::string& a) { action(a); };
             { d.build(p.scr, *p.ui); lv_obj_update_layout(p.scr); }
+            // 釜上的外圈和搅拌桨是两张贴在釜体照片上的图，页面搭好就贴上（见 vessel_fx.inc）
+            attach_fx(*p.ui, "main.1.vessel", "m", "main.1.badge");
+            attach_fx(*p.ui, "main.2.vessel", "m", "main.2.badge");
+            attach_fx(*p.ui, "ctl.vessel", "c", "ctl.badge");
         }
         if (!p.scr) { pages.erase(name); return false; }      // 这一页还没做
         return true;
@@ -519,18 +524,9 @@ struct App {
         return h.size() < 2 || h.back().first - h.front().first < 5.0 ? 0.0 : (h.back().second - h.front().second) / (h.back().first - h.front().first) * 60.0;
     }
 
-    // 总览上那两张釜体图：设计稿里通道 1 画的是跑着的样子（釜里一汪蓝）、通道 2 是停着的样子（灰的），
-    // 两张一样大、摆在一样的位置。开机第一次刷新时把这两张记下来，之后按各自通道在不在跑换着贴。
-    // 为什么不在代码里写死图的文件名：图是从设计稿里现翻出来的，名字按出现顺序编号，设计一改就串位
-    std::string vessel_img[2];
     void refresh_main(Ui& u) {
         // 控温设备没连上时核心给的温度是没读过的 0，不是读数：底下那六格里跟温度有关的一律空着
         const bool offline = !st.value("offline", std::string()).empty();
-        if (vessel_img[0].empty())
-            for (int n = 1; n <= 2; n++)
-                if (lv_obj_t* v = u.box("main." + std::to_string(n) + ".vessel"))
-                    if (lv_image_src_get_type(lv_image_get_src(v)) == LV_IMAGE_SRC_FILE)
-                        vessel_img[n - 1] = static_cast<const char*>(lv_image_get_src(v));
         for (int n = 1; n <= 2; n++) {
             const json& c = st["ch"][n - 1];
             const std::string k = "main." + std::to_string(n);
@@ -541,7 +537,7 @@ struct App {
             const bool live = run || seq_on;
             const double duty = c.value("duty", 0.0);
             if (lv_obj_t* d = u.box(k + ".dot")) if (u.changed(k + ".dot", live)) bg(d, live ? 0x00B368 : 0xBFC7CF, 255);
-            if (lv_obj_t* v = u.box(k + ".vessel")) if (u.changed(k + ".vessel", live) && !vessel_img[live ? 0 : 1].empty()) lv_image_set_src(v, vessel_img[live ? 0 : 1].c_str());
+            vessel_state(u, k + ".vessel", k + ".badge", c, n, offline);
             const std::string name = c.contains("run") && c["run"].is_string() ? c["run"].get<std::string>() : "";      // 没在跑序列时核心给的是空值，不是空字符串
             u.set_text(k + ".name", !name.empty() ? name : live ? "手动运行" : "未在运行");
             u.set_text(k + ".r1", seq_on ? hms(q.value("total_elapsed_s", 0.0)) : run ? "控温中" : "待机");
@@ -714,6 +710,7 @@ struct App {
         u.set_text("ctl.temp.status.sub", md == 1 ? "夹套控温 Tj" : md == 2 ? "蒸回流" : "釜内控温 Tr");
         u.show("ctl.arrive.box", md != 2);
         refresh_stir(u, c);
+        vessel_state(u, "ctl.vessel", "ctl.badge", c, channel, offline);
         if (c["tj"].is_number()) {
             std::string s = "Tj " + f1(c["tj"].get<double>()) + " ℃";
             if (c["tr"].is_number()) s += "　·　Tr − Tj " + f1(c["tr"].get<double>() - c["tj"].get<double>()) + " K";
