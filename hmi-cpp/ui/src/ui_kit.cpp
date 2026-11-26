@@ -251,6 +251,41 @@ static int on_art_tag;
 void mark_on_art(lv_obj_t* label) { if (label) lv_obj_set_user_data(label, &on_art_tag); }
 bool is_on_art(lv_obj_t* label) { return label && lv_obj_get_user_data(label) == &on_art_tag; }
 
+std::vector<lv_point_precise_t> stair_line(const std::vector<lv_point_precise_t>& in) {
+    if (in.size() < 2) return in;
+    std::vector<lv_point_precise_t> out;
+    out.reserve(in.size() * 3);
+    auto emit = [&](int32_t x, int32_t y) {
+        if (!out.empty() && static_cast<int32_t>(out.back().x) == x && static_cast<int32_t>(out.back().y) == y) return;
+        out.push_back({static_cast<lv_value_precise_t>(x), static_cast<lv_value_precise_t>(y)});
+    };
+    emit(static_cast<int32_t>(in[0].x), static_cast<int32_t>(in[0].y));
+    for (size_t i = 1; i < in.size(); i++) {
+        const int32_t x0 = static_cast<int32_t>(in[i - 1].x), y0 = static_cast<int32_t>(in[i - 1].y);
+        const int32_t x1 = static_cast<int32_t>(in[i].x), y1 = static_cast<int32_t>(in[i].y);
+        const int32_t dx = x1 - x0, dy = y1 - y0;
+        // 本来就是横的或竖的：原样留着（LVGL 画这两种没问题）
+        if (dx == 0 || dy == 0 || out.size() > 60000) { emit(x1, y1); continue; }
+        if (dx > 0 ? dx >= (dy > 0 ? dy : -dy) : -dx >= (dy > 0 ? dy : -dy)) {
+            const int32_t step = dx > 0 ? 1 : -1;
+            int32_t prev = y0;
+            for (int32_t x = x0 + step; x != x1 + step; x += step) {
+                const int32_t y = y0 + static_cast<int32_t>(static_cast<double>(x - x0) * dy / dx + (dy > 0 ? 0.5 : -0.5));
+                if (y != prev) { emit(x, prev); emit(x, y); prev = y; }      // 竖着跳一格，再接着横着走
+            }
+        } else {
+            const int32_t step = dy > 0 ? 1 : -1;
+            int32_t prev = x0;
+            for (int32_t y = y0 + step; y != y1 + step; y += step) {
+                const int32_t x = x0 + static_cast<int32_t>(static_cast<double>(y - y0) * dx / dy + (dx > 0 ? 0.5 : -0.5));
+                if (x != prev) { emit(prev, y); emit(x, y); prev = x; }
+            }
+        }
+        emit(x1, y1);
+    }
+    return out;
+}
+
 int label_w(lv_obj_t* label) { int w = 0, h = 0; text_size(label, lv_label_get_text(label), 0, w, h); return w; }
 
 lv_obj_t* txt(lv_obj_t* p, int cx, int cy, const char* s, int weight, float px, uint32_t c, int a, int ls, int wrap_w) {

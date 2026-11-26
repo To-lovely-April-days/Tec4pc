@@ -62,6 +62,14 @@ lv_obj_t* im(lv_obj_t* p, int x, int y, const char* path);
 // 一段文字现在多宽（按字体直接量，不用先让整页重排一遍）
 int label_w(lv_obj_t* label);
 
+// 把一条折线改写成只有横段和竖段的「台阶」，一级一个像素。
+//
+// 为什么要绕这一下：现场那台 Windows 机器上，LVGL 画不出斜线——横线、竖线都好好的，
+// 斜线只剩两头的圆端点（tec_hmi --linetest 当场验的；LVGL 同是 9.2.2、配置也一样，
+// 可开发机上画出来是好的，所以多半是 MSVC 把那段遮罩代码编坏了）。趋势和曲线是这套界面的
+// 命根子，不能指望它。台阶只用横竖两种段，画出来和斜线看着一样，只是没有抗锯齿。
+std::vector<lv_point_precise_t> stair_line(const std::vector<lv_point_precise_t>& pts);
+
 // 「这段字本来就写在图上」。排版自查（--lint）把图片也当成「别人的地盘」，压上去要报；
 // 可釜盖右上角的通道号就是画在釜体照片上的，不标一下每次自查都是一堆假警报
 void mark_on_art(lv_obj_t* label);

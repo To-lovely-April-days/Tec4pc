@@ -114,14 +114,14 @@ void draw_scheme(lv_obj_t* box, int ci, const json& steps, const json& q) {
         pt_t = tt; pt_v = vv;
     };
     for (auto& g : seg) { for (auto& m : g.mid) add(m.first, m.second); add(g.t1, g.v1); }
+    // 先改写成「台阶」：现场那台机器上 LVGL 画不出斜线（见 ui_kit 的 stair_line）
     auto line = [&](const std::vector<lv_point_precise_t>& pts, uint32_t color, double width) {
         if (pts.size() < 2) return;
-        op.lines.push_back(pts);
+        op.lines.push_back(stair_line(pts));
         lv_obj_t* l = lv_line_create(plot);
         lv_line_set_points(l, op.lines.back().data(), static_cast<uint32_t>(op.lines.back().size()));
         lv_obj_set_style_line_width(l, static_cast<int>(width * S + 0.5), 0);
         lv_obj_set_style_line_color(l, lv_color_hex(color), 0);
-        lv_obj_set_style_line_rounded(l, true, 0);
     };
     line(all, 0x9FB2C8, 2.4);
     line(past, 0x00559C, 3.0);
@@ -246,12 +246,11 @@ void draw_overview_trend(lv_obj_t* box) {
         int last_x = -1000000;
         auto flush = [&]() {
             if (pts.size() >= 2) {
-                op.lines.push_back(pts);
+                op.lines.push_back(stair_line(pts));        // 台阶，见 ui_kit 的 stair_line
                 lv_obj_t* ln = lv_line_create(plot);
                 lv_line_set_points(ln, op.lines.back().data(), static_cast<uint32_t>(op.lines.back().size()));
                 lv_obj_set_style_line_width(ln, static_cast<int>(s.width * S + 0.5), 0);
                 lv_obj_set_style_line_color(ln, lv_color_hex(s.color), 0);
-                lv_obj_set_style_line_rounded(ln, true, 0);
             }
             pts.clear(); last_x = -1000000;
         };

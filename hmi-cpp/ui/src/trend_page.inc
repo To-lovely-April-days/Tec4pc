@@ -154,12 +154,11 @@ void draw_trend(lv_obj_t* box, int ci, Ui& u) {
         int last_x = -1000000;
         auto flush = [&]() {
             if (cur.size() >= 2) {
-                tp.lines.push_back(cur);
+                tp.lines.push_back(stair_line(cur));        // 台阶，见 ui_kit 的 stair_line
                 lv_obj_t* ln = lv_line_create(plot);
                 lv_line_set_points(ln, tp.lines.back().data(), static_cast<uint32_t>(tp.lines.back().size()));
                 lv_obj_set_style_line_width(ln, static_cast<int>(width * S + 0.5), 0);
                 lv_obj_set_style_line_color(ln, lv_color_hex(color), 0);
-                lv_obj_set_style_line_rounded(ln, true, 0);
             }
             cur.clear(); last_x = -1000000;
         };

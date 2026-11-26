@@ -70,13 +70,15 @@ void draw_curve(lv_obj_t* box, const json& prof, double t0, double done_min) {
         else if (done_min > t && t1 > t) { const double f = (done_min - t) / (t1 - t); cv.done.push_back({static_cast<lv_value_precise_t>(X(done_min)), static_cast<lv_value_precise_t>(Y(v + (v1 - v) * f))}); }
         t = t1; v = v1;
     }
-    auto line = [&](const std::vector<lv_point_precise_t>& pts, uint32_t color) {
+    // 折线先改写成「台阶」再交给 LVGL：现场那台机器上它画不出斜线（见 ui_kit 的 stair_line）。
+    // 台阶是一级一个像素的横段竖段，端头方的正好接得上，所以不要圆端头
+    auto line = [&](std::vector<lv_point_precise_t>& pts, uint32_t color) {
         if (pts.size() < 2) return;
+        pts = stair_line(pts);
         lv_obj_t* l = lv_line_create(plot);
         lv_line_set_points(l, pts.data(), static_cast<uint32_t>(pts.size()));
         lv_obj_set_style_line_width(l, static_cast<int>(2.4 * S), 0);
         lv_obj_set_style_line_color(l, lv_color_hex(color), 0);
-        lv_obj_set_style_line_rounded(l, true, 0);
     };
     // 有「走过的一段」时，整条先用浅色画，走过的再用深色描；没有就整条深色
     line(cv.all, done_min >= 0 ? 0xB5C7DB : 0x00559C);
