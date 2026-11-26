@@ -58,6 +58,7 @@ R 转速	R speed
 拍快照	Snap						
 导出快照	To USB						
 窗口 150 min	Window 150 min						
+回到现在	Back to now						
 横轴	X axis						
 时钟	Clock						
 实验时间	Run time						
@@ -778,7 +779,7 @@ pH 电极测、调节泵加，把 pH 维持在目标附近；走满维持时长�
 不知道为什么	Reason unknown						
 已拷到 U 盘 {0}（{1} 个文件）	Copied to USB {0} ({1} files)						
 窗口 —	Window —						
-窗口 {0} min	Window {0} min						
+窗口 {0} min	Span {0} min						
 已加第 {0} 个时间标记	Added time mark #{0}						
 标记没加上	The marker was not added						
 快照没存成	The snapshot was not saved						
@@ -825,8 +826,14 @@ pH 电极测、调节泵加，把 pH 维持在目标附近；走满维持时长�
 把 assets 文件夹（里面是 fonts 和 img）放到下面任意一处：	Put the assets folder (it holds fonts and img) in any one of these places:						
 横线 · 竖线 · 斜线	Horizontal · vertical · skew						
 斜的那条没出来 = 这台机器上的 LVGL 画不了斜线	If the skew one is missing, this machine's LVGL cannot draw skew lines						
+按上去试试	Touch the screen						
+两根手指能同时看到两个圈 = 这块屏支持两指缩放	Two circles at once means this screen does two-finger zoom						
+{0} 根手指	{0} finger(s)						
+{0} 根手指　·　间距 {1} px	{0} fingers　·　{1} px apart						
 
 # 下面这些界面上已经没有了，留着免得以后改回来又要重翻；要清掉直接删行
+#  根手指							
+# 　·　间距 							
 # LVGL 的复杂渲染被关了：曲线会只剩点。打开 ui/lv_conf.h 里的 LV_DRAW_SW_COMPLEX							
 # third_party 里的 LVGL 不是 9.2.x：按 README 下 9.2.2，别的版本没验过							
 # 和同口那台设备参数不一样（{0} 按 {1} {2}{3} 开着，这台要 {4} {5}{6}）	Clashes with the other device on this port ({0} opened it at {1} {2}{3}; this one needs {4} {5}{6})						

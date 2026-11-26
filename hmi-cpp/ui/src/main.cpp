@@ -49,6 +49,30 @@ using namespace ui;
 static uint32_t g_fb[W * H];
 // 手指（或鼠标）现在在哪、按没按着。Windows 上是窗口消息在写，不开窗口时是 --tap 在写；LVGL 每一帧来读
 static struct { int x = 0, y = 0; bool down = false; } g_finger;
+
+// ── 几根手指 ──
+// LVGL 只收一个点，两指缩放这种手势它管不了，所以每根手指单独记在这儿：
+// Windows 的触摸走 WM_POINTER，每根手指有自己的 id（见 win_window.inc），按下、移动、抬起都带着它。
+// 第一根仍旧照常喂给 LVGL（点按、滑动都不受影响），第二根只给手势用。
+// 这段放在 #ifdef 外面：开发机上也编得到，不然 Windows 那一支改坏了这边发现不了
+struct Contact { int id = -1, x = 0, y = 0; };
+static Contact g_touch[4];
+static int g_touch_n = 0;
+
+// 窗口收到一根手指的消息就叫它一次。down = false 表示这根抬起了
+static void touch_set(int id, int x, int y, bool down) {
+    int k = -1;
+    for (int i = 0; i < g_touch_n; i++) if (g_touch[i].id == id) k = i;
+    if (!down) {
+        if (k >= 0) { for (int i = k; i + 1 < g_touch_n; i++) g_touch[i] = g_touch[i + 1]; g_touch_n--; }
+    } else {
+        if (k < 0 && g_touch_n < 4) { k = g_touch_n++; g_touch[k].id = id; }
+        if (k >= 0) { g_touch[k].x = x; g_touch[k].y = y; }
+    }
+    // LVGL 认第一根手指。两根以上按着的时候不给它按下状态：那是在做手势，不该当成点按或拖动
+    g_finger.down = g_touch_n == 1;
+    if (g_touch_n >= 1) { g_finger.x = g_touch[0].x; g_finger.y = g_touch[0].y; }
+}
 #ifdef _WIN32
 #if !defined(TEC_HMI_LIB)              // 编成库给 PC 工作站用时不开窗口，这一套用不上
 #include "win_window.inc"
@@ -815,6 +839,7 @@ TEC_API int tec_hmi_tick(void) try {
     if (!e.ready) return 100;
     const auto now = std::chrono::steady_clock::now();
     if (now - e.last_poll >= std::chrono::milliseconds(500)) { e.last_poll = now; e.app->poll(); }
+    e.app->trend_gesture();          // 两指缩放 / 单指拖：每一帧都看一眼手指，不能等那半秒一次的刷新
     const uint32_t wait = lv_timer_handler();
     // 趁没人按着屏幕，把还没看过的页先在内存里画一遍（第一次点进去就不用现算了）
     if (++e.loops > 5 && !g_finger.down) e.app->warm_step();
@@ -914,6 +939,7 @@ int main(int argc, char** argv) {
     bool only_1x = false;                      // --1x：屏幕再大也用 1 倍这一份，不自动换成 2 倍的
     bool lint_it = false;                      // --lint：出图的那一刻把这一页的排版量一遍（见 ui/src/lint.inc）
     bool line_test = false;      // --linetest：三条线的小自检（见下面那一段）
+    bool touch_test = false;     // --touchtest：几根手指的小自检（见下面那一段）
     std::string fit_file, lang;                // --fit 表：一句一句摆进去量（提示句、报警句屏上平时没有）；--lang：不连核心时指定界面语言
     double after = 2.0;
     for (int i = 1; i < argc; i++) {
@@ -933,6 +959,7 @@ int main(int argc, char** argv) {
         else if (a == "--lint") lint_it = true;      // 排版自查：把这一页上所有的字量一遍（见 ui/src/lint.inc）
         else if (a == "--fit" && i + 1 < argc) fit_file = argv[++i];
         else if (a == "--linetest") line_test = true;      // 画三条线看哪种画得出来（现场「曲线只剩点」时用）
+        else if (a == "--touchtest") touch_test = true;    // 看这块屏能不能收到两根手指（两指缩放要用）
         else if (a == "--lang" && i + 1 < argc) lang = argv[++i];
     }
     (void)only_1x;
@@ -1007,6 +1034,48 @@ int main(int argc, char** argv) {
         }
     }
 
+    // ── --touchtest：这块屏能同时收到几根手指 ──
+    // 两指缩放要靠第二根手指。Windows 的触摸走 WM_POINTER，每根手指带自己的 id，窗口那边已经逐根记下来了
+    //（见 win_window.inc 的 contact / 本文件的 touch_set）。但屏幕本身是不是多点触摸，只有真机上才知道：
+    // 两根手指按上去，屏上能看到两个圈、上面写「2 根」就是能用；只有一个圈就是这块屏只认一根
+    if (touch_test) {
+        lv_obj_t* scr = lv_obj_create(nullptr);
+        lv_obj_remove_style_all(scr);
+        bg(scr, 0xFFFFFF, 255);
+        lv_obj_t* dot[4];
+        for (int i = 0; i < 4; i++) {
+            dot[i] = mk(scr, 0, 0, 72 * UI_SCALE, 72 * UI_SCALE, 0);
+            bg(dot[i], i == 0 ? 0x00559C : i == 1 ? 0xE8590C : 0x00B368, 160);
+            lv_obj_set_style_radius(dot[i], LV_RADIUS_CIRCLE, 0);
+            lv_obj_add_flag(dot[i], LV_OBJ_FLAG_HIDDEN);
+        }
+        lv_obj_t* tip = txt(scr, W / 2, 60 * UI_SCALE, "按上去试试", 600, 22, 0x1F2A35, 255, 0, 0);
+        lv_obj_t* sub = txt(scr, W / 2, 100 * UI_SCALE, "两根手指能同时看到两个圈 = 这块屏支持两指缩放", 400, 15, 0x8792A0, 255, 0, 0);
+        (void)sub;
+        lv_screen_load(scr);
+        for (;;) {
+#ifdef _WIN32
+            if (windowed && !win::pump()) return 0;
+#endif
+            for (int i = 0; i < 4; i++) {
+                if (i < g_touch_n) {
+                    lv_obj_remove_flag(dot[i], LV_OBJ_FLAG_HIDDEN);
+                    lv_obj_set_pos(dot[i], g_touch[i].x - 36 * UI_SCALE, g_touch[i].y - 36 * UI_SCALE);
+                } else lv_obj_add_flag(dot[i], LV_OBJ_FLAG_HIDDEN);
+            }
+            // 整句带占位符，不要拿加号拼半截话（拼的抽不进词表，见 ui/tools/strings.py）
+            std::string line = ui::fmt("{0} 根手指", {std::to_string(g_touch_n)});
+            if (g_touch_n >= 2) {
+                const double dx = g_touch[0].x - g_touch[1].x, dy = g_touch[0].y - g_touch[1].y;
+                line = ui::fmt("{0} 根手指　·　间距 {1} px", {std::to_string(g_touch_n), f0(std::sqrt(dx * dx + dy * dy))});
+            }
+            lv_label_set_text(tip, line.c_str());
+            lv_timer_handler();
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            if (!windowed) return 0;
+        }
+    }
+
     if (!lang.empty()) ui::set_language(lang);      // 平时语言是从核心的设置里读的；--fit 不连核心，得明说
     // --fit：不连核心、不进主循环，把表里每一句摆进它该去的位置量一遍就退出
     if (!fit_file.empty()) return lint::fit(fit_file, kPages, sizeof kPages / sizeof kPages[0]) > 0 ? 2 : 0;
@@ -1021,6 +1090,7 @@ int main(int argc, char** argv) {
         if (windowed && !win::pump()) return 0;        // 窗口被关掉了
 #endif
         if (now - last_poll >= std::chrono::milliseconds(500)) { last_poll = now; app.poll(); }
+        app.trend_gesture();         // 两指缩放 / 单指拖：每一圈都看一眼手指（见 trend_page.inc）
         const uint32_t wait = lv_timer_handler();
         // 查「哪一下慢」用：设了环境变量 UI_TIME，一圈超过 50 毫秒就往 tec_hmi_time.log 里记一行（Windows 上程序没有命令行窗口，所以写文件）
         static const bool timing = std::getenv("UI_TIME") != nullptr;

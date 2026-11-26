@@ -47,6 +47,14 @@ static void pointer(LPARAM lp, bool screen_coords, int down) {
     if (down >= 0) g_finger.down = down != 0;
 }
 
+// 一根手指的消息：换算成界面坐标，交给 touch_set 记着（那一半在 main.cpp 里，开发机上也编得到）
+static void contact(WPARAM wp, LPARAM lp, bool down) {
+    last_input_ms = GetTickCount64();
+    POINT p{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+    ScreenToClient(hwnd, &p);
+    touch_set(static_cast<int>(GET_POINTERID_WPARAM(wp)), (p.x - ox) * 100 / zoom, (p.y - oy) * 100 / zoom, down);
+}
+
 static LRESULT CALLBACK proc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
     switch (m) {
     case WM_ERASEBKGND: return 1;                 // 不让系统先刷一遍底色：会闪
@@ -64,10 +72,11 @@ static LRESULT CALLBACK proc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
     // 那会把鼠标也塞进「指针」这条同步队列里，画面一忙系统就跟着卡住光标——鼠标移进窗口偶尔
     // 消失、按不动，过几秒才回来（用户 2026-11-25 看到的）。不开它，鼠标进不了这几条消息，
     // 所以这里也不用再挑一遍是不是鼠标
-    case WM_POINTERDOWN:   pointer(lp, true, 1); return 0;
-    case WM_POINTERUP:     pointer(lp, true, 0); return 0;
-    case WM_POINTERUPDATE: pointer(lp, true, IS_POINTER_INCONTACT_WPARAM(wp) ? 1 : 0); return 0;
-    case WM_POINTERCAPTURECHANGED: g_finger.down = false; return 0;
+    // 每根手指单独记（WM_POINTER 每根都带自己的 id）：LVGL 还是只认第一根，第二根留给两指手势
+    case WM_POINTERDOWN:   contact(wp, lp, true); return 0;
+    case WM_POINTERUP:     contact(wp, lp, false); return 0;
+    case WM_POINTERUPDATE: contact(wp, lp, IS_POINTER_INCONTACT_WPARAM(wp) != 0); return 0;
+    case WM_POINTERCAPTURECHANGED: g_touch_n = 0; g_finger.down = false; return 0;
     // 鼠标和触控板走标准鼠标消息：内核异步移动光标，绝不会冻住，光标形状也由 WM_SETCURSOR 正常维护
     case WM_LBUTTONDOWN: SetCapture(h); pointer(lp, false, 1); return 0;
     case WM_LBUTTONUP:   ReleaseCapture(); pointer(lp, false, 0); return 0;

@@ -14,6 +14,21 @@ struct TrendData {
 TrendData tdat[2];
 bool tr_on[2][6] = {{true, true, true, false, false, false}, {true, true, true, false, false, false}};      // 六条线各自开没开：Tr、Tj、Tj 设定、Tr−Tj、pH、转速
 int tr_xax[2] = {0, 0}, tr_yax[2] = {0, 0};      // 横轴：0 时钟 1 实验时间；纵轴：0 全部 1 设定值附近
+
+// ── 自己挑的视野（两指缩放 / 单指拖出来的）──
+// 用户 2026-11-27 要的：两根手指分开放大、靠拢缩小，横竖都缩；放大以后单指左右拖着看别处，
+// 「回到现在」一键交回自动。没动过手势时 on = false，窗口还是照旧自动选（10 / 30 / 60 / 150 分钟）。
+struct TrendView {
+    bool on = false;
+    double right = 0, span = 0;          // 横轴：右边沿是哪一刻（核心的时间）、看多长一段（秒）
+    double ylo = 0, yhi = 0;             // 纵轴：上下限（℃）
+    // 下面这几项是画的时候记下来的，手势拿它把屏上的像素换算成时刻和温度
+    int px = 0, py = 0, pw = 0, ph = 0;  // 画线那块在屏上的位置和大小
+    double x0 = 0, win = 0, lo = 0, hi = 0;
+};
+TrendView tview[2];
+static constexpr double kTrMinSpan = 60.0, kTrMaxSpan = 180 * 60.0;      // 时间轴最细一分钟、最粗三小时（核心就留三小时）
+static constexpr double kTrMinYSpan = 0.4, kTrMaxYSpan = 260.0;          // 温度轴最细 0.4 ℃、最粗 260 ℃（−40…220）
 std::string tr_msg[2];
 std::chrono::steady_clock::time_point tr_msg_at[2];      // 那句话是什么时候说的：留 6 秒再换回「窗口 … min」
 void tr_say(int ci, const std::string& s) { tr_msg[ci] = s; tr_msg_at[ci] = std::chrono::steady_clock::now(); }
@@ -76,8 +91,10 @@ void draw_trend(lv_obj_t* box, int ci, Ui& u) {
     if (!box) return;
     const TrendData& d = tdat[ci];
     TrendPlot& tp = tplots[box];
-    char kb[112]; std::snprintf(kb, sizeof kb, "%zu/%zu/%.1f/%d%d/%d%d%d%d%d%d", d.t.size(), d.marks.size(), d.t.empty() ? 0.0 : d.t.back(), tr_xax[ci], tr_yax[ci],
-                               tr_on[ci][0], tr_on[ci][1], tr_on[ci][2], tr_on[ci][3], tr_on[ci][4], tr_on[ci][5]);
+    TrendView& view = tview[ci];
+    char kb[160]; std::snprintf(kb, sizeof kb, "%zu/%zu/%.1f/%d%d/%d%d%d%d%d%d/%d%.1f/%.1f/%.2f/%.2f", d.t.size(), d.marks.size(), d.t.empty() ? 0.0 : d.t.back(), tr_xax[ci], tr_yax[ci],
+                               tr_on[ci][0], tr_on[ci][1], tr_on[ci][2], tr_on[ci][3], tr_on[ci][4], tr_on[ci][5],
+                               view.on, view.right, view.span, view.ylo, view.yhi);      // 视野也算进去：手势一动就重画
     if (tp.key == kb) return;                   // 数据和选项都没变：不重画
     tp.key = kb;
     lv_obj_clean(box);
@@ -103,7 +120,10 @@ void draw_trend(lv_obj_t* box, int ci, Ui& u) {
         win = w * 60.0; x0 = aligned;
         if (now - aligned <= 0.85 * win) break;
     }
-    u.set_text_raw("tr.win", ui::fmt("窗口 {0} min", {f0(win / 60.0)}));
+    // 人自己缩放 / 拖动过：就按他挑的那一段看，不再自动换窗口
+    if (view.on) { win = view.span; x0 = view.right - view.span; }
+    u.set_text_raw("tr.win", ui::fmt("窗口 {0} min", {win < 60.0 ? f1(win / 60.0) : f0(win / 60.0)}));
+    u.show("tr.now", view.on);          // 「回到现在」只在自己挑过视野时出现
     size_t i0 = 0;
     while (i0 + 1 < d.t.size() && d.t[i0] < x0) i0++;
     auto X = [&](double t) { return static_cast<int>((t - x0) / win * pw + 0.5); };
@@ -125,17 +145,26 @@ void draw_trend(lv_obj_t* box, int ci, Ui& u) {
         lo = std::floor(lo / step) * step; hi = std::ceil(hi / step) * step;
         if (hi <= lo) hi = lo + step;
     }
+    if (view.on) {
+        lo = view.ylo; hi = view.yhi;
+        for (double sx : {0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0}) { step = sx; if ((hi - lo) / sx <= 6) break; }
+    }
     auto Y = [&](double v) { return static_cast<int>((hi - v) / (hi - lo) * ph + 0.5); };
+    // 手势要用的换算：画线那块在屏上的位置，和这会儿横竖两轴各自代表多少
+    {
+        lv_area_t ba; lv_obj_get_coords(box, &ba);
+        view.px = ba.x1 + L; view.py = ba.y1 + T; view.pw = pw; view.ph = ph;
+        view.x0 = x0; view.win = win; view.lo = lo; view.hi = hi;
+    }
 
     // 还没到的时间：淡一点的底
     const int xn = std::min(pw, X(now));
     if (xn < pw) bg(mk(plot, xn, 0, pw - xn, ph, 0), 0xF4F6F9, 255);
     if (zoom) bg(mk(plot, 0, Y((lo + hi) / 2 + 0.1), pw, Y((lo + hi) / 2 - 0.1) - Y((lo + hi) / 2 + 0.1), 0), 0x00A862, 36);
-    const int ny = static_cast<int>(std::round((hi - lo) / step));
-    for (int k = 0; k <= ny; k++) {
-        const double v = lo + k * step;
-        if (k > 0 && k < ny) bg(mk(plot, 0, Y(v), pw, S, 0), 0xDCE3EA, 255);
-        label_r(L - 8 * S, T + Y(v), zoom ? f1(v) : tnum(v));
+    // 刻度落在整数上：自己缩放出来的上下限不是整数（比如 18.7…33.7），刻度还是要写 20、25、30 这种
+    for (double v = std::ceil(lo / step - 1e-9) * step; v <= hi + 1e-9; v += step) {
+        if (v > lo + 1e-9 && v < hi - 1e-9) bg(mk(plot, 0, Y(v), pw, S, 0), 0xDCE3EA, 255);
+        label_r(L - 8 * S, T + Y(v), zoom || step < 1 ? f1(v) : tnum(v));
     }
     label_r(L - 8 * S, T - 12 * S, "℃");
     for (int k = 0; k <= 5; k++) {
@@ -238,11 +267,134 @@ void draw_trend(lv_obj_t* box, int ci, Ui& u) {
     }
 }
 
+// ── 两指缩放 / 单指拖动 ──
+// 主循环每一圈叫一次（不是每半秒刷新那一下）：手势要跟手。LVGL 只收一根手指，所以这里直接读
+// 窗口记下来的那几根（见 main.cpp 的 touch_set）。
+//   两根手指：横着分开 = 时间轴放大、靠拢 = 缩小；竖着同理管温度轴。两指中点底下的那一刻、那个温度钉住不动
+//   一根手指在图里拖：左右拖看早先的段落，上下拖挪温度区间
+// 动过手势以后视野就归人管（view.on），「回到现在」一键交回自动。
+struct TrendGesture {
+    int n = 0;
+    bool pan = false;
+    int x0 = 0, y0 = 0;
+    double dx0 = 0, dy0 = 0, span0 = 0, yspan0 = 0, at_t = 0, at_v = 0, fx = 0, fy = 0;
+    std::chrono::steady_clock::time_point drawn{};
+};
+TrendGesture tges;
+double tr_fake_pinch = 0, tr_fake_pan = 0;
+bool tr_in_fake = false;         // 假装手指时会再叫自己一遍，别在里面又去读那两个开关      // 只给 --do tr:pinch:<倍数> / tr:pan:<像素> 用（开发机上验手势）
+
+// 第一次动手势：把这会儿自动算出来的那个视野原样接过来，手感上是「从眼前这张图接着缩放」
+void trend_seed_view(int ci) {
+    TrendView& v = tview[ci];
+    if (v.on || v.pw <= 0) return;
+    v.on = true; v.span = v.win; v.right = v.x0 + v.win; v.ylo = v.lo; v.yhi = v.hi;
+}
+
+void trend_gesture() {
+    if (cur.rfind("ChTrend", 0) != 0) { tges.n = 0; tges.pan = false; return; }
+    const int ci = channel - 1;
+    TrendView& v = tview[ci];
+    if (v.pw <= 0 || v.ph <= 0) return;
+    // 开发机上没有触摸屏：--do tr:pinch:1.5 假装两根手指在图中间按这个倍数分开（>1 放大、<1 缩小），
+    // 走的就是下面这段真手势的算术。界面上没有这个入口
+    if (tr_fake_pinch > 0 && !tr_in_fake) {
+        const double f = tr_fake_pinch;
+        tr_fake_pinch = 0;
+        tr_in_fake = true;
+        const int cx = v.px + v.pw / 2, cy = v.py + v.ph / 2, d = 80 * UI_SCALE, d2 = static_cast<int>(d * f);
+        g_touch_n = 2; tges.n = 0;
+        g_touch[0] = {1, cx - d, cy - d}; g_touch[1] = {2, cx + d, cy + d};
+        trend_gesture();                                  // 第一下记起手的间距
+        g_touch[0] = {1, cx - d2, cy - d2}; g_touch[1] = {2, cx + d2, cy + d2};
+        tges.drawn = {};
+        trend_gesture();                                  // 第二下才是缩放
+        g_touch_n = 0; tges.n = 0; tr_in_fake = false;
+        return;
+    }
+    if (tr_fake_pan != 0 && !tr_in_fake) {
+        const double dx = tr_fake_pan;
+        tr_fake_pan = 0;
+        tr_in_fake = true;
+        const int cx = v.px + v.pw / 2, cy = v.py + v.ph / 2;
+        g_touch_n = 1; tges.n = 0;
+        g_touch[0] = {1, cx, cy};
+        trend_gesture();                                  // 按下
+        g_touch[0] = {1, cx + static_cast<int>(dx), cy};
+        tges.drawn = {};
+        trend_gesture();                                  // 挪过阈值，开始拖
+        g_touch[0] = {1, cx + static_cast<int>(dx * 2), cy};
+        tges.drawn = {};
+        trend_gesture();                                  // 再拖一截
+        g_touch_n = 0; tges.n = 0; tr_in_fake = false;
+        return;
+    }
+    const int n = g_touch_n;
+    bool changed = false;
+    auto clamp = [](double x, double a, double b) { return x < a ? a : x > b ? b : x; };
+    if (n >= 2) {
+        const double dx = std::fabs(static_cast<double>(g_touch[0].x - g_touch[1].x));
+        const double dy = std::fabs(static_cast<double>(g_touch[0].y - g_touch[1].y));
+        const int mx = (g_touch[0].x + g_touch[1].x) / 2, my = (g_touch[0].y + g_touch[1].y) / 2;
+        if (tges.n < 2) {                       // 第二根手指刚按上：记下起手的样子
+            trend_seed_view(ci);
+            tges.dx0 = dx; tges.dy0 = dy; tges.span0 = v.span; tges.yspan0 = v.yhi - v.ylo;
+            tges.fx = clamp(static_cast<double>(mx - v.px) / v.pw, 0.0, 1.0);
+            tges.fy = clamp(static_cast<double>(my - v.py) / v.ph, 0.0, 1.0);
+            tges.at_t = v.x0 + tges.fx * v.win;
+            tges.at_v = v.hi - tges.fy * (v.hi - v.lo);
+        } else if (v.on) {
+            // 两指横着拉开多少，时间轴就缩多少；竖着拉开管温度。间距太小时算出来的倍数会乱跳，不理
+            if (dx > 12 * UI_SCALE && tges.dx0 > 12 * UI_SCALE) {
+                v.span = clamp(tges.span0 * tges.dx0 / dx, kTrMinSpan, kTrMaxSpan);
+                v.right = tges.at_t + (1.0 - tges.fx) * v.span;
+            }
+            if (dy > 12 * UI_SCALE && tges.dy0 > 12 * UI_SCALE) {
+                const double ys = clamp(tges.yspan0 * tges.dy0 / dy, kTrMinYSpan, kTrMaxYSpan);
+                v.yhi = tges.at_v + tges.fy * ys;
+                v.ylo = v.yhi - ys;
+            }
+            changed = true;
+        }
+        tges.pan = false;
+        g_finger.down = false;                  // 两根手指按着：这不是点按
+    } else if (n == 1) {
+        const Contact& c = g_touch[0];
+        const bool in_plot = c.x >= v.px && c.x < v.px + v.pw && c.y >= v.py && c.y < v.py + v.ph;
+        if (tges.n != 1) { tges.x0 = c.x; tges.y0 = c.y; tges.pan = false; }
+        // 在图里按住挪开十来个像素才算拖：不然轻轻一点就把视野带跑了
+        else if (!tges.pan && in_plot && (std::abs(c.x - tges.x0) > 10 * UI_SCALE || std::abs(c.y - tges.y0) > 10 * UI_SCALE)) {
+            trend_seed_view(ci);
+            tges.pan = v.on;
+        }
+        if (tges.pan && v.on) {
+            v.right += static_cast<double>(tges.x0 - c.x) / v.pw * v.span;        // 手指往左划 = 往早先看
+            const double dv = static_cast<double>(c.y - tges.y0) / v.ph * (v.yhi - v.ylo);
+            v.ylo += dv; v.yhi += dv;
+            tges.x0 = c.x; tges.y0 = c.y;
+            g_finger.down = false;
+            changed = true;
+        }
+    } else tges.pan = false;
+    tges.n = n;
+    if (changed) {
+        // 别让人把图拖到没有数据的地方去：最早到这一段数据的开头，最晚到「现在」再往后留两成空
+        const TrendData& d = tdat[ci];
+        if (!d.t.empty()) v.right = clamp(v.right, d.t.front() + v.span * 0.3, d.t.back() + v.span * 0.25);
+        // 整张图是拆了重搭的，跟着每一圈重画太费：最多 12 帧一秒
+        const auto now = std::chrono::steady_clock::now();
+        if (now - tges.drawn >= std::chrono::milliseconds(80)) { tges.drawn = now; refresh(); }
+    }
+}
+
 bool trend_action(const std::string& a) {
     const int ci = channel - 1;
     if (a.rfind("tr:tog:", 0) == 0) { const int k = a[7] - '0'; if (k >= 0 && k < 6) tr_on[ci][k] = !tr_on[ci][k]; refresh(); return true; }
     if (a.rfind("xax:", 0) == 0) { tr_xax[ci] = a[4] - '0'; refresh(); return true; }
-    if (a.rfind("yax:", 0) == 0) { tr_yax[ci] = a[4] - '0'; refresh(); return true; }
+    if (a.rfind("yax:", 0) == 0) { tr_yax[ci] = a[4] - '0'; tview[ci].on = false; refresh(); return true; }      // 换纵轴模式就交回自动，不然两套说法打架
+    if (a == "tr:now") { tview[ci].on = false; refresh(); return true; }      // 回到现在：视野交回自动（跟着最新的数据走）
+    if (a.rfind("tr:pinch:", 0) == 0) { tr_fake_pinch = std::atof(a.c_str() + 9); return true; }      // 见 trend_gesture 里那段「假装手指」
+    if (a.rfind("tr:pan:", 0) == 0) { tr_fake_pan = std::atof(a.c_str() + 7); return true; }            // 同上：假装一根手指横着拖这么多像素
     if (a == "tr:mark") {
         // 时间标记：记下「现在」这一刻。核心在趋势图上竖一道线，这一炉在跑的话同时写进它的事件日志（导出能看到）
         const json r = ask({{"cmd", "mark.add"}, {"ch", ci + 1}});
