@@ -1,6 +1,7 @@
 // 把控温主循环接到真设备上的那一层：读数从哪来、命令写到哪去。
 // 抽成一个接口，是为了控制核心的其余部分（主循环线程、序列、通信）不接硬件也能跑、能测。
 #pragma once
+#include "../util/flaky.hpp"
 #include "channel_controller.hpp"
 #include <optional>
 #include <stdexcept>
@@ -74,6 +75,9 @@ private:
     int side_[2] = {-1, -1};            // −1 两只都断着，0 加热棒合着，1 TEC 合着
     int valve_ = -1, chiller_run_ = -1; // −1 = 还没写过
     int coolant_tick_ = 0;              // 冷水机水温不用每拍都读（它变得慢，串口也慢）：四拍读一次
+    // 读不到的先晾 10 秒再问：釜内探头没接的时候，每拍都要为它白等两秒，控温循环就跑不到点上
+    //（夹套那一路是温控器给的，不走这里；温控器和继电器是控温的命根子，不晾）
+    Flaky gate_tr_, gate_coolant_;
     std::optional<double> coolant_;
 };
 

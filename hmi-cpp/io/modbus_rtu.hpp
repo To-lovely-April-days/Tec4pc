@@ -33,6 +33,13 @@ public:
         : TextError(x, tail), code(code), timeout(timeout) {}
     std::optional<int> code;   // 从站回的异常码；链路层的错（超时、坏帧）是空的
     bool timeout;              // true = 没等到 / 帧烂尾；false = 收到了但不对
+    // 问的是 A 号、答话的却是 B 号时，这里是 B。自动检测靠它顺藤摸瓜：
+    // 设备改过站号的时候，不用把 1~247 全试一遍，听它自报一次就知道了
+    std::optional<int> heard_station;
+    // 写成「throw ModbusError(…).heard(n)」这种接着写的形式，是为了让这句话还留在 throw 后面：
+    // 抽词表的工具只认 throw TextError / ModbusError 开头的那一句（见 ui/tools/strings.py），
+    // 拆成「先建对象、再 throw」就抽不到，这句话在触摸屏上就没法翻
+    ModbusError& heard(int station) { heard_station = station; return *this; }
 };
 
 uint16_t modbus_crc(const uint8_t* data, size_t n);

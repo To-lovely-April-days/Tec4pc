@@ -16,23 +16,27 @@ ReactorReadings RealReactorHardware::read() {
     ReactorReadings r;
     const Rd105Snapshot s = rd_.read_snapshot();
     r.tj[0] = s.temp_c[0]; r.tj[1] = s.temp_c[1]; r.board_c = s.internal_c;
-    if (yudian_) {
+    if (yudian_ && gate_tr_.resting()) {
+        r.problem = std::string("釜内探头读不到：") + gate_tr_.why();
+    } else if (yudian_) {
         try {
             const auto v = yudian_->read();
+            gate_tr_.ok();
             for (int ch = 0; ch < 2; ch++) {
                 if (v[ch].value && !v[ch].sensor_fault) r.tr[ch] = *v[ch].value;
                 else if (v[ch].problem) r.problem += (r.problem.empty() ? "" : "；") + std::string("釜内探头 ") + (ch == 0 ? "A" : "B") + "：" + *v[ch].problem;
             }
         } catch (const std::exception& e) {
             // 釜内探头读不到不该让夹套也跟着没读数：夹套那一路是温控器给的，照常返回
+            gate_tr_.failed(e.what());
             r.problem = std::string("釜内探头读不到：") + e.what();
         }
     }
     if (chiller_) {
-        if (coolant_tick_++ % 4 == 0) {
-            try { coolant_ = chiller_->read_liquid_temp(); }
-            catch (const std::exception&) { coolant_.reset(); }       // 读不到就是没有这个数：不拿旧值充数，也不因此影响控温
-        }
+        if (coolant_tick_++ % 4 == 0 && !gate_coolant_.resting()) {
+            try { coolant_ = chiller_->read_liquid_temp(); gate_coolant_.ok(); }
+            catch (const std::exception& e) { coolant_.reset(); gate_coolant_.failed(e.what()); }   // 读不到就是没有这个数：不拿旧值充数，也不因此影响控温
+        } else if (gate_coolant_.resting()) coolant_.reset();
         r.coolant_c = coolant_;
     }
     return r;

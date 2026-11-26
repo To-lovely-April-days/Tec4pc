@@ -7,6 +7,7 @@
 #include "../../drivers/yudian.hpp"
 #include "../../io/modbus_rtu.hpp"
 #include <algorithm>
+#include <cstdio>
 #include <optional>
 
 namespace tec {
@@ -115,21 +116,35 @@ namespace {
 // 一个空口要等小半分钟。先一枪探出有没有人，有人才细问是谁
 enum class Probe { Yes, Silent, Garbled };
 
-Probe probe_once(ModbusRtu& m, bool coils) {
+// heard：问的是这个站号、答话的却是另一个号时，把那个号带回来（设备站号被改过，听它自报一次就知道了）
+Probe probe_once(ModbusRtu& m, bool coils, int& heard) {
     try {
         if (coils) m.read_coils(0, 1); else m.read_holding_registers(0, 1);
         return Probe::Yes;
     } catch (const ModbusError& e) {
+        if (e.heard_station) heard = *e.heard_station;
         if (e.code) return Probe::Yes;                     // 回了异常码（这个地址不给读）：人在
         return e.timeout ? Probe::Silent : Probe::Garbled;
     } catch (const std::exception&) { return Probe::Silent; }
 }
 
-bool anyone_there(ModbusRtu& m) {
-    const Probe a = probe_once(m, false);
+bool anyone_there(ModbusRtu& m, int& heard) {
+    const Probe a = probe_once(m, false, heard);
     if (a == Probe::Yes) return true;
     if (a == Probe::Garbled) return false;                 // 收到字节了但对不上：多半帧格式 / 波特率不对，换下一组
-    return probe_once(m, true) == Probe::Yes;              // 一声不吭：再问一句位功能码——有的继电器板不答 FC03
+    return probe_once(m, true, heard) == Probe::Yes;       // 一声不吭：再问一句位功能码——有的继电器板不答 FC03
+}
+
+// 认不出是谁的时候，把它开头四个寄存器读出来写进话里：现场拍一张照片发回来，照着就能把这一类补上
+// （只读四个是因为这句话要塞进检测结果那一行里，再长就显示不下）
+std::string peek(ModbusRtu& m) {
+    std::string out;
+    char b[8];
+    try {
+        for (uint16_t v : m.read_holding_registers(0, 4)) { std::snprintf(b, sizeof b, "%04X ", v); out += b; }
+    } catch (const std::exception&) { return "0~3 号也读不出来"; }
+    if (!out.empty()) out.pop_back();
+    return out;
 }
 
 // 一个口要试的参数组合：先是设置里给这个口写好的那一套（现场九成第一枪就中），
@@ -177,12 +192,20 @@ std::vector<ScanHit> scan_serial_ports(const ScanOptions& opt, const PortOpenFn&
             catch (const std::exception& e) { hit.problem = text_of(e); break; }     // 口打不开（被别的程序占着）：这个口就别试了
             if (!tr) continue;
 
-            for (int station : cb.stations) {
+            std::vector<int> stations = cb.stations;
+            for (size_t si = 0; si < stations.size(); si++) {
+                const int station = stations[si];
                 ModbusRtu m(*tr, static_cast<uint8_t>(station), opt.timeout_ms);
                 // 扫描时不重试：每个不通的口都要白等几倍超时，八个口就是几十秒
                 m.timeout_retries = 0;
                 m.corrupt_retries = 0;
-                if (!anyone_there(m)) continue;                    // 这一组上没人，换下一组
+                int heard = 0;
+                if (!anyone_there(m, heard)) {
+                    // 有人答话，只是站号不是我们问的那个（设备被改过站号）：顺着它自报的号再问一遍
+                    if (heard > 0 && heard < 248 && std::find(stations.begin(), stations.end(), heard) == stations.end())
+                        stations.push_back(heard);
+                    continue;
+                }
 
                 std::vector<Found> matched;
                 for (IdFn f : kIdentifiers) {
@@ -192,11 +215,13 @@ std::vector<ScanHit> scan_serial_ports(const ScanOptions& opt, const PortOpenFn&
                 }
                 if (matched.empty()) {
                     // 有人答话，可是七类都对不上。先记着别声张：同一条总线上别的站号可能才是我们要找的那台，
-                    // 一直到这个口全试完还是没认出来，才把这句话报出去——总比让人以为这口是空的强
-                    if (answered.t.empty())
-                        answered = compose("这个口上有设备在答话（{0} / {1}{2} / 站号 {3}），但不是我们认识的那七类",
-                                           {val(std::to_string(cb.baud)), val(std::string(1, cb.parity)),
-                                            val(std::to_string(cb.stop_bits)), val(std::to_string(station))});
+                    // 一直到这个口全试完还是没认出来，才把这句话报出去——总比让人以为这口是空的强。
+                    // 波特率 / 校验 / 站号记进这一条里（界面上那一行单有一格显示它们），话里只留寄存器：
+                    // 现场把这一行拍下来发回来，照着就能把这一类设备补上
+                    if (answered.t.empty()) {
+                        answered = compose("有人答话但认不出：{0}", {val(peek(m))});
+                        hit.baud = cb.baud; hit.parity = cb.parity; hit.stop_bits = cb.stop_bits; hit.station = station;
+                    }
                     continue;
                 }
                 hit.baud = cb.baud; hit.parity = cb.parity; hit.stop_bits = cb.stop_bits; hit.station = station;

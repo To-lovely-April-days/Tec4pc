@@ -1,6 +1,7 @@
 // 搅拌、pH、进料三样的真设备接线。哪样没接就给 nullptr，对应的读数是「没有」，不影响别的。
 #pragma once
 #include "aux_runner.hpp"
+#include "../util/flaky.hpp"
 
 namespace tec {
 
@@ -32,6 +33,8 @@ private:
     StirMotor motor_[2];
     int max_accel_reg_[2] = {-1, -1};
     bool x10_[2] = {false, false};
+    // 读不到的那台先晾 10 秒再问：不然每拍都要为它白等两秒，控温循环和界面全跟着卡（见 util/flaky.hpp）
+    Flaky gate_stir_[2], gate_ph_[2], gate_feed_;
 };
 
 }  // namespace tec

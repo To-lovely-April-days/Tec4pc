@@ -86,8 +86,11 @@ void CoreApp::tick() {
     if (scanning_) return;
     station_->step();
     const StationSnapshot s = station_->snapshot();
+    // 搅拌 / pH / 加料每秒一次。**要在拿锁之前走**：这一步是走串口的，有设备读不到就得等满超时，
+    // 占着锁等于把界面一起拖住——界面每半秒问一次状态，问不到就卡在那儿，点菜单也没反应
+    //（用户 2026-11-26 现场遇到的卡顿）。AuxRunner 自己有锁，它的读数不靠这把锁保护
+    if (k_ % 2 == 0) aux_->step(s.t);
     std::lock_guard<std::mutex> g(m_);
-    if (k_ % 2 == 0) aux_->step(s.t);                 // 搅拌 / pH / 加料每秒一次
     for (int c = 0; c < 2; c++) ch_[c].seq->tick(s.t);
     for (auto& e : station_->take_events())
         if (e.ch >= 0 && ch_[e.ch].rec->active()) ch_[e.ch].rec->event(e.t - ch_[e.ch].rec_t0, e.text.find("安全联锁") != std::string::npos ? "报警" : "设备", e.text);

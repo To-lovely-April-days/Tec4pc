@@ -516,6 +516,8 @@ TEC 温控器	TEC controller
 切换继电器	Switch relay						
 Tr 探头	Tr probe						
 搅拌驱动	Stirrer drive						
+0~3 号也读不出来	Registers 0–3 unreadable too						
+有人答话但认不出：{0}	Something answered, not recognised: {0}						
 认不准：{0} 都对得上，请人工指定	Ambiguous: {0} matches — pick one by hand						
 这个通道没有接搅拌驱动器	No stirrer drive on this channel						
 没有接进料系统	No dosing system connected						
@@ -569,7 +571,7 @@ Tr 探头	Tr probe
 已用 {0} s	{0} s						
 {0} 口	Port {0}						
 {0} · 站号 {1}	{0} · station {1}						
-没认出来	Not identified						
+问了没人答	No reply						
 检测停了	Scan stopped						
 没有可以应用的行	No rows to apply						
 已按检测结果改了 {0} 台，并记住了它们的 USB 口；重启控制核心后生效	Updated {0} device(s) and remembered USB ports; restart core to apply						
@@ -821,6 +823,7 @@ pH 电极测、调节泵加，把 pH 维持在目标附近；走满维持时长�
 把 assets 文件夹（里面是 fonts 和 img）放到下面任意一处：	Put the assets folder (it holds fonts and img) in any one of these places:						
 
 # 下面这些界面上已经没有了，留着免得以后改回来又要重翻；要清掉直接删行
+# 没认出来	Not identified						
 #  · 固件 							
 # ｜发 							
 # ｜收 							

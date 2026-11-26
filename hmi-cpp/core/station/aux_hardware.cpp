@@ -2,10 +2,26 @@
 #include "../../drivers/aqmd.hpp"
 #include "../../drivers/bht_ph.hpp"
 #include "../../drivers/feed.hpp"
+#include "../util/text_error.hpp"
 #include <cmath>
 #include <stdexcept>
 
 namespace tec {
+
+namespace {
+// 读一次：通了就把闸放开，读不到就记一笔（连着几次读不到，下面那几次就直接跳过，不再白等超时）
+template <class F>
+auto read_guarded(Flaky& gate, F&& f) -> decltype(f()) {
+    try {
+        auto v = f();
+        gate.ok();
+        return v;
+    } catch (const std::exception& e) {
+        gate.failed(e.what());
+        throw;
+    }
+}
+}  // namespace
 
 RealAuxHardware::RealAuxHardware(Aqmd* stir_a, Aqmd* stir_b, BhtPh* ph_a, BhtPh* ph_b, FeedSystem* feed, const StirMotor& ma, const StirMotor& mb)
     : stir_{stir_a, stir_b}, ph_{ph_a, ph_b}, feed_(feed), motor_{ma, mb} {}
@@ -31,7 +47,8 @@ StirReading RealAuxHardware::read_stir(int ch) {
     StirReading r;
     Aqmd* d = stir_[ch];
     if (!d) return r;
-    const AqmdStatus s = d->read_status();
+    if (gate_stir_[ch].resting()) throw TextError(gate_stir_[ch].why());
+    const AqmdStatus s = read_guarded(gate_stir_[ch], [&] { return d->read_status(); });
     r.ok = true;
     const double rpm = s.rpm(motor_[ch].poles, motor_[ch].gear_ratio);
     r.rpm = std::isnan(rpm) ? 0.0 : rpm;
@@ -46,7 +63,8 @@ PhReading RealAuxHardware::read_ph(int ch) {
     PhReading r;
     BhtPh* d = ph_[ch];
     if (!d) return r;
-    const BhtLive v = d->read_live();
+    if (gate_ph_[ch].resting()) throw TextError(gate_ph_[ch].why());
+    const BhtLive v = read_guarded(gate_ph_[ch], [&] { return d->read_live(); });
     r.ph = v.ph;
     if (v.temp_status == 0) r.temp_c = v.temp_c;     // 温度状态不正常时这个温度不可信，不给
     return r;
@@ -55,7 +73,8 @@ PhReading RealAuxHardware::read_ph(int ch) {
 FeedReading RealAuxHardware::read_feed() {
     FeedReading r;
     if (!feed_) return r;
-    const FeedSnapshot s = feed_->read_all();
+    if (gate_feed_.resting()) throw TextError(gate_feed_.why());
+    const FeedSnapshot s = read_guarded(gate_feed_, [&] { return feed_->read_all(); });
     r.ok = true;
     for (int p = 1; p <= 2; p++) { r.total_ml[p - 1] = s.pump_total(p); r.flow_ml_min[p - 1] = s.pump_flow(p); r.on[p - 1] = s.pump_on(p); }
     if (s.any_alarm()) r.alarm_text = s.alarm_text();

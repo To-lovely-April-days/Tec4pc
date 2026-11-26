@@ -380,7 +380,9 @@ void refresh_scan_running() {
         const std::string fw = h.value("firmware", "");
         const std::string prob = core_text(h, "problem");
         const std::string model = fw.empty() ? h.value("model", "") : ui::fmt("{0} · 固件 {1}", {h.value("model", ""), fw});
-        u.set_text(id + ".m", !prob.empty() ? prob : !model.empty() ? model : "没认出来");
+        // 「问了没人答」和「有人答话但认不出」是两回事：前者多半是线没接 / 口不对 / 设备没上电，
+        // 后者是我们这边的识别规矩不认识它。分开写，现场才知道该查哪一头
+        u.set_text(id + ".m", !prob.empty() ? prob : !model.empty() ? model : "问了没人答");
         u.set_text_color(id + ".m", !prob.empty() ? 0xD64545 : !model.empty() ? 0x1A2330 : 0x8792A0);
     }
     if (!r.value("running", false)) {

@@ -219,6 +219,26 @@ int main() {
         check(hits[0].problem.filled().find("答话") != std::string::npos, "但要说清楚「这个口上有东西在答话」");
     }
 
+    // ── 7. 站号被改过（不在 1、2 里）：听它自报一次，顺着那个号再问 ──
+    {
+        set_port_lister([] { return std::vector<SerialPortInfo>{{"COM43", "N", "USB\\N", 1}}; });
+        const Regs g = bht_slave(7);                  // 一台站号改成 7 的 pH 电极
+        auto open = [g](const SerialConfig&) -> std::unique_ptr<SerialTransport> {
+            return std::make_unique<FakeSerial>([g](const std::vector<uint8_t>& q) {
+                if (q.size() < 2) return std::vector<uint8_t>{};
+                if (q[0] == g.station) return g(q);
+                // 问别的站号时它也答话（485 上只有它一个），但帧里写的是自己的号 —— 真设备不会这样，
+                // 这里是为了造出「答话的站号和问的不一样」这一幕
+                std::vector<uint8_t> r = g({g.station, q[1], q[2], q[3], q[4], q[5], 0, 0});
+                return r;
+            });
+        };
+        ScanOptions opt; opt.timeout_ms = 20; opt.bauds = {9600};
+        const std::vector<ScanHit> hits = scan_serial_ports(opt, open);
+        check(hits.size() == 1 && hits[0].type == "ph", "站号 7 的 pH 电极也认出来了");
+        check(hits[0].station == 7, "记下来的是它真正的站号 7");
+    }
+
     set_port_lister(nullptr);
     if (fails == 0) std::printf("自动检测：全部通过\n");
     return fails == 0 ? 0 : 1;

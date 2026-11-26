@@ -30,7 +30,10 @@ struct RealDevices::Impl {
     std::unique_ptr<RealReactorHardware> reactor;
     std::unique_ptr<RealAuxHardware> aux;
 
-    ModbusRtu& bus(const DeviceComm& c) {
+    // critical = 温控器和继电器模块（缺了就不能控温）：给足超时和重试，宁可慢也要读到。
+    // 别的几台（釜内探头、冷水机、pH、搅拌、进料）等得起：超时短一点、只重试一次 ——
+    // 一台没接的设备原来每次读要白等 500×3 + 退避 400 ≈ 2 秒，几台加起来就把一拍撑爆了
+    ModbusRtu& bus(const DeviceComm& c, bool critical = true) {
 #ifdef _WIN32
         auto& p = ports[c.port];
         if (!p) {
@@ -40,10 +43,11 @@ struct RealDevices::Impl {
         }
         auto& lk = locks[c.port];
         if (!lk) lk = std::make_shared<std::mutex>();
-        buses.push_back(std::make_unique<ModbusRtu>(*p, static_cast<uint8_t>(c.station), 500, lk));
+        buses.push_back(std::make_unique<ModbusRtu>(*p, static_cast<uint8_t>(c.station), critical ? 500 : 300, lk));
+        if (!critical) { buses.back()->timeout_retries = 1; buses.back()->corrupt_retries = 1; }
         return *buses.back();
 #else
-        (void)c;
+        (void)c; (void)critical;
         throw std::runtime_error("真串口只有 Windows 版；这台电脑上请用 --sim");
 #endif
     }
@@ -64,13 +68,13 @@ RealDevices::RealDevices(const AppSettings& s) : d_(std::make_unique<Impl>()) {
     };
     bring_up("rd105", [&](const DeviceComm& c) { d_->rd = std::make_unique<Rd105>(d_->bus(c)); d_->rd->read_snapshot(); });        // 读一拍：通不通当场知道
     bring_up("io8r", [&](const DeviceComm& c) { d_->io = std::make_unique<Io8r>(d_->bus(c)); d_->io->read_relays(); });
-    bring_up("chiller", [&](const DeviceComm& c) { d_->chiller = std::make_unique<Chiller>(d_->bus(c)); d_->chiller->read_state(); });
-    bring_up("tr", [&](const DeviceComm& c) { d_->yudian = std::make_unique<YudianProbe>(d_->bus(c)); d_->yudian->init(YudianKind::Thermal); });
-    bring_up("ph1", [&](const DeviceComm& c) { d_->ph[0] = std::make_unique<BhtPh>(d_->bus(c)); d_->ph[0]->read_live(); });
-    bring_up("ph2", [&](const DeviceComm& c) { d_->ph[1] = std::make_unique<BhtPh>(d_->bus(c)); d_->ph[1]->read_live(); });
-    bring_up("stir1", [&](const DeviceComm& c) { d_->stir[0] = std::make_unique<Aqmd>(d_->bus(c)); d_->stir[0]->read_status(); });
-    bring_up("stir2", [&](const DeviceComm& c) { d_->stir[1] = std::make_unique<Aqmd>(d_->bus(c)); d_->stir[1]->read_status(); });
-    bring_up("feed", [&](const DeviceComm& c) { d_->feed = std::make_unique<FeedSystem>(d_->bus(c)); d_->feed->read_all(); });
+    bring_up("chiller", [&](const DeviceComm& c) { d_->chiller = std::make_unique<Chiller>(d_->bus(c, false)); d_->chiller->read_state(); });
+    bring_up("tr", [&](const DeviceComm& c) { d_->yudian = std::make_unique<YudianProbe>(d_->bus(c, false)); d_->yudian->init(YudianKind::Thermal); });
+    bring_up("ph1", [&](const DeviceComm& c) { d_->ph[0] = std::make_unique<BhtPh>(d_->bus(c, false)); d_->ph[0]->read_live(); });
+    bring_up("ph2", [&](const DeviceComm& c) { d_->ph[1] = std::make_unique<BhtPh>(d_->bus(c, false)); d_->ph[1]->read_live(); });
+    bring_up("stir1", [&](const DeviceComm& c) { d_->stir[0] = std::make_unique<Aqmd>(d_->bus(c, false)); d_->stir[0]->read_status(); });
+    bring_up("stir2", [&](const DeviceComm& c) { d_->stir[1] = std::make_unique<Aqmd>(d_->bus(c, false)); d_->stir[1]->read_status(); });
+    bring_up("feed", [&](const DeviceComm& c) { d_->feed = std::make_unique<FeedSystem>(d_->bus(c, false)); d_->feed->read_all(); });
     // 试读失败的那几台当作没接（指针清掉），免得后面每拍都去撞一台不通的设备
     for (auto& st : status_) {
         if (st.ok) continue;
