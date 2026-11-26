@@ -57,7 +57,7 @@ lv_obj_t* txta(lv_obj_t* p, int ax, int cy, char anchor, const char* s, int weig
 // 换成英文、德文以后前面那段会变长，这一段的位置写死的话就被压在底下了：
 // 量一下前一段比设计稿里宽了多少，这一段就往右让多少。前面那段没变长（中文）就一动不动，和原来一样。
 // prev_w 是前一段在设计稿里的宽度
-lv_obj_t* txta_shift(lv_obj_t* p, int ax, int cy, lv_obj_t* prev, int prev_w, const char* s, int weight, float px, uint32_t c, int a, int ls, int wrap_w);
+lv_obj_t* txta_shift(lv_obj_t* p, int ax, int cy, char anchor, lv_obj_t* prev, int prev_w, const char* s, int weight, float px, uint32_t c, int a, int ls, int wrap_w);
 lv_obj_t* im(lv_obj_t* p, int x, int y, const char* path);
 // 一段文字现在多宽（按字体直接量，不用先让整页重排一遍）
 int label_w(lv_obj_t* label);

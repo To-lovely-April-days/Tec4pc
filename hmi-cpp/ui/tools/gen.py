@@ -110,11 +110,23 @@ for name in pages:
             # 隔着两块牌子的两段字，前一段变长该往右让的是后面那块牌子本身，不是牌子里的字——
             # 串上去的话字会跑到牌子外面（2026-11-26 出图看到的「序列存在设备本机 · 最多 6 步」）
             prev = last_text
-            after = (prev and anc == 'l' and n['lines'] == 1 and prev['lines'] == 1
+            # 「在同一行上」原来是按两段字的中心线对齐判的，只认得出字号一样的那种。可「数值 + 单位」
+            # 是按基线对齐的（62 px 的数字配 22 px 的 ℃），中心线差着十几个像素，判不出来——于是单位的
+            # 位置按设计稿里的样例值写死，填进更宽的数就被压住（用户 2026-11-26 截的键盘那两张图）。
+            # 改成看竖直方向上压没压在一起：矮的那段有六成以上落在高的那段的高度范围里，就算同一行
+            def same_line(a, b):
+                top = max(a['y'], b['y']); bot = min(a['y'] + a['h'], b['y'] + b['h'])
+                return bot - top > 0.6 * min(a['h'], b['h'])
+            # 没名字的那一段（读数后面的单位）按居中摆的也串上；靠右摆的不串——
+            # 它是贴着自己那个框的右边摆的（结晶曲线编辑里每格的 ℃ 就是），往右推会推出框去
+            # 前一段必须是靠左摆的。靠右摆的那种（读数右对齐、右边跟着单位，总览底下那几格就是）
+            # 变长是往左伸的，右边沿压根不动，后面那段跟着让反而被挤出格子去（2026-11-26 出图看到「℃/min」顶出卡片）
+            after = (prev and prev['anchor'] == 'l' and (anc == 'l' or (anc == 'c' and not n['id']))
+                     and n['lines'] == 1 and prev['lines'] == 1
                      and box_of(p) == box_of(prev['p'])
-                     and abs(prev['cy'] - n['y'] - n['h'] / 2) < 3 and 0 <= n['x'] - prev['right'] <= 48)
+                     and same_line(prev, n) and 0 <= n['x'] - prev['right'] <= 48)
             if after:
-                call = f'txta_shift({P}, {axx}, {cy}, t[{prev["i"]}], {R(prev["w"])}, {args})'
+                call = f'txta_shift({P}, {axx}, {cy}, \'{anc}\', t[{prev["i"]}], {R(prev["w"])}, {args})'
             else:
                 call = f'txta({P}, {axx}, {cy}, \'{anc}\', {args})'
             emit(f't[{i}] = ' + call + ';')
@@ -122,7 +134,14 @@ for name in pages:
                 emit(f'ui.reg_text("{cstr(n["id"])}", t[{i}], \'{anc}\', {axx}, {cy});')
                 # 跟着前一段走的：把这层关系也告诉界面，前一段的字一换（「通道 1」→ Channel 1），这一段自己往右让
                 if after: emit(f'ui.reg_follow("{cstr(n["id"])}", t[{prev["i"]}], {R(prev["w"])});')
-            last_text = {'i': i, 'p': p, 'right': n['x'] + n['w'], 'cy': n['y'] + n['h'] / 2, 'lines': n['lines'], 'w': n['w']}
+            elif after:
+                # 设计稿里没名字的那一段也要串上。读数后面那个单位（℃、rpm、min）就是这种：
+                # 它自己不用改，可前面的数一变宽就会压住它。没名字就给它一个只在这一页里用的内部名字
+                #（「~」打头，程序里不会去用），为的是让它进得了那张「谁跟着谁」的表
+                emit(f'ui.reg_text("~{i}", t[{i}], \'{anc}\', {axx}, {cy});')
+                emit(f'ui.reg_follow("~{i}", t[{prev["i"]}], {R(prev["w"])});')
+            last_text = {'i': i, 'p': p, 'right': n['x'] + n['w'], 'cy': n['y'] + n['h'] / 2,
+                         'y': n['y'], 'h': n['h'], 'lines': n['lines'], 'w': n['w'], 'anchor': anc}
             continue
         if 'img' in n:
             f, d = cut(n); call = f'im({P}, {rx + d}, {ry + d}, "{f}")'

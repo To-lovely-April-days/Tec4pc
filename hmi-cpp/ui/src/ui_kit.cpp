@@ -279,8 +279,8 @@ lv_obj_t* txta(lv_obj_t* p, int ax, int cy, char anchor, const char* s0, int wei
 // 搭页面那一下，这一段已经往右让了多少。三段连着排（A→B→C）时 C 要把 A 让出来的那份也算上
 static std::map<lv_obj_t*, int> g_init_shift;
 
-lv_obj_t* txta_shift(lv_obj_t* p, int ax, int cy, lv_obj_t* prev, int prev_w, const char* s, int weight, float px, uint32_t c, int a, int ls, int wrap_w) {
-    lv_obj_t* l = txta(p, ax, cy, 'l', s, weight, px, c, a, ls, wrap_w);
+lv_obj_t* txta_shift(lv_obj_t* p, int ax, int cy, char anchor, lv_obj_t* prev, int prev_w, const char* s, int weight, float px, uint32_t c, int a, int ls, int wrap_w) {
+    lv_obj_t* l = txta(p, ax, cy, anchor, s, weight, px, c, a, ls, wrap_w);
     const int grew = prev ? label_w(prev) - prev_w : 0;       // 前一段比设计稿里宽出来多少
     const int extra = (grew > 0 ? grew : 0) + (prev ? g_init_shift[prev] : 0);
     g_init_shift[l] = extra;
@@ -289,7 +289,11 @@ lv_obj_t* txta_shift(lv_obj_t* p, int ax, int cy, lv_obj_t* prev, int prev_w, co
     lv_obj_add_event_cb(l, [](lv_event_t* e) { g_init_shift.erase(static_cast<lv_obj_t*>(lv_event_get_target(e))); }, LV_EVENT_DELETE, nullptr);
     // 往右让的时候要从设计稿里那个 ax 算起，不能读 lv_obj_get_x()：这会儿这一页还没排过版，
     // 读回来是 0，字就全挤到外壳左边去了（2026-11-26：英文界面上「Clock」压在自己的小圆点上）
-    if (extra > 0) lv_obj_set_x(l, ax + extra);
+    if (extra > 0) {
+        int w = 0, h = 0;
+        text_size(l, lv_label_get_text(l), wrap_w, w, h);
+        lv_obj_set_x(l, (anchor == 'l' ? ax : anchor == 'r' ? ax - w : ax - w / 2) + extra);
+    }
     return l;
 }
 

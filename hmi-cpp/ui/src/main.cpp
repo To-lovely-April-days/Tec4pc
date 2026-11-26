@@ -165,6 +165,16 @@ struct App {
         std::string shown = kps.text.empty() ? "0" : kps.text;
         if (shown[0] == '-') shown.replace(0, 1, "−");
         u.set_text("kp.value", shown);
+        // 单位紧跟着数字走。「数字变宽就把后面那段往右让」这件事生成的代码里已经串上了（见 gen.py 的
+        // txta_shift / reg_follow），但那套只往右让、不往回收：键盘上这个数从「0」到「−188.88」宽度差一倍多，
+        // 短的时候单位就孤零零停在远处。所以这儿每次都按当前这个数的宽度重摆一遍——
+        // 先把那一段自己让出去的距离清掉（它刚被上面的 set_text 挪过），再整体挪装它的那个小框
+        if (lv_obj_t* ub = u.box("kp.unit"))
+            if (lv_obj_t* vb = u.box("kp.value"))
+                if (lv_obj_t* vl = u.label("kp.value")) {
+                    if (lv_obj_t* ul = u.label("kp.unit")) lv_obj_set_x(ul, 0);
+                    lv_obj_set_x(ub, lv_obj_get_x(vb) + label_w(vl) + 8 * UI_SCALE);
+                }
         const double v = std::atof(kps.text.c_str());
         lv_obj_t* tr = u.box("kp.track");
         if (!tr) return;
