@@ -1,5 +1,6 @@
 // 串口的最小抽象。真机上是 Windows 串口（win_serial），测试里换成假串口（fake_serial），整条链路不接硬件也能跑一遍。
 #pragma once
+#include "../core/util/text_error.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -16,6 +17,13 @@ public:
     virtual void write(const uint8_t* data, size_t n) = 0;
     // 最多读 n 个字节；timeout_ms 内一个字节都没来就返回 0
     virtual int read(uint8_t* buf, size_t n, int timeout_ms) = 0;
+};
+
+// 「系统里没有这个口」：COM 号在设备列表里（驱动装着），可实际打不开——拔掉的虚拟口、
+// 主板上有名无实的 COM 都是这样。自动检测见到它就整条跳过，不往屏上刷一片红
+class SerialMissing : public TextError {
+public:
+    using TextError::TextError;
 };
 
 struct SerialConfig {

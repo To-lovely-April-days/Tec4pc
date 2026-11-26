@@ -507,6 +507,8 @@ Tr 低于下限 {0} ℃（实测 {1} ℃）	Tr below the {0} ℃ limit (measured
 等待操作人确认	Waiting for the operator to acknowledge						
 控温被停止，序列中断在第 	Control was stopped; the sequence broke off at step 						
 序列已完成，温度保持中	Sequence finished; temperature is being held						
+（{0} 按 {1} 开着，这台要 {2}）	({0} opened it at {1}; this one needs {2})						
+和同口那台设备参数不一样	Port settings clash						
 真串口只有 Windows 版；这台电脑上请用 --sim	Real serial ports are Windows-only; use --sim on this machine						
 设置里没有这台设备	Not in the settings						
 温控器或继电器模块没连上	Controller or relay not connected						
@@ -516,7 +518,7 @@ TEC 温控器	TEC controller
 切换继电器	Switch relay						
 Tr 探头	Tr probe						
 搅拌驱动	Stirrer drive						
-0~3 号也读不出来	Registers 0–3 unreadable too						
+0~5 号也读不出来	Registers 0–5 unreadable too						
 有人答话但认不出：{0}	Something answered, not recognised: {0}						
 认不准：{0} 都对得上，请人工指定	Ambiguous: {0} matches — pick one by hand						
 这个通道没有接搅拌驱动器	No stirrer drive on this channel						
@@ -823,6 +825,11 @@ pH 电极测、调节泵加，把 pH 维持在目标附近；走满维持时长�
 把 assets 文件夹（里面是 fonts 和 img）放到下面任意一处：	Put the assets folder (it holds fonts and img) in any one of these places:						
 
 # 下面这些界面上已经没有了，留着免得以后改回来又要重翻；要清掉直接删行
+# 和同口那台设备参数不一样（{0} 按 {1} {2}{3} 开着，这台要 {4} {5}{6}）	Clashes with the other device on this port ({0} opened it at {1} {2}{3}; this one needs {4} {5}{6})						
+# {0} 已经按「{1}」的参数开着了（{2} {3}{4}），这台要 {5} {6}{7}：同一个口上两台设备参数不一样，开不了。把用不着的那台停用，或者把串口改对	{0} is already open with {1}'s settings ({2} {3}{4}); this one needs {5} {6}{7}. Two devices on one port must share the same settings — disable the one you don't use, or correct its port						
+# {0} 已经按「{1}」的参数开着了（{2} {3}{4}），这台要的是 {5} {6}{7}。							
+# 同一个口上两台设备的参数不一样，开不了：把用不着的那台停用，或者把串口改对							
+# 0~3 号也读不出来	Registers 0–3 unreadable too						
 # 没认出来	Not identified						
 #  · 固件 							
 # ｜发 							

@@ -135,14 +135,14 @@ bool anyone_there(ModbusRtu& m, int& heard) {
     return probe_once(m, true, heard) == Probe::Yes;       // 一声不吭：再问一句位功能码——有的继电器板不答 FC03
 }
 
-// 认不出是谁的时候，把它开头四个寄存器读出来写进话里：现场拍一张照片发回来，照着就能把这一类补上
-// （只读四个是因为这句话要塞进检测结果那一行里，再长就显示不下）
+// 认不出是谁的时候，把它开头六个寄存器读出来写进话里：现场拍一张照片发回来，照着就能把这一类补上
+// （只读六个是因为这句话要塞进检测结果那一行里，再长就显示不下）
 std::string peek(ModbusRtu& m) {
     std::string out;
     char b[8];
     try {
-        for (uint16_t v : m.read_holding_registers(0, 4)) { std::snprintf(b, sizeof b, "%04X ", v); out += b; }
-    } catch (const std::exception&) { return "0~3 号也读不出来"; }
+        for (uint16_t v : m.read_holding_registers(0, 6)) { std::snprintf(b, sizeof b, "%04X ", v); out += b; }
+    } catch (const std::exception&) { return "0~5 号也读不出来"; }
     if (!out.empty()) out.pop_back();
     return out;
 }
@@ -183,12 +183,14 @@ std::vector<ScanHit> scan_serial_ports(const ScanOptions& opt, const PortOpenFn&
         ScanHit hit;
         hit.port = p.port; hit.usb_id = p.usb_id; hit.usb_name = p.name; hit.slot = p.slot;
         Text answered;          // 有人答话但认不出是谁；这个口全试完都没认出来才报它
+        bool missing = false;   // 系统里没这个口（设备列表里的空壳）：这一条不报、不占行
 
         for (const Combo& cb : combos_for(p.port, opt)) {
             if (!hit.type.empty() || !hit.problem.t.empty()) break;
             SerialConfig sc; sc.port = p.port; sc.baud = cb.baud; sc.parity = cb.parity; sc.stop_bits = cb.stop_bits;
             std::unique_ptr<SerialTransport> tr;
             try { tr = open(sc); if (tr) tr->open(); }
+            catch (const SerialMissing&) { missing = true; break; }                  // 系统里没这个口：当它不存在
             catch (const std::exception& e) { hit.problem = text_of(e); break; }     // 口打不开（被别的程序占着）：这个口就别试了
             if (!tr) continue;
 
@@ -238,6 +240,7 @@ std::vector<ScanHit> scan_serial_ports(const ScanOptions& opt, const PortOpenFn&
             }
             try { tr->close(); } catch (const std::exception&) {}
         }
+        if (missing) continue;                 // 空壳口：不进结果、也不往屏上占一行
         if (hit.type.empty() && hit.problem.t.empty()) hit.problem = answered;
         out.push_back(hit);
         if (on_progress) on_progress(i + 1, total, hit);

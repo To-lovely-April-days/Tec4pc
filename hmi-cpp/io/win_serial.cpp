@@ -39,7 +39,14 @@ public:
         // COM10 以上必须写成 \\.\COM10，COM1–9 这么写也行，所以统一加前缀
         const std::string path = "\\\\.\\" + cfg_.port;
         h_ = CreateFileA(path.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
-        if (h_ == INVALID_HANDLE_VALUE) throw TextError("打不开串口 {0}{1}", {cfg_.port, last_error_text()});
+        if (h_ == INVALID_HANDLE_VALUE) {
+            // 系统里压根没这个口（错误码 2）和「口在、但打不开」（被占用、没权限）要分开：
+            // 前者是设备列表里的空壳，自动检测直接跳过就行，不是毛病
+            const DWORD code = GetLastError();
+            const std::string why = last_error_text();
+            if (code == ERROR_FILE_NOT_FOUND) throw SerialMissing("串口 {0} 不在了：系统里查不到这个口", {cfg_.port});
+            throw TextError("打不开串口 {0}{1}", {cfg_.port, why});
+        }
         DCB dcb{};
         dcb.DCBlength = sizeof dcb;
         if (!GetCommState(h_, &dcb)) { const auto e = last_error_text(); close(); throw TextError("读不到串口 {0} 的参数{1}", {cfg_.port, e}); }

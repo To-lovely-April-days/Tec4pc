@@ -239,6 +239,21 @@ int main() {
         check(hits[0].station == 7, "记下来的是它真正的站号 7");
     }
 
+    // ── 8. 设备列表里有、系统里其实没有的空壳口：整条不要，别在屏上刷一片红 ──
+    {
+        set_port_lister([] {
+            return std::vector<SerialPortInfo>{{"COM1", "板载", "", 0}, {"COM44", "A", "USB\\A", 1}};
+        });
+        const Regs g = bht_slave(1);
+        auto open = [g](const SerialConfig& c) -> std::unique_ptr<SerialTransport> {
+            if (c.port == "COM1") throw SerialMissing("串口 {0} 不在了：系统里查不到这个口", {c.port});
+            return std::make_unique<FakeSerial>([g](const std::vector<uint8_t>& q) { return g(q); });
+        };
+        ScanOptions opt; opt.timeout_ms = 20; opt.bauds = {9600};
+        const std::vector<ScanHit> hits = scan_serial_ports(opt, open);
+        check(hits.size() == 1 && hits[0].port == "COM44", "空壳口不出现在结果里，只剩真的那个");
+    }
+
     set_port_lister(nullptr);
     if (fails == 0) std::printf("自动检测：全部通过\n");
     return fails == 0 ? 0 : 1;

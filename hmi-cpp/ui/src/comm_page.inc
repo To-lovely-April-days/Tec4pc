@@ -355,23 +355,27 @@ void refresh_scan_running() {
         lv_obj_set_width(bar, total > 0 ? std::max(0, full * done / total) : 0);
     }
     const json& hits = r["hits"];
+    // 屏上只有八行，口比八个多的时候往下滚：永远显示最近问过的这八个
+    //（用户 2026-11-27：现场十五个口，后面的看不见）
+    const int base = std::max(0, static_cast<int>(hits.size()) - 8);
     for (int k = 0; k < 8; k++) {
+        const int idx = base + k;
         const std::string id = "cr.r." + std::to_string(k);
-        const bool on = k < total;
+        const bool on = idx < total;
         u.show(id, on);
         if (!on) continue;
-        const bool have = k < static_cast<int>(hits.size());
-        const bool now = have && k == static_cast<int>(hits.size()) - 1 && r.value("running", false);
+        const bool have = idx < static_cast<int>(hits.size());
+        const bool now = have && idx == static_cast<int>(hits.size()) - 1 && r.value("running", false);
         // 一个圆点改颜色：绿 = 认出来了、蓝 = 正在问、灰 = 还没问
         if (lv_obj_t* o = u.box(id + ".dot")) if (u.changed(id + ".dot", !have ? 0 : now ? 1 : 2))
             bg(o, !have ? 0xC3CCD6 : now ? 0x00559C : 0x00B368, 255);
         if (!have) {
-            u.set_text_raw(id + ".slot", ui::fmt("{0} 口", {std::to_string(k + 1)})); u.set_text(id + ".p", "—"); u.set_text(id + ".link", "—");
+            u.set_text_raw(id + ".slot", ui::fmt("{0} 口", {std::to_string(idx + 1)})); u.set_text(id + ".p", "—"); u.set_text(id + ".link", "—");
             // 颜色也要盖掉：设计稿里这几行本来有一行是蓝的（画的是「正在问」那一行），不盖就留着别人的颜色
             u.set_text(id + ".m", "还没问"); u.set_text_color(id + ".m", 0x8792A0);
             continue;
         }
-        const json& h = hits[k];
+        const json& h = hits[idx];
         const int slot = h.value("slot", 0);
         u.set_text_raw(id + ".slot", slot > 0 ? ui::fmt("{0} 口", {std::to_string(slot)}) : "—");
         u.set_text(id + ".p", h.value("port", ""));

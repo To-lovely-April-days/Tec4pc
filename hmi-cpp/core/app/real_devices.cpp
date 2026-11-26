@@ -10,6 +10,7 @@
 #ifdef _WIN32
 #include "../../io/win_serial.hpp"
 #endif
+#include "../util/text_error.hpp"
 #include <map>
 #include <stdexcept>
 
@@ -19,6 +20,7 @@ struct RealDevices::Impl {
     // 同一个串口号只开一次，几台设备共用（共口的设备还共用一把总线锁）
     std::map<std::string, std::unique_ptr<SerialTransport>> ports;
     std::map<std::string, std::shared_ptr<std::mutex>> locks;
+    std::map<std::string, DeviceComm> opened_by;       // 这个口当初是按哪台设备的参数开的
     std::vector<std::unique_ptr<ModbusRtu>> buses;
     std::unique_ptr<Rd105> rd;
     std::unique_ptr<Io8r> io;
@@ -40,6 +42,23 @@ struct RealDevices::Impl {
             SerialConfig sc; sc.port = c.port; sc.baud = c.baud; sc.parity = c.parity; sc.stop_bits = c.stop_bits;
             p = make_win_serial(sc);
             p->open();
+            opened_by[c.port] = c;
+        } else {
+            // 两台设备配在同一个串口上是允许的（485 是一根总线，按站号分），但串口参数必须一样：
+            // 口只能按一套参数打开，先来的那台说了算。参数不一样的话后来的这台根本不会通——
+            // 而且不说一声的话现象很怪：扫描能扫到它，一重启就连不上（用户 2026-11-27 遇到的：
+            // pH 电极和搅拌都配在 COM12 上，pH 按 8N1 先把口开了，搅拌要的 8N2 就没了）
+            const DeviceComm& first = opened_by[c.port];
+            if (first.baud != c.baud || first.parity != c.parity || first.stop_bits != c.stop_bits)
+                // 屏上这一行的状态格只放得下十来个字（长了会压到右边的箭头上），所以要翻的那句话很短，
+                // 具体差在哪缀在后面——缀的那一段只进记录和控制台，不进要翻的句子（见 util/text_error.hpp）
+                const auto settings = [](const DeviceComm& d) {
+                    return d.port + " " + std::to_string(d.baud) + " " + std::string(1, d.parity) + std::to_string(d.stop_bits);
+                };
+                // 缀的这一段整句写在一个字符串里（用 {0} 占位，不要用 + 拼）：抽词表的工具收这个文件里
+                // 所有的中文字符串，拿加号拼的话「开着，这台要」这种半截话会混进词表（踩过）
+                const std::string detail = fill_text("（{0} 按 {1} 开着，这台要 {2}）", {first.label, settings(first), settings(c)});
+                throw TextError(Text{"和同口那台设备参数不一样", {}}, detail);
         }
         auto& lk = locks[c.port];
         if (!lk) lk = std::make_shared<std::mutex>();
