@@ -95,12 +95,12 @@ bool pid_action(const std::string& a) {
         else {
             const json r = ask({{"cmd", "gains.set"}, {"rows", pv.rows}});
             if (r.value("ok", false)) { pv.dirty = false; pv.msg = "已应用并存盘"; pid_fetch(true); }
-            else pv.msg = r.value("error", std::string("没应用成"));
+            else pv.msg = core_text(r, "error", "没应用成");
         }
     } else if (a == "pg:undo") { pv.dirty = false; pid_fetch(true); pv.msg = "已放弃修改"; }
     else if (a == "pg:reload") {
         const json r = ask({{"cmd", "gains.reload"}});
-        if (r.value("ok", false)) { pv.dirty = false; pid_fetch(true); pv.msg = "已从盘上重读"; } else pv.msg = r.value("error", std::string("没读成"));
+        if (r.value("ok", false)) { pv.dirty = false; pid_fetch(true); pv.msg = "已从盘上重读"; } else pv.msg = core_text(r, "error", "没读成");
     } else if (a == "pg:clear") {
         if (!pv.clear_armed) pv.clear_armed = true;           // 清空要点两次
         else { pv.rows = json::array(); pv.dirty = true; pv.clear_armed = false; pv.msg = "屏上这份已清空；要重新加行再点「应用表格」，或点「放弃修改」找回来"; }
@@ -110,7 +110,7 @@ bool pid_action(const std::string& a) {
     } else if (a == "pg:boost") {
         open_keypad("快速升温加码上限（0 = 不加码）", "K", pv.boost, 0, 30, f1(pv.boost) + " K", "—", [this](double x) {
             const json r = ask({{"cmd", "settings.set"}, {"fast_boost_max", x}});
-            pv.msg2 = r.value("ok", false) ? "已保存，重启控制核心后生效" : r.value("error", std::string("没存进去"));
+            pv.msg2 = r.value("ok", false) ? "已保存，重启控制核心后生效" : core_text(r, "error", "没存进去");
             pid_fetch(true);
             refresh();
         }, 1);

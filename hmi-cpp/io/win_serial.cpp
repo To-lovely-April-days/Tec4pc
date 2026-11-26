@@ -8,6 +8,7 @@
 #endif
 #include <windows.h>
 #include <stdexcept>
+#include "../core/util/text_error.hpp"      // 报错要交「原句 + 值」，界面才翻得了
 
 namespace tec {
 
@@ -38,10 +39,10 @@ public:
         // COM10 以上必须写成 \\.\COM10，COM1–9 这么写也行，所以统一加前缀
         const std::string path = "\\\\.\\" + cfg_.port;
         h_ = CreateFileA(path.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
-        if (h_ == INVALID_HANDLE_VALUE) throw std::runtime_error("打不开串口 " + cfg_.port + last_error_text());
+        if (h_ == INVALID_HANDLE_VALUE) throw TextError("打不开串口 {0}{1}", {cfg_.port, last_error_text()});
         DCB dcb{};
         dcb.DCBlength = sizeof dcb;
-        if (!GetCommState(h_, &dcb)) { const auto e = last_error_text(); close(); throw std::runtime_error("读不到串口 " + cfg_.port + " 的参数" + e); }
+        if (!GetCommState(h_, &dcb)) { const auto e = last_error_text(); close(); throw TextError("读不到串口 {0} 的参数{1}", {cfg_.port, e}); }
         dcb.BaudRate = static_cast<DWORD>(cfg_.baud);
         dcb.ByteSize = 8;
         dcb.Parity = cfg_.parity == 'E' ? EVENPARITY : cfg_.parity == 'O' ? ODDPARITY : NOPARITY;
@@ -52,7 +53,7 @@ public:
         dcb.fOutxCtsFlow = FALSE; dcb.fOutxDsrFlow = FALSE; dcb.fDsrSensitivity = FALSE;
         dcb.fOutX = FALSE; dcb.fInX = FALSE;
         dcb.fDtrControl = DTR_CONTROL_ENABLE; dcb.fRtsControl = RTS_CONTROL_ENABLE;
-        if (!SetCommState(h_, &dcb)) { const auto e = last_error_text(); close(); throw std::runtime_error("设不了串口 " + cfg_.port + " 的参数" + e); }
+        if (!SetCommState(h_, &dcb)) { const auto e = last_error_text(); close(); throw TextError("设不了串口 {0} 的参数{1}", {cfg_.port, e}); }
         SetupComm(h_, 4096, 4096);
         PurgeComm(h_, PURGE_RXCLEAR | PURGE_TXCLEAR);
     }
@@ -65,7 +66,7 @@ public:
 
     void write(const uint8_t* data, size_t n) override {
         DWORD done = 0;
-        if (!WriteFile(h_, data, static_cast<DWORD>(n), &done, nullptr) || done != n) throw std::runtime_error("串口 " + cfg_.port + " 写不出去" + last_error_text());
+        if (!WriteFile(h_, data, static_cast<DWORD>(n), &done, nullptr) || done != n) throw TextError("串口 {0} 写不出去{1}", {cfg_.port, last_error_text()});
     }
 
     int read(uint8_t* buf, size_t n, int timeout_ms) override {
@@ -78,7 +79,7 @@ public:
         to.WriteTotalTimeoutConstant = 500;
         SetCommTimeouts(h_, &to);
         DWORD got = 0;
-        if (!ReadFile(h_, buf, static_cast<DWORD>(n), &got, nullptr)) throw std::runtime_error("串口 " + cfg_.port + " 读出错" + last_error_text());
+        if (!ReadFile(h_, buf, static_cast<DWORD>(n), &got, nullptr)) throw TextError("串口 {0} 读出错{1}", {cfg_.port, last_error_text()});
         return static_cast<int>(got);
     }
 

@@ -12,7 +12,7 @@
 namespace tec {
 namespace {
 
-struct Found { std::string type, model; };
+struct Found { std::string type, model, firmware; };
 
 // ── 各类设备的「报姓名」。全部只读，而且每一条都要「答得上来」+「答出来的数说得通」两条都成立 ──
 // 只有一条成立不算：别的设备在同一个地址上也可能答出点什么来，CRC 对、长度对，但数是别的意思。
@@ -29,7 +29,7 @@ std::optional<Found> id_stir(ModbusRtu& m) {
     }
     if (name.rfind("AQMD", 0) != 0) return std::nullopt;
     const int major = r[1] >> 8, minor = r[1] & 0xFF;
-    return Found{"stir", name + " v" + std::to_string(major) + "." + std::to_string(minor)};
+    return Found{"stir", name + " v" + std::to_string(major) + "." + std::to_string(minor), ""};
 }
 
 // pH 电极 BHT：0~5 是温度 / pH / mV 这一组，25 是数据格式（说明书写死 = 1）。
@@ -39,7 +39,7 @@ std::optional<Found> id_ph(ModbusRtu& m) {
     if (live.size() < 6) return std::nullopt;
     const std::vector<uint16_t> fmt = m.read_holding_registers(BhtPh::kRegFrame, 1);
     if (fmt.size() != 1 || fmt[0] != 1) return std::nullopt;
-    return Found{"ph", "BHT pH 电极"};
+    return Found{"ph", "BHT pH 电极", ""};
 }
 
 // 切换继电器 IO8R：8 路继电器（FC01）+ 8 路光耦（FC02）都答得上来。
@@ -47,7 +47,7 @@ std::optional<Found> id_ph(ModbusRtu& m) {
 std::optional<Found> id_io8r(ModbusRtu& m) {
     if (m.read_coils(0, Io8r::kPoints).size() != static_cast<size_t>(Io8r::kPoints)) return std::nullopt;
     if (m.read_discrete_inputs(0, Io8r::kPoints).size() != static_cast<size_t>(Io8r::kPoints)) return std::nullopt;
-    return Found{"io8r", "JY-MODBUS-IO8R · 8 路"};
+    return Found{"io8r", "JY-MODBUS-IO8R · 8 路", ""};
 }
 
 // TEC 温控器 RD105：0x0001 是型号代码（协议 §3.5.1 的表里 1~31），0x000C 是固件版本。
@@ -55,10 +55,10 @@ std::optional<Found> id_io8r(ModbusRtu& m) {
 std::optional<Found> id_rd105(ModbusRtu& m) {
     const std::vector<uint16_t> t = m.read_holding_registers(0x0001, 1);
     if (t.size() != 1 || t[0] < 1 || t[0] > 31) return std::nullopt;
-    std::string model = "RD" + rd105::model_name(t[0]);
+    std::string model = "RD" + rd105::model_name(t[0]), fw;
     const std::vector<uint16_t> f = m.read_holding_registers(0x000C, 1);
-    if (f.size() == 1) model += " · 固件 " + rd105::firmware_text(f[0]);
-    return Found{"rd105", model};
+    if (f.size() == 1) fw = rd105::firmware_text(f[0]);
+    return Found{"rd105", model, fw};
 }
 
 // 冷水机：0x0000 机组状态只可能是 0~4，0x0403 起停方式只可能是 0~2。
@@ -70,7 +70,7 @@ std::optional<Found> id_chiller(ModbusRtu& m) {
             st = pass == 0 ? m.read_input_registers(Chiller::kStateAddr, 1) : m.read_holding_registers(Chiller::kStateAddr, 1);
             mode = pass == 0 ? m.read_input_registers(Chiller::kStartStopModeAddr, 1) : m.read_holding_registers(Chiller::kStartStopModeAddr, 1);
         } catch (const ModbusError&) { continue; }
-        if (st.size() == 1 && mode.size() == 1 && st[0] <= 4 && mode[0] <= 2) return Found{"chiller", "冷水机主板"};
+        if (st.size() == 1 && mode.size() == 1 && st[0] <= 4 && mode[0] <= 2) return Found{"chiller", "冷水机主板", ""};
     }
     return std::nullopt;
 }
@@ -82,14 +82,14 @@ std::optional<Found> id_yudian(ModbusRtu& m) {
     const std::vector<uint16_t> inp = m.read_holding_registers(YudianProbe::kRegInp, 4);
     if (inp.size() != 4) return std::nullopt;
     for (uint16_t v : inp) if (v > 60) return std::nullopt;        // InP 是一张小表里的号，不会是个大数
-    return Found{"tr", "宇电 AI-8848G · 四路"};
+    return Found{"tr", "宇电 AI-8848G · 四路", ""};
 }
 
 // 进料系统：一帧连读 0~48（49 个）。这一条最不挑，放在最后，而且因为「认不准就不猜」，
 // 它和别人同时对上的时候谁也不采用
 std::optional<Found> id_feed(ModbusRtu& m) {
     if (m.read_holding_registers(0, 49).size() != 49) return std::nullopt;
-    return Found{"feed", "进料系统主板"};
+    return Found{"feed", "进料系统主板", ""};
 }
 
 using IdFn = std::optional<Found> (*)(ModbusRtu&);
@@ -125,11 +125,11 @@ std::vector<ScanHit> scan_serial_ports(const ScanOptions& opt, const PortOpenFn&
         hit.port = p.port; hit.usb_id = p.usb_id; hit.usb_name = p.name; hit.slot = p.slot;
 
         for (int baud : opt.bauds) {
-            if (!hit.type.empty() || !hit.problem.empty()) break;
+            if (!hit.type.empty() || !hit.problem.t.empty()) break;
             SerialConfig sc; sc.port = p.port; sc.baud = baud; sc.parity = 'N'; sc.stop_bits = 1;
             std::unique_ptr<SerialTransport> tr;
             try { tr = open(sc); if (tr) tr->open(); }
-            catch (const std::exception& e) { hit.problem = e.what(); break; }     // 口打不开（被别的程序占着）：这个口就别试了
+            catch (const std::exception& e) { hit.problem = text_of(e); break; }     // 口打不开（被别的程序占着）：这个口就别试了
             if (!tr) continue;
 
             for (int station : opt.stations) {
@@ -147,13 +147,14 @@ std::vector<ScanHit> scan_serial_ports(const ScanOptions& opt, const PortOpenFn&
                 if (matched.empty()) continue;
                 if (matched.size() > 1) {
                     // 两类以上都对上了：不挑。把都对上的列出来，让人自己定
-                    std::string who;
-                    for (auto& f : matched) { if (!who.empty()) who += "、"; who += scan_type_label(f.type); }
-                    hit.problem = "认不准：" + who + " 都对得上，请人工指定";
+                    // 名字一个一个单独占坑（不是拼成一串）：界面翻的时候每个设备名都能查到词表
+                    Text who = val(scan_type_label(matched[0].type));
+                    for (size_t k = 1; k < matched.size(); k++) who = compose("{0}、{1}", {who, val(scan_type_label(matched[k].type))});
+                    hit.problem = compose("认不准：{0} 都对得上，请人工指定", {who});
                     hit.baud = baud; hit.station = station;
                     break;
                 }
-                hit.type = matched[0].type; hit.model = matched[0].model;
+                hit.type = matched[0].type; hit.model = matched[0].model; hit.firmware = matched[0].firmware;
                 hit.baud = baud; hit.station = station;
                 break;
             }

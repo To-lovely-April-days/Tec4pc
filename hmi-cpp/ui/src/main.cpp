@@ -1,6 +1,8 @@
 // 触摸屏界面程序。它自己不碰设备，只通过本机 TCP 连控制核心（tec_core）：每半秒问一次状态刷到屏上，点了什么就发一条命令过去。
 //   tec_hmi [--host 127.0.0.1] [--port 5020] [--page 页面名] [--shot 文件 --after 秒]
 //   --shot：不开窗口，跑够时间把屏幕存成一张图就退出（开发时自查用）
+//   --lint：同一时刻把这一页的排版量一遍（字有没有被裁、有没有压到别的字或控件），见 ui/src/lint.inc
+//   --fit 表：提示句和报警句平时屏上没有，出图量不到——把表里每一句摆进它该去的位置量一遍
 #include "../../net/tcp_server.hpp"
 #include "../../third_party/nlohmann/json.hpp"
 #include "ui_kit.hpp"
@@ -80,8 +82,35 @@ static std::string f2(double v) { char b[32]; std::snprintf(b, sizeof b, "%.2f",
 static std::string f0(double v) { char b[32]; std::snprintf(b, sizeof b, "%.0f", v); std::string s = b; if (s == "-0") s = "0"; if (s[0] == '-') s.replace(0, 1, "−"); return s; }      // 负号用正经的减号，和一位小数的那个一致
 static std::string hms(double s) { const long t = static_cast<long>(s < 0 ? 0 : s); char b[32]; std::snprintf(b, sizeof b, "%02ld:%02ld:%02ld", t / 3600, t / 60 % 60, t % 60); return b; }
 
+// 控制核心给的话（拒绝命令的原因、设备连不上的原因、报警那一句）：核心交的是两件——
+// 填好的中文（记录和 PC 端照用），和「原句 + 值」（error_t / error_args 这一对）。
+// 界面按原句去查词表，再把值填回去，这样八种语言都对；老核心只给填好的中文，就原样显示。
+// 值也过一道词表：有的值本身是话（设备名、「应答」这种），数查不到就原样回来。
+static std::string core_text(const json& o, const char* base, const std::string& fallback = "", const char* args_key = nullptr) {
+    const std::string tkey = std::string(base) + "_t";
+    const std::string t = o.value(tkey, std::string());
+    if (!t.empty()) {
+        std::string out = ui::tr(t);
+        const std::string akey = args_key ? args_key : std::string(base) + "_args";
+        if (o.contains(akey) && o[akey].is_array()) {
+            int i = 0;
+            for (const auto& a : o[akey]) {
+                const std::string v = ui::tr(a.is_string() ? a.get<std::string>() : std::string());
+                const std::string mark = "{" + std::to_string(i++) + "}";
+                for (size_t q = out.find(mark); q != std::string::npos; q = out.find(mark, q + v.size()))
+                    out.replace(q, mark.size(), v);
+            }
+        }
+        return out;
+    }
+    const std::string plain = o.value(base, std::string());
+    return ui::tr(plain.empty() ? fallback : plain);
+}
+
 #include "pinyin_dict.inc"
 #include "phrase_dict.inc"
+
+#include "lint.inc"
 
 struct App {
     tec::TcpClient link;
@@ -444,7 +473,7 @@ struct App {
                     q = {{"cmd", "temp.profile"}, {"ch", ch}};       // 不带曲线：核心用它存着的那条手动曲线
                 }
                 const json r = ask(q);
-                cry_msg[ci] = mode[ci] == 3 && !r.value("ok", false) ? r.value("error", std::string("开始不了")) : "";
+                cry_msg[ci] = mode[ci] == 3 && !r.value("ok", false) ? core_text(r, "error", "开始不了") : "";
             }
             poll();
         }
@@ -847,6 +876,8 @@ int main(int argc, char** argv) {
     bool fullscreen = false;                   // --fullscreen：Windows 上铺满屏幕
     bool frame = false;                        // --frame：Windows 上带系统的标题栏和边框（缺省不带）
     bool only_1x = false;                      // --1x：屏幕再大也用 1 倍这一份，不自动换成 2 倍的
+    bool lint_it = false;                      // --lint：出图的那一刻把这一页的排版量一遍（见 ui/src/lint.inc）
+    std::string fit_file, lang;                // --fit 表：一句一句摆进去量（提示句、报警句屏上平时没有）；--lang：不连核心时指定界面语言
     double after = 2.0;
     for (int i = 1; i < argc; i++) {
         const std::string a = argv[i];
@@ -862,6 +893,9 @@ int main(int argc, char** argv) {
         else if (a == "--fullscreen") fullscreen = true;
         else if (a == "--frame") frame = true;
         else if (a == "--1x") only_1x = true;
+        else if (a == "--lint") lint_it = true;      // 排版自查：把这一页上所有的字量一遍（见 ui/src/lint.inc）
+        else if (a == "--fit" && i + 1 < argc) fit_file = argv[++i];
+        else if (a == "--lang" && i + 1 < argc) lang = argv[++i];
     }
     (void)only_1x;
     lv_init();
@@ -875,7 +909,7 @@ int main(int argc, char** argv) {
     bool windowed = false;
 #ifdef _WIN32
     // Windows 上真正开窗口（见 win_window.inc）。带 --shot 时不开，走不开窗口、只出图的那一套（自查用）
-    if (shot.empty()) {
+    if (shot.empty() && fit_file.empty()) {
 #if UI_SCALE == 1
         if (!only_1x && zoom == 0 && win::hand_over_to_2x(fullscreen)) return 0;       // 屏幕够大：交给按 2 倍画的那一份
 #endif
@@ -896,6 +930,9 @@ int main(int argc, char** argv) {
     lv_indev_t* touch = lv_indev_create();
     lv_indev_set_type(touch, LV_INDEV_TYPE_POINTER);
     lv_indev_set_read_cb(touch, [](lv_indev_t*, lv_indev_data_t* data) { data->point.x = g_finger.x; data->point.y = g_finger.y; data->state = g_finger.down ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED; });
+    if (!lang.empty()) ui::set_language(lang);      // 平时语言是从核心的设置里读的；--fit 不连核心，得明说
+    // --fit：不连核心、不进主循环，把表里每一句摆进它该去的位置量一遍就退出
+    if (!fit_file.empty()) return lint::fit(fit_file, kPages, sizeof kPages / sizeof kPages[0]) > 0 ? 2 : 0;
     app.show(page);
     int frames = 0, tap_phase = 0;
     long loops = 0;
@@ -938,8 +975,9 @@ int main(int argc, char** argv) {
             if (tap_phase == 14) finger.down = false;
             if (tap_phase >= 30) { taps.erase(taps.begin()); tap_phase = 0; frames = 20; }
         }
-        if (!shot.empty() && todo.empty() && taps.empty() && frames >= 60 && std::chrono::duration<double>(now - t0).count() >= after) {
-            if (std::FILE* f = std::fopen(shot.c_str(), "wb")) { std::fwrite(g_fb, 4, static_cast<size_t>(W) * H, f); std::fclose(f); }
+        if ((!shot.empty() || lint_it) && todo.empty() && taps.empty() && frames >= 60 && std::chrono::duration<double>(now - t0).count() >= after) {
+            if (!shot.empty()) if (std::FILE* f = std::fopen(shot.c_str(), "wb")) { std::fwrite(g_fb, 4, static_cast<size_t>(W) * H, f); std::fclose(f); }
+            if (lint_it) return lint::run(app.cur.c_str()) > 0 ? 2 : 0;
             return 0;
         }
     }

@@ -261,7 +261,7 @@ bool cry_action(const std::string& a) {
             if (ced.step < static_cast<int>(v.steps.size())) { v.steps[ced.step]["profile"] = p; seq_push(ced.ci); }
         } else {
             const json r = ask({{"cmd", "profile.set"}, {"ch", ced.ci + 1}, {"segments", p}});
-            cry_msg[ced.ci] = r.value("ok", false) ? "" : r.value("error", std::string("曲线没存进去"));
+            cry_msg[ced.ci] = r.value("ok", false) ? "" : core_text(r, "error", "曲线没存进去");
             poll();
         }
         cry_close_editor();

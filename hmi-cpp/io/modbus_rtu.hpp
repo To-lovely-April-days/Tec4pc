@@ -7,6 +7,7 @@
 //   · 从站回了异常码不重试：那是配置或语义错，重发一百遍也一样
 // 一条串口上挂几个从站（宇电两台共口）时，几个 ModbusRtu 要共用同一把锁。
 #pragma once
+#include "../core/util/text_error.hpp"
 #include "serial_transport.hpp"
 #include <memory>
 #include <mutex>
@@ -17,10 +18,19 @@
 
 namespace tec {
 
-class ModbusError : public std::runtime_error {
+// 带「原句 + 值」的报错（见 core/util/text_error.hpp）：拼好的句子界面查不到词表，
+// 英文界面上就冒一句中文，所以句子和值分开留着
+class ModbusError : public TextError {
 public:
     explicit ModbusError(const std::string& what, std::optional<int> code = std::nullopt, bool timeout = false)
-        : std::runtime_error(what), code(code), timeout(timeout) {}
+        : TextError(what), code(code), timeout(timeout) {}
+    ModbusError(std::string t, std::vector<std::string> args, std::optional<int> code = std::nullopt, bool timeout = false)
+        : TextError(std::move(t), std::move(args)), code(code), timeout(timeout) {}
+    ModbusError(const Text& x, std::optional<int> code, bool timeout)
+        : TextError(x.t, x.args), code(code), timeout(timeout) {}
+    // 带一段只进记录的尾巴（这一问一答的原始字节）
+    ModbusError(const Text& x, const std::string& tail, std::optional<int> code, bool timeout)
+        : TextError(x, tail), code(code), timeout(timeout) {}
     std::optional<int> code;   // 从站回的异常码；链路层的错（超时、坏帧）是空的
     bool timeout;              // true = 没等到 / 帧烂尾；false = 收到了但不对
 };

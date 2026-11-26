@@ -13,6 +13,7 @@
 // 同型号的两路（pH ×2、搅拌 ×2）站号型号全一样，协议上分不出通道 1 和通道 2：这里只报「这个口上
 // 有一台 BHT pH 电极」，派给哪个通道由人指派一次，之后交给 usb_id 记住。
 #pragma once
+#include "../util/text_error.hpp"
 #include "../../io/serial_ports.hpp"
 #include "../data/store.hpp"
 #include "../../io/serial_transport.hpp"
@@ -29,10 +30,14 @@ struct ScanHit {
     std::string usb_name;    // 设备管理器里的名字（可能是空的）
     int slot = 0;            // 给人看的口号；0 = 认不出位置
     std::string type;        // 认出来的是哪一类：rd105 / io8r / chiller / tr / ph / stir / feed；空 = 没认出来
-    std::string model;       // 「RD105 · 固件 v1.3.0」「AQMD2408BLS-M2 v1.3」…
+    std::string model;       // 「RD105」「AQMD2408BLS-M2 v1.3」…
+    // 固件版本单放一格，不拼进 model：拼起来中间那个「固件」是中文，界面翻不了（句子由界面拼）
+    std::string firmware;
     int baud = 0;            // 问通了的波特率
     int station = 0;         // 问通了的站号
-    std::string problem;     // 非空 = 口打不开、或者认不准（文字里说清是哪几类都对上了）
+    // 非空 = 口打不开、或者认不准（文字里说清是哪几类都对上了）。
+    // 存「原句 + 值」两件，不先拼成一句：触摸屏要按原句查词表才翻得了（见 core/util/text_error.hpp）
+    Text problem;
 };
 
 struct ScanOptions {

@@ -69,7 +69,7 @@ bool comm_action(const std::string& a) {
         if (a == "cd:close") { ced_dev.open = false; lv_obj_add_flag(commdlg.scr, LV_OBJ_FLAG_HIDDEN); return true; }
         if (a == "cd:save") {
             const json r = ask({{"cmd", "settings.set"}, {"device", d}});
-            if (!r.value("ok", false)) { commdlg.ui->set_text("cd.msg", r.value("error", std::string("没存进去"))); return true; }
+            if (!r.value("ok", false)) { commdlg.ui->set_text("cd.msg", core_text(r, "error", "没存进去")); return true; }
             cmv.msg = ui::fmt("「{0}」的参数已保存，重启控制核心后生效", {ui::tr(d.value("label", ""))});
             ced_dev.open = false; lv_obj_add_flag(commdlg.scr, LV_OBJ_FLAG_HIDDEN);
             comm_fetch(true); refresh();
@@ -115,7 +115,7 @@ bool comm_action(const std::string& a) {
         }
         ced_dev.dev = cmv.info["devices"][k]; ced_dev.dev.erase("state"); ced_dev.dev.erase("problem");
         ced_dev.open = true;
-        const std::string prob = cmv.info["devices"][k].value("problem", "");
+        const std::string prob = core_text(cmv.info["devices"][k], "problem");
         // 原因太长就截一段：这一行右边是按钮，放不下整句
         std::string shown = prob;
         if (utf8_count(shown) > 22) { while (utf8_count(shown) > 21) utf8_pop(shown); shown += "…"; }
@@ -128,7 +128,7 @@ bool comm_action(const std::string& a) {
     if (!cmv.tcp.is_object()) return true;
     auto save_tcp = [this](const json& part, const std::string& ok_text) {
         const json r = ask({{"cmd", "settings.set"}, {"tcp", part}});
-        cmv.tip = r.value("ok", false) ? ok_text : r.value("error", std::string("没存进去"));
+        cmv.tip = r.value("ok", false) ? ok_text : core_text(r, "error", "没存进去");
         comm_fetch(true); refresh();
     };
     if (a == "cm:tcp") save_tcp({{"enabled", !cmv.tcp.value("enabled", true)}}, "已保存，重启控制核心后生效");
@@ -164,7 +164,7 @@ void refresh_comm(Ui& u) {
         u.show(id + ".usb", !d.value("usb_id", std::string()).empty());
         u.set_text(id + ".b", std::to_string(d.value("baud", 9600)));
         u.set_text(id + ".a", std::to_string(d.value("station", 1)));
-        const std::string stt = d.value("state", "unknown"), prob = d.value("problem", "");
+        const std::string stt = d.value("state", "unknown"), prob = core_text(d, "problem");
         // 状态是控制核心开机时连设备的结果（它不会运行中重连）；仿真时没有真设备可连
         const int code = stt == "ok" ? 1 : stt == "fail" ? 2 : stt == "off" ? 0 : 3;
         u.set_text(id + ".s", code == 1 ? "正常" : code == 2 ? (prob.empty() || utf8_count(prob) > 12 ? "没连上" : prob) : code == 0 ? "未启用" : stt == "sim" ? "仿真（没连真设备）" : "未知");
@@ -305,8 +305,10 @@ void refresh_scan_result() {
         u.show(id + ".u", h && slot > 0);
         u.set_text_raw(id + ".f", !h ? "—" : slot > 0 ? ui::fmt("{0} 口 · {1}", {std::to_string(slot), np}) : np);
         u.set_text_color(id + ".f", diff ? 0x00559C : 0x4F5B67);
-        const std::string prob = h ? h->value("problem", "") : "";
-        const std::string model = h ? h->value("model", "") : "";
+        const std::string prob = h ? core_text(*h, "problem") : "";
+        // 型号后面跟固件版本：核心把两件分开给，句子在这儿拼，这样才翻得了
+        const std::string fw = h ? h->value("firmware", "") : "";
+        const std::string model = !h ? "" : fw.empty() ? h->value("model", "") : ui::fmt("{0} · 固件 {1}", {h->value("model", ""), fw});
         u.set_text(id + ".m", !h ? "没扫到" : !prob.empty() ? prob : model);
         u.set_text_color(id + ".m", !h ? 0x8792A0 : 0x1A2330);
         const bool pair = r.pair >= 0 && h;
@@ -344,7 +346,7 @@ void refresh_scan_running() {
     if (!scv.running || !commscanrun.ui) return;
     Ui& u = *commscanrun.ui;
     const json r = ask({{"cmd", "ports.scan.status"}});
-    if (!r.value("ok", false)) { scv.running = false; scan_show(commscanrun, false); cmv.msg = r.value("error", std::string("检测没跑起来")); return; }
+    if (!r.value("ok", false)) { scv.running = false; scan_show(commscanrun, false); cmv.msg = core_text(r, "error", "检测没跑起来"); return; }
     const int done = r.value("done", 0), total = r.value("total", 0);
     u.set_text_raw("cr.n", total ? ui::fmt("第 {0} 个口 / 共 {1} 个", {std::to_string(std::max(1, done)), std::to_string(total)}) : ui::tr("正在找串口…"));
     u.set_text_raw("cr.t", ui::fmt("已用 {0} s", {f1(r.value("elapsed_s", 0.0))}));
@@ -375,7 +377,9 @@ void refresh_scan_running() {
         u.set_text(id + ".p", h.value("port", ""));
         const int baud = h.value("baud", 0);
         u.set_text_raw(id + ".link", baud ? ui::fmt("{0} · 站号 {1}", {std::to_string(baud), std::to_string(h.value("station", 0))}) : "—");
-        const std::string prob = h.value("problem", ""), model = h.value("model", "");
+        const std::string fw = h.value("firmware", "");
+        const std::string prob = core_text(h, "problem");
+        const std::string model = fw.empty() ? h.value("model", "") : ui::fmt("{0} · 固件 {1}", {h.value("model", ""), fw});
         u.set_text(id + ".m", !prob.empty() ? prob : !model.empty() ? model : "没认出来");
         u.set_text_color(id + ".m", !prob.empty() ? 0xD64545 : !model.empty() ? 0x1A2330 : 0x8792A0);
     }
@@ -393,7 +397,7 @@ void refresh_scan_running() {
 bool scan_action(const std::string& a) {
     if (a == "cm:scan" || a == "cs:again") {
         const json r = ask({{"cmd", "ports.scan"}});
-        if (!r.value("ok", false)) { cmv.msg = r.value("error", std::string("检测没跑起来")); scv.msg = cmv.msg; if (scv.open) refresh_scan_result(); return true; }
+        if (!r.value("ok", false)) { cmv.msg = core_text(r, "error", "检测没跑起来"); scv.msg = cmv.msg; if (scv.open) refresh_scan_result(); return true; }
         scv.msg.clear(); cmv.msg.clear();
         scan_show(commscan, false); scv.open = false;
         scan_build_page(commscanrun, "CommScanRun");
@@ -433,7 +437,7 @@ bool scan_action(const std::string& a) {
         }
         if (devs.empty()) { scv.msg = "没有可以应用的行"; refresh_scan_result(); return true; }
         const json r = ask({{"cmd", "ports.apply"}, {"devices", devs}});
-        if (!r.value("ok", false)) { scv.msg = r.value("error", std::string("没存进去")); refresh_scan_result(); return true; }
+        if (!r.value("ok", false)) { scv.msg = core_text(r, "error", "没存进去"); refresh_scan_result(); return true; }
         scv.open = false; scan_show(commscan, false);
         cmv.msg = ui::fmt("已按检测结果改了 {0} 台，并记住了它们的 USB 口；重启控制核心后生效", {std::to_string(r.value("applied", 0))});
         comm_fetch(true); refresh();

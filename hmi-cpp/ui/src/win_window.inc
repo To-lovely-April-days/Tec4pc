@@ -47,11 +47,6 @@ static void pointer(LPARAM lp, bool screen_coords, int down) {
     if (down >= 0) g_finger.down = down != 0;
 }
 
-static bool is_mouse_pointer(WPARAM wp) {
-    POINTER_INPUT_TYPE pt = PT_TOUCH;
-    return GetPointerType(GET_POINTERID_WPARAM(wp), &pt) && pt == PT_MOUSE;
-}
-
 static LRESULT CALLBACK proc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
     switch (m) {
     case WM_ERASEBKGND: return 1;                 // 不让系统先刷一遍底色：会闪
@@ -65,12 +60,14 @@ static LRESULT CALLBACK proc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
         EndPaint(h, &ps);
         return 0;
     }
-    // 真触摸屏走 WM_POINTER*（系统原生就会发，千万别开 EnableMouseInPointer：在高分屏缩放 + 后台渲染时
-    // 会把真鼠标塞进同步指针队列，造成鼠标移进窗口时偶尔消失、冻住几秒才恢复）
-    case WM_POINTERDOWN:   if (is_mouse_pointer(wp)) break; pointer(lp, true, 1); return 0;
-    case WM_POINTERUP:     if (is_mouse_pointer(wp)) break; pointer(lp, true, 0); return 0;
-    case WM_POINTERUPDATE: if (is_mouse_pointer(wp)) break; pointer(lp, true, IS_POINTER_INCONTACT_WPARAM(wp) ? 1 : 0); return 0;
-    case WM_POINTERCAPTURECHANGED: if (is_mouse_pointer(wp)) break; g_finger.down = false; return 0;
+    // 真触摸屏（和手写笔）走 WM_POINTER*，系统原生就会发。千万别开 EnableMouseInPointer：
+    // 那会把鼠标也塞进「指针」这条同步队列里，画面一忙系统就跟着卡住光标——鼠标移进窗口偶尔
+    // 消失、按不动，过几秒才回来（用户 2026-11-25 看到的）。不开它，鼠标进不了这几条消息，
+    // 所以这里也不用再挑一遍是不是鼠标
+    case WM_POINTERDOWN:   pointer(lp, true, 1); return 0;
+    case WM_POINTERUP:     pointer(lp, true, 0); return 0;
+    case WM_POINTERUPDATE: pointer(lp, true, IS_POINTER_INCONTACT_WPARAM(wp) ? 1 : 0); return 0;
+    case WM_POINTERCAPTURECHANGED: g_finger.down = false; return 0;
     // 鼠标和触控板走标准鼠标消息：内核异步移动光标，绝不会冻住，光标形状也由 WM_SETCURSOR 正常维护
     case WM_LBUTTONDOWN: SetCapture(h); pointer(lp, false, 1); return 0;
     case WM_LBUTTONUP:   ReleaseCapture(); pointer(lp, false, 0); return 0;

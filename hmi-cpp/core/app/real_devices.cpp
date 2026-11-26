@@ -55,11 +55,11 @@ RealDevices::RealDevices(const AppSettings& s) : d_(std::make_unique<Impl>()) {
         const DeviceComm* c = s.device(key);
         DeviceStatus st;
         st.key = key;
-        if (!c) { st.problem = "设置里没有这台设备"; status_.push_back(st); return; }
+        if (!c) { st.problem = Text{"设置里没有这台设备", {}}; status_.push_back(st); return; }
         st.label = c->label; st.port = c->port; st.enabled = c->enabled;
-        if (!c->enabled) { st.problem = "未启用"; status_.push_back(st); return; }
+        if (!c->enabled) { st.problem = Text{"未启用", {}}; status_.push_back(st); return; }
         try { make(*c); st.ok = true; }
-        catch (const std::exception& e) { st.problem = e.what(); }
+        catch (const std::exception& e) { st.problem = text_of(e); }
         status_.push_back(st);
     };
     bring_up("rd105", [&](const DeviceComm& c) { d_->rd = std::make_unique<Rd105>(d_->bus(c)); d_->rd->read_snapshot(); });        // 读一拍：通不通当场知道

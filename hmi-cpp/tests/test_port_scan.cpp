@@ -133,8 +133,8 @@ int main() {
         check(hits[0].type == "stir" && hits[0].model == "AQMD2408BLS-M2 v1.3", "COM20 认出搅拌驱动和版本号");
         check(hits[0].station == 2 && hits[0].slot == 1, "顺带记下站号和 USB 口号");
         check(hits[1].type == "ph" && hits[1].model == "BHT pH 电极", "COM21 认出 pH 电极");
-        check(hits[2].type.empty() && hits[2].problem.empty(), "没接东西的口：没认出来，也不报错");
-        check(hits[3].type.empty() && !hits[3].problem.empty(), "打不开的口如实报原因");
+        check(hits[2].type.empty() && hits[2].problem.t.empty(), "没接东西的口：没认出来，也不报错");
+        check(hits[3].type.empty() && !hits[3].problem.t.empty(), "打不开的口如实报原因");
 
         // 只读：整个扫描过程一个写功能码都不许发
         for (const auto& kv : slaves) (void)kv;
@@ -165,8 +165,8 @@ int main() {
         const std::vector<ScanHit> hits = scan_serial_ports(opt, open);
         check(hits.size() == 1, "一个口一条");
         check(hits[0].type.empty(), "认不准就不认——绝不从两类里挑一类");
-        check(hits[0].problem.find("认不准") != std::string::npos, "说清是认不准");
-        check(hits[0].problem.find("pH 电极") != std::string::npos && hits[0].problem.find("进料系统") != std::string::npos,
+        check(hits[0].problem.filled().find("认不准") != std::string::npos, "说清是认不准");
+        check(hits[0].problem.filled().find("pH 电极") != std::string::npos && hits[0].problem.filled().find("进料系统") != std::string::npos,
               "把都对上的那几类列出来给人看");
     }
 

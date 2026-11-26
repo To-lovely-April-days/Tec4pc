@@ -92,7 +92,7 @@ void seq_fetch(int ci) {
 // 把改好的步骤整份交给核心；核心不收（比如序列已经开始）就把它的话显示出来
 void seq_push(int ci) {
     const json r = ask({{"cmd", "seq.load"}, {"ch", ci + 1}, {"steps", sv[ci].steps}});
-    sv[ci].msg = r.value("ok", false) ? "" : r.value("error", std::string("没存进去"));
+    sv[ci].msg = r.value("ok", false) ? "" : core_text(r, "error", "没存进去");
     seq_fetch(ci);
     sv[ci].key.clear();
     poll();
@@ -244,7 +244,7 @@ bool seq_action(const std::string& a) {
 #endif
         char b[48]; std::strftime(b, sizeof b, "序列 %m-%d %H:%M", &tm);
         const json r = ask({{"cmd", "seq.start"}, {"ch", channel}, {"name", v.name.empty() ? std::string(b) : v.name}});
-        v.msg = r.value("ok", false) ? "" : r.value("error", std::string("开始不了"));
+        v.msg = r.value("ok", false) ? "" : core_text(r, "error", "开始不了");
         poll();
         return true;
     }

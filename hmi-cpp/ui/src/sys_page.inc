@@ -76,7 +76,7 @@ bool sys_action(const std::string& a) {
         exit_err.clear();
         const json r = ask({{"cmd", "sys.exit"}});
         if (!r.value("ok", false)) {                             // 核心不让退（这半秒里刚好有通道跑起来了）：把它给的原因照原样摆出来
-            exit_err = r.value("error", std::string("控制核心没退"));
+            exit_err = core_text(r, "error", "控制核心没退");
             exit_dlg_show();
             return true;
         }

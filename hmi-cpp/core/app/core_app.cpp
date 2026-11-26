@@ -1,6 +1,7 @@
 #include "core_app.hpp"
 #include "../../third_party/nlohmann/json.hpp"
 #include "../data/drives.hpp"
+#include "../util/text_error.hpp"
 #include <fstream>
 #include <filesystem>
 #include <ctime>
@@ -26,7 +27,15 @@ json profile_json(const std::vector<ProfileSegment>& segs) {
     for (auto& g : segs) a.push_back({{"target", g.target}, {"minutes", g.minutes}});
     return a;
 }
-json fail(const std::string& why) { return {{"ok", false}, {"error", why}}; }
+// 报错交两件：error 是填好的中文（记录和 PC 端照用），error_t + error_args 是「原句 + 值」，
+// 触摸屏拿原句去查词表再把值填回去。见 core/util/text_error.hpp
+json fail(const Text& why) {
+    json r = {{"ok", false}, {"error", why.filled()}, {"error_t", why.t}};
+    r["error_args"] = json::array();
+    for (const std::string& v : why.args) r["error_args"].push_back(v);
+    return r;
+}
+json fail(const std::string& why) { return fail(Text{why, {}}); }
 
 Target target_from(const json& j) {
     Target t;
@@ -367,8 +376,9 @@ std::string CoreApp::handle(const std::string& line, bool remote) {
                 r["hits"] = json::array();
                 for (const ScanHit& h : scan_.hits)
                     r["hits"].push_back({{"port", h.port}, {"usb_id", h.usb_id}, {"usb_name", h.usb_name}, {"slot", h.slot},
-                                         {"type", h.type}, {"type_label", scan_type_label(h.type)}, {"model", h.model},
-                                         {"baud", h.baud}, {"station", h.station}, {"problem", h.problem}});
+                                         {"type", h.type}, {"type_label", scan_type_label(h.type)}, {"model", h.model}, {"firmware", h.firmware},
+                                         {"baud", h.baud}, {"station", h.station}, {"problem", h.problem.filled()},
+                                         {"problem_t", h.problem.t}, {"problem_args", h.problem.args}});
             }
             else if (cmd == "ports.apply") {
                 // 人在检测结果那一屏点了「应用」：把选中的几行写进设备配置。
@@ -390,7 +400,7 @@ std::string CoreApp::handle(const std::string& line, bool remote) {
                         d->station = dj.value("station", d->station);
                         n++;
                     }
-                    if (!missing.empty()) r = fail("设置里没有这些设备：" + missing);
+                    if (!missing.empty()) r = fail(compose("设置里没有这些设备：{0}", {val(missing)}));
                     else if (!settings_.save(dir_)) r = fail("设置存不了盘");
                     else { r["applied"] = n; r["restart_needed"] = n > 0; }
                 }
@@ -488,8 +498,9 @@ std::string CoreApp::handle(const std::string& line, bool remote) {
                 r["devices"] = json::array();
                 for (auto& d : settings_.devices) {
                     json one = {{"key", d.key}, {"label", d.label}, {"enabled", d.enabled}, {"port", d.port}, {"usb_id", d.usb_id}, {"usb_name", d.usb_name}, {"baud", d.baud}, {"parity", std::string(1, d.parity)}, {"stop_bits", d.stop_bits}, {"station", d.station}, {"poll_ms", d.poll_ms},
-                                {"state", !d.enabled ? "off" : r["sim"].get<bool>() ? "sim" : "unknown"}, {"problem", ""}};
-                    if (extra.contains("status")) for (auto& s2 : extra["status"]) if (s2.value("key", "") == d.key && d.enabled) { one["state"] = s2.value("ok", false) ? "ok" : "fail"; one["problem"] = s2.value("problem", ""); }
+                                {"state", !d.enabled ? "off" : r["sim"].get<bool>() ? "sim" : "unknown"}, {"problem", ""}, {"problem_t", ""}, {"problem_args", json::array()}};
+                    if (extra.contains("status")) for (auto& s2 : extra["status"]) if (s2.value("key", "") == d.key && d.enabled) { one["state"] = s2.value("ok", false) ? "ok" : "fail"; one["problem"] = s2.value("problem", "");
+                                                                                   one["problem_t"] = s2.value("problem_t", ""); one["problem_args"] = s2.contains("problem_args") ? s2["problem_args"] : json::array(); }
                     r["devices"].push_back(one);
                 }
             }
@@ -551,10 +562,10 @@ std::string CoreApp::handle(const std::string& line, bool remote) {
                     }
                 }
             }
-            else r = fail("不认识的命令：" + cmd);
+            else r = fail(compose("不认识的命令：{0}", {val(cmd)}));
         }
     } catch (const std::exception& e) {
-        r = fail(std::string("处理命令时出错：") + e.what());
+        r = fail(compose("处理命令时出错：{0}", {text_of(e)}));
     }
     if (q.contains("id")) r["id"] = q["id"];
     return r.dump();

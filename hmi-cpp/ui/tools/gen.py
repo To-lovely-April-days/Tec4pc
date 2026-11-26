@@ -55,6 +55,36 @@ for name in pages:
         if S == 1: out = out.resize((out.size[0] // 2, out.size[1] // 2), Image.LANCZOS)
         f = IMG / f'{name}_{n["img"]}_{S}.png'; out.save(f); return f'A:assets/img/{f.name}', -1 * S
     L = []; emit = L.append; info = {}; last_text = None
+    byi = {n['i']: n for n in D}
+
+    def box_of(i):
+        """这个元素在哪块「牌子」里：往上找第一个带底色或者边框的祖先，没有就 -1"""
+        while i is not None and i >= 0:
+            m = byi.get(i)
+            if m is None: return -1
+            if m['tag'] != '#text':
+                if col(m['bg'])[1] > 0 or 'inset' in (m.get('shadow') or ''): return i
+            i = m['p']
+        return -1
+
+    def is_anc(a, b):
+        while b is not None and b >= 0:
+            if a == b: return True
+            m = byi.get(b)
+            if m is None: return False
+            b = m['p']
+        return False
+
+    def left_neighbour(t):
+        """这段字左边 20 px 以内、同一行上，有没有别的元素（不算包着它的那些壳）"""
+        y0, y1 = t['y'] + t['h'] * 0.25, t['y'] + t['h'] * 0.75
+        for m in D:
+            if m['tag'] == '#text' or m['w'] <= 0 or m['h'] <= 0: continue
+            if is_anc(m['i'], t['p']) or m['i'] == t['p']: continue
+            r = m['x'] + m['w']
+            if t['x'] - 20 <= r <= t['x'] + 1 and m['y'] < y1 and m['y'] + m['h'] > y0: return True
+        return False
+
     for n in D:
         i, p = n['i'], n['p']; par = info.get(p, {'ax': 0, 'ay': 0, 'bl': 0, 'bt': 0})
         ax, ay = R(n['x']), R(n['y']); rx, ry = ax - par['ax'] - par['bl'], ay - par['ay'] - par['bt']
@@ -62,12 +92,23 @@ for name in pages:
         if n['tag'] == '#text':
             c, a = col(n['color'])
             cx, cy = R(n['x'] + n['w'] / 2) - par['ax'] - par['bl'], R(n['y'] + n['h'] / 2) - par['ay'] - par['bt']
-            anc = n.get('anchor', 'c'); axx = {'l': rx, 'r': rx + w, 'c': cx}[anc]
+            anc = n.get('anchor', 'c')
+            # 设计稿里靠右（或居中）的字，变长是往左伸的。左边紧挨着还有别的东西（单选的小圆点、
+            # 按钮里的图标）时就不能往左伸——那是设计稿里整块一起往左挪，我们这儿只能挪字。
+            # 这种情况改成靠左：中文位置一个像素都不变（三种对齐方式算出来的落点就是设计稿量到的那个），
+            # 变长的时候往右边的空处伸（2026-11-26：英文的「Not controlling」压住控温圆键、「Clock」压住小圆点）
+            if anc != 'l' and left_neighbour(n):
+                anc = 'l'
+            axx = {'l': rx, 'r': rx + w, 'c': cx}[anc]
             args = f'"{cstr(n["text"])}", {int(n["fw"])}, {n["fs"]:g}, {c}, {int(a * opa * 255 + .5)}, {R(n["ls"])}, {w if n["lines"] > 1 else 0}'
             # 同一行里紧跟在前一段字后面的（卡片标题后面那句小字之类）：位置不写死，跟着前一段走。
             # 换成英文以后前面那段变长，写死的话就被压住了（2026-11-25 出图看到的「Device links」压着那句小字）
+            # 跟着前一段走，但只在同一块「牌子」里（同一个带底色 / 边框的容器，或者两段都不在任何牌子里）：
+            # 隔着两块牌子的两段字，前一段变长该往右让的是后面那块牌子本身，不是牌子里的字——
+            # 串上去的话字会跑到牌子外面（2026-11-26 出图看到的「序列存在设备本机 · 最多 6 步」）
             prev = last_text
             after = (prev and anc == 'l' and n['lines'] == 1 and prev['lines'] == 1
+                     and box_of(p) == box_of(prev['p'])
                      and abs(prev['cy'] - n['y'] - n['h'] / 2) < 3 and 0 <= n['x'] - prev['right'] <= 48)
             if after:
                 call = f'txta_shift({P}, {axx}, {cy}, t[{prev["i"]}], {R(prev["w"])}, {args})'
@@ -78,7 +119,7 @@ for name in pages:
                 emit(f'ui.reg_text("{cstr(n["id"])}", t[{i}], \'{anc}\', {axx}, {cy});')
                 # 跟着前一段走的：把这层关系也告诉界面，前一段的字一换（「通道 1」→ Channel 1），这一段自己往右让
                 if after: emit(f'ui.reg_follow("{cstr(n["id"])}", t[{prev["i"]}], {R(prev["w"])});')
-            last_text = {'i': i, 'right': n['x'] + n['w'], 'cy': n['y'] + n['h'] / 2, 'lines': n['lines'], 'w': n['w']}
+            last_text = {'i': i, 'p': p, 'right': n['x'] + n['w'], 'cy': n['y'] + n['h'] / 2, 'lines': n['lines'], 'w': n['w']}
             continue
         if 'img' in n:
             f, d = cut(n); call = f'im({P}, {rx + d}, {ry + d}, "{f}")'

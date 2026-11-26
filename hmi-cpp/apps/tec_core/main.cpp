@@ -74,7 +74,7 @@ int main(int argc, char** argv) {
         std::printf("仿真模式：没有连任何设备\n");
     } else {
         real = std::make_unique<tec::RealDevices>(settings);
-        for (auto& s : real->status()) std::printf("  %-28s %-6s %s\n", s.label.c_str(), s.port.c_str(), s.ok ? "正常" : s.problem.c_str());
+        for (auto& s : real->status()) std::printf("  %-28s %-6s %s\n", s.label.c_str(), s.port.c_str(), s.ok ? "正常" : s.problem.filled().c_str());
         if (real->can_control()) rh = &real->reactor();
         else {
             // 不退出：退出了触摸屏就连不上核心，也就没法进「通信设置」把串口改对
@@ -97,7 +97,8 @@ int main(int argc, char** argv) {
     app.comm_info = [&]() {
         nlohmann::json j = {{"sim", sim}, {"address", tec::local_ip()}, {"clients", nlohmann::json::array()}, {"status", nlohmann::json::array()}};
         for (auto& c : srv.clients()) j["clients"].push_back({{"address", c.address}, {"connected_s", c.connected_s}, {"rx", c.rx}, {"tx", c.tx}});
-        if (real) for (auto& s : real->status()) j["status"].push_back({{"key", s.key}, {"ok", s.ok}, {"problem", s.problem}});
+        if (real) for (auto& s : real->status()) j["status"].push_back({{"key", s.key}, {"ok", s.ok}, {"problem", s.problem.filled()},
+                                                              {"problem_t", s.problem.t}, {"problem_args", s.problem.args}});
         return j.dump();
     };
     std::string err;

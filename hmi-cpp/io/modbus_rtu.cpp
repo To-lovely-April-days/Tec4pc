@@ -109,8 +109,10 @@ std::vector<uint8_t> ModbusRtu::transact(uint8_t fc, const std::vector<uint8_t>&
             last_frame_end_ = now_ms();
             const bool link = !e.code;
             if (link && attempt < (e.timeout ? timeout_retries : corrupt_retries)) { sleep_ms(retry_backoff_ms); continue; }
-            // 报错把这一问一答的原始字节带上：现场对着串口助手一眼能看出是没发对、没收到，还是收到的不是想要的
-            throw ModbusError(std::string(e.what()) + "｜发 " + hex(frame) + "｜收 " + (rx_trace_.empty() ? "无" : hex(rx_trace_)), e.code, e.timeout);
+            // 报错把这一问一答的原始字节带上：现场对着串口助手一眼能看出是没发对、没收到，还是收到的不是想要的。
+            // 字节只缀在 what() 后面（记录、PC 端看得到），不进要翻的那一句——
+            // 缀进去整句就不是词表里的那一条了，触摸屏上这句话反而翻不了
+            throw ModbusError(e.text, "｜发 " + hex(frame) + "｜收 " + (rx_trace_.empty() ? "无" : hex(rx_trace_)), e.code, e.timeout);
         }
     }
 }
@@ -121,9 +123,9 @@ void ModbusRtu::read_exact(uint8_t* buf, size_t n, long long deadline, const cha
     while (got < n) {
         const long long remain = deadline - now_ms();
         if (remain <= 0)
-            throw ModbusError(std::to_string(timeout_ms_) + " ms 内没等到完整" + what + "——从站没上电、站号 / 波特率不对，或者线断了", std::nullopt, true);
+            throw ModbusError("{0} ms 内没等到完整{1}——从站没上电、站号 / 波特率不对，或者线断了", {std::to_string(timeout_ms_), what}, std::nullopt, true);
         if (got > 0 && now_ms() - last_byte > inter_byte_idle_ms)
-            throw ModbusError(std::string("应答烂尾：") + what + "收到一半后没有新字节——多半是 485 上的干扰把这一帧掐断了", std::nullopt, true);
+            throw ModbusError("应答烂尾：{0}收到一半后没有新字节——多半是 485 上的干扰把这一帧掐断了", {what}, std::nullopt, true);
         const int k = transport_.read(buf + got, n - got, static_cast<int>(remain < 20 ? remain : 20));
         if (k > 0) {
             rx_trace_.insert(rx_trace_.end(), buf + got, buf + got + k);
@@ -144,7 +146,7 @@ std::vector<uint8_t> ModbusRtu::read_response(uint8_t fc, int expected_data_byte
         read_exact(&head[1], 1, deadline, "应答");
     }
     if (head[0] != station_)
-        throw ModbusError("应答站号不对：问的是 " + std::to_string(station_) + " 号，答话的是 " + std::to_string(head[0]) + " 号——查一下站号和波特率");
+        throw ModbusError("应答站号不对：问的是 {0} 号，答话的是 {1} 号——查一下站号和波特率", {std::to_string(station_), std::to_string(head[0])});
     auto check_crc = [](const std::vector<uint8_t>& whole, uint8_t lo, uint8_t hi) {
         const uint16_t c = modbus_crc(whole.data(), whole.size());
         if (uint8_t(c) != lo || uint8_t(c >> 8) != hi) throw ModbusError("应答校验（CRC）不过：这一帧在线上被打坏了");
@@ -153,7 +155,7 @@ std::vector<uint8_t> ModbusRtu::read_response(uint8_t fc, int expected_data_byte
         uint8_t tail[3];
         read_exact(tail, 3, deadline, "异常应答");
         check_crc({head[0], head[1], tail[0]}, tail[1], tail[2]);
-        throw ModbusError("从站回了异常码 " + std::to_string(tail[0]), tail[0]);
+        throw ModbusError("从站回了异常码 {0}", {std::to_string(tail[0])}, tail[0]);
     }
     if (head[1] != fc) throw ModbusError("应答功能码不对");
     if (fc >= 0x01 && fc <= 0x04) {

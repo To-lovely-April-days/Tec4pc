@@ -77,7 +77,7 @@ bool export_action(const std::string& a) {
                 if (dr.value("ok", false) && dr["drives"].is_array() && !dr["drives"].empty()) exv.msg = ui::fmt("已导出 {0} 炉　·　{1}", {cnt, copy_to_usb()});
                 else exv.msg = ui::fmt("已导出 {0} 炉，放在本机 {1}　·　没插 U 盘，插上再点一次", {cnt, dir});
             }
-            else exv.msg = r.value("error", std::string("没导出来"));
+            else exv.msg = core_text(r, "error", "没导出来");
         }
     }
     refresh();

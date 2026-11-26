@@ -24,7 +24,7 @@ std::string copy_to_usb() {
     const json d = ask({{"cmd", "drives.list"}});
     if (!d.value("ok", false) || !d["drives"].is_array() || d["drives"].empty()) return ui::tr("没插 U 盘：已存在本机，插上再点一次");
     const json r = ask({{"cmd", "export.copy"}});
-    if (!r.value("ok", false)) return ui::fmt("拷到 U 盘没成功：{0}", {ui::tr(r.value("error", std::string("不知道为什么")))});
+    if (!r.value("ok", false)) return ui::fmt("拷到 U 盘没成功：{0}", {core_text(r, "error", "不知道为什么")});
     std::string to = r.value("to", std::string());
     for (char& ch : to) if (ch == '\\') ch = '/';
     return ui::fmt("已拷到 U 盘 {0}（{1} 个文件）", {to, std::to_string(r.value("files", 0))});
@@ -247,7 +247,7 @@ bool trend_action(const std::string& a) {
     if (a == "tr:mark") {
         // 时间标记：记下「现在」这一刻。核心在趋势图上竖一道线，这一炉在跑的话同时写进它的事件日志（导出能看到）
         const json r = ask({{"cmd", "mark.add"}, {"ch", ci + 1}});
-        tr_say(ci, r.value("ok", false) ? ui::fmt("已加第 {0} 个时间标记", {std::to_string(r.value("count", 0))}) : r.value("error", std::string("标记没加上")));
+        tr_say(ci, r.value("ok", false) ? ui::fmt("已加第 {0} 个时间标记", {std::to_string(r.value("count", 0))}) : core_text(r, "error", "标记没加上"));
         tdat[ci].asked = {};          // 马上重新要一次数据，标记线立刻出来
         refresh(); return true;
     }
@@ -255,7 +255,7 @@ bool trend_action(const std::string& a) {
         // 拍快照：把图上这段数据（最近 3 小时）存成一个 CSV，放在本机导出目录的「快照」里；
         // 导出快照：再拍一张，并把导出目录拷到 U 盘
         const json r = ask({{"cmd", "trend.snapshot"}, {"ch", ci + 1}});
-        if (!r.value("ok", false)) tr_say(ci, r.value("error", std::string("快照没存成")));
+        if (!r.value("ok", false)) tr_say(ci, core_text(r, "error", "快照没存成"));
         else if (a == "tr:snap") tr_say(ci, "快照已存在本机（导出目录 / 快照）");
         else tr_say(ci, copy_to_usb());
         refresh(); return true;

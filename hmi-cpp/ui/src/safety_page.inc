@@ -35,7 +35,7 @@ bool safety_action(const std::string& a) {
     open_keypad(ui::fmt("通道 {0} · {1}", {std::to_string(channel), ui::tr(title[k])}), unit, cur_v, kmin, kmax, (k == 2 ? f2(cur_v) : f1(cur_v)) + " " + unit, "—",
                 [this, ci, k](double x) {
                     const json r = ask({{"cmd", "limits.set"}, {"ch", ci + 1}, {field[k], x}});
-                    sfv[ci].msg = r.value("ok", false) ? "已保存" : r.value("error", std::string("没改成"));
+                    sfv[ci].msg = r.value("ok", false) ? "已保存" : core_text(r, "error", "没改成");
                     safety_fetch(ci, true);
                     refresh();
                 }, k == 2 ? 2 : 1);
@@ -79,21 +79,9 @@ void refresh_safety(Ui& u, const json& c, int ci) {
 }
 
 // ── 报警弹窗 ──
-// 报警那句话：核心给的是「原句 + 数」两件（title_t / args），按原句查词表、再把数填回去。
-// 老版本的核心只给填好的中文 title，那就照原样显示
-std::string alarm_title(const json& a) {
-    const std::string t = a.value("title_t", std::string());
-    if (t.empty()) return ui::tr(a.value("title", std::string()));
-    std::vector<std::string> args;
-    if (a["args"].is_array()) for (auto& x : a["args"]) args.push_back(x.is_string() ? x.get<std::string>() : std::string());
-    std::string out = ui::tr(t);
-    for (size_t i = 0; i < args.size(); i++) {
-        const std::string mark = "{" + std::to_string(i) + "}";
-        for (size_t q = out.find(mark); q != std::string::npos; q = out.find(mark, q + args[i].size()))
-            out.replace(q, mark.size(), args[i]);
-    }
-    return out;
-}
+// 报警那句话和别处一样走 core_text()：核心给「原句 + 数」两件（title_t / args），
+// 按原句查词表再把数填回去；老版本的核心只给填好的中文 title，那就照原样显示
+std::string alarm_title(const json& a) { return core_text(a, "title", "", "args"); }
 
 Page aldlg;
 struct AlarmView { json list = json::array(); int shown_id = -1; int count = -1; std::chrono::steady_clock::time_point asked{}; };

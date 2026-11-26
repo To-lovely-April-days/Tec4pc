@@ -52,7 +52,7 @@ bool lib_action(const std::string& a) {
         else if (seq_locked(ci)) lib.msg = ui::fmt("通道 {0} 的序列正在跑，结束了才能装", {std::to_string(ch)});
         else {
             const json r = ask({{"cmd", "seq.load"}, {"ch", ch}, {"steps", lib.steps}});
-            if (!r.value("ok", false)) lib.msg = r.value("error", std::string("没装进去"));
+            if (!r.value("ok", false)) lib.msg = core_text(r, "error", "没装进去");
             else {
                 // 装好了直接带到那个通道的任务序列页，让人马上看到装进去的是什么
                 sv[ci].key.clear(); sv[ci].sel = 0; sv[ci].msg = ui::fmt("已装入配方「{0}」", {lib.sel}); sv[ci].name = lib.sel;
@@ -67,7 +67,7 @@ bool lib_action(const std::string& a) {
         else if (!lib.del_armed) lib.del_armed = true;           // 删了找不回来：要点两次
         else {
             const json r = ask({{"cmd", "recipe.delete"}, {"name", lib.sel}});
-            lib.msg = r.value("ok", false) ? ui::fmt("已删除「{0}」", {lib.sel}) : r.value("error", std::string("没删掉"));
+            lib.msg = r.value("ok", false) ? ui::fmt("已删除「{0}」", {lib.sel}) : core_text(r, "error", "没删掉");
             lib.del_armed = false; lib.sel.clear(); lib.steps_of = "\x01";
             lib_fetch(true);
         }
@@ -84,7 +84,7 @@ bool lib_action(const std::string& a) {
                 for (auto& x : lib.list) if (x.value("name", "") == name) had = true;
                 const json r = ask({{"cmd", "recipe.save"}, {"name", name}, {"steps", steps}});
                 if (r.value("ok", false)) { lib.msg = had ? ui::fmt("已存为「{0}」（覆盖了同名的旧配方）", {name}) : ui::fmt("已存为「{0}」", {name}); lib.sel = name; lib.steps_of = "\x01"; lib.page = 0; }
-                else lib.msg = r.value("error", std::string("没存进去"));
+                else lib.msg = core_text(r, "error", "没存进去");
                 lib_fetch(true);
                 refresh();
             });

@@ -33,10 +33,10 @@ PID 整定	PID Tuning
 温度控制	Temperature						
 釜内控温 Tr	Control on Tr						
 Tr 传感器	Tr sensor						
-pH 电极	pH electrode						
+pH 电极	pH probe						
 目标 Tr	Target Tr						
 到达方式	Approach						
-尽快	Fastest						
+尽快	Fast						
 按速率	By rate						
 按时长	By time						
 控温中	Controlling						
@@ -54,9 +54,9 @@ Tj 夹套温度	Tj jacket temp
 Tj 设定（内环）	Tj setpoint (inner loop)						
 Tr−Tj 内外温差	Tr−Tj difference						
 R 转速	R speed						
-时间标记	Time marker						
-拍快照	Snapshot						
-导出快照	Export snapshot						
+时间标记	Mark						
+拍快照	Snap						
+导出快照	To USB						
 窗口 150 min	Window 150 min						
 横轴	X axis						
 时钟	Clock						
@@ -66,15 +66,15 @@ R 转速	R speed
 设定值附近	Near SP						
 反应釜	Reactor						
 反应釜类型	Reactor type						
-桨式搅拌 · Tr 探头 + pH 电极　·　规格在台面属性栏更换	Paddle stirrer · Tr probe + pH electrode　·　change spec in the property bar						
+桨式搅拌 · Tr 探头 + pH 电极　·　规格在台面属性栏更换	Paddle · Tr probe + pH probe　·　spec set in the property bar						
 安全限值	Safety limits						
 点行修改（Tr 三行，操作人层）· 序列运行中不可修改	Tap a row to edit (3 Tr rows, operator) · locked while running						
 Tr min（操作人）	Tr min (operator)						
-可改	Editable						
+可改	Edit						
 低于此值 → 停控并报警　·　设备底线 −40 ℃　·　已收紧	Below → stop and alarm　·　hardware −40 ℃　·　tightened						
 Tr max（操作人）	Tr max (operator)						
 高于此值 → 停控并报警　·　设备底线 180 ℃	Above → stop and alarm　·　hardware 180 ℃						
-变温速率上限	Ramp rate limit						
+变温速率上限	Ramp limit						
 关（不检测）	Off (not checked)						
 点行填一个值就开始盯实测斜率，填 0 = 关	Tap the row and enter a value to watch the measured slope; 0 = off						
 Tj（底线）	Tj (hardware)						
@@ -82,7 +82,7 @@ Tj（底线）	Tj (hardware)
 Tc（底线）	Tc (hardware)						
 冷媒温度过高 → 停止制冷并报警	Coolant too hot → stop cooling, alarm						
 限值只能在设备底线之内收紧	Limits tighten only inside the hardware range						
-安全层 1 Hz 独立求值 · 动作见各行	Safety layer runs at 1 Hz · action per row						
+安全层 1 Hz 独立求值 · 动作见各行	Safety layer · 1 Hz						
 导出	Export						
 导出采样间隔	Export sample interval						
 间隔越大文件越小	Larger interval, smaller file						
@@ -91,7 +91,7 @@ Tc（底线）	Tc (hardware)
 自定义	Custom						
 从第	From						
 min 到第	min to						
-时间从每一炉开始时算起	Time is counted from the start of each run						
+时间从每一炉开始时算起	Timed from each run's start						
 本机数据记录	Local records						
 活批次 + 归档目录里的每一炉	Live batch + every run in the archive						
 已选 2 / 4	2 / 4 selected						
@@ -106,10 +106,10 @@ min 到第	min to
 晶型筛选-低温-B2	Polymorph screen-low temp-B2						
 溶解度曲线-乙醇	Solubility curve-ethanol						
 3 个 CSV：执行记录 · 事件日志 · 采样宽表	3 CSV files: run log · event log · wide sample table						
-插着 U 盘就一并拷过去，没插先存本机	Copied to the USB drive if one is plugged in; otherwise kept on this machine						
-导出所选（2）	Export selected (2)						
+插着 U 盘就一并拷过去，没插先存本机	Copied to USB if one is plugged in						
+导出所选（2）	Export (2)						
 增益表	Gain table						
-双向挡 · 加热制冷、两个通道共用这一张	Bidirectional · heating and cooling, shared by both channels						
+双向挡 · 加热制冷、两个通道共用这一张	Bidirectional · one table for both channels						
 8 行 · 在用 40 ℃ 附近	8 rows · using the 40 ℃ area						
 温度 ℃	Temperature ℃						
 稳态偏置 K	Steady bias K						
@@ -129,7 +129,7 @@ Kp 9.40 · Ki 0.0370 · Kd 171.0 · 加热比 2.10	Kp 9.40 · Ki 0.0370 · Kd 17
 近 5 min：Tr 60.02 ℃，波动 ±0.03 ℃	Last 5 min: Tr 60.02 ℃, swing ±0.03 ℃						
 出力 31 %，没有顶到头	Output 31 %, not saturated						
 外环（釜温）	Outer loop (reactor)						
-靠这一炉的实测现算，不查表	Estimated live from this run, no table						
+靠这一炉的实测现算，不查表	Computed live from this run						
 维持温差（估）+3.4 K　·　釜的时间常数（估）388 s	Holding offset (est.) +3.4 K　·　reactor time constant (est.) 388 s						
 快速升温此刻加码 +0.0 K　·　夹套目标 63.4 ℃	Fast heat-up boost now +0.0 K　·　jacket target 63.4 ℃						
 稳态偏置那一列只当起点，开控以后以实测为准	Steady bias is only initial; live data takes over						
@@ -169,7 +169,7 @@ Kp 9.40 · Ki 0.0370 · Kd 171.0 · 加热比 2.10	Kp 9.40 · Ki 0.0370 · Kd 17
 退出	Quit						
 硬件通信	Device links						
 本机直接连各设备 · 串口 Modbus	Direct to the devices · Modbus serial						
-自动检测	Auto-detect						
+自动检测	Detect						
 设备	Device						
 串口	Port						
 波特率	Baud						
@@ -235,7 +235,7 @@ BHT pH 电极	BHT pH electrode
 7 口 · COM26	Port 7 · COM26						
 8 口 · COM27	Port 8 · COM27						
 进料系统主板	Dosing system board						
-只读地问过，没动任何输出；应用后要重启控制核心才生效	Read-only probing, no output was touched; applying takes effect after the control core restarts						
+只读地问过，没动任何输出；应用后要重启控制核心才生效	Read-only probe; apply needs a core restart						
 重新检测	Scan again						
 应用这 8 处	Apply these 8						
 一个口一个口地问，问到谁答得上来为止	Asking one port after another until something answers						
@@ -302,13 +302,13 @@ Tr 超过上限 180.0 ℃（实测 180.6 ℃）	Tr above the 180.0 ℃ limit (me
 搅拌 300 rpm	Stir 300 rpm						
 保持 −10.0 ℃	Hold −10.0 ℃						
 升到 20.0 ℃ · 按时长	Heat to 20.0 ℃ · by duration						
-装入会替换该通道现在编着的全部步骤	Loading replaces every step currently edited on that channel						
+装入会替换该通道现在编着的全部步骤	Loading replaces that channel's steps						
 通道 1 运行中	Channel 1 running						
 装入通道 2	Load into channel 2						
 删除	Delete						
-存通道 1 的序列	Save channel 1's sequence						
-存通道 2 的序列	Save channel 2's sequence						
-配方存在设备本机，不分通道，两个通道都能装　·　与工作站配方各自独立	Recipes live on this machine, not per channel, and load into either one　·　separate from the workstation's recipes						
+存通道 1 的序列	Save ch 1						
+存通道 2 的序列	Save ch 2						
+配方存在设备本机，不分通道，两个通道都能装　·　与工作站配方各自独立	Recipes live on this machine　·　either channel can load them						
 装置总览	Plant overview						
 方案总览	Program overview						
 曲线总览	Trend overview						
@@ -340,16 +340,16 @@ Tj 通道 2	Tj channel 2
 空格	Space						
 确定	OK						
 5 / 6 步　·　预计 3 h 30 min　·　已走 1 h 37 min	5 / 6 steps　·　about 3 h 30 min　·　1 h 37 min done						
-新建序列…	New sequence…						
-从配方库	From recipes						
+新建序列…	New…						
+从配方库	Recipes						
 升到 65.0 ℃	Heat to 65.0 ℃						
 按时长 12 min	By duration 12 min						
 保持 65.0 ℃	Hold 65.0 ℃						
 降到 20.0 ℃	Cool to 20.0 ℃						
 保持 20.0 ℃	Hold 20.0 ℃						
 添加	Add						
-已开始的序列不可增改	A running sequence cannot be edited						
-序列存在设备本机 · 最多 6 步	Sequences live on this machine · 6 steps max						
+已开始的序列不可增改	No changes once started						
+序列存在设备本机 · 最多 6 步	On this machine · 6 steps max						
 清除全部步骤	Clear all steps						
 确认继续	Confirm and continue						
 开始序列	Start sequence						
@@ -394,7 +394,7 @@ pH 反馈	pH hold
 共 4 段 · 2 h 40 min · 60 → 5 ℃	4 segments · 2 h 40 min · 60 → 5 ℃						
 编辑曲线	Edit profile						
 给操作人看的提示（点一下改）	Note for the operator (tap to edit)						
-请确认后继续	Please acknowledge to continue						
+请确认后继续	Confirm						
 结晶曲线	Crystallization profile						
 釜内 Tr · 共 12 段 · 3 h 10 min · 60 → 5 ℃	Reactor Tr · 12 segments · 3 h 10 min · 60 → 5 ℃						
 第 7 / 12 段	Segment 7 / 12						
@@ -414,6 +414,10 @@ pH 反馈	pH hold
 目标温度	Target temperature						
 编辑时搅拌卡收起，搅拌照常运行；点「完成」回到上一页	The stirring card is folded away while editing; stirring keeps running. Tap Done to go back						
 手动控温	Manual control						
+应答	reply						
+异常应答	exception reply						
+应答长度	byte count						
+应答数据	reply data						
 Tr 探头（宇电四路模块）	Tr probe (Yudian 4-ch)						
 安全联锁	Safety interlock						
 进入第 	Entering step 						
@@ -443,27 +447,25 @@ Tr 探头（宇电四路模块）	Tr probe (Yudian 4-ch)
 没有这个配方	No such recipe						
 存不了：名字是空的，或者步骤不对	Cannot save: the name is empty or a step is wrong						
 序列运行中不能改安全限值	Safety limits cannot be changed while a sequence runs						
-限值只能在设备底线（−40 … 180 ℃）之内，而且下限要小于上限	Limits must stay inside the hardware range (−40 … 180 ℃) and the low one must be below the high one						
+限值只能在设备底线（−40 … 180 ℃）之内，而且下限要小于上限	Limits must stay inside −40 … 180 ℃, and low below high						
 通信和系统设置只能在触摸屏上改	Communication and system settings can only be changed on the touchscreen						
 没有这台设备	No such device						
 设置存不了盘	The settings could not be written to disk						
 自动检测只能在触摸屏上做	Auto-detect can only be run on the touchscreen						
 正在检测，等它扫完	A scan is already running; wait for it to finish						
 这台机器上没有真串口可扫（仿真模式）	This machine has no real serial port to scan (simulation)						
-有通道正在控制中。检测要占住串口、会打断轮询，先把两个通道都停下来再检测	A channel is under control. The scan takes over the ports and interrupts polling; stop both channels first						
+有通道正在控制中。检测要占住串口、会打断轮询，先把两个通道都停下来再检测	The scan needs the ports — stop both channels first						
 没给要改哪几台	No devices were given to change						
-设置里没有这些设备：	These devices are not in the settings: 						
+设置里没有这些设备：{0}	Not in the settings: {0}						
 时间标记：	Time marker: 						
 快照存不了（导出目录写不进去）	The snapshot could not be saved (the export folder is not writable)						
-时刻,釜内Tr(℃),夹套Tj(℃),夹套目标(℃),当前目标(℃),pH,搅拌(rpm),在控温
-							
 没找到 U 盘：插上以后再点一次	No USB drive found: plug one in and tap again						
 TEC导出	TEC export						
 只有触摸屏上能退出控制核心	Only the touchscreen can quit the control core						
 有通道正在控温或跑序列，停下来才能退出	A channel is controlling or running a sequence; stop it before quitting						
 这个程序不支持退出	This program does not support quitting						
 导出范围不对：结束要比开始晚	Bad export range: the end must be later than the start						
-有通道正在控温或跑序列，停下来才能换增益表	A channel is controlling or running a sequence; stop it before changing the gain table						
+有通道正在控温或跑序列，停下来才能换增益表	Stop both channels first						
 盘上的增益表读不出来	The gain table on disk cannot be read						
 增益表要 1 到 16 行	The gain table needs 1 to 16 rows						
 温度要在 −60 … 250 ℃ 之间	The temperature must be between −60 and 250 ℃						
@@ -471,8 +473,8 @@ Kp 要大于 0，Ki、Kd 不能是负的	Kp must be above 0; Ki and Kd cannot be
 加热比要大于 0	The heat ratio must be above 0						
 有两行是同一个温度	Two rows have the same temperature						
 增益表没存进去（文件写不了）	The gain table was not saved (the file could not be written)						
-不认识的命令：	Unknown command: 						
-处理命令时出错：	Error while handling the command: 						
+不认识的命令：{0}	Unknown command: {0}						
+处理命令时出错：{0}	Command failed: {0}						
 开始釜内控温	Reactor control started						
 开始夹套控温	Jacket control started						
 停止控温，搅拌保持	Control stopped, stirring kept						
@@ -503,35 +505,73 @@ Tr 低于下限 {0} ℃（实测 {1} ℃）	Tr below the {0} ℃ limit (measured
 等待操作人确认	Waiting for the operator to acknowledge						
 控温被停止，序列中断在第 	Control was stopped; the sequence broke off at step 						
 序列已完成，温度保持中	Sequence finished; temperature is being held						
+真串口只有 Windows 版；这台电脑上请用 --sim	Real serial ports are Windows-only; use --sim on this machine						
+设置里没有这台设备	Not in the settings						
+温控器或继电器模块没连上	Controller or relay not connected						
+JY-MODBUS-IO8R · 8 路	JY-MODBUS-IO8R · 8 ch						
+冷水机主板	Chiller board						
+TEC 温控器	TEC controller						
+切换继电器	Switch relay						
+Tr 探头	Tr probe						
+搅拌驱动	Stirrer drive						
+认不准：{0} 都对得上，请人工指定	Ambiguous: {0} matches — pick one by hand						
+这个通道没有接搅拌驱动器	No stirrer drive on this channel						
+没有接进料系统	No dosing system connected						
+温控器或继电器模块没连上，不能控温。到「设置 → 通信设置」核对串口，改好后重启控制核心	Controller or relay not connected — no control. Check the ports under Settings → Communication, then restart the core
+打不开串口 {0}{1}	Cannot open {0}{1}						
+读不到串口 {0} 的参数{1}	Cannot read the {0} settings{1}						
+设不了串口 {0} 的参数{1}	Cannot set the {0} settings{1}						
+串口 {0} 写不出去{1}	Write to {0} failed{1}						
+串口 {0} 读出错{1}	Read from {0} failed{1}						
+写入的回声对不上：发的和从站答回来的不是同一个地址 / 值	Write echo mismatch: the slave answered with a different address or value						
+{0} ms 内没等到完整{1}——从站没上电、站号 / 波特率不对，或者线断了	No {1} within {0} ms — slave off, wrong station or baud, or a broken wire
+应答烂尾：{0}收到一半后没有新字节——多半是 485 上的干扰把这一帧掐断了	Truncated: {0} stopped mid-frame — most likely RS-485 interference						
+应答站号不对：问的是 {0} 号，答话的是 {1} 号——查一下站号和波特率	Wrong station in reply: asked {0}, answered {1} — check station and baud						
+应答校验（CRC）不过：这一帧在线上被打坏了	Reply CRC failed: the frame was corrupted on the wire						
+从站回了异常码 {0}	Slave returned exception code {0}						
+应答功能码不对	Wrong function code in the reply						
+应答长度不对：多半是上一问迟到的应答串了帧	Wrong reply length: probably a late reply to the previous request						
+认不准：{0}、{1} 都对得上，请人工指定	Ambiguous: {0} and {1} both match — pick one by hand						
+认不准：{0}、{1}、{2} 都对得上，请人工指定	Ambiguous: {0}, {1} and {2} all match — pick one by hand						
+认不准：{0}、{1}、{2}、{3} 都对得上，请人工指定	Ambiguous: {0}, {1}, {2} and {3} all match — pick one by hand						
 没存进去	Could not save						
+「{0}」的参数已保存，重启控制核心后生效	Saved "{0}"; restart core to apply						
+{0} · 串口号	{0} · COM port						
+{0} · 站号	{0} · Slave ID						
+{0} · 轮询周期	{0} · Poll period						
 没连上：{0}	Not connected: {0}						
+已保存，重启控制核心后生效	Saved; takes effect after the control core restarts						
+已保存，马上生效	Saved; in effect now						
+对外通信 · 监听端口	External link · port						
+端口已保存，重启控制核心后生效；PC 端要跟着改	Port saved; restart the core, and change it on the PC too						
+对外通信 · 断线超时	External link · timeout						
 还没拿到控制核心的设备清单	No device list from the control core yet						
 没连上	Not connected						
 仿真（没连真设备）	Simulated						
 未知	Unknown						
-温控器或继电器模块没连上：按右上角「自动检测」问一遍，或点红色的那一行改串口	The temperature controller or the relay module is not connected: run Auto-detect at the top right, or tap the red row to fix its port						
+温控器或继电器模块没连上：按右上角「自动检测」问一遍，或点红色的那一行改串口	Controller or relay not connected — run Auto-detect, or tap the red row to set its port						
 没连网	No network						
 现在没有 PC 连着	No PC connected						
 {0} 台	{0}						
 收 {0} 条 · 发 {1} 条	rx {0} · tx {1}						
 已连 {0}	up {0}						
 {0} 口 · {1}	Port {0} · {1}						
+{0} · 固件 {1}	{0} · FW {1}						
 没扫到	Not found						
 认出 {0} 台 · {1} 处和现在配的不一样 · {2} 台同型号要你指派通道	{0} identified · {1} differ from the current setup · {2} same-model devices need a channel						
 认出 {0} 台 · {1} 处和现在配的不一样	{0} identified · {1} differ from the current setup						
 应用这 {0} 处	Apply these {0}						
+检测没跑起来	The scan did not start						
 第 {0} 个口 / 共 {1} 个	Port {0} of {1}						
 正在找串口…	Looking for ports…						
-已用 {0} s	Elapsed {0} s						
+已用 {0} s	{0} s						
 {0} 口	Port {0}						
 {0} · 站号 {1}	{0} · station {1}						
 没认出来	Not identified						
-检测没跑起来	The scan did not start						
-「{0}」的参数已保存，重启控制核心后生效	Saved "{0}"; restart core to apply						
-{0} · 串口号	{0} · COM port						
-{0} · 站号	{0} · Slave ID						
-{0} · 轮询周期	{0} · Poll period						
+检测停了	Scan stopped						
+没有可以应用的行	No rows to apply						
 已按检测结果改了 {0} 台，并记住了它们的 USB 口；重启控制核心后生效	Updated {0} device(s) and remembered USB ports; restart core to apply						
+还没有曲线	No curve yet						
 还没有曲线，点「编辑曲线」添加	No curve yet; tap Edit profile to add one						
 釜内 Tr · 共 {0} 段 · {1} · {2} → {3} ℃	Reactor Tr · {0} segments · {1} · {2} → {3} ℃						
 正在按曲线控温	Following the profile						
@@ -541,81 +581,114 @@ Tr 低于下限 {0} ℃（实测 {1} ℃）	Tr below the {0} ℃ limit (measured
 点右边的圆键开始	Tap the round button on the right to start						
 曲线走完了	Profile finished						
 保持在 {0} ℃	Holding at {0} ℃						
+第 {0} / {1} 段	Segment {0} / {1}						
 到 {0} ℃ · 给定 {1} ℃	To {0} ℃ · setpoint {1} ℃						
 本段剩 {0}	{0} left in this segment						
 降 {0}	−{0}						
 升 {0}	+{0}						
 未控温	Not controlling						
 点按启动	Tap to start						
-还没有曲线	No curve yet						
-{0} · 共 {1} 段 · {2} · {3} → {4} ℃	{0} · {1} segments · {2} · {3} → {4} ℃						
-点格子改温度和用时，变化看右边曲线　·　已有 {0} 段（最多 {1} 段）	Tap a cell to change temperature and time; watch the curve on the right　·　{0} segments ({1} max)						
-第 {0} / {1} 段	Segment {0} / {1}						
 任务序列第 {0} 步	Sequence step {0}						
 釜内 Tr	Reactor Tr						
-还没有记录	No records yet						
-已选 {0} / {1}	{0} / {1} selected						
-通道 {0}	Channel {0}						
-今天 {0}	Today {0}						
-导出所选（{0}）	Export selected ({0})						
-没导出来	Not exported						
+{0} · 共 {1} 段 · {2} · {3} → {4} ℃	{0} · {1} segments · {2} · {3} → {4} ℃						
+点格子改温度和用时，变化看右边曲线　·　已有 {0} 段（最多 {1} 段）	Tap a cell to change temperature and time; watch the curve on the right　·　{0} segments ({1} max)						
+正在控温，先停止再改曲线	Controlling: stop before editing the profile						
+第 {0} 段 · 目标温度	Segment {0} · target						
+第 {0} 段 · 用时	Segment {0} · duration						
+导出范围 · 从第几分钟起	Export range · from minute						
+导出范围 · 到第几分钟止	Export range · to minute						
+先勾上要导出的炉次	Tick the runs to export first						
 已导出 {0} 炉　·　{1}	Exported {0} run(s) · {1}						
 已导出 {0} 炉，放在本机 {1}　·　没插 U 盘，插上再点一次	Exported {0} run(s) to {1} · No USB drive; plug in and tap again						
+没导出来	Not exported						
+还没有记录	None yet						
+已选 {0} / {1}	{0} / {1}						
+通道 {0}	Channel {0}						
+今天 {0}	Today {0}						
+导出所选（{0}）	Export ({0})						
 未齐	Partial						
 未译	Not translated						
 缺字体	Font missing						
 {0}：这台机器上没有它要的字体，放进 assets/fonts 才能用	{0}: font missing on this machine; place it in assets/fonts first						
+还没有配方	No recipes yet						
+通道 {0} 的序列正在跑，结束了才能装	Ch {0} sequence is running; stop it before loading						
+没装进去	Not loaded						
+已装入配方「{0}」	Loaded recipe "{0}"						
+已删除「{0}」	Deleted "{0}"						
+没删掉	Not deleted						
+通道 {0} 现在没有编好的序列	Channel {0} has no sequence yet						
+名字是空的，没存	The name is empty; not saved						
+已存为「{0}」（覆盖了同名的旧配方）	Saved as "{0}" (overwrote existing recipe)						
+已存为「{0}」	Saved as "{0}"						
 配方库 · {0} 个	Recipes · {0}						
 {0} 步 · 约 {1}	{0} steps · about {1}						
 {0} 步	{0} steps						
 {0} 步 · 预计约 {1} · 保存于 {2}	{0} steps · about {1} · saved {2}						
 {0} 步 · 保存于 {1}	{0} steps · saved {1}						
 配方库是空的	No recipes yet						
-在任务序列页编好序列，再回来点下面的「存通道的序列」	Build the sequence on the Sequence page, then come back and tap Save this channel's sequence						
+在任务序列页编好序列，再回来点下面的「存通道的序列」	Build it on the Sequence page, then come back and tap Save ch 1 / ch 2						
 搅拌 {0} rpm	Stir {0} rpm						
 通道 {0} 运行中	Channel {0} running						
 装入通道 {0}	Load into channel {0}						
-再点一次确认	Tap again to confirm						
+再点一次确认	Tap again						
 删了找不回来。确定要删就再点一次「删除」	Deleting cannot be undone. Tap Delete again to confirm						
-没装进去	Not loaded						
-没删掉	Not deleted						
-通道 {0} 的序列正在跑，结束了才能装	Ch {0} sequence is running; stop it before loading						
-已装入配方「{0}」	Loaded recipe "{0}"						
-已删除「{0}」	Deleted "{0}"						
-通道 {0} 现在没有编好的序列	Channel {0} has no sequence yet						
-已存为「{0}」（覆盖了同名的旧配方）	Saved as "{0}" (overwrote existing recipe)						
-已存为「{0}」	Saved as "{0}"						
-还没有序列	No sequence yet						
+这个通道还没有编序列。点这里去编	No sequence on this channel yet. Tap here to build one						
 {0} 加料 {1}	{0} Dose {1}						
 在 {0} ℃ 加	At {0} ℃						
 在 {0} ℃ 加 · {1}	At {0} ℃ · {1}						
+还没有序列	No sequence yet						
  · 共约 {0}	 · ~{0}						
  · 已走 {0}	 · {0} elapsed						
 运行中 · 步骤 {0} / {1}	Running · step {0} / {1}						
+等待确认	Waiting for confirmation						
+未启动	Not started						
+正在等数据…	Waiting for data…						
+Tj 通道2	Tj ch 2						
+Tr 通道2	Tr ch 2						
+Tj 通道1	Tj ch 1						
+Tr 通道1	Tr ch 1						
+表是空的	Table is empty						
+ · 加热比 {0}	 · Heat ratio {0}						
+表里有 {0} 行，屏上只放得下 8 行，这张表请在 PC 端改	Table has {0} rows (screen fits max 8); edit on PC						
+这一行管的温度	Temperature this row covers						
+稳态偏置（维持温差的起点）	Steady bias (start of the holding offset)						
+{0} ℃ 这一行 · {1}	Row {0} ℃ · {1}						
+最多 8 行	8 rows max						
+没有改动	No changes						
+已应用并存盘	Applied and saved						
+没应用成	Not applied						
+已放弃修改	Changes discarded						
+已从盘上重读	Reloaded from disk						
+没读成	Not read						
+屏上这份已清空；要重新加行再点「应用表格」，或点「放弃修改」找回来	Cleared on screen; add rows and tap Apply table, or tap Discard changes to get it back						
+看某个温度会用什么增益	Gains used at a temperature						
+快速升温加码上限（0 = 不加码）	Fast heat-up boost limit (0 = off)						
+有改动还没应用（点「应用表格」才生效）	Unsaved edits (tap Apply table to save)						
+{0} 行 · 在用 {1} ℃ 附近	{0} rows · using near {1} ℃						
+{0} 行	{0} rows						
 夹套目标 {0} ℃ · 出力 {1} %（{2}）	Jacket target {0} ℃ · output {1} % ({2})						
 TEC 制冷	TEC cooling						
 加热棒	Heater						
 没在控温	Not controlling						
-开始控温以后，这里显示当时按夹套目标插值出来的那组增益	Once control starts, this shows the gains interpolated for the jacket target at that moment						
+开始控温以后，这里显示当时按夹套目标插值出来的那组增益	Once control starts, shows the gains for the Tj target						
 ℃ 会用：{0}	℃ would use: {0}						
-开始控温以后，这里显示外环此刻估出来的维持温差和时间常数	Once control starts, this shows the holding offset and time constant the outer loop estimates						
-升温时夹套最多比稳妥算法多拉高这么多；0 = 不加码	How much higher than the safe algorithm the jacket may be driven while heating; 0 = no boost						
-没应用成	Not applied						
-没读成	Not read						
- · 加热比 {0}	 · Heat ratio {0}						
-表里有 {0} 行，屏上只放得下 8 行，这张表请在 PC 端改	Table has {0} rows (screen fits max 8); edit on PC						
-{0} ℃ 这一行 · {1}	Row {0} ℃ · {1}						
-{0} 行 · 在用 {1} ℃ 附近	{0} rows · using near {1} ℃						
-{0} 行	{0} rows						
+数据还不够（要攒够半分钟）	Need ≥ 30 s of data						
+近 5 min	Last 5 min						
 近 {0} s	Last {0} s						
 {0}：Tr 平均 {1} ℃，波动 ±{2} ℃	{0}: Tr avg {1} ℃, ±{2} ℃						
 出力 {0} %，{1}	Output {0}%, {1}						
+已经顶到头了（再大也加不上去）	Already saturated (more will not help)						
+没有顶到头	Not saturated						
 维持温差（估）{0} K　·　釜的时间常数（估）{1} s	Holding offset (est.) {0} K　·　reactor time constant (est.) {1} s						
 快速升温此刻加码 {0} K　·　夹套目标 {1} ℃	Fast heat-up boost now {0} K　·　jacket target {1} ℃						
-表是空的	Table is empty						
-有改动还没应用（点「应用表格」才生效）	Unsaved edits (tap Apply table to save)						
-数据还不够（要攒够半分钟）	Need ≥ 30 s of data						
-近 5 min	Last 5 min						
+开始控温以后，这里显示外环此刻估出来的维持温差和时间常数	Offset and time constant appear once control starts						
+升温时夹套最多比稳妥算法多拉高这么多；0 = 不加码	Max extra K above the safe target; 0 = off						
+釜内温度下限 Tr min	Reactor low limit Tr min						
+釜内温度上限 Tr max	Reactor high limit Tr max						
+变温速率上限（填 0 = 不检测）	Ramp limit (0 = not checked)						
+通道 {0} · {1}	Channel {0} · {1}						
+已保存	Saved						
+没改成	Not changed						
 还没拿到控制核心的安全限值	No safety limits from the control core yet						
 低于此值 → 停控并报警　·　设备底线 −40 ℃	Below → stop and alarm　·　hardware −40 ℃						
 高于此值 → 停控并报警　·　设备底线 180 ℃　·　已收紧	Above → stop and alarm　·　hardware 180 ℃　·　tightened						
@@ -623,38 +696,56 @@ TEC 制冷	TEC cooling
 点左边的框填一个值就开始盯实测斜率，填 0 = 关	Enter a value in the box on the left to start watching the measured slope; 0 = off						
 冷水机水温现在 {0} ℃　·　TEC 制冷时高于此值 → 停控并报警	Chiller water is {0} ℃ now　·　above this while TEC cools → stop and alarm						
 没读到冷水机水温（没接或没通上），读到以后才检测这一项	No chiller water reading (not connected or not responding); this check starts once there is one						
+序列运行中不可修改	Locked while the sequence runs						
 通道 {0} · {1} · 还有 {2} 条	Channel {0} · {1} · {2} more						
-通道 {0} · {1}	Channel {0} · {1}						
 安全层已执行：{0}	Safety layer acted: {0}						
 现在实测：Tr {0} ℃　Tj {1} ℃	Measured now: Tr {0} ℃　Tj {1} ℃						
 现在实测：Tj {0} ℃	Measured now: Tj {0} ℃						
 控制核心这次开机以来没有报过警	No alarms since the control core started						
 共 {0} 条 · 控制核心这次开机以来的	{0} entries · since the control core started						
 未确认	Not acknowledged						
-没改成	Not changed						
-这一步已走 {0}	{0} into this step						
-目标 Tj	Target Tj						
-共 {0} 段 · {1} · 最后到 {2} ℃	{0} segments · {1} · ends at {2} ℃						
-开始不了	Could not start						
 到 {0} ℃	to {0} ℃						
 按时长 {0}	in {0}						
+回流	Reflux						
 夹套高 {0} K	Tj +{0} K						
+保持现状	Keep						
 {0} 段	{0} seg						
 维持 {0}	Hold {0}						
+暂停	Pause						
+等人确认	Wait confirm						
+目标 Tj	Target Tj						
+到达用时	Time to target						
+升降温速率	Ramp rate						
 第 {0} 步 · {1}	Step {0} · {1}						
 第 {0} 步做什么？	Step {0}: choose action						
 第 {0} 步换成什么？	Step {0}: change action						
 第 {0} 步 · 加的是什么料液	Step {0} · Liquid name						
 第 {0} 步 · 停下来时给操作人看的提示	Step {0} · Prompt shown when paused						
+给新序列起个名字	Name the new sequence						
+序列 %m-%d %H:%M	Sequence %m-%d %H:%M						
+开始不了	Could not start						
+这一步已走 {0}	{0} into this step						
+温度到了目标附近并且稳住，这一步才算完；搅拌写「不变」就是沿用上一步的转速	The step ends once the temperature is at target and steady; stirring Keep carries over the previous speed						
+夹套一直比釜内高这么多度，让它自己找到沸点；走满时长这一步结束	Holds the jacket this many K above the reactor so it finds the boiling point; the step ends when the time is up						
+控温和搅拌保持上一步的样子，只是等这么久	Keeps temperature and stirring as they are and just waits						
+把搅拌改到这个转速，马上进下一步	Sets the stirrer to this speed and moves straight on						
+pH 电极测、调节泵加，把 pH 维持在目标附近；走满维持时长结束，最大总量是加料上限	The pH probe measures and the pump doses to hold pH near target; it ends when the hold time is up, capped by the volume limit						
+加料时长 = 体积 ÷ 流量；加完这一步结束	Dosing time = volume ÷ flow rate; the step ends when it is done						
+按泵的最大流量一次送完	Sends it all at the pump's full flow rate						
+共 {0} 段 · {1} · 最后到 {2} ℃	{0} segments · {1} · ends at {2} ℃						
+结晶就是分段曲线控温：点「编辑曲线」改各段的目标温度和用时，第一段从当时的釜温走起	Crystallization is a segmented profile: tap Edit profile to set each segment's target and time; segment 1 starts from the current reactor temperature						
+走到这一步就停下来等人；在屏上点「确认继续」才往下走	Stops here and waits; it goes on only when someone taps Confirm and continue						
 {0} / 6 步	{0} / 6 steps						
 　·　预计约 {0}	 · ~{0}						
 　·　已走 {0}	 · {0} elapsed						
-回流	Reflux						
-保持现状	Keep						
-暂停	Pause						
-等人确认	Wait confirm						
-炉子会停，设备不再受控	The run stops and the equipment is no longer controlled						
-连不上控制核心	Cannot reach the control core						
+连不上控制核心：这块屏现在看到的不是实时的	Control core offline: readings shown are not live						
+两个通道都待机，没有在跑的炉子	Both channels idle; no active reaction						
+两个通道都在控温 —— 退出后这块屏上看不到了，炉子照常控	Both channels controlling — screen closes, reactors keep running						
+通道 {0} 正在控温 {1} ℃ —— 退出后这块屏上看不到了，炉子照常控	Ch {0} controlling at {1} ℃ — screen closes, reactor keeps running						
+通道 {0} 正在控温 —— 退出后这块屏上看不到了，炉子照常控	Ch {0} controlling — screen closes, reactor keeps running						
+炉子会停，设备不再受控	Run stops, control ends						
+连不上控制核心	No link to the core						
+控制核心没退	The control core did not quit						
 读取中…	Reading…						
 界面程序连不上控制核心：看看它有没有在运行	The HMI cannot reach the control core: check whether it is running						
 {0} · 已运行 {1}	{0} · up {1}						
@@ -664,6 +755,7 @@ TEC 制冷	TEC cooling
 连着 {0} 的控制核心 · 端口 {1}	Connected to the control core at {0} · port {1}						
 剩余 {0} GB / 共 {1} GB	{0} GB free / {1} GB total						
 读不到	Cannot read						
+数据放在 {0}	Data is kept in {0}						
 {0} 炉 · 配方 {1} 个	{0} runs · {1} recipes						
 {0} 行 · 双向挡	{0} rows · bidirectional						
 已开 · 冷水机没在运行	On · chiller not running						
@@ -671,56 +763,820 @@ TEC 制冷	TEC cooling
 已关 · 冷水机没在运行	Off · chiller not running						
 {0} : {1} · {2} 台 PC 连着	{0} : {1} · {2} PC connected						
 {0} : {1} · 没有 PC 连着	{0} : {1} · no PC connected						
-控制核心没退	The control core did not quit						
-通道 {0} 正在控温 {1} ℃ —— 退出后这块屏上看不到了，炉子照常控	Ch {0} controlling at {1} ℃ — screen closes, reactor keeps running						
-通道 {0} 正在控温 —— 退出后这块屏上看不到了，炉子照常控	Ch {0} controlling — screen closes, reactor keeps running						
-数据放在 {0}	Data is kept in {0}						
-连不上控制核心：这块屏现在看到的不是实时的	Control core offline: readings shown are not live						
-两个通道都待机，没有在跑的炉子	Both channels idle; no active reaction						
-两个通道都在控温 —— 退出后这块屏上看不到了，炉子照常控	Both channels controlling — screen closes, reactors keep running						
 小写	Lower						
 字母	ABC						
 中	CN						
 英	EN						
+没插 U 盘：已存在本机，插上再点一次	No USB drive: saved locally; plug in and tap again						
+拷到 U 盘没成功：{0}	USB copy failed: {0}						
+不知道为什么	Reason unknown						
+已拷到 U 盘 {0}（{1} 个文件）	Copied to USB {0} ({1} files)						
 窗口 —	Window —						
 窗口 {0} min	Window {0} min						
-不知道为什么	Reason unknown						
+已加第 {0} 个时间标记	Added time mark #{0}						
 标记没加上	The marker was not added						
 快照没存成	The snapshot was not saved						
-拷到 U 盘没成功：{0}	USB copy failed: {0}						
-已拷到 U 盘 {0}（{1} 个文件）	Copied to USB {0} ({1} files)						
-已加第 {0} 个时间标记	Added time mark #{0}						
-没插 U 盘：已存在本机，插上再点一次	No USB drive: saved locally; plug in and tap again						
+快照已存在本机（导出目录 / 快照）	Snapshot saved on this machine (Exports folder)						
 和控制核心断开了	Lost the control core						
+正在自动重试	Retrying						
+正在自动重试 ·	Retrying ·						
+正在自动重试 · ·	Retrying · ·						
+蒸回流进行中改不了温差：先停下，改好再开	Cannot change ΔT while refluxing: stop it, change it, start again						
+通道 {0} · 蒸回流：夹套比釜内高	Channel {0} · Reflux: Tj − Tr						
+通道 {0} · 目标 Tj	Channel {0} · target Tj						
+通道 {0} · 目标 Tr	Channel {0} · target Tr						
+通道 {0} · 搅拌转速	Channel {0} · Stir speed						
+先点「编辑曲线」加几段	Tap Edit profile to add segments first						
 手动运行	Manual run						
 未在运行	Not running						
+夹套控温 Tj	Jacket control Tj						
 程序模式	Program mode						
 手动模式	Manual mode						
-开	On						
-关	Off						
-实测 {0} rpm　·　电流 {1} A	Measured {0} rpm　·　current {1} A						
-桨式 · 50–1000 rpm　·　实测 {0} rpm · 电流 {1} A	Paddle · 50–1000 rpm　·　measured {0} rpm · current {1} A						
-设备未连接	Device not connected						
-冷却水已关	Water off						
-程序控制	Program						
-手动控制	Manual						
+等待确认后继续	Acknowledge to continue						
+步骤 {0} / {1}	Step {0} / {1}						
 加热中	Heating						
 制冷中	Cooling						
 保温中	Holding						
-本步已走	Step elapsed						
-夹套控温 Tj	Jacket control Tj						
-起界面时出错：	Error while building the screen: 						
-刷新界面时出错：	Error while refreshing the screen: 						
-通道 {0} · 蒸回流：夹套比釜内高	Channel {0} · Reflux: Tj − Tr						
-通道 {0} · 搅拌转速	Channel {0} · Stir speed						
-步骤 {0} / {1}	Step {0} / {1}						
+关	Off						
+开	On						
+实测 {0} rpm　·　电流 {1} A	Measured {0} rpm　·　current {1} A						
+桨式 · 50–1000 rpm　·　实测 {0} rpm · 电流 {1} A	Paddle · 50–1000 rpm　·　measured {0} rpm · current {1} A						
+设备未连接	No device						
+冷却水已关	Water off						
 运行中 · {0} / {1}	Running · {0} / {1}						
-　·　夹套目标 {0} ℃　·　出力 {1} %（{2}）	　·　jacket target {0} ℃　·　output {1} % ({2})						
-等待确认后继续	Acknowledge to continue						
+程序控制	Program						
+手动控制	Manual						
 无序列	No sequence						
+本步已走	Step elapsed						
+　·　夹套目标 {0} ℃　·　出力 {1} %（{2}）	　·　jacket target {0} ℃　·　output {1} % ({2})						
+起界面时出错：	Error while building the screen: 						
+起界面时出错（不知道是什么错）	Error while starting the UI (unknown)						
+刷新界面时出错：	Error while refreshing the screen: 						
+刷新界面时出错（不知道是什么错）	Error while refreshing the UI (unknown)						
+把 assets 文件夹（里面是 fonts 和 img）放到下面任意一处：	Put the assets folder (it holds fonts and img) in any one of these places:						
 
 # 下面这些界面上已经没有了，留着免得以后改回来又要重翻；要清掉直接删行
+#  · 固件 							
+# ｜发 							
+# ｜收 							
+# 无							
+# 设置里没有这些设备：	These devices are not in the settings: 						
+# 不认识的命令：	Unknown command: 						
+# 处理命令时出错：	Error while handling the command: 						
 # 时刻,釜内Tr(℃),夹套Tj(℃),夹套目标(℃),当前目标(℃),pH,搅拌(rpm),在控温							
+# 没找到界面用的字体和图片，界面会是一片白，所以先停下。							
+# 它在编译输出目录里，和这个程序在一起；源码里的那份在 hmi-cpp/ui/assets。							
+# 窗口开不出来							
+# %s %.0f ms（当前页 %s）							
+# HTLAB 多工位反应平台							
+# 画一圈							
+# 提前准备一页							
+# 啊阿吖锕							
+# 埃挨哎唉哀皑癌蔼矮艾碍爱隘捱嗳嗌嫒瑷暧砹锿霭							
+# 安暗案鞍氨俺按岸胺谙埯揞犴庵桉铵鹌黯							
+# 肮昂盎							
+# 凹敖熬翱袄傲奥懊澳坳拗嗷岙廒遨媪骜獒聱螯鏊鳌鏖							
+# 吧把爸八芭捌扒叭笆疤巴拔跋靶耙坝霸罢茇菝岜灞钯粑鲅魃							
+# 百白柏摆佰败拜稗捭掰							
+# 半般斑班搬扳颁板版扮拌伴瓣办绊阪坂钣瘢癍舨							
+# 旁邦帮梆榜膀绑棒磅蚌镑傍谤蒡浜							
+# 保薄瀑剥包苞胞褒雹堡饱宝抱报暴豹鲍爆勹葆孢煲鸨褓趵龅							
+# 被背悲北杯碑卑辈贝钡倍狈备惫焙孛邶蓓呗悖碚鹎褙鐾鞴							
+# 本奔苯笨畚坌贲锛							
+# 崩绷甭泵蹦迸嘣甏							
+# 必比避鼻彼秘逼鄙笔碧蓖蔽毕毙毖币庇痹闭敝弊壁臂陛匕俾芘荜荸萆薜吡哔狴庳愎滗濞弼妣婢嬖璧畀铋秕裨筚箅篦舭襞跸髀							
+# 便鞭边编贬扁变卞辨辩辫遍匾弁苄忭汴缏煸砭碥窆褊蝙笾鳊							
+# 表标彪膘婊骠杓飑飙飚灬镖镳瘭裱鳔髟							
+# 鳖憋别瘪蹩							
+# 彬斌濒滨宾摈傧豳缤玢槟殡膑镔髌鬓							
+# 病兵屏冰柄丙秉饼炳并禀冫邴摒							
+# 波薄泊剥玻菠播拨钵博勃搏铂箔伯帛舶脖膊渤驳卜亳蕃啵饽檗擘礴钹鹁簸跛踣							
+# 不布步部捕哺补埠簿怖埔卟逋瓿晡钚钸醭							
+# 察擦嚓礤							
+# 才材菜猜裁财睬踩采彩蔡							
+# 参残餐蚕惭惨灿骖璨粲黪							
+# 苍舱仓沧藏伧							
+# 操糙槽曹草艹嘈漕螬艚							
+# 策厕侧册测恻							
+# 岑涔参							
+# 曾层蹭噌							
+# 差查刹茶插叉茬碴搽察岔诧猹馇汊姹杈槎檫锸镲衩							
+# 差拆柴豺侪钗瘥虿							
+# 搀掺蝉馋谗缠铲产阐颤冁谄蒇廛忏潺澶孱羼婵骣觇禅镡蟾躔							
+# 昌猖场尝常偿肠厂敞畅唱倡伥鬯苌菖徜怅惝阊娼嫦昶氅鲳长							
+# 超朝抄钞嘲潮巢吵炒怊晁焯耖							
+# 车扯撤掣彻澈坼屮砗							
+# 郴臣称辰尘晨忱沉陈趁衬谌谶抻嗔宸琛榇碜龀							
+# 成程盛撑称城橙呈乘惩澄诚承逞骋秤丞埕枨柽晟塍瞠铖裎蛏酲							
+# 尺吃匙持赤池痴迟弛驰耻齿侈翅斥炽傺墀茌叱哧啻嗤彳饬媸敕眵鸱瘛褫蚩螭笞篪豉踟魑							
+# 充种重冲虫崇宠茺忡憧铳舂艟							
+# 抽酬畴踌稠愁筹仇绸瞅丑臭俦帱惆瘳雠							
+# 出初楚触橱厨躇锄雏滁除础储矗搐处畜亍刍怵憷绌杵楮樗褚蜍蹰黜							
+# 揣搋啜膪踹							
+# 川船穿椽传喘串舛遄巛氚钏舡							
+# 疮窗幢床闯创怆							
+# 吹炊捶锤垂陲棰槌							
+# 春椿醇唇淳纯蠢莼鹑蝽							
+# 戳绰辶辍踔龊							
+# 此次辞差疵茨磁雌慈瓷词刺赐伺茈呲祠鹚糍							
+# 聪葱囱匆从丛苁淙骢琮璁枞							
+# 凑辏腠							
+# 卒粗醋簇促蔟徂猝殂蹙蹴							
+# 蹿篡窜汆撺爨镩							
+# 摧崔催脆瘁粹淬翠萃啐悴璀榱毳							
+# 存村寸忖皴							
+# 磋撮搓措挫错厝嵯脞锉矬痤鹾蹉							
+# 大打答搭达瘩耷哒嗒怛妲沓褡笪靼鞑							
+# 代待大呆歹傣戴带殆贷袋逮怠埭甙呔岱迨骀绐玳黛							
+# 但担石耽丹单郸掸胆旦氮惮淡诞弹蛋儋萏啖澹殚赕眈疸瘅聃箪							
+# 当党挡荡档谠凼菪宕砀铛裆							
+# 到道盗刀捣蹈倒岛祷导稻悼刂叨忉氘纛							
+# 的得德地锝							
+# 得							
+# 等蹬澄灯登瞪凳邓噔嶝戥磴镫簦							
+# 地得的提低底弟第堤滴迪敌笛狄涤翟嫡抵蒂帝递缔氐籴诋谛邸坻荻嘀娣柢棣觌砥碲睇镝羝骶							
+# 嗲							
+# 点电店颠掂滇碘典靛垫佃甸惦奠淀殿阽坫巅玷钿癜癫簟踮							
+# 碉叼雕凋刁掉吊钓调铞铫貂鲷							
+# 跌爹碟蝶迭谍叠垤堞揲喋牒瓞耋蹀鲽							
+# 定町丁盯叮钉顶鼎锭订仃啶玎腚碇疔耵酊							
+# 丢铥							
+# 冬东董懂动栋侗恫冻洞垌咚岽峒氡胨胴硐鸫							
+# 兜抖读斗陡豆逗痘都蔸钭窦蚪篼							
+# 独度都渡督毒犊读堵睹赌杜镀肚妒芏嘟渎椟牍蠹笃髑黩							
+# 段断短端锻缎椴煅簖							
+# 堆兑队对怼憝碓							
+# 墩吨蹲敦顿囤钝盾遁沌炖砘礅盹镦趸							
+# 多掇度哆夺垛躲朵跺舵剁惰堕咄哚缍铎裰踱							
+# 嗯蛾峨鹅俄额讹娥恶厄扼遏鄂饿噩谔垩苊莪萼呃愕屙婀轭腭锇锷鹗颚鳄							
+# 诶							
+# 嗯恩蒽摁							
+# 而耳二儿尔饵洱贰迩珥铒鸸鲕							
+# 乏法发罚筏伐阀珐垡砝							
+# 反返犯番藩帆翻樊矾钒繁凡烦范贩饭泛蘩幡梵燔畈蹯							
+# 方放房坊芳肪防妨仿访纺匚邡枋钫舫鲂							
+# 非菲啡飞肥匪诽吠肺废沸费芾狒悱淝妃绯榧腓斐扉镄痱蜚篚翡霏鲱							
+# 分份芬酚吩氛纷坟焚汾粉奋忿愤粪偾瀵棼鲼鼢							
+# 丰封枫蜂峰锋风疯烽逢冯缝讽奉凤俸酆葑唪沣砜							
+# 佛							
+# 否不缶							
+# 父夫富服符付附府幅佛敷肤孵扶拂辐氟伏俘浮涪福袱弗甫抚辅俯釜斧腑腐赴副覆赋复傅阜腹负讣妇缚咐匐凫阝郛芙苻茯莩菔拊呋呒幞怫滏艴孚驸绂绋桴赙祓砩黻黼罘稃馥蚨蜉蝠蝮麸趺跗鲋鳆							
+# 噶嘎咖尬尕尜旮钆							
+# 改概该钙盖溉丐陔垓戤赅							
+# 甘感敢干杆柑竿肝赶秆赣坩苷尴擀泔淦澉绀橄旰矸疳酐							
+# 港冈刚钢缸肛纲岗杠戆罡筻							
+# 告高篙皋膏羔糕搞镐稿睾诰郜藁缟槔槁杲锆							
+# 各格合蛤歌革割哥搁戈鸽胳疙葛阁隔铬个咯鬲仡哿圪塥嗝搿膈硌镉袼虼舸骼							
+# 给							
+# 跟根亘茛哏艮							
+# 更耕庚羹埂耿梗哽赓绠鲠							
+# 工共供功公攻恭龚躬宫弓巩汞拱贡廾珙肱蚣觥							
+# 钩勾沟苟狗垢构购够佝诟岣遘媾缑枸觏彀笱篝鞲							
+# 古故鼓辜菇咕箍估沽孤姑蛊骨谷股顾固雇嘏诂菰呱崮汩梏轱牯牿臌毂瞽罟钴锢鸪鹄痼蛄酤觚鲴鹘							
+# 刮瓜剐寡挂褂卦诖栝胍鸹							
+# 乖拐怪掴							
+# 官管棺关冠观馆罐惯灌贯倌莞掼涫盥鹳鳏							
+# 光广逛咣犷桄胱							
+# 瑰规圭硅归龟闺轨鬼诡癸桂柜跪贵刽匦刿庋宄妫桧晷皈簋鲑鳜							
+# 辊滚棍丨衮绲磙鲧							
+# 果国锅郭裹过馘埚呙帼崞猓椁虢聒蜾蝈							
+# 蛤哈铪							
+# 孩海害骸氦亥骇还咳嗨胲醢							
+# 寒酣憨邯韩含涵函喊罕翰撼捍旱憾悍焊汗汉邗菡撖瀚晗焓顸颔蚶鼾							
+# 航行夯杭沆绗颃							
+# 好号壕嚎豪毫郝耗浩貉蒿薅嗥嚆濠灏昊皓颢蚝							
+# 合和吓喝何荷呵菏核禾盒阂河涸赫褐鹤贺诃劾壑嗬阖纥曷盍颌蚵翮							
+# 嘿黑							
+# 很痕狠恨							
+# 行横哼亨衡恒蘅珩桁							
+# 轰哄烘虹鸿洪宏弘红黉訇讧荭蕻薨闳泓							
+# 厚喉候後侯猴吼后堠逅瘊篌糇鲎骺							
+# 乎呼核湖忽瑚壶葫胡蝴狐糊弧虎唬护互沪户冱唿囫岵猢怙惚浒滹琥槲轷觳烀煳戽扈祜瓠鹕鹱虍笏醐斛							
+# 化画花哗华猾滑划话骅桦砉铧							
+# 槐徊怀淮坏踝							
+# 欢环还桓缓换患唤痪豢焕涣宦幻郇奂萑擐圜獾洹浣漶寰逭缳锾鲩鬟							
+# 黄荒慌磺蝗簧皇凰惶煌晃幌恍谎隍徨湟潢遑璜肓癀蟥篁鳇							
+# 回会慧灰挥辉徽恢蛔毁悔卉惠晦贿秽烩汇讳诲绘诙茴荟蕙咴哕喙隳洄浍彗缋晖恚虺蟪麾							
+# 混婚荤昏魂浑诨馄阍溷珲							
+# 活或和火豁伙获惑霍货祸劐藿攉嚯夥钬锪镬耠蠖							
+# 家加嘉枷夹佳荚颊贾甲钾假稼价架驾嫁茄伽郏葭岬浃迦珈戛胛恝铗镓痂瘕蛱笳袈跏							
+# 件建健肩歼监坚尖笺间煎兼艰奸缄茧检柬碱硷拣捡简俭剪减荐鉴践贱见键箭舰剑饯渐溅涧僭谏谫菅蒹搛囝湔蹇謇缣枧楗戋戬牮犍毽腱睑锏鹣裥笕翦趼踺鲣鞯							
+# 降港强僵姜将浆江疆蒋桨奖讲匠酱茳洚绛缰犟礓耩糨豇							
+# 叫教校嚼觉交角蕉椒礁焦胶郊浇骄娇搅铰矫侥脚狡饺缴绞剿酵轿较窖佼僬艽茭挢噍峤徼湫姣敫皎鹪蛟醮跤鲛							
+# 介借接姐皆届界解揭秸街阶截劫节桔杰捷睫竭洁结戒芥疥诫讦诘卩拮喈嗟婕孑桀碣疖颉蚧羯鲒骱							
+# 今近禁金巾筋斤津襟紧锦仅谨进靳晋烬浸尽劲卺荩堇噤馑廑妗缙瑾槿赆觐钅衿矜							
+# 京境劲景静精荆兢茎睛晶鲸惊粳经井警颈敬镜径痉靖竟竞净刭儆阱菁獍憬泾迳弪婧肼胫腈旌靓							
+# 炯窘冂迥炅扃							
+# 就久九酒究揪纠玖韭灸厩救旧臼舅咎疚僦啾阄柩桕鸠鹫赳鬏							
+# 句具车局居鞠拘狙疽驹菊咀矩举沮聚拒据巨距踞锯俱惧炬剧倨讵苣苴莒掬遽屦琚椐榘榉橘犋飓钜锔窭裾趄醵踽龃雎鞫							
+# 捐鹃圈娟倦眷卷绢鄄狷涓桊蠲锩镌隽							
+# 角嚼撅攫抉掘倔爵觉决诀绝厥劂谲矍蕨噘崛獗孓珏桷橛爝镢蹶觖							
+# 均菌钧军君峻俊竣浚郡骏捃皲麇							
+# 喀咖卡佧咔胩							
+# 开揩楷凯慨剀垲蒈忾恺铠锎锴							
+# 看刊槛堪勘坎砍侃莰阚戡龛瞰							
+# 康慷糠扛抗亢炕伉闶钪							
+# 考拷烤靠尻栲犒铐							
+# 可刻科克客坷苛柯棵磕颗壳渴课嗑岢恪溘骒缂珂轲氪瞌钶锞稞疴窠颏蝌髁							
+# 肯啃垦恳裉							
+# 坑吭铿							
+# 空控恐孔倥崆箜							
+# 口抠扣寇芤蔻叩眍筘							
+# 苦枯哭窟酷库裤刳堀喾绔骷							
+# 夸垮挎跨胯侉							
+# 快会块筷侩蒯郐哙狯脍							
+# 宽款髋							
+# 匡筐狂框矿眶旷况诓诳邝圹夼哐纩贶							
+# 亏盔岿窥葵奎魁傀馈愧溃馗匮夔蒉揆喹喟悝愦逵暌睽聩蝰篑跬							
+# 困坤昆捆悃阃琨锟醌鲲髡							
+# 括扩廓阔蛞							
+# 拉啦落垃喇蜡腊辣剌邋旯砬瘌							
+# 来莱赖崃徕涞濑赉睐铼癞籁							
+# 蓝婪栏拦篮阑兰澜谰揽览懒缆烂滥岚漤榄斓罱镧褴							
+# 琅榔狼廊郎朗浪莨蒗啷阆锒稂螂							
+# 老落捞劳牢佬姥酪烙涝唠崂栳铑铹痨耢醪							
+# 了乐勒仂叻泐鳓							
+# 勒雷镭蕾磊累儡垒擂肋类泪羸诔嘞嫘缧檑耒酹							
+# 冷棱楞塄愣							
+# 力立利理例礼厘梨犁黎篱狸离漓李里鲤莉荔吏栗丽厉励砾历傈俐痢粒沥隶璃哩俪俚郦坜苈莅蓠藜呖唳喱猁溧澧逦娌嫠骊缡枥栎轹戾砺詈罹锂鹂疠疬蛎蜊蠡笠篥粝醴跞雳鲡鳢黧							
+# 俩							
+# 联莲连镰廉怜涟帘敛脸链恋炼练蔹奁潋濂琏楝殓臁裢裣蠊鲢							
+# 良量俩粮凉梁粱两辆晾亮谅墚椋踉魉							
+# 料撩了聊僚疗燎寥辽潦撂镣廖蓼尥嘹獠寮缭钌鹩							
+# 列裂烈劣猎冽埒捩咧洌趔躐鬣							
+# 林琳磷霖临邻鳞淋凛赁吝拎蔺啉嶙廪懔遴檩辚膦瞵粼躏麟							
+# 另令玲菱零龄铃伶羚凌灵陵岭领酃苓呤囹泠绫柃棂瓴聆蛉翎鲮							
+# 六留流溜琉榴硫馏刘瘤柳浏遛骝绺旒熘锍镏鹨鎏							
+# 龙聋弄咙笼窿隆垄拢陇垅茏泷珑栊胧砻癃							
+# 楼娄露搂篓漏陋偻蒌喽嵝镂瘘耧蝼髅							
+# 律路履芦卢颅庐炉掳卤虏鲁麓碌露赂鹿潞禄录陆戮驴吕铝侣旅屡缕虑氯率滤绿垆捋撸噜闾泸渌漉逯璐栌榈橹轳辂辘氇胪膂镥稆鸬鹭褛簏舻鲈							
+# 峦挛孪滦卵乱脔娈栾鸾銮							
+# 掠略锊							
+# 抡轮伦仑沦纶论囵							
+# 落萝烙螺罗逻锣箩骡裸洛骆络倮蠃荦摞猡泺漯珞椤脶镙瘰雒							
+# 绿率氯滤律旅吕铝虑屡缕履侣驴榈闾捋褛膂							
+# 略掠锊							
+# 嘛妈抹麻玛码蚂马骂吗犸杩蟆							
+# 埋买麦卖迈脉劢荬唛霾							
+# 瞒馒蛮满蔓曼慢漫谩墁幔缦熳镘颟螨鳗鞔							
+# 忙芒茫盲氓莽邙漭硭蟒							
+# 毛猫茅锚矛铆卯茂冒帽貌贸袤茆峁泖瑁昴牦耄旄懋瞀蝥蟊髦							
+# 么							
+# 美妹每媒玫枚梅酶霉煤没眉镁昧寐媚莓嵋猸浼湄楣镅鹛袂魅							
+# 门闷们扪焖懑钔							
+# 萌蒙檬盟锰猛梦孟勐甍瞢懵朦礞虻蜢蠓艋艨							
+# 米密秘眯醚靡糜迷谜弥觅泌蜜幂芈冖谧蘼咪嘧猕汨宓弭脒祢敉糸縻麋							
+# 免面勉眠棉绵冕娩缅沔渑湎宀腼眄							
+# 描苗瞄藐秒渺庙妙喵邈缈杪淼眇鹋							
+# 蔑灭乜咩蠛篾							
+# 民皿抿敏悯闽苠岷闵泯缗珉愍黾鳘							
+# 命明名螟鸣铭冥茗溟暝瞑酩							
+# 谬							
+# 末模脉没摸摹蘑膜磨摩魔抹莫墨默沫漠寞陌谟茉蓦馍嫫嬷殁镆秣瘼耱貊貘麽							
+# 某谋牟侔哞缪眸蛑鍪							
+# 母木目模拇牡亩姆墓暮幕募慕睦牧穆仫坶苜沐毪钼							
+# 那哪拿南呐钠娜纳捺肭镎衲							
+# 氖乃奶耐奈鼐佴艿萘柰							
+# 男南难喃囡楠腩蝻赧							
+# 囊攮囔馕曩							
+# 挠脑恼闹淖孬垴呶猱瑙硇铙蛲							
+# 那哪呢讷疒							
+# 内那哪馁							
+# 嫩恁							
+# 能							
+# 嗯							
+# 你呢妮霓倪泥尼拟匿腻逆溺伲坭猊怩昵旎睨铌鲵							
+# 年念粘蔫拈碾撵捻廿埝辇黏鲇鲶							
+# 娘酿							
+# 鸟尿茑嬲脲袅							
+# 捏聂孽啮镊镍涅陧蘖嗫颞臬蹑							
+# 您							
+# 凝柠狞宁拧泞佞咛甯聍							
+# 牛扭钮纽狃忸妞							
+# 脓浓农弄侬哝							
+# 耨							
+# 女努奴怒弩胬孥驽恧钕衄							
+# 暖							
+# 虐疟							
+# 挪懦糯诺傩搦喏锘							
+# 女钕恧衄							
+# 哦喔噢							
+# 欧鸥殴藕呕偶沤讴怄瓯耦							
+# 怕啪趴爬帕琶葩杷筢							
+# 迫派排拍牌徘湃俳蒎哌							
+# 判番攀潘盘磐盼畔叛拚爿泮袢襻蟠蹒							
+# 旁乓庞耪胖彷滂逄螃							
+# 抛咆刨炮袍跑泡匏狍庖脬疱							
+# 配呸胚培裴赔陪佩沛辔帔旆锫醅霈							
+# 喷盆湓							
+# 朋砰抨烹澎彭蓬棚硼篷膨鹏捧碰堋嘭怦蟛							
+# 疲否辟坯砒霹批披劈琵毗啤脾皮匹痞僻屁譬丕仳陂陴邳郫圮埤鼙擗噼庀淠媲纰枇甓睥罴铍癖疋蚍蜱貔							
+# 片便篇偏骗谝骈犏胼翩蹁							
+# 飘漂朴瓢票剽嘌嫖缥殍瞟螵							
+# 撇瞥丿苤氕							
+# 品拼频贫聘姘嫔榀牝颦							
+# 平乒坪苹萍凭瓶评屏俜娉枰鲆							
+# 迫破泊坡泼颇婆魄粕叵鄱珀钋钷皤笸							
+# 剖裒掊							
+# 普脯扑铺仆莆葡菩蒲朴圃浦谱曝瀑匍噗溥濮璞攴氆攵镤镨蹼							
+# 起其奇七气期泣企妻契欺栖戚凄漆柒沏棋歧畦崎脐齐旗祈祁骑岂乞启砌器迄弃汽讫亓俟圻芑芪萁萋葺蕲嘁屺岐汔淇骐绮琪琦杞桤槭耆欹祺憩碛颀蛴蜞綦蹊鳍麒							
+# 掐恰卡洽葜袷髂							
+# 嵌浅千前牵扦钎铅迁签仟谦乾黔钱钳潜遣谴堑欠歉倩佥阡凵芊芡茜掮岍悭慊骞搴褰缱椠肷愆钤虔箝							
+# 枪呛腔羌墙蔷强抢丬戕嫱樯戗炝锖锵镪襁蜣羟跄							
+# 橇锹壳敲悄桥瞧乔侨巧鞘撬翘峭俏窍劁诮谯荞愀憔缲樵硗跷鞒							
+# 且切茄契怯窃郄惬妾挈锲箧							
+# 寝勤钦侵亲秦琴芹擒禽沁芩揿吣嗪噙溱檎锓螓衾							
+# 青清情晴轻氢倾卿擎氰顷请庆苘圊檠磬蜻罄箐綮謦鲭黥							
+# 琼穷邛茕穹蛩筇跫銎							
+# 求秋球丘邱囚酋泅俅巯犰逑遒楸赇虬蚯蝤裘糗鳅鼽							
+# 去取趣曲趋区蛆躯屈驱渠娶龋诎劬蕖蘧岖衢阒璩觑氍朐祛磲鸲癯蛐蠼麴瞿黢							
+# 全犬券圈颧权醛泉痊拳劝诠荃犭悛绻辁畎铨蜷筌鬈							
+# 缺炔瘸却鹊榷确雀阕阙悫							
+# 裙群逡							
+# 然燃冉染苒蚺髯							
+# 瓤壤攘嚷让禳穰							
+# 饶扰绕荛娆桡							
+# 惹热							
+# 人任壬仁忍韧认刃妊纫亻仞荏葚饪轫稔衽							
+# 仍扔							
+# 日							
+# 容戎茸蓉荣融熔溶绒冗嵘狨榕肜蝾							
+# 弱若肉揉柔糅蹂鞣							
+# 如入茹蠕儒孺辱乳汝褥蓐薷嚅洳溽濡缛铷襦颥							
+# 软阮朊							
+# 蕊瑞锐芮蕤枘睿蚋							
+# 闰润							
+# 若弱偌箬							
+# 撒洒萨卅仨挲脎飒							
+# 腮鳃塞赛噻							
+# 三叁伞散馓毵糁							
+# 桑嗓丧搡磉颡							
+# 搔骚扫嫂埽缫臊瘙鳋							
+# 色瑟塞涩啬铯穑							
+# 森							
+# 僧							
+# 砂莎杀刹沙纱傻啥煞厦唼嗄歃铩痧裟霎鲨							
+# 筛晒色							
+# 善山单珊苫杉删煽衫闪陕擅赡膳汕扇缮剡讪鄯埏芟彡潸姗嬗骟膻钐疝蟮舢跚鳝							
+# 上尚商墒伤赏晌裳垧绱殇熵觞							
+# 少梢召捎稍烧芍勺韶哨邵绍劭苕潲蛸筲艄							
+# 社射折奢赊蛇舌舍赦摄慑涉设厍佘猞滠歙畲麝							
+# 谁							
+# 什申参深甚身伸沈神砷呻娠绅审婶肾慎渗诜谂莘哂渖椹胂矧蜃							
+# 生声乘甥牲升绳省盛剩胜圣嵊眚笙							
+# 是失似示食时事式十石施使世实史室市始柿氏士仕拭匙师狮湿诗尸虱拾蚀识矢屎驶誓逝势嗜噬适侍释饰恃视试谥埘莳蓍弑饣轼贳炻礻铈螫舐筮酾豕鲥鲺							
+# 手首熟守受授收寿售瘦兽扌狩绶艏							
+# 束数暑殊蔬枢梳抒输叔舒淑疏书赎孰熟薯曙署蜀黍鼠属术述树戍竖墅庶漱恕倏塾菽摅沭澍姝纾毹腧殳秫							
+# 刷耍唰							
+# 摔衰率甩帅蟀							
+# 栓拴闩涮							
+# 霜双爽孀							
+# 水睡说税氵							
+# 吮瞬顺舜							
+# 数说硕朔烁蒴搠妁槊铄							
+# 思寺司四私似死斯撕嘶丝肆嗣饲巳厮兕厶咝汜泗澌姒驷纟缌祀锶鸶耜蛳笥							
+# 送松耸怂颂宋讼诵凇菘崧嵩忪悚淞竦							
+# 搜艘擞嗽叟薮嗖嗾馊溲飕瞍锼螋							
+# 速宿素苏酥俗粟僳塑溯诉肃夙谡蔌嗉愫涑簌觫稣							
+# 算酸蒜狻							
+# 虽隋随绥髓碎岁穗遂隧祟谇荽濉邃燧眭睢							
+# 孙损笋荪狲飧榫隼							
+# 所蓑梭唆缩琐索锁唢嗦嗍娑桫睃羧							
+# 她他它塌塔獭挞蹋踏拓闼溻遢榻铊趿鳎							
+# 太台胎苔抬泰酞态汰邰薹肽炱钛跆鲐							
+# 探坍弹摊贪瘫滩坛檀痰潭谭谈坦毯袒碳叹炭郯昙忐钽锬覃							
+# 糖汤塘搪堂棠膛唐倘躺淌趟烫傥帑溏瑭樘铴镗耥螗螳羰醣							
+# 桃逃套掏涛滔绦萄淘陶讨鼗啕洮韬焘饕							
+# 特忒忑慝铽							
+# 藤腾疼誊滕							
+# 体提替梯剔踢锑题蹄啼嚏惕涕剃屉倜荑悌逖绨缇鹈裼醍							
+# 天田添填甜恬舔腆掭忝阗殄畋							
+# 条挑迢眺跳佻祧窕蜩笤粜龆鲦髫调							
+# 贴铁帖萜餮							
+# 停庭町厅听烃汀廷亭挺艇莛葶婷梃铤蜓霆							
+# 同童通痛统桐酮瞳铜彤桶捅筒佟僮仝茼嗵恸潼砼							
+# 投透偷头亠骰							
+# 土徒茶凸秃突图途涂屠吐兔堍荼菟钍酴							
+# 湍团抟彖疃							
+# 推退颓腿蜕褪煺							
+# 吞屯臀氽饨暾豚							
+# 脱拖拓托鸵陀驮驼椭妥唾乇佗坨庹沲沱柝柁橐砣箨酡跎鼍							
+# 挖哇蛙洼娃瓦袜佤娲腽							
+# 外歪崴							
+# 完万玩腕豌弯湾顽丸烷碗挽晚皖惋宛婉剜芄菀纨绾琬脘畹蜿							
+# 忘望亡往汪王枉网旺妄罔尢惘辋魍							
+# 危位未味委威巍微韦违桅围唯惟为潍维苇萎伟伪尾纬蔚畏胃喂魏渭谓尉慰卫偎诿隈隗圩葳薇囗帏帷嵬猥猬闱沩洧涠逶娓玮韪軎炜煨痿艉鲔							
+# 文温瘟蚊闻纹吻稳紊问刎阌汶玟璺雯							
+# 嗡翁瓮蓊蕹							
+# 我挝蜗涡窝斡卧握沃倭莴幄渥肟硪龌							
+# 午物恶五屋亡巫呜钨乌污诬无芜梧吾吴毋武捂舞伍侮坞戊雾晤勿务悟误兀仵阢邬圬芴唔庑怃忤浯寤迕妩婺骛杌牾焐鹉鹜痦蜈鋈鼯							
+# 夕息西洗喜系昔席希析嬉膝熙硒矽晰嘻吸锡牺稀悉惜熄烯溪汐犀檄袭习媳铣隙戏细僖兮隰郗菥葸蓰奚唏徙饩阋浠淅屣玺樨曦觋欷熹禊禧皙穸蜥螅蟋舄舾羲粞翕醯鼷							
+# 下夏厦狭暇瞎虾匣霞辖峡侠吓呷狎遐瑕柙硖罅黠							
+# 先限见嫌洗掀锨仙鲜纤咸贤衔舷闲涎弦显险现献县腺馅羡宪陷线冼苋莶藓岘猃暹娴氙燹祆鹇痫蚬筅籼酰跣跹霰							
+# 向相香像想象降厢镶箱襄湘乡翔祥详响享项巷橡芗葙饷庠骧缃蟓鲞飨							
+# 小笑消效校削萧硝霄哮嚣销宵淆晓孝肖啸哓崤潇逍骁绡枭枵筱箫魈							
+# 写携血些解邪械契楔歇蝎鞋协挟斜胁谐卸蟹懈泄泻谢屑偕亵勰燮薤撷獬廨渫瀣邂绁缬榭榍躞							
+# 心信新辛薪芯锌欣忻衅囟馨忄昕歆鑫							
+# 行形省性幸型星腥猩惺兴刑邢醒杏姓陉荇荥擤饧悻硎							
+# 兄胸凶匈汹雄熊芎							
+# 休秀臭宿修羞朽嗅锈袖绣咻岫馐庥溴鸺貅髹							
+# 需墟畜戌虚嘘须徐许蓄酗叙旭序恤絮婿绪续吁诩勖蓿洫溆顼栩煦盱胥糈醑							
+# 轩喧宣悬旋玄选癣眩绚儇谖萱揎泫渲漩璇楦暄炫煊碹铉镟痃							
+# 学雪削靴薛穴血谑噱泶踅鳕							
+# 勋熏循旬询寻驯巡殉汛训讯逊迅巽埙荀荨蕈薰峋徇獯恂洵浔曛醺鲟							
+# 呀押压鸦鸭丫芽牙蚜崖衙涯雅哑亚讶轧伢垭揠岈迓娅琊桠氩砑睚痖							
+# 言研铅焉咽阉烟淹盐严蜒岩延颜阎炎沿奄掩眼衍演艳堰燕厌砚雁唁彦焰宴谚验厣赝俨偃兖讠谳郾鄢芫菸崦恹闫阏湮滟妍嫣琰檐晏胭腌焱罨筵酽魇餍鼹							
+# 央洋殃鸯秧杨扬佯疡羊阳氧仰痒养样漾徉怏泱炀烊恙蛘鞅							
+# 要腰曜邀妖瑶摇尧遥窑谣姚咬舀药耀钥夭爻吆崾徭幺珧杳轺肴鹞窈繇鳐							
+# 也野咽夜邪椰噎耶爷冶页掖业叶曳腋液靥谒邺揶晔烨铘							
+# 因引音茵荫殷阴姻吟银淫寅饮尹隐印胤鄞廴垠堙茚吲喑狺夤洇氤铟瘾窨蚓霪龈							
+# 英迎影映樱婴鹰应缨莹萤营荧蝇赢盈颖硬嬴郢茔莺萦蓥撄嘤膺滢潆瀛瑛璎楹媵鹦瘿颍罂							
+# 哟唷							
+# 永用泳拥佣臃痈庸雍踊蛹咏涌恿勇俑壅墉喁慵邕镛甬鳙饔							
+# 又有右友由尤油幽优悠忧邮铀犹游酉佑釉诱幼卣攸侑莠莜莸呦囿宥柚猷牖铕疣蚰蚴蝣鱿黝鼬							
+# 予育余雨浴欲愈御宇域於迂淤于盂榆虞愚舆俞逾鱼愉渝渔隅娱与屿禹语羽玉芋郁遇喻峪狱誉寓裕预豫驭禺毓伛俣谀谕萸蓣揄圄圉嵛狳饫馀庾阈鬻妪妤纡瑜昱觎腴欤煜燠肀聿钰鹆鹬瘐瘀窬窳蜮蝓竽臾舁雩龉							
+# 元原源院猿鸳渊冤垣袁援辕园员圆缘远苑愿怨垸塬掾沅媛瑗橼爰眢鸢螈箢鼋							
+# 月越钥乐曰约跃岳粤悦阅龠瀹樾刖钺							
+# 耘云郧匀陨允运蕴酝晕韵孕郓芸狁恽愠纭韫殒昀氲熨筠							
+# 匝砸扎杂咋拶咂							
+# 在再仔栽哉灾宰载崽甾							
+# 咱攒暂赞瓒昝簪糌趱錾							
+# 赃脏藏葬奘驵臧							
+# 早造遭糟凿藻枣澡蚤躁噪皂灶燥唣							
+# 责择则泽仄赜啧帻迮昃笮箦舴							
+# 贼							
+# 怎谮							
+# 曾增憎赠缯甑罾锃							
+# 札扎轧喳渣铡闸眨栅榨乍炸诈柞揸吒咤哳楂砟痄蚱齄							
+# 宅摘择斋窄债寨砦瘵							
+# 站展颤瞻毡詹粘沾盏斩辗崭蘸栈占战湛绽谵搌旃							
+# 丈障长樟章彰漳张掌涨杖帐账仗胀瘴仉鄣幛嶂獐嫜璋蟑							
+# 找着朝招昭沼赵照罩兆肇召爪诏啁棹钊笊							
+# 者遮折哲蛰辙锗蔗这浙着谪摺柘辄磔鹧褶蜇赭							
+# 真震珍斟甄砧臻贞针侦枕疹诊振镇阵帧圳蓁浈缜桢榛轸赈胗朕祯畛稹鸩箴							
+# 正整争政蒸挣睁征狰怔拯症郑证诤峥钲铮筝							
+# 之只识知支止制至治直指值置智芝枝吱蜘肢脂汁织职植殖执侄址趾旨纸志挚掷致帜峙秩稚质炙痔滞窒卮陟郅埴芷摭帙徵夂忮彘咫骘栉枳栀桎轵轾贽胝膣祉祗黹雉鸷痣蛭絷酯跖踬踯豸觯							
+# 中种重盅忠钟衷终肿仲众冢锺螽舯踵							
+# 周州昼宙洲舟诌粥轴肘帚咒皱骤荮妯纣绉胄碡籀酎							
+# 助主属住柱株祝逐注著珠蛛朱猪诸诛竹烛煮拄瞩嘱蛀贮铸筑驻丶伫侏邾苎茱洙渚潴杼槠橥炷铢疰瘃竺箸舳翥躅麈							
+# 抓爪							
+# 拽							
+# 专砖传转撰赚篆啭馔颛							
+# 状桩庄装妆撞壮							
+# 追椎锥赘坠缀惴骓缒隹							
+# 谆准肫窀							
+# 着捉拙卓桌茁酌啄灼浊倬诼擢浞涿濯禚斫镯							
+# 子自字兹咨资姿滋淄孜紫仔籽滓渍谘嵫姊孳缁梓辎赀恣眦锱秭耔笫粢趑觜訾龇鲻髭							
+# 鬃棕踪宗综总纵偬腙粽							
+# 走邹奏揍诹陬鄹驺楱鲰							
+# 足祖族卒租诅阻组俎菹镞							
+# 钻纂攥缵躜							
+# 最嘴醉罪蕞							
+# 尊遵撙樽鳟							
+# 左做昨坐座作琢佐阼唑嘬怍胙祚酢							
+# 反应							
+# 升温							
+# 降温							
+# 恒温							
+# 蒸馏							
+# 滴加							
+# 加入							
+# 投料							
+# 取样							
+# 过滤							
+# 洗涤							
+# 干燥							
+# 冷却							
+# 加热							
+# 溶解							
+# 析出							
+# 沉淀							
+# 中和							
+# 萃取							
+# 浓缩							
+# 分液							
+# 淬灭							
+# 水解							
+# 氧化							
+# 还原							
+# 缩合							
+# 酯化							
+# 聚合							
+# 合成							
+# 重结晶							
+# 养晶							
+# 晶种							
+# 加晶种							
+# 成核							
+# 陈化							
+# 熟化							
+# 老化							
+# 脱色							
+# 抽滤							
+# 静置							
+# 分层							
+# 调节							
+# 滴定							
+# 稀释							
+# 配制							
+# 称量							
+# 转移							
+# 排气							
+# 通氮气							
+# 氮气保护							
+# 氮气							
+# 氩气							
+# 真空							
+# 减压							
+# 常压							
+# 加压							
+# 泄压							
+# 实验							
+# 试验							
+# 测试							
+# 验证							
+# 样品							
+# 样本							
+# 批次							
+# 批号							
+# 配方							
+# 工艺							
+# 方案							
+# 序列							
+# 步骤							
+# 第一步							
+# 第二步							
+# 第三步							
+# 第一批							
+# 第二批							
+# 第三批							
+# 小试							
+# 中试							
+# 放大							
+# 对照							
+# 空白							
+# 平行							
+# 重复							
+# 优化							
+# 筛选							
+# 条件							
+# 参数							
+# 记录							
+# 数据							
+# 结果							
+# 报告							
+# 编号							
+# 名称							
+# 备注							
+# 说明							
+# 操作							
+# 人员							
+# 开始							
+# 结束							
+# 继续							
+# 确认							
+# 检查							
+# 观察							
+# 注意							
+# 请确认							
+# 请检查							
+# 请加料							
+# 请取样							
+# 请观察							
+# 未完成							
+# 溶液							
+# 溶剂							
+# 溶质							
+# 母液							
+# 滤液							
+# 滤饼							
+# 清液							
+# 浆料							
+# 悬浮液							
+# 乳液							
+# 水溶液							
+# 水相							
+# 油相							
+# 有机相							
+# 上层							
+# 下层							
+# 原料							
+# 产物							
+# 产品							
+# 中间体							
+# 粗品							
+# 精品							
+# 成品							
+# 催化剂							
+# 引发剂							
+# 抑制剂							
+# 添加剂							
+# 表面活性剂							
+# 缓冲液							
+# 标准液							
+# 试剂							
+# 底物							
+# 配体							
+# 助剂							
+# 纯水							
+# 去离子水							
+# 蒸馏水							
+# 超纯水							
+# 自来水							
+# 冰水							
+# 热水							
+# 冷水							
+# 盐水							
+# 乙醇							
+# 甲醇							
+# 丙酮							
+# 异丙醇							
+# 正丁醇							
+# 乙二醇							
+# 丙二醇							
+# 甘油							
+# 乙酸乙酯							
+# 乙酸							
+# 醋酸							
+# 甲酸							
+# 丙酸							
+# 乙腈							
+# 甲苯							
+# 二甲苯							
+# 苯							
+# 正己烷							
+# 环己烷							
+# 石油醚							
+# 乙醚							
+# 四氢呋喃							
+# 二氯甲烷							
+# 氯仿							
+# 二甲基亚砜							
+# 二甲基甲酰胺							
+# 吡啶							
+# 三乙胺							
+# 氨水							
+# 双氧水							
+# 盐酸							
+# 硫酸							
+# 硝酸							
+# 磷酸							
+# 碳酸							
+# 柠檬酸							
+# 草酸							
+# 硼酸							
+# 氢氧化钠							
+# 氢氧化钾							
+# 氢氧化钙							
+# 碳酸钠							
+# 碳酸氢钠							
+# 碳酸钾							
+# 氯化钠							
+# 氯化钾							
+# 氯化钙							
+# 氯化铵							
+# 硫酸钠							
+# 硫酸镁							
+# 硫酸铜							
+# 硫酸铵							
+# 硝酸银							
+# 硝酸钾							
+# 磷酸二氢钾							
+# 磷酸氢二钠							
+# 高锰酸钾							
+# 亚硫酸钠							
+# 硫代硫酸钠							
+# 乙酸钠							
+# 醋酸钠							
+# 酸液							
+# 碱液							
+# 稀盐酸							
+# 稀硫酸							
+# 浓盐酸							
+# 浓硫酸							
+# 酸							
+# 碱							
+# 盐							
+# 葡萄糖							
+# 蔗糖							
+# 乳糖							
+# 尿素							
+# 甘氨酸							
+# 谷氨酸							
+# 淀粉							
+# 纤维素							
+# 蛋白							
+# 蛋白质							
+# 多肽							
+# 酶							
+# 树脂							
+# 活性炭							
+# 硅胶							
+# 硅藻土							
+# 分子筛							
+# 温度							
+# 釜温							
+# 设定值							
+# 室温							
+# 低温							
+# 高温							
+# 沸点							
+# 熔点							
+# 凝固点							
+# 升温速率							
+# 降温速率							
+# 分钟							
+# 小时							
+# 流速							
+# 体积							
+# 浓度							
+# 质量							
+# 重量							
+# 含量							
+# 纯度							
+# 收率							
+# 产率							
+# 转化率							
+# 压力							
+# 酸碱度							
+# 电导率							
+# 粘度							
+# 密度							
+# 比例							
+# 当量							
+# 摩尔							
+# 毫升							
+# 微升							
+# 克							
+# 毫克							
+# 千克							
+# 升							
+# 百分比							
+# 玻璃釜							
+# 夹套							
+# 冷凝器							
+# 冷凝管							
+# 循环水							
+# 导热油							
+# 搅拌桨							
+# 蠕动泵							
+# 注射泵							
+# 电极							
+# 探头							
+# 传感器							
+# 阀门							
+# 管路							
+# 软管							
+# 滴液漏斗							
+# 烧瓶							
+# 烧杯							
+# 量筒							
+# 天平							
+# 通道							
+# 工位							
+# 仪器							
+# 快速							
+# 慢速							
+# 缓慢							
+# 匀速							
+# 分段							
+# 线性							
+# 程序							
+# 手动							
+# 自动							
+# 异常							
+# 报警							
+# 故障							
+# 超温							
+# 超限							
+# 稳定							
+# 波动							
+# 偏差							
+# 过冲							
+# 上限							
+# 下限							
+# 最大							
+# 最小							
+# 平均							
+# 总量							
+# 剩余							
+# 累计							
+# 注意安全							
+# 小心烫伤							
+# 戴好手套							
+# 佩戴护目镜							
+# 打开冷却水							
+# 关闭冷却水							
+# 打开阀门							
+# 关闭阀门							
+# 更换料液							
+# 补加溶剂							
+# 加料完成							
+# 取样检测							
+# 观察现象							
+# 记录数据							
+# 确认后继续							
+# 准备下一步							
 # 冷媒温度过高 							
 #  ℃（上限 							
 #  ℃，TEC 的热排不出去）							

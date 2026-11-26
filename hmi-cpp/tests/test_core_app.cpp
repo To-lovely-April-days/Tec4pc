@@ -74,6 +74,17 @@ int main(int argc, char** argv) {
     CHECK(s["ch"][1]["running"] == false);
     // 不认识的命令、坏 json、通道号不对
     CHECK(remote({{"cmd", "nope"}})["ok"] == false);
+    {
+        // 报错要交三件：填好的中文（记录、PC 端照用），加上「原句 + 值」（触摸屏按原句查词表再把值填回去）。
+        // 少了后两件，英文界面上这句话就原样冒一句中文（见 core/util/text_error.hpp）
+        const json e = remote({{"cmd", "nope"}});
+        CHECK(e["error"] == "不认识的命令：nope");
+        CHECK(e["error_t"] == "不认识的命令：{0}");
+        CHECK(e["error_args"].is_array() && e["error_args"].size() == 1 && e["error_args"][0] == "nope");
+        // 整句没有值可填的，原句就是整句
+        const json f = remote({{"cmd", "temp.stop"}, {"ch", 5}});
+        CHECK(f["error_t"] == f["error"] && f["error_args"].is_array() && f["error_args"].empty());
+    }
     { std::string r; CHECK(pc.request("这不是 json", r)); CHECK(json::parse(r)["ok"] == false); }
     CHECK(remote({{"cmd", "temp.stop"}, {"ch", 5}})["ok"] == false);
     // 安全限值：只能在底线之内收紧
