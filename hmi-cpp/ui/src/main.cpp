@@ -6,6 +6,14 @@
 #include "../../net/tcp_server.hpp"
 #include "../../third_party/nlohmann/json.hpp"
 #include "ui_kit.hpp"
+
+// ── 编的时候先卡两道，免得到现场才发现 ──
+// 曲线（趋势、结晶曲线、方案总览）是用 LVGL 的线画的，斜线归「复杂渲染」管。关掉的话圆角、
+// 阴影照样有（那是另一条路），斜线却只剩两头的圆点——现场 2026-11-27 看到的「曲线都是点」就是这个样子
+static_assert(LV_DRAW_SW_COMPLEX == 1, "LVGL 的复杂渲染被关了：曲线会只剩点。打开 ui/lv_conf.h 里的 LV_DRAW_SW_COMPLEX");
+// LVGL 不在仓库里（各自按 README 下 9.2.2 的源码包）。版本不一样，画线这些地方的行为就可能不一样，
+// 与其在现场猜，不如编的时候就说出来
+static_assert(LVGL_VERSION_MAJOR == 9 && LVGL_VERSION_MINOR == 2, "third_party 里的 LVGL 不是 9.2.x：按 README 下 9.2.2，别的版本没验过");
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -905,6 +913,7 @@ int main(int argc, char** argv) {
     bool frame = false;                        // --frame：Windows 上带系统的标题栏和边框（缺省不带）
     bool only_1x = false;                      // --1x：屏幕再大也用 1 倍这一份，不自动换成 2 倍的
     bool lint_it = false;                      // --lint：出图的那一刻把这一页的排版量一遍（见 ui/src/lint.inc）
+    bool line_test = false;      // --linetest：三条线的小自检（见下面那一段）
     std::string fit_file, lang;                // --fit 表：一句一句摆进去量（提示句、报警句屏上平时没有）；--lang：不连核心时指定界面语言
     double after = 2.0;
     for (int i = 1; i < argc; i++) {
@@ -923,6 +932,7 @@ int main(int argc, char** argv) {
         else if (a == "--1x") only_1x = true;
         else if (a == "--lint") lint_it = true;      // 排版自查：把这一页上所有的字量一遍（见 ui/src/lint.inc）
         else if (a == "--fit" && i + 1 < argc) fit_file = argv[++i];
+        else if (a == "--linetest") line_test = true;      // 画三条线看哪种画得出来（现场「曲线只剩点」时用）
         else if (a == "--lang" && i + 1 < argc) lang = argv[++i];
     }
     (void)only_1x;
@@ -958,6 +968,45 @@ int main(int argc, char** argv) {
     lv_indev_t* touch = lv_indev_create();
     lv_indev_set_type(touch, LV_INDEV_TYPE_POINTER);
     lv_indev_set_read_cb(touch, [](lv_indev_t*, lv_indev_data_t* data) { data->point.x = g_finger.x; data->point.y = g_finger.y; data->state = g_finger.down ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED; });
+    // ── --linetest：三条线的小自检 ──
+    // 现场 2026-11-27：趋势和结晶曲线都「只剩点，连不成线」。横线竖线和斜线在 LVGL 里走的不是一条路
+    //（斜线要靠「复杂渲染」那一套遮罩），所以画三条看哪种出得来：
+    //   三条都在 = 画线没问题，去查画曲线的那段代码
+    //   横竖在、斜的没有 = 这台机器上的 LVGL 画不了斜线（复杂渲染被关了，或者 third_party 里不是 9.2.2）
+    // 窗口开着就一直显示，Ctrl+C 或关窗退出；带 --shot 时存一张图就退
+    if (line_test) {
+        lv_obj_t* scr = lv_obj_create(nullptr);
+        lv_obj_remove_style_all(scr);
+        bg(scr, 0xFFFFFF, 255);
+        static lv_point_precise_t hor[2], ver[2], skew[2];
+        const int S = UI_SCALE;
+        hor[0] = {lv_value_precise_t(80 * S), lv_value_precise_t(120 * S)};  hor[1] = {lv_value_precise_t(480 * S), lv_value_precise_t(120 * S)};
+        ver[0] = {lv_value_precise_t(80 * S), lv_value_precise_t(180 * S)};  ver[1] = {lv_value_precise_t(80 * S),  lv_value_precise_t(400 * S)};
+        skew[0] = {lv_value_precise_t(160 * S), lv_value_precise_t(400 * S)}; skew[1] = {lv_value_precise_t(560 * S), lv_value_precise_t(180 * S)};
+        for (lv_point_precise_t* p2 : {hor, ver, skew}) {
+            lv_obj_t* l = lv_line_create(scr);
+            lv_line_set_points(l, p2, 2);
+            lv_obj_set_style_line_width(l, 4 * S, 0);
+            lv_obj_set_style_line_color(l, lv_color_hex(0x00559C), 0);
+            lv_obj_set_style_line_rounded(l, true, 0);
+        }
+        txt(scr, 320 * S, 60 * S, "横线 · 竖线 · 斜线", 600, 20, 0x1F2A35, 255, 0, 0);
+        txt(scr, 320 * S, 440 * S, "斜的那条没出来 = 这台机器上的 LVGL 画不了斜线", 400, 15, 0x8792A0, 255, 0, 0);
+        lv_screen_load(scr);
+        for (int k = 0;; k++) {
+#ifdef _WIN32
+            if (windowed && !win::pump()) return 0;
+#endif
+            lv_timer_handler();
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            if (!shot.empty() && k >= 30) {
+                if (std::FILE* f = std::fopen(shot.c_str(), "wb")) { std::fwrite(g_fb, 4, static_cast<size_t>(W) * H, f); std::fclose(f); }
+                return 0;
+            }
+            if (!windowed && k > 600) return 0;
+        }
+    }
+
     if (!lang.empty()) ui::set_language(lang);      // 平时语言是从核心的设置里读的；--fit 不连核心，得明说
     // --fit：不连核心、不进主循环，把表里每一句摆进它该去的位置量一遍就退出
     if (!fit_file.empty()) return lint::fit(fit_file, kPages, sizeof kPages / sizeof kPages[0]) > 0 ? 2 : 0;

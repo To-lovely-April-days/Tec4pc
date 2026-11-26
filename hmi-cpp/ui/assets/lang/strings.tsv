@@ -823,8 +823,12 @@ pH 电极测、调节泵加，把 pH 维持在目标附近；走满维持时长�
 刷新界面时出错：	Error while refreshing the screen: 						
 刷新界面时出错（不知道是什么错）	Error while refreshing the UI (unknown)						
 把 assets 文件夹（里面是 fonts 和 img）放到下面任意一处：	Put the assets folder (it holds fonts and img) in any one of these places:						
+横线 · 竖线 · 斜线	Horizontal · vertical · skew						
+斜的那条没出来 = 这台机器上的 LVGL 画不了斜线	If the skew one is missing, this machine's LVGL cannot draw skew lines						
 
 # 下面这些界面上已经没有了，留着免得以后改回来又要重翻；要清掉直接删行
+# LVGL 的复杂渲染被关了：曲线会只剩点。打开 ui/lv_conf.h 里的 LV_DRAW_SW_COMPLEX							
+# third_party 里的 LVGL 不是 9.2.x：按 README 下 9.2.2，别的版本没验过							
 # 和同口那台设备参数不一样（{0} 按 {1} {2}{3} 开着，这台要 {4} {5}{6}）	Clashes with the other device on this port ({0} opened it at {1} {2}{3}; this one needs {4} {5}{6})						
 # {0} 已经按「{1}」的参数开着了（{2} {3}{4}），这台要 {5} {6}{7}：同一个口上两台设备参数不一样，开不了。把用不着的那台停用，或者把串口改对	{0} is already open with {1}'s settings ({2} {3}{4}); this one needs {5} {6}{7}. Two devices on one port must share the same settings — disable the one you don't use, or correct its port						
 # {0} 已经按「{1}」的参数开着了（{2} {3}{4}），这台要的是 {5} {6}{7}。							

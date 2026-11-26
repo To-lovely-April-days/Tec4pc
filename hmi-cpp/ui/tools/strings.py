@@ -130,6 +130,8 @@ def collect():
         src = re.sub(r'//[^\n]*', '', src)                      # 注释里的中文不算
         # 一行一行地找：整篇一起找的话，某一行里的 '"' 这种字符字面量会把引号配对带偏
         for line in src.splitlines():
+            # static_assert 的那句话是编译器打给开发的，不上屏，别混进词表
+            if 'static_assert' in line: continue
             for lit in c_literals(line):
                 if HAN.search(lit) and len(lit) < 90: add(lit)
         # set_text(…) 这一整句里的字面量都收，但这一句里有 + 的不收：
