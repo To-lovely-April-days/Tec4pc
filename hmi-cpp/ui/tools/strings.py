@@ -58,11 +58,17 @@ def collect():
             want.append(s)
 
     # 1. 设计稿翻过来的页面代码。只认 txt() 的第四个参数（画出来的那句话）
-    gen = (ROOT / 'ui/gen/pages_1.inc').read_text(encoding='utf-8')
     # txt / txta / txta_shift 的参数个数不一样，字在第几个也不一样：
-    # 直接找「函数名后面第一个字符串」——前面那些参数里不会有引号
-    for m in re.finditer(r'\btxt[a-z_]*\([^"\n]*"((?:[^"\\]|\\.)*)"', gen):
-        add(m.group(1).replace('\\"', '"').replace('\\\\', '\\'), True)
+    # 直接找「函数名后面第一个字符串」——前面那些参数里不会有引号。
+    # 一行一行地走，顺手记着这会儿在搭哪一页：单个汉字只有拼音键盘那一页（TextDlg）上是候选字，
+    # 别处的单字是真要翻的（「段」「关」「偶 / 奇 / 无」——2026-11-27 英文界面上表头还是「段」）
+    page = ''
+    for line in (ROOT / 'ui/gen/pages_1.inc').read_text(encoding='utf-8').splitlines():
+        m = re.match(r'static void build_(\w+)', line)
+        if m:
+            page = m.group(1)
+        for mm in re.finditer(r'\btxt[a-z_]*\([^"\n]*"((?:[^"\\]|\\.)*)"', line):
+            add(mm.group(1).replace('\\"', '"').replace('\\\\', '\\'), page == 'TextDlg')
 
     # 2. 控制核心里那几台设备的名字：界面上照抄着显示，不翻的话通信那一页全是中文
     # 控制核心里几句界面上会原样显示的（炉次名之类）：不在界面代码里，但屏上看得见

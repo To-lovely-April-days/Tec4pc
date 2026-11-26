@@ -219,6 +219,14 @@ lv_font_t* font(int weight, float css_px) {
 // 设计稿里文字和小圆点常常比包着它的元素大一点；LVGL 默认按父元素边界裁，这里给不裁剪的元素留出余量
 static void ext_cb(lv_event_t* e) { lv_event_set_ext_draw_size(e, 120 * UI_SCALE); }
 
+// 一行里前面那个按钮长了以后，这一行里排在它后面的按钮也要往右让同样多。
+// 为什么要留着记号而不是当场推：生成的页面代码是从左往右一个个搭出来的，
+// 前面那个长的时候，后面那些还没搭出来，推不动。所以记在这一行上，后面搭到了自己让。
+// 只让按钮（在 reg_act 那一下让，那时它才算按钮）：同一行里的说明小字不跟着让——
+// 那种字本来就长，往右挪一截就顶出卡片了（2026-11-27 英文「反应釜与安全」那页上试出来的）
+struct RowPush { int from_x = 0, dx = 0; };
+static std::map<lv_obj_t*, RowPush> g_row_push;
+
 lv_obj_t* mk(lv_obj_t* p, int x, int y, int w, int h, int clip) {
     lv_obj_t* o = lv_obj_create(p);
     lv_obj_remove_style_all(o);
@@ -299,6 +307,78 @@ lv_obj_t* txt(lv_obj_t* p, int cx, int cy, const char* s, int weight, float px, 
     return txta(p, cx, cy, 'c', s, weight, px, c, a, ls, wrap_w);
 }
 
+// 按钮跟着字长：外文比中文长，可按钮的宽度是从设计稿里量死的，字就直接伸出按钮去
+// （2026-11-27 英文界面上结晶编辑器的「新增一段」= Add a segment 伸到了屏幕外；
+//  序列页的「换类型」「删除这一步」、语言选择里的「完整」也都一样）。
+//
+// 只给按钮做（reg_act 把 LV_OBJ_FLAG_CLICKABLE 加上了，生成的页面代码里它排在画字之前），
+// 而且只给「按钮刚好包住这句话」的那种：字的另一头离按钮边还空着一大片的，多半是表头、
+// 卡片这类有底色的框，不该跟着字长。
+// 往哪边长：字往哪边长，按钮就往哪边长，另一头留的空当和设计稿里一样。
+// 靠左写的字（anchor l）往右长；按钮本来贴着那一行右端的，就改成整个往左挪，右边那条边不动。
+// 靠右写的字（anchor r）往左长，按钮也往左长——盒子左移了，字在盒子里的位置要跟着挪回设计稿里那个右边缘。
+// 这个元素现在多宽（还没排过版，读的是设好的那个数；字是跟着内容走的，直接量）
+static int obj_w(lv_obj_t* o) {
+    const int32_t w = lv_obj_get_style_width(o, 0);
+    if (w > 0 && w < 4000) return w;
+    return lv_obj_check_type(o, &lv_label_class) ? label_w(o) : 0;
+}
+
+// 按钮长出来以后，紧挨着它的那几个也要跟着让——设计稿里它们本来是一行挨着排的（flex），
+// 翻成绝对坐标以后就不会自己让了。只推「贴着它的」那一串（中间空当不超过 24 px），
+// 隔着老远的（比如同一行最左边那句提示）不动
+static void push_row(lv_obj_t* box, int extra, bool leftward) {
+    lv_obj_t* row = lv_obj_get_parent(box);
+    if (!row) return;
+    const int gap = 24 * UI_SCALE;
+    for (int again = 1; again;) {
+        again = 0;
+        const int bx = lv_obj_get_style_x(box, 0), bw = obj_w(box);
+        for (uint32_t i = 0; i < lv_obj_get_child_count(row); i++) {
+            lv_obj_t* c = lv_obj_get_child(row, i);
+            if (c == box) continue;
+            const int cx = lv_obj_get_style_x(c, 0), cw = obj_w(c);
+            if (leftward ? (cx + cw <= bx && bx - (cx + cw) <= gap) : (cx >= bx + bw && cx - (bx + bw) <= gap)) {
+                lv_obj_set_x(c, cx + (leftward ? -extra : extra));
+                box = c; again = 1; break;        // 再往外推一个（三个按钮挨着排的那种）
+            }
+        }
+    }
+}
+
+static void hug_button(lv_obj_t* p, lv_obj_t* l, char anchor, int ax, int design_w, int now_w) {
+    if (!p || now_w <= design_w) return;
+    if (!lv_obj_has_flag(p, LV_OBJ_FLAG_CLICKABLE)) return;
+    const int32_t pw = lv_obj_get_style_width(p, 0), pxx = lv_obj_get_style_x(p, 0);
+    if (pw <= 0 || pw > 4000) return;                       // 宽度不是量好的数（LV_SIZE_CONTENT 之类）：不碰
+    const int pad = 24 * UI_SCALE;                          // 设计稿里字离按钮边最多这么远，再远就不是「包住字」了
+    const int extra = now_w - design_w;
+    if (anchor == 'l') {
+        if (pw - (ax + design_w) > pad || ax > pad * 3) return;
+        // 这个按钮在它那一行里是不是贴着右端的
+        lv_obj_t* row = lv_obj_get_parent(p);
+        const int32_t rw = row ? lv_obj_get_style_width(row, 0) : 0;
+        const bool right_end = rw > 0 && rw < 4000 && rw - (pxx + pw) <= pad && rw - (pxx + pw) < pxx;
+        push_row(p, extra, right_end);                  // 先推旁边的（按原来的位置算谁贴着谁），再动自己
+        if (right_end) lv_obj_set_x(p, pxx - extra);
+        lv_obj_set_width(p, pw + extra);
+        if (!right_end && row) {                        // 往右长的：后面还没搭出来的那些，搭到的时候自己让
+            RowPush& rp = g_row_push[row];
+            if (rp.dx == 0) {
+                rp.from_x = pxx + pw;
+                lv_obj_add_event_cb(row, [](lv_event_t* e) { g_row_push.erase(static_cast<lv_obj_t*>(lv_event_get_target(e))); }, LV_EVENT_DELETE, nullptr);
+            }
+            rp.dx += extra;
+        }
+    } else if (anchor == 'r') {
+        if (ax - design_w > pad || pw - ax > pad) return;
+        push_row(p, extra, true);
+        lv_obj_set_pos(p, pxx - extra, lv_obj_get_style_y(p, 0));
+        lv_obj_set_width(p, pw + extra);
+        lv_obj_set_x(l, ax - design_w);
+    }
+}
+
 lv_obj_t* txta(lv_obj_t* p, int ax, int cy, char anchor, const char* s0, int weight, float px, uint32_t c, int a, int ls, int wrap_w) {
     // 设计稿翻出来的页面代码里，每一句都是从这儿画的——语言就在这儿换，
     // 所以 ui/gen/pages_*.inc 那两万行一个字都不用动。
@@ -316,6 +396,11 @@ lv_obj_t* txta(lv_obj_t* p, int ax, int cy, char anchor, const char* s0, int wei
     int w = 0, h = 0;
     text_size(l, s, wrap_w, w, h);
     lv_obj_set_pos(l, anchor == 'l' ? ax : anchor == 'r' ? ax - w : ax - w / 2, cy - h / 2);
+    if (&S != &key) {                       // 换过语言的才量第二遍（中文时 tr() 返回的就是传进来的那个串）
+        int dw = 0, dh = 0;
+        text_size(l, s0, wrap_w, dw, dh);
+        hug_button(p, l, anchor, ax, dw, w);
+    }
     return l;
 }
 // 搭页面那一下，这一段已经往右让了多少。三段连着排（A→B→C）时 C 要把 A 让出来的那份也算上
@@ -372,6 +457,12 @@ void Ui::reg_text(const char* id, lv_obj_t* label, char anchor, int ax, int cy) 
 }
 
 void Ui::reg_act(lv_obj_t* obj, const char* action) {
+    // 这一行里前面那个按钮长出来了：这一个跟着往右让（见 g_row_push）
+    auto push = g_row_push.find(lv_obj_get_parent(obj));
+    if (push != g_row_push.end()) {
+        const int x = lv_obj_get_style_x(obj, 0);
+        if (x >= push->second.from_x) lv_obj_set_x(obj, x + push->second.dx);
+    }
     lv_obj_add_flag(obj, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_ext_click_area(obj, 4 * UI_SCALE);            // 手指比鼠标粗：可点的范围比画出来的大一圈
     auto* a = new std::string(action);

@@ -48,6 +48,7 @@ pH 电极	pH probe
 斜坡终值	Ramp target						
 斜坡时长	Ramp time						
 照明	Light						
+关	Off						
 实测 300 rpm　·　电流 0.82 A	Measured 300 rpm　·　current 0.82 A						
 Tr 釜内温度	Tr reactor temp						
 Tj 夹套温度	Tj jacket temp						
@@ -209,6 +210,9 @@ PC 断开不影响本机控温和序列	A dropped PC does not affect local contr
 串口 · Modbus RTU	Serial · Modbus RTU						
 点一下填串口号（COM 后面的数字）	Tap to enter the port number (the digits after COM)						
 校验	Parity						
+无	None						
+偶	Even						
+奇	Odd						
 停止位	Stop bits						
 轮询周期	Poll interval						
 启用这台设备	Enable this device						
@@ -401,6 +405,7 @@ pH 反馈	pH hold
 第 7 / 12 段	Segment 7 / 12						
 降到 38 ℃ · 给定 41.5 ℃	Cool to 38 ℃ · setpoint 41.5 ℃						
 本段剩 8 min	8 min left in this segment						
+段	Seg						
 目标	Target						
 用时	Time						
 降 0.50	−0.50						
@@ -805,7 +810,6 @@ pH 电极测、调节泵加，把 pH 维持在目标附近；走满维持时长�
 制冷中	Cooling						
 保温中	Holding						
 未连接	No device						
-关	Off						
 开	On						
 实测 {0} rpm　·　电流 {1} A	Measured {0} rpm　·　current {1} A						
 搅拌没有连上：在设置 → 通信里配好搅拌电机的串口	Stirrer not connected — set its port under Settings → Communication						
@@ -845,7 +849,6 @@ pH 电极测、调节泵加，把 pH 维持在目标附近；走满维持时长�
 #  · 固件 							
 # ｜发 							
 # ｜收 							
-# 无							
 # 设置里没有这些设备：	These devices are not in the settings: 						
 # 不认识的命令：	Unknown command: 						
 # 处理命令时出错：	Error while handling the command: 						
