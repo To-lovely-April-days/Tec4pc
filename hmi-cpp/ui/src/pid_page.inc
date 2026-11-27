@@ -56,7 +56,9 @@ void pid_attach_ui(Ui& u) {
     lv_obj_set_style_radius(cir, LV_RADIUS_CIRCLE, 0);
     sh(cir, 0x007A5A, 77, 8 * S, 0, 3 * S, 0);
     u.reg_box("pg.tune.cir", cir);
-    lv_obj_t* ic = im(cir, 9 * S, 9 * S, S == 2 ? "A:assets/img/Pid_27_2.png" : "A:assets/img/Pid_27_1.png");
+    // 图标单独出在 ui/design/FxIcon.dc.html 上（名字固定，不跟着别的设计稿里的元素顺序走）。
+    // 原来借的是「重新从盘上读」那个转圈箭头，两个键长得一模一样（用户 2026-11-27 要求换掉）
+    lv_obj_t* ic = im(cir, 9 * S, 9 * S, S == 2 ? "A:assets/img/fx_autotune_2.png" : "A:assets/img/fx_autotune_1.png");
     if (ic) {
         lv_obj_set_style_image_recolor(ic, lv_color_hex(0xFFFFFF), 0);
         lv_obj_set_style_image_recolor_opa(ic, 255, 0);

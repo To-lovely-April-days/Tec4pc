@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>页面代码自己贴的图标</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<!--
+  这一页上没有界面，只有几个「不在任何一张设计稿里、由页面代码自己贴上去的」图标。
+  为什么要单开一页：这种图标以前只能去借别的页面上现成的那张（PID 页的「一键自整定」原来借的是
+  「重新从盘上读」那个转圈箭头，两个键长得一模一样，用户 2026-11-27 说要换掉）。借来的图一是撞脸，
+  二是那张图的名字（Pid_27_1.png）跟着设计稿里的元素顺序走，别人往前面加一个元素它就指错了。
+  data-id 以 fx. 开头的，生成出来的文件名是固定的 fx_<名字>_<倍数>.png（见 ui/tools/gen.py），
+  代码照着名字贴就行。页面名以 Fx 开头 = 只出图、不生成搭页面的代码。
+
+  图标都取自 Google Material Symbols（Apache-2.0，和别处的图标是同一套）。
+  摆位：离页边留 6 px、相互不挨着——生成器是把元素前后各多裁 2 px 再按黑白两底反推透明度的，
+  贴着边或者挨在一起会带出黑框。
+-->
+<div style="position: relative; width: 1280px; height: 720px; overflow: hidden; background: #FFFFFF">
+  <!-- 一键自整定：Material Symbols「instant_mix」（竖排推子）。白色由代码染，这儿画成深色便于看 -->
+  <svg data-id="fx.autotune" width="27" height="27" viewBox="0 -960 960 960" fill="#1F2A35" style="position:absolute;left:6px;top:6px;display:block"><path d="M200-160v-280h-80v-80h240v80h-80v280h-80Zm0-440v-200h80v200h-80Zm160 0v-80h80v-120h80v120h80v80H360Zm80 440v-360h80v360h-80Zm240 0v-120h-80v-80h240v80h-80v120h-80Zm0-280v-360h80v360h-80Z"/></svg>
+</div>
+</x-dc>
+</body>
+</html>
