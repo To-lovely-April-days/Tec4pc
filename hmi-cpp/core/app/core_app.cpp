@@ -215,6 +215,11 @@ std::string CoreApp::handle(const std::string& line, bool remote) {
             // 序列在跑的时候，手动的控温 / 搅拌 / 加料命令不收：两边抢着下命令，谁也说不清设备现在听谁的
             else if (!offline_reason.empty() && (cmd == "temp.start" || cmd == "temp.reflux" || cmd == "temp.profile" || cmd == "seq.start"))
                 r = fail(offline_reason);
+            // 增益表一行都没读到：内环的 Kp/Ki/Kd 全是 0，PID 算出来永远是 0，夹套目标再高也不出力。
+            // 以前这种情况是「看着在控温、出力一直 0 %」，现场只能干等（用户 2026-11-27 就撞上了）。
+            // 宁可当场不让开，也不要让人对着一个不出力的炉子猜半天
+            else if (table_.rows().empty() && (cmd == "temp.start" || cmd == "temp.reflux" || cmd == "temp.profile" || cmd == "seq.start"))
+                r = fail("增益表一行都没读到：内环没有 PID 参数，出力会一直是 0。开控制核心时 --gains 指的那个文件在不在？");
             else if (seq_busy && (cmd == "temp.start" || cmd == "temp.reflux" || cmd == "temp.profile" || cmd == "temp.setpoint" || cmd == "temp.stop" || cmd == "dose.start"))
                 r = fail("这个通道正在跑序列，先结束序列再手动操作");
             else if (cmd == "temp.start") {

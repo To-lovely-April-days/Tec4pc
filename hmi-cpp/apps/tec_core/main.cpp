@@ -28,6 +28,20 @@
 #include <windows.h>
 #endif
 
+// 这个程序自己在哪个目录（增益表缺省就放在它旁边）
+static std::string exe_dir() {
+#ifdef _WIN32
+    wchar_t buf[MAX_PATH] = {0};
+    if (GetModuleFileNameW(nullptr, buf, MAX_PATH)) {
+        std::filesystem::path p(buf);
+        return p.parent_path().u8string() + "/";
+    }
+    return "";
+#else
+    return "./";
+#endif
+}
+
 static std::atomic<bool> g_quit{false};
 static std::atomic<bool> g_restart{false};      // 停机以后把自己原样再启动一遍（sys.restart）
 static void on_signal(int) { g_quit = true; }
@@ -66,7 +80,7 @@ int main(int argc, char** argv) {
 #ifdef _WIN32
     SetConsoleOutputCP(CP_UTF8);
 #endif
-    std::string data = "data", gains = "data/gain-table.csv";
+    std::string data = "data", gains;
     bool sim = false;
     int port = -1;
     for (int i = 1; i < argc; i++) {
@@ -75,6 +89,14 @@ int main(int argc, char** argv) {
         else if (a == "--data" && i + 1 < argc) data = tec::fs_path(argv[++i]).u8string();
         else if (a == "--gains" && i + 1 < argc) gains = tec::fs_path(argv[++i]).u8string();
         else if (a == "--port" && i + 1 < argc) port = std::atoi(argv[++i]);
+    }
+    // 没写 --gains 就用放在程序旁边的那张表：编出来和装出来都会往那儿拷一份（见 CMakeLists）。
+    // 以前缺省是 "data/gain-table.csv"，数据目录换个地方就读不到了——读不到的后果不是报错，
+    // 是内环 Kp/Ki/Kd 全 0、出力一直 0 %，看着像在控温其实一点力都不出（用户 2026-11-27 现场撞上）
+    if (gains.empty()) {
+        const std::string beside = exe_dir() + "gain-table.csv";
+        std::error_code ec;
+        gains = std::filesystem::exists(tec::fs_path(beside.c_str()), ec) ? beside : std::string("data/gain-table.csv");
     }
     std::signal(SIGINT, on_signal);
     std::signal(SIGTERM, on_signal);
@@ -122,6 +144,11 @@ int main(int argc, char** argv) {
         ah = &real->aux();
     }
     tec::CoreApp app(*rh, *ah, data, gains);
+    // 增益表是内环的命根子：一行都没读到的话 PID 参数全是 0，出力永远 0 %，看着在控温其实不出力。
+    // 所以开机就喊一声（而且这种状态下核心不让开始控温，见 core_app 的 temp.start）
+    if (app.gain_rows() == 0) std::printf("增益表一行都没读到（%s）：这样控不了温，开始控温会被拒。把 gain-table.csv 放到程序旁边，或者用 --gains 指对路径\n", gains.c_str());
+    else std::printf("增益表：%s（%d 行）\n", gains.c_str(), static_cast<int>(app.gain_rows()));
+    std::fflush(stdout);     // 这一行是现场查「怎么不出力」的第一手材料，输出重定向到文件时别卡在缓冲里
     // 本机来的连接（触摸屏自己的界面程序）不算远程
     tec::TcpServer srv(port > 0 ? port : settings.tcp.port, [&](const std::string& line, bool local) { return app.handle(line, !local); }, settings.tcp.timeout_s);
     app.offline_reason = offline;

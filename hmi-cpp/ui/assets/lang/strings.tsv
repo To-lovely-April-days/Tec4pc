@@ -431,6 +431,7 @@ Tr 探头（宇电四路模块）	Tr probe (Yudian 4-ch)
 不是一条合法的 json 命令	Not a valid JSON command						
 触摸屏上关了「允许远程控制」，PC 只能看	Remote control is off on the touchscreen; the PC can only watch						
 通道只能是 1 或 2	The channel must be 1 or 2						
+增益表一行都没读到：内环没有 PID 参数，出力会一直是 0。开控制核心时 --gains 指的那个文件在不在？	No gain table loaded: no PID gains, so output stays 0. Check the --gains path						
 这个通道正在跑序列，先结束序列再手动操作	This channel is running a sequence; end it before operating by hand						
 开始控温，目标 	Control started, target 						
 开始蒸回流	Reflux started						

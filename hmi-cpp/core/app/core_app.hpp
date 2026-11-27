@@ -34,6 +34,7 @@ public:
     std::string handle(const std::string& line, bool remote);
     double period_s() const { return cfg_.inner_period_s; }
     const AppSettings& settings() const { return settings_; }
+    size_t gain_rows() const { return table_.rows().size(); }      // 0 = 增益表没装上，内环不出力（主程序开机要喊一声）
     std::string data_dir() const { return dir_; }
     // 通信设置页要看的东西（各设备连没连上、连着哪些 PC、本机地址）核心自己不知道，由主程序接进来：返回一个 json 对象的文本
     std::function<std::string()> comm_info;
