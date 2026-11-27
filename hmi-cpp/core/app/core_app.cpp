@@ -568,7 +568,8 @@ std::string CoreApp::handle(const std::string& line, bool remote) {
                             retouched = b.enabled != d.enabled || b.port != d.port || b.baud != d.baud || b.parity != d.parity ||
                                         b.stop_bits != d.stop_bits || b.station != d.station;
                     if (retouched) { one["state"] = "restart"; one["problem"] = ""; one["problem_t"] = ""; }
-                    else if (extra.contains("status")) for (auto& s2 : extra["status"]) if (s2.value("key", "") == d.key && d.enabled) { one["state"] = s2.value("ok", false) ? "ok" : "fail"; one["problem"] = s2.value("problem", "");
+                    else if (extra.contains("status")) for (auto& s2 : extra["status"]) if (s2.value("key", "") == d.key && d.enabled) { one["state"] = !s2.value("ok", false) ? "fail" : s2.value("problem", std::string()).empty() ? "ok" : "warn";
+                                                                                                        one["problem"] = s2.value("problem", "");
                                                                                    one["problem_t"] = s2.value("problem_t", ""); one["problem_args"] = s2.contains("problem_args") ? s2["problem_args"] : json::array(); }
                     r["devices"].push_back(one);
                 }

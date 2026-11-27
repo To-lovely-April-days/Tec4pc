@@ -63,17 +63,27 @@ std::optional<Found> id_rd105(ModbusRtu& m) {
 }
 
 // 冷水机：0x0000 机组状态只可能是 0~4，0x0403 起停方式只可能是 0~2。
-// 协议里读状态的功能码表写 04、实例给 03，两条都试（和驱动里一样）
+// 两处用的功能码不一样，而且各自都要留退路（协议《主机触模屏通讯协议2023》）：
+//   · 机组信息（0x0000 起）表里写 FC04，可它自己的应用实例给的是 FC03 的帧
+//   · 参数（0x0400 起）表里写 FC03
+// 所以两处分开试，各试各的退路——原来是「两处一起按 04 试一遍、再一起按 03 试一遍」，
+// 碰上「状态只认 04、参数只认 03」的固件，两遍都不成，这台冷水机就永远扫不出来
 std::optional<Found> id_chiller(ModbusRtu& m) {
-    for (int pass = 0; pass < 2; pass++) {
-        std::vector<uint16_t> st, mode;
-        try {
-            st = pass == 0 ? m.read_input_registers(Chiller::kStateAddr, 1) : m.read_holding_registers(Chiller::kStateAddr, 1);
-            mode = pass == 0 ? m.read_input_registers(Chiller::kStartStopModeAddr, 1) : m.read_holding_registers(Chiller::kStartStopModeAddr, 1);
-        } catch (const ModbusError&) { continue; }
-        if (st.size() == 1 && mode.size() == 1 && st[0] <= 4 && mode[0] <= 2) return Found{"chiller", "冷水机主板", ""};
-    }
-    return std::nullopt;
+    auto one = [&m](uint16_t addr, bool input_first) -> std::optional<uint16_t> {
+        for (int pass = 0; pass < 2; pass++) {
+            const bool input = pass == 0 ? input_first : !input_first;
+            try {
+                const std::vector<uint16_t> v = input ? m.read_input_registers(addr, 1) : m.read_holding_registers(addr, 1);
+                if (v.size() == 1) return v[0];
+            } catch (const ModbusError&) {}
+        }
+        return std::nullopt;
+    };
+    const std::optional<uint16_t> st = one(Chiller::kStateAddr, true);           // 机组状态：先 04
+    if (!st || *st > 4) return std::nullopt;
+    const std::optional<uint16_t> mode = one(Chiller::kStartStopModeAddr, false);  // 起停方式：先 03
+    if (!mode || *mode > 2) return std::nullopt;
+    return Found{"chiller", "冷水机主板", ""};
 }
 
 // Tr 探头（宇电 AI-8848G 四路）：地址排得很有特征——1536 起 4 个是四路测量值，

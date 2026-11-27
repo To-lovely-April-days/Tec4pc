@@ -168,11 +168,13 @@ void refresh_comm(Ui& u) {
         // 状态是控制核心开机时连设备的结果（它不会运行中重连）；仿真时没有真设备可连
         // 「这台连上没有」说的是开机那一刻的事（核心不会运行中重连）。开机以后改过这台的参数，
         // 核心就只报 restart：再拿开机那次的结果写在这儿会骗人——把冷水机启用了，屏上却还写着「未启用」
-        const int code = stt == "ok" ? 1 : stt == "fail" ? 2 : stt == "off" ? 0 : stt == "restart" ? 4 : 3;
+        // warn = 连上了、可是有话要说（冷水机设成只能本地启停这种）：话说不下就点一下这一行看详情
+        const int code = stt == "ok" ? 1 : stt == "fail" ? 2 : stt == "off" ? 0 : stt == "restart" ? 4 : stt == "warn" ? 5 : 3;
         u.set_text(id + ".s", code == 1 ? "正常" : code == 2 ? (prob.empty() || utf8_count(prob) > 12 ? "没连上" : prob)
+                                                : code == 5 ? (utf8_count(prob) > 14 ? "连上了，但设置不对" : prob)
                                                 : code == 0 ? "未启用" : code == 4 ? "改过了，重启核心后生效" : stt == "sim" ? "仿真（没连真设备）" : "未知");
-        u.set_text_color(id + ".s", code == 1 ? 0x4F5B67 : code == 2 ? 0xD64545 : code == 4 ? 0xE07B00 : 0x8792A0);
-        if (lv_obj_t* o = u.box(id + ".dot")) if (u.changed(id + ".dot", code)) bg(o, code == 1 ? 0x00B368 : code == 2 ? 0xE5484D : code == 3 || code == 4 ? 0xF2A33A : 0xB8C4D0, 255);
+        u.set_text_color(id + ".s", code == 1 ? 0x4F5B67 : code == 2 ? 0xD64545 : code == 4 || code == 5 ? 0xE07B00 : 0x8792A0);
+        if (lv_obj_t* o = u.box(id + ".dot")) if (u.changed(id + ".dot", code)) bg(o, code == 1 ? 0x00B368 : code == 2 ? 0xE5484D : code >= 3 ? 0xF2A33A : 0xB8C4D0, 255);
     }
     // 控温设备没连上时，这一页就是来修它的地方：把话说在最显眼的这一行
     const bool offline = st.is_object() && !st.value("offline", std::string()).empty();

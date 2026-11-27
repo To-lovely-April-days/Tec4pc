@@ -521,6 +521,7 @@ Tr 低于下限 {0} ℃（实测 {1} ℃）	Tr below the {0} ℃ limit (measured
 和同口那台设备参数不一样	Port settings clash						
 真串口只有 Windows 版；这台电脑上请用 --sim	Real serial ports are Windows-only; use --sim on this machine						
 设置里没有这台设备	Not in the settings						
+起停方式是「本地」：远程开关机它不理，去冷水机面板上改成「本地+远程」	Start/stop mode is Local: it ignores remote start/stop — set it to Local+Remote on the chiller panel						
 温控器或继电器模块没连上	Controller or relay not connected						
 JY-MODBUS-IO8R · 8 路	JY-MODBUS-IO8R · 8 ch						
 冷水机主板	Chiller board						
@@ -563,6 +564,7 @@ Tr 探头	Tr probe
 对外通信 · 断线超时	External link · timeout						
 还没拿到控制核心的设备清单	No device list from the control core yet						
 没连上	Not connected						
+连上了，但设置不对	Connected, wrong setting						
 改过了，重启核心后生效	Changed — restart the core						
 仿真（没连真设备）	Simulated						
 未知	Unknown						

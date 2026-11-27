@@ -180,6 +180,36 @@ int main() {
         check(h2.size() == 1 && h2[0].type == "tr", "关掉的那一类不找了，剩下的一类就认得准");
     }
 
+    // ── 3b. 冷水机：状态只认 FC04、参数只认 FC03 的那种固件也要认出来 ──
+    {
+        set_port_lister([] { return std::vector<SerialPortInfo>{{"COM31", "C", "USB\\C", 1}}; });
+        // 0x0000 机组状态 = 2（正常运行），只答 FC04；0x0403 起停方式 = 1（本地+远程），只答 FC03
+        auto open = [](const SerialConfig&) -> std::unique_ptr<SerialTransport> {
+            return std::make_unique<FakeSerial>([](const std::vector<uint8_t>& q) -> std::vector<uint8_t> {
+                if (q.size() < 8 || q[0] != 1) return {};
+                const uint16_t addr = static_cast<uint16_t>(q[2] << 8 | q[3]);
+                auto err = [&](uint8_t code) {
+                    std::vector<uint8_t> r{q[0], static_cast<uint8_t>(q[1] | 0x80), code};
+                    const uint16_t c = modbus_crc(r.data(), r.size());
+                    r.push_back(c & 0xFF); r.push_back(c >> 8);
+                    return r;
+                };
+                auto val = [&](uint16_t v) {
+                    std::vector<uint8_t> r{q[0], q[1], 2, static_cast<uint8_t>(v >> 8), static_cast<uint8_t>(v & 0xFF)};
+                    const uint16_t c = modbus_crc(r.data(), r.size());
+                    r.push_back(c & 0xFF); r.push_back(c >> 8);
+                    return r;
+                };
+                if (q[1] == 0x04) return addr == 0x0000 ? val(2) : err(2);
+                if (q[1] == 0x03) return addr == 0x0403 ? val(1) : err(2);
+                return err(1);
+            });
+        };
+        ScanOptions opt; opt.timeout_ms = 50; opt.bauds = {9600};
+        const std::vector<ScanHit> hits = scan_serial_ports(opt, open);
+        check(hits.size() == 1 && hits[0].type == "chiller", "冷水机：状态 04、参数 03 的固件也认得出来");
+    }
+
     // ── 4. 帧格式也要试：搅拌驱动要 8N2 才通（只按 8N1 问的话永远认不出来）──
     {
         set_port_lister([] { return std::vector<SerialPortInfo>{{"COM40", "S", "USB\\S", 1}}; });

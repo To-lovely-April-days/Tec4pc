@@ -102,6 +102,16 @@ RealDevices::RealDevices(const AppSettings& s) : d_(std::make_unique<Impl>()) {
     bring_up("stir1", [&](const DeviceComm& c) { d_->stir[0] = std::make_unique<Aqmd>(d_->bus(c, false)); d_->stir[0]->read_status(); });
     bring_up("stir2", [&](const DeviceComm& c) { d_->stir[1] = std::make_unique<Aqmd>(d_->bus(c, false)); d_->stir[1]->read_status(); });
     bring_up("feed", [&](const DeviceComm& c) { d_->feed = std::make_unique<FeedSystem>(d_->bus(c, false)); d_->feed->read_all(); });
+    // 冷水机的「起停方式」（0x0403，协议 §2.3.1）出厂是 0 = 只能本地启停：这时我们发的开关机
+    // 它照样回「收到」，可机子一动不动。通讯没毛病，所以不能判它没连上——记一句话，
+    // 在「通信设置」那一行里说出来，省得现场对着一台不转的冷水机查半天（用户 2026-11-27）
+    if (d_->chiller) {
+        try {
+            if (d_->chiller->read_start_stop_mode() == 0)
+                for (auto& st : status_)
+                    if (st.key == "chiller") st.problem = Text{"起停方式是「本地」：远程开关机它不理，去冷水机面板上改成「本地+远程」", {}};
+        } catch (const std::exception&) {}      // 这一条读不到就算了，不为它把整台冷水机判死
+    }
     // 试读失败的那几台当作没接（指针清掉），免得后面每拍都去撞一台不通的设备
     for (auto& st : status_) {
         if (st.ok) continue;
