@@ -7,12 +7,46 @@
 namespace tec {
 
 Station::Station(ReactorHardware& hw, const GainTable& table, const ChannelConfig& cfg)
-    : hw_(hw), cfg_(cfg), ctl_{ChannelController(table, cfg), ChannelController(table, cfg)} {}
+    : Station(hw, table, table, cfg, cfg) {}
+
+Station::Station(ReactorHardware& hw, const GainTable& table0, const GainTable& table1, const ChannelConfig& cfg0, const ChannelConfig& cfg1)
+    : hw_(hw), cfg_{cfg0, cfg1}, ctl_{ChannelController(table0, cfg0), ChannelController(table1, cfg1)} {}
+
+void Station::set_channel_config(int ch, const ChannelConfig& cfg) {
+    if (ch < 0 || ch > 1) return;
+    std::lock_guard<std::mutex> g(m_);
+    cfg_[ch] = cfg;
+    if (!ctl_[ch].running()) ctl_[ch].set_config(cfg);
+}
+
+void Station::start_tune(int ch, const TuneOptions& opt, const GainTable& existing_table, double fb_tw, double fb_tau) {
+    if (ch < 0 || ch > 1) return;
+    std::lock_guard<std::mutex> g(m_);
+    ctl_[ch].stop();
+    tuner_[ch].start(opt, existing_table, fb_tw, fb_tau);
+    started_locked(ch, "开始硬件自整定");
+}
+
+void Station::stop_tune(int ch) {
+    if (ch < 0 || ch > 1) return;
+    std::lock_guard<std::mutex> g(m_);
+    if (!tuner_[ch].active()) return;
+    tuner_[ch].abort();
+    events_.push_back({snap_.t, ch, "中止自整定"});
+}
+
+TuneStatus Station::tune_status(int ch) const {
+    if (ch < 0 || ch > 1) return {};
+    std::lock_guard<std::mutex> g(m_);
+    return tuner_[ch].status();
+}
 
 void Station::started_locked(int ch, const char* what) {
     begun_[ch] = false;              // 设备那边的开控动作放到下一拍在节拍线程里做：串口只让一个线程碰
     tr_missing_since_[ch] = -1;
     tr_hist_[ch].clear();
+    snap_.ch[ch].running = ctl_[ch].running();
+    snap_.ch[ch].tuning = tuner_[ch].active();
     events_.push_back({snap_.t, ch, what});
 }
 
@@ -82,7 +116,9 @@ void Station::trip(int ch, double t, const std::string& title_t, const std::vect
 
 // 安全层：和控温算法分开，只看读数和限值。算法出了错、目标给错了，这一层照样拦得住。
 void Station::check_safety(int ch, double t, const ReactorReadings& r) {
-    if (!ctl_[ch].running()) return;
+    const bool ctl_on = ctl_[ch].running();
+    const bool tune_on = tuner_[ch].active();
+    if (!ctl_on && !tune_on) return;
     const SafetyLimits& L = lim_[ch];
     const double tj = r.tj[ch];
     // 冷媒过热只在这一路正用 TEC 制冷时才算数：加热棒升温用不着冷却水，水温高低和它没关系
@@ -98,12 +134,12 @@ void Station::check_safety(int ch, double t, const ReactorReadings& r) {
         auto& hst = tr_hist_[ch];
         hst.push_back({t, tr});
         while (hst.front().first < t - 60.0) hst.pop_front();
-        if (L.rate_max_k_per_min > 0 && t - hst.front().first >= 30.0) {      // 至少攒够 30 s 才算，免得一两个读数的抖动就跳
+        if (ctl_on && L.rate_max_k_per_min > 0 && t - hst.front().first >= 30.0) {      // 至少攒够 30 s 才算，免得一两个读数的抖动就跳
             const double rate = (tr - hst.front().second) / (t - hst.front().first) * 60.0;
             if (std::fabs(rate) > L.rate_max_k_per_min) return trip(ch, t, "釜内变温速率超过上限 {0} K/min（实测 {1} K/min）", {f1(L.rate_max_k_per_min), f1(rate)});
         }
-    } else if (ctl_[ch].mode() != ControlMode::Jacket) {
-        // 釜内控温、蒸回流、结晶都要釜内读数；夹套控温不要
+    } else if (ctl_on && ctl_[ch].mode() != ControlMode::Jacket) {
+        // 釜内控温、蒸回流、结晶都要釜内读数；夹套控温与自整定（允许空釜整内环）不要
         if (tr_missing_since_[ch] < 0) tr_missing_since_[ch] = t;
         else if (t - tr_missing_since_[ch] >= L.tr_lost_grace_s) return trip(ch, t, "釜内温度连续 {0} s 读不到", {f1(L.tr_lost_grace_s)});
     }
@@ -120,8 +156,11 @@ void Station::stop(int ch) {
 }
 
 void Station::stop_locked(int ch, const std::string& why) {
-    if (!ctl_[ch].running()) return;
-    ctl_[ch].stop();
+    const bool was_ctl = ctl_[ch].running();
+    const bool was_tune = tuner_[ch].active();
+    if (!was_ctl && !was_tune) return;
+    if (was_ctl) ctl_[ch].stop();
+    if (was_tune) tuner_[ch].force_stop(why);
     events_.push_back({snap_.t, ch, why});
 }
 
@@ -139,7 +178,7 @@ std::vector<StationEvent> Station::take_events() {
 
 void Station::step() {
     std::lock_guard<std::mutex> g(m_);
-    const double t = k_ * cfg_.inner_period_s;
+    const double t = k_ * cfg_[0].inner_period_s;
     snap_.t = t;
     ReactorReadings r;
     bool ok = true;
@@ -161,6 +200,7 @@ void Station::step() {
         if (ok) { s.tj = r.tj[ch]; s.tr = r.tr[ch]; }
         if (ok && !std::isnan(r.tj[ch])) check_safety(ch, t, r);
         const bool run = ctl_[ch].running();
+        const bool tuning = tuner_[ch].active();
         try {
             if (run && ok && !std::isnan(r.tj[ch])) {
                 if (!begun_[ch]) { hw_.begin_control(ch); begun_[ch] = true; }
@@ -171,7 +211,22 @@ void Station::step() {
                 if (const OuterLoop* o = ctl_[ch].outer()) { s.b_hat = o->b(); s.tau_hat = o->tau(); s.boost = o->boost(); s.peak = o->peak(); }
                 valve = valve || cmd.valve_open;
                 chiller = chiller || cmd.chiller == ChillerState::Starting || cmd.chiller == ChillerState::Running;
-            } else if (!run && begun_[ch]) {
+            } else if (tuning && ok && !std::isnan(r.tj[ch])) {
+                if (!begun_[ch]) { hw_.begin_control(ch); begun_[ch] = true; }
+                const TuneStepOut ts = tuner_[ch].tick(cfg_[ch].inner_period_s, r.tj[ch], r.tr[ch]);
+                ChannelCommand cmd;
+                cmd.device_duty = ts.device_duty;
+                cmd.output_on = ts.output_on;
+                cmd.side = ts.side;
+                cmd.valve_open = ts.valve_open;
+                cmd.chiller = ts.chiller;
+                cmd.jacket_sp = ts.target_preview;
+                hw_.apply(ch, cmd);
+                for (auto& n : ts.notes) events_.push_back({t, ch, n});
+                s.jacket_sp = cmd.jacket_sp; s.duty = cmd.device_duty; s.side = cmd.side; s.output_on = cmd.output_on;
+                valve = valve || cmd.valve_open;
+                chiller = chiller || cmd.chiller == ChillerState::Starting || cmd.chiller == ChillerState::Running;
+            } else if (!run && !tuning && begun_[ch]) {
                 hw_.end_control(ch);         // 刚停下来的这一拍：关输出、断开这一路的两只继电器
                 begun_[ch] = false;
                 s.duty = 0; s.output_on = false;
@@ -181,9 +236,15 @@ void Station::step() {
             snap_.problem = std::string("写设备出错：") + e.what();
             snap_.comm_ok = false;
         }
-        s.running = ctl_[ch].running(); s.mode = ctl_[ch].mode(); s.setpoint = ctl_[ch].setpoint();
-        s.setpoint_now = ctl_[ch].setpoint_now(); s.segment = ctl_[ch].segment_index(); s.segment_remaining_s = ctl_[ch].segment_remaining_s();
-        s.ramp_done = ctl_[ch].ramp_done(); s.profile_done = ctl_[ch].profile_done();
+        s.running = ctl_[ch].running();
+        s.tuning = tuner_[ch].active();
+        s.mode = ctl_[ch].mode();
+        s.setpoint = s.tuning ? s.jacket_sp : ctl_[ch].setpoint();
+        s.setpoint_now = s.tuning ? s.jacket_sp : ctl_[ch].setpoint_now();
+        s.segment = ctl_[ch].segment_index();
+        s.segment_remaining_s = ctl_[ch].segment_remaining_s();
+        s.ramp_done = ctl_[ch].ramp_done();
+        s.profile_done = ctl_[ch].profile_done();
         if (s.running && s.mode == ControlMode::Crystal) { s.profile = ctl_[ch].profile(); s.profile_start = ctl_[ch].profile_start(); }
         else s.profile.clear();
     }
@@ -199,7 +260,7 @@ void Station::step() {
 
 void Station::run(const std::atomic<bool>& quit) {
     using clock = std::chrono::steady_clock;
-    const auto period = std::chrono::duration_cast<clock::duration>(std::chrono::duration<double>(cfg_.inner_period_s));
+    const auto period = std::chrono::duration_cast<clock::duration>(std::chrono::duration<double>(cfg_[0].inner_period_s));
     auto next = clock::now();
     while (!quit.load()) {
         step();

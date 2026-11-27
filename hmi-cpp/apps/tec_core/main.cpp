@@ -93,10 +93,22 @@ int main(int argc, char** argv) {
     // 没写 --gains 就用放在程序旁边的那张表：编出来和装出来都会往那儿拷一份（见 CMakeLists）。
     // 以前缺省是 "data/gain-table.csv"，数据目录换个地方就读不到了——读不到的后果不是报错，
     // 是内环 Kp/Ki/Kd 全 0、出力一直 0 %，看着像在控温其实一点力都不出（用户 2026-11-27 现场撞上）
+    // 没写 --gains 时，每个工位独立使用数据目录下的 gain-table-ch1.csv / gain-table-ch2.csv；
+    // 第一次开机还没有时，从程序旁边的出厂模板 gain-table.csv 自动种一份过去
     if (gains.empty()) {
-        const std::string beside = exe_dir() + "gain-table.csv";
         std::error_code ec;
-        gains = std::filesystem::exists(tec::fs_path(beside.c_str()), ec) ? beside : std::string("data/gain-table.csv");
+        const std::filesystem::path ch1_path = tec::fs_path(data) / "gain-table-ch1.csv";
+        if (!std::filesystem::exists(ch1_path, ec)) {
+            const std::filesystem::path beside = tec::fs_path(exe_dir() + "gain-table.csv");
+            const std::filesystem::path legacy = tec::fs_path(data) / "gain-table.csv";
+            std::filesystem::create_directories(tec::fs_path(data), ec);
+            if (std::filesystem::exists(legacy, ec)) {
+                std::filesystem::copy_file(legacy, ch1_path, std::filesystem::copy_options::overwrite_existing, ec);
+            } else if (std::filesystem::exists(beside, ec)) {
+                std::filesystem::copy_file(beside, ch1_path, std::filesystem::copy_options::overwrite_existing, ec);
+            }
+        }
+        gains = std::filesystem::exists(ch1_path, ec) ? ch1_path.u8string() : (exe_dir() + "gain-table.csv");
     }
     std::signal(SIGINT, on_signal);
     std::signal(SIGTERM, on_signal);
@@ -146,8 +158,8 @@ int main(int argc, char** argv) {
     tec::CoreApp app(*rh, *ah, data, gains);
     // 增益表是内环的命根子：一行都没读到的话 PID 参数全是 0，出力永远 0 %，看着在控温其实不出力。
     // 所以开机就喊一声（而且这种状态下核心不让开始控温，见 core_app 的 temp.start）
-    if (app.gain_rows() == 0) std::printf("增益表一行都没读到（%s）：这样控不了温，开始控温会被拒。把 gain-table.csv 放到程序旁边，或者用 --gains 指对路径\n", gains.c_str());
-    else std::printf("增益表：%s（%d 行）\n", gains.c_str(), static_cast<int>(app.gain_rows()));
+    if (app.gain_rows(0) == 0 || app.gain_rows(1) == 0) std::printf("增益表没读全（通道1: %d 行, 通道2: %d 行）：可在触摸屏「PID 整定」页执行一键自整定\n", static_cast<int>(app.gain_rows(0)), static_cast<int>(app.gain_rows(1)));
+    else std::printf("独立增益表：通道1（%d 行）· 通道2（%d 行）\n", static_cast<int>(app.gain_rows(0)), static_cast<int>(app.gain_rows(1)));
     std::fflush(stdout);     // 这一行是现场查「怎么不出力」的第一手材料，输出重定向到文件时别卡在缓冲里
     // 本机来的连接（触摸屏自己的界面程序）不算远程
     tec::TcpServer srv(port > 0 ? port : settings.tcp.port, [&](const std::string& line, bool local) { return app.handle(line, !local); }, settings.tcp.timeout_s);

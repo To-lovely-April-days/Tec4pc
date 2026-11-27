@@ -1652,3 +1652,28 @@ pH 电极测、调节泵加，把 pH 维持在目标附近；走满维持时长�
 #         // DO2 / DO3 是使能继电器，程序绝不许碰：设置文件里要是把哪一路配到了 2 或 3，整张表退回缺省							
 #         for (int v : {s.do_map.heater[0], s.do_map.heater[1], s.do_map.tec[0], s.do_map.tec[1], s.do_map.water}) if (v == 2 || v == 3 || v < 0 || v > 7) { s.do_map = DoMap(); break; } }							
 #     s.fast_boost_max = std::max(0.0, j.value(							
+一键自整定	Auto-tune						
+自整定中…	Tuning…						
+自整定中	Auto-tuning						
+PID 自整定	PID Auto-tune						
+通道 {0} 独立增益表 · 加热制冷共用	Ch {0} gain table · heat & cool						
+通道 {0} · 一键两段式自整定	Channel {0} · Two-stage Auto-tune						
+待启动	Ready						
+整定运行中	Tuning						
+整定已完成	Completed						
+整定未成功	Failed						
+已中止	Aborted						
+最高加热温度 ℃	Max heat temp ℃						
+最低制冷温度 ℃	Min cool temp ℃						
+加热阶跃出力 %	Heat step duty %						
+关闭窗口	Close						
+后台运行	Run in bg						
+开始自整定	Start Auto-tune						
+中止自整定	Stop Auto-tune						
+已启动两段式自整定	Two-stage auto-tune started						
+已发送中止指令，正在安全关断输出	Abort sent; shutting off safely						
+本通道标定：釜壁滞后 tw {0} s · 刹车速率 {1} K/s · 电热余热 {2} K	Calibrated: wall lag tw {0} s · brake {1} K/s · coast {2} K						
+两通道参数各自独立；换釜或换导热介质建议点「一键自整定」	Independent per channel; re-tune when changing vessel or fluid						
+已保存并立即生效（当前通道独立参数）	Saved & applied immediately (per-channel)						
+已应用并存入本通道独立增益表	Applied & saved to this channel's table						
+已从盘上重读本通道增益表	Reloaded this channel's table from disk						

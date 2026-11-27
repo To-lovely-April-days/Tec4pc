@@ -3,6 +3,7 @@
 #pragma once
 #include "channel_controller.hpp"
 #include "reactor_hardware.hpp"
+#include "../control/auto_tuner.hpp"
 #include <functional>
 #include <atomic>
 #include <deque>
@@ -14,6 +15,7 @@ namespace tec {
 
 struct ChannelSnapshot {
     bool running = false;
+    bool tuning = false;
     ControlMode mode = ControlMode::Off;
     double setpoint = 0;
     double tj = 0;
@@ -72,6 +74,11 @@ struct StationEvent { double t; int ch; std::string text; };   // ch：0 / 1；�
 class Station {
 public:
     Station(ReactorHardware& hw, const GainTable& table, const ChannelConfig& cfg);
+    Station(ReactorHardware& hw, const GainTable& table0, const GainTable& table1, const ChannelConfig& cfg0, const ChannelConfig& cfg1);
+    void set_channel_config(int ch, const ChannelConfig& cfg);
+    void start_tune(int ch, const TuneOptions& opt, const GainTable& existing_table, double fb_tw, double fb_tau);
+    void stop_tune(int ch);
+    TuneStatus tune_status(int ch) const;
     void start(int ch, ControlMode mode, double setpoint);
     void start(int ch, ControlMode mode, const Target& target);
     void start_reflux(int ch, double delta_k);
@@ -103,8 +110,9 @@ private:
     double tr_missing_since_[2] = {-1, -1};
     std::deque<std::pair<double, double>> tr_hist_[2];
     ReactorHardware& hw_;
-    ChannelConfig cfg_;
+    ChannelConfig cfg_[2];
     ChannelController ctl_[2];
+    AutoTuner tuner_[2];
     mutable std::mutex m_;
     StationSnapshot snap_;
     std::deque<StationEvent> events_;

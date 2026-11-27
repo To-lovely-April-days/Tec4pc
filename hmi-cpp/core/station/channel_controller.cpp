@@ -156,7 +156,8 @@ ChannelCommand ChannelController::tick(double tj, std::optional<double> tr) {
             demand_ = 0;
         }
 
-        sw_->post_coordinated(t, sp_now_, tr_val, tj, tj_sp_, outer_->xr(), outer_->w2(), outer_->b_ctrl(), outer_->tau(),
+        const double tw_eff = cfg_.outer.tw * std::max(0.70, std::min(1.35, std::sqrt(outer_->tau() / std::max(1.0, cfg_.outer.tau))));
+        sw_->post_coordinated(t, sp_now_, tr_val, tj, tj_sp_, outer_->xr(), outer_->w2(), outer_->b_ctrl(), tw_eff, outer_->tau(),
                               inner_->d_filt(), inner_->last_p_plus_i(), demand_, in_boost, in_brake);
         for (auto& e : sw_->take_events()) cmd.notes.push_back(e.text);
 

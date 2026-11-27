@@ -12,7 +12,7 @@ OuterLoop::OuterLoop(const OuterParams& p) : p_(p), tau0_(p.tau), tau_(p.tau), t
 double OuterLoop::calc_k() const {
     if (p_.fast.enabled) {
         const double k = p_.fast.k_margin_fast * (tau_ + tw_) * (tau_ + tw_) / (4.0 * tau_ * tw_);
-        return std::max(1.15, k);
+        return std::min(3.5, std::max(1.15, k));
     }
     const double k = p_.k_margin * (tau_ + tw_) * (tau_ + tw_) / (4 * tau_ * tw_);
     return std::max(1.0, k);
@@ -53,6 +53,9 @@ void OuterLoop::reset(const OuterObs& o) {
         b_ctrl_ = b_;
         tr_anchor_ = tr;
         drive_int_ = 0.0;
+        tr_prev_ = tr;
+        tr_rate_lp_ = 0.0;
+        stall_s_ = 0.0;
         k_ = calc_k();
         const double sp_final = o.sp_final.value_or(o.sp);
         const bool is_ramp = (o.sp_rate != 0.0) || (sp_final != o.sp);
@@ -238,8 +241,9 @@ double OuterLoop::u_base_easymax(double sp, double xr_val, double b_val) const {
         e = std::min(0.0, e_raw - dx_wall);
     }
     const double km = k_ - 1.0;
+    const double km_cool = std::min(1.25, km);
     const double pu = p_.fast.rho_fast * tau_ / k_;
-    const double g_val = e <= 0.0 ? (km * e) : (pu > 1e-9 ? pu * std::tanh(km * e / pu) : 0.0);
+    const double g_val = e <= 0.0 ? (km_cool * e) : (pu > 1e-9 ? pu * std::tanh(km * e / pu) : 0.0);
     return u_ss + g_val;
 }
 
@@ -267,7 +271,7 @@ double OuterLoop::predict_ballistic_peak(const OuterObs& o, double sp, double b_
     for (double t = 0.0; t < hz; t += dt) {
         const double b_cur = b0 + slope_scale * (bias_prior(T) - tab0);
         if (t < t_sw) {
-            const double step_m = mom_left * (1.0 - std::exp(-dt / 12.0));
+            const double step_m = mom_left * (1.0 - std::exp(-dt / 14.0));
             Tj += step_m - 0.0010 * std::max(0.0, Tj - 24.0) * dt;
             mom_left -= step_m;
         } else {
@@ -303,7 +307,7 @@ OuterOut OuterLoop::step_easymax(const OuterObs& o) {
     }
     tj_prev_ = o.tj;
 
-    heater_mom_ += (2.2 * o.heater_duty_frac - heater_mom_) * (1.0 - std::exp(-dt / 15.0));
+    heater_mom_ += (f.heater_mom_gain * o.heater_duty_frac - heater_mom_) * (1.0 - std::exp(-dt / std::max(2.0, f.heater_mom_tau)));
 
     // 检测运行中改目标
     if (!o.first && spf_prev_ && std::fabs(sp_final - *spf_prev_) > 1e-6) {
@@ -342,19 +346,39 @@ OuterOut OuterLoop::step_easymax(const OuterObs& o) {
         w2_prev_ = w2_;
         wall_ = w2_;
 
-        // 在线积分能量平衡 τ̂ / tw 辨识
-        if (tr && !is_ramp && std::fabs(sp - *tr) > 0.6) {
-            const double drive_now = w2_ - *tr - b_;
-            drive_int_ += drive_now * dt;
-            const double d_tr_tot = *tr - tr_anchor_;
-            if (std::fabs(d_tr_tot) >= 1.5 && std::fabs(drive_int_) >= 450.0 && (drive_int_ * d_tr_tot > 0.0)) {
-                const double tau_int = std::min(f.tau_hi_fast * tau0_, std::max(f.tau_lo_fast * tau0_, drive_int_ / d_tr_tot));
-                const double snr = std::min(1.0, (std::fabs(d_tr_tot) - 1.2) / 3.5);
-                const double tau_tc = tau_int < tau_ ? 20.0 : 35.0;
-                tau_ += (1.0 - std::exp(-dt / tau_tc)) * snr * (tau_int - tau_);
-                const double tw_scale = std::max(0.70, std::min(1.35, std::sqrt(tau_ / tau0_)));
-                tw_ = tw0_ * tw_scale;
-                k_ = calc_k();
+        if (tr) {
+            const double raw_tr_rate = (tr_prev_ && dt > 0.0) ? ((*tr - *tr_prev_) / dt) : 0.0;
+            tr_prev_ = *tr;
+            tr_rate_lp_ += (raw_tr_rate - tr_rate_lp_) * (1.0 - std::exp(-dt / 20.0));
+        }
+
+        // 在线积分能量平衡 τ̂ / tw 辨识（带未搅拌热停滞保护与降温初期釜壁滞后过渡保护）
+        if (tr && !is_ramp) {
+            const bool unstirred_stall = (std::fabs(o.tj - *tr) > 8.0) && (std::fabs(tr_rate_lp_) < 0.0020);
+            stall_s_ = unstirred_stall ? (stall_s_ + dt) : std::max(0.0, stall_s_ - dt);
+            if (stall_s_ >= 20.0) {
+                tr_anchor_ = *tr;
+                drive_int_ = 0.0;
+            } else if (std::fabs(sp - *tr) > 0.6) {
+                const bool cool_wall_transient = (sp < tr_anchor_) && (std::fabs(o.tj - w2_) > 5.0);
+                if (cool_wall_transient) {
+                    tr_anchor_ = *tr;
+                    drive_int_ = 0.0;
+                } else {
+                    const double drive_now = w2_ - *tr - b_;
+                    drive_int_ += drive_now * dt;
+                    const double d_tr_tot = *tr - tr_anchor_;
+                    if (std::fabs(d_tr_tot) >= 1.8 && std::fabs(drive_int_) >= 550.0 && (drive_int_ * d_tr_tot > 0.0)) {
+                        const double lo_mult = std::max(f.tau_lo_fast, 0.45);
+                        const double tau_int = std::min(f.tau_hi_fast * tau0_, std::max(lo_mult * tau0_, drive_int_ / d_tr_tot));
+                        const double snr = std::min(1.0, (std::fabs(d_tr_tot) - 1.4) / 3.5);
+                        const double tau_tc = tau_int < tau_ ? 22.0 : 35.0;
+                        tau_ += (1.0 - std::exp(-dt / tau_tc)) * snr * (tau_int - tau_);
+                        const double tw_scale = std::max(0.70, std::min(1.35, std::sqrt(tau_ / tau0_)));
+                        tw_ = tw0_ * tw_scale;
+                        k_ = calc_k();
+                    }
+                }
             }
         }
 
@@ -363,7 +387,9 @@ OuterOut OuterLoop::step_easymax(const OuterObs& o) {
 
         const double calm_err = std::max(std::fabs(o.tj - w2_) / 5.0, std::fabs(w1_ - w2_) / 4.0);
         const double calm_blend = 1.0 / (1.0 + calm_err * calm_err);
-        const double to_base = f.to_calm * calm_blend + f.to_boost * (1.0 - calm_blend);
+        const double calm_eff = calm_blend;
+
+        const double to_base = f.to_calm * calm_eff + f.to_boost * (1.0 - calm_eff);
         const double to = std::max(f.to_min_fast, to_base / (1.0 + (eps_lp_ / f.eps0_fast) * (eps_lp_ / f.eps0_fast)));
         to_eff_ = to;
 
@@ -372,8 +398,8 @@ OuterOut OuterLoop::step_easymax(const OuterObs& o) {
 
         const double net_drive = std::fabs(w2_ - xr_ - b_) + 0.8 * tw_ * std::fabs(wall_rate_);
         w_b = 1.0 / (1.0 + (net_drive / 8.5) * (net_drive / 8.5));
-        if (stage_ == FastStage::Hold && calm_blend > 0.45) {
-            w_b = std::max(w_b, calm_blend);
+        if (stage_ == FastStage::Hold && calm_eff > 0.45) {
+            w_b = std::max(w_b, calm_eff);
         }
 
         xr_ += dt * ((w2_ - xr_ - b_) / tau_ + l1 * eps);
@@ -384,6 +410,10 @@ OuterOut OuterLoop::step_easymax(const OuterObs& o) {
             db_ff *= ff_gate;
         }
         b_ += db_ff + dt * (-c * w_b * eps);
+        if (tr && (*tr > sp + 1.0) && (tr_rate_lp_ <= 0.0005)) {
+            const double b_floor = bias_prior(xr_) - 2.0;
+            if (b_ < b_floor) b_ = b_floor;
+        }
         b_ = std::max(-15.0, std::min(35.0, b_));
     }
 

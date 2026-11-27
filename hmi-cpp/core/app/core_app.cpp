@@ -49,17 +49,58 @@ Target target_from(const json& j) {
 }
 
 // 只看不改的命令。别的命令都会改变设备或存盘的状态，远程控制关着的时候 PC 不许下
-const std::set<std::string> kReadOnly = {"state", "seq.get", "recipe.list", "recipe.get", "alarm.list", "limits.get", "settings.get", "runs.list", "gains.get", "events", "profile.get", "trend.get", "comm.status", "sys.info", "drives.list", "ports.list", "ports.scan.status"};
+const std::set<std::string> kReadOnly = {"state", "seq.get", "recipe.list", "recipe.get", "alarm.list", "limits.get", "settings.get", "runs.list", "gains.get", "events", "profile.get", "trend.get", "comm.status", "sys.info", "drives.list", "ports.list", "ports.scan.status", "tune.status"};
+
+std::string now_stamp_short() {
+    const std::time_t w = std::time(nullptr);
+    std::tm tm{};
+#ifdef _WIN32
+    localtime_s(&tm, &w);
+#else
+    localtime_r(&w, &tm);
+#endif
+    char b[32];
+    std::strftime(b, sizeof b, "%m-%d %H:%M", &tm);
+    return b;
+}
+
+json tune_params_json(const ChannelTuneParams& t) {
+    return {{"fast_boost_max", t.fast_boost_max}, {"tw", t.tw}, {"tau", t.tau},
+            {"rc_nom", t.rc_nom}, {"heater_mom_gain", t.heater_mom_gain}, {"tuned_at", t.tuned_at}};
+}
 }  // namespace
 
+ChannelConfig CoreApp::make_channel_cfg(int c) const {
+    ChannelConfig cfg;
+    const ChannelTuneParams& tn = settings_.tune[c];
+    cfg.outer.tau = tn.tau;
+    cfg.outer.tw = tn.tw;
+    cfg.outer.fast.enabled = tn.fast_boost_max > 0.0;
+    cfg.outer.fast.boost_max = tn.fast_boost_max;
+    cfg.outer.fast.rc_nom = tn.rc_nom;
+    cfg.outer.fast.heater_mom_gain = tn.heater_mom_gain;
+    cfg.outer.fast.bias_start = [this, c](double t) { return table_[c].steady_bias_at(t).value_or(0.0); };
+    return cfg;
+}
+
 CoreApp::CoreApp(ReactorHardware& hw, AuxHardware& aux, const std::string& data_dir, const std::string& gain_table_path)
-    : dir_(data_dir), gain_path_(gain_table_path), settings_(AppSettings::load(data_dir)), table_(GainTable::load(gain_table_path)), recipes_(data_dir) {
-    // 快速升温：加码上限从设置里来。0 = 不加码，就是原来稳妥的那套
+    : dir_(data_dir), settings_(AppSettings::load(data_dir)), recipes_(data_dir) {
     boot_devices_ = settings_.devices;            // 开机那一刻的设备参数，留着和改过之后的比
-    cfg_.outer.fast.enabled = settings_.fast_boost_max > 0;
-    cfg_.outer.fast.boost_max = settings_.fast_boost_max;
-    cfg_.outer.fast.bias_start = [this](double t) { return table_.steady_bias_at(t).value_or(0.0); };
-    station_ = std::make_unique<Station>(hw, table_, cfg_);
+    gain_path_[0] = gain_table_path;
+    gain_path_[1] = (std::filesystem::u8path(data_dir) / "gain-table-ch2.csv").u8string();
+    table_[0] = GainTable::load(gain_path_[0]);
+    std::error_code ec;
+    if (std::filesystem::exists(std::filesystem::u8path(gain_path_[1]), ec)) {
+        table_[1] = GainTable::load(gain_path_[1]);
+    }
+    if (table_[1].empty() && !table_[0].empty()) {
+        table_[1] = table_[0];
+        std::filesystem::create_directories(std::filesystem::u8path(data_dir), ec);
+        table_[1].save(gain_path_[1]);
+    }
+    cfg_[0] = make_channel_cfg(0);
+    cfg_[1] = make_channel_cfg(1);
+    station_ = std::make_unique<Station>(hw, table_[0], table_[1], cfg_[0], cfg_[1]);
     aux_ = std::make_unique<AuxRunner>(aux, settings_.aux);
     for (int c = 0; c < 2; c++) {
         station_->set_limits(c, settings_.limits[c]);
@@ -82,6 +123,35 @@ void CoreApp::begin_run(int ch, const std::string& name, double t) {
     c.rec_t0 = t; c.last_step = -1; c.step_t0 = 0;
 }
 
+void CoreApp::check_tune_done(double t) {
+    for (int c = 0; c < 2; c++) {
+        const TuneStatus ts = station_->tune_status(c);
+        if (ts.phase == TunePhase::Done && ts.result && !tune_saved_[c]) {
+            tune_saved_[c] = true;
+            GainTable t_new(ts.result->rows);
+            if (!t_new.empty()) {
+                t_new.save(gain_path_[c]);
+                station_->locked([&] { table_[c] = t_new; });
+            }
+            ChannelTuneParams& tn = settings_.tune[c];
+            tn.rc_nom = ts.result->rc_nom;
+            tn.heater_mom_gain = ts.result->heater_mom_gain;
+            if (ts.result->outer_identified) {
+                tn.tw = ts.result->tw;
+                tn.tau = ts.result->tau;
+            }
+            tn.tuned_at = now_stamp_short();
+            settings_.fast_boost_max = settings_.tune[0].fast_boost_max;
+            settings_.save(dir_);
+            cfg_[c] = make_channel_cfg(c);
+            station_->set_channel_config(c, cfg_[c]);
+            if (ch_[c].rec->active()) {
+                ch_[c].rec->event(t - ch_[c].rec_t0, "整定", ts.result->summary);
+            }
+        }
+    }
+}
+
 void CoreApp::tick() {
     // 自动检测把串口全借走了：这段时间一拍也不问设备。问了只会一路报读不到，
     // 还会把一堆没有的读数记进趋势（扫描本来就要求两个通道都停着，停一会儿轮询没关系）
@@ -93,6 +163,7 @@ void CoreApp::tick() {
     //（用户 2026-11-26 现场遇到的卡顿）。AuxRunner 自己有锁，它的读数不靠这把锁保护
     if (k_ % 2 == 0) aux_->step(s.t);
     std::lock_guard<std::mutex> g(m_);
+    check_tune_done(s.t);
     for (int c = 0; c < 2; c++) ch_[c].seq->tick(s.t);
     for (auto& e : station_->take_events())
         if (e.ch >= 0 && ch_[e.ch].rec->active()) ch_[e.ch].rec->event(e.t - ch_[e.ch].rec_t0, e.text.find("安全联锁") != std::string::npos ? "报警" : "设备", e.text);
@@ -108,13 +179,14 @@ void CoreApp::record(double t) {
         Chan& ch = ch_[c];
         const SeqStatus q = ch.seq->status();
         const bool seq_on = q.state == SeqState::Running || q.state == SeqState::WaitingConfirm;
-        const bool active = s.ch[c].running || seq_on;
+        const bool active = s.ch[c].running || s.ch[c].tuning || seq_on;
         if (k_ % 4 == 0) {
             const double nan = std::numeric_limits<double>::quiet_NaN();
             TrendPoint p;
             p.t = t; p.wall = static_cast<long long>(std::time(nullptr));
-            p.tr = s.ch[c].tr.value_or(nan); p.tj = s.ch[c].tj; p.tj_sp = s.ch[c].running ? s.ch[c].jacket_sp : nan; p.sp = s.ch[c].running ? s.ch[c].setpoint_now : nan;
-            p.ph = a.ph[c].ph.value_or(nan); p.rpm = a.stir[c].rpm; p.on = s.ch[c].running;
+            const bool ch_on = s.ch[c].running || s.ch[c].tuning;
+            p.tr = s.ch[c].tr.value_or(nan); p.tj = s.ch[c].tj; p.tj_sp = ch_on ? s.ch[c].jacket_sp : nan; p.sp = ch_on ? s.ch[c].setpoint_now : nan;
+            p.ph = a.ph[c].ph.value_or(nan); p.rpm = a.stir[c].rpm; p.on = ch_on;
             ch.trend.push_back(p);
             if (ch.trend.size() > kTrendMax) ch.trend.pop_front();
         }
@@ -153,7 +225,7 @@ std::string CoreApp::state_json() {
         const ChannelSnapshot& x = s.ch[c];
         const SeqStatus q = ch_[c].seq->status();
         j["ch"].push_back({
-            {"running", x.running}, {"mode", mode_name(x.mode)}, {"sp", x.setpoint}, {"sp_now", x.setpoint_now}, {"tj", num(x.tj)}, {"tr", opt(x.tr)},
+            {"running", x.running}, {"tuning", x.tuning}, {"mode", x.tuning ? "tuning" : mode_name(x.mode)}, {"sp", x.setpoint}, {"sp_now", x.setpoint_now}, {"tj", num(x.tj)}, {"tr", opt(x.tr)},
             {"tj_sp", x.jacket_sp}, {"duty", x.duty}, {"side", x.side == HeatSide::Tec ? "tec" : "heater"}, {"output_on", x.output_on},
             {"b_hat", x.b_hat}, {"tau_hat", x.tau_hat}, {"boost", x.boost}, {"segment", x.segment}, {"segment_remaining_s", x.segment_remaining_s},
             {"ramp_done", x.ramp_done}, {"profile_done", x.profile_done}, {"vessel", settings_.vessel[c]}, {"lamp", ch_[c].lamp},
@@ -204,23 +276,23 @@ std::string CoreApp::handle(const std::string& line, bool remote) {
         else {
             std::lock_guard<std::mutex> g(m_);
             const int c = q.value("ch", 1) - 1;                       // 命令里通道从 1 数
-            const bool needs_ch = cmd.rfind("temp.", 0) == 0 || cmd.rfind("stir.", 0) == 0 || cmd.rfind("dose.", 0) == 0 || cmd.rfind("seq.", 0) == 0 || cmd.rfind("limits.", 0) == 0;
+            const bool needs_ch = cmd.rfind("temp.", 0) == 0 || cmd.rfind("stir.", 0) == 0 || cmd.rfind("dose.", 0) == 0 || cmd.rfind("seq.", 0) == 0 || cmd.rfind("limits.", 0) == 0 || cmd.rfind("tune.", 0) == 0 || (q.contains("ch") && cmd.rfind("gains.", 0) == 0);
             const double t = station_->snapshot().t;
             const std::string who = remote ? "PC" : "触摸屏";
-            auto note = [&](const std::string& text) { if (ch_[c].rec->active()) ch_[c].rec->event(t - ch_[c].rec_t0, "操作", who + "：" + text); };
+            auto note = [&](const std::string& text) { if (c >= 0 && c < 2 && ch_[c].rec->active()) ch_[c].rec->event(t - ch_[c].rec_t0, "操作", who + "：" + text); };
             const SeqState ss = needs_ch && c >= 0 && c < 2 ? ch_[c].seq->status().state : SeqState::Idle;
             const bool seq_busy = ss == SeqState::Running || ss == SeqState::WaitingConfirm;
+            const bool tune_busy = c >= 0 && c < 2 && station_->snapshot().ch[c].tuning;
             r = {{"ok", true}};
             if (needs_ch && (c < 0 || c > 1)) r = fail("通道只能是 1 或 2");
-            // 序列在跑的时候，手动的控温 / 搅拌 / 加料命令不收：两边抢着下命令，谁也说不清设备现在听谁的
-            else if (!offline_reason.empty() && (cmd == "temp.start" || cmd == "temp.reflux" || cmd == "temp.profile" || cmd == "seq.start"))
+            // 序列或自整定在跑的时候，手动的控温 / 搅拌 / 加料命令要受控
+            else if (!offline_reason.empty() && (cmd == "temp.start" || cmd == "temp.reflux" || cmd == "temp.profile" || cmd == "seq.start" || cmd == "tune.start"))
                 r = fail(offline_reason);
-            // 增益表一行都没读到：内环的 Kp/Ki/Kd 全是 0，PID 算出来永远是 0，夹套目标再高也不出力。
-            // 以前这种情况是「看着在控温、出力一直 0 %」，现场只能干等（用户 2026-11-27 就撞上了）。
-            // 宁可当场不让开，也不要让人对着一个不出力的炉子猜半天
-            else if (table_.rows().empty() && (cmd == "temp.start" || cmd == "temp.reflux" || cmd == "temp.profile" || cmd == "seq.start"))
-                r = fail("增益表一行都没读到：内环没有 PID 参数，出力会一直是 0。开控制核心时 --gains 指的那个文件在不在？");
-            else if (seq_busy && (cmd == "temp.start" || cmd == "temp.reflux" || cmd == "temp.profile" || cmd == "temp.setpoint" || cmd == "temp.stop" || cmd == "dose.start"))
+            else if (c >= 0 && c < 2 && table_[c].rows().empty() && (cmd == "temp.start" || cmd == "temp.reflux" || cmd == "temp.profile" || cmd == "seq.start"))
+                r = fail("增益表一行都没读到：内环没有 PID 参数，出力会一直是 0。先在「PID 整定」页自整定或导入增益表");
+            else if (tune_busy && (cmd == "temp.start" || cmd == "temp.reflux" || cmd == "temp.profile" || cmd == "temp.setpoint" || cmd == "temp.stop" || cmd == "seq.start"))
+                r = fail("这个通道正在做 PID 自整定，先中止自整定再操作");
+            else if (seq_busy && (cmd == "temp.start" || cmd == "temp.reflux" || cmd == "temp.profile" || cmd == "temp.setpoint" || cmd == "temp.stop" || cmd == "dose.start" || cmd == "tune.start"))
                 r = fail("这个通道正在跑序列，先结束序列再手动操作");
             else if (cmd == "temp.start") {
                 const std::string m = q.value("mode", "reactor");
@@ -328,7 +400,8 @@ std::string CoreApp::handle(const std::string& line, bool remote) {
             }
             else if (cmd == "settings.get") {
                 r["tcp"] = {{"enabled", settings_.tcp.enabled}, {"port", settings_.tcp.port}, {"timeout_s", settings_.tcp.timeout_s}, {"allow_remote_control", settings_.tcp.allow_remote_control}};
-                r["fast_boost_max"] = settings_.fast_boost_max;
+                r["fast_boost_max"] = settings_.tune[0].fast_boost_max;
+                r["tune"] = json::array({tune_params_json(settings_.tune[0]), tune_params_json(settings_.tune[1])});
                 r["ui_lang"] = settings_.ui_lang;
                 r["devices"] = json::array();
                 for (auto& d : settings_.devices) r["devices"].push_back({{"key", d.key}, {"label", d.label}, {"enabled", d.enabled}, {"port", d.port}, {"usb_id", d.usb_id}, {"usb_name", d.usb_name}, {"baud", d.baud}, {"parity", std::string(1, d.parity)}, {"stop_bits", d.stop_bits}, {"station", d.station}, {"poll_ms", d.poll_ms}});
@@ -337,15 +410,29 @@ std::string CoreApp::handle(const std::string& line, bool remote) {
                 if (remote) r = fail("通信和系统设置只能在触摸屏上改");     // PC 把触摸屏的端口改掉，自己就再也连不上了
                 else {
                     if (q.contains("tcp")) { const json& tj = q["tcp"]; TcpSettings& T = settings_.tcp; T.enabled = tj.value("enabled", T.enabled); T.port = tj.value("port", T.port); T.timeout_s = tj.value("timeout_s", T.timeout_s); T.allow_remote_control = tj.value("allow_remote_control", T.allow_remote_control); }
-                    if (q.contains("fast_boost_max")) settings_.fast_boost_max = std::max(0.0, q.value("fast_boost_max", settings_.fast_boost_max));
-                    // 触摸屏的界面语言。核心只是替它存着，重启以后还是上次那一种
                     if (q.contains("ui_lang")) settings_.ui_lang = q.value("ui_lang", settings_.ui_lang);
-                    // 设备控制页上「Tr 传感器 / pH 电极」那两个开关：存在核心里，换人开机以后还是上次那一套
-                    if (q.contains("ch") && q["ch"].is_number_integer()) {
-                        const int k = std::max(1, std::min(2, q.value("ch", 1))) - 1;
-                        if (q.contains("show_tr")) settings_.show_tr[k] = q.value("show_tr", settings_.show_tr[k]);
-                        if (q.contains("show_ph")) settings_.show_ph[k] = q.value("show_ph", settings_.show_ph[k]);
+                    const bool has_ch = q.contains("ch") && q["ch"].is_number_integer();
+                    const int k_ch = has_ch ? (std::max(1, std::min(2, q.value("ch", 1))) - 1) : -1;
+                    if (has_ch) {
+                        if (q.contains("show_tr")) settings_.show_tr[k_ch] = q.value("show_tr", settings_.show_tr[k_ch]);
+                        if (q.contains("show_ph")) settings_.show_ph[k_ch] = q.value("show_ph", settings_.show_ph[k_ch]);
                     }
+                    auto apply_tune_json = [&](int idx, const json& src) {
+                        ChannelTuneParams& T = settings_.tune[idx];
+                        if (src.contains("fast_boost_max")) T.fast_boost_max = std::min(80.0, std::max(0.0, src.value("fast_boost_max", T.fast_boost_max)));
+                        if (src.contains("tw")) T.tw = std::min(300.0, std::max(10.0, src.value("tw", T.tw)));
+                        if (src.contains("tau")) T.tau = std::min(3000.0, std::max(200.0, src.value("tau", T.tau)));
+                        if (src.contains("rc_nom")) T.rc_nom = std::min(0.60, std::max(0.06, src.value("rc_nom", T.rc_nom)));
+                        if (src.contains("heater_mom_gain")) T.heater_mom_gain = std::min(12.0, std::max(0.5, src.value("heater_mom_gain", T.heater_mom_gain)));
+                        cfg_[idx] = make_channel_cfg(idx);
+                        station_->set_channel_config(idx, cfg_[idx]);
+                    };
+                    if (q.contains("fast_boost_max") || q.contains("tw") || q.contains("tau") || q.contains("rc_nom") || q.contains("heater_mom_gain")) {
+                        if (k_ch >= 0) apply_tune_json(k_ch, q);
+                        else { apply_tune_json(0, q); apply_tune_json(1, q); }
+                    }
+                    if (q.contains("tune") && q["tune"].is_object() && k_ch >= 0) apply_tune_json(k_ch, q["tune"]);
+                    settings_.fast_boost_max = settings_.tune[0].fast_boost_max;
                     if (q.contains("device")) {
                         const json& dj = q["device"]; bool found = false;
                         for (auto& d : settings_.devices) if (d.key == dj.value("key", "")) {
@@ -515,38 +602,30 @@ std::string CoreApp::handle(const std::string& line, bool remote) {
                 r["uptime_s"] = std::chrono::duration<double>(std::chrono::steady_clock::now() - started_).count();
                 r["sim"] = extra.value("sim", false);
                 r["data_dir"] = dir_;
-                r["gains_path"] = gain_path_;
+                r["gains_path"] = gain_path_[0];
                 std::error_code ec;
                 const auto sp = std::filesystem::space(std::filesystem::u8path(dir_), ec);
                 r["disk_free_gb"] = ec ? json(nullptr) : json(static_cast<double>(sp.available) / 1e9);
                 r["disk_total_gb"] = ec ? json(nullptr) : json(static_cast<double>(sp.capacity) / 1e9);
                 r["runs"] = RunRecorder::list(dir_).size();
                 r["recipes"] = recipes_.list().size();
-                r["gain_rows"] = table_.rows().size();
+                r["gain_rows"] = table_[0].rows().size();
             }
             else if (cmd == "sys.exit") {
-                // 退出控制核心。触摸屏上「退出程序 → 连控制核心一起退」下的就是这条。
-                // 只收本机的：PC 要是能把核心关掉，现场没人知道炉子为什么不控了。
-                // 两个通道都停着才收——真正的停机动作在主程序的退出那一段（停序列、停控温、再跑两拍让「停」写到设备上），
-                // 这里只负责把主循环叫停，不自己去动设备。
                 const StationSnapshot snap = station_->snapshot();
-                bool busy = snap.ch[0].running || snap.ch[1].running;
+                bool busy = snap.ch[0].running || snap.ch[1].running || snap.ch[0].tuning || snap.ch[1].tuning;
                 for (int k = 0; k < 2; k++) { const SeqState q2 = ch_[k].seq->status().state; busy = busy || q2 == SeqState::Running || q2 == SeqState::WaitingConfirm; }
                 if (remote) r = fail("只有触摸屏上能退出控制核心");
-                else if (busy) r = fail("有通道正在控温或跑序列，停下来才能退出");
+                else if (busy) r = fail("有通道正在控温、跑序列或自整定，停下来才能退出");
                 else if (!on_exit) r = fail("这个程序不支持退出");
                 else on_exit();
             }
             else if (cmd == "sys.restart") {
-                // 重启控制核心：停好机再把自己原样启动一遍。设备是开机时连的，改完串口只有重启才生效，
-                // 自动检测点「应用」以后就下这一条（那时两个通道本来就都停着——不停下来根本扫不了）。
-                // 守的规矩和退出一样：只收本机的、两个通道都得停着。重启中间那几秒界面会显示「未连上控制核心」，
-                // 核心起来了它自己接回去
                 const StationSnapshot snap = station_->snapshot();
-                bool busy = snap.ch[0].running || snap.ch[1].running;
+                bool busy = snap.ch[0].running || snap.ch[1].running || snap.ch[0].tuning || snap.ch[1].tuning;
                 for (int k = 0; k < 2; k++) { const SeqState q2 = ch_[k].seq->status().state; busy = busy || q2 == SeqState::Running || q2 == SeqState::WaitingConfirm; }
                 if (remote) r = fail("只有触摸屏上能重启控制核心");
-                else if (busy) r = fail("有通道正在控温或跑序列，停下来才能重启");
+                else if (busy) r = fail("有通道正在控温、跑序列或自整定，停下来才能重启");
                 else if (!on_restart) r = fail("这个程序不支持重启");
                 else on_restart();
             }
@@ -596,19 +675,22 @@ std::string CoreApp::handle(const std::string& line, bool remote) {
                 r["out_dir"] = out;
             }
             else if (cmd == "gains.get") {
+                const int gc = std::max(0, std::min(1, c));
+                r["ch"] = gc + 1;
+                r["tune"] = tune_params_json(settings_.tune[gc]);
                 r["rows"] = json::array();
-                for (auto& row : table_.rows()) r["rows"].push_back({{"temp", row.temp}, {"kp", row.kp}, {"ki", row.ki}, {"kd", row.kd}, {"steady_bias", opt(row.steady_bias)}, {"heat_ratio", opt(row.heat_ratio)}});
+                for (auto& row : table_[gc].rows()) r["rows"].push_back({{"temp", row.temp}, {"kp", row.kp}, {"ki", row.ki}, {"kd", row.kd}, {"steady_bias", opt(row.steady_bias)}, {"heat_ratio", opt(row.heat_ratio)}});
             }
             else if (cmd == "gains.set" || cmd == "gains.reload") {
-                // 换增益表：两个通道都没在控温、也没在跑序列时才收。控着温的时候把 PID 参数整个换掉，输出会跳
+                const int gc = std::max(0, std::min(1, c));
                 const StationSnapshot snap = station_->snapshot();
-                bool busy = snap.ch[0].running || snap.ch[1].running;
+                bool busy = snap.ch[0].running || snap.ch[1].running || snap.ch[0].tuning || snap.ch[1].tuning;
                 for (int k = 0; k < 2; k++) { const SeqState q2 = ch_[k].seq->status().state; busy = busy || q2 == SeqState::Running || q2 == SeqState::WaitingConfirm; }
-                if (busy) r = fail("有通道正在控温或跑序列，停下来才能换增益表");
+                if (busy) r = fail("有通道正在控温、跑序列或自整定，停下来才能换增益表");
                 else if (cmd == "gains.reload") {
-                    GainTable t2 = GainTable::load(gain_path_);
+                    GainTable t2 = GainTable::load(gain_path_[gc]);
                     if (t2.empty()) r = fail("盘上的增益表读不出来");
-                    else station_->locked([&] { table_ = t2; });
+                    else station_->locked([&] { table_[gc] = t2; });
                 } else {
                     std::vector<GainRow> rows;
                     std::string why;
@@ -627,9 +709,61 @@ std::string CoreApp::handle(const std::string& line, bool remote) {
                     if (!why.empty()) r = fail(why);
                     else {
                         GainTable t2(rows);
-                        if (!t2.save(gain_path_)) r = fail("增益表没存进去（文件写不了）");
-                        else station_->locked([&] { table_ = t2; });
+                        if (!t2.save(gain_path_[gc])) r = fail("增益表没存进去（文件写不了）");
+                        else station_->locked([&] { table_[gc] = t2; });
                     }
+                }
+            }
+            else if (cmd == "tune.start") {
+                const StationSnapshot snap = station_->snapshot();
+                bool any_busy = snap.ch[0].running || snap.ch[1].running || snap.ch[0].tuning || snap.ch[1].tuning;
+                for (int k = 0; k < 2; k++) { const SeqState q2 = ch_[k].seq->status().state; any_busy = any_busy || q2 == SeqState::Running || q2 == SeqState::WaitingConfirm; }
+                const double cur_tj = snap.ch[c].tj;
+                TuneOptions opt_t;
+                opt_t.t_high = q.value("t_high", 65.0);
+                opt_t.t_low = q.value("t_low", 10.0);
+                opt_t.heat_duty = q.value("heat_duty", 60.0);
+                opt_t.cool_duty = q.value("cool_duty", 80.0);
+                opt_t.max_duty = cfg_[c].max_duty;
+                opt_t.chiller_stop_delay_s = q.value("chiller_stop_delay_s", cfg_[c].sw.chiller_stop_delay_s);
+                const SafetyLimits L = station_->limits(c);
+                if (any_busy) r = fail("有通道正在运行（两个工位共用冷却水路，先把两个通道都停下来再开始自整定）");
+                else if (!snap.comm_ok || !std::isfinite(cur_tj)) r = fail("当前读不到夹套温度，无法开始自整定");
+                else if (opt_t.t_high < cur_tj + 10.0) r = fail("最高整定温度至少要比当前夹套温度高 10 ℃");
+                else if (opt_t.t_high > L.tj_max - 10.0 || opt_t.t_high > 140.0) r = fail("最高整定温度过高（请设在 140 ℃ 以内且留 10 ℃ 安全余量）");
+                else if (opt_t.t_low < L.tj_min + 5.0 || opt_t.t_low < -25.0 || opt_t.t_low > opt_t.t_high - 20.0) r = fail("最低制冷温度范围不对（需低于最高温度至少 20 ℃）");
+                else {
+                    tune_saved_[c] = false;
+                    begin_run(c, "PID自整定", t);
+                    station_->start_tune(c, opt_t, table_[c], settings_.tune[c].tw, settings_.tune[c].tau);
+                    note("开始两段式硬件自整定");
+                }
+            }
+            else if (cmd == "tune.stop") {
+                station_->stop_tune(c);
+                note("中止自整定");
+            }
+            else if (cmd == "tune.status") {
+                const TuneStatus ts = station_->tune_status(c);
+                r["ch"] = c + 1;
+                r["phase"] = ts.phase_code;
+                r["active"] = ts.active;
+                r["progress"] = ts.progress;
+                r["elapsed_s"] = ts.elapsed_s;
+                r["tj"] = num(ts.tj);
+                r["tr"] = opt(ts.tr);
+                r["duty"] = ts.duty;
+                r["side"] = ts.side == HeatSide::Tec ? "tec" : "heater";
+                r["valve_open"] = ts.valve_open;
+                r["note"] = ts.note;
+                r["tune"] = tune_params_json(settings_.tune[c]);
+                if (ts.result) {
+                    json rows_j = json::array();
+                    for (auto& row : ts.result->rows) rows_j.push_back({{"temp", row.temp}, {"kp", row.kp}, {"ki", row.ki}, {"kd", row.kd}, {"steady_bias", opt(row.steady_bias)}, {"heat_ratio", opt(row.heat_ratio)}});
+                    r["result"] = {{"lh_s", ts.result->lh_s}, {"tau_h_s", ts.result->tau_h_s}, {"kh_mid", ts.result->kh_mid}, {"kc_mid", ts.result->kc_mid},
+                                   {"rc_nom", ts.result->rc_nom}, {"heater_mom_gain", ts.result->heater_mom_gain},
+                                   {"outer_identified", ts.result->outer_identified}, {"tw", ts.result->tw}, {"tau", ts.result->tau},
+                                   {"outer_rmse", ts.result->outer_rmse}, {"summary", ts.result->summary}, {"rows", rows_j}};
                 }
             }
             else r = fail(compose("不认识的命令：{0}", {val(cmd)}));

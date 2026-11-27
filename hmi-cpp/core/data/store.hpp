@@ -59,6 +59,16 @@ struct TcpSettings {
     bool allow_remote_control = true;
 };
 
+// 每个工位独立的一套控温与自整定硬件特征参数（两路夹套或反应釜规格可能不同，分开存盘）
+struct ChannelTuneParams {
+    double fast_boost_max = 60.0;   // 快速升温加码上限（K）；0 = 不加码
+    double tw = 35.0;               // 夹套 → 釜内壁热滞后（s）；干式模块默认 35 s，自整定带液时自动实测更新
+    double tau = 880.0;             // 釜内时间常数起点（s）；自整定带液时自动实测更新
+    double rc_nom = 0.185;          // TEC + 冷却水热夹套标称下拉速率（K/s）；自整定制冷段自动实测更新
+    double heater_mom_gain = 3.2;   // 满功率电热棒关断后的余热冲高估计（K）；自整定加热段自动实测更新
+    std::string tuned_at;           // 最近一次完成自整定的时间（空 = 未整定过）
+};
+
 struct AppSettings {
     std::vector<DeviceComm> devices;
     TcpSettings tcp;
@@ -66,8 +76,9 @@ struct AppSettings {
     StirMotor stir[2];
     AuxConfig aux;
     DoMap do_map;
-    // 快速升温：最多加码多少（K）。0 = 不加码，就是原来稳妥的算法；上真机先从小的试起
+    // 兼容旧字段：默认与通道 1 的 fast_boost_max 同步；实际各通道独立读 tune[0] / tune[1]
     double fast_boost_max = 60.0;
+    ChannelTuneParams tune[2];
     std::string vessel[2] = {"250 mL 玻璃釜", "250 mL 玻璃釜"};
     // 这一路的釜上有没有装釜内温度探头 / pH 电极。没装就别在屏上占着一个「——」——
     // 设备控制页上那两个开关管的就是这个（用户 2026-11-27）。只管屏上显不显示，不影响控温怎么算：

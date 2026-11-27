@@ -47,9 +47,11 @@ struct FastParams {
     double eps_lp_s_fast = 14.0;
     double tau_lo_fast = 0.35;
     double tau_hi_fast = 3.0;
-    double rc_nom = 0.265;        // TEC + 冷却水在热夹套制动段的标称下拉速率（K/s）
-    double t_switch_nom = 7.0;    // 驻留 + 通水先导 + 继电器死区的标称切换时间（s）
-    double t_chiller_nom = 24.0;  // 冷水机水路建立标称时间（s）
+    double rc_nom = 0.225;           // TEC + 冷却水在热夹套制动段的标称下拉速率（K/s）
+    double heater_mom_gain = 3.0;    // 满功率加热棒关断后的余热冲高估计（K）
+    double heater_mom_tau = 18.0;    // 加热棒余热时间常数（s）
+    double t_switch_nom = 7.0;       // 驻留 + 通水先导 + 继电器死区的标称切换时间（s）
+    double t_chiller_nom = 24.0;     // 冷水机水路建立标称时间（s）
 
     // 维持温差的起步表（增益表里「稳态偏置」列）
     std::function<double(double)> bias_start;
@@ -166,6 +168,8 @@ private:
     double w1_ = 0, w2_ = 0, w2_prev_ = 0;
     double b_ctrl_ = 0;
     double tr_anchor_ = 0, drive_int_ = 0;
+    std::optional<double> tr_prev_;
+    double tr_rate_lp_ = 0, stall_s_ = 0;
     double heater_mom_ = 0;
     double sp_step_size_ = 0;
     std::optional<double> tj_prev_;

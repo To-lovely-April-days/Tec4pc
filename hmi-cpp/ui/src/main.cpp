@@ -312,7 +312,7 @@ struct App {
 #include "vessel_fx.inc"
 
     // 弹窗和满屏那几页不在 pages 那张表里，各自是一个 Page。换语言时要连它们一起拆掉重搭
-    std::vector<Page*> aux_pages() { return {&kp, &tkb, &nolink, &commdlg, &exitdlg, &stepdlg, &aldlg, &allist, &langdlg}; }
+    std::vector<Page*> aux_pages() { return {&kp, &tkb, &nolink, &commdlg, &exitdlg, &stepdlg, &aldlg, &allist, &langdlg, &tunedlg}; }
 
     json ask(const json& q) {
         // 不等的连接：机器关着 / 地址填错时，这里立刻回来，界面照常刷新——
@@ -341,6 +341,7 @@ struct App {
             attach_fx(*p.ui, "main.1.vessel", "m", "main.1.badge");
             attach_fx(*p.ui, "main.2.vessel", "m", "main.2.badge");
             attach_fx(*p.ui, "ctl.vessel", "c", "ctl.badge");
+            if (name == "Pid" || name == "Pid_2") pid_attach_ui(*p.ui);
         }
         if (!p.scr) { pages.erase(name); return false; }      // 这一页还没做
         return true;
@@ -601,21 +602,22 @@ struct App {
             const json& c = st["ch"][n - 1];
             const std::string k = "main." + std::to_string(n);
             const bool run = c.value("running", false);
+            const bool tuning = c.value("tuning", false);
             const json& q = c["seq"];
             const std::string qs = q.value("state", "idle"), cmode = c.value("mode", "off");
             const bool seq_on = qs == "running" || qs == "waiting_confirm";
-            const bool live = run || seq_on;
+            const bool live = run || tuning || seq_on;
             const double duty = c.value("duty", 0.0);
             if (lv_obj_t* d = u.box(k + ".dot")) if (u.changed(k + ".dot", live)) bg(d, live ? 0x00B368 : 0xBFC7CF, 255);
             vessel_state(u, k + ".vessel", k + ".badge", c, n, offline);
             const std::string name = c.contains("run") && c["run"].is_string() ? c["run"].get<std::string>() : "";      // 没在跑序列时核心给的是空值，不是空字符串
             u.set_text(k + ".name", !name.empty() ? name : live ? "手动运行" : "未在运行");
-            u.set_text(k + ".r1", seq_on ? hms(q.value("total_elapsed_s", 0.0)) : run ? "控温中" : "待机");
-            const char* mname = cmode == "reactor" ? "釜内控温 Tr" : cmode == "jacket" ? "夹套控温 Tj" : cmode == "reflux" ? "蒸回流" : cmode == "crystal" ? "结晶" : "未控温";
+            u.set_text(k + ".r1", seq_on ? hms(q.value("total_elapsed_s", 0.0)) : tuning ? "自整定中" : run ? "控温中" : "待机");
+            const char* mname = cmode == "tuning" ? "PID 自整定" : cmode == "reactor" ? "釜内控温 Tr" : cmode == "jacket" ? "夹套控温 Tj" : cmode == "reflux" ? "蒸回流" : cmode == "crystal" ? "结晶" : "未控温";
             u.set_text_raw(k + ".mode", ui::fmt("{0} · {1}", {ui::tr(seq_on ? "程序模式" : "手动模式"), ui::tr(mname)}));
             u.set_text_raw(k + ".r2", qs == "waiting_confirm" ? ui::tr("等待确认后继续")
                                        : seq_on ? ui::fmt("步骤 {0} / {1}", {std::to_string(q.value("index", 0) + 1), std::to_string(q.value("count", 0))})
-                                       : !run ? "" : ui::tr(duty < -1 ? "加热中" : duty > 1 ? "制冷中" : "保温中"));
+                                       : (!run && !tuning) ? "" : ui::tr(duty < -1 ? "加热中" : duty > 1 ? "制冷中" : "保温中"));
             // 顶上那条细进度：整个序列走了多少（走完的步数 + 当前这一步走了几成）
             const int cnt = q.value("count", 0);
             const double fr = seq_on && cnt > 0 ? std::min(1.0, (q.value("index", 0) + q.value("step_progress", 0.0)) / cnt) : 0.0;
@@ -713,15 +715,17 @@ struct App {
             const json& c = st["ch"][n - 1];
             const std::string k = "top.ch" + std::to_string(n);
             const bool run = c.value("running", false);
+            const bool tuning = c.value("tuning", false);
             const json& q = c["seq"];
             const std::string qs = q.value("state", "idle");
             // 顶上通道键显示釜内温度；釜内读不到就显示夹套的
             const json& t = c["tr"].is_number() ? c["tr"] : c["tj"];
             u.set_text(k + ".temp", t.is_number() && !offline ? f1(t.get<double>()) : "—");       // 设备没连上时核心里的温度是没读过的 0，不能当读数显示
             u.set_text_raw(k + ".state", qs == "running" ? ui::fmt("运行中 · {0} / {1}", {std::to_string(q.value("index", 0) + 1), std::to_string(q.value("count", 0))})
-                                          : ui::tr(qs == "waiting_confirm" ? "等待确认" : run ? "控温中" : "待机"));
-            if (lv_obj_t* d = u.box(k + ".dot")) if (u.changed(k + ".dot", run)) bg(d, run ? 0x00B368 : 0xB8C4D0, 255);
+                                          : ui::tr(qs == "waiting_confirm" ? "等待确认" : tuning ? "自整定中" : run ? "控温中" : "待机"));
+            if (lv_obj_t* d = u.box(k + ".dot")) if (u.changed(k + ".dot", run || tuning)) bg(d, (run || tuning) ? 0x00B368 : 0xB8C4D0, 255);
         }
+        if (tds.open) tune_dlg_refresh();
         if (cur == "Main") { refresh_main(u); return; }
         if (cur == "Files") { refresh_lib(u); return; }
         if (cur == "Comm") { refresh_comm(u); return; }
@@ -730,6 +734,7 @@ struct App {
         if (cur == "Trends") { trend_fetch(0); trend_fetch(1); draw_overview_trend(u.box("tv.chart")); return; }
         const json& c = st["ch"][channel - 1];
         const bool run = c.value("running", false);
+        const bool tuning = c.value("tuning", false);
         const json& q = c["seq"];
         const std::string qs = q.value("state", "idle"), cmode = c.value("mode", "off");
         const bool seq_on = qs == "running" || qs == "waiting_confirm";
@@ -737,9 +742,9 @@ struct App {
         u.set_text_raw("head.ch", ui::fmt("通道 {0}", {std::to_string(channel)}));
         u.set_text("head.name", c["run"].is_string() ? c["run"].get<std::string>() : "未在运行");
         const double duty = c.value("duty", 0.0);
-        const char* mname = cmode == "reactor" ? "釜内控温 Tr" : cmode == "jacket" ? "夹套控温 Tj" : cmode == "reflux" ? "蒸回流" : cmode == "crystal" ? "结晶" : "未控温";
+        const char* mname = cmode == "tuning" ? "PID 自整定" : cmode == "reactor" ? "釜内控温 Tr" : cmode == "jacket" ? "夹套控温 Tj" : cmode == "reflux" ? "蒸回流" : cmode == "crystal" ? "结晶" : "未控温";
         u.set_text_raw("head.mode", ui::fmt("{0} · {1} · {2}", {ui::tr(seq_on ? "程序控制" : "手动控制"),
-                                               ui::tr(!run ? "待机" : duty < -1 ? "加热中" : duty > 1 ? "制冷中" : "保温中"), ui::tr(mname)}));
+                                               ui::tr((!run && !tuning) ? "待机" : duty < -1 ? "加热中" : duty > 1 ? "制冷中" : "保温中"), ui::tr(mname)}));
         u.set_text_raw("head.step", seq_on ? ui::fmt("步骤 {0} / {1}", {std::to_string(q.value("index", 0) + 1), std::to_string(q.value("count", 0))}) : ui::tr("无序列"));
         // 「本步剩余」：这一步有确定时长的（等待、蒸回流、结晶曲线、按时长到达）才算得出剩多少；
         // 「到温度为止」「到 pH 为止」这类谁也说不准要多久，就老老实实写已经走了多久

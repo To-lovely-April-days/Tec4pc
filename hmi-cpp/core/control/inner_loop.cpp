@@ -56,10 +56,12 @@ double Pid::update_coordinated(double setpoint, double measurement, double dt, d
     const double unsat = p + i_ + d;
     const bool pushing_hi = unsat >= out_max_ && err > 0;
     const bool pushing_lo = unsat <= out_min_ && err < 0;
-    const bool coasting_on_tec = (side_is_tec && unsat > 0 && err < 0);
+    const double hold_cap = setpoint < 32.0 ? 5.0 : out_max_;
+    const bool coasting_on_tec = (side_is_tec && unsat > 0 && ((err < 0) || (err > 0 && i_ >= hold_cap)));
     const bool coasting_on_heater = (!side_is_tec && unsat < 0 && err > -2.5 && !in_brake);
     if (!pushing_hi && !pushing_lo && !coasting_on_tec && !coasting_on_heater) {
-        i_ = std::min(out_max_, std::max(i_floor, i_ + ki_ * err * dt));
+        const double i_scale = (!side_is_tec && !in_brake && err > 1.8) ? 0.25 : 1.0;
+        i_ = std::min(out_max_, std::max(i_floor, i_ + ki_ * i_scale * err * dt));
     }
     const double out = std::min(out_max_, std::max(out_min_, p + i_ + d));
     last_p = p; last_i = i_; last_d = d;

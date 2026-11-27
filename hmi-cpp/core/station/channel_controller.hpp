@@ -65,6 +65,11 @@ public:
     void start_profile(const std::vector<ProfileSegment>& segs);  // 结晶：分段曲线，从开控那一拍的釜内温度起
     void set_setpoint(double setpoint);                           // 在控时改目标：尽快到达
     void stop();
+    // 停机状态下更新外环/切换配置（改加码上限或自整定完成后热生效，无需重启控制核心）
+    void set_config(const ChannelConfig& cfg) {
+        cfg_ = cfg;
+        outer_every_ = std::max(1, static_cast<int>(std::lround(cfg_.outer_period_s / cfg_.inner_period_s)));
+    }
     bool running() const { return mode_ != ControlMode::Off; }
     ControlMode mode() const { return mode_; }
     double setpoint() const { return sp_; }                       // 最终目标（结晶时 = 当前这一段的目标）

@@ -237,14 +237,19 @@ bool AppSettings::save(const std::string& data_dir) const {
                                 {"stop_bits", d.stop_bits}, {"station", d.station}, {"poll_ms", d.poll_ms}});
     j["tcp"] = {{"enabled", tcp.enabled}, {"port", tcp.port}, {"timeout_s", tcp.timeout_s}, {"allow_remote_control", tcp.allow_remote_control}};
     for (int c = 0; c < 2; c++) {
+        const double b_ch = (c == 0 && std::fabs(fast_boost_max - 60.0) > 1e-9 && std::fabs(tune[0].fast_boost_max - 60.0) < 1e-9)
+                                ? fast_boost_max
+                                : tune[c].fast_boost_max;
         j["channels"].push_back({{"vessel", vessel[c]}, {"show_tr", show_tr[c]}, {"show_ph", show_ph[c]},
                                  {"limits", {{"tr_min", limits[c].tr_min}, {"tr_max", limits[c].tr_max}, {"tj_min", limits[c].tj_min}, {"tj_max", limits[c].tj_max},
                                              {"rate_max_k_per_min", limits[c].rate_max_k_per_min}, {"tr_lost_grace_s", limits[c].tr_lost_grace_s}}},
-                                 {"stir", {{"poles", stir[c].poles}, {"gear_ratio", stir[c].gear_ratio}, {"direction", stir[c].direction}, {"ramp_s", stir[c].ramp_s}}}});
+                                 {"stir", {{"poles", stir[c].poles}, {"gear_ratio", stir[c].gear_ratio}, {"direction", stir[c].direction}, {"ramp_s", stir[c].ramp_s}}},
+                                 {"tune", {{"fast_boost_max", b_ch}, {"tw", tune[c].tw}, {"tau", tune[c].tau},
+                                           {"rc_nom", tune[c].rc_nom}, {"heater_mom_gain", tune[c].heater_mom_gain}, {"tuned_at", tune[c].tuned_at}}}});
     }
     j["aux"] = {{"pump_max_rate_ml_min", aux.pump_max_rate_ml_min}, {"single_max_volume_ml", aux.single_max_volume_ml}, {"stir_min_rpm", aux.stir_min_rpm}, {"stir_max_rpm", aux.stir_max_rpm}};
     j["do_map"] = {{"heater", {do_map.heater[0], do_map.heater[1]}}, {"tec", {do_map.tec[0], do_map.tec[1]}}, {"water", do_map.water}};
-    j["fast_boost_max"] = fast_boost_max;
+    j["fast_boost_max"] = (std::fabs(fast_boost_max - 60.0) > 1e-9 && std::fabs(tune[0].fast_boost_max - 60.0) < 1e-9) ? fast_boost_max : tune[0].fast_boost_max;
     j["ui_lang"] = ui_lang;
     return write_text(fs::u8path(data_dir) / "settings.json", j.dump(2));
 }
@@ -255,6 +260,9 @@ AppSettings AppSettings::load(const std::string& data_dir) {
     if (!in) return s;
     const json j = json::parse(in, nullptr, false);
     if (j.is_discarded() || !j.is_object()) return s;
+    s.fast_boost_max = std::max(0.0, j.value("fast_boost_max", s.fast_boost_max));
+    s.tune[0].fast_boost_max = s.fast_boost_max;
+    s.tune[1].fast_boost_max = s.fast_boost_max;
     // 逐项读、读不到的留缺省：以后加了新设置，老的设置文件照样能用
     if (j.contains("devices") && j["devices"].is_array())
         for (auto& jd : j["devices"])
@@ -277,7 +285,18 @@ AppSettings AppSettings::load(const std::string& data_dir) {
                 // 夹套的两条是设备底线：文件里写得再宽也不许超过出厂的范围
                 L.tj_min = std::max(SafetyLimits().tj_min, l.value("tj_min", L.tj_min)); L.tj_max = std::min(SafetyLimits().tj_max, l.value("tj_max", L.tj_max)); }
             if (jc.contains("stir")) { const json& m = jc["stir"]; StirMotor& M = s.stir[c]; M.poles = m.value("poles", M.poles); M.gear_ratio = m.value("gear_ratio", M.gear_ratio); M.direction = m.value("direction", M.direction); M.ramp_s = m.value("ramp_s", M.ramp_s); }
+            if (jc.contains("tune") && jc["tune"].is_object()) {
+                const json& tn = jc["tune"];
+                ChannelTuneParams& T = s.tune[c];
+                T.fast_boost_max = std::max(0.0, tn.value("fast_boost_max", T.fast_boost_max));
+                T.tw = std::min(300.0, std::max(10.0, tn.value("tw", T.tw)));
+                T.tau = std::min(3000.0, std::max(200.0, tn.value("tau", T.tau)));
+                T.rc_nom = std::min(0.60, std::max(0.06, tn.value("rc_nom", T.rc_nom)));
+                T.heater_mom_gain = std::min(12.0, std::max(0.5, tn.value("heater_mom_gain", T.heater_mom_gain)));
+                T.tuned_at = tn.value("tuned_at", T.tuned_at);
+            }
         }
+    s.fast_boost_max = s.tune[0].fast_boost_max;
     if (j.contains("aux")) { const json& a = j["aux"]; s.aux.pump_max_rate_ml_min = a.value("pump_max_rate_ml_min", s.aux.pump_max_rate_ml_min); s.aux.single_max_volume_ml = a.value("single_max_volume_ml", s.aux.single_max_volume_ml); s.aux.stir_min_rpm = a.value("stir_min_rpm", s.aux.stir_min_rpm); s.aux.stir_max_rpm = a.value("stir_max_rpm", s.aux.stir_max_rpm); }
     if (j.contains("do_map")) { const json& d = j["do_map"];
         if (d.contains("heater") && d["heater"].size() == 2) { s.do_map.heater[0] = d["heater"][0]; s.do_map.heater[1] = d["heater"][1]; }
@@ -285,7 +304,6 @@ AppSettings AppSettings::load(const std::string& data_dir) {
         s.do_map.water = d.value("water", s.do_map.water);
         // DO2 / DO3 是使能继电器，程序绝不许碰：设置文件里要是把哪一路配到了 2 或 3，整张表退回缺省
         for (int v : {s.do_map.heater[0], s.do_map.heater[1], s.do_map.tec[0], s.do_map.tec[1], s.do_map.water}) if (v == 2 || v == 3 || v < 0 || v > 7) { s.do_map = DoMap(); break; } }
-    s.fast_boost_max = std::max(0.0, j.value("fast_boost_max", s.fast_boost_max));
     s.ui_lang = j.value("ui_lang", s.ui_lang);
     return s;
 }

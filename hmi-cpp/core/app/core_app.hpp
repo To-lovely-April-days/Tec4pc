@@ -32,9 +32,9 @@ public:
     void tick();
     // remote = true：命令是从 TCP 来的（PC）。设置里关了「允许远程控制」时，远程只能看、不能下会改变设备状态的命令
     std::string handle(const std::string& line, bool remote);
-    double period_s() const { return cfg_.inner_period_s; }
+    double period_s() const { return cfg_[0].inner_period_s; }
     const AppSettings& settings() const { return settings_; }
-    size_t gain_rows() const { return table_.rows().size(); }      // 0 = 增益表没装上，内环不出力（主程序开机要喊一声）
+    size_t gain_rows(int ch = 0) const { return (ch >= 0 && ch < 2) ? table_[ch].rows().size() : 0; }      // 0 = 增益表没装上，内环不出力（主程序开机要喊一声）
     std::string data_dir() const { return dir_; }
     // 通信设置页要看的东西（各设备连没连上、连着哪些 PC、本机地址）核心自己不知道，由主程序接进来：返回一个 json 对象的文本
     std::function<std::string()> comm_info;
@@ -93,16 +93,19 @@ private:
 
     void record(double t);
     void begin_run(int ch, const std::string& name, double t);
+    ChannelConfig make_channel_cfg(int ch) const;
+    void check_tune_done(double t);
     std::string state_json();
 
-    std::string dir_, gain_path_;
+    std::string dir_, gain_path_[2];
     AppSettings settings_;
     // 开机那一刻的设备参数。设备是开机时连的，之后改设置不会重连，所以「这台连上没有」说的
     // 一直是开机那一套参数的结果。改过以后再拿那个结果当真就会骗人——现场把冷水机启用了，
     // 屏上还写着「未启用」（用户 2026-11-27）。所以留一份底，和现在的一比就知道该说「要重启」
     std::vector<DeviceComm> boot_devices_;
-    GainTable table_;
-    ChannelConfig cfg_;
+    GainTable table_[2];
+    ChannelConfig cfg_[2];
+    bool tune_saved_[2] = {false, false};
     RecipeStore recipes_;
     std::unique_ptr<Station> station_;
     std::unique_ptr<AuxRunner> aux_;

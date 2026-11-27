@@ -25,6 +25,7 @@ add_library(tec_core_lib STATIC
   core/control/gain_table.cpp
   core/control/inner_loop.cpp
   core/control/heat_source_switch.cpp
+  core/control/auto_tuner.cpp
   core/station/channel_controller.cpp
   core/station/reactor_hardware.cpp
   core/station/station.cpp
@@ -192,3 +193,7 @@ add_test(NAME test_easymax COMMAND test_easymax ${CMAKE_CURRENT_SOURCE_DIR}/test
 add_executable(test_port_scan tests/test_port_scan.cpp)
 target_link_libraries(test_port_scan PRIVATE tec_core_lib)
 add_test(NAME test_port_scan COMMAND test_port_scan)
+
+add_executable(test_auto_tuner tests/test_auto_tuner.cpp)
+target_link_libraries(test_auto_tuner PRIVATE tec_core_lib)
+add_test(NAME test_auto_tuner COMMAND test_auto_tuner ${CMAKE_CURRENT_SOURCE_DIR}/testdata/gain-table-run1110.csv)

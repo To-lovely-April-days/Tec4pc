@@ -41,7 +41,7 @@ public:
     void start_coordinated(double t, double sp, double tr, bool is_ramp);
     int pre_coordinated(double t);   // −1 未完成切换，0 刚切到加热棒，1 刚切到 TEC
     void post_coordinated(double t, double sp_cur, double tr_val, double tj, double tj_sp,
-                          double xr, double w2, double b_ctrl, double tau,
+                          double xr, double w2, double b_ctrl, double tw, double tau,
                           double d_filt, double last_p_plus_i, double demand,
                           bool in_boost, bool in_brake);
 
@@ -83,6 +83,7 @@ private:
     ChillerState chiller_ = ChillerState::Idle;
     double chiller_since_ = 0;
     bool have_cold_start_ = false; double last_cold_start_ = 0;
+    bool have_to_heater_ = false; double last_to_heater_t_ = -1e9;
     double lead_until_ = -1e9;
     int flips_ = 0;
     int valve_opens_ = 0;

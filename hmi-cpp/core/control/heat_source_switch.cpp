@@ -93,6 +93,8 @@ int HeatSourceSwitch::pre_coordinated(double t) {
             have_ep_ = false;
         } else {
             have_ep_ = false;
+            have_to_heater_ = true;
+            last_to_heater_t_ = t;
         }
         sign_side_ = -1;
         phase_ = Phase::None;
@@ -173,13 +175,13 @@ void HeatSourceSwitch::post(double t, double demand) {
 }
 
 void HeatSourceSwitch::post_coordinated(double t, double sp_cur, double tr_val, double tj, double tj_sp,
-                                        double xr, double w2, double b_ctrl, double tau,
+                                        double xr, double w2, double b_ctrl, double tw, double tau,
                                         double d_filt, double last_p_plus_i, double demand,
                                         bool in_boost, bool in_brake) {
     const double err_j = tj_sp - tj;
     const double pred_110s_tr = xr + 110.0 * std::max(0.0, (w2 - xr - b_ctrl) / std::max(1.0, tau));
     const bool proactive_exo_cool = (!in_boost) && (tr_val > sp_cur - 0.30) && (pred_110s_tr > sp_cur + 0.04) && (err_j < -1.2);
-    const bool active_cool_step = (tr_val > sp_cur + 0.35) && (tj_sp < sp_cur + b_ctrl - 1.0);
+    const bool active_cool_step = (tr_val > sp_cur + 0.45) && (tj_sp < sp_cur + b_ctrl - 0.70);
 
     if (phase_ != Phase::None) {
         if (phase_ == Phase::Lead) {
@@ -211,9 +213,12 @@ void HeatSourceSwitch::post_coordinated(double t, double sp_cur, double tr_val, 
             want_tec = (err_j < -0.6 && last_p_plus_i < -2.0 && demand < -2.0);
             dwell_req = 4.0;
         } else {
-            const bool exo_or_over = proactive_exo_cool || active_cool_step ||
-                                     (tr_val > sp_cur + 0.04 && err_j < -0.4) ||
-                                     (err_j < -3.0 && tr_val > sp_cur - 0.5);
+            const bool just_switched_h = have_to_heater_ && (t - last_to_heater_t_ < 75.0);
+            const bool still_heating_tr = (w2 - xr - b_ctrl) > -0.05;
+            const double over_j_thr = just_switched_h ? -2.20 : -1.35;
+            const bool exo_or_over = proactive_exo_cool || (!just_switched_h && active_cool_step) ||
+                                     (still_heating_tr && tr_val > sp_cur + 0.12 && pred_110s_tr > sp_cur + 0.12 && err_j < over_j_thr) ||
+                                     (err_j < -3.5 && tr_val > sp_cur - 0.3);
             want_tec = exo_or_over && (last_p_plus_i < -3.0) && (demand < -3.0);
             dwell_req = active_cool_step ? 2.0 : 3.0;
         }
@@ -243,7 +248,12 @@ void HeatSourceSwitch::post_coordinated(double t, double sp_cur, double tr_val, 
         if (in_brake) {
             want_heater = false;
             dwell_h = 999.0;
-        } else if (tj_sp >= 23.5 && !proactive_exo_cool && !active_cool_step) {
+        } else if ((sp_cur < 32.0) && (tr_val > sp_cur + 0.18) &&
+                   (xr + (std::max(15.0, tw) + 32.0) * std::min(0.0, (w2 - xr - b_ctrl) / std::max(1.0, tau)) > sp_cur + 0.06)) {
+            // 常温/低温目标（<32 ℃）主动降温途中：按釜壁滞后 tw + 电热死区预留滑行提前量，未到滑行窗口前由 TEC 零出力滑行，严禁中途切回电热反烧
+            want_heater = false;
+            dwell_h = 999.0;
+        } else if (tj_sp >= 28.0 && !proactive_exo_cool && !active_cool_step) {
             const double flare_s = std::min(6.0, std::max(1.2, 0.14 * std::max(0.0, tj - 23.0)));
             const double err_flare = tj_sp - (tj + flare_s * std::min(0.0, d_filt));
             want_heater = (err_flare >= -0.65);
