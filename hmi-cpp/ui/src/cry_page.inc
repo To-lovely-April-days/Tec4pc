@@ -133,6 +133,7 @@ void refresh_cry(const json& c, int ci) {
 
     if (view) {
         Ui& u = *P.ui[0];
+        show_probes(u, c);              // 结晶这一块上也有「Tr 传感器 / pH 电极」那一对开关
         const json& prof = cry_shown(c);
         const int n = std::min(kCryMax, static_cast<int>(prof.size()));
         const double total = prof_minutes(prof);
@@ -201,6 +202,7 @@ void refresh_cry(const json& c, int ci) {
     }
     if (editing) {
         Ui& u = *P.ui[1];
+        show_probes(u, c);
         const json& prof = ced.prof;
         const int n = static_cast<int>(prof.size());
         const std::string whose = ced.from_seq ? ui::fmt("任务序列第 {0} 步", {std::to_string(ced.step + 1)}) : ui::tr("釜内 Tr");

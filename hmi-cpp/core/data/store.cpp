@@ -237,7 +237,7 @@ bool AppSettings::save(const std::string& data_dir) const {
                                 {"stop_bits", d.stop_bits}, {"station", d.station}, {"poll_ms", d.poll_ms}});
     j["tcp"] = {{"enabled", tcp.enabled}, {"port", tcp.port}, {"timeout_s", tcp.timeout_s}, {"allow_remote_control", tcp.allow_remote_control}};
     for (int c = 0; c < 2; c++) {
-        j["channels"].push_back({{"vessel", vessel[c]},
+        j["channels"].push_back({{"vessel", vessel[c]}, {"show_tr", show_tr[c]}, {"show_ph", show_ph[c]},
                                  {"limits", {{"tr_min", limits[c].tr_min}, {"tr_max", limits[c].tr_max}, {"tj_min", limits[c].tj_min}, {"tj_max", limits[c].tj_max},
                                              {"rate_max_k_per_min", limits[c].rate_max_k_per_min}, {"tr_lost_grace_s", limits[c].tr_lost_grace_s}}},
                                  {"stir", {{"poles", stir[c].poles}, {"gear_ratio", stir[c].gear_ratio}, {"direction", stir[c].direction}, {"ramp_s", stir[c].ramp_s}}}});
@@ -270,6 +270,8 @@ AppSettings AppSettings::load(const std::string& data_dir) {
         for (size_t c = 0; c < 2 && c < j["channels"].size(); c++) {
             const json& jc = j["channels"][c];
             s.vessel[c] = jc.value("vessel", s.vessel[c]);
+            s.show_tr[c] = jc.value("show_tr", s.show_tr[c]);
+            s.show_ph[c] = jc.value("show_ph", s.show_ph[c]);
             if (jc.contains("limits")) { const json& l = jc["limits"]; SafetyLimits& L = s.limits[c];
                 L.tr_min = l.value("tr_min", L.tr_min); L.tr_max = l.value("tr_max", L.tr_max); L.rate_max_k_per_min = l.value("rate_max_k_per_min", L.rate_max_k_per_min); L.tr_lost_grace_s = l.value("tr_lost_grace_s", L.tr_lost_grace_s);
                 // 夹套的两条是设备底线：文件里写得再宽也不许超过出厂的范围

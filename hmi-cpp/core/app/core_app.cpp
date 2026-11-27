@@ -157,6 +157,8 @@ std::string CoreApp::state_json() {
             {"tj_sp", x.jacket_sp}, {"duty", x.duty}, {"side", x.side == HeatSide::Tec ? "tec" : "heater"}, {"output_on", x.output_on},
             {"b_hat", x.b_hat}, {"tau_hat", x.tau_hat}, {"boost", x.boost}, {"segment", x.segment}, {"segment_remaining_s", x.segment_remaining_s},
             {"ramp_done", x.ramp_done}, {"profile_done", x.profile_done}, {"vessel", settings_.vessel[c]}, {"lamp", ch_[c].lamp},
+            // 这一路装没装 Tr 探头 / pH 电极：没装的，设备控制页上那一格不显示（屏上的事，不影响控温）
+            {"show_tr", settings_.show_tr[c]}, {"show_ph", settings_.show_ph[c]},
             // 结晶曲线：正在按曲线控温时给的是正在走的那条（不管是手动开的还是序列里的结晶步骤），否则是存着的手动曲线
             {"profile", {{"active", !x.profile.empty()}, {"start", x.profile_start}, {"segments", profile_json(x.profile.empty() ? ch_[c].manual_profile : x.profile)}}},
             {"stir", {{"ok", a.stir[c].ok}, {"set", a.stir_set_rpm[c]}, {"rpm", a.stir[c].rpm}, {"current_a", a.stir[c].current_a}, {"fault", a.stir[c].fault_text}}},
@@ -333,6 +335,12 @@ std::string CoreApp::handle(const std::string& line, bool remote) {
                     if (q.contains("fast_boost_max")) settings_.fast_boost_max = std::max(0.0, q.value("fast_boost_max", settings_.fast_boost_max));
                     // 触摸屏的界面语言。核心只是替它存着，重启以后还是上次那一种
                     if (q.contains("ui_lang")) settings_.ui_lang = q.value("ui_lang", settings_.ui_lang);
+                    // 设备控制页上「Tr 传感器 / pH 电极」那两个开关：存在核心里，换人开机以后还是上次那一套
+                    if (q.contains("ch") && q["ch"].is_number_integer()) {
+                        const int k = std::max(1, std::min(2, q.value("ch", 1))) - 1;
+                        if (q.contains("show_tr")) settings_.show_tr[k] = q.value("show_tr", settings_.show_tr[k]);
+                        if (q.contains("show_ph")) settings_.show_ph[k] = q.value("show_ph", settings_.show_ph[k]);
+                    }
                     if (q.contains("device")) {
                         const json& dj = q["device"]; bool found = false;
                         for (auto& d : settings_.devices) if (d.key == dj.value("key", "")) {

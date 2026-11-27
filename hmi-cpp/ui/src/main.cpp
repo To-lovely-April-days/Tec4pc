@@ -498,7 +498,7 @@ struct App {
         }
         // 下面这几个动作都要读最近一次的状态。还没连上核心时屏上盖着「未连上控制核心」那一层，手指点不到，
         // 但 --do 这种直接喊动作名的绕过了那一层：没状态就什么也不做，别拿空的去取值（会当场崩）
-        if ((a == "temp.toggle" || a == "stir.toggle" || a == "lamp.toggle" || a == "seq.end") && (!st.is_object() || !st.contains("ch"))) return;
+        if ((a == "temp.toggle" || a == "stir.toggle" || a == "lamp.toggle" || a == "seq.end" || a == "ch:tr" || a == "ch:ph") && (!st.is_object() || !st.contains("ch"))) return;
         if (a == "nav:ch1" || a == "nav:ch2") { channel = a == "nav:ch1" ? 1 : 2; show(channel_page()); }
         else if (a == "nav:overview") show("Main");
         else if (a.rfind("tab:", 0) == 0 && (cur.rfind("Ctl", 0) == 0 || cur.rfind("Seq", 0) == 0 || cur.rfind("ChTrend", 0) == 0 || cur.rfind("Safety", 0) == 0 || cur.rfind("Export", 0) == 0 || cur.rfind("Pid", 0) == 0)) {
@@ -525,6 +525,13 @@ struct App {
                 const json r = ask(q);
                 cry_msg[ci] = mode[ci] == 3 && !r.value("ok", false) ? core_text(r, "error", "开始不了") : "";
             }
+            poll();
+        }
+        // 「Tr 传感器 / pH 电极」两个开关：这一路釜上没装的，屏上那一格就别占着一个「——」。
+        // 存在核心里（每路一份），所以界面重启、换一台 PC 看也还是这一套
+        else if (a == "ch:tr" || a == "ch:ph") {
+            const char* key = a == "ch:tr" ? "show_tr" : "show_ph";
+            ask({{"cmd", "settings.set"}, {"ch", ch}, {key, !st["ch"][ci].value(key, true)}});
             poll();
         }
         else if (a == "stir.toggle") {
@@ -615,6 +622,23 @@ struct App {
             u.set_text(k + ".t4", st["coolant_c"].is_number() ? f1(st["coolant_c"].get<double>()) : "—");      // 冷媒温度 = 冷水机的冷却水温度（两个通道共用一台冷水机）；没读到就空着
             const double rt = rate_of(n - 1, st.value("t", 0.0), tr);
             u.set_text(k + ".t5", offline ? "—" : (rt >= 0 ? "+" : "") + f1(rt));
+        }
+    }
+
+    // 「Tr 传感器 / pH 电极」两个开关的样子，和它们管着的那两格。
+    // 设备控制页上有一对，结晶那一块（查看 / 编辑）各还有一对——同一回事，哪一对都能扳
+    void show_probes(Ui& u, const json& c) {
+        const bool tr_on = c.value("show_tr", true), ph_on = c.value("show_ph", true);
+        set_switch(u, "ch:tr", tr_on);
+        set_switch(u, "ch:ph", ph_on);
+        u.show("ctl.tr.box", tr_on);
+        u.show("ctl.ph.box", ph_on);
+        // pH 那一格收起来以后，右边「釜内 SP」那一格占满整行——不然卡片上空出一块，像是画坏了。
+        // 宽度照 pH 那一格算（它只是藏起来，尺寸没动过）
+        if (lv_obj_t* ph = u.box("ctl.ph.box")) if (lv_obj_t* sp = u.box("ctl.sp.box")) if (u.changed("ctl.sp.box", ph_on)) {
+            const int x = lv_obj_get_x(ph), w = lv_obj_get_width(ph), gap = 8 * UI_SCALE;
+            lv_obj_set_x(sp, ph_on ? x + w + gap : x);
+            lv_obj_set_width(sp, ph_on ? w : w * 2 + gap);
         }
     }
 
@@ -744,6 +768,7 @@ struct App {
         u.set_text("ctl.tr", c["tr"].is_number() ? f1(c["tr"].get<double>()) : "—");
         u.set_text("ctl.ph", c["ph"].is_number() ? f2(c["ph"].get<double>()) : "—");
         u.set_text("ctl.sp", run ? f1(c.value("sp", 0.0)) : "—");
+        show_probes(u, c);
         // 目标那一格跟着控温方式变：釜内控温填 Tr，夹套控温填 Tj，蒸回流填的是夹套比釜内高多少 K（这时没有「到达方式」）
         const int md = this->mode[ci];
         u.set_text("ctl.target.l", md == 1 ? "目标 Tj" : md == 2 ? "夹套比釜内高" : "目标 Tr");
