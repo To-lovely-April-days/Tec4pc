@@ -260,6 +260,8 @@ void scan_build_rows(const json& hits) {
     }
     std::map<std::string, int> used;
     for (const json& d : cmv.info["devices"]) {
+        // 「通信设置」里关掉的那几台不列：控制核心压根没去找它们，列一行「没扫到」只会让人以为是坏了
+        if (!d.value("enabled", true)) continue;
         ScanRow r;
         r.key = d.value("key", ""); r.label = d.value("label", ""); r.old_port = d.value("port", "");
         if (r.key == "ph1" || r.key == "stir1") { r.pair = r.key == "ph1" ? 0 : 1; r.pair_slot = 0; }

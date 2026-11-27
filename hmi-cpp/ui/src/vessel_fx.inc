@@ -90,12 +90,15 @@ void vessel_state(Ui& u, const std::string& vid, const std::string& bid, const j
     const double duty = c.value("duty", 0.0);
     const std::string qs = c["seq"].value("state", "idle");
     const bool alarm = ch_alarm(ch);
-    // 釜体照片本身的深浅：读不到整只灰下去，没在跑淡一点，跑起来是原色
-    const int tone = offline ? 2 : run ? 0 : 1;
-    if (u.changed(vid + ".tone", tone)) {
-        lv_obj_set_style_image_recolor(v, lv_color_hex(tone == 2 ? 0x97A2AD : 0x8FA3B4), 0);
-        lv_obj_set_style_image_recolor_opa(v, static_cast<lv_opa_t>(tone == 2 ? 190 : tone == 1 ? 80 : 0), 0);
-        lv_obj_set_style_image_opa(v, static_cast<lv_opa_t>(tone == 2 ? 200 : 255), 0);
+    // 釜体照片本身的深浅：读不到的时候整只淡下去，别的时候就是原色。
+    //
+    // 不能用「染色」（image_recolor）：染色只作用在照片不透明的那些点上，而这张照片里
+    // 玻璃壁围出来的那一块内壁是实白的、照片外面是透明的。一染，内壁变成灰的、外面还是卡片的白，
+    // 看着就像釜里头糊了一块灰影（用户 2026-11-27 现场看出来的）。
+    // 整张一起调透明度就没这毛病：连外框带内壁一起变淡，看着就是「这一路现在没在说话」
+    if (u.changed(vid + ".tone", offline)) {
+        lv_obj_set_style_image_recolor_opa(v, 0, 0);
+        lv_obj_set_style_image_opa(v, static_cast<lv_opa_t>(offline ? 120 : 255), 0);
     }
     // 外圈：超限的红边盖过一切（这时候输出已经切了，橙带青线都不该再出现），然后才看在加热还是在制冷
     const int kind = offline ? 0 : alarm ? 3 : !run ? 0 : duty < -1 ? 1 : duty > 1 ? 2 : 0;

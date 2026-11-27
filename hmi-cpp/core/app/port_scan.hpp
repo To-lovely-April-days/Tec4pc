@@ -62,6 +62,10 @@ struct ScanOptions {
     std::vector<int> stations{1, 2};                         // 搅拌是 2，其余是 1；pH 手册写 2 例子写 1
     std::vector<std::string> only_ports;                     // 空 = 系统上有几个口就扫几个
     std::vector<ScanGuess> guesses;                          // 设置里已经写好的参数，按口先试
+    // 只找这几类设备（rd105 / io8r / chiller / tr / ph / stir）。空 = 全都找。
+    // 「通信设置」里关掉的那几台不往里放：没接的设备留在名单里，只会把别的设备认成它
+    //（用户 2026-11-27：进料还没接，检测时别找它）
+    std::vector<std::string> types;
 };
 
 using PortOpenFn = std::function<std::unique_ptr<SerialTransport>(const SerialConfig&)>;
@@ -72,6 +76,8 @@ std::vector<ScanHit> scan_serial_ports(const ScanOptions& opt, const PortOpenFn&
 
 // 这一类设备在界面上怎么称呼（「TEC 温控器」…）；认不出来的类型原样返回
 std::string scan_type_label(const std::string& type);
+// 设置里的设备键 → 检测认出来的类型（同型号的两路 ph1/ph2、stir1/stir2 认出来是同一类）
+std::string scan_type_of_key(const std::string& key);
 
 // 开机时按记住的 usb_id 反查今天的 COM 号——这是整件事的主力，平时就靠它，不发一个字节。
 // 记过 usb_id 的设备，只要那根线还插在同一个 USB 口上，COM 号怎么变都跟得上。

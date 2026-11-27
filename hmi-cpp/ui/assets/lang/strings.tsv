@@ -524,7 +524,7 @@ TEC 温控器	TEC controller
 切换继电器	Switch relay						
 Tr 探头	Tr probe						
 搅拌驱动	Stirrer drive						
-0~5 号也读不出来	Registers 0–5 unreadable too						
+0~7 号也读不出来	Registers 0–7 unreadable too						
 有人答话但认不出：{0}	Something answered, not recognised: {0}						
 认不准：{0} 都对得上，请人工指定	Ambiguous: {0} matches — pick one by hand						
 这个通道没有接搅拌驱动器	No stirrer drive on this channel						
@@ -836,6 +836,7 @@ pH 电极测、调节泵加，把 pH 维持在目标附近；走满维持时长�
 {0} 根手指　·　间距 {1} px	{0} fingers　·　{1} px apart						
 
 # 下面这些界面上已经没有了，留着免得以后改回来又要重翻；要清掉直接删行
+# 0~5 号也读不出来	Registers 0–5 unreadable too						
 #  根手指							
 # 　·　间距 							
 # LVGL 的复杂渲染被关了：曲线会只剩点。打开 ui/lv_conf.h 里的 LV_DRAW_SW_COMPLEX							

@@ -2,6 +2,7 @@
 #include "../../third_party/nlohmann/json.hpp"
 #include "../data/drives.hpp"
 #include "../util/text_error.hpp"
+#include <algorithm>
 #include <fstream>
 #include <filesystem>
 #include <ctime>
@@ -370,6 +371,13 @@ std::string CoreApp::handle(const std::string& line, bool remote) {
                     // 参数一个没变，第一枪就中，不用把波特率 × 帧格式 × 站号全试一遍
                     for (const DeviceComm& d : settings_.devices)
                         if (!d.port.empty()) opt.guesses.push_back(ScanGuess{d.port, d.baud, d.parity, d.stop_bits, d.station});
+                    // 只找「通信设置」里开着的那几类。关掉的（现在是冷水机、进料）不找：
+                    // 那些设备没接，留在名单里只会把别的设备认成它们，或者报「认不准」
+                    for (const DeviceComm& d : settings_.devices) {
+                        if (!d.enabled) continue;
+                        const std::string ty = scan_type_of_key(d.key);
+                        if (std::find(opt.types.begin(), opt.types.end(), ty) == opt.types.end()) opt.types.push_back(ty);
+                    }
                     // 串口现在都在主程序手上开着，不还回来扫描只会看见一片「打不开」
                     scanning_ = true;
                     if (lend_ports) lend_ports(true);

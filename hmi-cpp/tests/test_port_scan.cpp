@@ -156,10 +156,12 @@ int main() {
     // ── 3. 两类都对得上的时候不许猜 ──
     {
         set_port_lister([] { return std::vector<SerialPortInfo>{{"COM30", "X", "USB\\X", 1}}; });
-        // 一台既像 pH 电极（0~5 有数、25 == 1）又像进料系统（0~48 连读得通）的设备
+        // 一台既像 pH 电极（0~5 有数、25 == 1）又像 Tr 探头（1536 起 4 个、2048 起 4 个且都是小数）的设备
         Regs g; g.station = 1;
-        for (uint16_t a = 0; a <= 48; a++) g.v[a] = 100;
+        for (uint16_t a = 0; a <= 25; a++) g.v[a] = 100;
         g.v[25] = 1;
+        for (uint16_t a = 1536; a <= 1539; a++) g.v[a] = 250;
+        for (uint16_t a = 2048; a <= 2051; a++) g.v[a] = 3;
         auto open = [g](const SerialConfig&) -> std::unique_ptr<SerialTransport> {
             return std::make_unique<FakeSerial>([g](const std::vector<uint8_t>& q) { return g(q); });
         };
@@ -168,8 +170,14 @@ int main() {
         check(hits.size() == 1, "一个口一条");
         check(hits[0].type.empty(), "认不准就不认——绝不从两类里挑一类");
         check(hits[0].problem.filled().find("认不准") != std::string::npos, "说清是认不准");
-        check(hits[0].problem.filled().find("pH 电极") != std::string::npos && hits[0].problem.filled().find("进料系统") != std::string::npos,
+        check(hits[0].problem.filled().find("pH 电极") != std::string::npos && hits[0].problem.filled().find("Tr 探头") != std::string::npos,
               "把都对上的那几类列出来给人看");
+
+        // 「通信设置」里把 pH 关掉以后再扫：只找 Tr，那一台就当场认成 Tr 探头，不再报「认不准」。
+        // 现场要的就是这个——没接的设备别留在名单里，不然别的设备会被认成它（用户 2026-11-27：进料还没接）
+        ScanOptions only; only.timeout_ms = 50; only.bauds = {9600}; only.types = {"tr"};
+        const std::vector<ScanHit> h2 = scan_serial_ports(only, open);
+        check(h2.size() == 1 && h2[0].type == "tr", "关掉的那一类不找了，剩下的一类就认得准");
     }
 
     // ── 4. 帧格式也要试：搅拌驱动要 8N2 才通（只按 8N1 问的话永远认不出来）──

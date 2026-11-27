@@ -86,17 +86,28 @@ std::optional<Found> id_yudian(ModbusRtu& m) {
     return Found{"tr", "宇电 AI-8848G · 四路", ""};
 }
 
-// 进料系统：一帧连读 0~48（49 个）。这一条最不挑，放在最后，而且因为「认不准就不猜」，
-// 它和别人同时对上的时候谁也不采用
-std::optional<Found> id_feed(ModbusRtu& m) {
-    if (m.read_holding_registers(0, 49).size() != 49) return std::nullopt;
-    return Found{"feed", "进料系统主板", ""};
-}
+// 进料系统：还没有认它的法子。原来那条是「一帧连读 0~48 读得通就算它」——这根本不是指纹，
+// 市面上随便哪块板子低地址上都有 49 个寄存器，结果就是把别的设备认成进料，或者报「认不准」。
+// 真机还没接（用户 2026-11-27），等接上了拿它的寄存器表写一条真的再放回来。
+// scan_type_label 里「进料系统」这个名字留着：设置里还有这一台，只是检测认不出它
 
 using IdFn = std::optional<Found> (*)(ModbusRtu&);
-const IdFn kIdentifiers[] = {id_stir, id_ph, id_io8r, id_rd105, id_chiller, id_yudian, id_feed};
+struct Identifier { const char* type; IdFn fn; };
+const Identifier kIdentifiers[] = {{"stir", id_stir}, {"ph", id_ph}, {"io8r", id_io8r},
+                                   {"rd105", id_rd105}, {"chiller", id_chiller}, {"tr", id_yudian}};
+
+// 这一类这回要不要找（opt.types 空 = 全找）
+bool want(const ScanOptions& opt, const char* type) {
+    return opt.types.empty() || std::find(opt.types.begin(), opt.types.end(), type) != opt.types.end();
+}
 
 }  // namespace
+
+std::string scan_type_of_key(const std::string& key) {
+    if (key == "ph1" || key == "ph2") return "ph";
+    if (key == "stir1" || key == "stir2") return "stir";
+    return key;
+}
 
 std::string scan_type_label(const std::string& type) {
     if (type == "rd105") return "TEC 温控器";
@@ -138,12 +149,20 @@ bool anyone_there(ModbusRtu& m, int& heard) {
 // 认不出是谁的时候，把它开头六个寄存器读出来写进话里：现场拍一张照片发回来，照着就能把这一类补上
 // （只读六个是因为这句话要塞进检测结果那一行里，再长就显示不下）
 std::string peek(ModbusRtu& m) {
+    // 认不出是谁的时候，把它身上几处寄存器抄下来摆到屏上：现场拍一张发回来，照着就能补上这一类。
+    // 抄哪几处：0~7 是各家都把测量值放的地方；20~27 是 pH 电极放「缓冲液 / 数据格式」的那一段
+    //（我们认 pH 就靠 25 号；它要是读得出来，这台多半就是 pH 电极，只是值和手册写的不一样）
+    auto dump = [&m](uint16_t from, int n, std::string& out) {
+        char b[8];
+        const std::vector<uint16_t> v = m.read_holding_registers(from, n);
+        for (uint16_t x : v) { std::snprintf(b, sizeof b, "%04X ", x); out += b; }
+        if (!out.empty() && out.back() == ' ') out.pop_back();
+        return !v.empty();
+    };
     std::string out;
-    char b[8];
-    try {
-        for (uint16_t v : m.read_holding_registers(0, 6)) { std::snprintf(b, sizeof b, "%04X ", v); out += b; }
-    } catch (const std::exception&) { return "0~5 号也读不出来"; }
-    if (!out.empty()) out.pop_back();
+    try { dump(0, 8, out); } catch (const std::exception&) { return "0~7 号也读不出来"; }
+    std::string tail;
+    try { if (dump(20, 8, tail)) out += " ｜ 20~27: " + tail; } catch (const std::exception&) {}
     return out;
 }
 
@@ -210,8 +229,9 @@ std::vector<ScanHit> scan_serial_ports(const ScanOptions& opt, const PortOpenFn&
                 }
 
                 std::vector<Found> matched;
-                for (IdFn f : kIdentifiers) {
-                    try { if (std::optional<Found> r = f(m)) matched.push_back(*r); }
+                for (const Identifier& id : kIdentifiers) {
+                    if (!want(opt, id.type)) continue;     // 「通信设置」里关掉的那一类：不找，也就不会把别人认成它
+                    try { if (std::optional<Found> r = id.fn(m)) matched.push_back(*r); }
                     catch (const ModbusError&) {}          // 这一类不是它，换下一类
                     catch (const std::exception&) {}
                 }
