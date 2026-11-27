@@ -47,8 +47,29 @@ using namespace ui;
 #include PAGES_INC
 
 static uint32_t g_fb[W * H];
-// 手指（或鼠标）现在在哪、按没按着。Windows 上是窗口消息在写，不开窗口时是 --tap 在写；LVGL 每一帧来读
-static struct { int x = 0, y = 0; bool down = false; } g_finger;
+// 手指（或鼠标）现在在哪、按没按着。Windows 上是窗口消息在写，不开窗口时是 --tap 在写；LVGL 每一帧来读。
+//
+// unseen：按下过、可 LVGL 还没来得及看见就已经抬起了。
+// LVGL 是「每隔一会儿来读一次现在按没按着」，不是收事件的。手指快速一点（五六十毫秒），
+// 按下和抬起这两条窗口消息常常在同一轮里就处理完了——等 LVGL 来读，手指已经不在了，这一下就凭空没了。
+// 核心答得慢的时候更明显：主循环卡在那半秒里，这期间点的全丢（用户 2026-11-27：菜单点击有时候不灵敏）。
+// 所以按下时记一笔，LVGL 下一次来读照旧报「按下」，再下一次才报「抬起」——一轻点也变成一次完整的点按
+static struct { int x = 0, y = 0; bool down = false; bool unseen = false; } g_finger;
+
+// 喂给 LVGL 的那一下：按着就是按着；没按着但有一下还没被看见，先把那一下补上
+static void finger_read(lv_indev_data_t* data) {
+    data->point.x = g_finger.x;
+    data->point.y = g_finger.y;
+    if (g_finger.down) { data->state = LV_INDEV_STATE_PRESSED; g_finger.unseen = false; return; }
+    if (g_finger.unseen) { data->state = LV_INDEV_STATE_PRESSED; g_finger.unseen = false; return; }
+    data->state = LV_INDEV_STATE_RELEASED;
+}
+
+// 手指按下 / 抬起：按下的那一下要留个记号，免得还没被看见就被抬起抹掉了
+static void finger_down(bool down) {
+    if (down && !g_finger.down) g_finger.unseen = true;
+    g_finger.down = down;
+}
 
 // ── 几根手指 ──
 // LVGL 只收一个点，两指缩放这种手势它管不了，所以每根手指单独记在这儿：
@@ -70,8 +91,8 @@ static void touch_set(int id, int x, int y, bool down) {
         if (k >= 0) { g_touch[k].x = x; g_touch[k].y = y; }
     }
     // LVGL 认第一根手指。两根以上按着的时候不给它按下状态：那是在做手势，不该当成点按或拖动
-    g_finger.down = g_touch_n == 1;
     if (g_touch_n >= 1) { g_finger.x = g_touch[0].x; g_finger.y = g_touch[0].y; }
+    finger_down(g_touch_n == 1);
 }
 #ifdef _WIN32
 #if !defined(TEC_HMI_LIB)              // 编成库给 PC 工作站用时不开窗口，这一套用不上
@@ -847,7 +868,7 @@ TEC_API int tec_hmi_init(const char* assets_dir, const char* host, int port, int
     lv_display_set_flush_cb(d, flush);
     lv_indev_t* touch = lv_indev_create();
     lv_indev_set_type(touch, LV_INDEV_TYPE_POINTER);
-    lv_indev_set_read_cb(touch, [](lv_indev_t*, lv_indev_data_t* data) { data->point.x = g_finger.x; data->point.y = g_finger.y; data->state = g_finger.down ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED; });
+    lv_indev_set_read_cb(touch, [](lv_indev_t*, lv_indev_data_t* data) { finger_read(data); });
     e.app = std::make_unique<App>();
     if (host && *host) e.app->host = host;
     if (port > 0) e.app->port = port;
@@ -893,7 +914,7 @@ TEC_API int tec_hmi_take_dirty(void) { const bool d = g_dirty; g_dirty = false; 
 TEC_API void tec_hmi_pointer(int x, int y, int down) {
     g_finger.x = x < 0 ? 0 : x >= W ? W - 1 : x;
     g_finger.y = y < 0 ? 0 : y >= H ? H - 1 : y;
-    g_finger.down = down != 0;
+    finger_down(down != 0);
 }
 
 /// 让界面跳到某一页 / 某个通道（工作站点的是哪台机器的哪个工位）
@@ -962,6 +983,7 @@ int main(int argc, char** argv) {
     // 开机先到总览：两个通道一屏看全。要从别的页面起来就 --page（出图自查常用）
     std::string page = "Main", shot;
     std::vector<std::string> todo;             // --do 动作名：开发时自查用，代替手指点一下
+    bool tap_fast = false;                     // --tapfast：按下和抬起挤在同一轮里（手快的那种点法）
     std::vector<std::pair<int, int>> taps;     // --tap x,y：模拟手指在那个位置点一下（不开窗口时用）
     int zoom = 0;                              // --zoom：Windows 上整个界面放大多少（百分比）；不写 = 窗口时 100，全屏时放大到屏幕放得下的最大
     bool fullscreen = false;                   // --fullscreen：Windows 上铺满屏幕
@@ -981,6 +1003,7 @@ int main(int argc, char** argv) {
         else if (a == "--after" && i + 1 < argc) after = std::atof(argv[++i]);
         else if (a == "--channel" && i + 1 < argc) app.channel = std::atoi(argv[++i]);
         else if (a == "--do" && i + 1 < argc) todo.push_back(argv[++i]);
+        else if (a == "--tapfast") tap_fast = true;      // 点一下就松：验「按下还没被看见就抬起了，这一下不许丢」
         else if (a == "--tap" && i + 1 < argc) { int x = 0, y = 0; if (std::sscanf(argv[++i], "%d,%d", &x, &y) == 2) taps.push_back({x, y}); }
         else if (a == "--zoom" && i + 1 < argc) zoom = std::atoi(argv[++i]);
         else if (a == "--fullscreen") fullscreen = true;
@@ -1024,7 +1047,7 @@ int main(int argc, char** argv) {
     auto& finger = g_finger;
     lv_indev_t* touch = lv_indev_create();
     lv_indev_set_type(touch, LV_INDEV_TYPE_POINTER);
-    lv_indev_set_read_cb(touch, [](lv_indev_t*, lv_indev_data_t* data) { data->point.x = g_finger.x; data->point.y = g_finger.y; data->state = g_finger.down ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED; });
+    lv_indev_set_read_cb(touch, [](lv_indev_t*, lv_indev_data_t* data) { finger_read(data); });
     // ── --linetest：三条线的小自检 ──
     // 现场 2026-11-27：趋势和结晶曲线都「只剩点，连不成线」。横线竖线和斜线在 LVGL 里走的不是一条路
     //（斜线要靠「复杂渲染」那一套遮罩），所以画三条看哪种出得来：
@@ -1145,11 +1168,19 @@ int main(int argc, char** argv) {
         frames++;
         if (frames >= 20 && tap_phase == 0) {
             if (!todo.empty()) { for (auto& a : todo) app.action(a); todo.clear(); frames = 20; }
-            else if (!taps.empty()) { finger.x = taps.front().first * UI_SCALE; finger.y = taps.front().second * UI_SCALE; finger.down = true; tap_phase = 1; }
+            else if (!taps.empty()) {
+                finger.x = taps.front().first * UI_SCALE; finger.y = taps.front().second * UI_SCALE;
+                finger_down(true);
+                // --tapfast：按下和抬起挤在同一轮里，LVGL 来读的时候手指已经不在了。
+                // 真机上手快一点、或者主循环卡在等核心答话的那半秒里，就是这个样子。
+                // 不留记号的话这一下就没了（用户 2026-11-27：菜单点击有时候不灵敏）
+                if (tap_fast) finger_down(false);
+                tap_phase = 1;
+            }
         } else if (tap_phase > 0) {
             // 按住十来帧（一百多毫秒）再抬起，隔十来帧再点下一个：和人点一下差不多
             tap_phase++;
-            if (tap_phase == 14) finger.down = false;
+            if (tap_phase == 14) finger_down(false);
             if (tap_phase >= 30) { taps.erase(taps.begin()); tap_phase = 0; frames = 20; }
         }
         if ((!shot.empty() || lint_it) && todo.empty() && taps.empty() && frames >= 60 && std::chrono::duration<double>(now - t0).count() >= after) {

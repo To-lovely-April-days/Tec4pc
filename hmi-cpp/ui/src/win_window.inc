@@ -44,7 +44,7 @@ static void pointer(LPARAM lp, bool screen_coords, int down) {
     if (screen_coords) ScreenToClient(hwnd, &p);
     g_finger.x = (p.x - ox) * 100 / zoom;
     g_finger.y = (p.y - oy) * 100 / zoom;
-    if (down >= 0) g_finger.down = down != 0;
+    if (down >= 0) finger_down(down != 0);      // 按下要留记号：快点一下别在 LVGL 来读之前就没了（见 main.cpp 的 g_finger.unseen）
 }
 
 // 一根手指的消息：换算成界面坐标，交给 touch_set 记着（那一半在 main.cpp 里，开发机上也编得到）
@@ -76,12 +76,12 @@ static LRESULT CALLBACK proc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
     case WM_POINTERDOWN:   contact(wp, lp, true); return 0;
     case WM_POINTERUP:     contact(wp, lp, false); return 0;
     case WM_POINTERUPDATE: contact(wp, lp, IS_POINTER_INCONTACT_WPARAM(wp) != 0); return 0;
-    case WM_POINTERCAPTURECHANGED: g_touch_n = 0; g_finger.down = false; return 0;
+    case WM_POINTERCAPTURECHANGED: g_touch_n = 0; g_finger.down = false; g_finger.unseen = false; return 0;   // 这一下被系统收走了，不算点按
     // 鼠标和触控板走标准鼠标消息：内核异步移动光标，绝不会冻住，光标形状也由 WM_SETCURSOR 正常维护
     case WM_LBUTTONDOWN: SetCapture(h); pointer(lp, false, 1); return 0;
     case WM_LBUTTONUP:   ReleaseCapture(); pointer(lp, false, 0); return 0;
     case WM_MOUSEMOVE:   pointer(lp, false, -1); return 0;
-    case WM_CAPTURECHANGED: g_finger.down = false; return 0;
+    case WM_CAPTURECHANGED: g_finger.down = false; g_finger.unseen = false; return 0;
     case WM_CLOSE: closed = true; DestroyWindow(h); return 0;
     case WM_DESTROY: closed = true; hwnd = nullptr; return 0;
     }
