@@ -431,7 +431,8 @@ Tr 探头（宇电四路模块）	Tr probe (Yudian 4-ch)
 不是一条合法的 json 命令	Not a valid JSON command						
 触摸屏上关了「允许远程控制」，PC 只能看	Remote control is off on the touchscreen; the PC can only watch						
 通道只能是 1 或 2	The channel must be 1 or 2						
-增益表一行都没读到：内环没有 PID 参数，出力会一直是 0。开控制核心时 --gains 指的那个文件在不在？	No gain table loaded: no PID gains, so output stays 0. Check the --gains path						
+增益表一行都没读到：内环没有 PID 参数，出力会一直是 0。先在「PID 整定」页自整定或导入增益表	No gain table: no PID gains, so output stays 0. Auto-tune or load a table on the PID Tuning page						
+这个通道正在做 PID 自整定，先中止自整定再操作	This channel is auto-tuning — stop the auto-tune first						
 这个通道正在跑序列，先结束序列再手动操作	This channel is running a sequence; end it before operating by hand						
 开始控温，目标 	Control started, target 						
 开始蒸回流	Reflux started						
@@ -471,13 +472,13 @@ Tr 探头（宇电四路模块）	Tr probe (Yudian 4-ch)
 没找到 U 盘：插上以后再点一次	No USB drive found: plug one in and tap again						
 TEC导出	TEC export						
 只有触摸屏上能退出控制核心	Only the touchscreen can quit the control core						
-有通道正在控温或跑序列，停下来才能退出	A channel is controlling or running a sequence; stop it before quitting						
+有通道正在控温、跑序列或自整定，停下来才能退出	A channel is controlling, running a sequence or auto-tuning — stop it before quitting						
 这个程序不支持退出	This program does not support quitting						
 只有触摸屏上能重启控制核心	Only the touchscreen can restart the control core						
-有通道正在控温或跑序列，停下来才能重启	A channel is controlling or running a sequence — stop it before restarting						
+有通道正在控温、跑序列或自整定，停下来才能重启	A channel is controlling, running a sequence or auto-tuning — stop it before restarting						
 这个程序不支持重启	This program cannot restart itself						
 导出范围不对：结束要比开始晚	Bad export range: the end must be later than the start						
-有通道正在控温或跑序列，停下来才能换增益表	Stop both channels first						
+有通道正在控温、跑序列或自整定，停下来才能换增益表	A channel is controlling, running a sequence or auto-tuning — stop it before changing the gain table						
 盘上的增益表读不出来	The gain table on disk cannot be read						
 增益表要 1 到 16 行	The gain table needs 1 to 16 rows						
 温度要在 −60 … 250 ℃ 之间	The temperature must be between −60 and 250 ℃						
@@ -485,8 +486,17 @@ Kp 要大于 0，Ki、Kd 不能是负的	Kp must be above 0; Ki and Kd cannot be
 加热比要大于 0	The heat ratio must be above 0						
 有两行是同一个温度	Two rows have the same temperature						
 增益表没存进去（文件写不了）	The gain table was not saved (the file could not be written)						
+有通道正在运行（两个工位共用冷却水路，先把两个通道都停下来再开始自整定）	A channel is running (both stations share the cooling water — stop both before auto-tuning)						
+当前读不到夹套温度，无法开始自整定	No jacket temperature reading — cannot start the auto-tune						
+最高整定温度至少要比当前夹套温度高 10 ℃	The top tuning temperature must be at least 10 ℃ above the jacket now						
+最高整定温度过高（请设在 140 ℃ 以内且留 10 ℃ 安全余量）	Top tuning temperature too high (keep it under 140 ℃ with 10 ℃ of margin)						
+最低制冷温度范围不对（需低于最高温度至少 20 ℃）	Bottom cooling temperature out of range (at least 20 ℃ below the top)						
+PID自整定	PID auto-tune						
+开始两段式硬件自整定	Start two-stage auto-tune						
+中止自整定	Stop Auto-tune						
 不认识的命令：{0}	Unknown command: {0}						
 处理命令时出错：{0}	Command failed: {0}						
+开始硬件自整定	Start hardware auto-tune						
 开始釜内控温	Reactor control started						
 开始夹套控温	Jacket control started						
 停止控温，搅拌保持	Control stopped, stirring kept						
@@ -668,28 +678,76 @@ Tj 通道2	Tj ch 2
 Tr 通道2	Tr ch 2						
 Tj 通道1	Tj ch 1						
 Tr 通道1	Tr ch 1						
+一键自整定	Auto-tune						
+通道 1 · 一键两段式自整定	Channel 1 · one-tap two-stage auto-tune						
+待启动	Ready						
+① 干态加热阶跃测 Kp/Ki/Kd 与电热余热  →  ② 通水 TEC 阶跃测真实加热比与刹车速率	① Dry heater step → Kp/Ki/Kd and residual heat  →  ② Water + TEC step → real heat ratio and braking rate						
+建议釜内装水或常用溶剂并开启搅拌（约 300 rpm），可同步标定釜壁滞后 tw 与稳态偏置	Fill the reactor with water or solvent and stir (~300 rpm); wall lag tw and steady bias are calibrated too						
+最高加热温度 ℃	Max heat temp ℃						
+最低制冷温度 ℃	Min cool temp ℃						
+加热阶跃出力 %	Heat step duty %						
+尚未启动，核对参数后点击右下角「开始自整定」	Not started — check the settings, then tap Start auto-tune						
+当前读数：—	Now: —						
+执行状态：—	Stage: —						
+本通道当前硬件参数：—	Hardware on this channel: —						
+跑完自动更新本通道 8 行增益表与外环参数并存盘	When it finishes, this channel's 8-row gain table and outer-loop settings are saved						
+关闭窗口	Close						
+开始自整定	Start Auto-tune						
+通道 {0} · 一键两段式自整定	Channel {0} · Two-stage Auto-tune						
+整定运行中	Tuning						
+整定已完成	Completed						
+整定未成功	Failed						
+已中止	Aborted						
+当前读数：夹套 Tj {0} ℃　·　釜内 Tr {1}　·　搅拌 {2} rpm	Now: jacket Tj {0} ℃　·　reactor Tr {1}　·　stirrer {2} rpm						
+零出力观察 / 切换等待	Zero-output watch / waiting to switch						
+加热棒 {0} %	Heater {0} %						
+TEC 制冷 {0} %	TEC cooling {0} %						
+执行状态：{0}　·　冷却水阀 {1}　·　已用时 {2}（{3} %）	Stage: {0}　·　water valve {1}　·　elapsed {2} ({3} %)						
+开	On						
+本通道标定参数：釜壁滞后 tw {0} s · 釜时间常数 τ {1} s · 刹车速率 {2} K/s · 电热余热 {3} K	Calibrated: wall lag tw {0} s · time constant τ {1} s · braking {2} K/s · residual heat {3} K						
+提示：检测到当前搅拌未开启（0 rpm）；若釜内装有液体，建议先开 300 rpm 搅拌再启动自整定	Note: the stirrer is off (0 rpm); with liquid in the reactor, start it at 300 rpm before auto-tuning						
+已自动生成 8 行平滑增益表并写入通道 {0} 独立文件，无需重启已直接生效	An 8-row smoothed gain table was written to channel {0}'s own file — already in effect, no restart						
+上次整定时间：{0}（两工位增益表与硬件参数各自独立保存）	Last tuned {0} (each station keeps its own gain table and hardware settings)						
+跑完自动更新本通道 8 行增益表与外环参数并存盘，无需重启直接生效	When it finishes, this channel's gain table and outer-loop settings are saved and take effect at once						
+后台运行	Run in bg						
 表是空的	Table is empty						
  · 加热比 {0}	 · Heat ratio {0}						
+正在自整定中，如需修改参数请先中止	Auto-tune is running — stop it before changing anything						
+自整定 · 最高加热温度	Auto-tune · top heating temperature						
+自整定 · 最低制冷温度	Auto-tune · bottom cooling temperature						
+自整定 · 加热阶跃出力	Auto-tune · heater step output						
+已发送中止指令，正在安全关断输出	Abort sent; shutting off safely						
+中止失败	Could not stop it						
+已启动两段式自整定	Two-stage auto-tune started						
+启动失败	Could not start it						
 表里有 {0} 行，屏上只放得下 8 行，这张表请在 PC 端改	Table has {0} rows (screen fits max 8); edit on PC						
 这一行管的温度	Temperature this row covers						
 稳态偏置（维持温差的起点）	Steady bias (start of the holding offset)						
-{0} ℃ 这一行 · {1}	Row {0} ℃ · {1}						
+通道 {0} · {1} ℃ 这一行 · {2}	Channel {0} · the {1} ℃ row · {2}						
 最多 8 行	8 rows max						
 没有改动	No changes						
-已应用并存盘	Applied and saved						
+已应用并存入本通道独立增益表	Applied & saved to this channel's table						
 没应用成	Not applied						
 已放弃修改	Changes discarded						
-已从盘上重读	Reloaded from disk						
+已从盘上重读本通道增益表	Reloaded this channel's table from disk						
 没读成	Not read						
-屏上这份已清空；要重新加行再点「应用表格」，或点「放弃修改」找回来	Cleared on screen; add rows and tap Apply table, or tap Discard changes to get it back						
+屏上这份已清空；加行后点「应用表格」，或点「放弃修改」找回来	Cleared on screen; add rows then tap Apply table, or tap Discard changes to get it back						
 看某个温度会用什么增益	Gains used at a temperature						
-快速升温加码上限（0 = 不加码）	Fast heat-up boost limit (0 = off)						
+通道 {0} · 快速升温加码上限（0 = 不加码）	Channel {0} · fast-ramp boost limit (0 = no boost)						
+已保存并立即生效（当前通道独立参数）	Saved & applied immediately (per-channel)						
+通道 {0} 独立增益表 · 加热制冷共用	Ch {0} gain table · heat & cool						
+自整定运行中 · {0} %（点「自整定中」看进度）	Auto-tuning · {0} % (tap Auto-tuning for progress)						
 有改动还没应用（点「应用表格」才生效）	Unsaved edits (tap Apply table to save)						
 {0} 行 · 在用 {1} ℃ 附近	{0} rows · using near {1} ℃						
+{0} 行 · 整定于 {1}	{0} rows · tuned {1}						
 {0} 行	{0} rows						
-夹套目标 {0} ℃ · 出力 {1} %（{2}）	Jacket target {0} ℃ · output {1} % ({2})						
+自整定中…	Tuning…						
+正在执行两段式硬件自整定…	Running the two-stage hardware auto-tune…						
+当前 Tj {0} ℃ · 出力 {1} %（{2}）	Tj {0} ℃ · output {1} % ({2})						
 TEC 制冷	TEC cooling						
 加热棒	Heater						
+零出力观察	Zero-output watch						
+夹套目标 {0} ℃ · 出力 {1} %（{2}）	Jacket target {0} ℃ · output {1} % ({2})						
 没在控温	Not controlling						
 开始控温以后，这里显示当时按夹套目标插值出来的那组增益	Once control starts, shows the gains for the Tj target						
 ℃ 会用：{0}	℃ would use: {0}						
@@ -702,8 +760,12 @@ TEC 制冷	TEC cooling
 没有顶到头	Not saturated						
 维持温差（估）{0} K　·　釜的时间常数（估）{1} s	Holding offset (est.) {0} K　·　reactor time constant (est.) {1} s						
 快速升温此刻加码 {0} K　·　夹套目标 {1} ℃	Fast heat-up boost now {0} K　·　jacket target {1} ℃						
+正在自整定硬件特性…	Measuring the hardware…						
 开始控温以后，这里显示外环此刻估出来的维持温差和时间常数	Offset and time constant appear once control starts						
+本通道标定：釜壁滞后 tw {0} s · 刹车速率 {1} K/s · 电热余热 {2} K	Calibrated: wall lag tw {0} s · brake {1} K/s · coast {2} K						
 升温时夹套最多比稳妥算法多拉高这么多；0 = 不加码	Max extra K above the safe target; 0 = off						
+两通道独立存盘 · 本通道整定于 {0}	Saved per channel · this one tuned {0}						
+两通道参数各自独立；换釜或换导热介质建议点「一键自整定」	Independent per channel; re-tune when changing vessel or fluid						
 釜内温度下限 Tr min	Reactor low limit Tr min						
 釜内温度上限 Tr max	Reactor high limit Tr max						
 变温速率上限（填 0 = 不检测）	Ramp limit (0 = not checked)						
@@ -810,6 +872,8 @@ pH 电极测、调节泵加，把 pH 维持在目标附近；走满维持时长�
 先点「编辑曲线」加几段	Tap Edit profile to add segments first						
 手动运行	Manual run						
 未在运行	Not running						
+自整定中	Auto-tuning						
+PID 自整定	PID Auto-tune						
 夹套控温 Tj	Jacket control Tj						
 程序模式	Program mode						
 手动模式	Manual mode						
@@ -819,7 +883,6 @@ pH 电极测、调节泵加，把 pH 维持在目标附近；走满维持时长�
 制冷中	Cooling						
 保温中	Holding						
 未连接	No device						
-开	On						
 实测 {0} rpm　·　电流 {1} A	Measured {0} rpm　·　current {1} A						
 搅拌没有连上：在设置 → 通信里配好搅拌电机的串口	Stirrer not connected — set its port under Settings → Communication						
 桨式 · 50–1000 rpm　·　实测 {0} rpm · 电流 {1} A	Paddle · 50–1000 rpm　·　measured {0} rpm · current {1} A						
@@ -846,6 +909,16 @@ pH 电极测、调节泵加，把 pH 维持在目标附近；走满维持时长�
 {0} 根手指　·　间距 {1} px	{0} fingers　·　{1} px apart						
 
 # 下面这些界面上已经没有了，留着免得以后改回来又要重翻；要清掉直接删行
+# 已							
+# 增益表一行都没读到：内环没有 PID 参数，出力会一直是 0。开控制核心时 --gains 指的那个文件在不在？	No gain table loaded: no PID gains, so output stays 0. Check the --gains path						
+# 有通道正在控温或跑序列，停下来才能退出	A channel is controlling or running a sequence; stop it before quitting						
+# 有通道正在控温或跑序列，停下来才能重启	A channel is controlling or running a sequence — stop it before restarting						
+# 有通道正在控温或跑序列，停下来才能换增益表	Stop both channels first						
+# {0} ℃ 这一行 · {1}	Row {0} ℃ · {1}						
+# 已应用并存盘	Applied and saved						
+# 已从盘上重读	Reloaded from disk						
+# 屏上这份已清空；要重新加行再点「应用表格」，或点「放弃修改」找回来	Cleared on screen; add rows and tap Apply table, or tap Discard changes to get it back						
+# 快速升温加码上限（0 = 不加码）	Fast heat-up boost limit (0 = off)						
 # 已按检测结果改了 {0} 台，并记住了它们的 USB 口；重启控制核心后生效	Updated {0} device(s) and remembered USB ports; restart core to apply						
 # 0~5 号也读不出来	Registers 0–5 unreadable too						
 #  根手指							
@@ -1652,28 +1725,3 @@ pH 电极测、调节泵加，把 pH 维持在目标附近；走满维持时长�
 #         // DO2 / DO3 是使能继电器，程序绝不许碰：设置文件里要是把哪一路配到了 2 或 3，整张表退回缺省							
 #         for (int v : {s.do_map.heater[0], s.do_map.heater[1], s.do_map.tec[0], s.do_map.tec[1], s.do_map.water}) if (v == 2 || v == 3 || v < 0 || v > 7) { s.do_map = DoMap(); break; } }							
 #     s.fast_boost_max = std::max(0.0, j.value(							
-一键自整定	Auto-tune						
-自整定中…	Tuning…						
-自整定中	Auto-tuning						
-PID 自整定	PID Auto-tune						
-通道 {0} 独立增益表 · 加热制冷共用	Ch {0} gain table · heat & cool						
-通道 {0} · 一键两段式自整定	Channel {0} · Two-stage Auto-tune						
-待启动	Ready						
-整定运行中	Tuning						
-整定已完成	Completed						
-整定未成功	Failed						
-已中止	Aborted						
-最高加热温度 ℃	Max heat temp ℃						
-最低制冷温度 ℃	Min cool temp ℃						
-加热阶跃出力 %	Heat step duty %						
-关闭窗口	Close						
-后台运行	Run in bg						
-开始自整定	Start Auto-tune						
-中止自整定	Stop Auto-tune						
-已启动两段式自整定	Two-stage auto-tune started						
-已发送中止指令，正在安全关断输出	Abort sent; shutting off safely						
-本通道标定：釜壁滞后 tw {0} s · 刹车速率 {1} K/s · 电热余热 {2} K	Calibrated: wall lag tw {0} s · brake {1} K/s · coast {2} K						
-两通道参数各自独立；换釜或换导热介质建议点「一键自整定」	Independent per channel; re-tune when changing vessel or fluid						
-已保存并立即生效（当前通道独立参数）	Saved & applied immediately (per-channel)						
-已应用并存入本通道独立增益表	Applied & saved to this channel's table						
-已从盘上重读本通道增益表	Reloaded this channel's table from disk						

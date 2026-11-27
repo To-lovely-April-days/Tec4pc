@@ -25,6 +25,8 @@ struct TuneDlgState {
     double t_low = 10.0;
     double heat_duty = 60.0;
     std::string msg;
+    bool msg_ok = false;      // 这句话是「成功」还是「出错」：决定它什么颜色。
+                              // 不能看话是不是「已」字开头——换成英文就全成红的了
 } tds;
 
 // 页面搭好后把底部 5 个圆键匀成 6 个（720 = 6 × 120），在第 6 格挂上「一键自整定」圆键
@@ -307,7 +309,7 @@ void tune_dlg_refresh() {
     }
 
     u.set_text_raw("td.msg", tds.msg);
-    u.set_text_color("td.msg", tds.msg.find("已") == 0 ? 0x007A5A : 0xE5484D);
+    u.set_text_color("td.msg", tds.msg_ok ? 0x007A5A : 0xE5484D);
     u.set_text("td.close.t", active ? "后台运行" : "关闭窗口");
     if (lv_obj_t* rb = u.box("td.run.btn")) bg(rb, active ? 0xE5484D : 0x007A5A, 255);
     u.set_text("td.run.t", active ? "中止自整定" : "开始自整定");
@@ -373,7 +375,7 @@ bool pid_action(const std::string& a) {
             return true;
         }
         if (a == "pt:thigh" || a == "pt:tlow" || a == "pt:hduty") {
-            if (active) { tds.msg = ui::tr("正在自整定中，如需修改参数请先中止"); tune_dlg_refresh(); return true; }
+            if (active) { tds.msg_ok = false; tds.msg = ui::tr("正在自整定中，如需修改参数请先中止"); tune_dlg_refresh(); return true; }
             if (a == "pt:thigh") {
                 open_keypad("自整定 · 最高加热温度", "℃", tds.t_high, 35, 135, f0(tds.t_high) + " ℃", "—",
                             [this](double x) { tds.t_high = x; tds.msg.clear(); tune_dlg_refresh(); }, 0);
@@ -390,11 +392,13 @@ bool pid_action(const std::string& a) {
         if (a == "pt:run") {
             if (active) {
                 const json r = ask({{"cmd", "tune.stop"}, {"ch", ci + 1}});
-                tds.msg = r.value("ok", false) ? ui::tr("已发送中止指令，正在安全关断输出") : core_text(r, "error", "中止失败");
+                tds.msg_ok = r.value("ok", false);
+                tds.msg = tds.msg_ok ? ui::tr("已发送中止指令，正在安全关断输出") : core_text(r, "error", "中止失败");
             } else {
                 const json r = ask({{"cmd", "tune.start"}, {"ch", ci + 1},
                                     {"t_high", tds.t_high}, {"t_low", tds.t_low}, {"heat_duty", tds.heat_duty}, {"cool_duty", 80.0}});
-                tds.msg = r.value("ok", false) ? ui::tr("已启动两段式自整定") : core_text(r, "error", "启动失败");
+                tds.msg_ok = r.value("ok", false);
+                tds.msg = tds.msg_ok ? ui::tr("已启动两段式自整定") : core_text(r, "error", "启动失败");
                 if (r.value("ok", false)) v.was_tuning = true;
             }
             pid_fetch(ci, true);
