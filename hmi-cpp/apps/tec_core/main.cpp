@@ -19,13 +19,46 @@
 #include <memory>
 #include <string>
 #include <thread>
+#include <vector>
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #endif
 
 static std::atomic<bool> g_quit{false};
+static std::atomic<bool> g_restart{false};      // 停机以后把自己原样再启动一遍（sys.restart）
 static void on_signal(int) { g_quit = true; }
+
+// 把自己原样启动一遍，然后让这一个退出。
+// 必须等串口和 TCP 端口都还掉了再叫（串口在 Windows 上是独占打开的，端口也一样），
+// 所以调用点在停机动作做完、srv.stop() 之后、real 释放之后
+static void relaunch(int argc, char** argv) {
+#ifdef _WIN32
+    wchar_t exe[MAX_PATH] = {0};
+    if (!GetModuleFileNameW(nullptr, exe, MAX_PATH)) { std::printf("重启没成功：找不到自己的程序路径，请手动再启动一次\n"); return; }
+    std::wstring cmd = GetCommandLineW();            // 连参数一起照搬（--data、--gains、--port…）
+    std::vector<wchar_t> buf(cmd.begin(), cmd.end());
+    buf.push_back(L'\0');
+    STARTUPINFOW si{}; si.cb = sizeof si;
+    PROCESS_INFORMATION pi{};
+    if (CreateProcessW(exe, buf.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) {
+        CloseHandle(pi.hProcess); CloseHandle(pi.hThread);
+        std::printf("控制核心重启中…\n");
+    } else {
+        std::printf("重启没成功（系统错误 %lu）：请手动再启动一次控制核心\n", static_cast<unsigned long>(GetLastError()));
+    }
+#else
+    // 开发机（Mac / Linux）上一样能用：分一个出来接着跑，这一个照常退出
+    (void)argc;
+    const pid_t pid = fork();
+    if (pid == 0) { execv(argv[0], argv); _exit(127); }
+    if (pid < 0) std::printf("重启没成功：请手动再启动一次控制核心\n");
+    else std::printf("控制核心重启中…\n");
+#endif
+}
 
 int main(int argc, char** argv) {
     // 这个程序打印的中文是 UTF-8；Windows 控制台缺省按本地编码（GBK）显示，不说一声就是满屏乱码
@@ -103,6 +136,8 @@ int main(int argc, char** argv) {
     // 触摸屏上「退出程序 → 连控制核心一起退」走的就是这里：不另写一套停机动作，
     // 只把主循环叫停，让下面那段现成的退出（停序列、停控温、再跑两拍写到设备上）照常走一遍
     app.on_exit = []() { g_quit = true; };
+    // 「自动检测 → 应用」改完串口要重启才生效：核心自己来，不用人去关窗口再敲一遍命令（用户 2026-11-27）
+    app.on_restart = []() { g_restart = true; g_quit = true; };
     app.comm_info = [&]() {
         nlohmann::json j = {{"sim", sim}, {"address", tec::local_ip()}, {"clients", nlohmann::json::array()}, {"status", nlohmann::json::array()}};
         for (auto& c : srv.clients()) j["clients"].push_back({{"address", c.address}, {"connected_s", c.connected_s}, {"rx", c.rx}, {"tx", c.tx}});
@@ -129,5 +164,12 @@ int main(int argc, char** argv) {
     app.handle("{\"cmd\":\"temp.stop\",\"ch\":1}", false); app.handle("{\"cmd\":\"temp.stop\",\"ch\":2}", false);
     app.tick(); app.tick();
     srv.stop();
+    if (g_restart) {
+        // 串口要先真的关掉，新起来的那个才开得了（Windows 上串口是独占的）。
+        // 这之后不能再碰 app 了——它手里攥着 real 里的那些设备
+        real.reset();
+        offline_hw.reset();
+        relaunch(argc, argv);
+    }
     return 0;
 }

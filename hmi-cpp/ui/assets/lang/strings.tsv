@@ -472,6 +472,9 @@ TEC导出	TEC export
 只有触摸屏上能退出控制核心	Only the touchscreen can quit the control core						
 有通道正在控温或跑序列，停下来才能退出	A channel is controlling or running a sequence; stop it before quitting						
 这个程序不支持退出	This program does not support quitting						
+只有触摸屏上能重启控制核心	Only the touchscreen can restart the control core						
+有通道正在控温或跑序列，停下来才能重启	A channel is controlling or running a sequence — stop it before restarting						
+这个程序不支持重启	This program cannot restart itself						
 导出范围不对：结束要比开始晚	Bad export range: the end must be later than the start						
 有通道正在控温或跑序列，停下来才能换增益表	Stop both channels first						
 盘上的增益表读不出来	The gain table on disk cannot be read						
@@ -559,6 +562,7 @@ Tr 探头	Tr probe
 对外通信 · 断线超时	External link · timeout						
 还没拿到控制核心的设备清单	No device list from the control core yet						
 没连上	Not connected						
+改过了，重启核心后生效	Changed — restart the core						
 仿真（没连真设备）	Simulated						
 未知	Unknown						
 温控器或继电器模块没连上：按右上角「自动检测」问一遍，或点红色的那一行改串口	Controller or relay not connected — run Auto-detect, or tap the red row to set its port						
@@ -569,6 +573,7 @@ Tr 探头	Tr probe
 已连 {0}	up {0}						
 {0} 口 · {1}	Port {0} · {1}						
 {0} · 固件 {1}	{0} · FW {1}						
+未启用，没检测	Disabled, not scanned						
 没扫到	Not found						
 认出 {0} 台 · {1} 处和现在配的不一样 · {2} 台同型号要你指派通道	{0} identified · {1} differ from the current setup · {2} same-model devices need a channel						
 认出 {0} 台 · {1} 处和现在配的不一样	{0} identified · {1} differ from the current setup						
@@ -582,7 +587,8 @@ Tr 探头	Tr probe
 问了没人答	No reply						
 检测停了	Scan stopped						
 没有可以应用的行	No rows to apply						
-已按检测结果改了 {0} 台，并记住了它们的 USB 口；重启控制核心后生效	Updated {0} device(s) and remembered USB ports; restart core to apply						
+已按检测结果改了 {0} 台，并记住了它们的 USB 口；控制核心正在重启	Updated {0} device(s) and remembered their USB slots; the control core is restarting						
+已按检测结果改了 {0} 台；重启控制核心后生效（自动重启没成功：{1}）	Updated {0} device(s); restart the control core to apply (auto-restart failed: {1})						
 还没有曲线	No curve yet						
 还没有曲线，点「编辑曲线」添加	No curve yet; tap Edit profile to add one						
 釜内 Tr · 共 {0} 段 · {1} · {2} → {3} ℃	Reactor Tr · {0} segments · {1} · {2} → {3} ℃						
@@ -745,7 +751,7 @@ pH 电极测、调节泵加，把 pH 维持在目标附近；走满维持时长�
 加料时长 = 体积 ÷ 流量；加完这一步结束	Dosing time = volume ÷ flow rate; the step ends when it is done						
 按泵的最大流量一次送完	Sends it all at the pump's full flow rate						
 共 {0} 段 · {1} · 最后到 {2} ℃	{0} segments · {1} · ends at {2} ℃						
-结晶就是分段曲线控温：点「编辑曲线」改各段的目标温度和用时，第一段从当时的釜温走起	Crystallization is a segmented profile: tap Edit profile to set each segment's target and time; segment 1 starts from the current reactor temperature						
+结晶就是分段曲线控温：点「编辑曲线」改各段的目标温度和用时，第一段从当时的釜温走起	Segmented profile: tap Edit profile to set each segment's target and time; segment 1 starts from the current reactor temperature						
 走到这一步就停下来等人；在屏上点「确认继续」才往下走	Stops here and waits; it goes on only when someone taps Confirm and continue						
 {0} / 6 步	{0} / 6 steps						
 　·　预计约 {0}	 · ~{0}						
@@ -836,6 +842,7 @@ pH 电极测、调节泵加，把 pH 维持在目标附近；走满维持时长�
 {0} 根手指　·　间距 {1} px	{0} fingers　·　{1} px apart						
 
 # 下面这些界面上已经没有了，留着免得以后改回来又要重翻；要清掉直接删行
+# 已按检测结果改了 {0} 台，并记住了它们的 USB 口；重启控制核心后生效	Updated {0} device(s) and remembered USB ports; restart core to apply						
 # 0~5 号也读不出来	Registers 0–5 unreadable too						
 #  根手指							
 # 　·　间距 							

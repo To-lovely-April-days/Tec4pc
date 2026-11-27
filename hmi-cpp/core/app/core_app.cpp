@@ -55,6 +55,7 @@ const std::set<std::string> kReadOnly = {"state", "seq.get", "recipe.list", "rec
 CoreApp::CoreApp(ReactorHardware& hw, AuxHardware& aux, const std::string& data_dir, const std::string& gain_table_path)
     : dir_(data_dir), gain_path_(gain_table_path), settings_(AppSettings::load(data_dir)), table_(GainTable::load(gain_table_path)), recipes_(data_dir) {
     // 快速升温：加码上限从设置里来。0 = 不加码，就是原来稳妥的那套
+    boot_devices_ = settings_.devices;            // 开机那一刻的设备参数，留着和改过之后的比
     cfg_.outer.fast.enabled = settings_.fast_boost_max > 0;
     cfg_.outer.fast.boost_max = settings_.fast_boost_max;
     cfg_.outer.fast.bias_start = [this](double t) { return table_.steady_bias_at(t).value_or(0.0); };
@@ -523,6 +524,19 @@ std::string CoreApp::handle(const std::string& line, bool remote) {
                 else if (!on_exit) r = fail("这个程序不支持退出");
                 else on_exit();
             }
+            else if (cmd == "sys.restart") {
+                // 重启控制核心：停好机再把自己原样启动一遍。设备是开机时连的，改完串口只有重启才生效，
+                // 自动检测点「应用」以后就下这一条（那时两个通道本来就都停着——不停下来根本扫不了）。
+                // 守的规矩和退出一样：只收本机的、两个通道都得停着。重启中间那几秒界面会显示「未连上控制核心」，
+                // 核心起来了它自己接回去
+                const StationSnapshot snap = station_->snapshot();
+                bool busy = snap.ch[0].running || snap.ch[1].running;
+                for (int k = 0; k < 2; k++) { const SeqState q2 = ch_[k].seq->status().state; busy = busy || q2 == SeqState::Running || q2 == SeqState::WaitingConfirm; }
+                if (remote) r = fail("只有触摸屏上能重启控制核心");
+                else if (busy) r = fail("有通道正在控温或跑序列，停下来才能重启");
+                else if (!on_restart) r = fail("这个程序不支持重启");
+                else on_restart();
+            }
             else if (cmd == "comm.status") {
                 // 各设备的通信参数 + 开机时连没连上；连着的 PC；本机地址。后面三样由主程序提供，没接（测试里）就只有参数
                 json extra = json::object();
@@ -534,7 +548,14 @@ std::string CoreApp::handle(const std::string& line, bool remote) {
                 for (auto& d : settings_.devices) {
                     json one = {{"key", d.key}, {"label", d.label}, {"enabled", d.enabled}, {"port", d.port}, {"usb_id", d.usb_id}, {"usb_name", d.usb_name}, {"baud", d.baud}, {"parity", std::string(1, d.parity)}, {"stop_bits", d.stop_bits}, {"station", d.station}, {"poll_ms", d.poll_ms},
                                 {"state", !d.enabled ? "off" : r["sim"].get<bool>() ? "sim" : "unknown"}, {"problem", ""}, {"problem_t", ""}, {"problem_args", json::array()}};
-                    if (extra.contains("status")) for (auto& s2 : extra["status"]) if (s2.value("key", "") == d.key && d.enabled) { one["state"] = s2.value("ok", false) ? "ok" : "fail"; one["problem"] = s2.value("problem", "");
+                    // 开机以后改过这台的参数：开机时连没连上说的是旧参数，不能再拿来当现在的状态
+                    bool retouched = false;
+                    for (const DeviceComm& b : boot_devices_)
+                        if (b.key == d.key)
+                            retouched = b.enabled != d.enabled || b.port != d.port || b.baud != d.baud || b.parity != d.parity ||
+                                        b.stop_bits != d.stop_bits || b.station != d.station;
+                    if (retouched) { one["state"] = "restart"; one["problem"] = ""; one["problem_t"] = ""; }
+                    else if (extra.contains("status")) for (auto& s2 : extra["status"]) if (s2.value("key", "") == d.key && d.enabled) { one["state"] = s2.value("ok", false) ? "ok" : "fail"; one["problem"] = s2.value("problem", "");
                                                                                    one["problem_t"] = s2.value("problem_t", ""); one["problem_args"] = s2.contains("problem_args") ? s2["problem_args"] : json::array(); }
                     r["devices"].push_back(one);
                 }

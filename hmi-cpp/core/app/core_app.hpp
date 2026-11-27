@@ -47,6 +47,10 @@ public:
     // 退出控制核心（sys.exit）时调它：核心自己不知道怎么结束进程，由主程序把自己的主循环停掉。
     // 不接 = 这个程序不支持退出（嵌在别人里跑的时候），sys.exit 会如实拒绝
     std::function<void()> on_exit;
+    // 重启控制核心（sys.restart）：和 on_exit 一样由主程序执行——停好机、把串口和端口都还掉，
+    // 再把自己原样启动一遍。改完设备串口要重启才生效，自动检测点「应用」以后就走这里，不用人去敲命令。
+    // 不接 = 这个程序不支持重启，sys.restart 会如实拒绝
+    std::function<void()> on_restart;
     // 不空 = 控温用的设备没连上（主程序开机时发现的），里面是原因。这时核心照常跑、照常答命令，只是不收开始控温 / 开始序列
     std::string offline_reason;
     static constexpr const char* kVersion = "0.1.0";      // 控制核心的版本号（系统设置页、PC 端都看它）
@@ -92,6 +96,10 @@ private:
 
     std::string dir_, gain_path_;
     AppSettings settings_;
+    // 开机那一刻的设备参数。设备是开机时连的，之后改设置不会重连，所以「这台连上没有」说的
+    // 一直是开机那一套参数的结果。改过以后再拿那个结果当真就会骗人——现场把冷水机启用了，
+    // 屏上还写着「未启用」（用户 2026-11-27）。所以留一份底，和现在的一比就知道该说「要重启」
+    std::vector<DeviceComm> boot_devices_;
     GainTable table_;
     ChannelConfig cfg_;
     RecipeStore recipes_;

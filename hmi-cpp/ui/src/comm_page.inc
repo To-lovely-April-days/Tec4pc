@@ -166,10 +166,13 @@ void refresh_comm(Ui& u) {
         u.set_text(id + ".a", std::to_string(d.value("station", 1)));
         const std::string stt = d.value("state", "unknown"), prob = core_text(d, "problem");
         // 状态是控制核心开机时连设备的结果（它不会运行中重连）；仿真时没有真设备可连
-        const int code = stt == "ok" ? 1 : stt == "fail" ? 2 : stt == "off" ? 0 : 3;
-        u.set_text(id + ".s", code == 1 ? "正常" : code == 2 ? (prob.empty() || utf8_count(prob) > 12 ? "没连上" : prob) : code == 0 ? "未启用" : stt == "sim" ? "仿真（没连真设备）" : "未知");
-        u.set_text_color(id + ".s", code == 1 ? 0x4F5B67 : code == 2 ? 0xD64545 : 0x8792A0);
-        if (lv_obj_t* o = u.box(id + ".dot")) if (u.changed(id + ".dot", code)) bg(o, code == 1 ? 0x00B368 : code == 2 ? 0xE5484D : code == 3 ? 0xF2A33A : 0xB8C4D0, 255);
+        // 「这台连上没有」说的是开机那一刻的事（核心不会运行中重连）。开机以后改过这台的参数，
+        // 核心就只报 restart：再拿开机那次的结果写在这儿会骗人——把冷水机启用了，屏上却还写着「未启用」
+        const int code = stt == "ok" ? 1 : stt == "fail" ? 2 : stt == "off" ? 0 : stt == "restart" ? 4 : 3;
+        u.set_text(id + ".s", code == 1 ? "正常" : code == 2 ? (prob.empty() || utf8_count(prob) > 12 ? "没连上" : prob)
+                                                : code == 0 ? "未启用" : code == 4 ? "改过了，重启核心后生效" : stt == "sim" ? "仿真（没连真设备）" : "未知");
+        u.set_text_color(id + ".s", code == 1 ? 0x4F5B67 : code == 2 ? 0xD64545 : code == 4 ? 0xE07B00 : 0x8792A0);
+        if (lv_obj_t* o = u.box(id + ".dot")) if (u.changed(id + ".dot", code)) bg(o, code == 1 ? 0x00B368 : code == 2 ? 0xE5484D : code == 3 || code == 4 ? 0xF2A33A : 0xB8C4D0, 255);
     }
     // 控温设备没连上时，这一页就是来修它的地方：把话说在最显眼的这一行
     const bool offline = st.is_object() && !st.value("offline", std::string()).empty();
@@ -219,6 +222,7 @@ static std::string scan_type_of(const std::string& key) {
 
 struct ScanRow {
     std::string key, label, old_port;
+    bool off = false;         // 「通信设置」里关掉的：这一行没去找
     json hit;                 // 配到的那一条扫描结果；空 = 这台没扫到
     bool take = true;
     int pair = -1;            // 0 = pH 这一对，1 = 搅拌这一对；−1 = 不成对
@@ -260,10 +264,11 @@ void scan_build_rows(const json& hits) {
     }
     std::map<std::string, int> used;
     for (const json& d : cmv.info["devices"]) {
-        // 「通信设置」里关掉的那几台不列：控制核心压根没去找它们，列一行「没扫到」只会让人以为是坏了
-        if (!d.value("enabled", true)) continue;
         ScanRow r;
         r.key = d.value("key", ""); r.label = d.value("label", ""); r.old_port = d.value("port", "");
+        // 关掉（未启用）的那几台：核心压根没去找它们，这一行要说清是「没找」，不是「找了没找到」。
+        // 行还是要占着——每一行长什么样（打勾 / 选通道 1、2）是设计稿里按行号定死的，跳过一行后面全挪位
+        r.off = !d.value("enabled", true);
         if (r.key == "ph1" || r.key == "stir1") { r.pair = r.key == "ph1" ? 0 : 1; r.pair_slot = 0; }
         if (r.key == "ph2" || r.key == "stir2") { r.pair = r.key == "ph2" ? 0 : 1; r.pair_slot = 1; }
         const std::string ty = scan_type_of(r.key);
@@ -311,7 +316,7 @@ void refresh_scan_result() {
         // 型号后面跟固件版本：核心把两件分开给，句子在这儿拼，这样才翻得了
         const std::string fw = h ? h->value("firmware", "") : "";
         const std::string model = !h ? "" : fw.empty() ? h->value("model", "") : ui::fmt("{0} · 固件 {1}", {h->value("model", ""), fw});
-        u.set_text(id + ".m", !h ? "没扫到" : !prob.empty() ? prob : model);
+        u.set_text(id + ".m", r.off ? "未启用，没检测" : !h ? "没扫到" : !prob.empty() ? prob : model);
         u.set_text_color(id + ".m", !h ? 0x8792A0 : 0x1A2330);
         const bool pair = r.pair >= 0 && h;
         if (pair) ask++;
@@ -450,7 +455,13 @@ bool scan_action(const std::string& a) {
         const json r = ask({{"cmd", "ports.apply"}, {"devices", devs}});
         if (!r.value("ok", false)) { scv.msg = core_text(r, "error", "没存进去"); refresh_scan_result(); return true; }
         scv.open = false; scan_show(commscan, false);
-        cmv.msg = ui::fmt("已按检测结果改了 {0} 台，并记住了它们的 USB 口；重启控制核心后生效", {std::to_string(r.value("applied", 0))});
+        // 改完串口要重启核心才生效，顺手替人做了（能走到检测这一步，两个通道本来就都停着）。
+        // 重启那几秒界面会显示「未连上控制核心」，核心起来了它自己接回去，界面不用动
+        const json rr = ask({{"cmd", "sys.restart"}});
+        cmv.msg = rr.value("ok", false)
+                      ? ui::fmt("已按检测结果改了 {0} 台，并记住了它们的 USB 口；控制核心正在重启", {std::to_string(r.value("applied", 0))})
+                      : ui::fmt("已按检测结果改了 {0} 台；重启控制核心后生效（自动重启没成功：{1}）",
+                                {std::to_string(r.value("applied", 0)), core_text(rr, "error", "这个程序不支持重启")});
         comm_fetch(true); refresh();
         return true;
     }
