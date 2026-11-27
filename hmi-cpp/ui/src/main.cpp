@@ -783,6 +783,11 @@ struct App {
             if (c["tr"].is_number()) s += "　·　Tr − Tj " + f1(c["tr"].get<double>() - c["tj"].get<double>()) + " K";
             if (st["coolant_c"].is_number()) s += "　·　Tc " + f1(st["coolant_c"].get<double>()) + " ℃";
             if (run) s += ui::fmt("　·　夹套目标 {0} ℃　·　出力 {1} %（{2}）", {f1(c.value("tj_sp", 0.0)), f0(std::fabs(duty)), ui::tr(duty > 0 ? "TEC 制冷" : "加热棒")});
+            // 已经在叫冷水机转了，却一个冷媒温度都读不回来 = 这台核心手里根本没有冷水机
+            //（「通信设置」里没启用，或者串口没配对、开机时没连上）。这时只有冷却水阀是开的，
+            // 冷水机一动不动——不说出来，现场只会看见「制冷怎么不见效」（用户 2026-11-27）
+            if (run && st.value("chiller_run", false) && !st["coolant_c"].is_number())
+                s += ui::tr("　·　冷水机没连上（只开了冷却水阀）");
             u.set_text_raw("ctl.temp.status", offline ? ui::tr(st.value("offline", std::string())) : !ctl_msg[ci].empty() ? ui::tr(ctl_msg[ci]) : s);
         } else if (offline) u.set_text("ctl.temp.status", st.value("offline", std::string()));
         u.set_text_color("ctl.temp.status", offline || !ctl_msg[ci].empty() ? 0xD64545 : 0x8792A0);

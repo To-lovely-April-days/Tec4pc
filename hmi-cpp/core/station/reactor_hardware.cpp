@@ -90,9 +90,18 @@ void RealReactorHardware::end_control(int ch) {
 void RealReactorHardware::set_water(bool valve_open, bool chiller_run) {
     // 开：先开阀再开冷水机；关：先停冷水机，阀由上面的执行机构层等冷水机停稳了再让关（冷水机转着关阀会憋泵）
     if (valve_open && valve_ != 1) { relay(map_.water, true); valve_ = 1; }
-    if (chiller_ && (chiller_run ? 1 : 0) != chiller_run_) {
-        if (chiller_run) chiller_->start(); else chiller_->stop();
-        chiller_run_ = chiller_run ? 1 : 0;
+    // 冷水机这一句写不出去的时候要晾着它，不能每拍重来：写一次不通要等满超时加重试（300×2），
+    // 而 chiller_run_ 又只有写成了才记下来——于是每一拍都重写、每一拍都白等六百毫秒，
+    // 整个核心就被它拖慢，屏上点什么都像死了（用户 2026-11-27：启用冷水机重启之后非常卡顿）。
+    // 和读水温用同一条规矩：连着几次不通就认定它这会儿不在，隔一阵再试
+    if (chiller_ && (chiller_run ? 1 : 0) != chiller_run_ && !gate_coolant_.resting()) {
+        try {
+            if (chiller_run) chiller_->start(); else chiller_->stop();
+            chiller_run_ = chiller_run ? 1 : 0;
+            gate_coolant_.ok();
+        } catch (const std::exception& e) {
+            gate_coolant_.failed(e.what());     // 这一拍就算了：冷水机不转，水阀照样是开的，TEC 那边不受影响
+        }
     }
     if (!valve_open && valve_ != 0) { relay(map_.water, false); valve_ = 0; }
 }

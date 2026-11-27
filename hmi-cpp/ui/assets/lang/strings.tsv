@@ -830,6 +830,7 @@ pH 电极测、调节泵加，把 pH 维持在目标附近；走满维持时长�
 无序列	No sequence						
 本步已走	Step elapsed						
 　·　夹套目标 {0} ℃　·　出力 {1} %（{2}）	　·　jacket target {0} ℃　·　output {1} % ({2})						
+　·　冷水机没连上（只开了冷却水阀）	　·　no chiller (water valve only)						
 起界面时出错：	Error while building the screen: 						
 起界面时出错（不知道是什么错）	Error while starting the UI (unknown)						
 刷新界面时出错：	Error while refreshing the screen: 						

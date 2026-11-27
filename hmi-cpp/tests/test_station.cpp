@@ -1,6 +1,7 @@
 // 整机节拍 + 硬件绑定层的测试：用两台假从站（温控器、继电器模块）跑几十拍，核对写到设备上的动作。
 // 重点核三条规矩：继电器只一路一路写、DO2 / DO3 从不被碰、加热棒和 TEC 两只从不同时合着。
 #include "../core/station/station.hpp"
+#include "../drivers/chiller.hpp"
 #include "../drivers/io8r.hpp"
 #include "../drivers/rd105.hpp"
 #include "../io/fake_serial.hpp"
@@ -145,6 +146,31 @@ int main() {
     s3.start_profile(1, {{45, 30}, {20, 50}});
     for (int i = 0; i < 4; i++) s3.step();
     CHECK(s3.snapshot().ch[1].mode == ControlMode::Crystal && s3.snapshot().ch[1].segment == 0 && s3.snapshot().ch[1].segment_remaining_s > 1790);
+
+    // ── 接了一台连不上的冷水机，不许把整拍拖垮 ──
+    // 现场 2026-11-27：把冷水机启用了（口是别人的口），重启以后整个界面卡到点不动。
+    // 根子是「写不成就不记下来」——chiller_run_ 只有写成了才更新，于是每一拍都重写、
+    // 每一拍都白等一个超时加重试。连着几次不通就该晾着它，不是一拍一次地撞
+    {
+        Slave tc2, io2;
+        FakeSerial s_tc2([&](const std::vector<uint8_t>& q) { return tc2.answer(q); });
+        FakeSerial s_io2([&](const std::vector<uint8_t>& q) { return io2.answer(q); });
+        ModbusRtu m_tc2(s_tc2, 1), m_io2(s_io2, 1);
+        m_tc2.inter_frame_gap_ms = m_io2.inter_frame_gap_ms = 0;
+        Rd105 rd2(m_tc2);
+        Io8r relay2(m_io2);
+        int asked = 0;
+        FakeSerial s_ch([&](const std::vector<uint8_t>&) { asked++; return std::vector<uint8_t>{}; });   // 装死：一个字节都不答
+        ModbusRtu m_ch(s_ch, 1, 20);
+        m_ch.timeout_retries = 0; m_ch.corrupt_retries = 0; m_ch.inter_frame_gap_ms = 0;
+        Chiller dead(m_ch);
+        RealReactorHardware hw2(rd2, relay2, nullptr, &dead);
+        Station s4(hw2, table, cfg);
+        s4.start(0, ControlMode::Jacket, -30.0);            // 制冷 → 过一会儿就该叫冷水机转
+        for (int i = 0; i < 300; i++) s4.step();
+        CHECK(asked > 0);                                   // 确实去找过它（不然这条测试什么都没测）
+        CHECK(asked <= 12);                                 // 但不是一拍一次：连着几次不通就晾着
+    }
 
     std::printf(fails ? "\n%d 项失败\n" : "整机节拍与硬件绑定：全部通过\n", fails);
     return fails ? 1 : 0;
